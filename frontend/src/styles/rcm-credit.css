@@ -1,0 +1,35 @@
+/* RC-UX credit decision panel (Audit A GAP-R12): presentation only.  Horizontal scrolling is contained to the financial matrices. */
+.cd-panel .cd-note { font-size: .85rem; margin: 4px 0; overflow-wrap: anywhere; color: var(--muted, #526374); }
+.cd-panel .cd-policy { font-size: .85rem; border-left: 4px solid var(--fo-brand-500, #3b6ff6); padding: 6px 10px; margin: 8px 0; background: var(--surface-blue, #edf3f8); }
+.cd-panel .cd-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 12px; font-size: .85rem; }
+.cd-panel .cd-section { border: 1px solid var(--line, #dce3e9); border-radius: 6px; padding: 12px 14px; margin: 0 0 14px; background: var(--surface, #fff); min-width: 0; }
+.cd-panel .cd-section h3 small { font-weight: 400; font-size: .78rem; margin-left: 6px; color: var(--muted, #526374); }
+.cd-panel .cd-scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--line, #dce3e9); border-radius: 4px; }
+.cd-panel .cd-scroll:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: 1px; }
+.cd-panel .cd-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.cd-panel .cd-table th, .cd-panel .cd-table td { padding: 5px 8px; border-bottom: 1px solid var(--line, #dce3e9); text-align: left; vertical-align: top; background: var(--surface, #fff); }
+.cd-panel .cd-table thead th { font-weight: 600; }
+.cd-panel .cd-table tbody th[scope=row] { font-weight: 500; }
+.cd-panel .cd-num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.cd-panel .cd-table td.cd-num { white-space: normal; }
+.cd-panel .cd-na { font-style: italic; color: var(--muted, #526374); }
+.cd-panel .cd-why { font-size: .75rem; white-space: normal; display: block; color: var(--muted, #526374); }
+.cd-panel .cd-group th { background: var(--paper, #f4f6f7); font-weight: 700; }
+.cd-panel .cd-table--matrix th.cd-sticky, .cd-panel .cd-table--matrix td.cd-sticky { position: sticky; left: 0; z-index: 1; min-width: 190px; max-width: 260px; white-space: normal; }
+.cd-panel .cd-table--matrix td, .cd-panel .cd-table--matrix thead th:not(.cd-sticky) { min-width: 84px; white-space: nowrap; }
+.cd-panel .cd-flag { color: var(--fo-danger, #b91c1c); font-weight: 700; }
+.cd-panel .cd-class { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: .72rem; border: 1px solid currentColor; white-space: nowrap; }
+.cd-panel .cd-class--contractual_covenant { color: var(--fo-danger, #9a3412); }
+.cd-panel .cd-class--project_input_advisory { color: var(--fo-brand-500, #1d4ed8); }
+.cd-panel .cd-class--observed_financial_result { color: var(--fo-ok, #047857); }
+.cd-panel .cd-class--unsupported_evidence_missing { color: var(--muted, #4b5563); }
+.cd-panel .cd-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.cd-panel .cd-chip { border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); color: inherit; border-radius: 999px; padding: 3px 10px; font-size: .8rem; cursor: pointer; min-height: 32px; }
+.cd-panel .cd-chip.is-on { border-color: var(--fo-brand-500, #3b6ff6); background: var(--surface-blue, #edf3f8); }
+.cd-panel .cd-chip:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: 1px; }
+.cd-panel .cd-aside, .cd-panel .cd-callout { border-left: 4px solid var(--fo-warn, #b45309); padding: 6px 10px; margin: 8px 0; background: var(--paper, #f4f6f7); font-size: .85rem; }
+.cd-panel .cd-classes { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .8rem; margin: 10px 0 0; }
+.cd-panel .cd-classes > div { display: contents; }
+.cd-panel .cd-classes dd { margin: 0; }
+.cd-panel .rcm-audit { margin-top: 8px; }
+@media (max-width: 700px) { .cd-panel .cd-section { padding: 10px 8px; } .cd-panel .cd-chip { min-height: 44px; } .cd-panel .cd-table--matrix th.cd-sticky, .cd-panel .cd-table--matrix td.cd-sticky { min-width: 140px; } }

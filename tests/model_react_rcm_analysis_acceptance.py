@@ -103,7 +103,7 @@ def test_analysis_hub_keeps_the_last_run_view_and_adds_the_two_tools(live_server
     context, page, record, errors = an_session("rcm-an-hub")
     page.goto(f"{live_server}/v2/model-react/{record.project_code}#analysis")
     page.wait_for_selector("[data-analysis-tools='true']")
-    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Last Run charts", "Sensitivity", "Goal Seek"]
+    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Last Run charts", "Sensitivity", "Goal Seek", "What-if", "Run history & compare"]
     assert page.locator("[data-analysis-view='true']").count() == 1          # the existing analysis is still the first tab
     page.locator("[data-analysis-tab='sensitivity']").click()
     page.wait_for_selector("[data-sensitivity-panel='true']")
@@ -187,7 +187,7 @@ def test_matrix_5x5_runs_twenty_five_points(live_server, an_session):
     page.locator("[data-sens-run='true']").click()
     page.wait_for_selector("[data-matrix-table='true']", timeout=300000)
     assert page.locator("[data-matrix-cell]").count() == 25
-    assert "25 canonical evaluations" in page.locator("[data-run-footer='true']").inner_text()
+    assert "25 model evaluations" in page.locator("[data-run-footer='true']").inner_text()
     assert errors == []
 
 

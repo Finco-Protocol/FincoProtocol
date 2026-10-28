@@ -2,6 +2,7 @@
 // POST /v2/model-react/new-project/create (session + signed CSRF bound to the request id);
 // an ambiguous outcome is classified "unknown" and is NEVER retried by this client.
 import type {
+  TemplateCard,
   CreateResult, CreatedProject, PreviewResult, StatusResult, WizardFieldError, WizardInput, WizardOptions,
 } from "./types";
 
@@ -67,8 +68,7 @@ export interface CreateArgs {
   acknowledgePreview: boolean;
 }
 
-const UNKNOWN_MESSAGE = "Result unknown — the server may have created the project. Refresh the Library to check; "
-  + "do not create it again until you have.";
+const UNKNOWN_MESSAGE = "We could not confirm whether the project was created. Check My Projects before creating it again.";
 
 export async function createNewProject(args: CreateArgs): Promise<CreateResult> {
   let response: Response;
@@ -94,9 +94,9 @@ export async function createNewProject(args: CreateArgs): Promise<CreateResult> 
   }
   // 5xx (including the server's own CREATE_OUTCOME_UNKNOWN) and unreadable bodies: the writer may have run.
   if (response.status >= 500 || !body || !body.code) return { kind: "unknown", message: UNKNOWN_MESSAGE };
-  if (response.status === 401) return { kind: "refused", code: "AUTH_REQUIRED", message: "Your session is not authorized. Sign in again; nothing was created." };
+  if (response.status === 401) return { kind: "refused", code: "AUTH_REQUIRED", message: "Your session has expired. Sign in again — nothing was created." };
   if (response.status === 403) {
-    return { kind: "refused", code: body.code, message: "The security token expired. Reload the wizard; nothing was created." };
+    return { kind: "refused", code: body.code, message: "Your session security check expired. Reload the page and try again — nothing was created." };
   }
   return { kind: "refused", code: body.code, message: body.message || "The server refused the request; nothing was created.", errors: body.errors };
 }
@@ -106,8 +106,16 @@ export async function createNewProject(args: CreateArgs): Promise<CreateResult> 
 const HASH_BASE = "#new-project";
 const PENDING_HASH = /^#new-project:([0-9a-f]{32})$/;
 
+/** `#new-project` opens the wizard at its first step; `/template` and `/new` open it with a creation path already chosen. */
+export type WizardPath = "" | "new" | "template";
+const PATH_HASH = /^#new-project\/(new|template)$/;
+
 export function isWizardHash(hash: string): boolean {
-  return hash === HASH_BASE || PENDING_HASH.test(hash);
+  return hash === HASH_BASE || PENDING_HASH.test(hash) || PATH_HASH.test(hash);
+}
+export function pathFromHash(hash: string): WizardPath {
+  const match = PATH_HASH.exec(hash);
+  return match ? (match[1] as WizardPath) : "";
 }
 export function savePending(requestId: string): void {
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${HASH_BASE}:${requestId}`);
@@ -120,4 +128,14 @@ export function clearPending(): void {
 export function readPending(): string | null {
   const match = PENDING_HASH.exec(window.location.hash);
   return match ? match[1] : null;
+}
+
+/** The Project Templates (read-only starting models) with their starting assumptions, from GET /model-react/templates. */
+export async function fetchTemplates(): Promise<{ ok: true; templates: TemplateCard[] } | { ok: false; message: string }> {
+  try {
+    const response = await fetch("/v2/model-react/templates", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+    const body = await response.json().catch(() => null) as { ok?: boolean; templates?: TemplateCard[] } | null;
+    if (response.ok && body?.ok && Array.isArray(body.templates)) return { ok: true, templates: body.templates };
+  } catch { /* fall through */ }
+  return { ok: false, message: "The templates could not be loaded. Nothing was changed." };
 }

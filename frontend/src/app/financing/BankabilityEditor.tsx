@@ -53,7 +53,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         const tokenRead = await fetchSheetFields(project, "debt");
         if (!("ok" in tokenRead) || tokenRead.ok !== true) { setStatus({ tone: "error", text: "The save tokens could not be read. Nothing was saved. Reload and try again." }); return; }
         if (tokenRead.save.content_hash !== identityHash) {
-          setStatus({ tone: "conflict", text: "The Working Copy changed after this view loaded. Nothing was saved — reload to see the current values." });
+          setStatus({ tone: "conflict", text: "The project changed after this view loaded. Nothing was saved — reload to see the current values." });
           onChanged();
           return;
         }
@@ -70,7 +70,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         });
         if ("kind" in result) { setLocked(true); setStatus({ tone: "conflict", text: result.message }); return; }
         if (!result.ok) { setStatus({ tone: "error", text: `${result.message} Nothing was changed.` }); return; }
-        setStatus({ tone: "ok", text: `${label} saved and read back. The Last Run, if any, is now STALE — press Run when ready.` });
+        setStatus({ tone: "ok", text: `${label} saved and read back. The Last Run, if any, is now Results outdated — press Run when ready.` });
         onSaved();
       } finally { setInFlight(false); setConfirmReset(false); }
     });
@@ -123,7 +123,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
     <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title">
       <h3 id="rcm-bank-title" className="rcm-h3">Bankability configuration <span className="rcm-badge" data-bank-dirty={dirty}>{dirty ? "UNSAVED CHANGES" : "SAVED"}</span></h3>
       <p className="rx-note">Working inputs, project-owned across scenarios. The Last Run stays unchanged until you Run. Save writes only this configuration; the server validates every value.</p>
-      {!editable && <p className="rx-status rx-status-conflict" role="status" data-bank-readonly="true">Read-only: reference models cannot be edited. Create a working copy to change financing terms.</p>}
+      {!editable && <p className="rx-status rx-status-conflict" role="status" data-bank-readonly="true">Read-only: templates cannot be edited. Start a project from this template to change financing terms.</p>}
       {locked && <p className="rx-status rx-status-conflict" role="alert" data-bank-locked="true">A previous save has an unknown outcome. Reload the workspace to reconcile before editing again.</p>}
 
       <fieldset className="rcm-fieldset" disabled={disabled}>
@@ -169,10 +169,10 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
           <label className="rcm-field">Target DSCR authority
             <select data-bank="targets_mode" value={draft.targetsMode} onChange={(e) => set("targetsMode", e.target.value as TargetsMode)}>
               <option value="inherit">Existing target authority (no override)</option>
-              <option value="scalar">Scalar target</option>
+              <option value="scalar">Single target for all periods</option>
               <option value="periods">Period-specific targets</option>
             </select></label>
-          <label className="rcm-field">Scalar target (x)
+          <label className="rcm-field">Single target (x)
             <input data-bank="target_scalar" inputMode="decimal" value={draft.targetScalar} disabled={disabled || draft.targetsMode !== "scalar"} onChange={(e) => set("targetScalar", e.target.value)} />
           </label>
         </div>
@@ -239,7 +239,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
             <label className="rcm-field">DSRF commitment (kEUR)<input data-bank="commitment_keur" inputMode="decimal" value={draft.commitment} disabled={disabled || draft.reserveMode !== "dsrf"} onChange={(e) => set("commitment", e.target.value)} /></label>
             <label className="rcm-field">DSRF commitment fee (% p.a.)<input data-bank="fee_pct" inputMode="decimal" value={draft.feePct} disabled={disabled || draft.reserveMode !== "dsrf"} onChange={(e) => set("feePct", e.target.value)} /></label>
           </div>
-        ) : <p className="rx-note" data-bank-reserve-locked="true">Legacy CAPEX reserve authority remains locked; no duplicate reserve funding input is permitted.</p>}
+        ) : <p className="rx-note" data-bank-reserve-locked="true">The reserve funding of the CAPEX plan is already set elsewhere in the project, so it cannot be entered a second time here.</p>}
         <p className="rx-note">CASH_DSRA funds a cash reserve in Uses. DSRF supplies standby support, not cash funding. No DSRF draw/replenishment engine is provided.</p>
       </fieldset>
 

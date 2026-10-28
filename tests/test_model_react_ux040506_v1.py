@@ -84,7 +84,7 @@ def test_runs_projection_lists_committed_history(env, monkeypatch):
     record = env.create()
     before = env.client.get("/v2/model-react/runs", params={"project": record.project_code}).json()
     assert before["ok"] is True and before["runs"] == []
-    assert "Save NEVER triggers" in before["run_contract"]["note"]
+    assert "Saving never runs the model" in before["run_contract"]["note"]      # reviewed Addendum B wording
     assert before["run_contract"]["url"] == "/v2/workbook/run"
     # a canonical Run commits exactly one immutable history entry
     page = env.client.get("/v2/workbook", params={"project": record.project_code})

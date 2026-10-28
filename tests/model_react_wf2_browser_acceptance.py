@@ -275,7 +275,7 @@ def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explic
         wait_status(page, "ok", "Downloaded", "[data-export-view='true']")
         history_link = page.locator("[data-export-view='true'] a[download]").first
         assert "history_id=" in history_link.get_attribute("href")
-        assert page.locator("[data-export-unavailable='true']").count() == 1
+        assert page.locator("[data-export-analysis-pointer='true']").count() == 1
         assert history_count(context, base, record) == 1, "export never runs the engine"
 
         # ── a Save after the Run leaves it STALE, never re-runs ──
@@ -526,10 +526,10 @@ def check_protected_reference_workspace_is_read_only_in_every_editor(browser, re
             connection.commit()
         open_workspace(page, base, record, "inputs")
         page.wait_for_selector("[data-sheet-editor='project_setup']")
-        assert page.locator("[data-sheet-editor='project_setup'] .fm-banner", has_text="PROTECTED REFERENCE").count() == 1
+        assert page.locator("[data-sheet-editor='project_setup'] .fm-banner", has_text="READ-ONLY TEMPLATE").count() == 1
         assert page.locator("[data-sheet-editor='project_setup'] input.fm-input, [data-sheet-editor='project_setup'] select").count() == 0
         assert page.locator("[data-wf-run='true']").is_disabled()
-        assert "Protected references cannot be run" in page.locator("#wf-run-hint").inner_text()
+        assert "Templates cannot be run" in page.locator("#wf-run-hint").inner_text()
         costs = page.locator("[data-cost-line-manager='capex']")
         costs.scroll_into_view_if_needed()
         assert costs.locator("[data-cost-add='capex']").is_disabled()

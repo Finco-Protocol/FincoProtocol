@@ -8,7 +8,8 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function splitLabelUnit(label: string, unit?: string | null): { label: string; unit: string } {
   const cleanUnit = (unit ?? "").trim();
-  const text = label.trim();
+  // An internal key marker in a registry label is not part of the business name of the field.
+  const text = label.replace(/\s*\((legacy|derived) key\)/i, "").trim();
   if (!cleanUnit) return { label: text, unit: "" };
   const trailing = new RegExp(`\\s*\\(\\s*${escape(cleanUnit)}\\s*\\)\\s*$`, "i");
   return { label: text.replace(trailing, "").trim() || text, unit: cleanUnit };

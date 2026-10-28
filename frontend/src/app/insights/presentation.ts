@@ -30,9 +30,9 @@ export function timelineGeometry(cells: readonly EvidenceCell[], width = 640, he
   if (segment.length) segments.push(segment);
   return { min, max, zeroY: y(0), points, segments };
 }
-/** Only local canonical evidence destinations are navigable. */
+/** Only React destinations are navigable.  A classic (Legacy) workbook route is never a user-facing target (Addendum A, React-only). */
 export function evidenceHref(value: string | undefined): string | undefined {
-  return value?.startsWith('/v2/') && !value.includes('\\') && !/[\u0000-\u001f]/.test(value) ? value : undefined;
+  return value?.startsWith('/v2/model-react/') && !value.includes('\\') && !/[\u0000-\u001f]/.test(value) ? value : undefined;
 }
 
 /** Avoid repeated canonical suffixes when a value already includes its unit. */

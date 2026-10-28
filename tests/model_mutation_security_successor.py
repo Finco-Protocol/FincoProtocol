@@ -194,6 +194,25 @@ RC_M_SUCCESSORS={
     "tests/test_model_workspace_consolidation_browser.py":"cf8dbfe39e31a4718a0af2da458ae919ca8a7fab",
 }
 
+# RC-UX Completion V1: the next exact, additive layer on top of RC-M.  Every earlier layer stays immutable and individually admitted.  The paths
+# are the pinned surfaces RC-UX touches: the adapter mount (one include of app/v2/react_rcux.py), the workspace view (only when RC-UX mounts a
+# component there) and the rebuilt React bundle.  All RC-UX behaviour lives in NEW unpinned files proven by tests/test_model_react_rcux_*.py and
+# tests/test_rcux_governance.py.  Blobs are recomputed from the committed sources by the pin refresh and asserted by tests/test_rcux_governance.py.
+RC_UX_SUCCESSORS={
+    "app/v2/react_workspace_router.py":"dab743e38301d9504909ef73693cb83deeca3dd2",
+    "frontend/src/app/FinancialResults.tsx":"9047ea4e3a97a5d5fa6983bba2bfaa1ac99ec3d2",
+    "frontend/src/app/WorkspaceView.tsx":"342e14706b8254555624eb94252de3e1249d59d5",
+    "frontend/src/app/workflow/ModelExportView.tsx":"a912911cd95d1dc68dd8280bad7ebcfa718506c4",
+    "frontend/src/app/workflow/ScenarioKpiComparison.tsx":"46166fed77b58ac5e0e1730c8f1150053b774bc7",
+    "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
+    "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
+    "static/react/finco-react.css":"0966ea1d11e41767dd89f3cac447e251b4d89be7",
+    "static/react/finco-react.js":"0307d8df5f08db0061880d9fb27d8fd2542119d0",
+    "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
+    "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
+    "tests/test_model_workspace_consolidation_browser.py":"665ef4874260612c9687fafddc303aeae56e82af",
+}
+
 # FIN-VAL F01: exact additive projection-only successor; historical layers
 # above remain individually admitted. No CSRF, CAS or Run gate is changed.
 FINVAL_RATE_SUCCESSORS={
@@ -306,6 +325,7 @@ def violations(sources,*,check_pin=True):
         if path in D029_RUN_INTENT_SUCCESSORS:admitted=admitted|{D029_RUN_INTENT_SUCCESSORS[path]}
         if path in REACT_MVP_CORRECTION_SUCCESSORS:admitted=admitted|{REACT_MVP_CORRECTION_SUCCESSORS[path]}
         if path in RC_M_SUCCESSORS:admitted=admitted|{RC_M_SUCCESSORS[path]}
+        if path in RC_UX_SUCCESSORS:admitted=admitted|{RC_UX_SUCCESSORS[path]}
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
@@ -384,7 +404,7 @@ def current_mutation_successor_valid(*,repo=None):
             return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
         for path,(source,parent,blob) in _browser_layers().items():
             # provenance is verified while the layer's blob OR a later admitted successor of the path is current
-            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path)}:continue
+            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path),RC_UX_SUCCESSORS.get(path)}:continue
             if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
             if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
             if read_git("rev-parse",source+":"+path)!=blob:return False

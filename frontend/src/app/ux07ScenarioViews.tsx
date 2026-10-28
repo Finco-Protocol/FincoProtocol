@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchScenarioCompare } from "./api";
 import { RunIdentityLabel } from "./runIdentity";
 import { labelWithUnit } from "./fieldLabel";
+import { friendlyMessage } from "./productLanguage";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
@@ -21,7 +22,7 @@ function useCanonicalView<T>(fetcher: () => Promise<T | { ok: false; code: strin
       if (!live) return;
       if (!result || (result as { ok?: unknown }).ok !== true) {
         const failure = result as { code: string; message?: string };
-        setState({ state: "error", message: failure.message || failure.code || "The server refused this read." });
+        setState({ state: "error", message: friendlyMessage(failure.code, failure.message, "This could not be loaded right now. Nothing was changed.") });
       } else {
         setState({ state: "ready", data: result as T });
       }
@@ -59,7 +60,7 @@ export function ScenarioCompareView({ project, scenarioId }: { project: string; 
                 <td>{d.scenario_value === null || d.scenario_value === undefined ? "—" : String(d.scenario_value)}</td>
               </tr>
             ))}
-            {!data.differences.length && <tr><td colSpan={3}><span role="status">No assumption differences — the scenario matches the Working Copy on every stored field.</span></td></tr>}
+            {!data.differences.length && <tr><td colSpan={3}><span role="status">No assumption differences — the scenario matches the project on every stored field.</span></td></tr>}
           </tbody>
         </table>
       </div>

@@ -183,7 +183,7 @@ def _lender_metrics(runtime_result) -> list[dict[str, Any]]:
     Read through the same persisted-KPI view and catalog formatter the Run History uses; a metric the Run
     did not persist is unavailable (never zero, never a proxy).  PLCR has no approved persisted projection.
     """
-    unavailable_reason = "This metric is not persisted by the committed Run."
+    unavailable_reason = "This metric is not available in the saved Run."
     rows: list[dict[str, Any]] = []
     try:
         from app.v2.output_metric_projection import KPI_CATALOG, _apply_fmt, _safe_float
@@ -302,7 +302,7 @@ def _sheet_from_tables(table: Any, annual_table: Any, sheet_id: str, label: str)
     if not isinstance(table, Mapping) or not table.get("available"):
         return {"id": sheet_id, "label": label, "title": (table or {}).get("title") or label,
                 "unit": "keur", "rows": [], "available": False,
-                "note": (table or {}).get("note") or "This Run persisted no such statement.",
+                "note": (table or {}).get("note") or "This Run has no such statement.",
                 "unavailable": (table or {}).get("unavailable") or []}
     model_periods = _column_labels(table)
     annual_by_key: dict[str, list[str]] = {}
@@ -361,7 +361,7 @@ def _debt_sheet(outputs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
     if not isinstance(debt, Mapping) or debt.get("mode") == "UNAVAILABLE":
         sheet = {"id": "debt", "label": "Debt", "title": "Debt schedules", "unit": "keur",
                  "rows": [], "available": False,
-                 "note": (debt or {}).get("note") or "This Run persisted no debt schedule.",
+                 "note": (debt or {}).get("note") or "This Run has no debt schedule.",
                  "unavailable": []}
         return sheet, {}
     by_facility: dict[str, Any] = {}
@@ -384,7 +384,7 @@ def _debt_sheet(outputs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
     if not rows:
         sheet = {"id": "debt", "label": "Debt", "title": "Debt schedules", "unit": "keur",
                  "rows": [], "available": False,
-                 "note": debt.get("note") or "No facility schedule persisted.", "unavailable": []}
+                 "note": debt.get("note") or "No facility schedule is available for this Run.", "unavailable": []}
         return sheet, {}
     sheet = {"id": "debt", "label": "Debt", "title": "Debt schedules", "unit": "keur",
              "units": sorted({str(r["unit"]) for r in rows if r.get("unit")}),
@@ -490,7 +490,7 @@ async def react_workspace_statements(request: Request, project: str):
                         "protected_reference": False},
             "state": outputs.get("state") or ("NOT_RUN" if state == "NOT_RUN" else "UNAVAILABLE"),
             "message": ("" if outputs.get("state") not in (None, "UNAVAILABLE")
-                        else "The persisted Run evidence could not be projected; nothing is estimated."),
+                        else "The saved Run results could not be displayed; nothing is estimated."),
             "snapshot": snapshot if outputs.get("state") in ("CURRENT", "STALE") else None,
             "status": status,
             "results": {"available": bool(returns.get("available")),
@@ -957,17 +957,15 @@ async def react_run_history(request: Request, project: str):
                          "authority": "CANONICAL_LAST_RUN",
                          "available": export_available,
                          "unavailable_reason": export_reason,
-                         "note": "Exports the inputs and results of the last committed Run, "
-                                 "not the current Working Copy edits."},
+                         "note": "Exports the inputs and results of the last Run, "
+                                 "not edits made since."},
             "historical": {"url": "/v2/workbook/run-history/export", "query": ["project", "history_id"],
                            "note": "One immutable committed Run; no engine execution."},
         },
         "run_contract": {"url": "/v2/workbook/run",
                          "csrf_token": _issue_csrf_token(request, project, purpose="workbook-run-v1"),
                          "method": "form",
-                         "note": "Run initiation stays on the canonical route; success redirects "
-                                 "(303) to the workbook, failures redirect with ?v2_err=. "
-                                 "Save NEVER triggers a Run."},
+                         "note": "Saving never runs the model; a Run starts only when you press Run model."},
     })
 
 
@@ -1239,11 +1237,11 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
-        "base": {"label": f"Working Copy / {ws.active_scenario_name or 'Base Case'}",
+        "base": {"label": f"Project / {ws.active_scenario_name or 'Base Case'}",
                  "scenario_id": ws.active_scenario_id,
                  "run_evidence": {"state": "UNAVAILABLE",
-                                  "note": "The Working Copy side shows no Run of its own. Each committed Run is "
-                                          "shown against the scenario it was committed under; see Run history."}},
+                                  "note": "The project itself has no Run of its own. Each Run is "
+                                          "shown against the scenario it was run under; see Run history."}},
         "scenario": ({"label": scenario.scenario_name, "scenario_id": scenario.scenario_id,
                       "archived": bool(scenario.archived),
                       "override_count": len(overrides),
@@ -1324,3 +1322,10 @@ router.include_router(_analysis_router)
 router.include_router(_goal_seek_router)
 router.include_router(_financing_router)
 router.include_router(_investors_router)
+
+
+# ───────────────────────────── RC-UX: React adapters (single aggregator) ─────────────────────────────
+# Run compare, CAPEX studio, import workspace, reporting: read-only / canonical-writer adapters registered in app/v2/react_rcux.py.
+from app.v2.react_rcux import router as _rcux_router  # noqa: E402
+
+router.include_router(_rcux_router)

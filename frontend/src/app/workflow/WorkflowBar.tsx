@@ -60,7 +60,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
   // locked (as before) and a separate Resume action re-sends that Run's ORIGINAL intent and binding: it can only
   // replay or refuse, never calculate against today's draft, so unsaved edits do not block it.
   const resuming = pending !== null;
-  const blockedReason = protectedReference ? "Protected references cannot be run. Create a Working Copy."
+  const blockedReason = protectedReference ? "Templates cannot be run. Start a project from this template."
     : total > 0 ? `Save or cancel your ${total} unsaved edit${total === 1 ? "" : "s"} before running.`
       : pendingKeys.some((k) => k !== "run") ? "A save or change is still in progress or unresolved. Wait for it, or reload to reconcile, before running."
         : locked || resuming ? "The last Run outcome is not confirmed. Resume it, or reload to reconcile, before starting a new Run."
@@ -97,7 +97,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       setLocked(false);
       setStatus({ tone: "ok", text: result.outcome === "REPLAYED"
         ? "This Run was already committed; its original result is shown. Nothing was recalculated."
-        : "Run committed from the canonical engine. Results come from the persisted evidence only." });
+        : "Run complete. Results come from the saved Run only." });
       onRan();
     } else {
       if (!result.retain) {

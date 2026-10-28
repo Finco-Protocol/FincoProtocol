@@ -92,3 +92,11 @@ export type StatusResult =
 export type PendingNotice =
   | { kind: "created"; project: CreatedProject }
   | { kind: "unknown" };
+
+/** A Project Template card (GET /v2/model-react/templates): a read-only starting model, never a project. */
+export interface TemplateCard {
+  key: string; technology: string; name: string; description: string; creatable: boolean; reason: string; pilot_tier: string;
+  limitations: string[]; market_note: string; preview_acknowledgement_required: boolean;
+  starting_assumptions: Array<{ label: string; value: string; unit: string }>;
+  capacity_mw: number | null; capacity_label: string; timeline: WizardTimeline | null;
+}

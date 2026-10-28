@@ -526,7 +526,9 @@ def test_trust_diagnostics_and_history_render_exact_contracts_without_automatic_
         assert "INCOMPLETE" in section.inner_text()
         assert "snapshot-contract-123" in section.inner_text()
         assert "not validation of this project" in section.inner_text()
-        assert page.get_by_role("link", name="Explicitly run reference regression (separate evidence)").get_attribute("href") == "/v2/workbook/trust/validation?project=p"
+        # Addendum A: the evidence is requested from React (an explicit button, never a link to a classic page) and nothing runs on load
+        assert page.locator("[data-trust-load='validation']").is_enabled() and page.locator("[data-trust-load='certificate']").is_enabled()
+        assert page.locator("section[aria-label='Trust and integrity evidence'] a[href*='/v2/workbook']").count() == 0
         assert len(actions) == 0
         page.screenshot(path=str(tmp_path / "trust-contract-replay.png"), full_page=True)
         page.goto("http://rc-ux-b.invalid/v2/model-react/p#diagnostics")
@@ -826,3 +828,14 @@ from tests.model_react_rcm_analysis_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcm_financing_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcm_investors_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcm_themes_acceptance import *  # noqa: E402,F401,F403
+
+
+# RC-UX Completion V1 (Audit A GAP-R13): React Analysis > Run history & compare.  Same pattern as RC-M: a non-collected acceptance module
+# executed by this existing mandatory role, so no collection-time skip is introduced.
+from tests.model_react_rcux_runs_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_capex_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_product_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_whatif_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_import_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_navigation_acceptance import *  # noqa: E402,F401,F403
+from tests.model_react_rcux_analysis_acceptance import *  # noqa: E402,F401,F403

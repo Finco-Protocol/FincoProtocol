@@ -9,6 +9,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { saveRevenueContracts } from "../api";
+import { plain } from "../productLanguage";
+import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
 import {
   buildContractPayload, contractClass, countContractEdits, newPpaStream, parseContractModel,
   validateContractModel, type ContractModel, type StreamDraft,
@@ -54,6 +56,19 @@ async function readFreshRevenue(project: string): Promise<FreshRevenue> {
   }
 }
 
+/** Why a contract date is not an operating-period boundary and the nearest accepted dates, one click each (the date is never rounded for the user). */
+function DateHelp({ guidance, readOnly, onUse }: { guidance: DateGuidance | null; readOnly: boolean; onUse: (date: string) => void }) {
+  if (!guidance) return null;
+  return (
+    <div className="wf-date-help" role="status" data-date-guidance="true">
+      <small>{guidance.message}</small>
+      {!readOnly && guidance.suggestions.map((sug, k) => (
+        <button key={sug.value} type="button" className="fm-btn" data-date-suggestion={sug.value} data-date-suggestion-rank={k} onClick={() => onUse(sug.value)}>{sug.label}</button>
+      ))}
+    </div>
+  );
+}
+
 function cloneModel(model: ContractModel): ContractModel {
   return JSON.parse(JSON.stringify(model)) as ContractModel;
 }
@@ -62,8 +77,9 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const raw = typeof contracts.raw === "string" ? (contracts.raw as string) : "";
   const hasContract = contracts.active === true && raw.trim() !== "";
   const technology = String(contracts.technology ?? "");
-  const scope = String(contracts.scope ?? "Working Copy / Base");
+  const scope = plain(String(contracts.scope ?? "Project / Base case"));
   const operatingWindow = (contracts.operating_window ?? null) as { start: string; end: string } | null;
+  const calendar = useMemo(() => calendarFrom(contracts), [contracts]);
 
   const parsed = useMemo(() => (hasContract ? parseContractModel(raw) : null), [hasContract, raw]);
   const savedModel = parsed && parsed.ok ? parsed.model : null;
@@ -110,7 +126,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     }
     const payload = buildContractPayload(originalRaw, model);
     if (payload === null) {
-      setStatus({ tone: "error", text: "The persisted contract payload could not be read; reload and try again." });
+      setStatus({ tone: "error", text: "The saved contract data could not be read; reload and try again." });
       return;
     }
     setInFlight(true);
@@ -135,14 +151,14 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     const freshRaw = fresh?.ok === true && typeof fresh.contracts?.raw === "string" ? fresh.contracts.raw : null;
     setInFlight(false);
     if (freshRaw !== null && fresh?.save && fresh.save.content_hash !== save.content_hash && sameJson(freshRaw, payload)) {
-      setStatus({ tone: "ok", text: "Contracts saved atomically and verified in the fresh projection. The Working Copy is now newer than the Last Run (STALE); the model was not run." });
+      setStatus({ tone: "ok", text: "Contracts saved atomically and verified in the fresh projection. The project is now newer than the Last Run (results outdated); the model was not run." });
       onSaved?.();
     } else if (freshRaw !== null && fresh?.save && fresh.save.content_hash !== save.content_hash) {
-      setStatus({ tone: "conflict", text: "Contracts were saved, but the persisted payload differs from what was submitted (the server normalised it). Review the reloaded values before continuing; the model was not run." });
+      setStatus({ tone: "conflict", text: "Contracts were saved, but the saved data differs from what was submitted (the server normalised it). Review the reloaded values before continuing; the model was not run." });
       onSaved?.();
     } else {
       setLockedByUnknown(true);
-      setStatus({ tone: "conflict", text: "The save outcome is UNKNOWN: the canonical redirect arrived but the fresh projection could not confirm it. Reload to reconcile - your edits are preserved and nothing was re-submitted." });
+      setStatus({ tone: "conflict", text: "The save outcome is UNKNOWN: the server answered but the saved project could not confirm it. Reload to reconcile - your edits are preserved and nothing was re-submitted." });
     }
   };
 
@@ -159,7 +175,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
         <div className="fm-card-title"><h3>Revenue &amp; PPA contracts</h3><span>{scope}</span></div>
         <div className="fm-banner" role="note">
           <span className="fm-demo-label">NO CONTRACT BOOK</span>
-          <span className="fm-banner-copy">This project prices revenue from its scalar PPA inputs. You can define an explicit contract
+          <span className="fm-banner-copy">This project prices revenue from its single-price PPA inputs. You can define an explicit contract
             book here; nothing is created until you enter every value and save.</span>
         </div>
         {canCreate && !creating && (
@@ -168,7 +184,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
           </button>
         )}
         {!canCreate && <p className="fm-info-note">{protectedReference
-          ? "Protected references are immutable. Create a Working Copy to define contracts."
+          ? "Templates are read-only. Start a project from this template to define contracts."
           : "Guided contract creation is available for Solar and Wind projects."}</p>}
         {creating && draft && renderEditor(draft, true)}
       </section>
@@ -181,7 +197,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
         <div className="fm-card-title"><h3>Revenue &amp; PPA contracts</h3><span>{scope}</span></div>
         <div className="fm-banner" role="note">
           <span className="fm-demo-label">READ ONLY</span>
-          <span className="fm-banner-copy">{parsed.message} The contract book remains available in the legacy workbook.</span>
+          <span className="fm-banner-copy">{parsed.message} Nothing was changed; correct the stored contract data before editing.</span>
         </div>
         <details><summary>Show the stored contract payload</summary>
           <pre className="fm-mono wf-table-wrap">{JSON.stringify(JSON.parse(raw), null, 2)}</pre></details>
@@ -195,7 +211,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     return (
       <>
         <StatusNote status={status} />
-        {protectedReference && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Create a Working Copy to edit contracts.</span></div>}
+        {protectedReference && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Start a project from this template to edit contracts.</span></div>}
         {lockedByUnknown && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last save outcome is unknown. Reload the workspace before editing again.</span></div>}
         {model.streams.map((s, i) => {
           const preserved = model.preservedKeys[i] ?? [];
@@ -209,17 +225,19 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                         aria-label={`Remove contract ${s.id || i + 1}`} onClick={() => setRemoveIndex(i)}>Remove</button>
               </div>
               <div className="wf-grid">
-                <Field id={`${pid}-id`} label="Contract identity" error={err(i, "id")} hint={s.isNew ? undefined : "Identity is a canonical key; change only if no other reference depends on it."}>
+                <Field id={`${pid}-id`} label="Contract identity" error={err(i, "id")} hint={s.isNew ? undefined : "The identity is a fixed reference; change it only if nothing else depends on it."}>
                   {(p) => <input {...p} className="fm-input" value={s.id} disabled={readOnly} onChange={(e) => update(i, { id: e.target.value })} />}
                 </Field>
                 <Field id={`${pid}-ref`} label="Source reference" error={err(i, "source_ref")}>
                   {(p) => <input {...p} className="fm-input" value={s.source_ref} disabled={readOnly} onChange={(e) => update(i, { source_ref: e.target.value })} />}
                 </Field>
                 <Field id={`${pid}-start`} label="Start date" unit="YYYY-MM-DD" error={err(i, "start_date")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />}
+                  {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />
+                    <DateHelp guidance={dateGuidance("start_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { start_date: d })} /></>}
                 </Field>
                 <Field id={`${pid}-end`} label="End date" unit="YYYY-MM-DD, exclusive" error={err(i, "end_date")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />}
+                  {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />
+                    <DateHelp guidance={dateGuidance("end_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { end_date: d })} /></>}
                 </Field>
                 <Field id={`${pid}-share`} label="Contracted volume share" unit="0-1; blank only for merchant" error={err(i, "volume_share")}>
                   {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.volume_share} disabled={readOnly} onChange={(e) => update(i, { volume_share: e.target.value })} />}
@@ -238,8 +256,8 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
               </div>
               {preserved.length > 0 && (
                 <p className="wf-readonly-keys" data-preserved-keys={preserved.join(",")}>
-                  Preserved read-only: {preserved.map((k) => k.replace(/_/g, " ")).join(", ")}. These canonical terms are carried over unchanged;
-                  edit them in the legacy workbook.
+                  Preserved read-only: {preserved.map((k) => k.replace(/_/g, " ")).join(", ")}. These terms are carried over unchanged;
+                  they cannot be edited in this view.
                 </p>
               )}
               {s.curve && renderCurve(i, s)}
@@ -268,7 +286,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
         {removeIndex !== null && (
           <WorkflowDialog
             title="Remove this contract?"
-            description={`Contract "${model.streams[removeIndex]?.id}" is removed from the draft. Nothing is saved until you press Save contracts; the canonical writer then validates the remaining book.`}
+            description={`Contract "${model.streams[removeIndex]?.id}" is removed from the draft. Nothing is saved until you press Save contracts; the server then validates the remaining contracts.`}
             confirmLabel="Remove from draft" danger
             onCancel={() => setRemoveIndex(null)}
             onConfirm={() => {

@@ -127,8 +127,8 @@ def check_switching_projects_never_carries_the_previous_statement_identity(brows
         open_section(page, base, first.project_code, "statements")
         page.wait_for_selector("[data-statement-project-code]")
         assert page.locator("[data-statement-project-code]").first.get_attribute("data-statement-project-code") == a["code"]
-        # in-app switch through the Project Library, then a direct link to the other project
-        page.get_by_role("link", name="Project Library").first.click()
+        # in-app switch through My Projects, then a direct link to the other project
+        page.get_by_role("link", name="My Projects").first.click()
         page.wait_for_selector("[data-library-view='true']")
         page.goto(f"{base}/v2/model-react/{second.project_code}#statements")
         page.wait_for_selector("[data-statement-project-code]")
@@ -286,7 +286,8 @@ def check_scenario_comparison_and_results_refer_to_the_intended_run(browser, bas
         comparison = page.locator("[aria-label='Scenario KPI comparison']")
         comparison.wait_for(timeout=30000)
         text = comparison.inner_text()
-        assert earlier["history_id"] in text and earlier["runtime_snapshot_id"] in text, "the comparison reads the selected Run"
+        assert earlier["history_id"] in text and run_text(earlier["runtime_snapshot_id"]) in text, "the comparison reads the selected Run"
+        assert comparison.locator(f"[data-snapshot-id='{earlier['runtime_snapshot_id']}']").count() == 1
         assert latest["history_id"] not in text, "and only the selected Run"
         assert errors == [], errors
     finally:
@@ -619,7 +620,7 @@ def check_returns_lender_metrics_and_vertical_scope_are_truthful(browser, base, 
         # the Project Library carries the same release tier next to the project's type
         page.goto(f"{base}/v2/model-react/")
         page.wait_for_selector("[data-library-view='true']")
-        row = page.locator("tr", has_text=workspace["project"]["name"]).first
+        row = page.locator("[data-project-code]", has_text=workspace["project"]["name"]).first
         tier = row.locator("[data-vertical-tier]")
         if kind in ("solar", "wind"):
             assert tier.count() == 0
@@ -642,7 +643,7 @@ def check_scenario_override_boundary_matches_the_canonical_capability(browser, b
         text = boundary.inner_text()
         for field in capability:
             assert field["label"] in text, field
-        assert "inherited from the Working Copy" in text and "cannot differ between scenarios" in text
+        assert "inherited from the project" in text and "cannot differ between scenarios" in text
         # the override editor offers exactly the supported fields and no others
         page.locator("#wf-new-scenario").fill("ONB boundary")
         page.get_by_role("button", name="Create scenario").click()

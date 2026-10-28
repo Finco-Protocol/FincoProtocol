@@ -100,7 +100,7 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
   }, [data, draft, project, load, singleFlight, setLocked, onSaved]);
 
   if (!read) return <section className="rx-card"><p className="rx-boot-loading" role="status">Loading the investor agreement…</p></section>;
-  if (!read.ok || !data) return <section className="rx-card" data-investors-state="error"><h3 className="rcm-h3">Investors &amp; sponsor</h3><p className="rx-empty" role="alert">{(read as { message?: string }).message || "The investor view is unavailable. The classic workbook remains authoritative."}</p></section>;
+  if (!read.ok || !data) return <section className="rx-card" data-investors-state="error"><h3 className="rcm-h3">Investors &amp; sponsor</h3><p className="rx-empty" role="alert">{(read as { message?: string }).message || "The investor view is unavailable right now. Nothing was changed."}</p></section>;
 
   const disabled = !data.editable || locked || inFlight;
   const sponsor = data.sponsor;
@@ -109,7 +109,7 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
       <h3 id="rcm-inv-title" className="rcm-h3">Common-equity investor agreement <span className="rcm-badge" data-investor-state={data.state}>{data.state}</span></h3>
       <p className="rx-note">Residual common equity only. <strong>Ownership %</strong> allocates results between investors and does not change Sources &amp; Uses; <strong>commitments and paid-in capital</strong> describe funding and must reconcile with the equity in the financing plan before Run.</p>
       <p className="rx-status rx-status-conflict" role="status" data-investor-workflow-text="true">{data.workflow.text}</p>
-      {!data.editable && <p className="rx-status rx-status-conflict" data-investors-readonly="true">Read-only: reference models cannot be edited. Create a working copy to define an agreement.</p>}
+      {!data.editable && <p className="rx-status rx-status-conflict" data-investors-readonly="true">Read-only: templates cannot be edited. Start a project from this template to define an agreement.</p>}
       {locked && <p className="rx-status rx-status-conflict" role="alert" data-investors-locked="true">A previous save has an unknown outcome. Reload the workspace to reconcile before editing again.</p>}
 
       <fieldset className="rcm-fieldset" disabled={disabled}>
@@ -139,7 +139,7 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
 
       <fieldset className="rcm-fieldset" disabled={disabled}>
         <legend>Actual paid-in capital</legend>
-        <p className="rx-note">Commitments stay separate from actual paid-in cash. Run requires exact-date reconciliation to the canonical legal-equity funding below; a commitment never manufactures a paid-in event.</p>
+        <p className="rx-note">Commitments stay separate from actual paid-in cash. Run requires exact-date agreement with the legal-equity funding below; a commitment never manufactures a paid-in event.</p>
         <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Paid-in contributions (scrolls horizontally)">
           <table className="rcm-table" data-inv-contributions="true">
             <thead><tr><th scope="col" className="rcm-left">Investor ID</th><th scope="col" className="rcm-left">Cash date</th><th scope="col">Paid-in kEUR</th><th scope="col"><span className="rx-sr-only">Remove</span></th></tr></thead>

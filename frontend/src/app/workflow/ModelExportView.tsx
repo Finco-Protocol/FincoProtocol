@@ -17,18 +17,17 @@ import {
 interface Props {
   project: string;
   freshness: string;
-  legacyUrl: string;
   /** Bump after a Run so the identity shown is the new Last Run. */
   refreshKey?: number;
 }
 
 const FRESHNESS_COPY: Record<string, string> = {
-  CURRENT: "The export matches the current Working Copy inputs.",
-  STALE: "The Working Copy changed after this Run. The export contains the prior committed Run, not the current inputs - run the model to refresh it.",
+  CURRENT: "The export matches the project as it is saved now.",
+  STALE: "The project changed after this Run. The export contains the prior committed Run, not the current inputs - run the model to refresh it.",
   NOT_RUN: "No committed Run exists, so there is nothing to export.",
 };
 
-export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 }: Props) {
+export function ModelExportView({ project, freshness, refreshKey = 0 }: Props) {
   const fetcher = useCallback(() => fetchRuns(project), [project, refreshKey]);
   const read = useCanonicalRead<RunsPayload>(fetcher, [project], [refreshKey]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -96,11 +95,7 @@ export function ModelExportView({ project, freshness, legacyUrl, refreshKey = 0 
       </div>
       <p className="fm-info-note">{exports.historical.note}</p>
 
-      <div className="fm-banner" role="note" data-export-unavailable="true">
-        <span className="fm-demo-label">NOT AVAILABLE IN REACT</span>
-        <span className="fm-banner-copy">Sensitivity batches and Goal Seek execute the engine and have no JSON contract, so they stay in the{" "}
-          <a href={legacyUrl}>legacy workbook</a>. The React workspace never runs hidden model loops or solves in the browser.</span>
-      </div>
+      <p className="fm-info-note" data-export-analysis-pointer="true">Sensitivity analysis and Goal Seek are in the Analysis section. They calculate only when you start them and never change your saved inputs unless you choose to apply a result.</p>
     </section>
   );
 }

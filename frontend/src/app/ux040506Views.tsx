@@ -4,6 +4,8 @@
 // mutation posts to the existing canonical writer route, and a surface whose
 // backend contract is not established stays visibly gated — never fabricated.
 
+import { DiagnosticsInsights } from "./diagnostics/DiagnosticsInsights";
+import { TrustEvidence } from "./trust/TrustEvidence";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchCostLines,
@@ -14,6 +16,7 @@ import {
 } from "./api";
 import type { PersistedIntegrity } from "./types";
 import { RunIdentityLabel } from "./runIdentity";
+import { friendlyMessage, plain } from "./productLanguage";
 import { CostLineManager } from "./workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
@@ -38,7 +41,7 @@ function useCanonical<T>(fetcher: () => Promise<T | CanonicalFailure>, deps: unk
       if (!live) return;
       if (!result || (result as { ok?: unknown }).ok !== true) {
         const failure = result as CanonicalFailure;
-        setState({ state: "error", message: failure.message || failure.code || "The server refused this read." });
+        setState({ state: "error", message: friendlyMessage(failure.code, failure.message, "This could not be loaded right now. Nothing was changed.") });
       } else {
         setState({ state: "ready", data: result as T });
       }
@@ -61,7 +64,7 @@ function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void
 }
 
 function LoadingNote() {
-  return <p className="fm-info-note" role="status">Loading canonical data…</p>;
+  return <p className="fm-info-note" role="status">Loading…</p>;
 }
 
 // ───────────────────────────── UX-04: CAPEX / OPEX line batches ─────────────────────────────
@@ -157,7 +160,7 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
         <strong>Saves:</strong> every edited {sheet === "capex" ? "CAPEX" : "OPEX"} line below, together — all are saved or none.
         {" "}{sheet === "capex" ? "OPEX" : "CAPEX"} lines are a separate editor with their own Save. Saving does not run the model.
       </p>
-      {data.project.protected_reference && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
+      {data.project.protected_reference && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
       {status && <div className="fm-info-note" role="status" data-tone={status.tone}>{status.text}</div>}
       <div className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0}
            aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} line items, scrollable`} data-lines-scroll={sheet}>
@@ -208,7 +211,7 @@ export function RunsView({ project }: { project: string }) {
       <p id="run-contract-note" className="fm-info-note">Runs are started with the Run model button in the bar at the top. Saving never starts a Run. If another change was saved since you loaded the page, the Run is refused until you reload, so old inputs are never run silently.</p>
       <div className="fm-table-wrap">
         <table className="fm-table">
-          <thead><tr><th>Run</th><th>Scenario</th><th>Origin</th><th>Engine</th><th>Working Copy version</th></tr></thead>
+          <thead><tr><th>Run</th><th>Scenario</th><th>Origin</th><th>Model version</th><th>Saved version</th></tr></thead>
           <tbody>
             {historyRows.map((run, index) => (
               <tr key={run.history_id ?? index}>
@@ -268,18 +271,18 @@ export function DiagnosticsView({ project }: { project: string }) {
   return (
     <section className="fm-card fm-section" aria-label="Model checks and diagnostics">
       <div className="fm-card-title"><h2>Model checks &amp; diagnostics</h2><span>evaluated from the committed Last Run</span></div>
-      <p className="fm-info-note" role="note">{notClaims}</p>
+      <p className="fm-info-note" role="note">{plain(notClaims)}</p>
       <IntegrityEvidence integrity={data.integrity} />
-      <p className="fm-info-note"><strong>Run state: {String(insight.run_state ?? data.run_state)}</strong> · {String(insight.context_note ?? "")}</p>
+      <p className="fm-info-note"><strong>Run state: {String(insight.run_state ?? data.run_state)}</strong> · {plain(String(insight.context_note ?? ""))}</p>
       <div className="fm-table-wrap">
         <table className="fm-table">
           <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
           <tbody>
             {checks.map((check, index) => (
               <tr key={String(check.check_id ?? index)}>
-                <td>{String(check.label ?? check.check_id ?? index)}</td>
+                <td>{plain(String(check.label ?? check.check_id ?? index))}</td>
                 <td>{String(check.status ?? "—")}</td>
-                <td>{String(check.note ?? check.message ?? "—")}</td>
+                <td>{plain(String(check.note ?? check.message ?? "—"))}</td>
               </tr>
             ))}
             {!checks.length && <tr><td colSpan={3}><span role="status">{String(diagnostics.message ?? "No diagnostics were evaluated for this Run state.")}</span></td></tr>}
@@ -287,7 +290,8 @@ export function DiagnosticsView({ project }: { project: string }) {
         </table>
       </div>
       <p className="fm-info-note">Diagnostics state: {readable(diagnostics.state)} · {checks.length} reported checks</p>
-      <p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p>
+      <DiagnosticsInsights diagnostics={diagnostics} />
+      <details className="rx-tech-details" data-diagnostics-audit="true"><summary>Advanced details / Audit trail</summary><p className="fm-info-note">Evidence identity: {readable(diagnostics.identity)}</p></details>
     </section>
   );
 }
@@ -302,19 +306,7 @@ export function TrustView({ project }: { project: string }) {
     <section aria-label="Trust and integrity evidence">
       <p className="fm-info-note">Run freshness: {data.run_state}. Run: <RunIdentityLabel snapshotId={asText(data.identity?.snapshot_id)} /></p>
       <IntegrityEvidence integrity={data.integrity} />
-      <section className="fm-card fm-section" aria-label="Reference regression evidence">
-        <div className="fm-card-title"><h3>Reference regression evidence</h3><span>{data.validation.state}</span></div>
-        <p className="fm-info-note">{data.validation.scope}</p>
-        <p className="fm-info-note">Not executed by opening this page. A reference PASS is not validation of this project.</p>
-        {data.validation.load_url ? <a className="fm-btn" href={data.validation.load_url} target="_blank" rel="noopener noreferrer">Explicitly run reference regression (separate evidence)</a>
-          : <p className="fm-info-note">{data.validation.reason}</p>}
-      </section>
-      <section className="fm-card fm-section" aria-label="Run certificate">
-        <div className="fm-card-title"><h3>Run certificate</h3><span>{data.certificate.state}</span></div>
-        <p className="fm-info-note">{data.certificate.scope}</p>
-        {data.certificate.load_url ? <a className="fm-btn" href={data.certificate.load_url} target="_blank" rel="noopener noreferrer">Explicitly request certificate (canonical route)</a>
-          : <p className="fm-info-note">{data.certificate.reason}</p>}
-      </section>
+      <TrustEvidence project={project} hasRun={Boolean(data.validation.load_url || data.certificate.load_url)} />
       <p className="fm-info-note">No project validation was triggered by this read. Unavailable evidence stays unavailable; none of these sections imply FINCO Verify.</p>
     </section>
   );

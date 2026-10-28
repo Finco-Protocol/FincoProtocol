@@ -27,8 +27,8 @@ function tabFromUrl(): Tab {
 /** Financing workspace: an overview, the scalar debt terms (existing editor), the typed bankability editor, the Two-Senior
  *  capital stack and Sources & Uses.  Everything shown is read from the canonical financing authorities; the only writes are the
  *  canonical per-field Saves of the two editors, each with its own CAS. */
-export function FinancingStudio({ project, reloadKey, onSaved, legacyUrl }: {
-  project: string; reloadKey: number; onSaved: () => void; legacyUrl: string;
+export function FinancingStudio({ project, reloadKey, onSaved }: {
+  project: string; reloadKey: number; onSaved: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [studio, setStudio] = useState<FinancingStudioPayload | null>(null);
@@ -68,14 +68,14 @@ export function FinancingStudio({ project, reloadKey, onSaved, legacyUrl }: {
         {/* Debt terms never waits for the studio read: it is the section's original editor and opens immediately */}
         {tab === "terms" && <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={reloadKey} onSaved={onSaved} />}
         {tab !== "terms" && !studio && (error
-          ? <UnavailableNote message={error.message || "The financing view is unavailable. The classic workbook remains authoritative."} onRetry={() => setNonce((n) => n + 1)} />
+          ? <UnavailableNote message={error.message || "The financing view is unavailable right now. Nothing was changed."} onRetry={() => setNonce((n) => n + 1)} />
           : <LoadingNote label="Loading the financing view…" />)}
         {studio && tab === "overview" && <OverviewView studio={studio} />}
         {studio && tab === "bankability" && (
           <BankabilityEditor project={project} view={studio.bankability} editable={studio.editable} identityHash={studio.identity.content_hash}
                              onSaved={() => { onSaved(); setNonce((n) => n + 1); }} onChanged={() => setNonce((n) => n + 1)} />
         )}
-        {studio && tab === "facilities" && <CapitalStackView studio={studio} legacyUrl={legacyUrl} />}
+        {studio && tab === "facilities" && <CapitalStackView studio={studio} />}
         {studio && tab === "sources-uses" && <SourcesUsesPanel studio={studio} />}
         {tab === "investors" && <InvestorsPanel project={project} reloadKey={reloadKey} onSaved={() => { onSaved(); setNonce((n) => n + 1); }} />}
       </div>

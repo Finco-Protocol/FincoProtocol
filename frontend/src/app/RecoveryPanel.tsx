@@ -90,7 +90,7 @@ export function RecoveryPanel({ project, payload, onRepaired }: RecoveryPanelPro
   return (
     <section className="rx-card" aria-labelledby="rx-recovery-heading" data-working-copy-recovery="true"
       data-recovery-code={payload.code}>
-      <h2 id="rx-recovery-heading">Working Copy needs repair</h2>
+      <h2 id="rx-recovery-heading">This project needs repair</h2>
       <p className="rx-note" data-testid="react-recovery-message">{payload.recovery.message}</p>
       <p className="rx-note">
         No value was corrected, rounded, clamped or discarded, and the model was not run. A replacement is

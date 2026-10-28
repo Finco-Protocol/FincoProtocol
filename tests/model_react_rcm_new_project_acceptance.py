@@ -77,7 +77,7 @@ def projects_of(uid):
 
 
 def open_wizard(page, base):
-    page.goto(f"{base}/v2/model-react/{NEW}")
+    page.goto(f"{base}/v2/model-react/{NEW}/new")
     page.wait_for_selector("[data-new-project-wizard='true']")
 
 
@@ -131,8 +131,8 @@ def test_new_project_is_prominent_in_the_library_and_the_global_navigation(live_
     cta = page.locator("[data-new-project-cta='true']")
     cta.wait_for()
     assert cta.inner_text().strip() == "+ New Project"
-    # the existing working-copy action stays, and stays distinct
-    assert page.locator("button:has-text('Create working copy')").count() >= 1
+    # the second start (a template) is offered next to it, and system templates are not listed as projects
+    assert page.locator("[data-choose-template-cta='true']").count() == 1
     assert page.locator("[data-nav-new-project='true']").count() == 1
     shot(page, "library-1440")
     cta.click()
@@ -301,7 +301,7 @@ def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload
     page.locator("[data-wizard-create]").click()
     unknown = page.locator("[data-create-unknown='true']")
     unknown.wait_for()
-    assert "Result unknown" in unknown.inner_text()
+    assert "could not confirm whether the project was created" in unknown.inner_text()
     assert page.locator("[data-wizard-create]").is_disabled()          # no blind retry
     assert page.locator("[data-refresh-library='true']").count() == 1
     assert len(calls) == 1 and projects_of(uid) == []
@@ -312,7 +312,7 @@ def test_a_lost_request_fails_closed_without_a_retry_control_and_survives_reload
     page.reload()                                                      # the identity reconciles the earlier request
     notice = page.locator("[data-previous-create='unknown']")
     notice.wait_for()
-    assert "earlier create request" in notice.inner_text()
+    assert "could not confirm whether your earlier project was created" in notice.inner_text()
     page.locator("[data-previous-create] button:has-text('Dismiss')").click()
     assert page.locator("[data-previous-create]").count() == 0 and page.url.endswith(NEW)
     assert projects_of(uid) == []

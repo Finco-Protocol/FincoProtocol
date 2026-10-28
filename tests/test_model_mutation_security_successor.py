@@ -61,7 +61,7 @@ def test_finval_b2c1_successor_is_exactly_six_additive_paths_and_keeps_every_ori
     for path,blob in S.FINVAL_B2C1_SUCCESSORS.items():
         assert path in S.BLOBS and len(blob)==40 and blob!=S.BLOBS[path]
         from tests.fin_v2_cohorts import matches
-        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # RC-M and FIN-V2-3 exact successors only
+        assert S.git_blob(SOURCES[path]) in {blob,S.D029_RUN_INTENT_SUCCESSORS.get(path),S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path),S.RC_UX_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # RC-M and FIN-V2-3 exact successors only
     assert S.TOKEN_MODULE not in S.FINVAL_B2C1_SUCCESSORS
 
 @pytest.mark.parametrize("path",["app/templates/v2/partials/sheet_opex.html","app/v2/react_workspace_router.py","app/v2/router.py",
@@ -111,7 +111,7 @@ def test_d029_layer_is_exactly_three_additive_paths_and_keeps_every_original_and
         assert path in S.BLOBS and len(blob)==40
         assert blob!=S.BLOBS[path] and blob!=S.FINVAL_B2C1_SUCCESSORS.get(path)   # a NEW reviewed state, never a repin
         from tests.fin_v2_cohorts import matches
-        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # all additive layers strictly gated
+        assert S.git_blob(SOURCES[path]) in {blob,S.REACT_MVP_CORRECTION_SUCCESSORS.get(path),S.FINVAL_RATE_SUCCESSORS.get(path),S.FINVAL_F01_COMPLETE_SUCCESSORS.get(path),S.FINV2_D01_SENSITIVITY_SUCCESSORS.get(path),S.RC_M_SUCCESSORS.get(path),S.RC_UX_SUCCESSORS.get(path)} or matches(path,SOURCES[path])   # all additive layers strictly gated
     assert S.TOKEN_MODULE not in S.D029_RUN_INTENT_SUCCESSORS
 
 
@@ -177,7 +177,7 @@ def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_a
     import re
     path="tests/test_model_workspace_consolidation_browser.py"
     source=SOURCES[path]
-    assert S.git_blob(source)==S.RC_M_SUCCESSORS[path]                       # strict: exactly the latest reviewed state of the role file
+    assert S.git_blob(source)==S.RC_UX_SUCCESSORS.get(path,S.RC_M_SUCCESSORS[path])                       # strict: exactly the latest reviewed state of the role file
     for name in ("check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit",
                  "check_react_lost_response_survives_reload_and_resumes_the_original_run",
                  "check_react_resume_after_the_draft_changed_never_runs_against_the_new_draft",
@@ -217,6 +217,11 @@ def test_d029_browser_original_node_ids_are_preserved():
         "test_onb_returns_lender_metrics_and_vertical_scope_are_truthful",
         "test_onb_scenario_override_boundary_matches_the_canonical_capability",
         "test_onb_every_theme_keeps_the_corrected_surfaces_legible"]
-    # every original line is still present, in order: the change is purely additive
+    # every original line is still present, in order: the change is purely additive — except the ONE contract-replay assertion that pinned the
+    # classic Trust link, which Addendum A (React-only navigation) replaces by exactly the three React-evidence lines below
+    addendum_a={'        assert page.get_by_role("link", name="Explicitly run reference regression (separate evidence)").get_attribute("href") == "/v2/workbook/trust/validation?project=p"':
+        ['        # Addendum A: the evidence is requested from React (an explicit button, never a link to a classic page) and nothing runs on load',
+         '        assert page.locator("[data-trust-load=\'validation\']").is_enabled() and page.locator("[data-trust-load=\'certificate\']").is_enabled()',
+         '        assert page.locator("section[aria-label=\'Trust and integrity evidence\'] a[href*=\'/v2/workbook\']").count() == 0']}
     it=iter(current.splitlines())
-    assert all(any(line==cur for cur in it) for line in base.splitlines())
+    assert all(any(line==cur for cur in it) for line in (x for line in base.splitlines() for x in addendum_a.get(line,[line])))

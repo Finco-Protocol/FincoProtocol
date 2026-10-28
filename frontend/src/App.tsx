@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { readHostConfig, type HostConfig } from "./api/client";
+import { CompareProjectsView } from "./app/compare/CompareProjectsView";
 import { LibraryView } from "./app/LibraryView";
 import { NewProjectWizard } from "./app/newProject/NewProjectWizard";
 import { isWizardHash } from "./app/newProject/api";
@@ -13,12 +14,12 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
   return (
     <main className="rx-page" role="main">
       <section className="rx-card" data-app-state="error">
-        <h2>React preview unavailable</h2>
+        <h2>FINCO Model is unavailable</h2>
         <p className="rx-empty" role="alert">{message}</p>
         <p>
           <button type="button" className="rx-button" onClick={onRetry}>Retry</button>
         </p>
-        <p className="rx-note">The classic FINCO Model interface remains available and authoritative.</p>
+        
       </section>
     </main>
   );
@@ -55,8 +56,10 @@ function ModelApp({ host }: { host: HTMLElement }) {
   const [nonce, setNonce] = useState(0);
   // RC-M: `#new-project` on the Library route opens the New Project wizard (a real link, so Back/Forward work).
   const [wizardOpen, setWizardOpen] = useState(() => isWizardHash(window.location.hash));
+  // RC-UX: `#compare-projects` on the Library route opens the cross-project comparison (a real link, so Back/Forward and refresh work).
+  const [compareOpen, setCompareOpen] = useState(() => window.location.hash === "#compare-projects");
   useEffect(() => {
-    const sync = () => setWizardOpen(isWizardHash(window.location.hash));
+    const sync = () => { setWizardOpen(isWizardHash(window.location.hash)); setCompareOpen(window.location.hash === "#compare-projects"); };
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
@@ -75,7 +78,7 @@ function ModelApp({ host }: { host: HTMLElement }) {
   if (!config || phase === "loading") {
     return (
       <main className="rx-page" role="main">
-        <p className="rx-boot-loading" role="status">Loading the FINCO Model React preview…</p>
+        <p className="rx-boot-loading" role="status">Loading FINCO Model…</p>
       </main>
     );
   }
@@ -93,7 +96,6 @@ function ModelApp({ host }: { host: HTMLElement }) {
         <WorkspaceView
           key={project}
           project={project}
-          legacyUrl={config.legacyUrl}
           onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
         />
       </ThemeProvider>
@@ -106,6 +108,13 @@ function ModelApp({ host }: { host: HTMLElement }) {
           window.history.replaceState(null, "", window.location.pathname + window.location.search);
           setWizardOpen(false);
         }} />
+      </ThemeProvider>
+    );
+  }
+  if (compareOpen) {
+    return (
+      <ThemeProvider host={host}>
+        <CompareProjectsView onBack={() => { window.location.href = "/v2/model-react/"; }} />
       </ThemeProvider>
     );
   }

@@ -36,8 +36,8 @@ export function CreditEvidenceCards({ project, run }: { project: string; run: In
     const available = text ? typeof item.cell?.v === 'string' : numeric !== null;
     return <article className="fi-metric" key={item.key} data-credit-cell={item.key}>
       <h4>{item.label}</h4><p className="fi-metric-value">{text ? item.cell?.d || 'Unavailable' : evidenceDisplay(numeric, item.cell?.d || '', item.unit)} <small>{text ? '' : evidenceUnitLabel(numeric, item.cell?.d || '', item.unit)}</small></p>
-      <p className="fi-meta">{item.cell?.basis || 'Canonical committed credit projection'} · Run {run.identity.history_id}</p>
-      {!available && <p>{item.cell?.reason || 'Not persisted in this Run.'}</p>}
+      <p className="fi-meta">{item.cell?.basis || 'Saved credit results'} · Run {run.identity.history_id}</p>
+      {!available && <p>{item.cell?.reason || 'Not available in this Run.'}</p>}
       <EvidenceDisclosure project={project} run={run} source={item.source} unit={item.unit} period={item.cell?.basis || 'Committed Run'} limitation={item.cell?.reason} />
     </article>;
   })}</div></>;

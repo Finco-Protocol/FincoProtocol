@@ -69,3 +69,21 @@
   .rcm-controls { grid-template-columns: 1fr; }
   .rcm-controls-actions .rx-button { flex: 1 1 140px; }
 }
+
+/* Diagnostics period heatmap (RC-UX): status is carried by a glyph AND a colour, never by colour alone. */
+.rcux-heatmap { border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
+.rcux-heatmap thead th, .rcux-heatmap tbody th { position: sticky; background: var(--surface, #fff); z-index: 1; }
+.rcux-heatmap tbody th { left: 0; text-align: left; white-space: nowrap; padding-right: 10px; }
+.rcux-heatmap thead th .rx-button { min-height: 24px; min-width: 28px; padding: 0 4px; font-size: 10px; }
+.rcux-heatmap thead th.active .rx-button { outline: 2px solid var(--navy, #183e63); }
+.rcux-hm { position: relative; min-width: 28px; height: 24px; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid var(--line, #dce3e9); }
+.rcux-hm-pass { color: var(--green, #477661); background: var(--green-soft, #eaf2ed); }
+.rcux-hm-warning { color: var(--amber, #76511b); background: var(--amber-soft, #f6f0e4); }
+.rcux-hm-fail { color: var(--red, #8c2f2f); background: var(--red-soft, #f7e9e9); border-color: var(--red, #8c2f2f); }
+.rcux-hm-unavailable { color: var(--muted, #526374); background: repeating-linear-gradient(45deg, var(--paper, #f4f6f7), var(--paper, #f4f6f7) 4px, var(--surface, #fff) 4px, var(--surface, #fff) 8px); }
+.rcux-hm-none { background: transparent; border-style: dashed; }
+@media (max-width: 760px) { .rcux-heatmap thead th .rx-button { min-height: 32px; min-width: 36px; } .rcux-hm { min-width: 36px; height: 32px; } }
+
+/* OPEX projection studio (RC-UX): numeric columns align right; the two identifying columns stay visible while the years scroll. */
+.rcux-opex-proj .fm-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rcux-opex-proj tbody th { position: sticky; left: 0; background: var(--surface, #fff); text-align: left; min-width: 180px; z-index: 1; }

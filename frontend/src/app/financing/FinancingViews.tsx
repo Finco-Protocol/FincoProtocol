@@ -1,16 +1,17 @@
 import "../../styles/rcm-financing.css";
+import { ReserveReturnsView } from "./ReserveReturnsView";
 import type { CapitalStackRow, EvidenceMetric, FinancingStudioPayload, SourcesUsesView, SuRow } from "./types";
 
 const PRICING: Record<string, string> = {
   FLAT: "One flat all-in rate for the whole tenor (the Debt terms rate).",
   WORKING_CONFIG: "Explicit all-in rates by period from the bankability configuration.",
-  CALIBRATED: "A calibrated period schedule owns the rate; the scalar rate is locked.",
+  CALIBRATED: "A calibrated period schedule owns the rate; the single rate is locked.",
   MULTI_SENIOR: "The active two-Senior configuration owns rates, fees, repayment and maturity.",
 };
 const DSCR: Record<string, string> = {
   FLAT_SCALAR: "One target DSCR for every period (the Debt terms value).",
   WORKING_CONFIG: "Period-specific DSCR targets from the bankability configuration.",
-  CALIBRATED: "A calibrated period schedule owns the target; the scalar target is locked.",
+  CALIBRATED: "A calibrated period schedule owns the target; the single target is locked.",
   MULTI_SENIOR: "The active two-Senior configuration owns repayment sizing.",
 };
 const FRESH: Record<string, string> = { CURRENT: "CURRENT", STALE: "STALE", NOT_RUN: "NOT RUN" };
@@ -31,15 +32,15 @@ export function OverviewView({ studio }: { studio: FinancingStudioPayload }) {
   return (
     <section className="rx-card rcm-fin" data-financing-overview="true" aria-labelledby="rcm-fin-ov">
       <h3 id="rcm-fin-ov" className="rcm-h3">Financing overview <span className="rcm-badge" data-fin-freshness={studio.freshness}>LAST RUN · {FRESH[studio.freshness] ?? studio.freshness}</span></h3>
-      {stale && <p className="rx-banner rx-banner-stale" role="status">STALE — the Working Copy changed after the last Run. The evidence below is the prior Run&rsquo;s; the terms are the current inputs.</p>}
+      {stale && <p className="rx-banner rx-banner-stale" role="status">Results outdated — the project changed after the last Run. The evidence below is the prior Run&rsquo;s; the terms are the current inputs.</p>}
       <div className="rcm-grid2">
         <div className="rcm-callout" data-senior-pricing={studio.senior_pricing_mode}>
           <strong>Senior pricing authority · {studio.senior_pricing_mode.replace(/_/g, " ")}</strong>
-          <p>{PRICING[studio.senior_pricing_mode] ?? "Governed by the canonical financing authority."}</p>
+          <p>{PRICING[studio.senior_pricing_mode] ?? "Set by the financing configuration."}</p>
         </div>
         <div className="rcm-callout" data-senior-dscr={studio.senior_dscr_mode}>
           <strong>Target DSCR authority · {studio.senior_dscr_mode.replace(/_/g, " ")}</strong>
-          <p>{DSCR[studio.senior_dscr_mode] ?? "Governed by the canonical financing authority."}</p>
+          <p>{DSCR[studio.senior_dscr_mode] ?? "Set by the financing configuration."}</p>
         </div>
       </div>
       {studio.senior_lock_reason && <p className="rx-note" data-senior-lock="true">{studio.senior_lock_reason}</p>}
@@ -54,6 +55,8 @@ export function OverviewView({ studio }: { studio: FinancingStudioPayload }) {
       <dl className="rcm-facts" data-financing-evidence="true">
         {studio.financing_evidence.metrics.map((m) => <Metric key={m.label} m={m} />)}
       </dl>
+
+      <ReserveReturnsView studio={studio} />
 
       <h4 className="rcm-h4">Not released</h4>
       <ul className="rcm-closed" data-financing-closed="true">
@@ -83,7 +86,7 @@ function FacilityCard({ row }: { row: CapitalStackRow }) {
 }
 
 /** Senior facilities: the Two-Senior capital stack exactly as the canonical projection reports it (read-only here). */
-export function CapitalStackView({ studio, legacyUrl }: { studio: FinancingStudioPayload; legacyUrl: string }) {
+export function CapitalStackView({ studio }: { studio: FinancingStudioPayload }) {
   const stack = studio.capital_stack;
   return (
     <section className="rx-card rcm-fin" data-capital-stack="true" aria-labelledby="rcm-fin-cs">
@@ -96,8 +99,8 @@ export function CapitalStackView({ studio, legacyUrl }: { studio: FinancingStudi
         </>
       )}
       <p className="rx-note" data-stack-editor-state="not-released">
-        <strong>Editing facilities is NOT RELEASED in this view.</strong> The Two-Senior proposal and its digest-bound activation are edited in the classic workbook
-        (<a href={legacyUrl}>Legacy workbook ↗</a>); this page shows exactly what is saved and what the last Run used.
+        <strong>Editing senior facilities is not available yet.</strong> Editing a two-tranche senior structure needs a separate release decision;
+        this page shows exactly what is saved and what the last Run used.
       </p>
       <h4 className="rcm-h4">Not released</h4>
       <ul className="rcm-closed">{(stack.unsupported ?? []).map((u) => <li key={u.name}><strong>{u.name}</strong> — {u.reason}</li>)}</ul>
@@ -133,7 +136,7 @@ export function SourcesUsesPanel({ studio }: { studio: FinancingStudioPayload })
         <p className="rx-empty" role="status" data-su-empty="true">No committed Run with financing evidence yet. Run the model to see sources and uses; nothing is estimated from the current inputs.</p>
       ) : (
         <>
-          {view.freshness === "STALE" && <p className="rx-banner rx-banner-stale" role="status">STALE — these are the prior Run&rsquo;s sources and uses, not the current inputs.</p>}
+          {view.freshness === "STALE" && <p className="rx-banner rx-banner-stale" role="status">Results outdated — these are the prior Run&rsquo;s sources and uses, not the current inputs.</p>}
           <div className="rcm-grid2">
             <SuTable title="Sources" rows={view.sources ?? []} total={view.total_sources} />
             <SuTable title="Uses" rows={view.uses ?? []} total={view.total_uses} />
@@ -141,7 +144,7 @@ export function SourcesUsesPanel({ studio }: { studio: FinancingStudioPayload })
           <p className="rx-note" data-su-balance="true">Balance: {view.balance_status ?? "—"} · residual {rowValue(view.residual)} · integrity {view.integrity ?? "—"}</p>
         </>
       )}
-      <p className="rx-note">Derived from the committed Run&rsquo;s persisted financing evidence. Editing happens in Debt terms and Bankability.</p>
+      <p className="rx-note">Derived from the last Run&rsquo;s saved financing results. Editing happens in Debt terms and Bankability.</p>
     </section>
   );
 }

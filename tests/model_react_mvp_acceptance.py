@@ -125,27 +125,29 @@ def committed(context, base, record):
 
 
 def check_library_clone_creates_an_openable_unprotected_working_copy(browser, react_enabled):
-    import time
+    """Template -> project through the New Project wizard (the library no longer lists or clones system references)."""
     base = react_enabled
     context, page, seeded, errors = session(browser, base, "mvp-clone", "solar")
     try:
-        page.goto(f"{base}/v2/model-react/")
-        page.wait_for_selector("[data-library-view='true']")
-        before = {p["code"] for p in api(context, base, "/v2/model-react/library")["projects"]}
-        page.locator(".fm-library-copy-action").first.click()
-        copy = None
-        for _ in range(30):
-            library = api(context, base, "/v2/model-react/library")
-            fresh = [p for p in library["projects"] if p["code"] not in before and "(copy)" in (p["name"] or "")]
-            if fresh:
-                copy = fresh[0]
-                break
-            time.sleep(1)
-        assert copy is not None, "the new Working Copy must appear in the canonical library"
-        assert copy["protected_reference"] is False
+        before = {p["code"] for p in api(context, base, "/v2/model-react/my-projects")["projects"]}
+        page.goto(f"{base}/v2/model-react/#new-project/template")
+        page.reload()
+        page.locator("[data-template-card='solar']").click()
+        page.locator("[data-wizard-next='true']").click()
+        page.fill("#rcm-name", "MVP template project")
+        page.locator("[data-wizard-next='true']").click()
+        page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+        page.locator("[data-wizard-next='true']").click()
+        page.wait_for_selector("[data-wizard-panel='review']")
+        page.locator("[data-wizard-create]").click()
+        page.wait_for_selector("[data-react-workspace-version]", timeout=60000)
+        library = api(context, base, "/v2/model-react/my-projects")["projects"]
+        fresh = [p for p in library if p["code"] not in before and p["name"] == "MVP template project"]
+        assert len(fresh) == 1, "the new project appears in My Projects exactly once"
+        copy = fresh[0]
         page.goto(f"{base}/v2/model-react/{copy['code']}#inputs")
         page.wait_for_selector("[data-workflow-bar='true']")
-        assert page.locator("text=REFERENCE · READ ONLY").count() == 0
+        assert page.locator("text=READ-ONLY TEMPLATE").count() == 0
         assert bar(page).get_attribute("data-bar-freshness") == "NOT_RUN"
         assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:

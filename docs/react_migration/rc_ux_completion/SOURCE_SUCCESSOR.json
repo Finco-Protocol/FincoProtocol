@@ -1,0 +1,26 @@
+{
+  "schema_version": "RC_UX_EXACT_SOURCE_V1",
+  "base": "f79e251903621c1a5c88501d51d6971960b612d3",
+  "authorization": "Financial Owner assigned RC-UX Completion V1 (incl. Addenda A and B): in-scope React presentation, read-only adapters, governance successors; no merge, deployment, feature activation or financial-engine change. Self-generated exact blobs: a review proposal, not an approval.",
+  "source_blobs": {
+    "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
+    "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
+    "app/v2/react_compare_projects.py": "dc9f2321f95123de91013eaeb26f965276af7fe1",
+    "app/v2/react_construction_timing.py": "b933b450b4e847b0e22d34040513fe275e0309b2",
+    "app/v2/react_credit_decision.py": "22386f4d626ce40304006de173c7df24e3cca1bc",
+    "app/v2/react_credit_headroom.py": "746b83ed2acf0b8df5d6a8a498ed21caaf84abb7",
+    "app/v2/react_goal_seek_targets.py": "d673cc3ecd807f033a2e1b694a059f0b56c7f104",
+    "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
+    "app/v2/react_opex_projection.py": "e05508681b0d15fd9d18c0b0dea12963ed08e3a6",
+    "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
+    "app/v2/react_rcux.py": "8fd8c8b7f31e3e8252203efb15ca7ec83ef8924b",
+    "app/v2/react_run_statements.py": "f566baa1aa1a2529a3a821f2f6050e18a968df07",
+    "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
+    "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
+    "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
+    "tests/fin_v2_rcux_scope.py": "9969df0b8392390e09294f2f45e04cc5d7e2a58f",
+    "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
+    "tests/test_fin_v2_rcux_scope.py": "f686242b01a1d295b8d2c8afb186d109512363de",
+    "tests/test_model_react_rcux_goal_seek_targets_v1.py": "2a4b0d66ab925a722bea54950a48245800a6ebea"
+  }
+}

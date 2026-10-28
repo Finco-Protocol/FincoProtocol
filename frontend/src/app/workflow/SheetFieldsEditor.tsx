@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSheetFields, saveWorkbookField } from "../api";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
-import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp } from "../plainCopy";
+import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp, plainOptionLabel } from "../plainCopy";
 import {
   Field, LoadingNote, StatusNote, UnavailableNote, useCanonicalRead, useReportDirty, useReportPending, useSingleFlight,
   useUnresolvedLock, type StatusMessage,
@@ -48,7 +48,7 @@ export function validateSheetField(field: SheetFieldPayload, value: string): str
 
 interface Props {
   project: string;
-  sheet: "project_setup" | "debt";
+  sheet: "project_setup" | "debt" | "revenue";
   title: string;
   /** Called after a verified Save so the workspace refreshes its Run freshness. */
   onSaved?: () => void;
@@ -144,7 +144,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
       setLocked(true);
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
-      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The Last Run is now STALE; the model was not run.` });
+      setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The results are now out of date (STALE); the model was not run.` });
       setDrafts((prev) => { const next = { ...prev }; delete next[field.field_id]; return next; });
       read.reload();
       onSaved?.();
@@ -168,7 +168,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
         <span className="rx-save-scope" data-save-scope={sheet}><strong>Saves:</strong> one field at a time</span>
         {dirtyCount > 0 && <span className="wf-dirty" data-unsaved={dirtyCount}>{dirtyCount} unsaved</span>}
       </div>
-      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">PROTECTED REFERENCE</span><span className="fm-banner-copy">Read-only. Create a Working Copy to edit.</span></div>}
+      {protectedRef && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Start a project from this template to edit.</span></div>}
       {locked && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last save outcome is unknown. Reload the workspace before saving again.</span></div>}
       <StatusNote status={status} />
       {sections.map((section) => (
@@ -193,7 +193,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                         <select {...p} className="fm-input" value={current} disabled={locked || inFlight !== null}
                                 onChange={(e) => setDraft(field.field_id, e.target.value, persisted)}>
                           {!field.options.includes(current) && <option value={current}>{current || "—"}</option>}
-                          {field.options.map((o) => <option key={o} value={o}>{field.option_labels?.[o] ?? o}</option>)}
+                          {field.options.map((o) => <option key={o} value={o}>{field.option_labels?.[o] ?? plainOptionLabel(field.field_id, o) ?? o}</option>)}
                         </select>
                       ) : (
                         <input {...p} className="fm-input" type="text" autoComplete="off"

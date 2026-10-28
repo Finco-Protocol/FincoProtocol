@@ -45,7 +45,7 @@ def test_the_truncated_snapshot_prefix_is_not_an_identity_but_the_presented_iden
     assert py.text("20261027T010203.5+0200") == "2026-10-27 01:02:03 UTC+02:00 · 5"
     assert py.text("canonical_last_run__generic_solar_reference__20261027T004939123456Z") == "2026-10-27 00:49:39 UTC · 123456"
     assert py.text("snapshot-contract-123") == "snapshot-contract-123"
-    assert py.text("") == "No persisted Run"
+    assert py.text("") == "No saved Run"      # reviewed Addendum B wording (the mirror equals the TypeScript module)
 
 
 @pytest.mark.skipif(shutil.which("node") is None or not (ROOT / "frontend/node_modules/.bin/esbuild").exists(),
