@@ -26,7 +26,7 @@ def _shot(page, name):
 def _open(page, base, code):
     page.goto(f"{base}/v2/model-react/{code}?analysis=whatif#analysis")
     page.reload()
-    page.wait_for_selector("[data-whatif-state]", timeout=60000)
+    page.wait_for_selector("[data-whatif-state='ready'], [data-whatif-state='error']", timeout=60000)      # not the transient "loading" state
 
 
 def _scenarios(context, base, code):
