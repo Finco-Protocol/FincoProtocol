@@ -33,6 +33,7 @@ from app.persistence.projects_repository import resolve_accessible_project
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.project_library_service import is_protected_reference
 from app.utils.workbook_flag import require_v2_active
+from app.workbook.financing_csrf import extract_bound_token
 from app.workbook.input_set import ProjectInputSet
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import (
@@ -302,6 +303,103 @@ async def grid_cost_lines_save(
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Cost-Batch-Saved"] = str(len(lines))
     return response
+
+
+SAVE_ALL_CSRF_PURPOSE = "model-save-all-v1"
+
+# ── Save All: ONE all-or-none transaction across scalar cells, PPA contracts and CAPEX/OPEX lines ─────────────────
+
+class SaveAllCostLine(BaseModel):
+    kind: Literal["capex", "opex"]
+    sub_line_id: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., max_length=200)
+    amount_keur: str = Field(..., max_length=MAX_VALUE_CHARS)
+    row_version: str = Field(..., min_length=1, max_length=64)
+    inflation_pct: Optional[str] = Field(None, max_length=MAX_VALUE_CHARS)
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+class SaveAllBody(BaseModel):
+    project: str
+    csrf_token: str
+    workbook_version: str
+    content_hash: str
+    scenario_id: Optional[str] = None
+    request_id: str = Field(..., min_length=8, max_length=64)
+    cells: list[GridCell] = Field(default_factory=list, max_length=200)
+    contracts_json: Optional[str] = Field(None, max_length=250_000)
+    cost_lines: list[SaveAllCostLine] = Field(default_factory=list, max_length=200)
+
+
+@router.post("/workbook/save-all")
+async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depends(require_v2_active)):
+    """Atomic Save All.  One transaction, one CAS, one commit; never runs the model; idempotent by ``request_id``."""
+    # Session-, project- and operation-bound token with its own purpose (the existing bound-token primitive).
+    if not validate_csrf_token(extract_bound_token(request, body.project, body.csrf_token, purpose=SAVE_ALL_CSRF_PURPOSE)):
+        return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
+    resolved = _resolve(request, body.project)
+    if isinstance(resolved, JSONResponse):
+        return resolved
+    user, record, owner, ws = resolved
+    if owner != user.user_id:
+        return _json({"ok": False, "code": "OWNER_MISMATCH"}, 403)
+
+    from app.v2.capex_commands import (
+        CapexCommandError, CapexProtectedReferenceError, CapexStaleIdentityError, CapexVersionMismatchError)
+    from app.v2.cost_batch_commands import CostBatchConflictError, CostBatchInvalidError, CostLineEdit
+    from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError, OpexVersionMismatchError
+    from app.v2.save_all_commands import SaveAllError, SaveAllInput, SaveAllRequestIdReused, save_all
+    from app.workbook.revenue_contracts_service import RevenueContractConflict
+
+    data = SaveAllInput(
+        request_id=body.request_id, workbook_version=body.workbook_version, content_hash=body.content_hash,
+        scenario_id=body.scenario_id, cells=tuple((c.field_id, c.value) for c in body.cells),
+        contracts_json=body.contracts_json,
+        cost_lines=tuple(CostLineEdit(kind=l.kind, sub_line_id=l.sub_line_id, label=l.label, amount_keur=l.amount_keur,
+                                      row_version=l.row_version, inflation_pct=l.inflation_pct, notes=l.notes)
+                         for l in body.cost_lines))
+    stale = {"ok": False, "reload": True, "message": "The model changed since this page loaded. Reload to continue; "
+                                                     "your staged edits were not saved."}
+    try:
+        result = save_all(project_record=record, user_id=user.user_id, data=data)
+    except SaveAllRequestIdReused as exc:
+        return _json({"ok": False, "code": exc.code, "message": str(exc)}, 409)
+    except SaveAllError as exc:
+        return _json({"ok": False, "code": exc.code, "message": str(exc), **exc.detail}, 422)
+    except (StaleContentError, VersionMismatchError, CapexStaleIdentityError, OpexStaleIdentityError,
+            CapexVersionMismatchError, OpexVersionMismatchError, RevenueContractConflict) as exc:
+        return _json({**stale, "code": "STALE_CONTENT", "detail": str(exc)}, 409)
+    except (ProtectedReferenceError, CapexProtectedReferenceError, OpexProtectedReferenceError):
+        return _json({"ok": False, "code": "PROTECTED_REFERENCE"}, 403)
+    except CostBatchConflictError as exc:
+        return _json({"ok": False, "code": exc.code, "reload": True, "section": "cost_lines", "message": str(exc),
+                      "lines": exc.verdicts}, 409)
+    except CostBatchInvalidError as exc:
+        return _json({"ok": False, "code": exc.code, "section": "cost_lines", "message": str(exc), "lines": exc.verdicts}, 422)
+    except FieldValidationError as exc:
+        from app.input_adapter import rate_unit_error_code
+        return _json({"ok": False, "code": rate_unit_error_code(exc) or "FIELD_INVALID", "section": "cells",
+                      "message": str(exc)}, 422)
+    except (BatchApplyError, UnknownFieldError, NonEditableFieldError) as exc:
+        return _json({"ok": False, "code": getattr(exc, "code", type(exc).__name__), "section": "cells", "message": str(exc)}, 422)
+    except CapexCommandError as exc:
+        return _json({"ok": False, "code": "SAVE_ALL_REJECTED", "message": str(exc)}, 422)
+    except ValueError as exc:
+        code = str(getattr(exc, "code", "") or "")
+        if code.startswith("F3_"):
+            return _json({"ok": False, "code": code, "message": "Financing authority rejected the request; nothing was saved.",
+                          "detail": str(exc)}, 409 if code in _F3_CONFLICT_CODES else 422)
+        return _json({"ok": False, "code": "SAVE_ALL_REJECTED", "message": str(exc)}, 422)
+
+    fresh = get_workspace_state(owner, record.project_id) or ws
+    identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    freshness = resolve_runtime_freshness(fresh, current_composite_hash=identity.composite_hash)
+    return _json({
+        "ok": True, "replayed": result.replayed, "saved": result.counts,
+        "content_hash": identity.composite_hash, "workbook_version": WORKBOOK.version,
+        "scenario_id": fresh.active_scenario_id, "run_state": freshness.state.value, "model_executed": False,
+    })
 
 
 def _display(value: Any) -> str:
