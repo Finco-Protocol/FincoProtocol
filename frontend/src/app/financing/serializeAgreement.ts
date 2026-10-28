@@ -31,4 +31,19 @@ export function draftFromTerms(terms: { agreement_id: string; investors: Array<{
   };
 }
 
+/** Identity gaps the server refuses with an internal code ("F4 requires explicit, nonblank identities"): say it in business words first. */
+export function identityProblems(d: AgreementDraft): string[] {
+  const out: string[] = [];
+  if (d.agreementId.trim() === "") out.push("Enter an Agreement ID — your own reference, for example AGR-2026-1.");
+  if (d.investors.some((r) => r.investorId.trim() === "")) out.push("Every investor needs an Investor ID.");
+  if (d.contributions.some((r) => r.investorId.trim() === "")) out.push("Every paid-in contribution needs the Investor ID it belongs to.");
+  return out;
+}
+
+/** The server's refusal text with its internal code replaced by plain words; any other server text is shown unchanged. */
+export const friendlyAgreementError = (raw: string | undefined): string =>
+  raw && /F4 requires explicit, nonblank identities/i.test(raw)
+    ? "The Agreement ID, every Investor ID and every contribution's Investor ID must be filled in."
+    : (raw || "The agreement could not be saved.");
+
 export const isSame = (a: AgreementDraft, b: AgreementDraft): boolean => JSON.stringify(a) === JSON.stringify(b);

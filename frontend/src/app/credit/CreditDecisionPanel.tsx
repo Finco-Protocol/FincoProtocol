@@ -370,6 +370,9 @@ export function CreditDecisionPanel({ project, historyIds, workbookHash }: { pro
     <section className="rx-card rcm-fin cd-panel" data-credit-decision="true" aria-labelledby="cd-title">
       <h2 id="cd-title" className="rcm-h3">Credit decision <span className="rcm-badge rcm-badge-derived">SAVED RUN EVIDENCE · READ ONLY</span></h2>
       <p className="rx-note">How much debt do the saved Runs support, which constraints bind, where is debt service tight and how does credit change across scenarios? Every figure is stored by a saved Run — nothing is recalculated here. This is decision intelligence, not lender certification.</p>
+      <p className="rx-note" data-credit-release-limits="true">
+        A complete investment-committee, credit or lender pack is not available in this release. These sections show the evidence the saved Runs already hold; anything a Run did not store stays unavailable.
+      </p>
       {!open ? (
         <button type="button" className="rx-button rx-button-secondary" data-credit-open="true" disabled={tooMany}
                 onClick={() => setOpen(true)}>{historyIds.length ? `Review credit decision for ${historyIds.length} selected Run${historyIds.length > 1 ? "s" : ""}` : "Review credit decision for the Last Run"}</button>

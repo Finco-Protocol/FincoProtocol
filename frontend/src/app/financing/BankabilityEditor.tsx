@@ -4,7 +4,7 @@ import { fetchSheetFields, saveWorkbookField } from "../api";
 import { StatusNote, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "../workflow/workflowShared";
 import { fetchFinancingStudio } from "./financingApi";
 import {
-  advisoryProblems, configText, draftFromView, serializeBankability, type BankabilityDraft, type RatesMode, type ReserveMode, type TargetsMode,
+  advisoryProblems, configText, draftFromView, isReleasedReserveMode, RELEASED_RESERVE_MODES, RESERVE_MODE_LABEL, serializeBankability, type BankabilityDraft, type RatesMode, type ReserveMode, type TargetsMode,
 } from "./serializeBankability";
 import type { BankabilityView } from "./types";
 
@@ -117,7 +117,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   }
   const cfgFees = view.config?.fees;
   const disabled = !editable || locked || inFlight;
-  const autoReserve = view.automatic_reserve;
+  const reserveLocked = !isReleasedReserveMode(baseline.reserveMode);   // a stored unreleased policy is read-only and preserved
 
   return (
     <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title">
@@ -227,20 +227,29 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         {view.reserve_editable ? (
           <div className="rcm-grid3">
             <label className="rcm-field">Reserve policy
-              <select data-bank="reserve_mode" value={draft.reserveMode} onChange={(e) => set("reserveMode", e.target.value as ReserveMode)}>
-                <option value="inherit">Existing reserve policy (no override)</option>
-                <option value="none">NONE</option>
-                {autoReserve && <option value="automatic_peak">Automatic peak forward debt service</option>}
-                <option value="cash_fixed">CASH_DSRA / fixed amount</option>
-                <option value="dsrf">DSRF / standby support</option>
+              <select data-bank="reserve_mode" value={draft.reserveMode} disabled={reserveLocked} onChange={(e) => set("reserveMode", e.target.value as ReserveMode)}>
+                {reserveLocked
+                  ? <option value={draft.reserveMode}>{RESERVE_MODE_LABEL[draft.reserveMode]} (stored, not released)</option>
+                  : RELEASED_RESERVE_MODES.map((mode) => <option key={mode} value={mode}>{RESERVE_MODE_LABEL[mode]}</option>)}
               </select></label>
-            <label className="rcm-field">Coverage (months)<input data-bank="months" inputMode="numeric" value={draft.months} disabled={disabled || draft.reserveMode !== "automatic_peak"} onChange={(e) => set("months", e.target.value)} /></label>
-            <label className="rcm-field">Required reserve (kEUR)<input data-bank="requirement_keur" inputMode="decimal" value={draft.requirement} disabled={disabled || !["cash_fixed", "dsrf"].includes(draft.reserveMode)} onChange={(e) => set("requirement", e.target.value)} /></label>
-            <label className="rcm-field">DSRF commitment (kEUR)<input data-bank="commitment_keur" inputMode="decimal" value={draft.commitment} disabled={disabled || draft.reserveMode !== "dsrf"} onChange={(e) => set("commitment", e.target.value)} /></label>
-            <label className="rcm-field">DSRF commitment fee (% p.a.)<input data-bank="fee_pct" inputMode="decimal" value={draft.feePct} disabled={disabled || draft.reserveMode !== "dsrf"} onChange={(e) => set("feePct", e.target.value)} /></label>
+            <label className="rcm-field">Required reserve (kEUR)<input data-bank="requirement_keur" inputMode="decimal" value={draft.requirement} disabled={disabled || reserveLocked || draft.reserveMode !== "cash_fixed"} onChange={(e) => set("requirement", e.target.value)} /></label>
+            {reserveLocked && <>
+              <label className="rcm-field">Coverage (months)<input data-bank="months" value={draft.months} disabled readOnly /></label>
+              <label className="rcm-field">DSRF commitment (kEUR)<input data-bank="commitment_keur" value={draft.commitment} disabled readOnly /></label>
+              <label className="rcm-field">DSRF commitment fee (% p.a.)<input data-bank="fee_pct" value={draft.feePct} disabled readOnly /></label>
+            </>}
           </div>
         ) : <p className="rx-note" data-bank-reserve-locked="true">The reserve funding of the CAPEX plan is already set elsewhere in the project, so it cannot be entered a second time here.</p>}
-        <p className="rx-note">CASH_DSRA funds a cash reserve in Uses. DSRF supplies standby support, not cash funding. No DSRF draw/replenishment engine is provided.</p>
+        {reserveLocked && view.reserve_editable && (
+          <p className="rx-status rx-status-conflict" role="note" data-bank-reserve-unreleased="true">
+            This project already stores the reserve policy “{RESERVE_MODE_LABEL[draft.reserveMode]}”. That policy is not released for editing in this release, so it is shown read-only
+            and is saved back exactly as stored — nothing is changed or reset. Other bankability settings stay editable.
+          </p>
+        )}
+        <p className="rx-note" data-bank-reserve-release-note="true">
+          Released reserve policies: no override, NONE, and CASH_DSRA with a fixed amount (funds a cash reserve in Uses). Forward-looking debt-service coverage and DSRF standby
+          support (commitment fees, drawn interest, replenishment, hybrid cash/facility cover) are not released and cannot be newly selected.
+        </p>
       </fieldset>
 
       {problems.length > 0 && (
@@ -251,7 +260,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         <button type="button" className="rx-button rx-button-secondary" data-bank-discard="true" disabled={disabled || !dirty} onClick={() => { setDraft(baseline); setProblems([]); setStatus(null); }}>Discard changes</button>
         {!confirmReset
           ? <button type="button" className="rx-button rx-button-secondary" data-bank-reset="true" disabled={disabled || Object.keys(view.config ?? {}).length === 0} onClick={() => setConfirmReset(true)}>Reset configuration…</button>
-          : <span role="group" aria-label="Confirm reset" data-bank-reset-confirm="true">Remove the whole bankability configuration?{" "}
+          : <span role="group" aria-label="Confirm reset" data-bank-reset-confirm="true">Remove the whole bankability configuration{reserveLocked ? ", including the stored reserve policy" : ""}?{" "}
             <button type="button" className="rx-button" data-bank-reset-yes="true" disabled={inFlight} onClick={() => void save("", "Reset")}>Reset</button>{" "}
             <button type="button" className="rx-button rx-button-secondary" onClick={() => setConfirmReset(false)}>Keep</button></span>}
       </div>

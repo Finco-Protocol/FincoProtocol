@@ -39,7 +39,12 @@ export function ModelExportView({ project, freshness, refreshKey = 0 }: Props) {
   const exports = data.exports;
   if (!exports) return <UnavailableNote message="This server does not describe its export options, so no export is offered." />;
   const latest = data.runs[0];
-  const available = exports.last_run.available;
+  const lastRunExport = exports.last_run as typeof exports.last_run & {
+    unavailable_code?: string | null; historical_fallback?: { history_id: string; url: string } | null };
+  const available = lastRunExport.available;
+  // When the Last Run export is closed but that Run's own immutable record exists, its historical export IS the Last Run
+  // (identical evidence, no working values).  Offered only when the server names the row.
+  const fallback = !available ? lastRunExport.historical_fallback ?? null : null;
 
   const download = async () => {
     setBusy(true);
@@ -66,12 +71,20 @@ export function ModelExportView({ project, freshness, refreshKey = 0 }: Props) {
         <p className="fm-info-note" role="note">{FRESHNESS_COPY[freshness] ?? "Run state could not be determined."}</p>
       </div>
       <div className="fm-toolbar">
-        <button type="button" className="fm-btn fm-btn-primary" disabled={busy || !available} data-export-last-run="true"
-                aria-describedby="wf-export-note" onClick={() => void download()}>
-          {busy ? "Preparing workbook…" : "Download Last Run workbook (XLSX)"}
-        </button>
+        {fallback
+          ? <a className="fm-btn fm-btn-primary" data-export-last-run="true" data-export-last-run-source="immutable-run-record"
+               href={historicalExportUrl(project, fallback.history_id)} download aria-describedby="wf-export-note">
+              Download Last Run workbook (XLSX) — from its immutable Run record
+            </a>
+          : <button type="button" className="fm-btn fm-btn-primary" disabled={busy || !available} data-export-last-run="true"
+                    aria-describedby="wf-export-note" onClick={() => void download()}>
+              {busy ? "Preparing workbook…" : "Download Last Run workbook (XLSX)"}
+            </button>}
       </div>
-      {!available && <p className="fm-info-note" role="note" data-export-unavailable-reason="true">Export unavailable: {exports.last_run.unavailable_reason || "no committed Run for the active scenario."}</p>}
+      {!available && <p className="fm-info-note" role="note" data-export-unavailable-reason="true">
+        {fallback ? "The standard Last Run export is closed for this Run: " : "Export unavailable: "}
+        {exports.last_run.unavailable_reason || "no committed Run for the active scenario."}
+      </p>}
       <p id="wf-export-note" className="fm-info-note">{exports.last_run.note} The download is recorded in the project&rsquo;s export log.</p>
 
       <p className="wf-group-head">Historical Runs</p>

@@ -14,10 +14,11 @@ import {
   fetchTrust,
   saveCostLinesBatch,
 } from "./api";
-import type { PersistedIntegrity } from "./types";
+import type { CostLinesPayload, PersistedIntegrity } from "./types";
 import { RunIdentityLabel } from "./runIdentity";
 import { friendlyMessage, plain } from "./productLanguage";
 import { CostLineManager } from "./workflow/CostLineManager";
+import { buildCostLineEdits, classifyBatchAttempt, type CostLineEditWire } from "./costLinePayload";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 
 type FetchState<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
@@ -82,8 +83,10 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
   const [staged, setStaged] = useState<Record<string, { label?: string; amount_keur?: string; inflation_pct?: string; notes?: string }>>({});
   const [status, setStatus] = useState<{ tone: "ok" | "error" | "conflict"; text: string } | null>(null);
   const [inFlight, setInFlight] = useState(false);
+  // A batch whose response was lost: Save stays locked until the canonical state has been read back (never re-sent blindly).
+  const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
 
-  useEffect(() => { setStaged({}); setStatus(null); }, [sheet, project]);
+  useEffect(() => { setStaged({}); setStatus(null); setUnknownBatch(null); }, [sheet, project]);
   useReportDirty(`cost-lines-${sheet}`, Object.keys(staged).length);
   useReportPending(`cost-lines-${sheet}`, inFlight);
   const singleFlight = useSingleFlight();
@@ -106,18 +109,12 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
   const runSaveBatch = async () => {
     if (state.state !== "ready" || inFlight) return;
     const data = state.data;
-    const edits = Object.entries(staged).map(([subLineId, patch]) => {
-      const line = data.lines.find((l) => l.sub_line_id === subLineId);
-      return {
-        kind: sheet,
-        sub_line_id: subLineId,
-        label: patch.label ?? line?.label ?? "",
-        amount_keur: patch.amount_keur !== undefined ? Number(patch.amount_keur) : Number(line?.amount_keur ?? 0),
-        row_version: line?.row_version ?? "",
-        inflation_pct: sheet === "opex" ? (patch.inflation_pct !== undefined ? Number(patch.inflation_pct) : (line?.inflation_pct ?? null)) : undefined,
-        notes: patch.notes ?? line?.notes ?? "",
-      };
-    });
+    const built = buildCostLineEdits(sheet, staged, data.lines);
+    if (!built.ok) {                                   // an invalid typed number: nothing is sent, every typed value stays on screen
+      setStatus({ tone: "error", text: built.message });
+      return;
+    }
+    const edits = built.edits;
     if (!edits.length) return;
     setInFlight(true);
     setStatus(null);
@@ -131,6 +128,7 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
       edits,
     });
     if ("kind" in result) {
+      if (result.kind === "unknown") setUnknownBatch(edits);
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
       setStatus({ tone: "ok", text: `${result.savedCount} line(s) saved atomically. The model was not run.` });
@@ -139,6 +137,31 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
       onMutated?.();
     } else {
       setStatus({ tone: "error", text: result.message });
+    }
+    setInFlight(false);
+  };
+
+  const reconcileBatch = async () => {
+    if (!unknownBatch) return;
+    setInFlight(true);
+    setStatus({ tone: "conflict", text: "Checking the saved lines on the server…" });
+    const fresh = await fetchCostLines(project, sheet);
+    if (!fresh || (fresh as { ok?: unknown }).ok !== true) {
+      setInFlight(false);
+      setStatus({ tone: "error", text: "The saved lines could not be read. Nothing was changed; check the connection and try again." });
+      return;
+    }
+    const verdict = classifyBatchAttempt(unknownBatch, (fresh as CostLinesPayload).lines);
+    setUnknownBatch(null);
+    state.retry();                                   // every line row_version / CAS token comes from the fresh read
+    onMutated?.();
+    if (verdict === "committed") {
+      setStaged({});
+      setStatus({ tone: "ok", text: "Reconciled: this batch had been committed on the server. It was not sent twice and the model was not run." });
+    } else if (verdict === "not_committed") {
+      setStatus({ tone: "ok", text: "Reconciled: the batch did not reach the server, so nothing changed. Your edits are kept — press Save to retry." });
+    } else {
+      setStatus({ tone: "conflict", text: "Reconciled: some lines changed elsewhere. Your edits are kept; review them, then Save against the latest version." });
     }
     setInFlight(false);
   };
@@ -185,10 +208,13 @@ export function CostLinesView({ project, reloadKey = 0, onMutated, requestedShee
         </table>
       </div>
       <div className="fm-toolbar" style={{ marginTop: 10 }}>
-        <button type="button" className="fm-btn fm-btn-primary" disabled={inFlight || !stagedCount || data.project.protected_reference} onClick={saveBatch}>
+        <button type="button" className="fm-btn fm-btn-primary" disabled={inFlight || !stagedCount || data.project.protected_reference || unknownBatch !== null} onClick={saveBatch}>
           Save {stagedCount || ""} staged line{stagedCount === 1 ? "" : "s"} atomically
         </button>
-        <button type="button" className="fm-btn" disabled={inFlight || !stagedCount} onClick={() => setStaged({})}>Discard staged edits</button>
+        <button type="button" className="fm-btn" disabled={inFlight || !stagedCount || unknownBatch !== null} onClick={() => setStaged({})}>Discard staged edits</button>
+        {unknownBatch !== null && (
+          <button type="button" className="fm-btn" disabled={inFlight} data-cost-reconcile="true" onClick={() => void reconcileBatch()}>Check saved state</button>
+        )}
       </div>
       <p className="fm-info-note">If someone else changed one of these lines in the meantime, nothing is saved and you are asked to reload before saving again. Saving never runs the model.</p>
       <CostLineManager key={sheet} project={project} data={data} onChanged={() => { state.retry(); onMutated?.(); }} />
