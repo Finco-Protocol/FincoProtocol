@@ -28,6 +28,8 @@ __all__ = (
     "test_rcux_construction_timing_templates_are_read_only",
     "test_rcux_financing_overview_shows_reserve_sponsor_returns_and_cash_rows_equal_to_the_server_projection",
     "test_rcux_financing_overview_without_a_run_marks_returns_not_available_never_zero",
+    "test_rcux_credit_decision_for_the_last_run_equals_the_server_projection_and_starts_no_run",
+    "test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every_viewport",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -428,4 +430,53 @@ def test_rcux_financing_overview_without_a_run_marks_returns_not_available_never
     returns = page.locator("[data-facts='sponsor-returns']").inner_text()
     assert "Not available" in returns and "0.00%" not in returns and "0.00x" not in returns
     assert page.locator("[data-dsra-cash-empty='true']").count() == 1
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def _open_runs_tab(page, base, code):
+    page.goto(f"{base}/v2/model-react/{code}?analysis=runs#analysis")
+    page.wait_for_selector("[data-run-history-table='true']", timeout=60000)
+
+
+def test_rcux_credit_decision_for_the_last_run_equals_the_server_projection_and_starts_no_run(live_server, an_session):
+    context, page, record, errors = an_session("rcux-credit-last")
+    run_canonical(context, live_server, record.project_code)
+    history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+    api = context.request.get(f"{live_server}/v2/model-react/analysis/credit-decision", params={"project": record.project_code}).json()
+    _open_runs_tab(page, live_server, record.project_code)
+    page.locator("[data-credit-open='true']").click()
+    page.wait_for_selector("[data-credit-ready='true']", timeout=60000)
+    for section in ("structure", "capacity", "timeline", "comparison", "findings"):
+        assert page.locator(f"[data-credit-section='{section}']").count() == 1
+    data = api["data"]
+    assert page.locator("[data-testid='cd-finding']").count() == len(data["findings"])
+    run = data["runs"][0]
+    capacity = page.locator("[data-credit-section='capacity']").inner_text()
+    assert run["capacity"]["min_dscr"]["d"] in capacity and (run["capacity"]["min_llcr"]["d"] in capacity)
+    assert run["identity"]["history_id"] not in page.locator("[data-credit-identities='true'] > table, [data-credit-identities='true'] .cd-scroll").first.inner_text()   # ids live under Advanced details
+    assert page.locator("[data-credit-advanced='true']").get_attribute("open") is None
+    assert "0.00x" not in page.locator("[data-credit-section='capacity']").inner_text() or run["capacity"]["min_dscr"]["d"] == "0.00x"
+    page.locator("[data-credit-section='findings'] .cd-chip").nth(1).click()
+    assert page.locator("[data-credit-section='findings'] .cd-chip.is-on").count() == 1
+    _shot(page, "credit-decision-last-run")
+    assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history     # reviewing credit starts no Run
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every_viewport(live_server, an_session):
+    context, page, record, errors = an_session("rcux-credit-two")
+    run_canonical(context, live_server, record.project_code)
+    run_canonical(context, live_server, record.project_code)
+    _open_runs_tab(page, live_server, record.project_code)
+    boxes = page.locator("[data-run-select]")
+    assert boxes.count() >= 2
+    boxes.nth(0).check()
+    boxes.nth(1).check()
+    page.locator("[data-credit-open='true']").click()
+    page.wait_for_selector("[data-credit-ready='true'][data-credit-runs='2']", timeout=60000)
+    assert page.locator("[data-credit-section='comparison']").count() == 1
+    for width in (320, 390, 768, 1440):
+        page.set_viewport_size({"width": width, "height": 900})
+        overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert overflow <= 1, (width, overflow)
     assert [e for e in errors if "Failed to load resource" not in e] == []

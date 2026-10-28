@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { fetchInsightsHistory } from "../insights";
 import type { HistoryPayload } from "../insights";
+import { CreditDecisionPanel } from "../credit/CreditDecisionPanel";
 import { CompareWorkspace } from "./CompareWorkspace";
 import { RunHistoryList } from "./RunHistoryList";
 import { friendlyMessage } from "../productLanguage";
@@ -33,6 +34,7 @@ export function RunsWorkspace({ project, workbookHash }: { project: string; work
     <div data-runs-workspace="true">
       <RunHistoryList project={project} history={history} workbookHash={workbookHash} selected={selected} onSelect={setSelected} />
       <CompareWorkspace project={project} historyIds={selected} workbookHash={workbookHash} onClear={() => setSelected([])} />
+      <CreditDecisionPanel project={project} historyIds={selected} workbookHash={workbookHash} />
     </div>
   );
 }

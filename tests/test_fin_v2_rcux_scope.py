@@ -17,7 +17,7 @@ def test_the_cohort_is_registered_valid_and_owns_no_financial_namespace(tmp_path
 
 def test_the_owned_protected_sources_are_exactly_the_read_only_react_adapters_and_the_cohort_itself():
     assert {p for p in F.OWNED_PATHS if p.startswith('app/')} == {
-        'app/v2/react_capex.py', 'app/v2/react_compare.py', 'app/v2/react_compare_projects.py', 'app/v2/react_construction_timing.py', 'app/v2/react_goal_seek_targets.py', 'app/v2/react_import.py', 'app/v2/react_opex_projection.py', 'app/v2/react_projects.py', 'app/v2/react_rcux.py',
+        'app/v2/react_capex.py', 'app/v2/react_compare.py', 'app/v2/react_compare_projects.py', 'app/v2/react_construction_timing.py', 'app/v2/react_credit_decision.py', 'app/v2/react_goal_seek_targets.py', 'app/v2/react_import.py', 'app/v2/react_opex_projection.py', 'app/v2/react_projects.py', 'app/v2/react_rcux.py',
         'app/v2/react_trust.py', 'app/v2/react_whatif.py', 'app/v2/react_workspace_router.py'}
     assert {p for p in F.OWNED_PATHS if not p.startswith('app/')} == {'tests/fin_v2_rcux_scope.py', 'tests/rcux_navigation_contract.py', 'tests/test_fin_v2_rcux_scope.py'}
 

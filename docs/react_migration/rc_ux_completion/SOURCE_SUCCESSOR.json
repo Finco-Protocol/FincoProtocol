@@ -7,16 +7,17 @@
     "app/v2/react_compare.py": "ccfbc96ff5dece97d7acca2b95a0742d68d44166",
     "app/v2/react_compare_projects.py": "dc9f2321f95123de91013eaeb26f965276af7fe1",
     "app/v2/react_construction_timing.py": "b933b450b4e847b0e22d34040513fe275e0309b2",
+    "app/v2/react_credit_decision.py": "22386f4d626ce40304006de173c7df24e3cca1bc",
     "app/v2/react_goal_seek_targets.py": "d673cc3ecd807f033a2e1b694a059f0b56c7f104",
     "app/v2/react_import.py": "bd92b43f0f30bf9b68bcde0ef78fe6df8d75cbe3",
     "app/v2/react_opex_projection.py": "e05508681b0d15fd9d18c0b0dea12963ed08e3a6",
     "app/v2/react_projects.py": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
-    "app/v2/react_rcux.py": "184c56bc6cdbc6d670a71eeab91e5124853690b5",
+    "app/v2/react_rcux.py": "8cc786f486841d03a0a3e9a73abb8412e266c57d",
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
-    "tests/fin_v2_rcux_scope.py": "d51a26fa5759eee532746f5f25fce680f2eb2e51",
+    "tests/fin_v2_rcux_scope.py": "3442e55735fa3a5f5b269db24a670fbe8a13e9a9",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
-    "tests/test_fin_v2_rcux_scope.py": "09347ff00565e3329465f8854bd886a05d8c6f96"
+    "tests/test_fin_v2_rcux_scope.py": "7e978b8adcf79e2b2dbd569a306b4b1821217206"
   }
 }
