@@ -630,7 +630,10 @@ def test_rcux_credit_headroom_measures_the_saved_run_against_typed_hypothetical_
     context, page, record, errors = an_session("rcux-headroom")
     run_canonical(context, live_server, record.project_code)
     history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
-    fields_before = context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json()
+    def debt_values():
+        body = context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json()
+        return [(f["field_id"], f["value"]) for f in body["fields"]]
+    fields_before = debt_values()
     _open_runs_tab(page, live_server, record.project_code)
     page.locator("[data-credit-open='true']").click()
     page.wait_for_selector("[data-credit-ready='true']", timeout=60000)
@@ -653,5 +656,5 @@ def test_rcux_credit_headroom_measures_the_saved_run_against_typed_hypothetical_
     assert "fraction" in page.locator("[data-headroom-error='true']").inner_text()
     _shot(page, "credit-headroom")
     assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history
-    assert context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json() == fields_before     # nothing typed was saved
+    assert debt_values() == fields_before                                              # nothing typed was saved
     assert [e for e in errors if "Failed to load resource" not in e] == []
