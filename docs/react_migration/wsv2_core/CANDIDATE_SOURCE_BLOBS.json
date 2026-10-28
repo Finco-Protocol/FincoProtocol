@@ -11,7 +11,7 @@
     "frontend/src/app/ReportPrecision.tsx": "a3a101d424b01cc1dd87bbf54f1a2f51cf63e265",
     "frontend/src/app/RunFailureNotice.tsx": "a011339033d25cbf0495facb4c75b7e07bc89408",
     "frontend/src/app/WorkspaceSidebar.tsx": "68294d5bae3c46e35c114114999b9f2dcc4b206b",
-    "frontend/src/app/WorkspaceView.tsx": "0aba84b768d171f3b0ff52cf4c3c7aabcad8420b",
+    "frontend/src/app/WorkspaceView.tsx": "c5f9ec51120d9145b8ffee001a63362ef9f83ee6",
     "frontend/src/app/api.ts": "67488254987c85c605925997af5e8d116cbf98b6",
     "frontend/src/app/compare/CompareProjectsView.tsx": "8af81eb7f4d35d69f34da0db5b7343843c36dfd9",
     "frontend/src/app/financing/FinancingViews.tsx": "122298e6a3bcf1f06feaaa67ee5dc66a9657cd6b",
@@ -36,8 +36,8 @@
     "frontend/src/finco/_workbook/StatementWorkbook.tsx": "6dc1302b14d6b8361f7df7ec59da9fbbb89bd566",
     "frontend/src/styles/wsv2-core.css": "b1ee9bd4c32cd297c03b493b931c4d713122b324",
     "static/react/finco-react.css": "3a1eab32a691696787aa5b54893fe24812186608",
-    "static/react/finco-react.js": "45214719e60ca3aa6245d1628c2d761ba33c99e5",
-    "tests/model_react_wsv2_acceptance.py": "24eff466a6fcd3c4624085d3bcf1b1640d57af2c",
+    "static/react/finco-react.js": "0c9725723b8473f961fda2df51ddd49b61628e60",
+    "tests/model_react_wsv2_acceptance.py": "ec93f44ef33414cb9eab786a08efb977dff7cf63",
     "tests/test_model_react_wsv2_overview.py": "3c8d45dcc1bc581969ac6c697bd02ffc9843394c"
   }
 }

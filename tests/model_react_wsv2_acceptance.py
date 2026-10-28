@@ -40,6 +40,10 @@ def test_wsv2_real_run_reads_exact_snapshot_without_document_reload(live_server,
     try:
         page.goto(f'{live_server}/v2/model-react/{record.project_code}#inputs/project')
         page.wait_for_selector('[data-sheet-editor="project_setup"]')
+        skip = page.get_by_role('link', name='Skip to main content')
+        skip.focus(); skip.press('Enter')
+        page.wait_for_function("() => document.activeElement?.id === 'rx-main-content'")
+        assert page.locator('[data-sheet-editor="project_setup"]').is_visible(), 'skip link must not change sections'
         origin = page.evaluate('performance.timeOrigin')
         page.wait_for_function("() => Boolean(document.querySelector('[data-wf-run]')) && !document.querySelector('[data-wf-run]').disabled")
         started = time.monotonic()

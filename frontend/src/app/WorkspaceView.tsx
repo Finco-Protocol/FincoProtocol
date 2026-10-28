@@ -203,6 +203,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   useEffect(() => {
     const onHash = () => {
       const route = workspaceRoute(window.location.hash);
+      const raw = window.location.hash.replace(/^#/, "");
+      // Native anchors (including Skip to main content) are not section routes.
+      if (raw && route.destination !== raw) return;
       const adopt = () => { setSection(route.section); setDestination(route.destination); };
       if (allowNextHash.current) { allowNextHash.current = false; adopt(); return; }
       if (route.destination === destinationRef.current) return;
