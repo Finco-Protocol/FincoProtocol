@@ -60,3 +60,8 @@ Independent review submissions/comments of open model PRs were read; no partner 
 Owner identified PR #397 after the initial P00. Reverified initial cc48391b, then current 44621e0044f48c1fec32e491e35f879664b1cd61 (29 files) on 2026-10-28. Read both partner interface documents at the latter exact ref; blobs remain ead940641f9355ffaa5e49e5c17fe0ef2e29e99a and a2a9fc5a0cfe33a82cfee76d71176b6ae3d72de8. Its backend additions include react_workspace_router plus persistence/SaveAll writers; none is imported. WS1 modifies a separate read-only overview adapter and react_rcux aggregator; no same-file overlap with those 29 partner paths. Shared integration must refresh this statement if the partner moves again.
 
 Read-only live host: app.finco.one /v2/model-react returned 200, existing React Preview title and asset rc-sec-mutation-v1-8fa62268ae87. Staging React route returned 404; this says nothing about Legacy reference availability or live process flags. No production project, database or Run mutation occurred.
+
+
+## Section A approval checkpoint
+
+Financial Owner explicitly approved section A only at c848a979 on 2026-10-28; same Draft PR398, no merge/deploy, no WS2 pins or Save All. PR398 remains at c848a979 before successor commit; main is b1a58681. WS2 PR397 moved to cb00721073e27f479a8bf93b664f332ab8d96957 (Draft); coordination comment6479118585 records separate governance ownership and WS1-first order. Local origin/main was stale at e71f74b6 and was refreshed with git fetch origin main to b1a58681; no source change was used to remove the resulting baseline scope failure.

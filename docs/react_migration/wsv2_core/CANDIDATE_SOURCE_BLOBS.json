@@ -1,6 +1,6 @@
 {
   "base": "b1a58681e41af9f1b4d52b176f0001725720b15c",
-  "status": "review proposal only; no governance admission",
+  "status": "Historical implementation inventory at approved c848a979; current exact-source admission is SOURCE_SUCCESSOR.json",
   "source_blobs": {
     "app/templates/v2/react_poc.html": "e8ff5646d854931ce406b8e71efa543b3e8997dc",
     "app/v2/react_overview.py": "e844ff3792ebd06a22808cce2c3391e90604ab5a",

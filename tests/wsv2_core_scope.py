@@ -1,0 +1,179 @@
+"""Closed WS1 exact-source successor, Financial Owner approved section A at c848a979.
+
+Only this literal path set is admitted. No writer, financial, CSRF, Run-integrity,
+WS2 or workflow authority is added. Historical manifests/presentation layers remain
+verifiable at AUTHORIZATION_HEAD. Low-level checks never call the cohort registry.
+"""
+from pathlib import Path
+import hashlib
+import json
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
+BASE = 'b1a58681e41af9f1b4d52b176f0001725720b15c'
+AUTHORIZATION_HEAD = 'c848a979b3322c53d02631a5f5897180fae9c1e3'
+MANIFEST = 'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json'
+SCHEMA = 'WSV2_CORE_EXACT_SOURCE_V1'
+OWNED_PATHS = frozenset((
+    'app/templates/v2/react_poc.html',
+    'app/v2/react_overview.py',
+    'app/v2/react_rcux.py',
+    'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/wsv2_core/ACCEPTANCE_SUCCESSOR_PROPOSAL.patch',
+    'docs/react_migration/wsv2_core/CANDIDATE_SOURCE_BLOBS.json',
+    'docs/react_migration/wsv2_core/LOCAL_VALIDATION.md',
+    'docs/react_migration/wsv2_core/P00_BASELINE_RECEIPT.md',
+    'docs/react_migration/wsv2_core/PROTECTED_PATH_REQUEST.md',
+    'docs/react_migration/wsv2_core/SHARED_FILE_INTEGRATION.md',
+    'docs/react_migration/wsv2_core/WSV2_GAP_COVERAGE_GPT6.md',
+    'docs/react_migration/wsv2_core/WSV2_INTERFACE_CONTRACT.md',
+    'docs/react_migration/wsv2_core/WSV2_MASTER_GAP_LEDGER.md',
+    'frontend/src/App.tsx',
+    'frontend/src/app/FinancialOverview.tsx',
+    'frontend/src/app/FinancialResults.tsx',
+    'frontend/src/app/ReportPrecision.tsx',
+    'frontend/src/app/RunFailureNotice.tsx',
+    'frontend/src/app/WorkspaceSidebar.tsx',
+    'frontend/src/app/WorkspaceView.tsx',
+    'frontend/src/app/api.ts',
+    'frontend/src/app/compare/CompareProjectsView.tsx',
+    'frontend/src/app/financing/FinancingViews.tsx',
+    'frontend/src/app/financing/InvestorsPanel.tsx',
+    'frontend/src/app/financing/ReserveReturnsView.tsx',
+    'frontend/src/app/inputLayout.ts',
+    'frontend/src/app/insights/CreditEvidenceCards.tsx',
+    'frontend/src/app/insights/CreditTimeline.tsx',
+    'frontend/src/app/insights/FinancialInsights.tsx',
+    'frontend/src/app/insights/MetricCards.tsx',
+    'frontend/src/app/insights/ScenarioComparison.tsx',
+    'frontend/src/app/insights/SponsorSchedules.tsx',
+    'frontend/src/app/insights/presentation.ts',
+    'frontend/src/app/newProject/NewProjectWizard.tsx',
+    'frontend/src/app/reportFormatting.test.mjs',
+    'frontend/src/app/reportFormatting.ts',
+    'frontend/src/app/runs/CompareWorkspace.tsx',
+    'frontend/src/app/units.ts',
+    'frontend/src/app/workflow/WorkflowBar.tsx',
+    'frontend/src/app/workspaceExtensions.ts',
+    'frontend/src/app/workspaceNavigation.ts',
+    'frontend/src/finco/_workbook/StatementWorkbook.tsx',
+    'frontend/src/styles/wsv2-core.css',
+    'static/react/finco-react.css',
+    'static/react/finco-react.js',
+    'tests/fin_v2_cohorts.py',
+    'tests/model_mutation_security_successor.py',
+    'tests/model_react_wsv2_acceptance.py',
+    'tests/test_model_react_overnight_b_governance.py',
+    'tests/test_model_react_wsv2_overview.py',
+    'tests/test_model_workspace_consolidation_browser.py',
+    'tests/test_rcm_governance.py',
+    'tests/test_rcux_governance.py',
+    'tests/test_wsv2_core_scope.py',
+    'tests/wsv2_core_scope.py',
+))
+
+# Exact historical manifest keys that may point at the newly authorized bytes.
+GOVERNANCE_PINS = frozenset((
+    'tests/model_mutation_security_successor.py',
+    'tests/fin_v2_cohorts.py',
+    'tests/test_rcm_governance.py',
+    'tests/test_model_react_overnight_b_governance.py',
+))
+PREDECESSOR_MANIFESTS = (
+    'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json',
+)
+
+
+def _git(root, *args):
+    return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
+
+
+def _read(root, path, ref):
+    return (root / path).read_bytes() if ref is None else _git(root, 'show', ref + ':' + path)
+
+
+def _blob(raw):
+    return hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+
+
+def manifest(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        data = json.loads(_read(root, MANIFEST, ref))
+        return data if (isinstance(data, dict) and isinstance(data.get('source_blobs'), dict)
+                        and data.get('schema_version') == SCHEMA and data.get('base') == BASE
+                        and data.get('authorization_head') == AUTHORIZATION_HEAD) else {}
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return {}
+
+
+def _historical_manifests_ok(root, ref):
+    for path in PREDECESSOR_MANIFESTS:
+        old = json.loads(_read(root, path, AUTHORIZATION_HEAD))
+        now = json.loads(_read(root, path, ref))
+        if not isinstance(now, dict) or not isinstance(now.get('source_blobs'), dict):
+            return False
+        before, after = old['source_blobs'], now['source_blobs']
+        history = now.get('historical_source_blobs')
+        if not isinstance(history, dict) or history.get(AUTHORIZATION_HEAD) != before:
+            return False
+        if set(before) != set(after):
+            return False
+        allowed = {'app/v2/react_rcux.py'} if path == PREDECESSOR_MANIFESTS[-1] else GOVERNANCE_PINS
+        if any(before[p] != after[p] and p not in allowed for p in before):
+            return False
+        # Every pre-existing metadata field remains; only the live pin map changes.
+        if any(now.get(k) != v for k, v in old.items() if k != 'source_blobs'):
+            return False
+    return True
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    pins = manifest(root, ref).get('source_blobs', {})
+    if set(pins) != OWNED_PATHS:
+        return False
+    try:
+        _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
+        _git(root, 'merge-base', '--is-ancestor', AUTHORIZATION_HEAD, ref or 'HEAD')
+        if any(_blob(_read(root, p, ref)) != b for p, b in pins.items()):
+            return False
+        if not _historical_manifests_ok(root, ref):
+            return False
+        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+            return False
+        if ref is None:
+            untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
+            if any(p not in OWNED_PATHS and p != MANIFEST for p in untracked):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError):
+        return False
+
+
+def allowed_path(path, repo=None, ref=None):
+    return path in OWNED_PATHS or path == MANIFEST
+
+
+def valid(repo=None, ref=None):
+    from tests.fin_v2_cohorts import valid as composite_valid
+    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+
+
+def matches(path, source=None, *, repo=None, ref=None):
+    pins = manifest(repo, ref).get('source_blobs', {})
+    if path not in pins or not valid(repo, ref):
+        return False
+    raw = source.encode() if isinstance(source, str) else source
+    return source is None or _blob(raw) == pins[path]
+
+
+def protected_blobs(repo=None, ref=None):
+    return {}  # Never admit a financial_engine, finco_core or domain source.

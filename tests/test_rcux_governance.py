@@ -30,7 +30,7 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path]) == blob                                       # strict equality with the current source
+        assert S.git_blob(SOURCES[path]) == S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob))  # exact later WS1 state only
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -254,7 +254,7 @@ ACCEPTANCE = ("tests/model_react_rcux_runs_acceptance.py", "tests/model_react_rc
 
 
 def test_the_consolidation_role_imports_exactly_the_rcux_acceptance_modules_and_adds_no_wrapper_of_its_own():
-    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-UX Completion V1"):]
+    tail = SOURCES[ROLE][SOURCES[ROLE].index("# RC-UX Completion V1"):SOURCES[ROLE].index("# WS1 Workspace V2")]
     modules = re.findall(r"^from (tests\.\w+) import \*", tail, flags=re.M)
     assert modules == [m.removesuffix(".py").replace("/", ".") for m in ACCEPTANCE]
     assert tail.count("def ") == 0 and "importorskip" not in tail and "mark.skip" not in tail

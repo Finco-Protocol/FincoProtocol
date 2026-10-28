@@ -218,6 +218,20 @@ RC_UX_SUCCESSORS={
 FINVAL_RATE_SUCCESSORS={
     "app/v2/router.py":"8fe930c5a1ac876de0d3a98fff689f34af646a68",
 }
+# Financial Owner WS1 approval: section A at c848a979 (2026-10-28).
+# Additive presentation-only pins; every historical dictionary above stays immutable.
+WSV2_PRESENTATION_SUCCESSORS={
+    "frontend/src/app/FinancialResults.tsx":"c53b677f29671380db916ceb4f4cfb2e2e53beeb",
+    "frontend/src/app/WorkspaceView.tsx":"c5f9ec51120d9145b8ffee001a63362ef9f83ee6",
+    "static/react/finco-react.css":"3a1eab32a691696787aa5b54893fe24812186608",
+    "static/react/finco-react.js":"0c9725723b8473f961fda2df51ddd49b61628e60",
+}
+
+# Separately authorized mandatory-role import; never a security or financial writer.
+WSV2_BROWSER_SUCCESSORS={
+    "tests/test_model_workspace_consolidation_browser.py":"7c6478289c029f8b53e16103fa22b22123cbd19a",
+}
+
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -329,6 +343,8 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
+        if path in WSV2_PRESENTATION_SUCCESSORS:admitted=admitted|{WSV2_PRESENTATION_SUCCESSORS[path]}
+        if path in WSV2_BROWSER_SUCCESSORS:admitted=admitted|{WSV2_BROWSER_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.

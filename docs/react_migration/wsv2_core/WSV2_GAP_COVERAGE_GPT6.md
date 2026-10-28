@@ -34,7 +34,7 @@ Statuses describe this branch only. IMPLEMENTED is source/local evidence, not me
 
 ## Evidence
 
-P00_BASELINE_RECEIPT.md; WSV2_INTERFACE_CONTRACT.md; SHARED_FILE_INTEGRATION.md. Local tests are in tests/test_model_react_wsv2_overview.py and tests/model_react_wsv2_acceptance.py (explicit invocation; mandatory role registration is gated). Report formatting acceptance is frontend/src/app/reportFormatting.test.mjs. Test/CI/screenshot receipts and exact final HEAD are delivered in the external handover ZIP. No screenshots or owner-supplied source material are imported into this public repository.
+P00_BASELINE_RECEIPT.md; WSV2_INTERFACE_CONTRACT.md; SHARED_FILE_INTEGRATION.md. Local tests are in tests/test_model_react_wsv2_overview.py and tests/model_react_wsv2_acceptance.py (registered in the existing mandatory consolidation role under approved section A). Report formatting acceptance is frontend/src/app/reportFormatting.test.mjs. Test/CI/screenshot receipts and exact final HEAD are delivered in the external handover ZIP. No screenshots or owner-supplied source material are imported into this public repository.
 
 ## Decimal display addendum
 

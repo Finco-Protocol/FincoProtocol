@@ -1,4 +1,4 @@
-"""Explicit local Chromium WS1 acceptance, pending governed mandatory-role registration."""
+"""WS1 Chromium acceptance, registered in the existing mandatory consolidation role."""
 import json
 import os
 import time
@@ -170,3 +170,11 @@ def test_wsv2_before_visuals_use_exact_main_assets(live_server,browser,rcm_react
         page.wait_for_selector('[data-financing-studio]');shot(page,'before-financing')
         (OUT/'before-provenance.json').write_text(json.dumps({'asset_sha':baseline,'backend':'local candidate; added read-only Overview route unused by baseline bundle','not_live_production':True},indent=2))
     finally:context.close()
+
+
+__all__ = [
+    "test_wsv2_real_run_reads_exact_snapshot_without_document_reload",
+    "test_wsv2_wizard_three_steps_library_and_safe_exception",
+    "test_wsv2_refuses_same_run_with_split_freshness",
+    "test_wsv2_before_visuals_use_exact_main_assets",
+]

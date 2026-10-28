@@ -1,0 +1,225 @@
+--- a/tests/model_react_mvp_acceptance.py
++++ b/tests/model_react_mvp_acceptance.py
+@@ -135,8 +135,6 @@
+         page.locator("[data-template-card='solar']").click()
+         page.locator("[data-wizard-next='true']").click()
+         page.fill("#rcm-name", "MVP template project")
+-        page.locator("[data-wizard-next='true']").click()
+-        page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+         page.locator("[data-wizard-next='true']").click()
+         page.wait_for_selector("[data-wizard-panel='review']")
+         page.locator("[data-wizard-create]").click()
+--- a/tests/model_react_rcm_new_project_acceptance.py
++++ b/tests/model_react_rcm_new_project_acceptance.py
+@@ -113,8 +113,6 @@
+     page.wait_for_selector("[data-wizard-panel='details']")
+     fill_details(page, name, capacity, country)
+     next_(page)
+-    page.wait_for_selector("[data-wizard-panel='timeline']")
+-    next_(page)
+     page.wait_for_selector("[data-wizard-panel='review']")
+ 
+ 
+@@ -187,16 +185,14 @@
+     shot(page, f"{key}-step2-errors-1440")
+     fill_details(page, f"RCM {label} Wizard", capacity=37.5)
+     next_(page)
+-    # step 3: the canonical reference timeline, read-only
+-    page.wait_for_selector("[data-wizard-panel='timeline']")
++    # step 3: review includes the canonical reference timeline and effective assumptions.
++    page.wait_for_selector("[data-wizard-panel='review']")
++    assert step(page) == 3 and page.locator(".rcm-steps li").count() == 3
++    assert page.locator("[data-wizard-panel='timeline']").count() == 0
+     tl = canon["timeline"]
+-    assert page.locator("[data-timeline='construction_months']").inner_text().startswith(str(tl["construction_months"]))
+-    assert page.locator("[data-timeline='cod_date']").inner_text() == tl["cod_date"]
+-    assert page.locator("[data-timeline='horizon_years']").inner_text().startswith(str(tl["horizon_years"]))
++    assert page.locator("[data-review='timeline']").inner_text() == (
++        f"{tl['construction_months']} months · COD {tl['cod_date']} · {tl['horizon_years']} years")
+     shot(page, f"{key}-step3-1440")
+-    next_(page)
+-    # step 4: effective assumptions are the server preview, not browser arithmetic
+-    page.wait_for_selector("[data-wizard-panel='review']")
+     preview = context.request.get(f"{live_server}/v2/model-react/new-project/preview",
+                                   params={"name": f"RCM {label} Wizard", "technology": key, "country": country, "capacity_mw": "37.5"}).json()
+     assert page.locator("[data-review='capex']").inner_text().startswith(preview["effective"]["total_capex_display"])
+@@ -208,7 +204,8 @@
+     wait_workspace(page, live_server)
+     rows = projects_of(uid)
+     assert len(rows) == 1 and rows[0].project_name == f"RCM {label} Wizard"
+-    assert page.url.rstrip("/").endswith(rows[0].project_code)
++    assert page.url.split("#", 1)[0].rstrip("/").endswith(rows[0].project_code)
++    assert page.url.endswith("#inputs")
+     page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='NOT_RUN']", timeout=30000)
+     shot(page, f"{key}-created-not-run-1440")
+     assert unexpected(errors, allow=(422,)) == []          # the one 422 is the deliberately invalid step 2
+@@ -352,7 +349,7 @@
+     assert page.evaluate("() => document.activeElement && document.activeElement.id") == "rcm-step-heading"
+     page.fill("#rcm-name", "RCM Keyboard")
+     page.locator("#rcm-name").press("Enter")                 # Enter in the form advances like Next
+-    page.wait_for_selector("[data-wizard-panel='timeline']")
++    page.wait_for_selector("[data-wizard-panel='review']")
+     assert errors == []
+ 
+ 
+@@ -365,7 +362,7 @@
+     shot(page, f"library-{width}")
+     open_wizard(page, live_server)
+     for label, action in (("step1", lambda: pick(page, "wind")), ("step2", lambda: next_(page)),
+-                          ("step3", lambda: (fill_details(page, "RCM Responsive"), next_(page))), ("step4", lambda: next_(page))):
++                          ("step3", lambda: (fill_details(page, "RCM Responsive"), next_(page)))):
+         action()
+         page.wait_for_function("() => document.querySelector('#rcm-step-heading')")
+         no_page_overflow(page)
+--- a/tests/model_react_rcm_themes_acceptance.py
++++ b/tests/model_react_rcm_themes_acceptance.py
+@@ -64,11 +64,8 @@
+             page.wait_for_selector("[data-wizard-panel='details']")
+             page.fill("#rcm-name", "Theme check")
+             page.locator("[data-wizard-next]").click()
+-            page.wait_for_selector("[data-wizard-panel='timeline']")
+-            check(page, f"{theme} / wizard step 3")
+-            page.locator("[data-wizard-next]").click()
+             page.wait_for_selector("[data-wizard-panel='review']")
+-            check(page, f"{theme} / wizard step 4")
++            check(page, f"{theme} / wizard step 3 (review and canonical timeline)")
+             # Analysis
+             for tool, marker in (("sensitivity", "[data-sensitivity-panel='true']"), ("goal-seek", "[data-goal-seek-panel='true']")):
+                 page.goto(f"{live_server}/v2/model-react/{record.project_code}#analysis")
+--- a/tests/model_react_rcux_navigation_acceptance.py
++++ b/tests/model_react_rcux_navigation_acceptance.py
+@@ -183,9 +183,6 @@
+         page.locator("[data-wizard-next='true']").click()
+         page.fill("#rcm-name", name)
+         page.locator("[data-wizard-next='true']").click()
+-        page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+-        audit(page, f"new project ({path}): timeline")
+-        page.locator("[data-wizard-next='true']").click()
+         page.wait_for_selector("[data-wizard-panel='review']", timeout=30000)
+         audit(page, f"new project ({path}): review")
+         page.locator("[data-wizard-create='true']").click()
+--- a/tests/model_react_rcux_product_acceptance.py
++++ b/tests/model_react_rcux_product_acceptance.py
+@@ -97,8 +97,6 @@
+         page.locator("[data-preview-ack='true']").check()
+     page.locator("[data-wizard-next='true']").click()
+     page.fill("#rcm-name", name)
+-    page.locator("[data-wizard-next='true']").click()
+-    page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+     page.locator("[data-wizard-next='true']").click()
+     page.wait_for_selector("[data-wizard-panel='review']")
+ 
+@@ -171,7 +169,8 @@
+     page.reload()
+     page.wait_for_selector("[data-path-card='new']")
+     assert page.locator("[data-wizard-next='true']").is_disabled()                # nothing proceeds before a path is chosen
+-    assert "completely blank model is not available" in page.locator("[data-path-card='new']").inner_text()
++    page.locator("[data-blank-project-constraint] summary").click()
++    assert "cannot currently be saved" in page.locator("[data-blank-project-constraint]").inner_text()
+     page.locator("[data-path-card='new']").click()
+     page.wait_for_selector("[data-tech-card='solar']")
+     assert "approved starting assumptions" in page.locator("[data-path-note='new']").inner_text()
+@@ -181,7 +180,6 @@
+     page.locator("[data-tech-card='wind']").click()
+     page.locator("[data-wizard-next='true']").click()
+     page.fill("#rcm-name", "Guided wind project")
+-    page.locator("[data-wizard-next='true']").click()
+     page.locator("[data-wizard-next='true']").click()
+     page.wait_for_selector("[data-wizard-panel='review']")
+     assert page.locator("[data-review='starter']").count() == 1 and page.locator("[data-review='template-assumptions']").count() == 0
+--- a/tests/test_model_react_poc_browser_acceptance.py
++++ b/tests/test_model_react_poc_browser_acceptance.py
+@@ -351,8 +351,6 @@
+     page.locator("[data-wizard-next='true']").click()
+     page.fill("#rcm-name", "UX02 created project")
+     page.locator("[data-wizard-next='true']").click()
+-    page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+-    page.locator("[data-wizard-next='true']").click()
+     page.wait_for_selector("[data-wizard-panel='review']")
+ 
+ 
+--- a/tests/model_react_wf1_browser_acceptance.py
++++ b/tests/model_react_wf1_browser_acceptance.py
+@@ -160,9 +160,9 @@
+             key_v, key_t = ("annual_v", "annual") if view == "annual" else ("model_v", "model")
+             rows = {r["id"]: r for r in sheet["rows"]}
+             for unit in ("EUR", "kEUR", "mEUR"):
+-                for precision in (0, 3):
++                for precision in (0, 2, 3, 0):
+                     page.select_option("#fm-sw-unit", unit)
+-                    page.select_option("#fm-sw-precision", str(precision))
++                    page.get_by_label("Report precision", exact=True).select_option( str(precision))
+                     cells = page.evaluate(COLLECT_CELLS)
+                     assert len(cells) == sum(len(r[key_t]) for r in rows.values()), (sheet_id, view)
+                     for cell in cells:
+@@ -195,7 +195,7 @@
+     page.get_by_role("tab", name="Profit & Loss", exact=True).click()
+     page.select_option("#fm-sw-view", "annual")
+     page.select_option("#fm-sw-unit", "kEUR")
+-    page.select_option("#fm-sw-precision", "2")
++    page.get_by_label("Report precision", exact=True).select_option( "2")
+     assert "Statement line · kEUR" in page.inner_text("#fm-sw-sheet")
+     revenue = next(r for r in sheets["pl"]["rows"] if r["id"] == "revenues_keur")
+     assert page.locator("button[data-statement-row='revenues_keur'][data-statement-col='1']").inner_text() == revenue["annual"][1]
+@@ -241,7 +241,7 @@
+     for unit in ("EUR", "kEUR", "mEUR"):
+         for precision in (0, 1, 2, 3):
+             page.select_option("select[data-control='unit']", unit)
+-            page.select_option("select[data-control='precision']", str(precision))
++            page.get_by_label("Report precision", exact=True).select_option( str(precision))
+             for metric in metrics:
+                 card = page.locator(f"[data-metric-label='{metric['label']}']")
+                 assert card.get_attribute("data-metric-canonical") == metric["display"], "source text must be preserved"
+@@ -253,7 +253,7 @@
+     for metric in verbatim:
+         assert page.locator(f"[data-metric-label='{metric['label']}'] .rx-live-kpi-value").inner_text() == metric["display"]
+     page.select_option("select[data-control='unit']", "kEUR")
+-    page.select_option("select[data-control='precision']", "1")
++    page.get_by_label("Report precision", exact=True).select_option( "1")
+     # operating performance annual table: every cell traces to the canonical annual statement column
+     for row_key, canonical_row in (("pl.revenues_keur", pl["revenues_keur"]), ("pl.ebit_keur", pl["ebit_keur"])):
+         cells = page.locator(f"[data-period-table='operating-performance'] td[data-row='{row_key}']")
+@@ -267,7 +267,7 @@
+             assert cell.inner_text() == expect_display_v(canonical_v, "kEUR", "kEUR", 1)
+     # unit switch converts the same canonical values; headers carry the unit
+     page.select_option("select[data-control='unit']", "mEUR")
+-    page.select_option("select[data-control='precision']", "3")
++    page.get_by_label("Report precision", exact=True).select_option( "3")
+     cell = page.locator("[data-period-table='operating-performance'] td[data-row='pl.revenues_keur']").nth(1)
+     assert cell.inner_text() == expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "mEUR", 3)
+     assert "Line · mEUR" in page.locator("[data-period-table='operating-performance']").inner_text()
+--- a/tests/model_react_rcm_investors_acceptance.py
++++ b/tests/model_react_rcm_investors_acceptance.py
+@@ -179,10 +179,20 @@
+     page.reload()
+     page.wait_for_selector("[data-investor-workflow='INCORPORATED']", timeout=30000)
+     api_rows = api(context, live_server, record.project_code)["evidence"]["investors"]
++    assert page.get_by_label("Report precision", exact=True).input_value() == "0"
+     for mine in api_rows:
+         cells = page.locator(f"[data-evidence-row='{mine['investor_id']}'] td").all_inner_texts()
+         assert cells[0] == f"{mine['ownership_fraction'] * 100:.2f}%"
+-        assert cells[4] == f"{mine['residual_distributions_keur']:,.2f}"
++        from decimal import Decimal, ROUND_HALF_UP
++        raw = Decimal(str(mine['residual_distributions_keur']))
++        def amount(digits):
++            value = raw.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
++            text = format(abs(value), f',.{digits}f')
++            return '(' + text + ')' if value < 0 else text
++        assert cells[4] == amount(0)
++        for digits in (2, 3, 0):
++            page.get_by_label("Report precision", exact=True).select_option(str(digits))
++            assert page.locator(f"[data-evidence-row='{mine['investor_id']}'] td").nth(4).inner_text() == amount(digits)
+         assert cells[6] == (f"{mine['dpi']:.3f}x" if mine["dpi"] is not None else "UNAVAILABLE")
+     shot(page, "evidence-1440")
+     text = page.inner_text("[data-investors-panel]")
+--- a/tests/model_react_rcux_analysis_acceptance.py
++++ b/tests/model_react_rcux_analysis_acceptance.py
+@@ -615,7 +615,7 @@
+             page.goto(f"{base}#{section}")
+             page.wait_for_selector("[data-workspace-nav], nav", timeout=60000)
+     for section in ("statements", "financing", "analysis", "inputs"):
+-        page.locator(f"[data-workspace-nav] a[href$='#{section}'], nav a[href$='#{section}']").first.click()
++        page.locator(f"[data-workspace-nav] a[href$='#{section}']").click()
+         page.wait_for_timeout(250)
+         assert page.url.startswith(base), (section, page.url)
+     page.go_back()

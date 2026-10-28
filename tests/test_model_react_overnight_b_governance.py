@@ -39,7 +39,7 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
         # strict equality, as before: the current source is exactly the Overnight B state, or — only for a path the separately reviewed
         # RC-M layer also covers — exactly that later pinned state (never "either one")
         from tests.fin_v2_cohorts import matches as fin_v2_3_matches
-        assert S.git_blob(SOURCES[path]) == S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob)) or fin_v2_3_matches(path, SOURCES[path])   # or the exact FIN-V2-3 cohort state
+        assert S.git_blob(SOURCES[path]) == S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob)))) or fin_v2_3_matches(path, SOURCES[path])   # or the exact FIN-V2-3 cohort state
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
