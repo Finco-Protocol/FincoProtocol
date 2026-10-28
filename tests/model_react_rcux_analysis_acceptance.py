@@ -33,6 +33,8 @@ __all__ = (
     "test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back",
     "test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexation_start_date_without_a_run",
     "test_rcux_ppa_contract_dates_off_the_period_boundary_offer_the_nearest_accepted_dates_and_never_round",
+    "test_rcux_scenario_override_is_saved_verified_reset_and_never_touches_the_base_case_or_runs",
+    "test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -568,4 +570,56 @@ def test_rcux_ppa_contract_dates_off_the_period_boundary_offer_the_nearest_accep
     _shot(page, "ppa-date-suggestions")
     suggestions.first.click()
     assert stream.get_by_label("End date").input_value() == offered[0] and stream.locator("[data-date-guidance]").count() == 0
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_scenario_override_is_saved_verified_reset_and_never_touches_the_base_case_or_runs(live_server, an_session):
+    context, page, record, errors = an_session("rcux-r22")
+    run_canonical(context, live_server, record.project_code)
+    history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#scenarios")
+    page.wait_for_selector("[data-scenario-workspace='true']", timeout=60000)
+    page.get_by_label("New scenario name").fill("Downside tariff")
+    page.get_by_role("button", name="Create scenario").click()
+    page.wait_for_function("() => document.querySelector(\"[data-active-scenario-banner='true']\")?.innerText.includes('Downside tariff')", timeout=60000)
+    page.get_by_role("button", name="Edit overrides of Downside tariff").click()
+    editor = page.locator("[data-override-editor='Downside tariff']")
+    editor.wait_for(timeout=60000)
+    row = editor.locator("[data-override-field]").first
+    field_id = row.get_attribute("data-override-field")
+    assert row.get_attribute("data-overridden") == "false"
+    base_value = row.locator("td").nth(0).inner_text().strip()
+    scenario_input = row.locator("input")
+    scenario_input.fill("61.5")
+    row.get_by_role("button", name="Save").click()
+    page.wait_for_selector("[data-override-editor='Downside tariff'] [data-override-field][data-overridden='true']", timeout=60000)
+    assert "override saved and verified" in page.locator("[data-override-editor='Downside tariff']").inner_text()
+    assert row.locator("td").nth(0).inner_text().strip() == base_value                     # the project (Base Case) value is untouched
+    assert row.locator("input").input_value() == "61.5"
+    _shot(page, "scenario-override-saved")
+    row.get_by_role("button", name="Remove override for").click()
+    page.get_by_role("button", name="Remove override", exact=True).click()                 # the confirmation names what is removed
+    page.wait_for_selector(f"[data-override-field='{field_id}'][data-overridden='false']", timeout=60000)
+    assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history     # overrides never run the model
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library(live_server, an_session):
+    context, page, record, errors = an_session("rcux-r28")
+    base = f"{live_server}/v2/model-react/{record.project_code}"
+    visited = []
+    page.on("framenavigated", lambda frame: visited.append(frame.url) if frame == page.main_frame else None)
+    for _ in range(3):
+        for section in ("inputs", "statements", "financing", "results", "scenarios", "analysis", "diagnostics", "trust", "inputs"):
+            page.goto(f"{base}#{section}")
+            page.wait_for_selector("[data-workspace-nav], nav", timeout=60000)
+    for section in ("statements", "financing", "analysis", "inputs"):
+        page.locator(f"[data-workspace-nav] a[href$='#{section}'], nav a[href$='#{section}']").first.click()
+        page.wait_for_timeout(250)
+        assert page.url.startswith(base), (section, page.url)
+    page.go_back()
+    page.go_back()
+    page.wait_for_timeout(300)
+    assert page.url.startswith(base), page.url
+    assert all(u.startswith(base) for u in visited), [u for u in visited if not u.startswith(base)]
     assert [e for e in errors if "Failed to load resource" not in e] == []
