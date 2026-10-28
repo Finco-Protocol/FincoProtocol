@@ -17,6 +17,7 @@ from app.v2.react_goal_seek_targets import router as _goal_seek_targets_router
 from app.v2.react_import import router as _import_router
 from app.v2.react_opex_projection import router as _opex_projection_router
 from app.v2.react_projects import router as _projects_router
+from app.v2.react_run_statements import router as _run_statements_router
 from app.v2.react_trust import router as _trust_router
 from app.v2.react_whatif import router as _whatif_router
 
@@ -30,7 +31,8 @@ router.include_router(_import_router)
 router.include_router(_capex_router)
 router.include_router(_opex_projection_router)
 router.include_router(_projects_router)
+router.include_router(_run_statements_router)
 router.include_router(_trust_router)
 router.include_router(_whatif_router)
 
-RCUX_ADAPTERS = ("react_capex", "react_compare", "react_compare_projects", "react_construction_timing", "react_credit_decision", "react_goal_seek_targets", "react_import", "react_opex_projection", "react_projects", "react_trust", "react_whatif")
+RCUX_ADAPTERS = ("react_capex", "react_compare", "react_compare_projects", "react_construction_timing", "react_credit_decision", "react_goal_seek_targets", "react_import", "react_opex_projection", "react_projects", "react_run_statements", "react_trust", "react_whatif")

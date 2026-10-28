@@ -4,6 +4,7 @@ import { fetchInsightsHistory } from "../insights";
 import type { HistoryPayload } from "../insights";
 import { CreditDecisionPanel } from "../credit/CreditDecisionPanel";
 import { CompareWorkspace } from "./CompareWorkspace";
+import { HistoricalStatements } from "./HistoricalStatements";
 import { RunHistoryList } from "./RunHistoryList";
 import { friendlyMessage } from "../productLanguage";
 
@@ -13,6 +14,14 @@ export function RunsWorkspace({ project, workbookHash }: { project: string; work
   const [history, setHistory] = useState<HistoryPayload | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  // The earlier Run whose saved statements are open; kept in the URL (`?statements=`) so it can be linked, refreshed and left with Back.
+  const [statementsFor, setStatementsFor] = useState(() => new URLSearchParams(window.location.search).get("statements") ?? "");
+  function openStatements(historyId: string) {
+    setStatementsFor(historyId);
+    const url = new URL(window.location.href);
+    if (historyId) url.searchParams.set("statements", historyId); else url.searchParams.delete("statements");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 
   // Re-read after a Save or Run (the Working Copy hash changes) so CURRENT / STALE / MATCHES labels follow the canonical state.
   useEffect(() => {
@@ -30,9 +39,10 @@ export function RunsWorkspace({ project, workbookHash }: { project: string; work
   }, [project, workbookHash]);
 
   if (!history) return <p className="rx-boot-loading" role="status" data-runs-loading="true">{error || "Reading the committed Run history…"}</p>;
+  if (statementsFor) return <div data-runs-workspace="true"><HistoricalStatements project={project} historyId={statementsFor} onBack={() => openStatements("")} /></div>;
   return (
     <div data-runs-workspace="true">
-      <RunHistoryList project={project} history={history} workbookHash={workbookHash} selected={selected} onSelect={setSelected} />
+      <RunHistoryList project={project} history={history} workbookHash={workbookHash} selected={selected} onSelect={setSelected} onOpenStatements={openStatements} />
       <CompareWorkspace project={project} historyIds={selected} workbookHash={workbookHash} onClear={() => setSelected([])} />
       <CreditDecisionPanel project={project} historyIds={selected} workbookHash={workbookHash} />
     </div>

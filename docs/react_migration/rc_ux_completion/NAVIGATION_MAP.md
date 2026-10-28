@@ -31,10 +31,10 @@ only). One canonical router (`/v2/model-react/<project>#<section>` with `?financ
 | Legacy Model Analysis / Sensitivity / Goal Seek / What-if | A | `?analysis=…#analysis`. |
 | `/v2/workbook/run-history` (list, compare) | A | Analysis › Run history & compare (`?analysis=runs`). |
 | `/v2/workbook/trust/certificate`, `/v2/workbook/trust/validation` (classic HTML fragments) | **B (built here)** | `#trust`; `GET /v2/model-react/trust/certificate`, `/trust/validation` (adapter `app/v2/react_trust.py`, same canonical builders, allow-listed JSON). |
-| `/v2/workbook/run-history/statements`, `/v2/workbook/run-history/detail` (historical statements / Run detail pages) | **C (deferred)** | No link is rendered. The evidence disclosure states "Statements and detail pages for an earlier Run are not released in this version. Use Run history to export that Run." Gap stays open in the register (R-HIST-STATEMENTS); not closed by a Legacy fallback. |
+| `/v2/workbook/run-history/statements` (historical statements) | **A (React)** | Analysis > Run history & compare > "View statements" opens `HistoricalStatements` in React (`GET /model-react/analysis/run-statements`, cell-for-cell equal to the Legacy page; test `test_model_react_rcux_run_statements_v1.py`). The Run **detail** page (`/v2/workbook/run-history/detail`) has no React twin: its evidence is covered by the Run history list, Compare and the statements view; export stays the file download. |
 | `/v2/capex/spending-profiles` | A | Inputs › Studios › CAPEX spending profile. |
 | `/v2/import` (Excel/CSV import) | A / B | Inputs › Studios › Import from Excel / CSV (adapter `app/v2/react_import.py`). |
-| Credit decision / IC pack / FINCO Verify pages | C | Not linked from React; reporting pack stays an open gap (R12) with no Legacy fallback. |
+| Credit decision (`/v2/credit-decision`) | **A (React)** | Analysis > Run history & compare > "Credit decision" panel (`GET /model-react/analysis/credit-decision`, JSON equal to the Legacy embedded payload; test `test_model_react_rcux_credit_decision_v1.py`). IC pack / credit pack / FINCO Verify pages stay unlinked (open gap R12-IC, owner-blocked: no JSON authority released). |
 | `/login` | — | Not rendered as a link; the session guard redirects, not a product navigation. |
 
 ## 3. Redirects (programmatic navigation) audited

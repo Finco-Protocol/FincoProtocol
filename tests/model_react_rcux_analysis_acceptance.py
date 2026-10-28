@@ -30,6 +30,7 @@ __all__ = (
     "test_rcux_financing_overview_without_a_run_marks_returns_not_available_never_zero",
     "test_rcux_credit_decision_for_the_last_run_equals_the_server_projection_and_starts_no_run",
     "test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every_viewport",
+    "test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -479,4 +480,35 @@ def test_rcux_credit_decision_for_two_selected_runs_compares_them_and_fits_every
         page.set_viewport_size({"width": width, "height": 900})
         overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         assert overflow <= 1, (width, overflow)
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back(live_server, an_session):
+    context, page, record, errors = an_session("rcux-hist-st")
+    run_canonical(context, live_server, record.project_code)
+    history_id = context.request.get(f"{live_server}/v2/model-react/insights/history?project={record.project_code}").json()["history"][0]["identity"]["history_id"]
+    api = context.request.get(f"{live_server}/v2/model-react/analysis/run-statements", params={"project": record.project_code, "history_id": history_id}).json()
+    _open_runs_tab(page, live_server, record.project_code)
+    page.locator(f"[data-run-statements='{history_id}']").click()
+    page.wait_for_selector("[data-historical-statements='true']", timeout=60000)
+    assert "statements=" in page.url and page.url.startswith(live_server + "/v2/model-react/")             # a React route, not a Legacy page
+    pnl = next(s for s in api["statements"]["drilldown"]["statements"] if s["id"] == "pnl")
+    revenue = next(n for n in pnl["views"]["annual"]["nodes"] if n["key"] == "revenues_keur")
+    row = page.locator("[data-hist-statement='pnl'] [data-hist-row='revenues_keur']")
+    cells = [c.inner_text().strip() for c in row.locator("td").all()]
+    assert cells == [c["text"] if c["v"] is not None else "—not available" for c in revenue["cells"]] or [c.split("\n")[0] for c in cells] == [c["text"] if c["v"] is not None else "—" for c in revenue["cells"]]
+    assert page.locator("[data-hist-advanced='true']").get_attribute("open") is None
+    before = page.locator("[data-hist-statement='pnl'] [data-hist-row]").count()
+    toggles = page.locator("[data-hist-statement='pnl'] button[aria-expanded='true']")
+    assert toggles.count() > 0
+    toggles.first.click()
+    assert page.locator("[data-hist-statement='pnl'] [data-hist-row]").count() < before               # collapsing hides detail rows; values are untouched
+    page.select_option("[data-hist-basis]", "model")
+    assert page.locator("[data-hist-statement='pnl'] thead th").count() > page.locator("[data-hist-statement='pnl'] [data-hist-row]").first.locator("td").count() - 1
+    _shot(page, "historical-statements")
+    page.reload()
+    page.wait_for_selector("[data-historical-statements='true']", timeout=60000)
+    page.locator("[data-hist-back='true']").click()
+    page.wait_for_selector("[data-run-history-table='true']", timeout=60000)
+    assert "statements=" not in page.url
     assert [e for e in errors if "Failed to load resource" not in e] == []

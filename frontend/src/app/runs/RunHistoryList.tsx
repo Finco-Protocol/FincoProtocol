@@ -16,8 +16,8 @@ function chipClass(state: string): string {
 
 /** Filter + sort over the canonical Run History projection.  Selection is explicit and local: it never selects a scenario,
  *  saves or runs.  "Matches Working Copy" is a hash-equality label only; it never turns a historical Run into the Last Run. */
-export function RunHistoryList({ project, history, workbookHash, selected, onSelect, busy = false }: {
-  project: string; history: HistoryPayload; workbookHash: string; selected: string[]; onSelect: (ids: string[]) => void; busy?: boolean;
+export function RunHistoryList({ project, history, workbookHash, selected, onSelect, onOpenStatements, busy = false }: {
+  project: string; history: HistoryPayload; workbookHash: string; selected: string[]; onSelect: (ids: string[]) => void; onOpenStatements?: (historyId: string) => void; busy?: boolean;
 }) {
   const [text, setText] = useState("");
   const [scenario, setScenario] = useState(STATE_ALL);
@@ -136,6 +136,7 @@ export function RunHistoryList({ project, history, workbookHash, selected, onSel
                     </details>
                   </td>
                   <td className="rcm-left">
+                    {onOpenStatements && <button type="button" className="rx-link-button" data-run-statements={i.history_id} onClick={() => onOpenStatements(i.history_id)}>View statements</button>}{onOpenStatements && " · "}
                     <a href={historicalExportUrl(project, i.history_id)} data-run-export={i.history_id}>Download XLSX</a>
                   </td>
                 </tr>
