@@ -1,4 +1,5 @@
 import "../../styles/rcm-financing.css";
+import { ReserveReturnsView } from "./ReserveReturnsView";
 import type { CapitalStackRow, EvidenceMetric, FinancingStudioPayload, SourcesUsesView, SuRow } from "./types";
 
 const PRICING: Record<string, string> = {
@@ -54,6 +55,8 @@ export function OverviewView({ studio }: { studio: FinancingStudioPayload }) {
       <dl className="rcm-facts" data-financing-evidence="true">
         {studio.financing_evidence.metrics.map((m) => <Metric key={m.label} m={m} />)}
       </dl>
+
+      <ReserveReturnsView studio={studio} />
 
       <h4 className="rcm-h4">Not released</h4>
       <ul className="rcm-closed" data-financing-closed="true">

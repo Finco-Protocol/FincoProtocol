@@ -48,3 +48,5 @@
 /* Narrow screens: no financing panel may widen the page, whatever the platform font (long words wrap, tables scroll inside their card). */
 .rcm-fin { min-width: 0; overflow-wrap: anywhere; }
 .rcm-fin .rcm-closed li, .rcm-fin .rx-note, .rcm-fin .rcm-facts dd { overflow-wrap: anywhere; }
+.rcm-h5 { margin: 10px 0 4px; font-size: .82rem; color: var(--muted, #526374); }
+.rcm-scroll { overflow-x: auto; max-width: 100%; }

@@ -26,6 +26,8 @@ __all__ = (
     "test_rcux_construction_timing_shows_the_derived_start_plans_on_the_server_and_saves_atomically_without_a_run",
     "test_rcux_construction_timing_refuses_a_month_end_clash_with_server_suggestions",
     "test_rcux_construction_timing_templates_are_read_only",
+    "test_rcux_financing_overview_shows_reserve_sponsor_returns_and_cash_rows_equal_to_the_server_projection",
+    "test_rcux_financing_overview_without_a_run_marks_returns_not_available_never_zero",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -389,3 +391,41 @@ def test_rcux_construction_timing_templates_are_read_only(live_server, an_sessio
     page.wait_for_selector("[data-timing-readonly='true']", timeout=60000)
     assert page.locator("[data-timing-start]").count() == 0 and page.locator("[data-timing-save]").count() == 0
     assert errors == []
+
+
+def _open_financing_overview(page, base, code):
+    page.goto(f"{base}/v2/model-react/{code}#financing")
+    page.wait_for_selector("[data-financing-studio='true']", timeout=60000)
+    page.locator("[data-financing-tab-button='overview']").click()
+    page.wait_for_selector("[data-financing-reserve-returns='true']", timeout=60000)
+
+
+def test_rcux_financing_overview_shows_reserve_sponsor_returns_and_cash_rows_equal_to_the_server_projection(live_server, an_session):
+    context, page, record, errors = an_session("rcux-fin-rr")
+    run_canonical(context, live_server, record.project_code)
+    api = context.request.get(f"{live_server}/v2/model-react/financing/studio", params={"project": record.project_code}).json()
+    _open_financing_overview(page, live_server, record.project_code)
+    policy = page.locator("[data-reserve-policy='true']").inner_text()
+    assert api["reserve_view"]["support"] in policy and api["reserve_view"]["requirement"]["display"] in policy
+    returns = page.locator("[data-facts='sponsor-returns']")
+    for metric in api["sponsor_view"]["returns"]:
+        row = returns.locator(f"[data-evidence-metric='{metric['label']}']")
+        assert row.count() == 1 and metric["display"] in row.inner_text()
+    rows = api["financing_evidence"]["cash_rows"]
+    assert rows, "a committed Run persists the Senior cash waterfall"
+    table = page.locator("[data-dsra-cash='true'] tbody tr")
+    assert table.count() == len(rows)
+    first = table.first.inner_text()
+    assert rows[0]["cfads"]["display"] in first and rows[0]["service"]["display"] in first
+    assert page.locator("[data-sizing-status='true']").inner_text().startswith("Sizing and binding-constraint status")
+    _shot(page, "financing-reserve-returns")
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_financing_overview_without_a_run_marks_returns_not_available_never_zero(live_server, an_session):
+    context, page, record, errors = an_session("rcux-fin-rr-norun")
+    _open_financing_overview(page, live_server, record.project_code)
+    returns = page.locator("[data-facts='sponsor-returns']").inner_text()
+    assert "Not available" in returns and "0.00%" not in returns and "0.00x" not in returns
+    assert page.locator("[data-dsra-cash-empty='true']").count() == 1
+    assert [e for e in errors if "Failed to load resource" not in e] == []

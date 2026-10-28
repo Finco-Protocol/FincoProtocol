@@ -43,6 +43,13 @@ export interface SourcesUsesView {
   residual?: SuRow | number | string | null; balance_status?: string; integrity?: string; integrity_note?: string;
 }
 
+export interface DsraCashRow { period: number | string | null; date: string | null; cfads: EvidenceMetric; service: EvidenceMetric; funding: EvidenceMetric; release: EvidenceMetric }
+export interface ReserveView { support: string; target: string; months: number | null; requirement: EvidenceMetric; facility: EvidenceMetric }
+export interface SponsorView {
+  mode: string; equity: EvidenceMetric[]; other: EvidenceMetric[]; shl: EvidenceMetric[]; repayment: string; day_count: string;
+  eligibility: number | null; maturity: number | null; returns: EvidenceMetric[];
+}
+
 export interface FinancingStudioPayload {
   ok: true;
   project: { code: string; protected_reference: boolean };
@@ -53,9 +60,9 @@ export interface FinancingStudioPayload {
   bankability: BankabilityView;
   senior_pricing_mode: string; senior_dscr_mode: string;
   debt_actual_senior_keur_display: string | null; debt_actual_gearing_pct_display: string | null;
-  financing_evidence: { metrics: EvidenceMetric[] };
-  reserve_view: Record<string, unknown>;
-  sponsor_view: Record<string, unknown>;
+  financing_evidence: { metrics: EvidenceMetric[]; cash_rows?: DsraCashRow[]; sizing_status?: string; sizing_reason?: string };
+  reserve_view: ReserveView;
+  sponsor_view: SponsorView;
   senior_detail_rows: Array<[string, string | null]>;
   senior_lock_reason: string | null;
   capital_stack: CapitalStack;
