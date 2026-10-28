@@ -377,7 +377,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
               </div>
               <div id="wf-inputs-studios" tabIndex={-1}>
                 <InputStudios project={project} protectedReference={Boolean(workspace.project.protected_reference)}
-                  reloadKey={dataVersion} onSaved={afterMutation} />
+                  reloadKey={dataVersion} onSaved={afterMutation} onSaveCells={saveCells} />
               </div>
             </>
             : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>

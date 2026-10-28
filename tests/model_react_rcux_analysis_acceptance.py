@@ -23,6 +23,9 @@ __all__ = (
     "test_rcux_compare_projects_deep_link_refresh_back_and_tenant_isolation",
     "test_rcux_compare_projects_fits_every_viewport",
     "test_rcux_statements_year_zero_toggle_hides_exactly_the_first_model_period_and_changes_no_value",
+    "test_rcux_construction_timing_shows_the_derived_start_plans_on_the_server_and_saves_atomically_without_a_run",
+    "test_rcux_construction_timing_refuses_a_month_end_clash_with_server_suggestions",
+    "test_rcux_construction_timing_templates_are_read_only",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
 
@@ -310,4 +313,79 @@ def test_rcux_statements_year_zero_toggle_hides_exactly_the_first_model_period_a
     page.reload()
     page.wait_for_selector("#fm-sw-view", timeout=60000)
     assert page.locator(".fm-sw-period-toggle").inner_text().startswith("Year 0 (initial period): hidden")
+    assert errors == []
+
+
+def _open_timing(page, base, code):
+    page.goto(f"{base}/v2/model-react/{code}#inputs")
+    page.reload()
+    page.locator("[data-studio-tab='construction-timing']").click()
+    page.wait_for_selector("[data-timing='ready']", timeout=60000)
+
+
+def _timing_api(context, base, code, **extra):
+    query = "&".join(f"{k}={v}" for k, v in extra.items())
+    response = context.request.get(f"{base}/v2/model-react/construction-timing?project={code}" + (f"&{query}" if query else ""))
+    assert response.ok, response.text()[:300]
+    return response.json()
+
+
+def test_rcux_construction_timing_shows_the_derived_start_plans_on_the_server_and_saves_atomically_without_a_run(live_server, an_session):
+    context, page, record, errors = an_session("rcux-timing")
+    run_canonical(context, live_server, record.project_code)
+    history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+    api = _timing_api(context, live_server, record.project_code)["saved"]
+    _open_timing(page, live_server, record.project_code)
+    assert page.locator("[data-timing-cod]").inner_text() == api["cod_date"]
+    assert page.locator("[data-timing-derived]").inner_text() == api["derived_start"]
+    assert page.locator("[data-timing-duration]").inner_text() == api["duration"]
+    assert page.locator("[data-timing-save]").is_disabled()                                  # the saved timing is "already saved"
+    page.fill("[data-timing-start]", "2029-07-01")
+    page.fill("[data-timing-months]", "2")
+    page.select_option("[data-timing-unit]", "years")
+    page.wait_for_selector("[data-timing-plan='valid']", timeout=30000)
+    planned = _timing_api(context, live_server, record.project_code, start="2029-07-01", months="24")["plan"]
+    assert planned["ok"] and planned["cod_date"] == "2031-07-01"
+    assert f"COD {planned['cod_date']}" in page.locator("[data-timing-plan]").inner_text()      # the page shows what the server planned, nothing else
+    assert _timing_api(context, live_server, record.project_code)["saved"]["cod_date"] == api["cod_date"]      # planning saved nothing
+    _shot(page, "construction-timing-plan")
+    page.locator("[data-timing-save]").click()
+    page.wait_for_selector("[data-timing-outcome='ok']", timeout=60000)
+    after = _timing_api(context, live_server, record.project_code)["saved"]
+    assert after["cod_date"] == "2031-07-01" and after["construction_months"] == 24 and after["derived_start"] == "2029-07-01"
+    assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history     # Save never runs
+    freshness = context.request.get(f"{live_server}/v2/model-react/capex/profiles?project={record.project_code}").json()["last_run"]["freshness"]
+    assert freshness == "STALE"
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_construction_timing_refuses_a_month_end_clash_with_server_suggestions(live_server, an_session):
+    context, page, record, errors = an_session("rcux-timing-clash")
+    _open_timing(page, live_server, record.project_code)
+    before = _timing_api(context, live_server, record.project_code)["saved"]
+    page.select_option("[data-timing-mode]", "end")
+    page.fill("[data-timing-start]", "2030-02-28")
+    page.fill("[data-timing-end]", "2030-03-30")
+    page.wait_for_selector("[data-timing-plan='invalid']", timeout=30000)
+    assert "whole number of months" in page.locator("[data-timing-plan]").inner_text() or "cannot be represented" in page.locator("[data-timing-plan]").inner_text()
+    assert page.locator("[data-timing-save]").is_disabled()
+    page.fill("[data-timing-start]", "2029-03-30")
+    page.fill("[data-timing-end]", "2030-03-30")
+    page.wait_for_selector("[data-timing-plan]", timeout=30000)
+    assert _timing_api(context, live_server, record.project_code)["saved"] == before
+    assert errors == []
+
+
+def test_rcux_construction_timing_templates_are_read_only(live_server, an_session):
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.project_library_service import ensure_reference_models
+
+    context, page, record, errors = an_session("rcux-timing-ref")
+    ensure_reference_models()
+    ref = get_reference_by_template_source("generic_solar_reference")
+    page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs")
+    page.reload()
+    page.locator("[data-studio-tab='construction-timing']").click()
+    page.wait_for_selector("[data-timing-readonly='true']", timeout=60000)
+    assert page.locator("[data-timing-start]").count() == 0 and page.locator("[data-timing-save]").count() == 0
     assert errors == []

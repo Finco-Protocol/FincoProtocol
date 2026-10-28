@@ -3,20 +3,24 @@ import "../../styles/rcm-analysis.css";
 import { CapexStudio } from "../capex/CapexStudio";
 import { ImportWorkspace } from "../importer/ImportWorkspace";
 import { OpexProjection } from "../projection/OpexProjection";
+import { ConstructionTiming } from "../timing/ConstructionTiming";
+import type { GridSaveOutcome } from "../CanonicalInputGrid";
 import { SheetFieldsEditor } from "../workflow/SheetFieldsEditor";
 
-export type StudioId = "capex-profile" | "revenue-assumptions" | "opex-projection" | "import";
+export type StudioId = "capex-profile" | "revenue-assumptions" | "opex-projection" | "construction-timing" | "import";
 const STUDIOS: ReadonlyArray<{ id: StudioId; label: string }> = [
   { id: "capex-profile", label: "CAPEX spending profile" },
   { id: "revenue-assumptions", label: "Revenue assumptions" },
   { id: "opex-projection", label: "OPEX projection (Y1–Y30)" },
+  { id: "construction-timing", label: "Construction timing" },
   { id: "import", label: "Import from Excel / CSV" },
 ];
 
 /** Inputs > Studios (RC-UX): focused editors that sit beside the canonical grid, CAPEX / OPEX lines and Revenue & PPA contracts.  Each studio
  *  states its own Save scope; none of them runs the model and none computes a financial result in the browser. */
-export function InputStudios({ project, protectedReference, reloadKey, onSaved }: {
+export function InputStudios({ project, protectedReference, reloadKey, onSaved, onSaveCells }: {
   project: string; protectedReference: boolean; reloadKey: number; onSaved: () => void;
+  onSaveCells?: (cells: Array<{ field_id: string; value: string }>) => Promise<GridSaveOutcome>;
 }) {
   // Closed until chosen: the Inputs page stays compact (U01) and each studio loads only when it is opened.
   const [studio, setStudio] = useState<StudioId | null>(null);
@@ -42,6 +46,7 @@ export function InputStudios({ project, protectedReference, reloadKey, onSaved }
           <SheetFieldsEditor project={project} sheet="revenue" title="Revenue assumptions" reloadKey={reloadKey} onSaved={onSaved} />
         </div>
       )}
+      {studio === "construction-timing" && <ConstructionTiming project={project} protectedReference={protectedReference} reloadKey={reloadKey} onSaveCells={onSaveCells} onSaved={onSaved} />}
       {studio === "opex-projection" && <OpexProjection project={project} reloadKey={reloadKey} />}
       {studio === "import" && <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={onSaved} />}
     </section>
