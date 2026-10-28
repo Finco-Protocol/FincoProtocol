@@ -33,6 +33,7 @@ __all__ = (
     "test_rcux_earlier_run_statements_open_in_react_with_the_runs_own_values_and_survive_refresh_and_back",
     "test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexation_start_date_without_a_run",
     "test_rcux_ppa_contract_dates_off_the_period_boundary_offer_the_nearest_accepted_dates_and_never_round",
+    "test_rcux_credit_headroom_measures_the_saved_run_against_typed_hypothetical_thresholds_and_saves_nothing",
     "test_rcux_scenario_override_is_saved_verified_reset_and_never_touches_the_base_case_or_runs",
     "test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library",
 )
@@ -622,4 +623,35 @@ def test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library
     page.wait_for_timeout(300)
     assert page.url.startswith(base), page.url
     assert all(u.startswith(base) for u in visited), [u for u in visited if not u.startswith(base)]
+    assert [e for e in errors if "Failed to load resource" not in e] == []
+
+
+def test_rcux_credit_headroom_measures_the_saved_run_against_typed_hypothetical_thresholds_and_saves_nothing(live_server, an_session):
+    context, page, record, errors = an_session("rcux-headroom")
+    run_canonical(context, live_server, record.project_code)
+    history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+    fields_before = context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json()
+    _open_runs_tab(page, live_server, record.project_code)
+    page.locator("[data-credit-open='true']").click()
+    page.wait_for_selector("[data-credit-ready='true']", timeout=60000)
+    evaluate = page.locator("[data-headroom-evaluate='true']")
+    assert evaluate.is_disabled()                                                      # nothing typed, nothing to evaluate
+    page.fill("[data-headroom-input='min_dscr']", "1.30")
+    page.fill("[data-headroom-input='max_gearing']", "0.85")
+    evaluate.click()
+    page.wait_for_selector("[data-headroom-run]", timeout=60000)
+    api = context.request.get(f"{live_server}/v2/model-react/analysis/credit-headroom", params={"project": record.project_code, "min_dscr": "1.30", "max_gearing": "0.85"}).json()
+    by_metric = {c["metric"]: c for c in api["data"]["runs"][0]["constraints"]}
+    row = page.locator("[data-headroom-metric='min_dscr']")
+    assert row.count() == 1
+    shown = row.inner_text()
+    assert "1.3" in shown and (by_metric["min_dscr"]["state"].replace("_", " ").lower() in shown.lower())
+    assert page.locator("[data-headroom-metric='min_llcr']").inner_text().lower().count("not") >= 1        # no threshold typed: an honest state, never a pass
+    page.fill("[data-headroom-input='max_gearing']", "1.5")
+    evaluate.click()
+    page.wait_for_selector("[data-headroom-error='true']", timeout=30000)
+    assert "fraction" in page.locator("[data-headroom-error='true']").inner_text()
+    _shot(page, "credit-headroom")
+    assert context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"] == history
+    assert context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json() == fields_before     # nothing typed was saved
     assert [e for e in errors if "Failed to load resource" not in e] == []

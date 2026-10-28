@@ -23,6 +23,7 @@ __all__ = (
     "test_rcux_product_populated_library_filters_orders_and_uses_real_timestamps",
     "test_rcux_product_ordinary_screens_use_no_internal_terms_and_no_legacy_links",
     "test_rcux_product_library_and_wizard_fit_every_viewport",
+    "test_rcux_product_statements_identify_each_vertical_and_labels_repeat_no_units",
     "ux_user",
 )
 SHOTS = os.environ.get("RCM_SCREENSHOT_DIR") or os.environ.get("WF05_SCREENSHOT_DIR", "")
@@ -353,3 +354,29 @@ def test_rcux_product_library_and_wizard_fit_every_viewport(live_server, ux_user
         heights = page.evaluate("() => Array.from(document.querySelectorAll('[data-path-card], [data-template-card], .rcm-actions button')).filter(n => n.offsetParent !== null).map(n => n.getBoundingClientRect().height)")
         assert heights and min(heights) >= 36
     assert errors == []
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_rcux_product_statements_identify_each_vertical_and_labels_repeat_no_units(live_server, ux_user, kind):
+    """Audit B F02 / F05: no vertical is presented as a placeholder Solar project, and no label prints its unit twice."""
+    context, page, errors = ux_user(f"rcux-identity-{kind}")
+    from app.services.reference_seed_service import create_reference_seeded_project
+
+    record = create_reference_seeded_project(user_id=f"rcux-identity-{kind}", requested_name=f"Identity {kind}", template_source=f"generic_{kind}_reference", capacity_mw=16)
+    run_canonical(context, live_server, record.project_code)
+    texts = {}
+    for section in ("inputs", "statements", "results"):
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}#{section}")
+        page.reload()
+        page.wait_for_selector("[data-react-workspace-version]", timeout=60000)
+        page.wait_for_function("() => !document.body.innerText.includes('Loading the')", timeout=60000)
+        texts[section] = page.evaluate("document.body.innerText")
+    if kind != "solar":
+        for section in ("statements", "results"):
+            hit = re.search(r"\bsolar (pv|project|plant|park|farm|example|demo)\b|\bdemo\b", texts[section], re.I)       # a limitation note may name Solar and Wind; the project itself is never called Solar
+            assert not hit, (kind, section, texts[section][max(0, hit.start() - 80):hit.end() + 80] if hit else "")
+    assert f"Identity {kind}" in texts["statements"]
+    for section, text in texts.items():
+        twice = re.findall(r"\(([^()]{1,12})\)\s*\(\1\)|\b(MW|kEUR|EUR|MWh|%)\s+\2\b", text)
+        assert twice == [], (kind, section, twice[:3])
+    assert [e for e in errors if "Failed to load resource" not in e] == []

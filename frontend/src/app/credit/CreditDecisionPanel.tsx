@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import "../../styles/rcm-credit.css";
-import { fetchCreditDecision } from "./api";
+import { fetchCreditDecision, fetchHeadroom, type HeadroomPayload } from "./api";
 import type { CreditCell, CreditData, CreditFinding, CreditPayload, CreditRunView, Dict } from "./types";
 
 const CLASS_LABEL: Record<string, string> = {
@@ -267,6 +267,82 @@ function Findings({ data }: { data: CreditData }) {
   );
 }
 
+
+const THRESHOLDS: ReadonlyArray<{ metric: string; label: string; hint: string }> = [
+  { metric: "min_dscr", label: "Minimum Senior DSCR (x)", hint: "for example 1.30" },
+  { metric: "min_llcr", label: "Minimum LLCR (x)", hint: "for example 1.40" },
+  { metric: "max_gearing", label: "Maximum Senior gearing (fraction)", hint: "0.80 means 80%" },
+  { metric: "min_equity_keur", label: "Minimum initial equity (kEUR)", hint: "kEUR" },
+  { metric: "max_balloon_keur", label: "Maximum Senior balloon (kEUR)", hint: "kEUR" },
+];
+const num4 = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-GB", { maximumFractionDigits: 4 }) : "Not available");
+
+/** Hypothetical lender thresholds against the saved Runs.  Thresholds live only in this form and the request: nothing is saved, solved or run. */
+function Headroom({ project, historyIds }: { project: string; historyIds: string[] }) {
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<HeadroomPayload | null>(null);
+  const [error, setError] = useState("");
+  const any = Object.values(inputs).some((v) => v.trim() !== "");
+
+  async function evaluate() {
+    setBusy(true); setError("");
+    const r = await fetchHeadroom(project, historyIds, inputs);
+    if (r.ok) setResult(r); else { setResult(null); setError(r.message ?? "The headroom could not be evaluated."); }
+    setBusy(false);
+  }
+  const runs = (result?.data?.runs ?? []) as Dict[];
+  return (
+    <section className="cd-section" data-credit-section="headroom" aria-labelledby="cd-h-h">
+      <h3 className="rcm-h3" id="cd-h-h">Covenant headroom <small>hypothetical thresholds — not contractual compliance or approval</small></h3>
+      <p className="cd-note">Type the thresholds a lender might propose. FINCO measures every period of the saved Run against them. Nothing you type here is saved, and the model is not run.</p>
+      <form className="rcm-controls" data-headroom-form="true" onSubmit={(e) => { e.preventDefault(); void evaluate(); }}>
+        {THRESHOLDS.map((t) => (
+          <label key={t.metric}>{t.label}
+            <input type="text" inputMode="decimal" autoComplete="off" placeholder={t.hint} value={inputs[t.metric] ?? ""} data-headroom-input={t.metric}
+                   onChange={(e) => setInputs((current) => ({ ...current, [t.metric]: e.target.value }))} />
+          </label>
+        ))}
+        <button type="submit" className="rx-button" data-headroom-evaluate="true" disabled={busy || !any}>{busy ? "Evaluating…" : "Evaluate headroom"}</button>
+      </form>
+      {error && <p className="rx-empty" role="alert" data-headroom-error="true">{error}</p>}
+      {result && !result.data && <p className="rx-empty" role="status">No saved Run to evaluate.</p>}
+      {runs.map((run, i) => (
+        <div key={i} data-headroom-run={run.history_id}>
+          <h4 className="rcm-h4">Run {i + 1} · {run.ran_at} <small>Model checks: {run.integrity}</small></h4>
+          {run.integrity !== "PASS" && <p className="cd-callout" role="alert">Review required: the model checks are not proven to pass for this Run.</p>}
+          <Table caption={`Headroom of Run ${i + 1}`} testid="cd-headroom-table"
+                 head={<tr><th scope="col">Constraint</th><th scope="col">Proposed threshold</th><th scope="col">Smallest headroom</th><th scope="col">Unit</th><th scope="col">Tightest period</th><th scope="col">First breach</th><th scope="col">Breaches</th><th scope="col">Evaluation</th></tr>}>
+            {(run.constraints as Dict[]).map((c) => (
+              <tr key={c.metric} data-headroom-metric={c.metric}>
+                <th scope="row">{label(c.metric)}</th><td className="cd-num">{num4(c.threshold)}</td><td className="cd-num">{num4(c.minimum_headroom)}</td><td>{c.unit}</td>
+                <td>{c.worst_period || "Not dated"}</td><td>{c.first_breach || "—"}</td><td className="cd-num">{num4(c.breach_count)}</td>
+                <td>{label(c.state)}{c.reason && <span className="cd-why">{label(c.reason).toLowerCase()}</span>}</td>
+              </tr>))}
+          </Table>
+          <details className="rcm-audit"><summary>Period headroom and audit details</summary>
+            {(run.constraints as Dict[]).map((c) => (
+              <div key={c.metric}><h5 className="rcm-h5">{label(c.metric)}</h5>
+                <Table caption={`Period headroom for ${label(c.metric)}`} head={<tr><th scope="col">Period start</th><th scope="col">Period end</th><th scope="col">Value</th><th scope="col">Headroom</th><th scope="col">Relative</th><th scope="col">State</th></tr>}>
+                  {(c.observations as Dict[]).map((p, k) => (
+                    <tr key={k}><td>{p.start || "—"}</td><td>{p.end || "—"}</td><td className="cd-num">{num4(p.value)}</td><td className="cd-num">{num4(p.absolute)}</td>
+                      <td className="cd-num">{typeof p.relative === "number" ? `${num4(p.relative * 100)}%` : "Not available"}</td><td>{label(p.state)}</td></tr>))}
+                </Table></div>))}
+            <p className="cd-note">Run record {run.snapshot_id} · saved inputs version {String(run.composite_hash || "").slice(0, 12)} · model {run.engine_version}. Historical results are not asserted current against the project inputs. Persisted sizing evidence only: a different debt amount needs a new financing solve.</p>
+          </details>
+        </div>
+      ))}
+      {(result?.data?.comparisons as Dict[] | undefined)?.length ? (
+        <div><h4 className="rcm-h4">Changes against Run 1</h4>
+          <Table caption="Changes against Run 1" head={<tr><th scope="col">Run</th><th scope="col">Minimum DSCR change</th><th scope="col">Senior change (kEUR)</th><th scope="col">Debt service change (kEUR)</th><th scope="col">Equity change (kEUR)</th><th scope="col">Comparison</th></tr>}>
+            {(result?.data?.comparisons as Dict[]).map((c, i) => (
+              <tr key={i}><td>Run {i + 2}</td><td className="cd-num">{num4(c.delta_min_dscr)}</td><td className="cd-num">{num4(c.delta_senior_keur)}</td><td className="cd-num">{num4(c.delta_service_keur)}</td><td className="cd-num">{num4(c.delta_equity_keur)}</td><td>{label(c.state)}</td></tr>))}
+          </Table></div>
+      ) : null}
+    </section>
+  );
+}
+
 /** Credit decision for one to three committed Runs (Audit A GAP-R12): the evidence the Legacy credit page presents, as saved by the Run.
  *  Read-only: it never starts a Run, writes, recalculates or mixes the current inputs into a saved Run; unavailable is never zero. */
 export function CreditDecisionPanel({ project, historyIds, workbookHash }: { project: string; historyIds: string[]; workbookHash: string }) {
@@ -305,7 +381,7 @@ export function CreditDecisionPanel({ project, historyIds, workbookHash }: { pro
           {payload?.data && (
             <div data-credit-ready="true" data-credit-runs={payload.data.runs.length}>
               <p className="cd-policy" data-testid="cd-policy">{payload.data.policy.failed_runs}</p>
-              <nav className="cd-toc" aria-label="Credit decision sections"><a href="#cd-a-h">Financing structure</a><a href="#cd-b-h">Debt capacity</a><a href="#cd-c-h">Timeline</a><a href="#cd-d-h">Scenario comparison</a><a href="#cd-e-h">Lender risk evidence</a><a href="#cd-f-h">Findings</a></nav>
+              <nav className="cd-toc" aria-label="Credit decision sections"><a href="#cd-a-h">Financing structure</a><a href="#cd-b-h">Debt capacity</a><a href="#cd-c-h">Timeline</a><a href="#cd-d-h">Scenario comparison</a><a href="#cd-e-h">Lender risk evidence</a><a href="#cd-f-h">Findings</a><a href="#cd-h-h">Covenant headroom</a></nav>
               <Identities data={payload.data} />
               <Structure data={payload.data} />
               <Capacity data={payload.data} />
@@ -313,6 +389,7 @@ export function CreditDecisionPanel({ project, historyIds, workbookHash }: { pro
               <Comparison data={payload.data} />
               <LenderScreening data={payload.data} />
               <Findings data={payload.data} />
+              <Headroom project={project} historyIds={historyIds} />
             </div>
           )}
         </>

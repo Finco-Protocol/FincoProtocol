@@ -207,7 +207,7 @@ RC_UX_SUCCESSORS={
     "frontend/src/app/workflow/ScenarioWorkspace.tsx":"f5f199c98ff96fa5f2ba83e65953c99ff502ee8a",
     "frontend/src/app/workflow/workflowShared.tsx":"50aef516d139ac0a909e6059974095c62a487b21",
     "static/react/finco-react.css":"0966ea1d11e41767dd89f3cac447e251b4d89be7",
-    "static/react/finco-react.js":"0eaeb9c52e16f264d1f63032d20c31bcf139951a",
+    "static/react/finco-react.js":"0307d8df5f08db0061880d9fb27d8fd2542119d0",
     "tests/model_react_mvp_acceptance.py":"e085043916748497a32fdcf9bb429234885f367a",
     "tests/model_react_wf2_browser_acceptance.py":"4ca9487e898620ff7b614a94ba88150f6cdb7696",
     "tests/test_model_workspace_consolidation_browser.py":"665ef4874260612c9687fafddc303aeae56e82af",

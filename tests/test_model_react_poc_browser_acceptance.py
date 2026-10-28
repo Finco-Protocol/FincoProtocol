@@ -100,7 +100,7 @@ def test_library_workspace_navigation_and_grid_save(browser, react_enabled):
         assert page.locator("[data-library-view='true']").count() == 1
         # the caller's project is listed by name with its canonical open action
         assert page.get_by_text(record.project_name).count() >= 1, "the caller's project must be listed"
-        open_action = page.locator(f"[aria-label='Open working copy {record.project_name}']")
+        open_action = page.locator(f"[aria-label='Open project {record.project_name}']")
         assert open_action.count() == 1
         open_action.click()
         page.wait_for_selector("[data-workspace-status='true']")
@@ -269,7 +269,7 @@ def test_unknown_save_outcomes_block_and_keep_the_draft(browser, react_enabled):
             page.locator(SAVE_BUTTON).click()
             page.wait_for_selector("[data-save-state='unknown']")
             status_text = page.locator("#rx-grid-status").inner_text()
-            assert "UNKNOWN" in status_text and "may have committed" in status_text, (name, status_text)
+            assert ("UNKNOWN" in status_text or "could not confirm" in status_text) and "may have committed" in status_text, (name, status_text)
             assert "Nothing was saved" not in status_text, name
             assert cell.input_value() == "23.75", f"{name}: typed draft must be preserved"
             assert page.locator(SAVE_BUTTON).is_disabled(), name
@@ -340,59 +340,65 @@ def test_in_flight_lock_and_back_forward(browser, react_enabled):
         context.close()
 
 
+def _reach_new_project_review(page, base):
+    """Addendum B: a project is created from the New Project wizard (the Library no longer lists system references to copy)."""
+    page.goto(f"{base}/v2/model-react/#new-project/template")
+    page.reload()
+    page.wait_for_selector("[data-template-card='solar']", timeout=60000)
+    page.locator("[data-template-card='solar']").click()
+    if page.locator("[data-preview-ack='true']").count():
+        page.locator("[data-preview-ack='true']").check()
+    page.locator("[data-wizard-next='true']").click()
+    page.fill("#rcm-name", "UX02 created project")
+    page.locator("[data-wizard-next='true']").click()
+    page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
+    page.locator("[data-wizard-next='true']").click()
+    page.wait_for_selector("[data-wizard-panel='review']")
+
+
 def test_clone_creation_ambiguous_outcome(browser, react_enabled):
-    """An ambiguous clone transport is UNKNOWN: never 'nothing was created',
+    """An ambiguous creation transport is UNKNOWN: never 'nothing was created',
     exactly one request, and reconciliation required instead of blind retry."""
     context, page, record, errors = make_session(browser, react_enabled, "ux02-clone-user")
     try:
-        page.goto(f"{react_enabled}/v2/model-react/")
-        page.wait_for_selector("[data-library-view='true']")
-        assert page.get_by_text(record.project_name).count() >= 1, "the seeded reference must be listed"
-        clone_pattern = "**/library/clone/*"
-        context.route(clone_pattern, lambda route: route.abort())
-        count_clones = """() => {
+        _reach_new_project_review(page, react_enabled)
+        create_pattern = "**/new-project/create"
+        context.route(create_pattern, lambda route: route.abort())
+        page.evaluate("""() => {
             window.__rxClonePosts = 0;
             const original = window.fetch;
             window.fetch = (...args) => {
-                if (String(args[0] || '').includes('/library/clone/')) window.__rxClonePosts += 1;
+                if (String(args[0] || '').includes('/new-project/create')) window.__rxClonePosts += 1;
                 return original(...args);
             };
-        }"""
-        page.evaluate(count_clones)
-        page.locator(".fm-library-copy-action").first.click()
-        page.wait_for_selector("[data-clone-unknown='true']", timeout=15000)
-        message = page.locator("[data-clone-unknown='true']").inner_text()
-        assert "UNKNOWN" in message and "may have created" in message, message
+        }""")
+        page.locator("[data-wizard-create='true']").click()
+        page.wait_for_selector("[data-create-unknown='true']", timeout=15000)
+        message = page.locator("[data-create-unknown='true']").inner_text()
+        assert "could not confirm whether the project was created" in message and "before creating it again" in message, message
         assert page.evaluate("window.__rxClonePosts") == 1, "exactly one creation request"
-        page.unroute(clone_pattern)
-        assert not [e for e in errors if "Failed to load resource" not in e], errors
+        assert page.locator("[data-wizard-create='true']").is_disabled(), "no blind retry"
+        page.unroute(create_pattern)
+        assert not [e for e in errors if "Failed to load resource" not in e and "ERR_FAILED" not in e], errors
     finally:
         context.close()
 
 
 def test_clone_creation_canonical_success(browser, react_enabled):
-    """A real canonical creation reconciles: the new Working Copy appears in the
-    canonical library list, is not a protected reference, and is openable."""
+    """A real canonical creation reconciles: the new project appears in the
+    canonical My Projects list, is not a protected reference, and is openable."""
     context, page, record, errors = make_session(browser, react_enabled, "ux02-clone-real")
     try:
-        page.goto(f"{react_enabled}/v2/model-react/")
-        page.wait_for_selector("[data-library-view='true']")
-        page.locator(".fm-library-copy-action").first.click()
-        import time
-        copy_listed = False
-        library = None
-        for _ in range(20):
-            library = context.request.get(f"{react_enabled}/v2/model-react/library").json()
-            if any("(copy)" in (p["name"] or "") for p in library["projects"]):
-                copy_listed = True
-                break
-            time.sleep(1)
-        assert copy_listed and library is not None, (
-            f"the new working copy must appear in the canonical list: "
-            f"{[p['code'] for p in (library or {}).get('projects', [])]}")
-        copy_entry = next(p for p in library["projects"] if "(copy)" in (p["name"] or ""))
-        assert copy_entry["protected_reference"] is False
-        assert errors == [], errors
+        _reach_new_project_review(page, react_enabled)
+        page.locator("[data-wizard-create='true']").click()
+        page.wait_for_selector("[data-react-workspace-version]", timeout=90000)
+        mine = context.request.get(f"{react_enabled}/v2/model-react/my-projects").json()
+        created = [p for p in mine["projects"] if p["name"] == "UX02 created project"]
+        assert len(created) == 1, [p["name"] for p in mine["projects"]]
+        library = context.request.get(f"{react_enabled}/v2/model-react/library").json()
+        entry = next(p for p in library["projects"] if p["code"] == created[0]["code"])
+        assert entry["protected_reference"] is False
+        assert [e for e in errors if "Failed to load resource" not in e] == [], errors
     finally:
         context.close()
 
