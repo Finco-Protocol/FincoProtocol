@@ -313,6 +313,10 @@ FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d
 # Additive; every earlier layer stays admitted and no gate/binding of the route set is changed.
 FINV2_D01_SENSITIVITY_SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9be201919d5a14e42'}
 
+# WS-2 atomic Save All (Financial Owner approval 2026-10-28): ADDITIVE layer for the two pinned routers it extends. Every earlier layer stays
+# admitted; the bundle blobs are added once, after WS-1, by the single controlled re-pin.
+WSV2_SAVE_ALL_SUCCESSORS={'app/v2/grid_router.py': 'a9779991ffd75fc82093c8bc38b4aa6f5dfe5298', 'app/v2/react_workspace_router.py': 'd1b045a6c788be534e567ef877ed321abb966c11'}
+
 
 def violations(sources,*,check_pin=True):
     errors=[];trees={}
@@ -329,6 +333,7 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
+        if path in WSV2_SAVE_ALL_SUCCESSORS:admitted=admitted|{WSV2_SAVE_ALL_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.
