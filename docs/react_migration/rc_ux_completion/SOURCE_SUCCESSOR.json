@@ -18,8 +18,9 @@
     "app/v2/react_trust.py": "16e0fa90f0a3bedeb8e4bc7a76235c8b9f1452a7",
     "app/v2/react_whatif.py": "c5392d9614f078c2d735323e06110b08ef663a08",
     "app/v2/react_workspace_router.py": "dab743e38301d9504909ef73693cb83deeca3dd2",
-    "tests/fin_v2_rcux_scope.py": "32ed535942a7920594107d37afab993191f11f4e",
+    "tests/fin_v2_rcux_scope.py": "9969df0b8392390e09294f2f45e04cc5d7e2a58f",
     "tests/rcux_navigation_contract.py": "9d367d03bf619c4c3243048c824798103f1f516b",
-    "tests/test_fin_v2_rcux_scope.py": "715046eee60f35095f3502a2af17e557b9b6bfed"
+    "tests/test_fin_v2_rcux_scope.py": "f686242b01a1d295b8d2c8afb186d109512363de",
+    "tests/test_model_react_rcux_goal_seek_targets_v1.py": "2a4b0d66ab925a722bea54950a48245800a6ebea"
   }
 }

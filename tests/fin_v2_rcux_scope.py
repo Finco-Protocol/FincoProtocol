@@ -39,6 +39,7 @@ OWNED_PATHS = frozenset((
     'tests/fin_v2_rcux_scope.py',
     'tests/rcux_navigation_contract.py',        # the pure navigation classifier: byte-pinned, so the React-only rule cannot be loosened unreviewed
     'tests/test_fin_v2_rcux_scope.py',
+    'tests/test_model_react_rcux_goal_seek_targets_v1.py',      # byte-pinned: the typed Goal Seek unit contract (IRR ratio, DSCR multiple, NPV kEUR) cannot be edited unreviewed
 ))
 
 #: Reviewed test / bundle files, admitted by EXACT path (no pattern): a new RC-UX test, acceptance or helper module is not admitted until its path is
@@ -71,7 +72,6 @@ PRESENTATION_FILES = frozenset((
     'tests/test_model_react_rcux_credit_decision_v1.py',
     'tests/test_model_react_rcux_credit_headroom_v1.py',
     'tests/test_model_react_rcux_run_statements_v1.py',
-    'tests/test_model_react_rcux_goal_seek_targets_v1.py',
     'tests/test_model_react_rcux_import_v1.py',
     'tests/test_model_react_rcux_opex_projection_v1.py',
     'tests/test_model_react_rcux_projects_v1.py',
