@@ -1,0 +1,39 @@
+/* WS-2 editing surfaces: Changes drawer, keyboard grid, basic PPA form.  Additive; uses the existing rx-/fm- tokens. */
+.ws2-changes { position: relative; }
+.ws2-changes-badge { display: inline-block; min-width: 1.4em; padding: 0 .4em; margin-left: .4em; border-radius: 999px; background: var(--accent, #1f5f8b); color: #fff; font-size: .78rem; text-align: center; }
+.ws2-changes-panel { border: 1px solid var(--line, #dce3e9); background: var(--surface, #fbfcfc); padding: 12px; margin-top: 8px; max-width: 100%; }
+.ws2-changes-panel[hidden] { display: none; }
+@media (min-width: 1024px) {
+  .ws2-changes-panel { position: fixed; top: 64px; right: 0; bottom: 0; width: min(420px, 90vw); overflow-y: auto; z-index: 40; margin: 0; box-shadow: -4px 0 12px rgba(0,0,0,.12); }
+}
+.ws2-changes-head h2, .ws2-changes-section h3 { font-size: 1rem; margin: .2rem 0; }
+.ws2-changes-section h3 { display: flex; align-items: center; gap: .5rem; }
+.ws2-changes-section h3 .fm-btn { margin-left: auto; }
+.ws2-changes-tools, .ws2-changes-foot { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.ws2-changes-foot .rx-note { flex-basis: 100%; }
+.ws2-changes-section ul { list-style: none; margin: 0; padding: 0; }
+.ws2-change { display: flex; gap: 8px; justify-content: space-between; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--line, #dce3e9); }
+.ws2-change-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.ws2-change-label { font-weight: 600; }
+.ws2-change-values del { color: var(--muted, #5b6b78); }
+.ws2-change-values ins { text-decoration: none; font-weight: 600; }
+.ws2-change-flag { color: var(--fo-red-700, #b91c1c); font-size: .85rem; }
+.ws2-change[data-conflict] { background: rgba(185, 28, 28, .06); }
+
+/* keyboard-first grid */
+.ws2-grid { table-layout: auto; }
+.ws2-grid td { padding: 2px 4px; }
+.ws2-grid .ws2-cell { width: 100%; box-sizing: border-box; text-align: right; font-variant-numeric: tabular-nums; }
+.ws2-grid .ws2-cell-text { text-align: left; }
+.ws2-grid .ws2-cell[data-changed="true"] { background: rgba(31, 95, 139, .10); border-color: var(--accent, #1f5f8b); }
+.ws2-grid .ws2-cell[aria-invalid="true"] { border-color: var(--fo-red-700, #b91c1c); }
+.ws2-grid tr[data-inactive="true"] { opacity: .55; }
+.ws2-grid .ws2-cell-error { display: block; color: var(--fo-red-700, #b91c1c); font-size: .8rem; text-align: left; }
+.ws2-grid-total th, .ws2-grid-total td { border-top: 2px solid var(--line, #dce3e9); font-weight: 600; }
+.ws2-grid-keys { font-size: .82rem; }
+
+/* basic PPA */
+.ws2-ppa-basic { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; }
+.ws2-pct { position: relative; }
+.ws2-pct-suffix { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--muted, #5b6b78); pointer-events: none; }
+.ws2-pct input { padding-right: 1.8em; }
