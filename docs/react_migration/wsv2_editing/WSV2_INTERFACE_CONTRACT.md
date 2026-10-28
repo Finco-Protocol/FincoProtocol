@@ -44,3 +44,17 @@ CostLinesGridView  // drop-in for CostLinesView (same props)
 ## Events
 
 Save != Run · stale Last Run after changed inputs · second tab (CAS conflict → drafts kept, marked) · wrong project/owner (server 404/403, drafts untouched) · failed Save restores nothing and discards nothing.
+
+## Acknowledgement of the WS-1 handoff (PR #398, `f26b71c1`, base `b1a58681`)
+
+Acknowledged by WS-2 on 2026-10-28; the two contracts are consistent and neither side imports the other's implementation.
+
+* **Identity.** WS-1 `WorkspaceEditIdentity` ≙ WS-2 `EditIdentity` (`activeScenario: string | null`). WS-2 will not add fields without updating both contracts.
+* **Provider mount.** WS-2 mounts `ChangesProvider` / `ChangesDrawer` only through `WorkspaceExtensions.wrapWorkspace(context, content)` after WS-1 is Owner-authorised and merged. Until then WS-2 edits nothing in `WorkspaceView.tsx`.
+* **DirtyProvider stays the leave/Run guard.** At integration WS-2 bridges pending, invalid and conflict status into the existing `DirtyProvider` (`useReportDirty` / `useReportPending`); `CostLinesGridView` already reports per-sheet counts there. The old `requestNonce` guard and `CostLinesView` are not removed to silence imports.
+* **Baselines for rebase.** After every committed change or reload the shell supplies authoritative baselines (`{ [editId]: { value, rowVersion } }`) to `rebase(identity, baselines)`. A moved baseline becomes a conflict marker, never a silent rebase.
+* **Formatter.** WS-2 consumes `reportFormatting.ts` / `useReportPrecision()` for DISPLAY only. Rounded strings are never a `PendingEdit` baseline or canonical value and never enter a Save / Save All payload; editors show and submit the raw stored text (already true of `CostLinesGridView` and the PPA percent inputs). PPA percent ↔ ratio conversion stays entirely WS-2.
+* **Integration checks WS-2 will add:** switching display precision 0 → 2 → 0 changes no dirty state, content hash, Run history or Save / Save All payload.
+* **Order.** WS-1 first, then WS-2, each after independent review and separate Owner authority. No merge or deploy by WS-2.
+
+Save All status: the backend is implemented on this PR under the Owner's path authorisation (`save_all_commands.py`, `POST /v2/workbook/save-all`, idempotency ledger); exact-source governance pins and the bundle rebuild are pending a separate Owner approval of the exact paths.
