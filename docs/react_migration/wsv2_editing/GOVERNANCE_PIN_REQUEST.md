@@ -32,3 +32,16 @@ Not touched: any financial formula, golden, native gate, Run Integrity rule, F01
 ## 4. Decision requested
 
 Approve the file list in §3 (or amend it). Until then CI on this PR stays red on exactly the checks in §1, and nothing is merged or deployed.
+
+---
+## Status update — Owner approval received (2026-10-28, verified HEAD `cb00721`)
+
+Approved: §3 items 1–5, additive only, with the condition that **shared manifests and the final JS/CSS bundle are re-pinned once, after WS-1 (PR #398) merges**, and that the two byte-pinned PPA browser acceptance modules are **not** edited without a separate path-and-diff approval.
+
+Applied now (WS-2-only, no shared blob): `tests/fin_v2_wsv2_scope.py`, `tests/test_fin_v2_wsv2_scope.py`, `docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json`, the one-line registration in `tests/fin_v2_cohorts.py`, and the additive `WSV2_SAVE_ALL_SUCCESSORS` layer in `tests/model_mutation_security_successor.py`.
+
+Deferred to the single post-WS-1 integration: the four `docs/financial_validation/*/SOURCE_SUCCESSOR.json` manifests, `docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json`, and `static/react/finco-react.{js,css}`.
+
+Verification already done (throwaway worktree, not committed): running the repository's own `refresh_pins.py --no-build` on this branch changes exactly five files (`tests/model_mutation_security_successor.py` plus the four manifests above — `fin_v2_ci` is unchanged) and then **137 governance tests pass** (new cohort + negative controls, `test_finval_rate_successor`, `test_finval_f01_scope`, `test_finval_f01_fixture_integrity`, RC-UX cohort, PR #394 cohort, composite). Until the integration the composite cohort and the bundle-reproducibility step stay red by design.
+
+Separate approval still requested (not applied): the two pinned PPA browser acceptance modules. Paths: `tests/model_react_wf2_browser_acceptance.py` (pin `a0c509ed…`), `tests/model_react_mvp_acceptance.py` (pin `525dce2c…`). Minimal diff: in the PPA step only, `get_by_label("Contracted volume share").fill("0.8"|"1")` → `fill("80"|"100")` and `get_by_label("Indexation rate").fill("0.02")` → `fill("2")`, the post-save readback `to_have_value("0.02")` → `to_have_value("2")`, the `Source reference` fill becomes optional (moved under Advanced); label text changes to "Contracted volume" / "Annual indexation". No other assertion changes. Re-pinned by the same tool afterwards.
