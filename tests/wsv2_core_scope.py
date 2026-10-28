@@ -146,6 +146,16 @@ def _historical_manifests_ok(root, ref):
     return True
 
 
+# F01/Browser attestations write untracked proof into evidence/ before the full
+# acceptance suite. Such non-executable evidence must not invalidate source pins.
+# Every other untracked path remains rejected, including source-like files under evidence/.
+_CI_EVIDENCE_EXTENSIONS = ('.json', '.xml', '.png', '.webp', '.jpg', '.jpeg', '.txt', '.csv', '.svg', '.html', '.zip')
+
+
+def _ci_evidence_only(path):
+    return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
+
+
 def exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
@@ -163,7 +173,7 @@ def exact_blobs_ok(repo=None, ref=None):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError):

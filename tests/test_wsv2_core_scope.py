@@ -247,3 +247,29 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
             mutated = dict(sources)
             mutated[path] = current + '\n'
             assert S.violations(mutated)
+
+
+@pytest.mark.parametrize('artifact', ('evidence/source.json', 'evidence/merge-tree.json',
+                                      'evidence/browser/solar.png', 'evidence/financial-browser.xml'))
+def test_generated_ci_evidence_does_not_turn_valid_financial_sources_into_unreviewed(artifact, monkeypatch):
+    original = F._git
+    def with_generated_evidence(root, *args):
+        found = original(root, *args)
+        if args[:3] == ('ls-files', '--others', '--exclude-standard'):
+            return found + artifact.encode() + b'\n'
+        return found
+    monkeypatch.setattr(F, '_git', with_generated_evidence)
+    assert F.exact_blobs_ok() and C.valid()
+
+
+@pytest.mark.parametrize('unreviewed', ('evidence/rogue.py', 'evidence/rogue.ts',
+                                      'app/v2/new_writer.py', 'tests/new_financial_test.py'))
+def test_untracked_source_is_still_strictly_rejected(unreviewed, monkeypatch):
+    original = F._git
+    def with_unreviewed_source(root, *args):
+        found = original(root, *args)
+        if args[:3] == ('ls-files', '--others', '--exclude-standard'):
+            return found + unreviewed.encode() + b'\n'
+        return found
+    monkeypatch.setattr(F, '_git', with_unreviewed_source)
+    assert not F.exact_blobs_ok() and not C.valid()
