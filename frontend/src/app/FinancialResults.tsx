@@ -4,10 +4,12 @@ import "../styles/finco-live.css";
 import type { CanonicalTable, StatementSheetPayload, StatementsPayload } from "./types";
 import { RunIdentityLabel } from "./runIdentity";
 import {
-  DISPLAY_UNITS, formatFromCanonicalUnit, formatMetricDisplay, formatStatementCell, formatUnitLabel,
+  DISPLAY_UNITS, formatFromCanonicalUnit, formatUnitLabel,
   classifyRowUnit, plotValue, resolveRowFormat, sheetUnitLabel,
   type DisplayUnit, type RowFormat, type UnitSource,
 } from "./units";
+import { reportCell as formatStatementCell, reportMetric as formatMetricDisplay } from "./reportFormatting";
+import { useReportPrecision } from "./ReportPrecision";
 import { plain } from "./productLanguage";
 
 // Canonical presentation of the persisted Run.  Every figure on this page is a
@@ -124,8 +126,8 @@ function RunContext({ payload }: { payload: StatementsPayload }) {
   );
 }
 
-function UnitControls({ unit, precision, onUnit, onPrecision }: {
-  unit: DisplayUnit; precision: number; onUnit: (unit: DisplayUnit) => void; onPrecision: (precision: number) => void;
+function UnitControls({ unit, precision, onUnit, onPrecision, showPrecision }: {
+  showPrecision: boolean; unit: DisplayUnit; precision: number; onUnit: (unit: DisplayUnit) => void; onPrecision: (precision: number) => void;
 }) {
   return (
     <div className="rx-live-controls" role="group" aria-label="Display units">
@@ -134,11 +136,12 @@ function UnitControls({ unit, precision, onUnit, onPrecision }: {
           {DISPLAY_UNITS.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
       </label>
-      <label>Precision
+      {showPrecision && <label>Precision
         <select value={precision} aria-label="Display precision" data-control="precision" onChange={(event) => onPrecision(Number(event.target.value))}>
           {[0, 1, 2, 3].map((item) => <option key={item} value={item}>{item === 1 ? "1 decimal" : `${item} decimals`}</option>)}
         </select>
-      </label>
+      </label>}
+
       <span className="rx-note">Values are held in kEUR; units and precision change the display only.</span>
     </div>
   );
@@ -168,7 +171,7 @@ const meaningOf = (label: string) => METRIC_MEANING.find((item) => item.match.te
 /** Monetary KPI display text -> selected unit and precision (never touches ratios, IRR or percentages). */
 const metricDisplay = formatMetricDisplay;
 
-function MetricCards({ payload, unit, precision }: { payload: StatementsPayload; unit: DisplayUnit; precision: number }) {
+export function MetricCards({ payload, unit, precision }: { payload: StatementsPayload; unit: DisplayUnit; precision: number }) {
   const metrics = payload.results.metrics;
   if (!metrics.length) {
     return <p className="rx-empty" role="status" data-metrics-state="unavailable">This Run has no key financial metrics.</p>;
@@ -311,7 +314,7 @@ const W = 640;
 const H = 210;
 const PLOT = { left: 62, right: 628, top: 14, bottom: 168 };
 
-function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: DisplayUnit; precision: number }) {
+export function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: DisplayUnit; precision: number }) {
   const series = chart.series.filter((item) => item.texts.length > 0);
   // geometry from the canonical numeric value; the display-text parse is only a legacy-payload fallback
   const numeric = series.map((item) => item.values ?? item.texts.map((text) => plotValue(text)));
@@ -418,7 +421,7 @@ function TimeSeriesChart({ chart, unit, precision }: { chart: ChartModel; unit: 
 
 // ── page ───────────────────────────────────────────────────────────────────
 
-function useModels(payload: StatementsPayload) {
+export function useModels(payload: StatementsPayload) {
   return useMemo(() => {
     const snapshot = payload.snapshot;
     const annual = snapshot?.annualPeriods ?? [];
@@ -477,6 +480,16 @@ function useModels(payload: StatementsPayload) {
 
     const charts: ChartModel[] = [
       {
+        id: "overview-waterfall", title: "Cash-flow waterfall components",
+        source: "Saved Run · Cash Flow (PF waterfall)", periods: model,
+        series: statementRows(payload, "cashflow", [
+          ["opex_cash_keur", "Operating costs"], ["cash_tax_keur", "Cash tax"],
+          ["senior_total_ds_keur", "Senior debt service"], ["shl_cash_interest_keur", "SHL interest"],
+          ["shl_principal_keur", "SHL principal"], ["revenue_cash_keur", "Revenue"],
+        ], "model").map((row) => ({ key: row.key, label: row.label, texts: row.texts, values: row.values,
+          format: row.format, kind: row.key === "cashflow.revenue_cash_keur" ? "line" as const : "bar" as const })),
+      },
+      {
         id: "revenue-opex", title: "Revenue and operating performance (annual)",
         source: "Saved Run · Profit & Loss", periods: annual,
         series: statementRows(payload, "pl", [["revenues_keur", "Revenue"], ["operating_expenses_keur", "Operating expenses"], ["ebit_keur", "EBIT"]], "annual")
@@ -530,7 +543,7 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
     const canonical = formatFromCanonicalUnit(payload.snapshot?.sheets[0]?.unit);
     return canonical?.kind === "money" ? canonical.base : "kEUR";
   });
-  const [precision, setPrecision] = useState(1);
+  const { precision, setPrecision, shared } = useReportPrecision();
   const models = useModels(payload);
   const state = payload.state;
   const heading = page === "results" ? "Results" : "Financial analysis";
@@ -561,7 +574,7 @@ export function FinancialResults({ payload, page }: { payload: StatementsPayload
               : "Time-series charts and debt and equity summaries from the same saved Run."}
           </p>
         </div>
-        <UnitControls unit={unit} precision={precision} onUnit={setUnit} onPrecision={setPrecision} />
+        <UnitControls showPrecision={!shared} unit={unit} precision={precision} onUnit={setUnit} onPrecision={setPrecision} />
       </div>
       <RunContext payload={payload} />
       {stale && (

@@ -1,3 +1,5 @@
+import { ReportPrecisionControl, useReportPrecision } from "../ReportPrecision";
+import { reportComparisonText } from "../reportFormatting";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { FriendlyError } from "../productLanguage";
@@ -34,6 +36,7 @@ async function load(codes: string[], sort: string, technology: string): Promise<
 }
 
 export function CompareProjectsView({ onBack }: { onBack: () => void }) {
+  const { precision } = useReportPrecision();
   const [codes, setCodes] = useState<string[]>(readCodes);
   const [sort, setSort] = useState("");
   const [technology, setTechnology] = useState("");
@@ -62,7 +65,7 @@ export function CompareProjectsView({ onBack }: { onBack: () => void }) {
   return (
     <main className="rx-page" role="main" data-compare-projects="true">
       <header className="rx-header">
-        <div><p className="rx-brand">FINCO Protocol · Model</p><h1 className="rx-title">Compare projects</h1></div>
+        <div><p className="rx-brand">FINCO Protocol · Model</p><h1 className="rx-title">Compare projects</h1><ReportPrecisionControl /></div>
         <nav aria-label="My Projects"><a className="rx-legacy-link" href="/v2/model-react/" data-compare-back="true" onClick={(e) => { e.preventDefault(); onBack(); }}>← My Projects</a></nav>
       </header>
       <section className="rx-card rcm-analysis" aria-label="Choose projects">
@@ -115,7 +118,7 @@ export function CompareProjectsView({ onBack }: { onBack: () => void }) {
                 {data.metrics.map((m) => (
                   <tr key={m.key} data-compare-row={m.key}>
                     <th scope="row">{m.label}</th>
-                    {data.columns.map((c) => <td key={c.code} className="fm-num" data-compare-cell={`${m.key}:${c.code}`}>{c.runnable ? (c.metrics[m.key] ?? "—") : "—"}</td>)}
+                    {data.columns.map((c) => <td key={c.code} className="fm-num" data-compare-cell={`${m.key}:${c.code}`}>{c.runnable ? reportComparisonText(c.metrics[m.key] ?? "—", m.label, precision) : "—"}</td>)}
                   </tr>
                 ))}
                 <tr data-compare-row="ebitda_margin"><th scope="row">EBITDA margin</th>{data.columns.map((c) => <td key={c.code} className="fm-num">{c.runnable ? c.ebitda_margin : "—"}</td>)}</tr>

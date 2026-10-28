@@ -1,3 +1,5 @@
+import { useReportPrecision } from "../ReportPrecision";
+import { reportAmount, reportEvidence } from "../reportFormatting";
 import "../../styles/rcm-financing.css";
 import { ReserveReturnsView } from "./ReserveReturnsView";
 import { isUnconfiguredFacility, unsupportedReason } from "./facilityState";
@@ -16,13 +18,14 @@ const DSCR: Record<string, string> = {
   MULTI_SENIOR: "The active two-Senior configuration owns repayment sizing.",
 };
 const FRESH: Record<string, string> = { CURRENT: "CURRENT", STALE: "STALE", NOT_RUN: "NOT RUN" };
-const num = (value: unknown): string => (typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "—");
+
 
 function Metric({ m }: { m: EvidenceMetric }) {
+  const { precision } = useReportPrecision();
   return (
     <div className="rcm-metric" data-evidence-metric={m.label}>
       <dt>{m.label}</dt>
-      <dd>{m.display}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd>
+      <dd title={m.value == null ? undefined : String(m.value)}>{reportEvidence(m.value, m.display, m.label, precision)}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd>
     </div>
   );
 }
@@ -68,6 +71,8 @@ export function OverviewView({ studio }: { studio: FinancingStudioPayload }) {
 }
 
 function FacilityCard({ row }: { row: CapitalStackRow }) {
+  const { precision } = useReportPrecision();
+  const num = (value: number) => reportAmount(value, precision);
   if (isUnconfiguredFacility(row)) {
     return (
       <article className="rcm-facility" data-facility={row.name} data-facility-unconfigured="true">
@@ -99,6 +104,8 @@ function FacilityCard({ row }: { row: CapitalStackRow }) {
 
 /** Senior facilities: the Two-Senior capital stack exactly as the canonical projection reports it (read-only here). */
 export function CapitalStackView({ studio }: { studio: FinancingStudioPayload }) {
+  const { precision } = useReportPrecision();
+  const num = (value: number) => reportAmount(value, precision);
   const stack = studio.capital_stack;
   return (
     <section className="rx-card rcm-fin" data-capital-stack="true" aria-labelledby="rcm-fin-cs">
@@ -122,18 +129,19 @@ export function CapitalStackView({ studio }: { studio: FinancingStudioPayload })
   );
 }
 
-const rowValue = (v: SuRow | number | string | null | undefined): string =>
-  v && typeof v === "object" ? v.display : v === null || v === undefined ? "—" : String(v);
+const rowValue = (v: SuRow | number | string | null | undefined, precision: number): string =>
+  v && typeof v === "object" ? (v.value == null ? v.display : reportAmount(v.value, precision)) : typeof v === "number" ? reportAmount(v, precision) : v ?? "—";
 
 function SuTable({ title, rows, total }: { title: string; rows: SuRow[]; total: SuRow | number | string | null | undefined }) {
+  const { precision } = useReportPrecision();
   return (
     <table className="rcm-table rcm-su" data-su-table={title}>
       <thead><tr><th scope="col" className="rcm-left">{title}</th><th scope="col">kEUR</th></tr></thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.label}><td className="rcm-left">{r.label}{r.value === null && r.reason && <span className="rcm-reason">{r.reason}</span>}</td><td className="rcm-num">{r.display}</td></tr>
+          <tr key={r.label}><td className="rcm-left">{r.label}{r.value === null && r.reason && <span className="rcm-reason">{r.reason}</span>}</td><td className="rcm-num">{r.value == null ? r.display : reportAmount(r.value, precision)}</td></tr>
         ))}
-        <tr className="is-base"><td className="rcm-left">Total {title.toLowerCase()}</td><td className="rcm-num">{rowValue(total)}</td></tr>
+        <tr className="is-base"><td className="rcm-left">Total {title.toLowerCase()}</td><td className="rcm-num">{rowValue(total, precision)}</td></tr>
       </tbody>
     </table>
   );
@@ -141,6 +149,7 @@ function SuTable({ title, rows, total }: { title: string; rows: SuRow[]; total: 
 
 /** Sources & uses of the committed Last Run (never the Working Copy), with its freshness and balance status. */
 export function SourcesUsesPanel({ studio }: { studio: FinancingStudioPayload }) {
+  const { precision } = useReportPrecision();
   const su = studio.sources_uses;
   const view: SourcesUsesView | undefined = su.view;
   return (
@@ -155,7 +164,7 @@ export function SourcesUsesPanel({ studio }: { studio: FinancingStudioPayload })
             <SuTable title="Sources" rows={view.sources ?? []} total={view.total_sources} />
             <SuTable title="Uses" rows={view.uses ?? []} total={view.total_uses} />
           </div>
-          <p className="rx-note" data-su-balance="true">Balance: {view.balance_status ?? "—"} · residual {rowValue(view.residual)} · integrity {view.integrity ?? "—"}</p>
+          <p className="rx-note" data-su-balance="true">Balance: {view.balance_status ?? "—"} · residual {rowValue(view.residual, precision)} · integrity {view.integrity ?? "—"}</p>
         </>
       )}
       <p className="rx-note">Derived from the last Run&rsquo;s saved financing results. Editing happens in Debt terms and Bankability.</p>

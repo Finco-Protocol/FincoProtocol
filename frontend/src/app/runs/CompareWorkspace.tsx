@@ -1,3 +1,6 @@
+import { useReportPrecision } from "../ReportPrecision";
+import { reportAmount, dedicatedPrecision, reportCell, reportDelta } from "../reportFormatting";
+import { resolveRowFormat } from "../units";
 import { useEffect, useMemo, useState } from "react";
 import { copyTsv, downloadCsv } from "../analysis/shared";
 import { runIdentityText } from "../runIdentity";
@@ -8,13 +11,15 @@ import type { CashflowSeries, ComparePayload, CompareRow } from "./types";
 type DeltaMode = "abs" | "pct" | "both";
 
 const stateChip = (state: string) => (state.includes("CURRENT") ? "rcm-chip ok" : state.includes("STALE") ? "rcm-chip warn" : "rcm-chip");
-const cell = (v: number | null, unit: string) => (v === null ? "—" : unit === "x" ? `${v.toFixed(2)}x` : v.toLocaleString("en-GB", { maximumFractionDigits: 0 }));
+
 
 /** Compare two or three explicitly selected COMMITTED Runs.  Everything shown is saved Run evidence formatted by the server;
  *  the first Run is the reference.  A metric a Run did not persist stays "—" / "not available" — never zero.  No Run is started. */
 export function CompareWorkspace({ project, historyIds, workbookHash, onClear }: {
   project: string; historyIds: string[]; workbookHash: string; onClear: () => void;
 }) {
+  const { precision } = useReportPrecision();
+  const cell = (v: number | null, unit: string) => v === null ? "—" : unit === "x" ? dedicatedPrecision(String(v), "x", v) : reportAmount(v, precision);
   const [payload, setPayload] = useState<ComparePayload | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,9 +98,9 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
                     <td className="rcm-input-cell">{r.unit || "—"}</td>
                     {r.values.map((v, i) => (
                       <td key={payload.columns[i].history_id} data-availability={r.availability[i]} data-history-id={payload.columns[i].history_id}>
-                        {v}
+                        <span title={r.raw_values[i] == null ? v : String(r.raw_values[i])}>{reportCell(v, resolveRowFormat(r.label, r.unit), "kEUR", precision, r.raw_values[i])}</span>
                         {r.availability[i] !== "available" && <span className="rcm-delta">not available</span>}
-                        {i > 0 && (mode === "abs" || mode === "both") && <span className="rcm-delta" data-abs-delta="true">Δ {r.abs_deltas[i]}</span>}
+                        {i > 0 && (mode === "abs" || mode === "both") && <span className="rcm-delta" data-abs-delta="true" title={r.abs_deltas[i]}>Δ {reportDelta(r.abs_deltas[i], r.unit, precision)}</span>}
                         {i > 0 && (mode === "pct" || mode === "both") && <span className="rcm-delta" data-pct-delta="true">Δ% {r.pct_deltas[i]}</span>}
                       </td>
                     ))}
@@ -142,6 +147,8 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
 }
 
 function AssumptionBlock({ payload }: { payload: ComparePayload }) {
+  const { precision } = useReportPrecision();
+  const cell = (value: number | null, _unit: string) => reportAmount(value, precision);
   const a = payload.assumptions;
   const names = payload.columns.map((c) => c.scenario);
   return (
