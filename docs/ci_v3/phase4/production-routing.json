@@ -6,5 +6,5 @@
   "groups": {},
   "authority": "Explicit user instruction: FINCO CI V3 \u2014 ACTIVATE PRODUCTION NOW. This is not a fabricated Financial/Security/CI review record.",
   "runtime": "Run-built pinned Ubuntu/GCC image, immutable Actions artifact transfer; no registry manifest digest claimed.",
-  "worker_count": 5
+  "worker_count": 8
 }

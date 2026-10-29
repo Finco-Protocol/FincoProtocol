@@ -42,6 +42,33 @@ def validate_reference_policy(reference, historical):
   if node in original:require(values==original[node],'accepted reference changed historical outcomes')
   else:require(outcome(values)['status']=='passed','accepted reference has nonhistorical nonpass; sequential bootstrap required: '+node)
 
+
+def validate_accepted_reference_successor(reference, historical, historical_native):
+ # Preserve validate_reference_policy unchanged. Only its single, already
+ # owner-authorized D-029 historic skip-to-pass may be admitted separately.
+ # The caller must have independently authenticated BOTH source runs/JUnit.
+ try:
+  validate_reference_policy(reference,historical)
+  return 'historical-phase-exact'
+ except ContractError:
+  original=phase_map(historical);accepted=phase_map(reference['report'])
+  require(set(original)<=set(accepted),'accepted reference lost historical coverage')
+  changed=sorted(n for n in original if original[n]!=accepted[n])
+  require(changed==[D029_NODE],
+          'accepted reference historical phase mismatches are not the single approved D-029 node: '+repr(changed[:30]))
+  unexpected=sorted(n for n in accepted if n not in original and outcome(accepted[n])['status']!='passed')
+  require(not unexpected,'accepted reference has nonhistorical nonpass: '+repr(unexpected[:30]))
+  require(set(historical_native)==set(original) and set(reference['native'])==set(accepted),
+          'D-029 successor missing authenticated original/native evidence')
+  try:
+   facts=d029_source_facts()
+  except (OSError,ValueError,subprocess.CalledProcessError,ContractError) as exc:
+   raise ContractError('D-029 successor exact current-source authentication failed: '+type(exc).__name__) from exc
+  problems=d029_transition_problems(D029_NODE,original[D029_NODE],historical_native[D029_NODE],
+      accepted[D029_NODE],reference['native'][D029_NODE],facts,accepted,reference['native'])
+  require(not problems,'D-029 accepted-source successor proof rejected: '+repr(problems))
+  return 'exact-D029-authorized-reference-successor'
+
 def require_reference_runtime(reference):
  # A different software contract needs a fresh sequential control, before workers.
  path='docs/ci_v3/phase4/runtime/inputs.json'
@@ -57,8 +84,9 @@ def route_preflight(out):
    api=GitHub();reference=authenticate_reference(api,source_base(),out/'reference')
    require_reference_runtime(reference)
    historical=authenticate_baseline(api,out/'historical')
-   validate_reference_policy(reference,historical)
-   write_json(out/'source-reference.json',reference);ready=True;reason='accepted-source reference authenticated'
+   historic_native=native_cases((out/'historical/public-verification-results/results.xml').read_bytes(),historical)
+   admission=validate_accepted_reference_successor(reference,historical,historic_native)
+   write_json(out/'source-reference.json',reference);ready=True;reason='accepted-source reference authenticated; '+admission
   except (ValueError,OSError,subprocess.CalledProcessError) as error:
    reason='accepted-source evidence unavailable: '+str(error)
  mode=route_mode(config,trusted,os.environ.get('ROLLBACK',''),compatible,ready)
@@ -136,6 +164,9 @@ def inventory(report):
 def make_plan(project,out,image):
  ctx=context();api=GitHub();baseline=authenticate_baseline(api,out/'baseline')
  reference=authenticate_reference(api,source_base(),out/'reference')
+ require_reference_runtime(reference)
+ baseline_native=native_cases((out/'baseline/public-verification-results/results.xml').read_bytes(),baseline)
+ validate_accepted_reference_successor(reference,baseline,baseline_native)
  historical=set(baseline['selected']);require(historical<=set(reference['report']['selected']),'accepted reference lost historical coverage')
  guard=read_json('merge-tree.json');validate_merge_guard(guard)
  require(runtime_inputs_match(),'runtime source inputs changed without a reviewed contract')
@@ -154,7 +185,29 @@ def make_plan(project,out,image):
  for c in ET.parse(out/'baseline/public-verification-results/results.xml').iter('testcase'):
   if c.get('classname'):times[node_id(c.get('classname'),c.get('name'),set(inv['modules'])).split('::')[0]]+=round(float(c.get('time','0'))*1000)
  counts=Counter(n['module'] for n in inv['nodes'])
- weights=seal({'schema':1,'kind':'ci-v3-weights','source':ctx['source'],'inventory_digest':inv['digest'],'modules_ms':{m:max(1,times.get(m,counts[m]*1000)) for m in inv['modules']},'measurement':'historical authenticated native JUnit durations; new modules node-count proxy'})
+ # The accepted-base report is independently authenticated and contains actual
+ # per-phase timing from its native execution. It supersedes older baseline
+ # durations for modules present in that exact accepted tree. PR-only modules
+ # remain conservative explicit node-count estimates, never fabricated times.
+ current_ms=Counter();current_measured=set()
+ for ph in reference['report']['phases']:
+  ms=ph.get('duration_ms')
+  if type(ms) is int and ms>=0:
+   module=ph['nodeid'].split('::')[0]
+   current_ms[module]+=ms
+   current_measured.add(module)
+ sources={m:('authenticated accepted-source phase milliseconds'
+             if m in current_measured and current_ms[m]>0 else
+             'authenticated historical native JUnit milliseconds'
+             if times.get(m,0)>0 else 'unmeasured current module: node_count * 1000ms proxy') for m in inv['modules']}
+ weights=seal({'schema':1,'kind':'ci-v3-weights','source':ctx['source'],
+   'inventory_digest':inv['digest'],
+   'modules_ms':{m:max(1,current_ms[m] if m in current_measured and current_ms[m]>0 else times.get(m,counts[m]*1000)) for m in inv['modules']},
+   'measurement':'authenticated accepted-source phase durations when available; historical native JUnit fallback; explicit unmeasured module proxy'})
+ write_json(out/'weights.json',weights)
+ write_json(out/'timing-provenance.json',{'accepted_reference_run_id':reference['run_id'],
+   'accepted_reference_digest':reference['digest'],'historical_run_id':BASE_RUN,
+   'module_weight_sources':sources,'worker_count':routing()['worker_count']})
  config=routing();groups=config['groups']
  plan=plan_partitions(inv,policy,weights,workers=config['worker_count'],groups=groups)
  require(set(plan['module_workers'].values())=={f'worker-{i}' for i in range(config['worker_count'])},'empty production worker')
@@ -297,6 +350,8 @@ def verify_data(planfolder,workers):
  baseline=control_report(read_json(planfolder/'baseline/public-verification-results/inventory.json'));bp=phase_map(baseline);bn=native_cases((planfolder/'baseline/public-verification-results/results.xml').read_bytes(),baseline)
  reference=data['source_reference'];rp,rn=validate_reference(reference,source_base())
  require(set(bp)<=set(rp),'accepted reference lost historical coverage')
+ require_reference_runtime(reference)
+ validate_accepted_reference_successor(reference,baseline,bn)
  changes=reconciliation(reference,data['inventory']);require(changes==data['inventory_reconciliation'],'inventory reconciliation mismatch')
  validate_merge_guard(data['merge_guard'])
  require(runtime_inputs_match() and data['runtime_inputs']==read_json('docs/ci_v3/phase4/runtime/inputs.json'),'runtime source contract drift')
