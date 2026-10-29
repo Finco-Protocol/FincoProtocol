@@ -33,8 +33,11 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from app.model_quality import evaluate_model_quality
 from app.model_quality.contracts import CheckStatus
-from app.model_quality.evaluators import TOL_KEUR, TOL_RATIO
+from app.model_quality.evaluators import TOL_KEUR
 from app.model_quality.evidence import ProjectTerms, evidence_from_history_entry
+from app.v2.debt_metrics_projection import build_debt_metrics
+from app.workbook import dscr_contract_terms as _terms
+from app.workbook.dscr_contract_terms import format_delta_x, format_ratio
 from app.workbook.runtime_projection import thaw_runtime_payload
 
 SCHEMA = "RC4B_CREDIT_DECISION_V1"
@@ -86,8 +89,11 @@ def _num(value: Any) -> Optional[float]:
     return f if math.isfinite(f) else None
 
 
-def _cell(value: Any, kind: str = "keur", reason: str = "") -> dict[str, Any]:
-    """{v, d, reason}: ``v`` the persisted value (or None), ``d`` its display.  Missing is UNAVAILABLE, never 0."""
+def _cell(value: Any, kind: str = "keur", reason: str = "", refs: Optional[Sequence[float]] = None) -> dict[str, Any]:
+    """{v, d, reason}: ``v`` the persisted value (or None), ``d`` its display.  Missing is UNAVAILABLE, never 0.
+
+    A ratio (``x``) is displayed with enough digits that it cannot read EQUAL to 1.00x (or to any ``refs`` threshold) unless it is equal:
+    0.9951 is never shown as a safe-looking 1.00x.  Display only; every predicate uses the raw ``v``."""
     if isinstance(value, bool):
         return {"v": value, "d": "YES" if value else "no", "reason": ""}
     if kind == "text":
@@ -97,7 +103,7 @@ def _cell(value: Any, kind: str = "keur", reason: str = "") -> dict[str, Any]:
     if v is None:
         return {"v": None, "d": UNAVAILABLE, "reason": reason or "Not persisted in this Run's evidence."}
     if kind == "x":
-        d = f"{v:.2f}x"
+        d = format_ratio(v, tuple(refs or ()) + (1.0,))
     elif kind == "pct":                      # a persisted FRACTION rendered as percent
         d = f"{v * 100:.2f}%"
     elif kind == "int":
@@ -117,7 +123,7 @@ def _diff(a: Optional[float], b: Optional[float], kind: str) -> dict[str, Any]:
     if kind == "pct":
         return {"v": delta, "d": f"{delta * 100:+.2f} pp", "reason": ""}
     if kind == "x":
-        return {"v": delta, "d": f"{delta:+.2f}x", "reason": ""}
+        return {"v": delta, "d": format_delta_x(delta), "reason": ""}
     if kind == "int":
         return {"v": delta, "d": f"{int(round(delta)):+,}", "reason": ""}
     return {"v": delta, "d": f"{delta:+,.2f}", "reason": ""}
@@ -428,7 +434,7 @@ def _timeline(inp: RunInput) -> dict[str, Any]:
                 cells.append(_cell(flag if isinstance(flag, bool) else None, "flag", "Lock-up flag not persisted for this period."))
             elif key == "below_one":
                 cells.append(_cell(None, "flag", "No DSCR persisted.") if dscr is None or not ds else
-                             {"v": dscr < 1.0 - TOL_RATIO, "d": "YES" if dscr < 1.0 - TOL_RATIO else "no", "reason": ""})
+                             {"v": dscr < 1.0, "d": "YES" if dscr < 1.0 else "no", "reason": ""})
             else:
                 bad = None if dscr is None or target is None or not ds else dscr < target - SIZING_TARGET_TOL
                 cells.append(_cell(None, "flag", "No DSCR or sizing target persisted.") if bad is None else
@@ -458,7 +464,61 @@ def _headroom(actual: Optional[float], threshold: Optional[float], kind: str) ->
     return _diff(threshold, actual, kind)       # actual − threshold; positive = above the threshold
 
 
-def _qm_findings(inp: RunInput, run: Mapping[str, Any], links: Mapping[str, str]) -> list[dict[str, Any]]:
+def _period_list(points: Sequence[Mapping[str, Any]]) -> str:
+    return ", ".join(f"P{p['period_index']} {p.get('date') or ''}".strip() for p in points[:FINDING_LIMIT_PERIODS]) + (" …" if len(points) > FINDING_LIMIT_PERIODS else "")
+
+
+def _wf04_findings(run: Mapping[str, Any], dm: Mapping[str, Any], links: Mapping[str, str]) -> list[dict[str, Any]]:
+    """WF-04: the Event-of-Default threshold condition and the contractual covenant of ONE committed Run, from the two DSCR terms that were
+    recorded in THAT Run's own immutable identity (``debt_metrics``).  Model-evaluated conditions on entered terms — not a legally declared
+    default, not proof of a missed payment, not a statement about profitability."""
+    ev = dm["evaluation"]
+    achieved = _num(_mapping(ev["achieved_min_dscr"]).get("min"))
+    specs = (
+        # finding id, evaluation key, title, term label, breach status, compliant status, breach code, not-configured code
+        ("CD-EOD", "eod", "Event of Default threshold (Minimum DSCR)", "Minimum DSCR (EoD threshold)", _terms.EOD_TRIGGERED,
+         _terms.EOD_NOT_TRIGGERED, "DSCR_BELOW_EOD_THRESHOLD", "EOD_THRESHOLD_NOT_CONFIGURED"),
+        ("CD-COV-DSCR", "covenant", "Contractual DSCR covenant", "Contractual DSCR (covenant)", _terms.COV_BREACHED,
+         _terms.COV_COMPLIANT, "DSCR_BELOW_CONTRACTUAL_DSCR", "CONTRACTUAL_DSCR_NOT_CONFIGURED"),
+    )
+    out: list[dict[str, Any]] = []
+    for fid, key, title, label, breach, compliant, breach_code, unconfigured_code in specs:
+        verdict = ev[key]
+        status = verdict["status"]
+        threshold = _num(verdict.get("threshold_x"))
+        refs = tuple(x for x in (threshold, 1.0) if x is not None)
+        common = dict(fid=f"{run['history_id']}:{fid}", source="CREDIT_DECISION", check_id=fid, title=title, run=run,
+                      metric=f"Achieved minimum DSCR vs {label}", links=links,
+                      evidence_source="integrity_evidence.senior_debt.periods.reported_dscr; last_runtime_identity.dscr_contract_terms")
+        if status in (breach, compliant):
+            low = _mapping(verdict["worst"])
+            low_dscr = _num(low.get("dscr"))
+            where = f"P{low.get('period_index')} {low.get('date') or ''}".strip()
+            authority = f"{label} input recorded with this Run · model-evaluated condition, not a legal declaration"
+            if status == breach and fid == "CD-EOD":
+                detail = (f"Event of Default: TRIGGERED — actual DSCR {format_ratio(low_dscr, refs)} is below configured Minimum DSCR "
+                          f"{format_ratio(threshold, refs)} in {where}. {verdict.get('note', '')}")
+            elif status == breach:
+                detail = (f"{verdict.get('message', '')} Actual {format_ratio(low_dscr, refs)} against the configured "
+                          f"{format_ratio(threshold, refs)} in {where}.")
+            else:
+                detail = ("No tested period is below this term. That holds for this configured term only; it is not a statement that no default "
+                          "or covenant event of any other kind exists.")
+            out.append(_finding(
+                klass=CONTRACTUAL, status=status, severity="HIGH" if status == breach else "INFORMATION",
+                actual=_cell(low_dscr, "x", refs=refs), threshold=_cell(threshold, "x", refs=refs), authority=authority,
+                headroom=_headroom(low_dscr, threshold, "x"), period=_period_list(verdict["breaching_periods"]) if status == breach else None,
+                detail=detail.strip(), reason_code=breach_code if status == breach else "", **common))
+        else:
+            reason = str(verdict.get("reason") or "")
+            code = unconfigured_code if status == _terms.NOT_CONFIGURED else (reason.split(":", 1)[0] if ":" in reason[:40] else status)
+            out.append(_finding(klass=UNSUPPORTED, status=status, severity="INFORMATION",
+                                actual=_cell(achieved, "x") if achieved is not None else None, authority="NONE",
+                                detail=reason or "Not evaluated.", reason_code=code, **common))
+    return out
+
+
+def _qm_findings(inp: RunInput, run: Mapping[str, Any], links: Mapping[str, str], skip: frozenset = frozenset()) -> list[dict[str, Any]]:
     entry = inp.entry
     freshness = {LAST_CURRENT: "CURRENT", LAST_STALE: "STALE"}.get(inp.state)
     terms = inp.terms if inp.state == LAST_CURRENT else None
@@ -467,7 +527,7 @@ def _qm_findings(inp: RunInput, run: Mapping[str, Any], links: Mapping[str, str]
     contractual_terms = bool(terms and terms.contractual)
     out = []
     for c in report.checks:
-        if c.check_id not in CREDIT_QM:
+        if c.check_id not in CREDIT_QM or c.check_id in skip:       # skip: superseded by the Run-bound WF-04 finding (never a second, contradicting row)
             continue
         klass, note = CREDIT_QM[c.check_id]
         status = c.status.value
@@ -522,7 +582,7 @@ def _credit_findings(inp: RunInput, run: Mapping[str, Any], structure: Mapping[s
     # F-2: convergence is not credit feasibility.
     min_dscr = _num(rs.get("min_dscr"))
     conv = capacity["convergence"]
-    if min_dscr is not None and min_dscr < 1.0 - TOL_RATIO:
+    if min_dscr is not None and min_dscr < 1.0:          # strict, raw (WF-04): no tolerance on a coverage verdict
         converged = conv["termination_reason"]["v"] == "CONVERGED"
         out.append(_finding(
             fid=f"{run['history_id']}:CD-F2", source="CREDIT_DECISION", title="DSCR below 1.0x" + (" although the solver CONVERGED" if converged else ""),
@@ -570,7 +630,6 @@ def _credit_findings(inp: RunInput, run: Mapping[str, Any], structure: Mapping[s
         else "LLCR is not computed or persisted for this Run (no discount basis): UNAVAILABLE, never derived."))
     for fid, title, why in (
         ("CD-PLCR", "Project life coverage ratio (PLCR)", "PLCR is not computed or persisted by the Run."),
-        ("CD-EOD", "Event of default", "No default-DSCR term or event-of-default mechanic exists in the Run or the project inputs; no default is ever declared."),
     ):
         out.append(_finding(fid=f"{run['history_id']}:{fid}", source="CREDIT_DECISION", title=title, klass=UNSUPPORTED, status=UNAVAILABLE, run=run,
                             metric=title, evidence_source="none", links=links, reason_code="EVIDENCE_MISSING", detail=why))
@@ -724,11 +783,14 @@ def build_credit_decision(inputs: Sequence[RunInput], *, project_code: str,
         structure = _structure(inp)
         capacity = _capacity(inp, structure)
         timeline = _timeline(inp)
-        run_findings = _qm_findings(inp, identity, links)
+        debt_metrics = build_debt_metrics(inp.entry, integrity=integrity, state=inp.state)
+        superseded = frozenset({"QM-COV-001"}) if debt_metrics["contract_terms"]["contractual_dscr"]["status"] == _terms.CONFIGURED else frozenset()
+        run_findings = _qm_findings(inp, identity, links, skip=superseded)
         qm_by = {f["check_id"]: {"severity": f["severity"]} for f in run_findings}
         run_findings += _credit_findings(inp, identity, structure, capacity, timeline, integrity, links, qm_by)
+        run_findings += _wf04_findings(identity, debt_metrics, links)
         views.append({"identity": identity, "integrity": integrity, "links": links, "structure": structure, "capacity": capacity,
-                      "timeline": timeline, "findings": run_findings})
+                      "timeline": timeline, "findings": run_findings, "debt_metrics": debt_metrics})
         from app.v2.diagnostics_run_compare import operating_frequency as _operating_frequency
         if _operating_frequency(inp.entry) != "6/6":
             # RC-7B: only non-default calendars are annotated; 6/6 views are unchanged.
@@ -752,8 +814,10 @@ def build_credit_decision(inputs: Sequence[RunInput], *, project_code: str,
                         ADVISORY: "A project input or sizing assumption used as an advisory threshold; FINCO cannot tell a negotiated term from a default.",
                         OBSERVED: "A value or fact persisted by the committed Run, without a threshold from a contract.",
                         UNSUPPORTED: "Evidence or authority missing; the exact gap is stated and nothing is inferred."},
-            "disclosure": "FINCO decision intelligence over committed Run evidence. Not lender certification, not a contractual covenant test, no "
-                          "probability of default and no event of default is declared."}}
+            "disclosure": "FINCO decision intelligence over committed Run evidence. Not lender certification and not a legal covenant test; no "
+                          "probability of default is estimated and no legal event of default is declared. A model-evaluated Event-of-Default threshold "
+                          "condition or covenant breach is reported only when the Run recorded the corresponding contractual DSCR term, and is never "
+                          "proof of a missed payment or of project profitability."}}
 
 
 __all__ = ["SCHEMA", "RunInput", "build_credit_decision", "LAST_CURRENT", "LAST_STALE", "HISTORICAL", "CONTRACTUAL", "ADVISORY", "OBSERVED",

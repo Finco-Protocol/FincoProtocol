@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import "../../styles/rcm-credit.css";
 import { fetchCreditDecision, fetchHeadroom, type HeadroomPayload } from "./api";
 import type { CreditCell, CreditData, CreditFinding, CreditPayload, CreditRunView, Dict } from "./types";
+import { debtMetricsHref, prepareDebtMetrics } from "../debtmetrics/debtMetricsLink";
 
 const CLASS_LABEL: Record<string, string> = {
   CONTRACTUAL_COVENANT: "Contractual", PROJECT_INPUT_ADVISORY: "Advisory", OBSERVED_FINANCIAL_RESULT: "Observed", UNSUPPORTED_EVIDENCE_MISSING: "Not supported",
@@ -40,6 +41,7 @@ function Identities({ data }: { data: CreditData }) {
         <tr><th scope="row">Status</th>{runs.map((r, i) => <td key={i} data-credit-run-state={r.identity.state}>{label(r.identity.state)}</td>)}</tr>
         <tr><th scope="row">Scenario</th>{runs.map((r, i) => <td key={i}>{r.identity.scenario}</td>)}</tr>
         <tr><th scope="row">Ran at</th>{runs.map((r, i) => <td key={i}>{r.identity.ran_at}</td>)}</tr>
+        <tr><th scope="row">Debt Metrics</th>{runs.map((r, i) => <td key={i}><a href={debtMetricsHref()} onClick={(event) => prepareDebtMetrics(event, String(r.identity.history_id))} data-credit-debt-metrics-link="true">Open for this Run</a></td>)}</tr>
         <tr><th scope="row">Model integrity</th>{runs.map((r, i) => <td key={i}>{r.identity.integrity}{r.identity.committed_with_integrity_failure && <> — <strong>failure state, not a bankable scenario</strong></>}</td>)}</tr>
       </Table>
       <details className="rcm-audit" data-credit-advanced="true">
