@@ -19,7 +19,7 @@ import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { CostLinesGridView as CostLinesView } from "./editing/CostLinesGridView";
-import { CHANGES_STORE_DIRTY_KEY } from "./editing/ChangesProvider";
+import { NAVIGATION_IGNORED_DIRTY_KEYS } from "./editing/ChangesProvider";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
 import { InputStudios } from "./studios/InputStudios";
@@ -214,7 +214,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       // Moving between groups leaves the same editors mounted, so their drafts survive.
       if (route.section === sectionRef.current) { adopt(); return; }
       confirmIfDirty(adopt, {
-        ignore: (key) => key === "run" || key === CHANGES_STORE_DIRTY_KEY,
+        ignore: (key) => NAVIGATION_IGNORED_DIRTY_KEYS.includes(key),
         onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
       });
     };
@@ -232,7 +232,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       setSection(target.section);
     };
     if (target.section === sectionRef.current) adopt();
-    else confirmIfDirty(adopt, { ignore: (key) => key === "run" || key === CHANGES_STORE_DIRTY_KEY });
+    else confirmIfDirty(adopt, { ignore: (key) => NAVIGATION_IGNORED_DIRTY_KEYS.includes(key) });
   }
   function navigate(sectionId: Section) { navigateTo(sectionId); }
 

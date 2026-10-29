@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRevenueContracts } from "../api";
 import { PercentInput } from "../editing/PercentInput";
-import { useOptionalChanges } from "../editing/ChangesProvider";
+import { PPA_STORE_DIRTY_KEY, useOptionalChanges } from "../editing/ChangesProvider";
 import { ppaBaselines, ppaStageInputs } from "../editing/ppaStaging";
 import { plain } from "../productLanguage";
 import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
@@ -70,6 +70,11 @@ function DateHelp({ guidance, readOnly, onUse }: { guidance: DateGuidance | null
       ))}
     </div>
   );
+}
+
+/** A NEW contract left without a source reference records that it was entered here (never an invented external citation). */
+function withSourceDefaults(model: ContractModel): ContractModel {
+  return { ...model, streams: model.streams.map((st) => (st.isNew && st.source_ref.trim() === "" ? { ...st, source_ref: "Entered in FINCO workspace" } : st)) };
 }
 
 function cloneModel(model: ContractModel): ContractModel {
@@ -137,16 +142,19 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   useEffect(() => {
     const live = storeRef.current;
     if (!live || !savedModel || !draft || creating) return;
-    const filled = { ...draft, streams: draft.streams.map((st) => (st.isNew && st.source_ref.trim() === "" ? { ...st, source_ref: "Entered in FINCO workspace" } : st)) };
+    const filled = withSourceDefaults(draft);
     const inputs = ppaStageInputs(savedModel, filled, Object.fromEntries(Object.entries(pctErrors)));
     live.replaceSection("ppa", inputs);
     live.setDocument("ppa", inputs.length ? buildContractPayload(raw, filled) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, pctErrors]);
 
-  const errors = useMemo(() => (draft ? validateContractModel(draft) : {}), [draft]);
+  const errors = useMemo(() => (draft ? validateContractModel(withSourceDefaults(draft)) : {}), [draft]);
   const editCount = savedModel && draft ? countContractEdits(savedModel, draft) : creating && draft ? 1 : 0;
-  useReportDirty("revenue-ppa", store?.shell && !creating ? 0 : editCount);
+  // A staged contract edit is mirrored into the shell store, but this editor keeps reporting it itself (same render-then-register timing
+  // as before); the bridge excludes the `ppa` section and section navigation ignores PPA_STORE_DIRTY_KEY, because the draft survives.
+  // A brand-new contract that was never staged keeps the full leave guard.
+  useReportDirty(creating ? "revenue-ppa-create" : PPA_STORE_DIRTY_KEY, editCount);
   useReportPending("revenue-ppa", inFlight || lockedByUnknown);
   const singleFlight = useSingleFlight();
   const readOnly = protectedReference || inFlight || lockedByUnknown;
@@ -162,7 +170,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     if (lockedByUnknown) return;
     setShowErrors(true);
     // A NEW contract left without a source reference records that it was entered here (never an invented external citation).
-    const filled = { ...model, streams: model.streams.map((st) => (st.isNew && st.source_ref.trim() === "" ? { ...st, source_ref: "Entered in FINCO workspace" } : st)) };
+    const filled = withSourceDefaults(model);
     const problems = { ...validateContractModel(filled), ...Object.fromEntries(Object.entries(pctErrors).map(([k, v]) => [`streams.${k}`, v])) };
     if (Object.keys(problems).length) {
       setStatus({ tone: "error", text: `Fix ${Object.keys(problems).length} highlighted field(s) before saving. Nothing was saved.` });

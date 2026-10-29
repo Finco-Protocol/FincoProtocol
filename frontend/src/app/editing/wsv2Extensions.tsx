@@ -28,7 +28,7 @@ const toIdentity = (c: WorkspaceExtensionContext): EditIdentity => ({
  *  ignores it (`LEAVE_IGNORES_STORE`), because staged drafts survive in the store; store-backed editors therefore do not report themselves. */
 function DirtyBridge() {
   const changes = useChanges();
-  useReportDirty(CHANGES_STORE_DIRTY_KEY, changes.total);
+  useReportDirty(CHANGES_STORE_DIRTY_KEY, changes.edits.filter((e) => e.section !== "ppa").length);
   useReportPending("changes-store-conflict", changes.conflictCount > 0);
   return null;
 }
