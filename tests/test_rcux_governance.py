@@ -31,9 +31,10 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
-        expected = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
-        # WF-04 successor lineage: for the three presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
-        assert S.git_blob(SOURCES[path]) == expected or WF04.presentation_successor(path, SOURCES[path])
+        later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
+        # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid
+        assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
+                or WF04.presentation_successor(path, SOURCES[path]))
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -177,7 +178,9 @@ def test_the_workspace_router_changes_only_by_the_one_rcux_include_and_reviewed_
     for old, new in ROUTER_WORDING:
         assert rebuilt.count(old) == 1, old
         rebuilt = rebuilt.replace(old, new)
-    assert source == rebuilt.rstrip("\n") + "\n\n\n" + tail.rstrip("\n") + "\n"
+    expected = rebuilt.rstrip("\n") + "\n\n\n" + tail.rstrip("\n") + "\n"
+    from tests import fin_v2_wsv2_scope as WS2
+    assert source == expected or WS2.matches("app/v2/react_workspace_router.py", source.encode())   # or the Owner-approved WS-2 exact blob
 
 
 def test_the_rcux_aggregator_lists_exactly_the_adapter_modules_it_mounts():
@@ -217,9 +220,12 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
     from tests import fin_v2_pr394_corr_scope as PR394
     hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
-    # The second later, separately governed exception: the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly these two workbook paths
-    # (the registered contractual-DSCR inputs and their pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
+    # Two later, separately governed exceptions: the Owner-approved WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py) pins the exact blob of each of its own
+    # paths; the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly the two workbook paths below (the registered contractual-DSCR inputs and their
+    # pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
+    from tests import fin_v2_wsv2_scope as WS2
     from tests import wf04_scope as WF04
+    hits = [p for p in hits if not (p in WS2.OWNED_PATHS and WS2.matches(p, (S.ROOT / p).read_bytes()))]
     hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
                                     and WF04.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits

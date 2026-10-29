@@ -194,6 +194,83 @@ class _HashOut:
 # Atomic transaction context manager
 # ---------------------------------------------------------------------------
 
+def check_identity_in_tx(cur: Any, user_id: str, project_id: str, expected_content_hash: str) -> Any:
+    """Composite workbook-identity CAS on the CALLER's cursor (inside its exclusive transaction).
+
+    Returns the workspace row read.  Raises CapexCommandError / CapexStaleIdentityError before any mutation.
+    """
+    from app.workbook.workbook_identity import WorkbookIdentityError, assemble_transactional
+
+    cur.execute(
+        "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
+        "FROM workspace_states WHERE user_id=? AND project_id=?",
+        (user_id, project_id),
+    )
+    ws_row = cur.fetchone()
+    if ws_row is None:
+        raise CapexCommandError(
+            "Workspace state is missing; CAPEX row mutation rejected."
+        )
+    try:
+        current_identity = assemble_transactional(
+            draft_snapshot_json=ws_row["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=ws_row["active_scenario_id"],
+            active_scenario_name=ws_row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+    except WorkbookIdentityError as exc:
+        raise CapexCommandError(
+            f"Identity assembly failed before mutation; rolling back: {exc}"
+        ) from exc
+    if current_identity.composite_hash != expected_content_hash:
+        raise CapexStaleIdentityError(
+            "Workbook changed since page loaded — values refreshed. "
+            "Please try your edit again."
+        )
+    return ws_row
+
+
+def finalize_identity_in_tx(cur: Any, user_id: str, project_id: str, ws_row: Any) -> str:
+    """Recompute the composite identity from the in-transaction state and persist hash + dirty=1.  Returns the new hash."""
+    from app.workbook.workbook_identity import WorkbookIdentityError, assemble_transactional
+
+    try:
+        cur.execute(
+            "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
+            "FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        ws_row_after = cur.fetchone() or ws_row
+        new_identity = assemble_transactional(
+            draft_snapshot_json=ws_row_after["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=ws_row_after["active_scenario_id"],
+            active_scenario_name=ws_row_after["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+    except WorkbookIdentityError as exc:
+        raise CapexCommandError(
+            f"Identity assembly failed after mutation; rolling back: {exc}"
+        ) from exc
+    updated = update_composite_hash_cursor(
+        cur,
+        user_id=user_id,
+        project_id=project_id,
+        composite_hash=new_identity.composite_hash,
+        now_iso=_now_utc_iso(),
+    )
+    if not updated:
+        raise CapexCommandError(
+            "Workspace state disappeared during mutation; rolling back."
+        )
+    return new_identity.composite_hash
+
+
 @contextmanager
 def _exclusive_tx(
     user_id: str,
@@ -214,86 +291,16 @@ def _exclusive_tx(
     Raises CapexStaleIdentityError on hash mismatch (before any mutation).
     Raises CapexCommandError if identity assembly fails or workspace is missing.
     """
-    from app.workbook.workbook_identity import WorkbookIdentityError, assemble_transactional
-
     conn = get_connection()
     conn.execute("BEGIN EXCLUSIVE")
     cur = conn.cursor()
     try:
-        # Read workspace row (draft_snapshot + scenario)
-        cur.execute(
-            "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
-            "FROM workspace_states WHERE user_id=? AND project_id=?",
-            (user_id, project_id),
-        )
-        ws_row = cur.fetchone()
-        if ws_row is None:
-            raise CapexCommandError(
-                "Workspace state is missing; CAPEX row mutation rejected."
-            )
-
-        # Compute current composite identity (reads CAPEX + OPEX + scenario inside tx)
-        try:
-            current_identity = assemble_transactional(
-                draft_snapshot_json=ws_row["draft_snapshot_json"] or "{}",
-                project_id=project_id,
-                user_id=user_id,
-                active_scenario_id=ws_row["active_scenario_id"],
-                active_scenario_name=ws_row["active_scenario_name"],
-                cursor=cur,
-                workbook_version=WORKBOOK.version,
-            )
-        except WorkbookIdentityError as exc:
-            raise CapexCommandError(
-                f"Identity assembly failed before mutation; rolling back: {exc}"
-            ) from exc
-
-        # CAS check: reject stale before any mutation
-        if current_identity.composite_hash != expected_content_hash:
-            raise CapexStaleIdentityError(
-                "Workbook changed since page loaded — values refreshed. "
-                "Please try your edit again."
-            )
+        ws_row = check_identity_in_tx(cur, user_id, project_id, expected_content_hash)
 
         # Execute row mutation (caller's body)
         yield cur
 
-        # Recompute composite identity from new in-transaction state
-        try:
-            cur.execute(
-                "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
-                "FROM workspace_states WHERE user_id=? AND project_id=?",
-                (user_id, project_id),
-            )
-            ws_row_after = cur.fetchone() or ws_row
-            new_identity = assemble_transactional(
-                draft_snapshot_json=ws_row_after["draft_snapshot_json"] or "{}",
-                project_id=project_id,
-                user_id=user_id,
-                active_scenario_id=ws_row_after["active_scenario_id"],
-                active_scenario_name=ws_row_after["active_scenario_name"],
-                cursor=cur,
-                workbook_version=WORKBOOK.version,
-            )
-        except WorkbookIdentityError as exc:
-            raise CapexCommandError(
-                f"Identity assembly failed after mutation; rolling back: {exc}"
-            ) from exc
-
-        # Persist new hash + dirty flag atomically with the row mutation
-        updated = update_composite_hash_cursor(
-            cur,
-            user_id=user_id,
-            project_id=project_id,
-            composite_hash=new_identity.composite_hash,
-            now_iso=_now_utc_iso(),
-        )
-        if not updated:
-            raise CapexCommandError(
-                "Workspace state disappeared during mutation; rolling back."
-            )
-
-        hash_out.value = new_identity.composite_hash
+        hash_out.value = finalize_identity_in_tx(cur, user_id, project_id, ws_row)
         conn.execute("COMMIT")
 
     except Exception:

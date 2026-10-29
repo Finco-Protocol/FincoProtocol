@@ -17,7 +17,8 @@ import { workspaceRoute, INPUT_DESTINATIONS, type WorkspaceDestination } from ".
 import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type ConfirmedRun, type WorkspaceExtensions } from "./workspaceExtensions";
 import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
-import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
+import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
+import { CostLinesGridView as CostLinesView } from "./editing/CostLinesGridView";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
 import { InputStudios } from "./studios/InputStudios";

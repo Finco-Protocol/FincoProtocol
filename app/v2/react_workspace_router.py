@@ -248,6 +248,12 @@ async def react_workspace_shell(request: Request, project: str):
                           "is_stale": context.freshness.is_stale},
             "identity": None,
             "integrity": None,
+            "save_all": ({"available": True, "url": "/v2/workbook/save-all",
+                          "csrf_token": _issue_csrf_token(request, project, purpose="model-save-all-v1"),
+                          "sections": ["cells", "contracts", "cost_lines"], "max_items": 200,
+                          "excluded": ["debt.financing.instruments"]}
+                         if not is_protected_reference(record) and owner == user.user_id
+                         else {"available": False, "reason": "This project is read-only for you; Save All is not available."}),
             "integrity_available": integrity_state == "AVAILABLE",
             "status_dimensions": None,
             "engine": {"persisted_version": None, "current_version": None,

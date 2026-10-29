@@ -2,8 +2,13 @@
 
 Authority: Financial Owner V3 decision and the unified WF-04 prompt section 0A (2026-10-29). Only this literal path set is admitted. No
 financial_engine, finco_core, domain, CI, security, Save All, writer-route or signed-certificate path is added, and no merge/deployment
-authority is created. Historical predecessor manifests stay verifiable at BASE: only the named re-pins below may differ, and each one keeps its
-previous pin map under ``historical_source_blobs[BASE]``. Low-level checks never call the cohort registry.
+authority is created. Historical predecessor manifests stay verifiable: only the named re-pins below may differ from the approved main they were merged
+with, and each one keeps its previous pin maps under ``historical_source_blobs`` (BASE = WF-04's historical origin, APPROVED_MAIN = main after the
+merged WS-2 PR #397). Low-level checks never call the cohort registry.
+
+Lineage: BASE is where WF-04 started; APPROVED_MAIN (main at the merge of PR #397, an ancestor of every WF-04 head from the post-#397 sync on) is
+the parent this cohort's delta is judged against. The WS-2 editing/Save All bytes arrive from APPROVED_MAIN and are the WS-2 cohort's
+responsibility (tests/fin_v2_wsv2_scope.py); WF-04 owns only what differs from APPROVED_MAIN.
 """
 from pathlib import Path
 import hashlib
@@ -12,6 +17,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'b76ac65c99e7fc9b486a557ae3c5ba9a711f50b3'
+APPROVED_MAIN = '8a74fcb5cd57e470cf83a458bd165ea14ad394fb'
+APPROVED_MAIN_TREE = 'a96566a21154fd8e673676c20bd2e4e093599330'
 MANIFEST = 'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'
 SCHEMA = 'WF04_DEBT_METRICS_EXACT_SOURCE_V1'
 # @@OWNED_PATHS_BEGIN@@
@@ -21,9 +28,6 @@ OWNED_PATHS = frozenset((
     'app/v2/debt_metrics_projection.py',
     'app/workbook/dscr_contract_terms.py',
     'app/workbook/registry.py',
-    'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
-    'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
-    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
     'docs/financial_validation/wf04_debt_metrics/CORRECTION_A_CI_AND_PERIOD_MATRIX.md',
     'docs/financial_validation/wf04_debt_metrics/INDEPENDENT_ORACLE_AND_PARITY.md',
     'docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md',
@@ -32,7 +36,6 @@ OWNED_PATHS = frozenset((
     'docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md',
     'docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md',
     'docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md',
-    'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json',
     'frontend/src/app/FinancialOverview.tsx',
     'frontend/src/app/FinancialResults.tsx',
     'frontend/src/app/credit/CreditDecisionPanel.tsx',
@@ -52,8 +55,6 @@ OWNED_PATHS = frozenset((
     'frontend/src/app/financing/FinancingStudio.tsx',
     'frontend/src/app/workflow/WorkflowBar.tsx',
     'frontend/src/styles/rcm-debtmetrics.css',
-    'per1_fail.txt',
-    'per2_fail.txt',
     'static/react/finco-react.css',
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
@@ -86,7 +87,8 @@ FIN_V2_3_MANIFEST = 'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json'
 FIN_V2_R1_MANIFEST = 'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json'
 FIN_V2_D01_MANIFEST = 'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json'
 WSV2_CORE_MANIFEST = 'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json'
-# Predecessor manifests that WF-04 re-pins, and the exact pins each one may move (everything else must stay byte-for-byte what it was at BASE).
+WSV2_EDITING_MANIFEST = 'docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json'
+# Predecessor manifests that WF-04 re-pins, and the exact pins each one may move (everything else must stay byte-for-byte what it was at APPROVED_MAIN).
 PREDECESSOR_REPINS = {
     FIN_V2_3_MANIFEST: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_rcm_governance.py',
                                   'tests/test_model_mutation_security_successor.py', 'tests/test_model_workspace_productivity_v1.py',
@@ -111,6 +113,8 @@ PREDECESSOR_REPINS = {
         'tests/test_wsv2_core_scope.py',
         'tests/wsv2_core_scope.py',
     )),
+    # The WS-2 Save All manifest: the one pin WF-04's additive Run-identity hunk forces (the file is also owned and pinned by this cohort).
+    WSV2_EDITING_MANIFEST: frozenset(('app/persistence/workspace_repository.py',)),
 }
 # The additive block WF-04 appends to the existing mandatory consolidation browser role (the bodies live in a non-collected helper, so no
 # collection-time skip is added: CI V3 collection governance).
@@ -148,21 +152,39 @@ def manifest(repo=None, ref=None):
     try:
         data = json.loads(_read(root, MANIFEST, ref))
         return data if (isinstance(data, dict) and isinstance(data.get('source_blobs'), dict)
-                        and data.get('schema_version') == SCHEMA and data.get('base') == BASE) else {}
+                        and data.get('schema_version') == SCHEMA and data.get('base') == BASE
+                        and data.get('approved_main') == APPROVED_MAIN and data.get('approved_main_tree') == APPROVED_MAIN_TREE) else {}
     except (OSError, ValueError, subprocess.CalledProcessError):
         return {}
 
 
+def _lineage_ok(root, ref):
+    """BASE (WF-04's origin) and APPROVED_MAIN (main with the merged WS-2 PR) are both ancestors of the head, APPROVED_MAIN is a descendant of BASE, and
+    the recorded tree really is APPROVED_MAIN's tree: a swapped, forged or unrelated 'approved main' cannot authenticate."""
+    head = ref or 'HEAD'
+    _git(root, 'merge-base', '--is-ancestor', BASE, head)
+    _git(root, 'merge-base', '--is-ancestor', APPROVED_MAIN, head)
+    _git(root, 'merge-base', '--is-ancestor', BASE, APPROVED_MAIN)
+    return _git(root, 'rev-parse', APPROVED_MAIN + '^{tree}').decode().strip() == APPROVED_MAIN_TREE
+
+
 def _historical_manifests_ok(root, ref):
-    """Each predecessor manifest equals its BASE self except the named re-pins, whose previous map is preserved under ``historical_source_blobs[BASE]``."""
+    """Each predecessor manifest equals its APPROVED_MAIN self except the named re-pins. Its previous pin map at APPROVED_MAIN is preserved under
+    ``historical_source_blobs[APPROVED_MAIN]`` and, where the manifest already existed, its WF-04-origin map under ``historical_source_blobs[BASE]``."""
     for path, allowed in PREDECESSOR_REPINS.items():
-        old = json.loads(_read(root, path, BASE))
+        old = json.loads(_read(root, path, APPROVED_MAIN))
         now = json.loads(_read(root, path, ref))
         if not isinstance(now, dict) or not isinstance(now.get('source_blobs'), dict):
             return False
         before, after = old['source_blobs'], now['source_blobs']
         history = now.get('historical_source_blobs')
-        if not isinstance(history, dict) or history.get(BASE) != before:
+        if not isinstance(history, dict) or history.get(APPROVED_MAIN) != before:
+            return False
+        try:
+            origin = json.loads(_read(root, path, BASE))['source_blobs']
+        except subprocess.CalledProcessError:
+            origin = None                                          # the manifest was introduced after BASE (WS-2): no WF-04-origin map exists
+        if origin is not None and history.get(BASE) != origin:
             return False
         if any(history.get(k) != v for k, v in (old.get('historical_source_blobs') or {}).items()):
             return False
@@ -194,12 +216,13 @@ def exact_blobs_ok(repo=None, ref=None):
     if set(pins) != OWNED_PATHS or not _owned_ok():
         return False
     try:
-        _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
+        if not _lineage_ok(root, ref):
+            return False
         if any(_blob(_read(root, p, ref)) != b for p, b in pins.items()):
             return False
         if not _historical_manifests_ok(root, ref):
             return False
-        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        changed = _git(root, 'diff', '--name-only', APPROVED_MAIN, *([ref] if ref else []), '--').decode().splitlines()
         if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
             return False
         if ref is None:

@@ -17,6 +17,12 @@ ENGINE_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/')
 
 
 def _changed():
+    """The WF-04 delta: what differs from the approved main (with the merged WS-2 PR) this cohort was integrated with."""
+    return W._git(W.ROOT, 'diff', '--name-only', W.APPROVED_MAIN, '--').decode().splitlines()
+
+
+def _changed_since_origin():
+    """Everything that differs from WF-04's historical origin: the WS-2 sources arrive from main, the rest is the WF-04 delta."""
     return W._git(W.ROOT, 'diff', '--name-only', W.BASE, '--').decode().splitlines()
 
 
@@ -27,15 +33,53 @@ def test_cohort_is_registered_exact_closed_and_excludes_every_financial_authorit
     assert set(W.manifest()['source_blobs']) == W.OWNED_PATHS
     assert not any(p.startswith(W.FORBIDDEN_PREFIXES) or p in W.FORBIDDEN_PATHS for p in W.OWNED_PATHS)
     assert not any(p.startswith(ENGINE_PREFIXES) for p in _changed())
+    assert not any(p.startswith(ENGINE_PREFIXES) for p in _changed_since_origin())
 
 
-def test_no_writer_route_csrf_save_all_security_or_engine_file_is_changed():
+WS2_WRITER_PATHS = ('app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py')
+GUARDED_PATHS = ('app/v2/router.py', *WS2_WRITER_PATHS, 'app/v2/mutation_csrf.py', 'app/workbook/update_service.py',
+                 'app/workbook/bankability_config.py', 'app/persistence/run_history_repository.py', 'app/services/run_intent_service.py',
+                 'app/api/project_runner.py', 'app/input_adapter.py', 'main_web.py')
+GUARDED_PREFIXES = ('app/run_integrity/', 'app/runtime/', 'app/export/', 'frontend/src/app/editing/')
+
+
+def _blob_at(ref, path):
+    return W._blob(W._git(W.ROOT, 'show', ref + ':' + path))
+
+
+def test_no_writer_route_csrf_save_all_security_or_engine_file_is_changed_by_wf04():
+    """Lineage-aware: the WS-2 writer/route/Save All/editing sources DID change since WF-04's origin (PR #397, in main) - WF-04 itself changed none."""
     changed = set(_changed())
-    for path in ('app/v2/router.py', 'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/mutation_csrf.py',
-                 'app/workbook/update_service.py', 'app/workbook/bankability_config.py', 'app/persistence/run_history_repository.py',
-                 'app/services/run_intent_service.py', 'app/api/project_runner.py', 'app/input_adapter.py', 'main_web.py'):
+    for path in GUARDED_PATHS:
         assert path not in changed, path
-    assert not [p for p in changed if p.startswith(('app/run_integrity/', 'app/runtime/', 'app/export/', 'frontend/src/app/editing/'))]
+    assert not [p for p in changed if p.startswith(GUARDED_PREFIXES)]
+    # every guarded path is byte-identical to the approved main, i.e. WF-04 contributes nothing to it ...
+    tracked = [p for p in W._git(W.ROOT, 'ls-files').decode().splitlines() if p.startswith(GUARDED_PREFIXES) or p in GUARDED_PATHS]
+    for path in tracked:
+        assert W._blob(W._read(W.ROOT, path, None)) == _blob_at(W.APPROVED_MAIN, path), path
+    # ... and the arrival of the WS-2 sources is a fact of the lineage, not hidden: they are in the origin delta, not in the WF-04 delta
+    origin = set(_changed_since_origin())
+    assert set(WS2_WRITER_PATHS) <= origin and any(p.startswith('frontend/src/app/editing/') for p in origin)
+
+
+def test_the_approved_main_is_the_authenticated_ancestor_and_the_origin_is_kept():
+    assert W._lineage_ok(W.ROOT, None)
+    assert W.manifest()['approved_main'] == W.APPROVED_MAIN and W.manifest()['base'] == W.BASE
+    parents = W._git(W.ROOT, 'rev-list', '--parents', '-n', '1', 'HEAD').decode().split()[1:]
+    # the integration is a normal merge: one parent is the approved main (or the WF-04 head already contains it)
+    assert W.APPROVED_MAIN in parents or W._git(W.ROOT, 'merge-base', '--is-ancestor', W.APPROVED_MAIN, 'HEAD') == b''
+
+
+@pytest.mark.parametrize('field,value', (('APPROVED_MAIN', '0' * 40), ('APPROVED_MAIN_TREE', '0' * 40), ('BASE', '1' * 40)))
+def test_a_forged_swapped_or_unrelated_lineage_fails_closed(field, value, monkeypatch):
+    monkeypatch.setattr(W, field, value)
+    assert not W.exact_blobs_ok() and not C.valid()
+
+
+def test_the_approved_main_must_descend_from_the_origin(monkeypatch):
+    unrelated = W._git(W.ROOT, 'rev-list', '--max-parents=0', 'HEAD').decode().split()[0]
+    monkeypatch.setattr(W, 'APPROVED_MAIN', unrelated)
+    assert not W.exact_blobs_ok() and not C.valid()
 
 
 @pytest.mark.parametrize('path', sorted(W.OWNED_PATHS))
@@ -133,8 +177,9 @@ def test_generated_ci_evidence_is_not_source(artifact, monkeypatch):
     assert W.exact_blobs_ok() and C.valid()
 
 
-def test_wrong_or_missing_ancestry_fails_closed(monkeypatch):
-    monkeypatch.setattr(W, 'BASE', '0' * 40)
+@pytest.mark.parametrize('field', ('BASE', 'APPROVED_MAIN'))
+def test_wrong_or_missing_ancestry_fails_closed(field, monkeypatch):
+    monkeypatch.setattr(W, field, '0' * 40)
     assert not W.exact_blobs_ok() and not C.valid()
 
 
@@ -160,31 +205,47 @@ def test_a_forbidden_namespace_can_never_be_owned(monkeypatch):
     assert not W.exact_blobs_ok()
 
 
-# ── predecessor manifests: only the named re-pins move, and the previous map is preserved verbatim ─────────────────────────────────────────
-def test_predecessor_manifests_keep_their_base_state_except_the_named_repins():
+# ── predecessor manifests: only the named re-pins move, and the previous maps are preserved verbatim ──────────────────────────────────────
+def test_predecessor_manifests_keep_their_approved_main_state_except_the_named_repins():
     assert W._historical_manifests_ok(W.ROOT, None)
     for path, allowed in W.PREDECESSOR_REPINS.items():
-        old = json.loads(W._read(W.ROOT, path, W.BASE))
+        old = json.loads(W._read(W.ROOT, path, W.APPROVED_MAIN))
         now = json.loads(W._read(W.ROOT, path, None))
-        assert now['historical_source_blobs'][W.BASE] == old['source_blobs']
+        assert now['historical_source_blobs'][W.APPROVED_MAIN] == old['source_blobs']
         moved = {p for p in old['source_blobs'] if old['source_blobs'][p] != now['source_blobs'][p]}
         assert moved <= allowed, moved - allowed
         for p in moved:                                                    # a re-pinned path is one WF-04 owns, at exactly the WF-04 pin
             assert now['source_blobs'][p] == W.manifest()['source_blobs'][p], p
             assert W._blob(W._read(W.ROOT, p, None)) == now['source_blobs'][p], p
+        # WF-04's historical origin map is kept verbatim where the manifest already existed there (WS-2's manifest is newer than BASE)
+        try:
+            origin = json.loads(W._read(W.ROOT, path, W.BASE))['source_blobs']
+        except Exception:
+            assert path == W.WSV2_EDITING_MANIFEST
+        else:
+            assert now['historical_source_blobs'][W.BASE] == origin
 
 
 def test_the_registry_and_workspace_repository_repins_are_the_only_financial_pin_moves():
     moved = {}
     for path in W.PREDECESSOR_REPINS:
-        old = json.loads(W._read(W.ROOT, path, W.BASE))['source_blobs']
+        old = json.loads(W._read(W.ROOT, path, W.APPROVED_MAIN))['source_blobs']
         now = json.loads(W._read(W.ROOT, path, None))['source_blobs']
         moved[path] = {p for p in old if old[p] != now[p] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/'))}
     assert moved[W.FIN_V2_3_MANIFEST] == {'app/workbook/registry.py'}
+    assert moved[W.WSV2_EDITING_MANIFEST] == {'app/persistence/workspace_repository.py'}
     assert moved[W.FIN_V2_R1_MANIFEST] == moved[W.FIN_V2_D01_MANIFEST] == moved[W.WSV2_CORE_MANIFEST] == set()
 
 
-@pytest.mark.parametrize('tamper', ('history', 'history_missing', 'financial_pin', 'unnamed_repin', 'metadata', 'dropped_pin', 'added_pin'))
+def test_ws2_manifest_moves_only_the_run_identity_hunk_of_the_workspace_repository():
+    old = json.loads(W._read(W.ROOT, W.WSV2_EDITING_MANIFEST, W.APPROVED_MAIN))
+    now = json.loads(W._read(W.ROOT, W.WSV2_EDITING_MANIFEST, None))
+    assert {k: v for k, v in old.items() if k not in ('source_blobs', 'historical_source_blobs')} == \
+        {k: v for k, v in now.items() if k not in ('source_blobs', 'historical_source_blobs')}
+    assert [p for p in old['source_blobs'] if old['source_blobs'][p] != now['source_blobs'][p]] == ['app/persistence/workspace_repository.py']
+
+
+@pytest.mark.parametrize('tamper', ('history', 'history_missing', 'origin_history', 'financial_pin', 'unnamed_repin', 'metadata', 'dropped_pin', 'added_pin'))
 def test_historical_record_or_unnamed_repin_cannot_be_resealed(tamper, monkeypatch):
     original = W._read
     target = W.FIN_V2_3_MANIFEST
@@ -194,9 +255,11 @@ def test_historical_record_or_unnamed_repin_cannot_be_resealed(tamper, monkeypat
         if path == target and ref is None:
             data = json.loads(raw)
             if tamper == 'history':
-                data['historical_source_blobs'][W.BASE]['app/v2/router.py'] = '0' * 40
+                data['historical_source_blobs'][W.APPROVED_MAIN]['app/v2/router.py'] = '0' * 40
             elif tamper == 'history_missing':
-                data['historical_source_blobs'].pop(W.BASE)
+                data['historical_source_blobs'].pop(W.APPROVED_MAIN)
+            elif tamper == 'origin_history':
+                data['historical_source_blobs'][W.BASE]['app/v2/router.py'] = '0' * 40
             elif tamper == 'financial_pin':
                 data['source_blobs']['app/v2/router.py'] = '0' * 40
             elif tamper == 'unnamed_repin':
@@ -222,7 +285,7 @@ def test_a_predecessor_pin_that_disagrees_with_the_real_bytes_breaks_that_cohort
         raw = original(root, path, ref)
         if path == F3.MANIFEST and ref is None:
             data = json.loads(raw)
-            data['source_blobs']['app/workbook/registry.py'] = data['historical_source_blobs'][W.BASE]['app/workbook/registry.py']
+            data['source_blobs']['app/workbook/registry.py'] = data['historical_source_blobs'][W.APPROVED_MAIN]['app/workbook/registry.py']
             return json.dumps(data).encode()
         return raw
 
@@ -232,7 +295,7 @@ def test_a_predecessor_pin_that_disagrees_with_the_real_bytes_breaks_that_cohort
 
 # ── the two protected paths changed only by the reviewed additive hunks ───────────────────────────────────────────────────────────────────────
 def _opcodes(path):
-    before = W._read(W.ROOT, path, W.BASE).decode().splitlines()
+    before = W._read(W.ROOT, path, W.APPROVED_MAIN).decode().splitlines()
     after = W._read(W.ROOT, path, None).decode().splitlines()
     ops = [op for op in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes() if op[0] != 'equal']
     return before, after, ops
@@ -248,7 +311,7 @@ def test_workspace_repository_change_is_one_additive_hunk_inside_the_atomic_run_
     tree = ast.parse('\n'.join(after))
     function = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == 'v2_atomic_run_commit')
     assert function.lineno <= j1 + 1 and j2 <= function.end_lineno
-    assert after[:j1] + after[j2:] == before                                # removing the hunk gives back the accepted file line-for-line
+    assert after[:j1] + after[j2:] == before                                # removing the hunk gives back the approved-main file line-for-line (all WS-2 code kept)
 
 
 def test_registry_change_is_the_two_contract_fields_and_the_sheet_line_only():
@@ -271,7 +334,7 @@ def test_browser_acceptance_is_an_additive_import_in_the_existing_role_with_no_s
     role = (W.ROOT / W.ROLE_MODULE).read_text()
     helper = (W.ROOT / W.ROLE_ACCEPTANCE).read_text()
     assert role.endswith('\n'.join(W.ROLE_IMPORT_BLOCK) + '\n') and role.count(W.ROLE_IMPORT_BLOCK[-1]) == 1
-    original = W._read(W.ROOT, W.ROLE_MODULE, W.BASE).decode()
+    original = W._read(W.ROOT, W.ROLE_MODULE, W.APPROVED_MAIN).decode()
     assert role.startswith(original.rstrip() + '\n')                       # nothing before the appended block changed
     tree = ast.parse(helper)
     tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')]
@@ -292,3 +355,45 @@ def test_the_role_import_block_cannot_be_widened(monkeypatch):
 
     monkeypatch.setattr(W, '_read', widened)
     assert not W.exact_blobs_ok() and not C.valid()
+
+
+# ── post-#397 lineage: every WS-2 predecessor source stays pinned by its own cohort inside the integrated head ────────────────────────────
+def _ws2_sources():
+    from tests import fin_v2_wsv2_scope as WS2
+    return sorted(WS2.OWNED_PATHS)
+
+
+@pytest.mark.parametrize('path', _ws2_sources())
+def test_one_byte_corruption_of_each_ws2_predecessor_source_fails_closed(path, monkeypatch):
+    from tests import fin_v2_wsv2_scope as WS2
+    assert WS2.exact_blobs_ok() and W.exact_blobs_ok() and C.valid()
+    for module in (WS2, W):
+        original = module._read
+
+        def drift(root, p, ref, _o=original):
+            raw = _o(root, p, ref)
+            return raw + b'\n' if p == path and ref is None else raw
+
+        monkeypatch.setattr(module, '_read', drift)
+    assert not WS2.exact_blobs_ok() and not C.valid()
+
+
+def test_the_ws2_cohort_is_valid_with_the_wf04_delta_present_and_wf04_is_not_a_wildcard():
+    from tests import fin_v2_wsv2_scope as WS2
+    assert WS2.valid() and W.valid() and C.valid()
+    delta = set(_changed())
+    assert delta and delta <= W.OWNED_PATHS | {W.MANIFEST}
+    assert not [p for p in delta if p in WS2.OWNED_PATHS and p != 'app/persistence/workspace_repository.py'], \
+        'WF-04 may only touch the one WS-2 source it was authorised to add a hunk to'
+    assert not any(any(c in p for c in '*?[') for p in W.OWNED_PATHS)
+
+
+def test_the_two_accidental_empty_files_are_gone_and_lost_nothing():
+    tracked = set(W._git(W.ROOT, 'ls-files').decode().splitlines())
+    assert not ({'per1_fail.txt', 'per2_fail.txt'} & tracked) and not ({'per1_fail.txt', 'per2_fail.txt'} & W.OWNED_PATHS)
+    for name in ('per1_fail.txt', 'per2_fail.txt'):                       # they were zero-byte in every commit that ever contained them
+        for ref in W._git(W.ROOT, 'log', '--format=%H', '--', name).decode().split():
+            try:
+                assert W._git(W.ROOT, 'show', ref + ':' + name) == b''
+            except Exception:                                              # the deleting commit has no such path
+                pass

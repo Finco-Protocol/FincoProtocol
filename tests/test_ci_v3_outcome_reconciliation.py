@@ -33,8 +33,10 @@ NEW_NATIVE = ("passed", "")
 
 
 def run_evidence(**changes):
-    phases = {n: ph() for n in prod.D029_EVIDENCE_NODES}
-    native = {n: ("passed", "") for n in prod.D029_EVIDENCE_NODES}
+    # the 15 original D-029 evidence nodes, plus the WS-2 same-run evidence node(s) the current (WS-2) Trust state also requires
+    nodes = prod.D029_EVIDENCE_NODES + prod.WS2_EXTRA_NODES
+    phases = {n: ph() for n in nodes}
+    native = {n: ("passed", "") for n in nodes}
     phases[NODE], native[NODE] = NEW, NEW_NATIVE
     return changes.get("phases", phases), changes.get("native", native)
 
@@ -61,9 +63,13 @@ def test_reconciliation_record_is_exact_content_and_binds_the_reviewed_constants
     assert record == prod.d029_expected_record()
     assert record["node"] == NODE and record["transition"] == {"from": "SKIPPED", "reason": prod.D029_SKIP_REASON, "to": "PASSED"}
     assert len(record["required_passing_nodes"]) == len(set(record["required_passing_nodes"])) == 15
-    # the pinned Trust blobs are the committed ones
+    # the historical D-029 Trust blobs are immutable history: each one was committed in this branch's ancestry (the current HEAD holds the
+    # later WS-2 state of the same three sources, pinned separately below)
     for path, blob in prod.D029_BLOBS.items():
-        assert subprocess.check_output(["git", "rev-parse", "HEAD:" + path], cwd=ROOT, text=True).strip() == blob
+        assert subprocess.check_output(["git", "cat-file", "-t", blob], cwd=ROOT, text=True).strip() == "blob"
+        found = subprocess.check_output(["git", "log", "-1", "--format=%H", "--find-object=" + blob, "HEAD", "--", path], cwd=ROOT, text=True).strip()
+        assert found, (path, blob)
+        subprocess.run(["git", "merge-base", "--is-ancestor", found, "HEAD"], cwd=ROOT, check=True)
 
 
 @pytest.mark.parametrize("name, kwargs", (
@@ -181,3 +187,127 @@ def test_exception_does_not_extend_to_other_test_families():
     assert isinstance(prod.D029_NODE, str) and "*" not in prod.D029_NODE and prod.D029_NODE.count("::") == 1
     assert [n for n in dir(prod) if n.startswith("D029_") and isinstance(getattr(prod, n), (list, set, frozenset))
             and n not in ("D029_TRUST_CHANGED",)] == []
+
+
+# ───────────── WS-2 Gate C (Option 1): the closed successor state of the Trust sources (PR #397, Correction M) ─────────────
+WS2_PATHS = {**prod.WS2_TRUST_BLOBS, **prod.WS2_TRUST_EXTRA_BLOBS, **prod.D029_TRUST_CHANGED_BLOBS}
+
+
+def git_blob(path):
+    return subprocess.check_output(["git", "rev-parse", "HEAD:" + path], cwd=ROOT, text=True).strip()
+
+
+def ws2_run_evidence():
+    phases = {n: ph() for n in prod.D029_EVIDENCE_NODES + prod.WS2_EXTRA_NODES}
+    native = {n: ("passed", "") for n in phases}
+    phases[NODE], native[NODE] = NEW, NEW_NATIVE
+    return phases, native
+
+
+def test_the_historical_d029_receipt_and_constants_are_unchanged():
+    assert prod.D029_MAIN == "36edeeb5d9a14749fdfafcd3b60a0d384cac73ba"
+    assert prod.D029_MAIN_BLOBS == {"app/trust_readiness/registry.py": "32a6bcb86516ff4d1ee8b1dc90191fdb57c5dc2d"}
+    assert prod.D029_BLOBS == {"app/trust_readiness/registry.py": "99ff83825e6bef013be9411235d2d77345f78b02",
+                               "docs/readiness/02_data_handling.md": "330db9c4ae6cd6c8349aad4a1d0c632010e6c1e4",
+                               "docs/readiness/06_retention_and_deletion.md": "a155b44b47ce3cbe22239e6a65635d666e0f3dac"}
+    assert prod.D029_TRUST_CHANGED_BLOBS == {"tests/test_trust_readiness_controls.py": "cd5b3114d9a11ca4507667a099bb853573d056d3"}
+    assert len(prod.D029_EVIDENCE_NODES) == 15 and prod.D029_SKIP_REASON == "trust pack not part of this diff"
+    assert git_blob(prod.D029_RECORD) == prod.WS2_RECORD_BLOB          # the historical receipt itself is byte-identical
+
+
+def test_the_real_head_is_exactly_the_ws2_state_and_the_receipt_binds_it():
+    facts = real_facts()
+    assert facts["blobs"] == {**prod.WS2_TRUST_BLOBS, **prod.D029_TRUST_CHANGED_BLOBS}
+    for path, blob in WS2_PATHS.items():
+        assert git_blob(path) == blob, path
+    assert facts["ws2_receipt"] == prod.ws2_expected_receipt() == read_json(ROOT / prod.WS2_RECEIPT)
+    assert facts["ws2_manifest_pins"] == {**prod.WS2_TRUST_BLOBS, **prod.WS2_TRUST_EXTRA_BLOBS}
+    assert facts["changed"] == prod.D029_TRUST_CHANGED
+    assert problems(run=ws2_run_evidence()) == []
+    receipts = []
+    run_phases, run_native = ws2_run_evidence()
+    assert prod.d029_authorized(NODE, OLD, OLD_NATIVE, NEW, NEW_NATIVE, run_phases, run_native, receipts)
+    assert receipts == [{"node": NODE, "from": "SKIPPED", "to": "PASSED"}]
+
+
+def test_the_ws2_receipt_is_a_state_attestation_not_a_second_transition():
+    receipt = prod.ws2_expected_receipt()
+    assert receipt["schema"] == "WS2_CI_V3_TRUST_SUCCESSOR_V1" and "node" not in receipt and "transition" not in receipt
+    assert receipt["predecessor_record"] == prod.D029_RECORD and receipt["d029_main"] == prod.D029_MAIN
+    assert "signature" not in json.dumps(receipt).lower()                 # no claimed approval artefact that does not exist
+
+
+@pytest.mark.parametrize("path", sorted(WS2_PATHS))
+def test_ws2_one_byte_drift_of_any_trust_source_fails_closed(path):
+    facts = copy.deepcopy(real_facts())
+    if path in facts["blobs"]:
+        facts["blobs"][path] = "0" * 40
+    else:
+        facts["ws2_extra_blobs"][path] = "0" * 40
+    assert problems(facts=facts, run=ws2_run_evidence())
+
+
+@pytest.mark.parametrize("name, mutate", (
+    ("hybrid: D-029 registry with WS-2 documents", lambda f: f["blobs"].update({"app/trust_readiness/registry.py": prod.D029_BLOBS["app/trust_readiness/registry.py"]})),
+    ("hybrid: WS-2 registry with a D-029 document", lambda f: f["blobs"].update({"docs/readiness/02_data_handling.md": prod.D029_BLOBS["docs/readiness/02_data_handling.md"]})),
+    ("hybrid: WS-2 registry with the other D-029 document", lambda f: f["blobs"].update({"docs/readiness/06_retention_and_deletion.md": prod.D029_BLOBS["docs/readiness/06_retention_and_deletion.md"]})),
+    ("incomplete tuple", lambda f: f["blobs"].pop("docs/readiness/06_retention_and_deletion.md")),
+    ("unknown third blob", lambda f: f["blobs"].update({"app/trust_readiness/registry.py": "1" * 40})),
+    ("extra path in the blob map", lambda f: f["blobs"].update({"app/trust_readiness/projection.py": "2" * 40})),
+    ("Trust registry test blob changed", lambda f: f["ws2_extra_blobs"].update({"tests/test_trust_readiness_registry.py": "3" * 40})),
+    ("Trust registry test blob missing", lambda f: f["ws2_extra_blobs"].clear()),
+    ("receipt missing", lambda f: f.update({"ws2_receipt": None})),
+    ("receipt modified", lambda f: f["ws2_receipt"].update({"scope": "anything"})),
+    ("receipt claims a second transition", lambda f: f["ws2_receipt"].update({"node": NODE})),
+    ("receipt blobs altered", lambda f: f["ws2_receipt"]["current_blobs"].update({"app/trust_readiness/registry.py": "4" * 40})),
+    ("D-029 record blob changed", lambda f: f.update({"record_blob": "5" * 40})),
+    ("D-029 record content changed", lambda f: f["record"].update({"authorization": "someone else"})),
+    ("WS-2 manifest pin missing", lambda f: f.update({"ws2_manifest_pins": None})),
+    ("WS-2 manifest pin differs", lambda f: f["ws2_manifest_pins"].update({"app/trust_readiness/registry.py": "6" * 40})),
+    ("changed-path set gained an unrelated Trust path", lambda f: f.update({"changed": f["changed"] | {"app/trust_readiness/projection.py"}})),
+    ("changed-path set lost a reviewed path", lambda f: f.update({"changed": f["changed"] - {"tests/test_trust_readiness_registry.py"}})),
+    ("D-029 baseline main changed", lambda f: f.update({"main_blobs": {"app/trust_readiness/registry.py": "7" * 40}})),
+))
+def test_ws2_state_rejects_hybrids_incomplete_tuples_and_tampered_receipts(name, mutate):
+    facts = copy.deepcopy(real_facts())
+    mutate(facts)
+    assert problems(facts=facts, run=ws2_run_evidence()), name
+
+
+def test_ws2_state_requires_all_fifteen_same_run_evidence_nodes():
+    assert prod.WS2_EXTRA_NODES == () and len(prod.D029_EVIDENCE_NODES) == 15
+    for missing in prod.D029_EVIDENCE_NODES:
+        phases, native = ws2_run_evidence()
+        del phases[missing]
+        assert problems(run=(phases, native)), missing
+        phases, native = ws2_run_evidence()
+        native[missing] = ("failed", "x")
+        assert problems(run=(phases, native)), missing
+        phases, native = ws2_run_evidence()
+        phases[missing] = ph("skipped", "skipped")
+        native[missing] = ("skipped", "")
+        assert problems(run=(phases, native)), missing
+
+
+def test_ws2_state_does_not_loosen_any_outcome_rule():
+    run = ws2_run_evidence()
+    for kwargs in (dict(new=ph("failed", "boom"), new_native=("failed", "boom")), dict(new=ph("skipped", "x", wasxfail="e"), new_native=("xfail", "x")),
+                   dict(old=ph("passed"), old_native=("passed", "")), dict(new=ph(setup_reason="different setup")), dict(new_native=())):
+        assert problems(run=run, **kwargs), kwargs
+    assert problems(run=run, node="tests/test_trust_readiness_registry.py::test_keys_are_unique_and_prefixed") == ["not the authorized node"]
+
+
+def test_the_exception_is_not_selected_by_environment_branch_or_a_monkeypatched_policy(monkeypatch):
+    facts = copy.deepcopy(real_facts())
+    facts["blobs"]["app/trust_readiness/registry.py"] = "0" * 40
+    for key, value in (("GITHUB_HEAD_REF", "claude/new-session-85uo4c"), ("WS2_TRUST_SUCCESSOR", "1"), ("FINCO_ALLOW_OUTCOME_RECONCILIATION", "true")):
+        monkeypatch.setenv(key, value)
+    assert problems(facts=facts, run=ws2_run_evidence())
+    source = inspect.getsource(prod.d029_transition_problems) + inspect.getsource(prod.ws2_expected_receipt) + inspect.getsource(prod.d029_source_facts)
+    assert "environ" not in source and "getenv" not in source
+
+
+def test_only_the_d029_and_ws2_tuples_exist_as_accepted_states():
+    # the two tuples differ in exactly the three Trust sources; nothing else is a state
+    assert set(prod.D029_BLOBS) == set(prod.WS2_TRUST_BLOBS) and all(prod.D029_BLOBS[k] != prod.WS2_TRUST_BLOBS[k] for k in prod.D029_BLOBS)
+    assert not any(k in prod.WS2_TRUST_BLOBS for k in prod.D029_TRUST_CHANGED_BLOBS)

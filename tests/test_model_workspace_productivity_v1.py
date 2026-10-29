@@ -303,52 +303,78 @@ def _normalise(html: str, *, strip_added: bool) -> str:
     return re.sub(r"\s+", " ", html).strip()
 
 
+# F2/F3/WF07 add exact grouped editors; original DOM hashes stay locked.
+_FINANCING_ADDITIONS = frozenset((
+    "debt|editable|debt.bankability.configuration",
+    "debt|protected|debt.bankability.configuration",
+    "debt|editable|debt.financing.instruments",
+    "debt|protected|debt.financing.instruments",
+    "revenue|editable|revenue.multistream.contracts",
+    "revenue|protected|revenue.multistream.contracts",
+))
+# FIN-V2-3 adds one explicitly configured policy field. Its two presentations are separately hash-locked; all historical DOM hashes and the
+# exact CSRF/read-only checks stay unchanged.
+_VALUATION_ADDITIONS = {
+    "project_setup|editable|debt.valuation.configuration": "74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b",
+    "project_setup|protected|debt.valuation.configuration": "4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186",
+}
+# WF-04 adds the two contractual DSCR INPUT fields (Minimum DSCR, Contractual DSCR) - a literal, closed set of exactly four keys (two fields x the
+# editable and protected presentation), each with its OWN exact SHA-256 computed from the real intended implementation. A key alone proves nothing: a
+# fifth/sixth key, a key on another sheet, or one byte of drift in any of the four is refused (see TestMacroIdentityGuardFailsClosed).
+_CONTRACT_ADDITIONS = {
+    "debt|editable|debt.contract.contractual_dscr": "44cb85971ad47eeac8caa375435b93c19356c515cfdac7bbdb8f7bee195a0fe1",
+    "debt|editable|debt.contract.min_dscr_eod": "5f813f9a638b71ee356e5f102492a01dea6dd3bd089003151af3e95be1adc832",
+    "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",
+    "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",
+}
+
+
+def _golden() -> dict:
+    return json.loads((ROOT / "tests/fixtures/model_workspace_field_editor_golden.json").read_text(encoding="utf-8"))
+
+
+def _macro_digest(html: str, *, verified_editable: bool) -> str:
+    """The historical digest: the exact CSRF control is verified FIRST, then only the three/four additive attributes are normalised away."""
+    return hashlib.sha256(_normalise(_historical_macro_dom(html, editable=verified_editable), strip_added=True).encode()).hexdigest()
+
+
+def _macro_digests() -> dict[str, str]:
+    actual: dict[str, str] = {}
+    for sheet in SHEETS_UNDER_TEST:
+        fields = {f["field_id"]: f for f in sheet_fields(sheet)}
+        for editable in (True, False):
+            rows = render_macro_rows(sheet, project_editable=editable, values=TRICKY_VALUES)
+            for field_id, html in rows.items():
+                key = f"{sheet}|{'editable' if editable else 'protected'}|{field_id}"
+                actual[key] = _macro_digest(html, verified_editable=editable and fields[field_id]["binding_label"] == "bound")
+    return actual
+
+
+def _macro_identity_problems(actual: dict[str, str], golden: dict) -> list[str]:
+    """Pure judge of the legacy macro DOM identity. Every historical golden hash must be equal; each reviewed addition must equal ITS OWN locked
+    hash; no other key may exist and none may be missing. Returns the list of violations (empty = identity holds)."""
+    problems: list[str] = []
+    expected = set(golden["hashes"]) | _FINANCING_ADDITIONS | set(_VALUATION_ADDITIONS) | set(_CONTRACT_ADDITIONS)
+    problems += [f"unexpected key {k}" for k in sorted(set(actual) - expected)]
+    problems += [f"missing key {k}" for k in sorted(expected - set(actual))]
+    for locked in (golden["hashes"], _VALUATION_ADDITIONS, _CONTRACT_ADDITIONS):
+        problems += [f"hash drift {k}" for k, v in locked.items() if k in actual and actual[k] != v]
+    return problems
+
+
 class TestDenseLayoutPreservesContract:
     def test_macro_output_matches_the_base_commit_except_three_additive_attributes(self):
-        golden = json.loads(
-            (ROOT / "tests/fixtures/model_workspace_field_editor_golden.json")
-            .read_text(encoding="utf-8"))
+        golden = _golden()
         assert golden["base_commit"] == "1951e26df9305edaa4cec3d0066af9fd2ec48fb9"
-        actual: dict[str, str] = {}
-        for sheet in SHEETS_UNDER_TEST:
-            fields = {f["field_id"]: f for f in sheet_fields(sheet)}
-            for editable in (True, False):
-                rows = render_macro_rows(sheet, project_editable=editable, values=TRICKY_VALUES)
-                for field_id, html in rows.items():
-                    key = f"{sheet}|{'editable' if editable else 'protected'}|{field_id}"
-                    actual[key] = hashlib.sha256(
-                        _normalise(_historical_macro_dom(
-                            html, editable=editable and fields[field_id]["binding_label"] == "bound"),
-                            strip_added=True).encode()).hexdigest()
-        # F2/F3/WF07 add exact grouped editors; original DOM hashes stay locked.
-        financing_additions = {
-            "debt|editable|debt.bankability.configuration",
-            "debt|protected|debt.bankability.configuration",
-            "debt|editable|debt.financing.instruments",
-            "debt|protected|debt.financing.instruments",
-            "revenue|editable|revenue.multistream.contracts",
-            "revenue|protected|revenue.multistream.contracts",
-        }
-        # FIN-V2-3 adds one explicitly configured policy field. Its two
-        # presentations are separately hash-locked; all historical DOM hashes
-        # and the exact CSRF/read-only checks above remain unchanged.
+        actual = _macro_digests()
         from tests.fin_v2_cohorts import matches
         assert matches("app/workbook/registry.py")
-        valuation_additions = {
-            "project_setup|editable|debt.valuation.configuration": "74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b",
-            "project_setup|protected|debt.valuation.configuration": "4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186",
-        }
-        assert {key: actual[key] for key in valuation_additions} == valuation_additions
-        # WF-04 adds the two contractual DSCR INPUT fields (Minimum DSCR, Contractual DSCR). Like the valuation field above, their four
-        # presentations are separately hash-locked; every historical DOM hash stays unchanged and the exact CSRF/read-only checks above still run.
-        contract_additions = {
-            "debt|editable|debt.contract.contractual_dscr": "44cb85971ad47eeac8caa375435b93c19356c515cfdac7bbdb8f7bee195a0fe1",
-            "debt|editable|debt.contract.min_dscr_eod": "5f813f9a638b71ee356e5f102492a01dea6dd3bd089003151af3e95be1adc832",
-            "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",
-            "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",
-        }
-        assert {key: actual[key] for key in contract_additions} == contract_additions
-        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions) | set(contract_additions)
+        assert {key: actual[key] for key in _VALUATION_ADDITIONS} == _VALUATION_ADDITIONS
+        # the four WF-04 contract presentations, each against its OWN hash, and nothing else in the contract namespace
+        assert {key: actual[key] for key in _CONTRACT_ADDITIONS} == _CONTRACT_ADDITIONS
+        assert sorted(k for k in actual if ".contract." in k) == sorted(_CONTRACT_ADDITIONS)
+        assert not set(_CONTRACT_ADDITIONS) & set(golden["hashes"]), "a historical golden key must never be re-labelled as a new addition"
+        assert _macro_identity_problems(actual, golden) == []
         drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)
         assert not drifted, f"macro DOM identity drifted for: {drifted}"
 
@@ -463,6 +489,130 @@ class TestDenseLayoutPreservesContract:
         assert "v2-field-readonly" in row["class"] and "v2-field-editable" not in row["class"]
         assert f"v2-binding-{binding}" in html                      # binding badge class kept
         assert not {"form", "input", "select", "textarea", "button"} & {t for t, _ in _tags(html)}
+
+
+class TestMacroIdentityGuardFailsClosed:
+    """Correction B negatives: the guard accepts exactly the four reviewed WF-04 keys, each at its own hash, and nothing else."""
+
+    @staticmethod
+    def _good() -> tuple[dict, dict]:
+        return _macro_digests(), _golden()
+
+    def test_the_exact_state_is_accepted(self):
+        actual, golden = self._good()
+        assert _macro_identity_problems(actual, golden) == []
+        assert len(_CONTRACT_ADDITIONS) == 4 and {k.split("|")[2] for k in _CONTRACT_ADDITIONS} == {
+            "debt.contract.min_dscr_eod", "debt.contract.contractual_dscr"}
+
+    @pytest.mark.parametrize("mode", ("editable", "protected"))
+    @pytest.mark.parametrize("extra", ("debt.contract.bogus", "debt.contract.third_dscr", "debt.contract.min_dscr_eod_2"))
+    def test_a_fifth_or_sixth_or_bogus_key_is_refused(self, mode, extra):
+        actual, golden = self._good()
+        actual[f"debt|{mode}|{extra}"] = next(iter(_CONTRACT_ADDITIONS.values()))      # even a hash that is legitimate for another key
+        assert any(p.startswith("unexpected key") for p in _macro_identity_problems(actual, golden))
+
+    def test_both_extra_keys_together_are_refused(self):
+        actual, golden = self._good()
+        actual["debt|editable|debt.contract.fifth"] = "0" * 64
+        actual["debt|protected|debt.contract.sixth"] = "1" * 64
+        assert len([p for p in _macro_identity_problems(actual, golden) if p.startswith("unexpected key")]) == 2
+
+    @pytest.mark.parametrize("key", sorted(_CONTRACT_ADDITIONS))
+    def test_a_contract_key_on_the_wrong_sheet_is_refused(self, key):
+        actual, golden = self._good()
+        _sheet, mode, field = key.split("|")
+        actual[f"project_setup|{mode}|{field}"] = actual.pop(key)
+        problems = _macro_identity_problems(actual, golden)
+        assert f"missing key {key}" in problems and f"unexpected key project_setup|{mode}|{field}" in problems
+
+    @pytest.mark.parametrize("key", sorted(_CONTRACT_ADDITIONS))
+    def test_a_missing_contract_key_is_refused(self, key):
+        actual, golden = self._good()
+        del actual[key]
+        assert f"missing key {key}" in _macro_identity_problems(actual, golden)
+
+    @pytest.mark.parametrize("key", sorted(_CONTRACT_ADDITIONS) + sorted(_VALUATION_ADDITIONS))
+    def test_one_character_of_hash_drift_in_any_new_key_is_refused(self, key):
+        actual, golden = self._good()
+        actual[key] = ("0" if actual[key][0] != "0" else "1") + actual[key][1:]
+        assert f"hash drift {key}" in _macro_identity_problems(actual, golden)
+
+    def test_swapping_the_hashes_of_two_new_keys_is_refused(self):
+        actual, golden = self._good()
+        a, b = "debt|editable|debt.contract.min_dscr_eod", "debt|editable|debt.contract.contractual_dscr"
+        actual[a], actual[b] = actual[b], actual[a]
+        assert {f"hash drift {a}", f"hash drift {b}"} <= set(_macro_identity_problems(actual, golden))
+
+    def test_an_existing_historical_hash_cannot_be_changed_or_relabelled_as_a_new_key(self):
+        actual, golden = self._good()
+        victim = "project_setup|editable|project_setup.technical.capacity_mw"
+        assert victim in golden["hashes"]
+        actual[victim] = actual["debt|editable|debt.contract.min_dscr_eod"]           # unauthorised modification of an existing field
+        assert f"hash drift {victim}" in _macro_identity_problems(actual, golden)
+        assert not set(_CONTRACT_ADDITIONS) & set(golden["hashes"]), "the fixture must not carry any new key"
+
+    def test_removing_a_historical_golden_key_is_refused(self):
+        actual, golden = self._good()
+        victim = sorted(golden["hashes"])[0]
+        del actual[victim]
+        assert f"missing key {victim}" in _macro_identity_problems(actual, golden)
+
+    @pytest.mark.parametrize("mode,old,new", [
+        ("editable", 'data-field-id="debt.contract.min_dscr_eod"', 'data-field-id="debt.contract.other"'),
+        ("editable", "<input", "<input data-tampered=\"1\""),
+        ("editable", "<input", "<input disabled"),
+        ("protected", "<input", "<input data-tampered=\"1\""),
+    ])
+    def test_changed_control_content_of_a_new_field_changes_its_digest(self, mode, old, new):
+        sheet_rows = render_macro_rows("debt", project_editable=mode == "editable", values=TRICKY_VALUES)
+        html = sheet_rows["debt.contract.min_dscr_eod"]
+        assert old in html
+        key = f"debt|{mode}|debt.contract.min_dscr_eod"
+        verified = mode == "editable"
+        assert _macro_digest(html, verified_editable=verified) == _CONTRACT_ADDITIONS[key]
+        assert _macro_digest(html.replace(old, new, 1), verified_editable=verified) != _CONTRACT_ADDITIONS[key]
+
+    def test_a_changed_editability_state_changes_the_digest(self):
+        editable = render_macro_rows("debt", project_editable=True, values=TRICKY_VALUES)["debt.contract.min_dscr_eod"]
+        protected = render_macro_rows("debt", project_editable=False, values=TRICKY_VALUES)["debt.contract.min_dscr_eod"]
+        assert editable != protected
+        assert _macro_digest(protected, verified_editable=False) != _CONTRACT_ADDITIONS["debt|editable|debt.contract.min_dscr_eod"]
+        assert _macro_digest(protected, verified_editable=False) == _CONTRACT_ADDITIONS["debt|protected|debt.contract.min_dscr_eod"]
+
+    def test_a_duplicate_render_of_a_new_field_is_refused_before_hashing(self):
+        html = render_macro_rows("debt", project_editable=True, values=TRICKY_VALUES)["debt.contract.contractual_dscr"]
+        with pytest.raises(AssertionError):
+            _macro_digest(html + html, verified_editable=True)
+
+    @pytest.mark.parametrize("change", ("missing", "wrong-value", "duplicate", "moved"))
+    def test_an_altered_csrf_control_in_a_new_field_is_refused_before_hashing(self, change):
+        html = render_macro_rows("debt", project_editable=True, values=TRICKY_VALUES)["debt.contract.min_dscr_eod"]
+        literal = '<input type="hidden" name="csrf_token" value="' + PRESENTATION_MUTATION_TOKEN + '">'
+        assert literal in html
+        changed = {
+            "missing": html.replace(literal, ""),
+            "wrong-value": html.replace(PRESENTATION_MUTATION_TOKEN, "other"),
+            "duplicate": html.replace(literal, literal * 2),
+            "moved": html.replace(literal, "").replace("</form>", literal + "</form>"),
+        }[change]
+        with pytest.raises(AssertionError):
+            _macro_digest(changed, verified_editable=True)
+
+    def test_a_protected_new_field_with_a_form_or_token_is_refused(self):
+        editable_html = render_macro_rows("debt", project_editable=True, values=TRICKY_VALUES)["debt.contract.min_dscr_eod"]
+        with pytest.raises(AssertionError):
+            _macro_digest(editable_html, verified_editable=False)
+
+    def test_an_unauthorised_modification_of_an_existing_field_changes_its_digest(self):
+        html = render_macro_rows("project_setup", project_editable=True, values=TRICKY_VALUES)["project_setup.technical.capacity_mw"]
+        key = "project_setup|editable|project_setup.technical.capacity_mw"
+        assert _macro_digest(html, verified_editable=True) == _golden()["hashes"][key]
+        assert _macro_digest(html.replace("<input", "<input data-injected=\"1\"", 1), verified_editable=True) != _golden()["hashes"][key]
+
+    def test_the_registry_contains_no_other_contract_field(self):
+        from app.workbook.registry import WORKBOOK
+        contract = sorted(f.field_id for f in WORKBOOK.all_fields() if ".contract." in f.field_id)
+        assert contract == ["debt.contract.contractual_dscr", "debt.contract.min_dscr_eod"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

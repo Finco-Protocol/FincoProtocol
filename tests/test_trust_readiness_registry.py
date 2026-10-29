@@ -1131,6 +1131,22 @@ def _d029_registry(original: str) -> str:
     return original.replace(D029_RUN_INTENTS_ANCHOR, D029_RUN_INTENTS_ENTRY + D029_RUN_INTENTS_ANCHOR, 1)
 
 
+
+# ── WS-2 Trust successor (Save All request ledger) ──────────────────────────────────────────────
+# Additive and chained exactly like D-029: ONE reviewed DataStoreEntry for the new `save_all_requests` table,
+# inserted at the same exact position (after the D-029 entry, before "data.backups").  Every historical layer
+# above stays untouched; the transformation starts from the D-029 text.
+WS2_TRUST_REGISTRY_BLOB = "c616833bdce263b60b4bccec217cad1fb4e8d7d8"
+WS2_SAVE_ALL_ANCHOR = D029_RUN_INTENTS_ANCHOR
+WS2_SAVE_ALL_ENTRY = '    DataStoreEntry(\n        "data.save_all_requests", "Save All request ledger (WS-2)", "SQLite database",\n        "user_id, project_id",\n        "One row per Save All request: the client request id, a one-way SHA-256 digest of the canonical request "\n        "body and the stored outcome (the resulting content hash and the per-section counts). No credentials, "\n        "no tokens and no financial results; the submitted values are not copied here.", False,\n        "Not automatically deleted: rows are small and let an interrupted Save All be repeated safely (the same "\n        "request id with an identical body returns the stored outcome; a different body under the same id is "\n        "refused). Retention is an open owner decision; until it is approved rows are kept.",\n        "No deletion path exists. Rows carry identifiers and digests only and are removed only by an approved, "\n        "explicitly authorized retention procedure.", False,\n        S.REQUIRES_OPERATIONAL_CONTROLS,\n        (_code("app/persistence/db.py", "CREATE TABLE IF NOT EXISTS save_all_requests"),),\n        "Ledger rows of a deleted or disposed project are retained until the retention decision is made; "\n        "they carry identifiers and digests only.",\n        tables=("save_all_requests",),\n    ),\n'
+
+
+def _ws2_registry(original: str) -> str:
+    if original.count(WS2_SAVE_ALL_ANCHOR) != 1 or "data.save_all_requests" in original:
+        raise ValueError("WS-2 insertion point missing, duplicated or already applied")
+    return original.replace(WS2_SAVE_ALL_ANCHOR, WS2_SAVE_ALL_ENTRY + WS2_SAVE_ALL_ANCHOR, 1)
+
+
 def _registry_with_d029(base_registry: str):
     """The reviewed registry texts for a historical base: unchanged, or plus the one D-029 entry."""
     return (base_registry.strip(), _d029_registry(base_registry).strip())
@@ -1144,7 +1160,8 @@ def _registry_matches_history(original):
         f35b = _f35b_csrf_registry(original)
         m4 = _m4_registry(f35b)
         # RC-1 text, the reviewed M4 successor, and each of them plus the one reviewed D-029 entry.
-        accepted = (f35b.strip(), m4.strip(), _d029_registry(f35b).strip(), _d029_registry(m4).strip())
+        accepted = (f35b.strip(), m4.strip(), _d029_registry(f35b).strip(), _d029_registry(m4).strip(),
+                    _ws2_registry(_d029_registry(f35b)).strip(), _ws2_registry(_d029_registry(m4)).strip())
     except ValueError:
         return False
     return current in accepted and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized())
@@ -1852,8 +1869,8 @@ def test_d029_trust_successor_exact_baseline_and_exact_new_content():
     base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
     assert _git("rev-parse", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py") == D029_TRUST_MAIN_REGISTRY_BLOB
     current = _read_current("app/trust_readiness/registry.py")
-    assert _git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") == D029_TRUST_REGISTRY_BLOB
-    assert current.strip() == _d029_registry(base).strip()        # main + exactly the reviewed entry, nothing else
+    assert _git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") in (D029_TRUST_REGISTRY_BLOB, WS2_TRUST_REGISTRY_BLOB)
+    assert current.strip() in (_d029_registry(base).strip(), _ws2_registry(_d029_registry(base)).strip())   # main + the reviewed entries, nothing else
     removed = [l for l in __import__("difflib").unified_diff(base.splitlines(), current.splitlines(), lineterm="", n=0)
                if l.startswith("-") and not l.startswith("---")]
     assert removed == [], "the D-029 successor may only ADD lines"
