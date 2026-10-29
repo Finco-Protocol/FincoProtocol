@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import StatementWorkbook from "../finco/_workbook/StatementWorkbook";
 import { Shell } from "../finco/_shared/FincoShell";
 import { AnalysisTools } from "./analysis/AnalysisTools";
@@ -8,7 +8,14 @@ import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { toStatementSnapshot, toStatementStatus } from "./adapters";
 import { FinancialResults } from "./FinancialResults";
-import { WorkspaceNav, isWorkspaceSection, type WorkspaceSection } from "./WorkspaceNav";
+import { WorkspaceNav, type WorkspaceSection } from "./WorkspaceNav";
+import { WorkspaceSidebar } from "./WorkspaceSidebar";
+import { FinancialOverview } from "./FinancialOverview";
+import { ReportPrecisionControl } from "./ReportPrecision";
+import { financialInputOrder } from "./inputLayout";
+import { workspaceRoute, INPUT_DESTINATIONS, type WorkspaceDestination } from "./workspaceNavigation";
+import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type ConfirmedRun, type WorkspaceExtensions } from "./workspaceExtensions";
+import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { CostLinesView, DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { FinancialInsights } from "./insights";
@@ -23,15 +30,14 @@ import { PPAEditorView } from "./workflow/PPAEditorView";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
 import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
 import { WorkflowBar } from "./workflow/WorkflowBar";
-import { DirtyProvider, useLeaveGuard } from "./workflow/workflowShared";
+import { DirtyProvider, useLeaveGuard, useDirtyTotal } from "./workflow/workflowShared";
 import { isRecoveryPayload, type InputsPayload, type RecoveryPayload, type RevenueContractsPayload, type StatementsPayload, type WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 
 type Section = WorkspaceSection;
 
 function sectionFromHash(): Section {
-  const raw = window.location.hash.replace("#", "");
-  return isWorkspaceSection(raw) ? raw : "overview";
+  return workspaceRoute(window.location.hash).section;
 }
 
 /** Chip text for the shell: whether the saved results match the project as it is saved now. */
@@ -76,11 +82,11 @@ function StatusRow({ workspace }: { workspace: WorkspacePayload }) {
 function StatementIdentityConflict({ workspace, statements }: { workspace: WorkspacePayload; statements: StatementsPayload }) {
   return (
     <section className="rx-card" role="alert" data-statement-identity="conflict">
-      <h2>Statements do not match this project</h2>
+      <h2>Run views could not be matched</h2>
       <p>
-        The statements returned belong to <strong>{statements.project.name}</strong>, not to{" "}
-        <strong>{workspace.project.name}</strong>. Nothing is shown so that figures are never read under the wrong project.
-        Reload the page; if this persists, open the project again from My Projects.
+        The statements for <strong>{statements.project.name}</strong> and the workspace for{" "}
+        <strong>{workspace.project.name}</strong> describe different projects, Runs or input states.
+        Figures are withheld. Reload to reconcile; if this persists, open the project again from My Projects.
       </p>
     </section>
   );
@@ -89,6 +95,7 @@ function StatementIdentityConflict({ workspace, statements }: { workspace: Works
 interface WorkspaceViewProps {
   project: string;
   onNavigateToLibrary: () => void;
+  extensions?: WorkspaceExtensions;
 }
 
 /** The unsaved-change registry wraps the whole workspace so navigation, Reload and
@@ -97,9 +104,17 @@ export function WorkspaceView(props: WorkspaceViewProps) {
   return <DirtyProvider><WorkspaceViewInner {...props} /></DirtyProvider>;
 }
 
-function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps) {
+function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: WorkspaceViewProps) {
   const confirmIfDirty = useLeaveGuard();
+  const { total: dirtyTotal } = useDirtyTotal();
+  const dirtyTotalRef = useRef(dirtyTotal);
+  dirtyTotalRef.current = dirtyTotal;
   const [section, setSection] = useState<Section>(sectionFromHash);
+  const [destination, setDestination] = useState<WorkspaceDestination>(() => workspaceRoute(window.location.hash).destination);
+  const destinationRef = useRef(destination);
+  destinationRef.current = destination;
+  const readEpoch = useRef(0);
+  const [runRefresh, setRunRefresh] = useState<"idle" | "reading" | "blocked">("idle");
   const sectionRef = useRef<Section>(section);
   sectionRef.current = section;
   const allowNextHash = useRef(false);
@@ -110,6 +125,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
+  const displayedInputs = useMemo(() => inputs ? financialInputOrder(inputs) : null, [inputs]);
   const [recovery, setRecovery] = useState<RecoveryPayload | null>(null);
   const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
   const [busy, setBusy] = useState(false);
@@ -121,13 +137,17 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
 
   const loadWorkspace = useCallback(async () => {
     setError(null);
+    const epoch = readEpoch.current;
     const result = await fetchWorkspace(project);
+    if (epoch !== readEpoch.current) return;
     if ("ok" in result && result.ok === true) setWorkspace(result);
     else setError(result as { code: string; message?: string });
   }, [project]);
 
   const loadStatements = useCallback(async () => {
+    const epoch = readEpoch.current;
     const result = await fetchStatements(project);
+    if (epoch !== readEpoch.current) return;
     if ("ok" in result && result.ok === true) setStatements(result);
   }, [project]);
 
@@ -147,6 +167,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
   }, [project]);
 
   const afterMutation = useCallback(() => {
+    ++readEpoch.current;
+    setRunRefresh((state) => state === "reading" ? "blocked" : state);
+    setStatements(null);
     setDataVersion((v) => v + 1);
     void loadWorkspace();
   }, [loadWorkspace]);
@@ -168,38 +191,65 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
   }, [afterMutation]);
 
   useEffect(() => {
-    if (section === "statements" && !statements) void loadStatements();
+    if (runRefresh !== "idle") return;
+    if ((section === "statements" || section === "overview") && !statements) void loadStatements();
     if ((section === "results" || section === "analysis") && !statements) void loadStatements();
     if (section === "inputs" && !inputs && !recovery) void loadInputs();
     if (section === "inputs" && !revenuePayload) void loadRevenue();
-  }, [section, statements, inputs, recovery, revenuePayload, loadStatements, loadInputs, loadRevenue]);
+  }, [section, statements, inputs, recovery, revenuePayload, loadStatements, loadInputs, loadRevenue, runRefresh]);
 
   // Hash changes (typed URL, Back/Forward) are guarded like tab clicks: the URL has
   // already moved, so "stay" restores the hash of the section that is still shown.
   useEffect(() => {
     const onHash = () => {
-      if (allowNextHash.current) { allowNextHash.current = false; setSection(sectionFromHash()); return; }
-      const raw = window.location.hash.replace("#", "");
-      const target = isWorkspaceSection(raw) ? raw : sectionRef.current;
-      if (target === sectionRef.current) return;
-      confirmIfDirty(() => setSection(target), {
+      const route = workspaceRoute(window.location.hash);
+      const raw = window.location.hash.replace(/^#/, "");
+      // Native anchors (including Skip to main content) are not section routes.
+      if (raw && route.destination !== raw) return;
+      const adopt = () => { setSection(route.section); setDestination(route.destination); };
+      if (allowNextHash.current) { allowNextHash.current = false; adopt(); return; }
+      if (route.destination === destinationRef.current) return;
+      // Moving between groups leaves the same editors mounted, so their drafts survive.
+      if (route.section === sectionRef.current) { adopt(); return; }
+      confirmIfDirty(adopt, {
         ignore: (key) => key === "run",
-        onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${sectionRef.current}`),
+        onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
       });
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [confirmIfDirty]);
 
-  function navigate(sectionId: Section) {
-    if (sectionId === sectionRef.current) return;
-    // The status bar (and its Run) stays mounted across sections, so a Run is not abandoned by switching tabs.
-    confirmIfDirty(() => {
-      if (window.location.hash !== `#${sectionId}`) allowNextHash.current = true;
-      window.location.hash = sectionId;
-      setSection(sectionId);
-    }, { ignore: (key) => key === "run" });
+  function navigateTo(next: WorkspaceDestination) {
+    if (next === destinationRef.current) return;
+    const target = workspaceRoute(next);
+    const adopt = () => {
+      if (window.location.hash !== `#${next}`) allowNextHash.current = true;
+      window.location.hash = next;
+      setDestination(next);
+      setSection(target.section);
+    };
+    if (target.section === sectionRef.current) adopt();
+    else confirmIfDirty(adopt, { ignore: (key) => key === "run" });
   }
+  function navigate(sectionId: Section) { navigateTo(sectionId); }
+
+  useEffect(() => { window.scrollTo({ top: 0 }); }, [section]);
+
+  useEffect(() => {
+    const route = workspaceRoute(destination);
+    if (!route.input || section !== "inputs" || !inputs) return;
+    if (route.input === "capex" || route.input === "opex") {
+      const sheet = route.input;
+      setCostRequest((prev) => ({ sheet, nonce: prev.nonce + 1 }));
+    }
+    const target = route.input === "technical"
+      ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]')
+        ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
+      : document.getElementById(INPUT_DESTINATIONS[route.input].target);
+    target?.scrollIntoView({ block: "start" });
+    target?.focus({ preventScroll: true });
+  }, [destination, section, inputs]);
 
   // Any other in-app link that leaves this page (Project Library breadcrumb, legacy
   // workbook, ...) asks first when edits are unsaved.  Modified clicks open a new
@@ -210,6 +260,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
     if (!anchor) return;
     const href = anchor.getAttribute("href") || "";
     if (!href || href.startsWith("#") || anchor.hasAttribute("download") || (anchor.target && anchor.target !== "_self")) return;
+    if (anchor.hasAttribute("data-nav-my-projects") || anchor.hasAttribute("data-nav-new-project-workspace")) return;
     event.preventDefault();
     event.stopPropagation();
     confirmIfDirty(() => window.location.assign(anchor.href));
@@ -226,6 +277,41 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
   const refreshAll = useCallback(() => {
     window.location.reload();
   }, []);
+
+  const reconcileRun = useCallback(async (run: ConfirmedRun) => {
+    const epoch = ++readEpoch.current;
+    setRunRefresh("reading");
+    setStatements(null);
+    // No writes, engine calls or scope remounts here. Both projections must name
+    // the exact Run the existing D-029 API already verified in persisted history.
+    try {
+      const [nextWorkspace, nextStatements] = await Promise.all([fetchWorkspace(project), fetchStatements(project)]);
+      const fence = await fetchWorkspace(project);
+      if (epoch !== readEpoch.current) return;
+      if (!("ok" in nextWorkspace && nextWorkspace.ok === true && "ok" in nextStatements && nextStatements.ok === true && "ok" in fence && fence.ok === true)
+        || nextWorkspace.project.code !== project || nextStatements.project.code !== project
+        || fence.project.code !== project || fence.identity?.snapshot_id !== run.snapshotId
+        || fence.workbook.composite_hash !== nextWorkspace.workbook.composite_hash
+        || fence.workbook.version !== nextWorkspace.workbook.version
+        || fence.workbook.scenario_id !== nextWorkspace.workbook.scenario_id
+        || fence.freshness.state !== nextWorkspace.freshness.state
+        || nextStatements.state !== nextWorkspace.freshness.state
+        || nextStatements.freshness.state !== nextWorkspace.freshness.state
+        || nextWorkspace.identity?.snapshot_id !== run.snapshotId || nextStatements.status.runId !== run.snapshotId) {
+        setRunRefresh("blocked");
+        return;
+      }
+      setWorkspace(nextWorkspace);
+      setStatements(nextStatements);
+      setDataVersion((version) => version + 1);
+      setRunRefresh("idle");
+      // A resume may happen with drafts: do not navigate away and destroy them.
+      if (dirtyTotalRef.current === 0) {
+        setSection("results"); setDestination("results");
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#results`);
+      }
+    } catch { if (epoch === readEpoch.current) setRunRefresh("blocked"); }
+  }, [project]);
 
   // Reads the canonical Inputs projection again WITHOUT a page reload, so a staged draft survives reconciliation
   // of a lost Save response or a CAS conflict.  Every editor re-reads its CAS token through the data version.
@@ -327,13 +413,25 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
 
   // Statements carry their own project block; if it names a different project than the authorized
   // workspace, nothing from it is shown (no cross-project data under the wrong identity).
-  const statementsConflict = Boolean(statements?.project?.code && statements.project.code !== workspace.project.code);
+  // A project block without a code makes no identity claim (as before); a code that differs, or a Run/state that differs from the
+  // workspace's own Run, withholds every figure.
+  const statementsConflict = Boolean(statements && ((statements.project.code && statements.project.code !== workspace.project.code)
+    || (statements.snapshot && (statements.status.runId !== workspace.identity?.snapshot_id
+      || statements.state !== workspace.freshness.state))));
+
+  const extensionContext: WorkspaceExtensionContext = {
+    projectId: project, workbookVersion: workspace.workbook.version, contentHash: workspace.workbook.composite_hash,
+    activeScenario: workspace.workbook.scenario_id, activeScenarioName: workspace.workbook.scenario_name,
+    lastRunSnapshotId: workspace.identity?.snapshot_id ?? null,
+    pendingChanges: extensions?.pendingChanges ?? [], validation: extensions?.validation ?? [],
+    draftState: extensions?.draftState ?? "clean", onCommitted: afterMutation, onRefetch: loadWorkspace,
+  };
 
   return (
     <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
     <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
       originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
-      <div className="rx-page" role="main" data-react-workspace-version={workspace.react_workspace.version}>
+      <div className="rx-page wsv2-page" role="main" id="rx-main-content" tabIndex={-1} data-react-workspace-version={workspace.react_workspace.version}>
         <header className="rx-header">
           <div>
             <p className="rx-brand">FINCO Protocol · Model</p>
@@ -347,30 +445,46 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
             <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
           </nav>
         </header>
-        <WorkspaceNav active={section} onNavigate={navigate} />
+        <div className="wsv2-layout">
+        <WorkspaceSidebar active={destination} onNavigate={navigateTo} />
+        <div className="wsv2-content" id="wsv2-content">
+        <div className="wsv2-section-index"><WorkspaceNav active={section} onNavigate={navigate} /></div>
+        <ReportPrecisionControl />
         <WorkflowBar
           project={project}
           freshness={workspace.freshness.state}
           protectedReference={Boolean(workspace.project.protected_reference)}
           contentHash={workspace.workbook.composite_hash}
           workbookVersion={workspace.workbook.version}
-          onRan={refreshAll}
+          onRan={reconcileRun}
           onReload={refreshAll}
+          reconciliationBlocked={runRefresh !== "idle"}
         />
+        {runRefresh !== "idle" && <div role={runRefresh === "blocked" ? "alert" : "status"} className="rx-card" data-run-refresh={runRefresh}>
+          {runRefresh === "reading" ? "Reading the confirmed Run…" : "The Run was committed, but its current views could not be matched. Reload to reconcile before relying on the results. No extra Run was started."}
+        </div>}
+        <WorkspaceExtensionBoundary extensions={extensions} context={extensionContext}>
+        {extensions?.renderChanges?.(extensionContext)}
         <div key={section === "scenarios" ? "scenarios" : `scope-${scopeEpoch}`} data-scope-epoch={scopeEpoch}>
-        {section === "overview" && <StatusRow workspace={workspace} />}
+        {section === "overview" && <>
+          {runRefresh === "idle" && (statements ? statementsConflict
+            ? <StatementIdentityConflict workspace={workspace} statements={statements} />
+            : <FinancialOverview project={project} payload={statements} />
+            : <p role="status">Loading saved Run overview…</p>)}
+          <StatusRow workspace={workspace} />
+        </>}
         {section === "inputs" && (
           recovery
             ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
-            : inputs
+            : inputs && displayedInputs
             ? <>
               <InputsJumpNav onJump={jumpWithinInputs} />
               <SaveScopeGuide />
               <div id="wf-inputs-setup" tabIndex={-1}>
-                <SheetFieldsEditor project={project} sheet="project_setup" title="Project setup" reloadKey={dataVersion} onSaved={afterMutation} />
+                <SheetFieldsEditor project={project} sheet="project_setup" title="Project & Timeline" reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
               <div id="wf-inputs-grid" tabIndex={-1}>
-                <CanonicalInputGrid payload={inputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} />
+                <CanonicalInputGrid payload={displayedInputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} />
               </div>
               <div id="wf-inputs-costs" tabIndex={-1}>
                 <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation}
@@ -403,7 +517,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
         )}
         {section === "diagnostics" && <DiagnosticsView project={project} />}
         {section === "trust" && <TrustView project={project} />}
-        {section === "statements" && (
+        {section === "statements" && runRefresh === "idle" && (
           statements
             ? statementsConflict
             ? <StatementIdentityConflict workspace={workspace} statements={statements} />
@@ -425,11 +539,12 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
             </>
             : <p className="rx-boot-loading" role="status">Loading the statements…</p>
         )}
-        {section === "results" && (
+        {section === "results" && runRefresh === "idle" && (
           statements
             ? statementsConflict
             ? <StatementIdentityConflict workspace={workspace} statements={statements} />
             : <div data-results-view="true" data-results-state={statements.state}>
+              <div className="rx-badges" data-results-freshness="true"><FreshnessBadge state={workspace.freshness.state} /></div>
               <VerticalScopeBanner vertical={workspace.vertical} />
               <FinancialResults payload={statements} page="results" />
               <RunsView project={project} />
@@ -437,7 +552,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
             </div>
             : <p className="rx-boot-loading" role="status">Loading the results…</p>
         )}
-        {section === "analysis" && (
+        {section === "analysis" && runRefresh === "idle" && (
           <AnalysisTools project={project} protectedReference={Boolean(workspace.project.protected_reference)}
             workbookHash={workspace.workbook.composite_hash} onApplied={afterMutation}
             overview={(
@@ -460,12 +575,15 @@ function WorkspaceViewInner({ project, onNavigateToLibrary }: WorkspaceViewProps
             )} />
         )}
         </div>
+        </WorkspaceExtensionBoundary>
         <footer className="rx-footer">
           <p className="rx-note">
             Figures are read from this project&rsquo;s saved Run and workspace records; the browser
             never calculates financial results.
           </p>
         </footer>
+        </div>
+        </div>
       </div>
     </Shell>
     </div>

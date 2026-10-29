@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.model_react_wf1_browser_acceptance import run_canonical
+from tests.model_react_wf1_browser_acceptance import expect_display_v, run_canonical
 
 __all__ = (
     "test_rcux_run_history_lists_filters_sorts_and_limits_the_selection",
@@ -111,8 +111,12 @@ def test_rcux_compare_shows_the_canonical_deltas_and_issues_only_get_requests(li
         shown = page.locator(f"[data-compare-row='{row['key']}']")
         assert shown.count() == 1, row["key"]
         text = shown.inner_text()
-        for value in row["values"]:
-            assert value in text, (row["key"], value)
+        precision = int(page.get_by_label("Report precision", exact=True).input_value())
+        for value, raw in zip(row["values"], row["raw_values"]):
+            # Money rows: the table follows the shared Report precision (default 0) with the unit in its own column; the independent oracle
+            # re-expresses the same canonical raw value.  Ratios, percentages, dates and unavailable cells keep the server text verbatim.
+            expected = expect_display_v(raw, "kEUR", "kEUR", precision) if row["unit"] == "kEUR" and raw is not None else value
+            assert expected in text, (row["key"], value, expected)
         if row["availability"][1] == "available" and row["pct_deltas"][1] != "—":
             assert row["pct_deltas"][1] in shown.locator("[data-pct-delta='true']").inner_text()
     plcr = page.locator("[data-compare-row='plcr']").inner_text()

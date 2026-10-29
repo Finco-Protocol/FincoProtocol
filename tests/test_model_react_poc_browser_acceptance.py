@@ -351,8 +351,6 @@ def _reach_new_project_review(page, base):
     page.locator("[data-wizard-next='true']").click()
     page.fill("#rcm-name", "UX02 created project")
     page.locator("[data-wizard-next='true']").click()
-    page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
-    page.locator("[data-wizard-next='true']").click()
     page.wait_for_selector("[data-wizard-panel='review']")
 
 

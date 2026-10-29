@@ -16,6 +16,7 @@ export type RowFormat =
   | { kind: "money"; base: DisplayUnit }
   | { kind: "ratio" }
   | { kind: "percent" }
+  | { kind: "quantity"; unit: string }
   /** No canonical unit metadata and no safe inference: shown verbatim, never converted. */
   | { kind: "unspecified" };
 
@@ -31,6 +32,7 @@ export function formatFromCanonicalUnit(raw: string | null | undefined): RowForm
   if (unit === "meur" || unit === "m€" || unit === "mneur") return { kind: "money", base: "mEUR" };
   if (unit === "x" || unit === "ratio" || unit === "multiple") return { kind: "ratio" };
   if (unit === "%" || unit === "pct" || unit === "percent") return { kind: "percent" };
+  if (["mw", "mwh", "kwh", "kw", "hours", "h/yr", "months", "years"].includes(unit)) return { kind: "quantity", unit: raw!.trim() };
   return null;
 }
 
@@ -198,19 +200,23 @@ export function formatStatementCell(
     if (typeof value === "number") return formatMoneyValue(value, format.base, display, precision);
     return formatMoneyText(text, format.base, display, precision);
   }
+  if (format.kind === "quantity") {
+    if (value === null) return UNAVAILABLE_TEXT;
+    return typeof value === "number" ? formatMoneyValue(value, "kEUR", "kEUR", precision) : formatMoneyText(text, "kEUR", "kEUR", precision);
+  }
   return formatRatioText(text, format.kind);
 }
 
 /** Unit label shown next to a row/column header (never claims a unit for ratios). */
 export function formatUnitLabel(format: RowFormat, display: DisplayUnit): string {
-  return format.kind === "money" ? display : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
+  return format.kind === "money" ? display : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : format.kind === "quantity" ? format.unit : "unit unavailable";
 }
 
 /** Canonical sheet unit ("keur") as a display label ("kEUR"). */
 export function sheetUnitLabel(raw: string | null | undefined): string {
   const format = formatFromCanonicalUnit(raw);
   if (!format) return raw ? String(raw) : "unit unavailable";
-  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : "%";
+  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "quantity" ? format.unit : "%";
 }
 
 /**

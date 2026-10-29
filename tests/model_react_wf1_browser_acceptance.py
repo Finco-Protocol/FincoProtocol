@@ -160,9 +160,9 @@ def check_statement_units_ratios_negatives_and_rounding_match_canonical_api(seed
             key_v, key_t = ("annual_v", "annual") if view == "annual" else ("model_v", "model")
             rows = {r["id"]: r for r in sheet["rows"]}
             for unit in ("EUR", "kEUR", "mEUR"):
-                for precision in (0, 3):
+                for precision in (0, 2, 3, 0):
                     page.select_option("#fm-sw-unit", unit)
-                    page.select_option("#fm-sw-precision", str(precision))
+                    page.get_by_label("Report precision", exact=True).select_option( str(precision))
                     cells = page.evaluate(COLLECT_CELLS)
                     assert len(cells) == sum(len(r[key_t]) for r in rows.values()), (sheet_id, view)
                     for cell in cells:
@@ -195,7 +195,7 @@ def check_statement_units_ratios_negatives_and_rounding_match_canonical_api(seed
     page.get_by_role("tab", name="Profit & Loss", exact=True).click()
     page.select_option("#fm-sw-view", "annual")
     page.select_option("#fm-sw-unit", "kEUR")
-    page.select_option("#fm-sw-precision", "2")
+    page.get_by_label("Report precision", exact=True).select_option( "2")
     assert "Statement line · kEUR" in page.inner_text("#fm-sw-sheet")
     revenue = next(r for r in sheets["pl"]["rows"] if r["id"] == "revenues_keur")
     assert page.locator("button[data-statement-row='revenues_keur'][data-statement-col='1']").inner_text() == revenue["annual"][1]
@@ -241,7 +241,7 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     for unit in ("EUR", "kEUR", "mEUR"):
         for precision in (0, 1, 2, 3):
             page.select_option("select[data-control='unit']", unit)
-            page.select_option("select[data-control='precision']", str(precision))
+            page.get_by_label("Report precision", exact=True).select_option( str(precision))
             for metric in metrics:
                 card = page.locator(f"[data-metric-label='{metric['label']}']")
                 assert card.get_attribute("data-metric-canonical") == metric["display"], "source text must be preserved"
@@ -253,7 +253,7 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     for metric in verbatim:
         assert page.locator(f"[data-metric-label='{metric['label']}'] .rx-live-kpi-value").inner_text() == metric["display"]
     page.select_option("select[data-control='unit']", "kEUR")
-    page.select_option("select[data-control='precision']", "1")
+    page.get_by_label("Report precision", exact=True).select_option( "1")
     # operating performance annual table: every cell traces to the canonical annual statement column
     for row_key, canonical_row in (("pl.revenues_keur", pl["revenues_keur"]), ("pl.ebit_keur", pl["ebit_keur"])):
         cells = page.locator(f"[data-period-table='operating-performance'] td[data-row='{row_key}']")
@@ -267,7 +267,7 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
             assert cell.inner_text() == expect_display_v(canonical_v, "kEUR", "kEUR", 1)
     # unit switch converts the same canonical values; headers carry the unit
     page.select_option("select[data-control='unit']", "mEUR")
-    page.select_option("select[data-control='precision']", "3")
+    page.get_by_label("Report precision", exact=True).select_option( "3")
     cell = page.locator("[data-period-table='operating-performance'] td[data-row='pl.revenues_keur']").nth(1)
     assert cell.inner_text() == expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "mEUR", 3)
     assert "Line · mEUR" in page.locator("[data-period-table='operating-performance']").inner_text()
@@ -294,6 +294,9 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     # chart geometry is driven by the canonical numeric value, not parsed display text
     assert [float(bars.nth(i).get_attribute("data-v")) for i in range(bars.count())] == \
         [v for v in pl["revenues_keur"]["annual_v"] if v is not None]
+    # The shared Report precision resets to its default (0) when the Analysis route is opened; select the precision the oracle expects, then
+    # the bar title must be the independent Decimal re-expression of the same canonical value.
+    page.get_by_label("Report precision", exact=True).select_option("1")
     title = bars.nth(1).locator("title").text_content()
     assert expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "kEUR", 1) in title and "kEUR" in title
     assert page.locator("[data-chart='dscr']").get_attribute("data-chart-state") == "available"

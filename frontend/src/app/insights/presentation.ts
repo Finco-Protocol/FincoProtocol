@@ -1,11 +1,12 @@
-import { formatFromCanonicalUnit, formatMoneyValue } from '../units';
+import { formatFromCanonicalUnit } from '../units';
+import { reportCell, reportUnitText } from '../reportFormatting';
 import type { EvidenceCell } from './types';
 
 /** Money uses canonical numeric precision; other units retain the canonical server text. */
-export function evidenceDisplay(value: number | null, text: string, unit: string, precision = 2): string {
+export function evidenceDisplay(value: number | null, text: string, unit: string, precision = 0): string {
   if (value === null || !Number.isFinite(value)) return 'Unavailable';
   const format = formatFromCanonicalUnit(unit);
-  return format?.kind === 'money' ? formatMoneyValue(value, format.base, format.base, precision) : text;
+  return format ? reportCell(text, format, format.kind === 'money' ? format.base : 'kEUR', precision, value) : reportUnitText(text, unit, precision);
 }
 export function numericCell(cell: EvidenceCell | undefined): number | null {
   return typeof cell?.v === 'number' && Number.isFinite(cell.v) ? cell.v : null;

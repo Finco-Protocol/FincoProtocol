@@ -16,8 +16,7 @@ import type {
 const STEPS = [
   { id: 1, label: "Start" },
   { id: 2, label: "Project details" },
-  { id: 3, label: "Timeline" },
-  { id: 4, label: "Review & create" },
+  { id: 3, label: "Review & create" },
 ] as const;
 
 const TIER_TEXT: Record<string, string> = {
@@ -37,7 +36,7 @@ function TierBadge({ tier }: { tier: string }) {
 }
 
 /**
- * New Project wizard (4 steps, two creation paths).
+ * New Project wizard (3 steps, two supported creation paths).
  *
  * Path A "Create a new project" is a guided setup that starts from FINCO's approved starting assumptions for the chosen technology
  * (a completely blank model is not available).  Path B "Start from a template" shows the approved template, its starting assumptions and
@@ -50,7 +49,7 @@ function TierBadge({ tier }: { tier: string }) {
 export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
   const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [path, setPath] = useState<WizardPath>(() => pathFromHash(window.location.hash));
   const [templates, setTemplates] = useState<TemplateCard[] | null>(null);
   const [templatesError, setTemplatesError] = useState("");
@@ -161,7 +160,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
     if (result.kind === "created") {
       clearPending();
       setCreated(result.project);
-      window.location.assign(result.project.workspace_url);
+      window.location.assign(`${result.project.workspace_url.split("#")[0]}#inputs`);
       return;                                   // the page navigates away; submit stays locked
     }
     if (result.kind === "refused") {
@@ -177,7 +176,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
     if (status.kind === "created") {
       clearPending();
       setCreated(status.project);
-      window.location.assign(status.project.workspace_url);
+      window.location.assign(`${status.project.workspace_url.split("#")[0]}#inputs`);
       return;
     }
     setBusy("");
@@ -240,7 +239,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
             </li>
           ))}
         </ol>
-        <p className="rcm-step-compact" aria-hidden="true">Step {step} of 4 · {STEPS[step - 1].label}</p>
+        <p className="rcm-step-compact" aria-hidden="true">Step {step} of 3 · {STEPS[step - 1].label}</p>
 
         <section className="rx-card" aria-labelledby="rcm-step-heading">
           <h2 id="rcm-step-heading" ref={headingRef} tabIndex={-1}>{step}. {STEPS[step - 1].label}</h2>
@@ -252,15 +251,18 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
                   <p className="rx-note">How would you like to start? You can change this at any time before you create the project.</p>
                   <div className="rcux-paths" role="group" aria-label="How to start">
                     <button type="button" className="rcux-path" data-path-card="new" onClick={() => choosePath("new")}>
-                      <strong>Create a new project</strong>
+                      <strong>Approved Defaults</strong>
                       <span>Guided setup: name the project, pick the technology, market and capacity. FINCO fills in its approved starting assumptions, and every value stays editable afterwards.</span>
-                      <span className="rx-note">A completely blank model is not available.</span>
+
                     </button>
                     <button type="button" className="rcux-path" data-path-card="template" onClick={() => choosePath("template")}>
                       <strong>Start from a template</strong>
                       <span>Choose a ready-made starting model, review its starting assumptions and limitations, then create your own editable project from it.</span>
                     </button>
                   </div>
+                  <details className="rx-advanced" data-blank-project-constraint="true"><summary>Blank Draft · not available yet</summary>
+                    <p>A completely blank model cannot currently be saved by the project creator. It requires a separate non-runnable setup draft; approved defaults are never presented as blank. Choose Approved Defaults or a template to create a saved project.</p>
+                  </details>
                 </>
               )}
               {path === "new" && (
@@ -369,19 +371,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
             </form>
           )}
 
-          {step === 3 && tech && effective && (
-            <div data-wizard-panel="timeline">
-              <p className="rx-note">The timeline starts from the approved {tech.public_name} starting assumptions. It is shown for review; adjust it in Inputs after the project exists.</p>
-              <dl className="rcm-defs" data-timeline-defaults="true">
-                <div><dt>Financial close</dt><dd data-timeline="financial_close">{effective.timeline.financial_close}</dd></div>
-                <div><dt>Construction period</dt><dd data-timeline="construction_months">{effective.timeline.construction_months} months</dd></div>
-                <div><dt>Commercial operation date (COD)</dt><dd data-timeline="cod_date">{effective.timeline.cod_date}</dd></div>
-                <div><dt>Model horizon</dt><dd data-timeline="horizon_years">{effective.timeline.horizon_years} years</dd></div>
-              </dl>
-            </div>
-          )}
-
-          {step === 4 && tech && effective && preview && (
+          {step === 3 && tech && effective && preview && (
             <div data-wizard-panel="review">
               <p className="rx-note">Review the starting assumptions the server will save. Create makes one new project in your account and does not run the model.{template ? " The template itself is not changed." : ""}</p>
               <table className="rcm-review" aria-label="Effective assumptions">
@@ -419,8 +409,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
             <button type="button" className="rx-button rx-button-secondary" data-wizard-cancel="true" disabled={locked} onClick={onCancel}>Cancel</button>
             {step === 1 && <button type="button" className="rx-button" data-wizard-next="true" disabled={!tech || path === ""} onClick={nextFromTechnology}>Next</button>}
             {step === 2 && <button type="button" className="rx-button" data-wizard-next="true" disabled={busy === "validating"} onClick={() => void nextFromDetails()}>{busy === "validating" ? "Checking…" : "Next"}</button>}
-            {step === 3 && <button type="button" className="rx-button" data-wizard-next="true" onClick={() => setStep(4)}>Next</button>}
-            {step === 4 && <button type="button" className="rx-button" data-wizard-create="true" disabled={locked || !preview} aria-busy={busy === "creating"} onClick={() => void create()}>{busy === "creating" ? "Creating…" : "Create project"}</button>}
+            {step === 3 && <button type="button" className="rx-button" data-wizard-create="true" disabled={locked || !preview} aria-busy={busy === "creating"} onClick={() => void create()}>{busy === "creating" ? "Creating…" : "Create project"}</button>}
           </div>
         </section>
       </main>
