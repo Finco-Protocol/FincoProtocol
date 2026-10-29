@@ -36,6 +36,7 @@ OWNED_PATHS = frozenset((
     'docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md',
     'docs/financial_validation/wf04_debt_metrics/OWNER_PROTECTED_PATH_EXECUTION_LEDGER.md',
     'docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md',
+    'docs/financial_validation/wf04_debt_metrics/POST_397_SYNC_AND_CORRECTION_B.md',
     'docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md',
     'docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md',
     'docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md',

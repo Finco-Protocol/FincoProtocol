@@ -18,6 +18,7 @@
     "docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md": "7c2921bf6d010da2b85015dcf778aa3f709602d8",
     "docs/financial_validation/wf04_debt_metrics/OWNER_PROTECTED_PATH_EXECUTION_LEDGER.md": "cdfc6723366d71f35928d7e3281cd933a804d535",
     "docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md": "55fc9e4d7120313ba8906fed287f2a3efde2bd90",
+    "docs/financial_validation/wf04_debt_metrics/POST_397_SYNC_AND_CORRECTION_B.md": "199a3c7d00304a14a34125c4f03f207262287948",
     "docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md": "7ea2d594f7d588612811a3737aabf622507b2507",
     "docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md": "74c25a02616d3fe1b03fa78568242a1f8d0eadcd",
     "docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md": "87dd275943448198392389b23aedd7fa65ee2d60",
@@ -46,7 +47,7 @@
     "static/react/finco-react.js": "5fa6f964b7900a2bdc47c1cee0f2468f4e80960a",
     "tests/fin_v2_cohorts.py": "e34b55c559157d5a16761986064afb3107577eac",
     "tests/model_react_rcm_financing_acceptance.py": "df42c9e19f43a597a8267c5f6c973dea6f6ff884",
-    "tests/model_react_wf04_debt_metrics_acceptance.py": "cb456bcbf1766c08655ab6194b8aa182a751798a",
+    "tests/model_react_wf04_debt_metrics_acceptance.py": "7fe86508ab81e89246350f6f06c13912703a842f",
     "tests/test_fin_v2_3_scope.py": "d9228c05ffe90a200181cb5e5b747a461cbed1bd",
     "tests/test_fin_v2_r1_scope.py": "be1947eb637a2fd032ed598f2602ae4d7497f16a",
     "tests/test_finval_f01_fixture_integrity.py": "4459c5a52fb12de32f8d8b9b83a89103e7ed6238",
@@ -65,7 +66,7 @@
     "tests/test_wf04_save_all_integration.py": "7566b61542f8cfbb0811040e6d0d2874f909b20f",
     "tests/test_wf04_scope.py": "73c5cd5434321c6741b9c3de64723b20be2b28d7",
     "tests/test_wsv2_core_scope.py": "b17cb809acc44b8fb3b800800fff3daaeeb00741",
-    "tests/wf04_scope.py": "057e1636753432a2b66dd403f31415de7e32f74d",
+    "tests/wf04_scope.py": "2cbc1db9e2e5750931c3fe32909a8d48d3e3a39c",
     "tests/wsv2_core_scope.py": "5622eebb60cff4526196a0bbc2e265d4b9747bbc",
     "tools/wf04_independent_dscr_oracle.py": "f286d019a6b6cbb964c48ff7ed68281e7715b65d"
   }

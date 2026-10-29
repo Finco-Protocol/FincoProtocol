@@ -300,11 +300,24 @@ def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_th
 
 def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_and_never_runs(world, live_server, browser, rcm_react_flag):
     """WS-2 x WF-04: both contractual terms are staged in the shared pending-change store beside another financing edit, listed in the Changes
-    panel, saved by ONE all-or-none Save All request, never run the model and leave the Last Run STALE; a malformed term makes the server refuse the WHOLE request (nothing saved)."""
+    panel and saved by ONE all-or-none Save All request. A first attempt with a deliberately malformed term is refused as a whole by the server
+    (HTTP 422) - nothing is saved, the pending edits stay staged and no success is reported; after the term is corrected exactly one valid request
+    commits all three values, never runs the model and leaves the Last Run STALE."""
+    import json
     record = world.env.create("wind")
     run(world.env, record)
     runs_before = len(history_rows(record))
     context, page, errors = context_for(browser, live_server)
+    saves: list[dict] = []
+
+    def on_response(response):
+        if response.url.endswith("/v2/workbook/save-all") and response.request.method == "POST":
+            body = json.loads(response.request.post_data or "{}")
+            saves.append({"status": response.status, "cells": {c["field_id"]: c["value"] for c in body.get("cells", [])},
+                          "request_id": body.get("request_id"), "lines": len(body.get("cost_lines", [])), "contracts": body.get("contracts_json"),
+                          "reply": response.json() if response.status in (200, 409, 422) else None})
+
+    page.on("response", on_response)
     try:
         page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
         page.wait_for_selector("[data-sheet-editor='debt']", timeout=30000)
@@ -316,32 +329,49 @@ def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_an
                 cur.execute("SELECT COUNT(*) AS n FROM save_all_requests WHERE project_id=?", (record.project_id,))
                 return cur.fetchone()["n"]
 
+        def pending():
+            return page.locator("[data-changes-count]").first.get_attribute("data-changes-count")
+
         before = dict(get_workspace_state(USER, record.project_id).draft_snapshot)
         page.locator("#wf-debt-debt-contract-min-dscr-eod").fill("1.15")
         page.locator("#wf-debt-debt-contract-contractual-dscr").fill("abc")             # malformed: the server refuses the WHOLE request
         page.locator("#wf-debt-debt-senior-gearing-pct").fill("70")
         page.locator("[data-changes-toggle='true']").click()
         page.wait_for_selector("[data-changes-drawer='open']")
-        assert page.locator("[data-changes-count]").first.get_attribute("data-changes-count") == "3"
+        assert pending() == "3"
         page.locator("[data-save-all='true']").click()
         page.wait_for_selector("[data-save-all-message='error']", timeout=30000)
         assert "Nothing was saved" in page.locator("[data-save-all-message='error']").inner_text()
-        assert dict(get_workspace_state(USER, record.project_id).draft_snapshot) == before and ledger_rows() == 0      # all-or-nothing
+        # the refusal is the server's own verdict on the malformed term, on the single request the UI sent
+        assert [s["status"] for s in saves] == [422] and saves[0]["reply"]["ok"] is False, saves
+        assert saves[0]["cells"] == {"debt.contract.min_dscr_eod": "1.15", "debt.contract.contractual_dscr": "abc", "debt.senior.gearing_pct": "70"}
+        # a rejected Save All neither persists anything nor clears the staged edits nor reports success
+        assert dict(get_workspace_state(USER, record.project_id).draft_snapshot) == before and ledger_rows() == 0
+        assert pending() == "3" and page.locator("[data-save-all-message='ok']").count() == 0
+        assert page.get_by_role("region", name="Pending changes").locator("[data-change-id]").count() == 3
         page.locator("[data-changes-toggle='true']").click()                                    # close the panel to edit the field ...
         page.locator("#wf-debt-debt-contract-contractual-dscr").fill("1.25")
         page.locator("[data-changes-toggle='true']").click()                                    # ... and open it again to review and save
         page.wait_for_selector("[data-changes-drawer='open']")
         panel = page.get_by_role("region", name="Pending changes")
-        assert page.locator("[data-changes-count]").first.get_attribute("data-changes-count") == "3"
+        assert pending() == "3"
         text = panel.inner_text()
         assert "Minimum DSCR" in text and "Contractual DSCR" in text
         assert page.locator("[data-save-all='true']").is_enabled()
         page.locator("[data-save-all='true']").click()
         page.wait_for_selector("[data-save-all-message='ok']", timeout=30000)
+        # exactly one VALID request, carrying all three values; the panel legitimately empties after the commit
+        assert [s["status"] for s in saves] == [422, 200], saves
+        good = saves[1]
+        assert good["cells"] == {"debt.contract.min_dscr_eod": "1.15", "debt.contract.contractual_dscr": "1.25", "debt.senior.gearing_pct": "70"}
+        assert good["lines"] == 0 and good["contracts"] is None and good["reply"]["model_executed"] is False and good["reply"]["replayed"] is False
+        assert good["request_id"] != saves[0]["request_id"]                                      # a different payload is a different request
         draft = dict(get_workspace_state(USER, record.project_id).draft_snapshot)
         assert draft["dscr_min_eod_x"] == "1.15" and draft["dscr_contractual_x"] == "1.25" and float(draft["gearing_pct"]) == 70.0     # exact, as entered
         assert ledger_rows() == 1                                                                # ONE successful request, ONE ledger row
         assert len(history_rows(record)) == runs_before                                          # Save All never runs the model
+        page.wait_for_function("() => document.querySelector('[data-changes-count]').getAttribute('data-changes-count') === '0'", timeout=15000)
+        assert page.get_by_role("region", name="Pending changes").locator("[data-change-id]").count() == 0
         page.evaluate("() => { window.location.hash = '#financing'; }")
         page.locator("[data-financing-tab-button='debt-metrics']").click()
         page.wait_for_selector("[data-debt-metrics='true']")
