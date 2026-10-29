@@ -61,13 +61,29 @@ def test_authority_mock_has_only_its_missing_unit_added():
     assert original.count(historical)==1
     approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_cohorts import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
     extended = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)\n'
-    # WF-04 successor lineage (tests/wf04_scope.py): the file is either the FIN-V2-3 state, or exactly that state plus the one reviewed WF-04 block that
-    # hash-locks the four presentations of the two new debt.contract.* inputs and widens the final set equality by exactly that set. Nothing else.
-    approved_wf04_extension = '        # WF-04 adds the two contractual DSCR INPUT fields (Minimum DSCR, Contractual DSCR). Like the valuation field above, their four\n        # presentations are separately hash-locked; every historical DOM hash stays unchanged and the exact CSRF/read-only checks above still run.\n        contract_additions = {\n            "debt|editable|debt.contract.contractual_dscr": "44cb85971ad47eeac8caa375435b93c19356c515cfdac7bbdb8f7bee195a0fe1",\n            "debt|editable|debt.contract.min_dscr_eod": "5f813f9a638b71ee356e5f102492a01dea6dd3bd089003151af3e95be1adc832",\n            "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",\n            "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",\n        }\n        assert {key: actual[key] for key in contract_additions} == contract_additions\n'
-    extended_wf04 = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions) | set(contract_additions)\n'
     fin_v2_3_state = original.replace(historical, approved_valuation_extension + extended)
-    wf04_state = original.replace(historical, approved_valuation_extension + approved_wf04_extension + extended_wf04)
-    assert actual == fin_v2_3_state or actual == wf04_state
+    if actual == fin_v2_3_state:
+        return
+    # WF-04 successor lineage (tests/wf04_scope.py, Owner Correction B): the file is the FIN-V2-3 state with ONLY the reviewed macro-identity guard
+    # change - (1) the closed literal sets of reviewed additions (financing / valuation / the four WF-04 contract presentations, each with its own
+    # sha256) and the pure judge, (2) the body of the one macro node (same node id) now delegating to them, (3) the new fail-closed negatives class.
+    # Every other line - the F01 mock, _ADDED_ATTRS, _historical_macro_dom, every other test - must be untouched, and the exact blob is pinned.
+    from tests import wf04_scope as WF04
+    assert WF04.matches(path, actual)
+    import difflib
+    before, after = fin_v2_3_state.splitlines(), actual.splitlines()
+    start = before.index('    def test_macro_output_matches_the_base_commit_except_three_additive_attributes(self):')
+    end = next(i for i in range(start + 1, len(before)) if before[i].startswith('    @pytest.mark.parametrize("old,new", ['))
+    ops = [op for op in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes() if op[0] != 'equal']
+    assert ops and all(op[0] in ('insert', 'replace', 'delete') for op in ops)
+    assert all(start <= op[1] and op[2] <= end for op in ops if op[0] != 'insert'), 'a line outside the macro node was changed or removed'
+    assert all(start <= op[1] <= end or before[op[1]].startswith('# ') or before[op[1]].startswith('class ')
+               for op in ops if op[0] == 'insert')
+    for kept in ('golden["base_commit"] == "1951e26df9305edaa4cec3d0066af9fd2ec48fb9"', 'drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)',
+                 'assert matches("app/workbook/registry.py")', "_ADDED_ATTRS = re.compile(r'\\s+data-(?:field-label|sheet-id|required|register-path)=\"[^\"]*\"')"):
+        assert kept in actual, kept
+    assert actual.count('"project_setup|editable|debt.valuation.configuration": "74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b"') == 1
+
 
 def test_sensitivity_oracle_removes_only_the_documented_old_ratio_conversion():
     path='tests/test_m3_two_driver_sensitivity.py'
