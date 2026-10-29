@@ -8,6 +8,7 @@ import pytest
 from tests import fin_v2_cohorts as C
 from tests import model_mutation_security_successor as S
 from tests import wsv2_core_scope as F
+from tests import wf04_scope as WF04
 
 PRESENTATION = frozenset((
     'frontend/src/app/FinancialResults.tsx', 'frontend/src/app/WorkspaceView.tsx',
@@ -164,7 +165,9 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
         if name in ('SOURCE_HEAD', 'BLOBS') or name.endswith('_SUCCESSORS'):
             assert getattr(S, name) == ast.literal_eval(node.value), name
     for path in PRESENTATION | {ROLE}:
-        assert S.git_blob(sources[path]) == {**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path]
+        # WF-04 successor lineage: for the three presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
+        assert (S.git_blob(sources[path]) == {**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path]
+                or WF04.presentation_successor(path, sources[path]))
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)

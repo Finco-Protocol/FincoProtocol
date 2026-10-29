@@ -23,6 +23,7 @@ OWNED_PATHS = frozenset((
     'app/workbook/registry.py',
     'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
     'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
     'docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md',
     'docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md',
     'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json',
@@ -48,11 +49,13 @@ OWNED_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/test_fin_v2_3_scope.py',
     'tests/test_fin_v2_r1_scope.py',
+    'tests/test_rcm_governance.py',
     'tests/test_rcux_governance.py',
     'tests/test_wf04_credit_debt_metrics.py',
     'tests/test_wf04_debt_metrics_browser.py',
     'tests/test_wf04_dscr_contract_terms.py',
     'tests/test_wf04_run_bound_terms.py',
+    'tests/test_wf04_scope.py',
     'tests/test_wsv2_core_scope.py',
     'tests/wf04_scope.py',
     'tests/wsv2_core_scope.py',
@@ -61,20 +64,24 @@ OWNED_PATHS = frozenset((
 
 FIN_V2_3_MANIFEST = 'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json'
 FIN_V2_R1_MANIFEST = 'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json'
+FIN_V2_D01_MANIFEST = 'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json'
 WSV2_CORE_MANIFEST = 'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json'
 # Predecessor manifests that WF-04 re-pins, and the exact pins each one may move (everything else must stay byte-for-byte what it was at BASE).
 PREDECESSOR_REPINS = {
-    FIN_V2_3_MANIFEST: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py')),
-    FIN_V2_R1_MANIFEST: frozenset(('tests/fin_v2_cohorts.py', 'tests/test_fin_v2_r1_scope.py')),
+    FIN_V2_3_MANIFEST: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_rcm_governance.py')),
+    FIN_V2_R1_MANIFEST: frozenset(('tests/fin_v2_cohorts.py', 'tests/test_fin_v2_r1_scope.py', 'tests/test_rcm_governance.py')),
+    FIN_V2_D01_MANIFEST: frozenset(('tests/test_rcm_governance.py',)),
     WSV2_CORE_MANIFEST: frozenset((
         'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
         'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
+        'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
         'frontend/src/app/FinancialOverview.tsx',
         'frontend/src/app/FinancialResults.tsx',
         'frontend/src/app/workflow/WorkflowBar.tsx',
         'static/react/finco-react.css',
         'static/react/finco-react.js',
         'tests/fin_v2_cohorts.py',
+        'tests/test_rcm_governance.py',
         'tests/test_rcux_governance.py',
         'tests/test_wsv2_core_scope.py',
         'tests/wsv2_core_scope.py',
@@ -86,6 +93,10 @@ FORBIDDEN_PATHS = frozenset((
     'main_web.py', 'app/v2/router.py', 'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py',
     'app/v2/mutation_csrf.py', 'app/workbook/update_service.py', 'app/workbook/bankability_config.py',
 ))
+
+
+# The presentation paths the earlier WS1 layers pin as an exact state, and which WF-04 legitimately moves to a later exact state.
+PRESENTATION_SUCCESSOR_PATHS = frozenset(('frontend/src/app/FinancialResults.tsx', 'static/react/finco-react.css', 'static/react/finco-react.js'))
 
 
 def _git(root, *args):
@@ -183,6 +194,11 @@ def matches(path, source=None, *, repo=None, ref=None):
         return False
     raw = source.encode() if isinstance(source, str) else source
     return source is None or _blob(raw) == pins[path]
+
+
+def presentation_successor(path, source, *, repo=None, ref=None):
+    """True only for one of the three presentation paths, at exactly the WF-04 pinned bytes, while the whole cohort is valid."""
+    return path in PRESENTATION_SUCCESSOR_PATHS and matches(path, source, repo=repo, ref=ref)
 
 
 def protected_blobs(repo=None, ref=None):

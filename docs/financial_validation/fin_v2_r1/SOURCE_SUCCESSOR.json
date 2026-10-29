@@ -18,7 +18,7 @@
     "tests/test_fin_v2_r1_scope.py": "6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c",
     "tests/test_finance_integrity_governance.py": "1f0afdf2acacb10b12c70522f0c53462ebc5c412",
     "tests/test_model_react_overnight_b_governance.py": "4776948cc684952359ba5b64ade70c49275d0984",
-    "tests/test_rcm_governance.py": "414373f3aaa0da42d4521df88d2788e40f60c02d",
+    "tests/test_rcm_governance.py": "7b173cb4de41d910e5fe3c0796b62ad5ab9eb98e",
     "tests/test_tax_wf10_candidate.py": "a1efc13cd47804d1ff377e845e497c2dd81c7e72",
     "tests/test_v11_stage3_successor.py": "9748d3fe5c3f3979575b89d65ef675f2d69e1dcf",
     "tests/v11_stage3_successor.py": "3d6baf9968c00248fd69e8e43f2dc06c2c7db6cb"

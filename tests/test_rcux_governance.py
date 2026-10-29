@@ -9,6 +9,7 @@ import subprocess
 import pytest
 
 from tests import model_mutation_security_successor as S
+from tests import wf04_scope as WF04
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
@@ -30,7 +31,9 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
-        assert S.git_blob(SOURCES[path]) == S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
+        expected = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
+        # WF-04 successor lineage: for the three presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
+        assert S.git_blob(SOURCES[path]) == expected or WF04.presentation_successor(path, SOURCES[path])
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
