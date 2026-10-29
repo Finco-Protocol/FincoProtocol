@@ -51,6 +51,20 @@ file (a file cannot contain its own commit): it is recorded on the PR.
 | `test_model_react_rcux_goal_seek_targets_v1.py` | the file stalls at the same test (24th of the file; 23 passes first) on clean `main` **and** on this branch; neither run finished in 20+ minutes in this sandbox, so this file is **NOT RUN to completion** on either tree |
 | `test_model_credit_decision_v4_render` | needs `FINCO_TEST_CHROMIUM_PATH` in this sandbox (browser binary path), environment only |
 
+## E — Correction A (CI-A / UX-A / LABEL-A): local results before publication
+
+| Check | Result |
+|---|---|
+| Public Safety collection-skip delta vs the authenticated accepted reference (run 40843562163, 70 records) | exact delta at `271fdec7` = the one WF-04 module; after the fix the sorted local ledger equals `main`'s (66 = 66), 0 original nodes removed (`CORRECTION_A_CI_AND_PERIOD_MATRIX.md` §2.1) |
+| Mandatory consolidation role, whole module, real Chromium, thread mode | **287 passed** (274 original + 13 WF-04; collection count verified, 274 → 287) in 27 min; the node that was RED at `271fdec7` (`…six_sections…`) passes |
+| `npm run typecheck`; node tests of `debtmetrics/__tests__` | clean; 15/15 (9 + 6) |
+| Bundle | rebuilt once; a fresh worktree at the committed HEAD (`npm ci` + `npm run build`) is **byte-identical** to the committed `static/react/finco-react.{js,css}` |
+| WF-04 Python suites (scope, terms, Run-bound, credit, oracle, matrix) | PASS (`test_wf04_scope` after the final re-pin) |
+| 155 related Python test files, run one by one (goal-seek-targets excluded: stalls identically on `main`) | only the pre-existing `main` failures (§C); no new failure |
+| Governance subset (53 files + WF-04 + the two edited protected tests) | 9 failures, **all also failing on clean `main`** (8 CSRF/trust-inventory + the served-router order test); 2,063 passed |
+| Public safety scan | `PUBLIC_REPOSITORY_SAFETY_SCAN_PASS` |
+| Parity | unchanged (this correction adds one read of existing evidence; no financial blob changes) |
+
 ## D — NOT RUN (stated, not implied)
 
 * Native V10/V11 arms, 183-case catalogue (`runtime_compilation_authorized: false`).

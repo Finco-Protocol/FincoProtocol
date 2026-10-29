@@ -2,6 +2,9 @@
 
 **Status: DRAFT PR, not merge-ready.** Merge, deployment and release remain with the Financial Owner / independent reviewer. Exact-head CI is recorded on the PR (this file cannot contain its own head).
 
+## Correction A (this push)
+CI-A: the Public Safety collection-skip failure (exact delta: the standalone WF-04 browser module) is fixed by running the browser acceptance inside the existing mandatory Chromium role (274 → 287 nodes, all 287 pass locally); a real regression the role caught (the Financing tab list) is fixed with an exact, reviewed expectation update. UX-A: Period Status Matrix replaces the OPEN/LOCKED tiles. LABEL-A: `Minimum DSCR`. See `CORRECTION_A_CI_AND_PERIOD_MATRIX.md`.
+
 ## Implemented (this PR)
 * Two persisted, user-editable contractual DSCR multiples — `Minimum DSCR (EoD threshold)` and `Contractual DSCR (covenant)` — through the existing authorised writers (per-field and batch; CSRF + content-hash CAS unchanged). No third field, no default, no ordering rule.
 * Each committed Run records the terms saved when it was committed, inside its immutable identity (same atomic transaction, fail-closed). Older Runs read `NOT_RECORDED` → `UNAVAILABLE`; nothing is backfilled or read from the Working Copy; existing Last Runs stay `CURRENT` after deployment.

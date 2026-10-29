@@ -24,9 +24,9 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `docs/financial_validation/wf04_debt_metrics/INDEPENDENT_ORACLE_AND_PARITY.md` | N | A | — | `1d65e0250386f2111f437082cb4f83e66bdcea29` |
 | `docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md` | N | A | — | `7c2921bf6d010da2b85015dcf778aa3f709602d8` |
 | `docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md` | N | A | — | `55fc9e4d7120313ba8906fed287f2a3efde2bd90` |
-| `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `bdfdcf487b7e63a36abf3c61389e2da4cd0ee1c8` |
+| `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `7ea2d594f7d588612811a3737aabf622507b2507` |
 | `docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md` | N | A | — | `74c25a02616d3fe1b03fa78568242a1f8d0eadcd` |
-| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `bb8ed5a2488c2bc810771833d5add8023495eea0` |
+| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `1948484081febe04140ec35c3746e5189ba73e12` |
 | `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `b15e668757745cf14040278c079f65e9079fb0b9` |
 | `frontend/src/app/FinancialOverview.tsx` | P | M | `9e073447afb224ba60fc8b97d72f776b2a67ea14` | `6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432` |
 | `frontend/src/app/FinancialResults.tsx` | P | M | `c53b677f29671380db916ceb4f4cfb2e2e53beeb` | `eb5ddb89b663f8145b702df26d591b884fbb4339` |
