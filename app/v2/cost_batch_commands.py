@@ -91,6 +91,10 @@ def _invalid(index: int, edit: Any, message: str) -> dict[str, Any]:
             "ok": False, "code": "LINE_INVALID", "message": message}
 
 
+def validate_cost_line_edits(edits): 
+    return _validate_shape(edits)
+
+
 def _validate_shape(edits: Sequence[CostLineEdit]) -> list[tuple[CostLineEdit, float, Optional[float]]]:
     if not edits:
         raise CostBatchInvalidError("No edited lines were submitted.")
@@ -130,6 +134,52 @@ def _validate_shape(edits: Sequence[CostLineEdit]) -> list[tuple[CostLineEdit, f
     return parsed
 
 
+def apply_cost_lines_in_tx(cur: Any, project_id: str, parsed: Sequence[tuple[CostLineEdit, float, Optional[float]]]) -> list[dict[str, Any]]:
+    """Verify every line and write the validated edits on the CALLER's cursor and transaction.
+
+    No BEGIN/COMMIT/ROLLBACK and no identity CAS here: the caller (``update_cost_lines_batch`` or Save All) owns both.
+    Raises ``CostBatchConflictError`` before the first write when any line is unknown, inactive or stale.
+    """
+    saved: list[dict[str, Any]] = []
+    stored = {
+        "capex": {r.sub_line_id: r for r in _list_capex(cur, project_id, include_inactive=True)},
+        "opex": {r.sub_line_id: r for r in _list_opex(cur, project_id, include_inactive=True)},
+    }
+    verdicts: list[dict[str, Any]] = []
+    for index, (edit, _amount, _inflation) in enumerate(parsed):
+        row = stored[edit.kind].get(edit.sub_line_id)
+        verdict = {"index": index, "kind": edit.kind, "sub_line_id": edit.sub_line_id, "ok": True}
+        if row is None:
+            verdict.update(ok=False, code="ROW_NOT_FOUND", message="Line not found in this project.")
+        elif not row.is_active:
+            verdict.update(ok=False, code="ROW_INACTIVE", message="Line is deactivated.")
+        elif row.updated_at != edit.row_version:
+            verdict.update(ok=False, code="ROW_STALE", message="Line was changed since the page loaded.")
+        verdicts.append(verdict)
+    if not all(v["ok"] for v in verdicts):
+        raise CostBatchConflictError("One or more lines changed; nothing was saved.", verdicts)
+
+    for index, (edit, amount, inflation) in enumerate(parsed):
+        row = stored[edit.kind][edit.sub_line_id]
+        notes = row.comments if edit.notes is None else edit.notes
+        label = edit.label.strip()
+        if edit.kind == "capex":
+            result = _update_capex(cur, project_id=project_id, sub_line_id=edit.sub_line_id, label=label,
+                                   amount_keur=amount, comments=notes, row_version=edit.row_version)
+        else:
+            result = _update_opex(cur, project_id=project_id, sub_line_id=edit.sub_line_id, label=label,
+                                  amount_keur=amount,
+                                  inflation_pct=row.inflation_pct if inflation is None else inflation,
+                                  comments=notes, row_version=edit.row_version)
+        if result is None:      # cannot happen inside BEGIN EXCLUSIVE after verification; fail closed anyway
+            raise CostBatchConflictError("A line changed during the save; nothing was saved.", [
+                {"index": index, "kind": edit.kind, "sub_line_id": edit.sub_line_id, "ok": False,
+                 "code": "ROW_STALE", "message": "Line was changed during the save."}])
+        saved.append({"kind": edit.kind, "sub_line_id": edit.sub_line_id, "row_version": result.updated_at,
+                      "label": result.label, "amount_keur": result.amount_keur})
+    return saved
+
+
 def update_cost_lines_batch(
     *,
     project_record: Any,
@@ -151,46 +201,10 @@ def update_cost_lines_batch(
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
-    saved: list[dict[str, Any]] = []
     with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
-        stored = {
-            "capex": {r.sub_line_id: r for r in _list_capex(cur, project_id, include_inactive=True)},
-            "opex": {r.sub_line_id: r for r in _list_opex(cur, project_id, include_inactive=True)},
-        }
-        verdicts: list[dict[str, Any]] = []
-        for index, (edit, _amount, _inflation) in enumerate(parsed):
-            row = stored[edit.kind].get(edit.sub_line_id)
-            verdict = {"index": index, "kind": edit.kind, "sub_line_id": edit.sub_line_id, "ok": True}
-            if row is None:
-                verdict.update(ok=False, code="ROW_NOT_FOUND", message="Line not found in this project.")
-            elif not row.is_active:
-                verdict.update(ok=False, code="ROW_INACTIVE", message="Line is deactivated.")
-            elif row.updated_at != edit.row_version:
-                verdict.update(ok=False, code="ROW_STALE", message="Line was changed since the page loaded.")
-            verdicts.append(verdict)
-        if not all(v["ok"] for v in verdicts):
-            raise CostBatchConflictError("One or more lines changed; nothing was saved.", verdicts)
-
-        for index, (edit, amount, inflation) in enumerate(parsed):
-            row = stored[edit.kind][edit.sub_line_id]
-            notes = row.comments if edit.notes is None else edit.notes
-            label = edit.label.strip()
-            if edit.kind == "capex":
-                result = _update_capex(cur, project_id=project_id, sub_line_id=edit.sub_line_id, label=label,
-                                       amount_keur=amount, comments=notes, row_version=edit.row_version)
-            else:
-                result = _update_opex(cur, project_id=project_id, sub_line_id=edit.sub_line_id, label=label,
-                                      amount_keur=amount,
-                                      inflation_pct=row.inflation_pct if inflation is None else inflation,
-                                      comments=notes, row_version=edit.row_version)
-            if result is None:      # cannot happen inside BEGIN EXCLUSIVE after verification; fail closed anyway
-                raise CostBatchConflictError("A line changed during the save; nothing was saved.", [
-                    {"index": index, "kind": edit.kind, "sub_line_id": edit.sub_line_id, "ok": False,
-                     "code": "ROW_STALE", "message": "Line was changed during the save."}])
-            saved.append({"kind": edit.kind, "sub_line_id": edit.sub_line_id, "row_version": result.updated_at,
-                          "label": result.label, "amount_keur": result.amount_keur})
+        saved = apply_cost_lines_in_tx(cur, project_id, parsed)
     return saved, hash_out.value
 
 
-__all__ = ["CostBatchError", "CostBatchInvalidError", "CostBatchConflictError", "CostLineEdit",
+__all__ = ["apply_cost_lines_in_tx", "validate_cost_line_edits", "CostBatchError", "CostBatchInvalidError", "CostBatchConflictError", "CostLineEdit",
            "MAX_BATCH_LINES", "update_cost_lines_batch"]

@@ -9,6 +9,7 @@ Every number asserted comes from the canonical API of the SAME committed Run
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from urllib.parse import parse_qs, urlsplit
@@ -205,11 +206,13 @@ def check_internal_mvp_path_with_financial_intelligence(browser, react_enabled, 
         if ppa.first.get_attribute("data-ppa-editor") == "empty":
             ppa.get_by_role("button", name="Define a PPA contract").click()
             stream = ppa.locator("[data-ppa-stream]").first
-            stream.get_by_label("Source reference").fill("MVP acceptance PPA")
-            stream.get_by_label("Tariff").fill("58")
-            stream.get_by_label("Contracted volume share").fill("1")
+            stream.get_by_label("Tariff").fill("58")                                 # no Source reference entered: the basic editor does not require one
+            stream.get_by_label("Contracted volume share").fill("100")               # human percent in the UI
             ppa.locator("[data-ppa-save='true']").click()
             page.wait_for_selector("[data-ppa-editor='guided']", timeout=20000)
+            created = json.loads(api(context, base, f"/v2/model-react/revenue?project={record.project_code}")["contracts"]["raw"])["streams"][0]
+            assert created["volume_share"] == 1, "100% in the UI is saved as the canonical ratio 1"
+            assert created["source_ref"] == "Entered in FINCO workspace", "an omitted source reference is recorded as the exact internal source"
         booked = api(context, base, f"/v2/model-react/revenue?project={record.project_code}")["contracts"]
         assert booked["active"] is True
 

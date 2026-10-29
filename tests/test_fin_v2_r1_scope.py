@@ -66,7 +66,9 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
              'app/persistence/workspace_repository.py', 'app/persistence/run_history_repository.py']
     for path in paths:
         before = subprocess.check_output(['git', 'show', F.BASE + ':' + path], cwd=F.ROOT)
-        assert (F.ROOT / path).read_bytes() == before, path
+        data = (F.ROOT / path).read_bytes()
+        from tests import fin_v2_wsv2_scope as WS2
+        assert data == before or WS2.matches(path, data), path      # only the Owner-approved WS-2 exact blob
 
 
 def test_extra_path_outside_the_exact_cohort_is_rejected(monkeypatch):

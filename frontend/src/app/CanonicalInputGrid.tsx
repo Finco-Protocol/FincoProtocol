@@ -4,6 +4,8 @@ import type { GridCategoryPayload, GridRowPayload, GridSectionPayload, InputsPay
 import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from "./workflow/workflowShared";
 import { plain } from "./productLanguage";
 import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
+import { useOptionalChanges } from "./editing/ChangesProvider";
+import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -68,7 +70,31 @@ function showsGroupRow(category: GridCategoryPayload): boolean {
 }
 export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
-  const [drafts, setDrafts] = useState<Draft>({});
+  // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
+  // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
+  const store = useOptionalChanges();
+  const rowByCodeEarly = useMemo(() => new Map(rows.map((r) => [r.field_id || r.code, r])), [rows]);
+  const [localDrafts, setLocalDrafts] = useState<Draft>({});
+  const storeDrafts = useMemo<Draft>(() => {
+    if (!store) return {};
+    return Object.fromEntries(store.edits.filter((e) => SCALAR_SECTIONS.includes(e.section) && rowByCodeEarly.has(e.key)).map((e) => [e.key, e.value]));
+  }, [store]);
+  const drafts: Draft = store ? storeDrafts : localDrafts;
+  const rowByCode = useMemo(() => new Map(rows.map((r) => [r.field_id || r.code, r])), [rows]);
+  const setDrafts = (update: Draft | ((prev: Draft) => Draft)) => {
+    const next = typeof update === "function" ? update(drafts) : update;
+    if (!store) { setLocalDrafts(next); return; }
+    const changed = Object.keys(next).filter((code) => next[code] !== drafts[code]);
+    const removed = Object.keys(drafts).filter((code) => !(code in next));
+    for (const code of removed) store.revert(`${sectionOfField(code)}:${code}`);
+    for (const code of changed) {
+      const row = rowByCode.get(code);
+      if (!row) continue;
+      store.stage({
+        section: sectionOfField(code), key: code, label: plain(row.label), unit: row.unit, baseline: row.value ?? "", value: next[code],
+      }, { coalesce: true });
+    }
+  };
   const { isUnresolved, setUnresolved } = useDirtyTotal();
   // An UNKNOWN / conflicting Save survives this grid unmounting (navigation): a remount starts locked.
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "conflict" | "rejected" | "unknown" | "reconciling">(

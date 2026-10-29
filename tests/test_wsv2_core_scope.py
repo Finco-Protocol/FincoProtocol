@@ -164,7 +164,7 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
         if name in ('SOURCE_HEAD', 'BLOBS') or name.endswith('_SUCCESSORS'):
             assert getattr(S, name) == ast.literal_eval(node.value), name
     for path in PRESENTATION | {ROLE}:
-        assert S.git_blob(sources[path]) == {**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path]
+        assert S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)
@@ -236,7 +236,8 @@ def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
     changed = F._git(F.ROOT, 'diff', '--name-only', F.BASE, '--').decode().splitlines()
     authorities = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'app/persistence/',
                    'app/workbook/', 'app/services/', 'frontend/src/app/editing/')
-    assert not [p for p in changed if p.startswith(authorities)]
+    from tests import fin_v2_wsv2_scope as WS2
+    assert not [p for p in changed if p.startswith(authorities) and not WS2.allowed_path(p)]   # only the WS-2 cohort's enumerated paths; it is judged by its own exact cohort
     assert 'app/v2/router.py' not in changed and 'app/v2/post_run_context.py' not in changed
 
 
@@ -245,7 +246,7 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
     assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS
     pins = F.manifest()['source_blobs']
     for path in OWNER_APPROVED_ACCEPTANCE:
-        assert pins[path] == S.WSV2_ACCEPTANCE_SUCCESSORS[path]
+        assert pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
         original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
         current = F._read(F.ROOT, path, None).decode()
         assert S.git_blob(current) == pins[path]
@@ -286,3 +287,37 @@ def test_untracked_source_is_still_strictly_rejected(unreviewed, monkeypatch):
         return found
     monkeypatch.setattr(F, '_git', with_unreviewed_source)
     assert not F.exact_blobs_ok() and not C.valid()
+
+
+# ── WS-2 admission is bounded: only the separately registered, exact WS-2 cohort, only its enumerated paths ──
+def test_ws2_paths_are_admitted_only_while_the_ws2_cohort_is_registered_and_exact(monkeypatch):
+    from tests import fin_v2_wsv2_scope as WS2
+    assert F.exact_blobs_ok() and F._ws2_allows('app/v2/save_all_commands.py', F.ROOT, None)
+    real = C.cohorts
+    monkeypatch.setattr(C, 'cohorts', lambda: tuple(m for m in real() if m is not WS2))
+    assert not F._ws2_allows('app/v2/save_all_commands.py', F.ROOT, None) and not F.exact_blobs_ok()      # WS-2 cohort absent
+
+
+def test_ws2_admission_is_not_a_wildcard(monkeypatch):
+    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):
+        assert not F._ws2_allows(rogue, F.ROOT, None), rogue
+    original = F._git
+
+    def with_rogue(root, *args):
+        found = original(root, *args)
+        if args[:3] == ('ls-files', '--others', '--exclude-standard'):
+            return found + b'frontend/src/app/editing/rogue.ts\n'
+        return found
+    monkeypatch.setattr(F, '_git', with_rogue)
+    assert not F.exact_blobs_ok()
+
+
+def test_ws2_admission_requires_the_ws2_cohort_to_be_exact(monkeypatch):
+    from tests import fin_v2_wsv2_scope as WS2
+    original = WS2._read
+
+    def drifted(root, path, ref):
+        raw = original(root, path, ref)
+        return raw + b'\n' if path == 'app/v2/save_all_commands.py' and ref is None else raw
+    monkeypatch.setattr(WS2, '_read', drifted)
+    assert not WS2.exact_blobs_ok() and not F._ws2_allows('app/v2/save_all_commands.py', F.ROOT, None) and not F.exact_blobs_ok()

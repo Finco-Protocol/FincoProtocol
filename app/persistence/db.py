@@ -284,6 +284,21 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_opex_sub_lines_project"
         " ON opex_sub_lines(project_id, is_active, parent_group_code, display_order)"
     )
+    # Save All idempotency ledger: one row per (user, project, request id), written in the SAME transaction as the data it
+    # describes, so a replay of a committed request returns its stored outcome and a different body under the same id is refused.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS save_all_requests (
+            user_id      TEXT NOT NULL,
+            project_id   TEXT NOT NULL,
+            request_id   TEXT NOT NULL,
+            body_sha256  TEXT NOT NULL,
+            outcome_json TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            PRIMARY KEY (user_id, project_id, request_id)
+        )
+        """
+    )
     _ensure_column(conn, "opex_sub_lines", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "projects", "project_type", "TEXT")

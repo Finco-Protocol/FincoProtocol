@@ -6,6 +6,7 @@ import { NewProjectWizard } from "./app/newProject/NewProjectWizard";
 import { isWizardHash } from "./app/newProject/api";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
+import { ws2Extensions } from "./app/editing/wsv2Extensions";
 import { ReportPrecisionProvider } from "./app/ReportPrecision";
 import "./styles/rx-mvp-correction.css";
 
@@ -97,6 +98,7 @@ function ModelApp({ host }: { host: HTMLElement }) {
         <WorkspaceView
           key={project}
           project={project}
+          extensions={ws2Extensions}
           onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
         />
       </ThemeProvider>

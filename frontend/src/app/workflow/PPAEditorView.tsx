@@ -7,8 +7,11 @@
 // byte-for-byte and shown read-only.  The editor never prices, indexes or
 // rounds: the canonical writer validates and its verdict is displayed verbatim.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRevenueContracts } from "../api";
+import { PercentInput } from "../editing/PercentInput";
+import { useOptionalChanges } from "../editing/ChangesProvider";
+import { ppaBaselines, ppaStageInputs } from "../editing/ppaStaging";
 import { plain } from "../productLanguage";
 import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
 import {
@@ -69,6 +72,11 @@ function DateHelp({ guidance, readOnly, onUse }: { guidance: DateGuidance | null
   );
 }
 
+/** A NEW contract left without a source reference records that it was entered here (never an invented external citation). */
+function withSourceDefaults(model: ContractModel): ContractModel {
+  return { ...model, streams: model.streams.map((st) => (st.isNew && st.source_ref.trim() === "" ? { ...st, source_ref: "Entered in FINCO workspace" } : st)) };
+}
+
 function cloneModel(model: ContractModel): ContractModel {
   return JSON.parse(JSON.stringify(model)) as ContractModel;
 }
@@ -84,25 +92,64 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const parsed = useMemo(() => (hasContract ? parseContractModel(raw) : null), [hasContract, raw]);
   const savedModel = parsed && parsed.ok ? parsed.model : null;
 
-  const [draft, setDraft] = useState<ContractModel | null>(savedModel ? cloneModel(savedModel) : null);
+  // WS-2: staged contract edits live in the shell's pending-change store, so they survive moving between sections.
+  const store = useOptionalChanges();
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const [draft, setDraft] = useState<ContractModel | null>(() => {
+    const staged = store?.state.documents.ppa;
+    if (staged && savedModel) {
+      const restored = parseContractModel(staged);
+      if (restored.ok) return restored.model;
+    }
+    return savedModel ? cloneModel(savedModel) : null;
+  });
   const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
   const [lockedByUnknown, setLockedByUnknown] = useUnresolvedLock("revenue-ppa");
   const [creating, setCreating] = useState(false);
+  // Entry errors of the percent inputs (the draft keeps its last valid canonical ratio); keyed `${stream}.${field}`.
+  const [pctErrors, setPctErrors] = useState<Record<string, string>>({});
 
   // A new persisted payload (after a Save, a scenario switch or a reload) resets
   // the editor to the server-authoritative state.
+  const mounted = useRef(false);
   useEffect(() => {
+    const live = storeRef.current;
+    const staged = live ? live.edits.filter((e) => e.section === "ppa") : [];
+    if (!mounted.current) {
+      // First mount keeps a draft restored from the store; otherwise it starts from the saved contract.
+      mounted.current = true;
+      setLockedByUnknown(false);
+      return;
+    }
+    if (live && live.identity && staged.length > 0 && savedModel) {
+      // The saved contract moved while edits were staged: keep the draft, flag the edits (never a silent rebase).
+      live.rebase(live.identity, ppaBaselines(savedModel, staged));
+      return;
+    }
     setDraft(savedModel ? cloneModel(savedModel) : null);
     setShowErrors(false);
     setLockedByUnknown(false);
     setCreating(false);
+    setPctErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw]);
 
-  const errors = useMemo(() => (draft ? validateContractModel(draft) : {}), [draft]);
+  // Mirror the draft into the pending-change store: the field list for review and the exact contract document for Save All.
+  useEffect(() => {
+    const live = storeRef.current;
+    if (!live || !savedModel || !draft || creating) return;
+    const filled = withSourceDefaults(draft);
+    const inputs = ppaStageInputs(savedModel, filled, Object.fromEntries(Object.entries(pctErrors)));
+    live.replaceSection("ppa", inputs);
+    live.setDocument("ppa", inputs.length ? buildContractPayload(raw, filled) : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, pctErrors]);
+
+  const errors = useMemo(() => (draft ? validateContractModel(withSourceDefaults(draft)) : {}), [draft]);
   const editCount = savedModel && draft ? countContractEdits(savedModel, draft) : creating && draft ? 1 : 0;
   useReportDirty("revenue-ppa", editCount);
   useReportPending("revenue-ppa", inFlight || lockedByUnknown);
@@ -119,12 +166,14 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const runSubmit = async (model: ContractModel, originalRaw: string) => {
     if (lockedByUnknown) return;
     setShowErrors(true);
-    const problems = validateContractModel(model);
+    // A NEW contract left without a source reference records that it was entered here (never an invented external citation).
+    const filled = withSourceDefaults(model);
+    const problems = { ...validateContractModel(filled), ...Object.fromEntries(Object.entries(pctErrors).map(([k, v]) => [`streams.${k}`, v])) };
     if (Object.keys(problems).length) {
       setStatus({ tone: "error", text: `Fix ${Object.keys(problems).length} highlighted field(s) before saving. Nothing was saved.` });
       return;
     }
-    const payload = buildContractPayload(originalRaw, model);
+    const payload = buildContractPayload(originalRaw, filled);
     if (payload === null) {
       setStatus({ tone: "error", text: "The saved contract data could not be read; reload and try again." });
       return;
@@ -150,6 +199,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
     const fresh = await readFreshRevenue(project);
     const freshRaw = fresh?.ok === true && typeof fresh.contracts?.raw === "string" ? fresh.contracts.raw : null;
     setInFlight(false);
+    if (freshRaw !== null && fresh?.save && fresh.save.content_hash !== save.content_hash) storeRef.current?.revertSection("ppa");   // saved by this editor's own writer: the staged copy is no longer pending
     if (freshRaw !== null && fresh?.save && fresh.save.content_hash !== save.content_hash && sameJson(freshRaw, payload)) {
       setStatus({ tone: "ok", text: "Contracts saved atomically and verified in the fresh projection. The project is now newer than the Last Run (results outdated); the model was not run." });
       onSaved?.();
@@ -210,7 +260,11 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   }
 
   function renderEditor(model: ContractModel, isCreate: boolean) {
-    const err = (i: number, field: string) => (showErrors ? errors[`streams.${i}.${field}`] : undefined);
+    const err = (i: number, field: string) => (showErrors ? (pctErrors[`${i}.${field}`] ?? errors[`streams.${i}.${field}`]) : undefined);
+    const setPct = (i: number, field: "volume_share" | "indexation_rate") => (r: { canonical?: string; error?: string }) => {
+      setPctErrors((prev) => { const next = { ...prev }; if (r.error) next[`${i}.${field}`] = r.error; else delete next[`${i}.${field}`]; return next; });
+      if (r.canonical !== undefined) update(i, { [field]: r.canonical } as Partial<StreamDraft>);
+    };
     const baseRaw = isCreate ? JSON.stringify({ version: 2, technology, indexation_basis: "OPERATING_YEAR", streams: [] }) : raw;
     return (
       <>
@@ -228,13 +282,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                 <button type="button" className="fm-btn" disabled={readOnly || model.streams.length <= 1}
                         aria-label={`Remove contract ${s.id || i + 1}`} onClick={() => setRemoveIndex(i)}>Remove</button>
               </div>
-              <div className="wf-grid">
-                <Field id={`${pid}-id`} label="Contract identity" error={err(i, "id")} hint={s.isNew ? undefined : "The identity is a fixed reference; change it only if nothing else depends on it."}>
-                  {(p) => <input {...p} className="fm-input" value={s.id} disabled={readOnly} onChange={(e) => update(i, { id: e.target.value })} />}
-                </Field>
-                <Field id={`${pid}-ref`} label="Source reference" error={err(i, "source_ref")}>
-                  {(p) => <input {...p} className="fm-input" value={s.source_ref} disabled={readOnly} onChange={(e) => update(i, { source_ref: e.target.value })} />}
-                </Field>
+              <div className="wf-grid ws2-ppa-basic">
                 <Field id={`${pid}-start`} label="Start date" unit="YYYY-MM-DD" error={err(i, "start_date")}>
                   {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />
                     <DateHelp guidance={dateGuidance("start_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { start_date: d })} /></>}
@@ -243,14 +291,16 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                   {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />
                     <DateHelp guidance={dateGuidance("end_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { end_date: d })} /></>}
                 </Field>
-                <Field id={`${pid}-share`} label="Contracted volume share" unit="0-1; blank only for merchant" error={err(i, "volume_share")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.volume_share} disabled={readOnly} onChange={(e) => update(i, { volume_share: e.target.value })} />}
+                <Field id={`${pid}-share`} label="Contracted volume share" unit="%, 0–100" error={err(i, "volume_share")} hint={s.type === "merchant" ? "Leave blank for the residual share." : undefined}>
+                  {(p) => <PercentInput id={p.id} canonical={s.volume_share} allowEmpty={s.type === "merchant"} disabled={readOnly}
+                                        describedBy={p["aria-describedby"]} invalid={p["aria-invalid"]} onChange={setPct(i, "volume_share")} />}
                 </Field>
                 <Field id={`${pid}-price`} label={s.curve ? "Base tariff (reference)" : "Tariff"} unit="€/MWh" error={err(i, "price_eur_mwh")}>
                   {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.price_eur_mwh} disabled={readOnly} onChange={(e) => update(i, { price_eur_mwh: e.target.value })} />}
                 </Field>
-                <Field id={`${pid}-idx`} label="Indexation rate" unit="per operating year, 0.02 = 2%" error={err(i, "indexation_rate")}>
-                  {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.indexation_rate} disabled={readOnly || s.curve !== null} onChange={(e) => update(i, { indexation_rate: e.target.value })} />}
+                <Field id={`${pid}-idx`} label="Indexation rate" unit="% per operating year, e.g. 2" error={err(i, "indexation_rate")}>
+                  {(p) => <PercentInput id={p.id} canonical={s.indexation_rate} disabled={readOnly || s.curve !== null}
+                                        describedBy={p["aria-describedby"]} invalid={p["aria-invalid"]} onChange={setPct(i, "indexation_rate")} />}
                 </Field>
                 {s.type === "merchant" && (
                   <Field id={`${pid}-capture`} label="Capture rate" unit="0-1" error={err(i, "capture_rate")}>
@@ -258,6 +308,17 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                   </Field>
                 )}
               </div>
+              <details className="ws2-ppa-advanced" data-ppa-advanced="true">
+                <summary>Advanced: contract identity and source reference</summary>
+                <div className="wf-grid">
+                  <Field id={`${pid}-id`} label="Contract identity" error={err(i, "id")} hint={s.isNew ? "Generated automatically; change it only if you need a specific reference." : "The identity is a fixed reference; change it only if nothing else depends on it."}>
+                    {(p) => <input {...p} className="fm-input" value={s.id} disabled={readOnly} onChange={(e) => update(i, { id: e.target.value })} />}
+                  </Field>
+                  <Field id={`${pid}-ref`} label="Source reference" error={err(i, "source_ref")} hint="Optional for a new contract.">
+                    {(p) => <input {...p} className="fm-input" value={s.source_ref} disabled={readOnly} onChange={(e) => update(i, { source_ref: e.target.value })} />}
+                  </Field>
+                </div>
+              </details>
               {preserved.length > 0 && (
                 <p className="wf-readonly-keys" data-preserved-keys={preserved.join(",")}>
                   Preserved read-only: {preserved.map((k) => k.replace(/_/g, " ")).join(", ")}. These terms are carried over unchanged;
