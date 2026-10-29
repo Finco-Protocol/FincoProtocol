@@ -42,6 +42,15 @@ export function ReservesPanel({ view, precision }: { view: DebtMetricsView; prec
           <p className="dm-note" data-dm-dsrf="true">{reserves.dsrf.reason}</p>
         </div>
       </div>
+      <div data-dm-gaps="true">
+        <h4 className="dm-h4">Not evidenced by this Run</h4>
+        <ul className="dm-gaps">
+          {reserves.unavailable_conclusions.map((g) => (
+            <li key={g.id} data-dm-gap={g.id}><strong>{g.label}</strong> — <span className="dm-na-badge">{g.status}</span>
+              <span className="dm-sub"> Needs: {g.missing.join("; ")}.</span></li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }

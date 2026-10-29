@@ -346,6 +346,22 @@ def test_legacy_absent_root_identity_fields_preserve_committed_evidence(committe
     legacy = replace(entry, last_runtime_identity=None if identity_absent else identity)
     before = build_insights([entry], project_code=record.project_code, project_id=record.project_id)
     after = build_insights([legacy], project_code=record.project_code, project_id=record.project_id)
+    if identity_absent:
+        # WF-04: the two contractual DSCR terms are recorded INSIDE the Run's identity.  With no identity at all they are NOT_RECORDED (never
+        # defaulted or read from the Working Copy).  Only the Run-bound term verdicts may differ: the `debt_metrics` block and the two credit
+        # findings CD-EOD / CD-COV-DSCR.  Every other byte of the payload must still be equal.
+        wf04 = ("CD-EOD", "CD-COV-DSCR")
+        is_wf04 = lambda f: str(f.get("check_id", "")) in wf04 or str(f.get("id", "")).endswith(tuple(":" + k for k in wf04))  # noqa: E731
+        changed = [f for f in after["credit"]["findings"] if is_wf04(f)]
+        assert changed and all(f["status"] == "UNAVAILABLE" and f["reason_code"] == "NOT_RECORDED" for f in changed)
+
+        def strip(node):
+            if isinstance(node, dict):
+                return {k: strip(v) for k, v in node.items() if k != "debt_metrics"}
+            if isinstance(node, list):
+                return [strip(v) for v in node if not (isinstance(v, dict) and is_wf04(v))]
+            return node
+        before, after = strip(before), strip(after)
     assert after == before
     assert after["runs"][0]["identity"]["snapshot_id"] == entry.runtime_snapshot_id
     assert metric_map(after["runs"][0])["min_dscr"]["raw_value"] == entry.runtime_summary["min_dscr"]

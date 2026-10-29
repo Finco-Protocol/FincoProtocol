@@ -180,6 +180,12 @@ def test_format_ratio_close_to_threshold_is_distinguishable_from_the_threshold(v
     assert (float(t.format_ratio(value, (ref,))[:-1]) < ref) == (value < ref)
 
 
+def test_a_value_one_ulp_from_a_reference_prints_its_exact_text_never_a_trailing_zero_lookalike():
+    below, above = math.nextafter(1.05, 0.0), math.nextafter(1.05, math.inf)
+    assert t.format_ratio(below, (1.05,)) == "1.0499999999999998x" and t.format_ratio(above, (1.05,)) == "1.0500000000000003x"
+    assert t.format_ratio(1.05, (1.05,)) == "1.05x"
+
+
 def test_format_ratio_unavailable_values():
     for bad in (None, True, float("nan"), float("inf"), "1.0"):
         assert t.format_ratio(bad) == "—"

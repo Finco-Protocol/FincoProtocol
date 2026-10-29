@@ -228,7 +228,7 @@ def test_reference_inputs_never_leak_into_the_payload(cenv):
     record = weak_wind(cenv)
     run(cenv, record)
     text = json.dumps(credit(cenv, record)["runs"][0]["debt_metrics"])
-    for forbidden in ("PRIVATE_REFERENCE", "Default DSCR", "Oborovo", "TUHO", "KUPI"):
+    for forbidden in ("PRIVATE_REFERENCE", "Default DSCR", "xlsm", "workbook"):
         assert forbidden not in text
 
 
@@ -244,3 +244,72 @@ def test_terms_do_not_change_any_financial_result_between_runs_of_the_same_input
     for name in ("debt_schedule", "tax_schedule", "distribution_schedule", "financial_statements"):
         assert getattr(new, name) == getattr(old, name), name
     assert new.runtime_summary["min_dscr"] == old.runtime_summary["min_dscr"]
+
+
+def test_reserve_draw_and_unpaid_service_stay_unavailable_and_name_the_exact_missing_evidence(cenv):
+    record = weak_wind(cenv)
+    update(cenv, record, EOD, "1.05")
+    run(cenv, record)
+    gaps = {g["id"]: g for g in view_of(credit(cenv, record))["reserves"]["unavailable_conclusions"]}
+    assert set(gaps) == {"RESERVE_DRAW", "UNPAID_DEBT_SERVICE"}
+    assert all(g["status"] == "UNAVAILABLE" and g["missing"] for g in gaps.values())
+    assert any("DSRA draw" in m for m in gaps["RESERVE_DRAW"]["missing"])
+    assert any("actually paid" in m for m in gaps["UNPAID_DEBT_SERVICE"]["missing"])
+    # the DSCR shortfall never fills those gaps: no value, no pass
+    text = json.dumps(gaps).lower()
+    assert "pass" not in text and "paid in full" not in text and "covered" not in text.replace("covering a shortfall", "")
+
+
+def test_the_projection_is_a_pure_function_of_the_sealed_run_and_presentation_precision_cannot_change_a_verdict_or_a_hash(cenv):
+    """Display precision 0 -> 2 -> 0 lives only in the browser; the server payload carries raw values and is byte-identical on every read."""
+    record = weak_wind(cenv)
+    update(cenv, record, EOD, "1.05")
+    run(cenv, record)
+    entry = history(record)[0]
+    digest, snapshot = entry.integrity_evidence["digest"], json.dumps(entry.last_runtime_identity, sort_keys=True)
+    first = json.dumps(credit(cenv, record)["runs"][0]["debt_metrics"], sort_keys=True)
+    for _ in range(2):
+        assert json.dumps(credit(cenv, record)["runs"][0]["debt_metrics"], sort_keys=True) == first
+    reread = history(record)[0]
+    assert reread.integrity_evidence["digest"] == digest and json.dumps(reread.last_runtime_identity, sort_keys=True) == snapshot
+    ev = json.loads(first)["evaluation"]
+    assert ev["eod"]["status"] == "TRIGGERED" and ev["achieved_min_dscr"]["min"] == raw_min(reread)
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind", "data_center", "ev_charging"])
+def test_the_contract_is_recorded_and_projected_for_every_technology(cenv, kind):
+    record = cenv.create(kind)
+    update(cenv, record, EOD, "1.05")
+    update(cenv, record, COV, "1.2")
+    run(cenv, record)
+    entries = history(record)
+    assert len(entries) == 1
+    from app.workbook.dscr_contract_terms import read_run_terms
+    terms = read_run_terms(entries[0].last_runtime_identity)
+    assert terms.recorded and (terms.eod.value, terms.contractual.value) == (1.05, 1.2)
+    view = view_of(credit(cenv, record))
+    assert view["available"] and view["contract_terms"]["recorded"]
+    statuses = {view["evaluation"]["eod"]["status"], view["evaluation"]["covenant"]["status"]}
+    assert statuses <= {"TRIGGERED", "NOT_TRIGGERED_UNDER_THIS_FLOOR", "BREACHED", "COMPLIANT", "UNAVAILABLE", "NOT_APPLICABLE"}
+    assert view["evaluation"]["eod"]["status"] != "NOT_CONFIGURED" and view["evaluation"]["covenant"]["status"] != "NOT_CONFIGURED"
+    assert view["integrity"]["status"] in {"PASS", "FAIL", "INCOMPLETE", "UNAVAILABLE"}
+
+
+def test_a_stranger_and_another_projects_run_never_see_or_are_judged_by_foreign_terms(cenv):
+    from app.auth import COOKIE_NAME, create_session_token
+    a = weak_wind(cenv)
+    update(cenv, a, EOD, "1.05")
+    update(cenv, a, COV, "1.2")
+    run(cenv, a)
+    b = cenv.create("solar")
+    run(cenv, b)
+    a_run = history(a)[0].history_id
+    # another project of the same owner: its Run is judged by ITS OWN (absent) terms, and A's Run id is not addressable through B
+    own = view_of(credit(cenv, b))
+    assert own["contract_terms"]["eod_minimum_dscr"]["status"] == "NOT_CONFIGURED" and own["evaluation"]["eod"]["status"] == "NOT_CONFIGURED"
+    foreign = cenv.client.get("/v2/credit-decision", params=[("project", b.project_code), ("run", a_run)])
+    assert foreign.status_code in (404, 422) or a_run not in foreign.text
+    # a stranger gets nothing of A: no payload, no term text
+    cenv.client.cookies.set(COOKIE_NAME, create_session_token(user_id="stranger-user", username="admin"))
+    denied = cenv.client.get("/v2/credit-decision", params={"project": a.project_code})
+    assert denied.status_code in (403, 404) and "data-cd-payload" not in denied.text and "1.05" not in denied.text

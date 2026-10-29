@@ -263,6 +263,15 @@ def _lockup(series: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "note": "Per-period flags persisted by the distribution schedule; the lock-up threshold value is not persisted with a Run."}
 
 
+# Conclusions a Run cannot support today.  They stay UNAVAILABLE (never PASS, never inferred from DSCR) until a Run persists the listed evidence.
+_UNAVAILABLE_CONCLUSIONS = (
+    {"id": "RESERVE_DRAW", "label": "Reserve draw covering a shortfall", "status": UNAVAILABLE,
+     "missing": ("DSRA draw per period", "Required DSRA amount per period", "Standby facility (DSRF) commitment and drawings")},
+    {"id": "UNPAID_DEBT_SERVICE", "label": "Unpaid scheduled Senior debt service", "status": UNAVAILABLE,
+     "missing": ("Debt service actually paid per period (payment ledger)", "Cash applied to debt service after reserves, per period")},
+)
+
+
 def _reserves(entry: Any, series: Sequence[Mapping[str, Any]], lockup: Mapping[str, Any]) -> dict[str, Any]:
     su = _map(_map(_map(getattr(entry, "integrity_evidence", None)).get("sources_uses")).get("summary"))
     initial = _num(su.get("initial_dsra_funding_keur"))
@@ -275,7 +284,7 @@ def _reserves(entry: Any, series: Sequence[Mapping[str, Any]], lockup: Mapping[s
                 "reason": "" if present else ("No cash DSRA balance in this Run" + (" (initial cash DSRA funding is 0)." if initial == 0 else ".")),
                 "peak_balance_keur": max(balances), "required": {"available": False,
                         "reason": "The required DSRA amount is not persisted with a Run (it is derived by the engine); only the balance and its movements are."}}
-    return {"dsra": dsra,
+    return {"dsra": dsra, "unavailable_conclusions": [dict(g) for g in _UNAVAILABLE_CONCLUSIONS],
             "dsrf": {"available": False, "reason": "A standby reserve facility (DSRF) commitment and its drawings are not persisted with a Run. A cash DSRA balance is not a DSRF commitment."},
             "lockup": dict(lockup)}
 

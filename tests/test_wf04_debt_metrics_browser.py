@@ -174,6 +174,10 @@ def test_weak_coverage_eod_triggered_covenant_breached_and_run_completed(world, 
         assert not any(w in body for w in ("unprofitable", "bankable", "feasible", "defaulted", "acceleration"))
         assert body.count("payment default") == body.count("not by itself a payment default")               # only the required negation, never a claim
         assert len(history_rows(world.weak)) == 1                                                # opening the view committed nothing
+        gaps = page.locator("[data-dm-gaps='true']")                                             # reserve draw / unpaid service: UNAVAILABLE + exact missing evidence
+        assert "RESERVE_DRAW" in gaps.inner_html() and "UNPAID_DEBT_SERVICE" in gaps.inner_html()
+        assert gaps.locator("[data-dm-gap='RESERVE_DRAW']").inner_text().count("UNAVAILABLE") == 1 and "DSRA draw per period" in gaps.inner_text()
+        assert "Debt service actually paid per period" in gaps.locator("[data-dm-gap='UNPAID_DEBT_SERVICE']").inner_text()
         assert errors == []
         shot(page, "weak-1440")
     finally:

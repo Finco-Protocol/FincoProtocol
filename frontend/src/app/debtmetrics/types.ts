@@ -36,6 +36,7 @@ export interface DmLockup { available: boolean; reason: string; active_count: nu
 export interface DmReserves {
   dsra: { available: boolean; present: boolean; reason: string; initial_funding_keur?: number | null; peak_balance_keur?: number; required?: { available: boolean; reason: string } };
   dsrf: { available: boolean; reason: string }; lockup: DmLockup;
+  unavailable_conclusions: Array<{ id: string; label: string; status: string; missing: string[] }>;
 }
 export interface DebtMetricsView {
   schema: string; available: boolean; reason: string; run_state: string; basis_note: string;

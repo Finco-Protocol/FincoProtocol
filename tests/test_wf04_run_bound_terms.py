@@ -197,3 +197,14 @@ def test_batch_writer_keeps_csrf_cas_and_save_is_not_run(grid_env):
     assert _grid_save(grid_env, record, cells, tokens).status_code == 200
     from app.persistence.run_history_repository import get_run_history
     assert list(get_run_history("fin-val-b1-user", record.project_id)) == []                            # a batch Save never runs the model
+
+
+def test_opening_the_workbook_adds_no_snapshot_key_and_never_stales_an_existing_run(env):
+    """Upgrade safety: a project whose Last Run predates the two inputs keeps CURRENT freshness; the registry fields enter the input identity only once saved."""
+    record = env.create("wind")
+    run(env, record)
+    assert freshness(env, record) == "CURRENT"
+    for _ in range(2):
+        env.client.get("/v2/workbook", params={"project": record.project_code})
+    assert freshness(env, record) == "CURRENT"
+    assert not [k for k in workspace(record).draft_snapshot if k in ("dscr_min_eod_x", "dscr_contractual_x")]

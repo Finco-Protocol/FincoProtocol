@@ -161,7 +161,7 @@ def format_ratio(value: Optional[float], refs: Iterable[float] = (1.0,), *, min_
         # equal, and (otherwise) sits on the same side of it as the raw value does.
         if all((shown == round(r, digits)) == (v == r) and (v == r or (shown < round(r, digits)) == (v < r)) for r in references):
             return f"{v:.{digits}f}x"
-    return f"{v:.{max_digits}f}x"
+    return f"{v!r}x"          # within rounding noise of a reference yet not equal: the shortest exact text, never a trailing-zero look-alike
 
 
 def _signed(value: float, suffix: str, min_digits: int, max_digits: int) -> str:

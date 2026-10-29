@@ -71,3 +71,8 @@
 @media (max-width: 900px) { .dm-two { grid-template-columns: minmax(0, 1fr); } .dm-sched .dm-stick { min-width: 150px; } .dm-kpi-v { font-size: 1.2rem; } }
 @media (max-width: 520px) { .dm-card { padding: 10px 8px; } .dm-sched .dm-stick { min-width: 120px; font-size: .78rem; } .dm-table { font-size: .8rem; } }
 @media (prefers-reduced-motion: reduce) { .dm-root * { transition: none !important; animation: none !important; } }
+
+/* Conclusions a Run cannot support: stated as UNAVAILABLE with the exact missing evidence, never as a pass. */
+.dm-gaps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.dm-gaps li { overflow-wrap: anywhere; font-size: .85rem; }
+.dm-na-badge { display: inline-block; border: 1px solid var(--dm-line); border-radius: 999px; padding: 0 8px; font-size: .7rem; font-weight: 700; color: var(--dm-muted); }

@@ -47,5 +47,5 @@ Decision (D): create **exactly two** new registry inputs; reuse no existing fiel
 ## 4. What was deliberately not done (S / U)
 
 * **U — test frequency convention.** The Run's own calendar (every period with scheduled service) is a FINCO model convention, disclosed in `test_basis.authority = FINCO_MODEL_CONVENTION_NOT_A_LEGAL_TEST`. Whether a facility agreement tests another basis (for example a rolling annual ratio) is the **one unresolved methodology question**; no third input field exists to configure it and nothing is guessed.
-* No cure, grace, waiver, acceleration, payment-default or profitability statement is produced from DSCR. Reserve **draw** and **unpaid scheduled service** are `UNAVAILABLE` (not persisted by a Run).
+* No cure, grace, waiver, acceleration, payment-default or profitability statement is produced from DSCR. Reserve **draw** and **unpaid scheduled service** are `UNAVAILABLE` (not persisted by a Run); the payload (`reserves.unavailable_conclusions`) and the screen list the exact missing evidence.
 * `QM-COV-001`/`QM-COV-004` keep their legacy `ProjectTerms` semantics (so no ordering between the two new values is imposed); when a Run records a Contractual DSCR the contradicting "not supplied" `QM-COV-001` row is superseded by the Run-bound `CD-COV-DSCR` finding.

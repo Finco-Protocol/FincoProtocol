@@ -11,7 +11,7 @@ export function formatRatio(value: number | null | undefined, refs: ReadonlyArra
       return `${value.toFixed(digits)}x`;
     }
   }
-  return `${value.toFixed(maxDigits)}x`;
+  return `${String(value)}x`; // within rounding noise of a reference yet not equal: the shortest exact text, never a trailing-zero look-alike
 }
 
 /** A signed ratio difference with at least two significant digits (never `+0.00x` for a non-zero difference). */

@@ -79,7 +79,9 @@ def test_real_run_renders_credit_evidence_with_explicit_classification(cenv, kin
     assert {f["classification"] for f in data["findings"]} <= CLASSES
     for fid in ("CD-LLCR", "CD-PLCR", "CD-EOD", "CD-SWEEP"):
         assert finding(data, 0, fid)["classification"] in ("OBSERVED_FINANCIAL_RESULT", "UNSUPPORTED_EVIDENCE_MISSING")
-    assert finding(data, 0, "CD-EOD")["status"] == "UNAVAILABLE"
+    # WF-04: the Event-of-Default floor is now a Run-bound input.  A Run committed with none configured is NOT_CONFIGURED (never a pass, never
+    # TRIGGERED, no default assumed); before WF-04 no EoD mechanic existed at all and the row was a fixed UNAVAILABLE placeholder.
+    assert finding(data, 0, "CD-EOD")["status"] == "NOT_CONFIGURED"
     for marker in ('data-testid="cd-page"', 'data-testid="cd-timeline"', 'data-testid="cd-findings"', "A · Financing structure", "Credit-risk timeline"):
         assert marker in response.text
     # Last Run is CURRENT: the Working Copy lender case / sizing mode are bound and labelled as such

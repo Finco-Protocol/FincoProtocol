@@ -33,6 +33,8 @@ test("a one-ulp breach is distinguishable from the threshold", () => {
   const below = 1.05 - Number.EPSILON;
   assert.ok(below < 1.05);
   assert.notEqual(f.formatRatio(below, [1.05]), "1.05x");
+  assert.equal(f.formatRatio(below, [1.05]), `${below}x`);        // the exact text, never a trailing-zero look-alike of the threshold
+  assert.equal(f.formatRatio(1.05, [1.05]), "1.05x");
 });
 
 test("formatDeltaX shows a small difference with two significant digits, never as zero", () => {
