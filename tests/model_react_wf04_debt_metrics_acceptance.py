@@ -3,70 +3,25 @@
 Weak coverage is the seeded Wind working copy at 85 % gearing under GEARING_CAP (the engine completes; raw minimum DSCR 0.9925…).  Every
 number asserted is read from the committed Run's own API payload; no threshold is hard-coded as a canonical contractual value.
 Set ``WF04_SCREENSHOT_DIR`` to keep screenshots (private/local evidence only — never committed).
+
+Not collected by pytest on its own: the bodies are imported by ``tests/test_model_workspace_consolidation_browser.py`` - the existing
+mandatory Chromium role - so no collection-time skip lives in this module (CI V3 collection governance), exactly like the WS1/RC-M bodies.
 """
 from __future__ import annotations
 
 import os
-import socket
-import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 
-pytest.importorskip("playwright", reason="playwright not installed in this workflow")
-from playwright.sync_api import sync_playwright  # noqa: E402
+from tests.model_react_rcm_support import rcm_react_flag  # noqa: F401
+from tests.test_model_financing_f2 import run
+from tests.test_wf04_credit_debt_metrics import COV, EOD, update, weak_wind
+from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 
-from tests.test_model_financing_f2 import run  # noqa: E402
-from tests.test_wf04_credit_debt_metrics import COV, EOD, update, weak_wind  # noqa: E402
-
-PORT = 8813
-USER = "decision-user"
+USER = "decision-user"  # the shared Run helpers (tests.test_model_financing_f2) are bound to this user id
 SHOTS = os.environ.get("WF04_SCREENSHOT_DIR", "")
 VIEWPORTS = ((1440, 1000), (1366, 900), (768, 1000), (390, 844))
-
-
-@pytest.fixture(scope="module")
-def live_server(tmp_path_factory):
-    import uvicorn
-    from app.persistence import db
-
-    mp = pytest.MonkeyPatch()
-    mp.setattr(db, "DB_PATH", str(tmp_path_factory.mktemp("dm") / "dm.db"))
-    db.init_db()
-    import main_web
-
-    server = uvicorn.Server(uvicorn.Config(main_web.app, host="127.0.0.1", port=PORT, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(180):
-        try:
-            socket.create_connection(("127.0.0.1", PORT), timeout=1).close()
-            break
-        except OSError:
-            time.sleep(1)
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    yield f"http://127.0.0.1:{PORT}"
-    os.environ.pop("FINCO_MODEL_REACT_V1", None)
-    server.should_exit = True
-    thread.join(timeout=10)
-    from app.runtime import model_execution as me
-    me.reset_model_executor_for_tests(None)
-    mp.undo()
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with sync_playwright() as pw:
-        options = {"args": ["--no-sandbox"]}
-        if os.environ.get("FINCO_TEST_CHROMIUM_PATH"):
-            options["executable_path"] = os.environ["FINCO_TEST_CHROMIUM_PATH"]
-        try:
-            instance = pw.chromium.launch(**options)
-        except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"chromium unavailable: {exc}")
-        yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -153,7 +108,7 @@ def history_rows(record):
 
 
 # ── states ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-def test_weak_coverage_eod_triggered_covenant_breached_and_run_completed(world, live_server, browser):
+def test_weak_coverage_eod_triggered_covenant_breached_and_run_completed(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.weak)
@@ -184,7 +139,7 @@ def test_weak_coverage_eod_triggered_covenant_breached_and_run_completed(world, 
         context.close()
 
 
-def test_no_terms_configured_is_not_configured_never_a_pass(world, live_server, browser):
+def test_no_terms_configured_is_not_configured_never_a_pass(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.bare)
@@ -198,7 +153,7 @@ def test_no_terms_configured_is_not_configured_never_a_pass(world, live_server, 
         context.close()
 
 
-def test_a_run_without_a_recorded_contract_is_unavailable_not_judged_by_todays_inputs(world, live_server, browser):
+def test_a_run_without_a_recorded_contract_is_unavailable_not_judged_by_todays_inputs(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.legacy)
@@ -211,7 +166,7 @@ def test_a_run_without_a_recorded_contract_is_unavailable_not_judged_by_todays_i
         context.close()
 
 
-def test_healthy_run_shows_honest_neutral_ok_states_without_inventing_a_pass(world, live_server, browser):
+def test_healthy_run_shows_honest_neutral_ok_states_without_inventing_a_pass(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.healthy)
@@ -228,7 +183,7 @@ def test_healthy_run_shows_honest_neutral_ok_states_without_inventing_a_pass(wor
 
 
 # ── chart, schedule, keyboard ───────────────────────────────────────────────────────────────────────────────────────────────────────
-def test_chart_plots_only_persisted_periods_has_a_data_table_and_is_keyboard_operable(world, live_server, browser):
+def test_chart_plots_only_persisted_periods_has_a_data_table_and_is_keyboard_operable(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.weak)
@@ -252,7 +207,7 @@ def test_chart_plots_only_persisted_periods_has_a_data_table_and_is_keyboard_ope
         context.close()
 
 
-def test_schedule_scrolls_horizontally_by_keyboard_and_period_links_jump_to_the_column(world, live_server, browser):
+def test_schedule_scrolls_horizontally_by_keyboard_and_period_links_jump_to_the_column(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.weak)
@@ -276,7 +231,7 @@ def test_schedule_scrolls_horizontally_by_keyboard_and_period_links_jump_to_the_
         context.close()
 
 
-def test_csv_export_downloads_raw_persisted_values(world, live_server, browser):
+def test_csv_export_downloads_raw_persisted_values(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.weak)
@@ -295,7 +250,7 @@ def test_csv_export_downloads_raw_persisted_values(world, live_server, browser):
 
 
 # ── Run picker, historical and stale Runs, Save never runs ───────────────────────────────────────────────────────────────────────────
-def test_picker_shows_each_runs_own_terms_stale_banner_and_historical_note(world, live_server, browser):
+def test_picker_shows_each_runs_own_terms_stale_banner_and_historical_note(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         open_metrics(page, live_server, world.history)
@@ -317,7 +272,7 @@ def test_picker_shows_each_runs_own_terms_stale_banner_and_historical_note(world
         context.close()
 
 
-def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_the_saved_run(world, live_server, browser):
+def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_the_saved_run(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         record = world.healthy
@@ -342,7 +297,7 @@ def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_th
         context.close()
 
 
-def test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload(world, live_server, browser):
+def test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
         page.goto(f"{live_server}/v2/model-react/{world.weak.project_code}#overview")
@@ -362,7 +317,7 @@ def test_overview_results_and_credit_link_to_the_same_view_without_a_document_re
 
 
 # ── responsive and themes ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-def test_every_viewport_and_theme_stays_legible_without_page_overflow(world, live_server, browser):
+def test_every_viewport_and_theme_stays_legible_without_page_overflow(world, live_server, browser, rcm_react_flag):
     from tests.model_react_overnight_b_acceptance import CONTRAST_JS, THEMES
     selector = ".dm-root :is(h2,h3,h4,label,p,li,button,a,th,td,dt,dd,summary,select,.dm-status,.dm-chip)"
     for width, height in VIEWPORTS:
@@ -381,3 +336,19 @@ def test_every_viewport_and_theme_stays_legible_without_page_overflow(world, liv
             assert errors == []
         finally:
             context.close()
+
+
+__all__ = [
+    'world',
+    'test_weak_coverage_eod_triggered_covenant_breached_and_run_completed',
+    'test_no_terms_configured_is_not_configured_never_a_pass',
+    'test_a_run_without_a_recorded_contract_is_unavailable_not_judged_by_todays_inputs',
+    'test_healthy_run_shows_honest_neutral_ok_states_without_inventing_a_pass',
+    'test_chart_plots_only_persisted_periods_has_a_data_table_and_is_keyboard_operable',
+    'test_schedule_scrolls_horizontally_by_keyboard_and_period_links_jump_to_the_column',
+    'test_csv_export_downloads_raw_persisted_values',
+    'test_picker_shows_each_runs_own_terms_stale_banner_and_historical_note',
+    'test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_the_saved_run',
+    'test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload',
+    'test_every_viewport_and_theme_stays_legible_without_page_overflow',
+]

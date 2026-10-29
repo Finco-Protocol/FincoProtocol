@@ -264,3 +264,31 @@ def test_registry_change_is_the_two_contract_fields_and_the_sheet_line_only():
     contract = [f.field_id for f in WORKBOOK.all_fields() if f.field_id.startswith('debt.contract.')]
     assert sorted(contract) == ['debt.contract.contractual_dscr', 'debt.contract.min_dscr_eod']
     assert WORKBOOK.version == '2.3.0'
+
+
+# ── the browser acceptance joins the existing mandatory role without a collection-time skip ──────────────────────────────────────────────
+def test_browser_acceptance_is_an_additive_import_in_the_existing_role_with_no_skip_of_its_own():
+    role = (W.ROOT / W.ROLE_MODULE).read_text()
+    helper = (W.ROOT / W.ROLE_ACCEPTANCE).read_text()
+    assert role.endswith('\n'.join(W.ROLE_IMPORT_BLOCK) + '\n') and role.count(W.ROLE_IMPORT_BLOCK[-1]) == 1
+    original = W._read(W.ROOT, W.ROLE_MODULE, W.BASE).decode()
+    assert role.startswith(original.rstrip() + '\n')                       # nothing before the appended block changed
+    tree = ast.parse(helper)
+    tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')]
+    exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and isinstance(n.targets[0], ast.Name) and n.targets[0].id == '__all__')
+    assert len(tests) == 11 and exported == ['world'] + tests
+    assert not any(token in helper for token in ('importorskip', 'pytest.skip', 'mark.skip', 'skipif', 'xfail', 'autouse'))
+    assert not W.ROLE_ACCEPTANCE.rsplit('/', 1)[-1].startswith('test_')       # never collected on its own
+    assert 'FINCO_MODEL_REACT_V1' not in helper                               # the flag is the shared per-test fixture, not a module side effect
+
+
+def test_the_role_import_block_cannot_be_widened(monkeypatch):
+    original = W._read
+
+    def widened(root, path, ref):
+        raw = original(root, path, ref)
+        return raw + b'\nfrom tests.rogue_acceptance import *\n' if path == W.ROLE_MODULE and ref is None else raw
+
+    monkeypatch.setattr(W, '_read', widened)
+    assert not W.exact_blobs_ok() and not C.valid()

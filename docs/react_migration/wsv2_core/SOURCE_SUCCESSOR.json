@@ -69,10 +69,10 @@
     "tests/test_model_react_overnight_b_governance.py": "4776948cc684952359ba5b64ade70c49275d0984",
     "tests/test_model_react_poc_browser_acceptance.py": "75f8f87492538f5521bdaf804982c8372b6645e4",
     "tests/test_model_react_wsv2_overview.py": "3c8d45dcc1bc581969ac6c697bd02ffc9843394c",
-    "tests/test_model_workspace_consolidation_browser.py": "7c6478289c029f8b53e16103fa22b22123cbd19a",
+    "tests/test_model_workspace_consolidation_browser.py": "e5f3ace7a7406fc2b487ef90eab369e4ed51955b",
     "tests/test_rcm_governance.py": "7b173cb4de41d910e5fe3c0796b62ad5ab9eb98e",
     "tests/test_rcux_governance.py": "88cd1291f9935f4d07320d328fea0137adde98ae",
-    "tests/test_wsv2_core_scope.py": "e0e166ee903849d7b848450e44c5f0ffbb8c51a8",
+    "tests/test_wsv2_core_scope.py": "4d0abda9e45f75023d98ede17e82cac8dac8f690",
     "tests/wsv2_core_scope.py": "c3427ee3dfc402f8472ad47e717ade56cd6313d5"
   },
   "historical_source_blobs": {

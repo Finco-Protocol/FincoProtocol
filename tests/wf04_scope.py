@@ -52,14 +52,15 @@ OWNED_PATHS = frozenset((
     'static/react/finco-react.css',
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
+    'tests/model_react_wf04_debt_metrics_acceptance.py',
     'tests/test_fin_v2_3_scope.py',
     'tests/test_fin_v2_r1_scope.py',
     'tests/test_model_credit_decision_v3_real_runs.py',
     'tests/test_model_react_insights_v1.py',
+    'tests/test_model_workspace_consolidation_browser.py',
     'tests/test_rcm_governance.py',
     'tests/test_rcux_governance.py',
     'tests/test_wf04_credit_debt_metrics.py',
-    'tests/test_wf04_debt_metrics_browser.py',
     'tests/test_wf04_dscr_contract_terms.py',
     'tests/test_wf04_independent_oracle.py',
     'tests/test_wf04_run_bound_terms.py',
@@ -91,11 +92,18 @@ PREDECESSOR_REPINS = {
         'static/react/finco-react.js',
         'tests/fin_v2_cohorts.py',
         'tests/test_rcm_governance.py',
+        'tests/test_model_workspace_consolidation_browser.py',
         'tests/test_rcux_governance.py',
         'tests/test_wsv2_core_scope.py',
         'tests/wsv2_core_scope.py',
     )),
 }
+# The additive block WF-04 appends to the existing mandatory consolidation browser role (the bodies live in a non-collected helper, so no
+# collection-time skip is added: CI V3 collection governance).
+ROLE_MODULE = 'tests/test_model_workspace_consolidation_browser.py'
+ROLE_ACCEPTANCE = 'tests/model_react_wf04_debt_metrics_acceptance.py'
+ROLE_IMPORT_BLOCK = ['', '', '# WF-04 Debt Metrics: Owner-authorised mandatory acceptance; additive import only.',
+                     'from tests.model_react_wf04_debt_metrics_acceptance import *  # noqa: E402,F401,F403']
 # No financial, security, CI or writer namespace may ever be owned by this cohort.
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'frontend/src/app/editing/')
 FORBIDDEN_PATHS = frozenset((
@@ -105,7 +113,8 @@ FORBIDDEN_PATHS = frozenset((
 
 
 # The presentation paths the earlier WS1 layers pin as an exact state, and which WF-04 legitimately moves to a later exact state.
-PRESENTATION_SUCCESSOR_PATHS = frozenset(('frontend/src/app/FinancialResults.tsx', 'static/react/finco-react.css', 'static/react/finco-react.js'))
+PRESENTATION_SUCCESSOR_PATHS = frozenset(('frontend/src/app/FinancialResults.tsx', 'static/react/finco-react.css', 'static/react/finco-react.js',
+                                          'tests/test_model_workspace_consolidation_browser.py'))
 
 
 def _git(root, *args):

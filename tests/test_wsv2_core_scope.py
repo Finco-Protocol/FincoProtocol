@@ -213,7 +213,9 @@ def test_historical_record_or_unapproved_repin_cannot_be_resealed(tamper, monkey
 def browser_contract_ok(role, acceptance):
     marker = '# WS1 Workspace V2'
     expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
-    if role.count(marker) != 1 or role[role.index(marker):].splitlines()[1:] != [expected]:
+    # WF-04 successor lineage: the one later, separately governed block that may follow the WS1 import (tests/test_wf04_scope.py proves it exactly).
+    tail = role[role.index(marker):].splitlines()[1:] if role.count(marker) == 1 else None
+    if tail is None or tail[:1] != [expected] or tail[1:] not in ([], WF04.ROLE_IMPORT_BLOCK):
         return False
     prior = F._read(F.ROOT, ROLE, F.AUTHORIZATION_HEAD).decode()
     if role[:role.index(marker)].rstrip() != prior.rstrip():
