@@ -51,7 +51,7 @@
     "tests/test_model_mutation_security_successor.py": "c922d847fa598a1b60815dc24db0192ebf6b41a5",
     "tests/test_model_react_overnight_b_governance.py": "735a92318431b7efa92c9aca02b0fed938aea28d",
     "tests/test_model_react_rcm_goal_seek_v1.py": "da8be4580594a9a45894f499f4011898a65931ba",
-    "tests/test_model_workspace_productivity_v1.py": "4ad2f994d1d01913ce2ffccf71913dc8bcd2f59f",
+    "tests/test_model_workspace_productivity_v1.py": "cd1c4e06a669b692ba37aff58bc5d6659f6825ae",
     "tests/test_rcm_governance.py": "0877ab11c41a394f3d921a5b6d4489fdfb99a284",
     "tests/test_tax_wf10_candidate.py": "a1efc13cd47804d1ff377e845e497c2dd81c7e72",
     "tests/test_v11_stage3_successor.py": "9748d3fe5c3f3979575b89d65ef675f2d69e1dcf",

@@ -559,9 +559,9 @@ class TestMacroIdentityGuardFailsClosed:
 
     @pytest.mark.parametrize("mode,old,new", [
         ("editable", 'data-field-id="debt.contract.min_dscr_eod"', 'data-field-id="debt.contract.other"'),
-        ("editable", "<input", "<input data-tampered=\"1\""),
-        ("editable", "<input", "<input disabled"),
-        ("protected", "<input", "<input data-tampered=\"1\""),
+        ("editable", 'name="value"', 'name="value" data-tampered="1"'),
+        ("editable", 'name="value"', 'name="value" disabled'),
+        ("protected", 'class="v2-field-value"', 'class="v2-field-value" data-tampered="1"'),
     ])
     def test_changed_control_content_of_a_new_field_changes_its_digest(self, mode, old, new):
         sheet_rows = render_macro_rows("debt", project_editable=mode == "editable", values=TRICKY_VALUES)
@@ -607,7 +607,7 @@ class TestMacroIdentityGuardFailsClosed:
         html = render_macro_rows("project_setup", project_editable=True, values=TRICKY_VALUES)["project_setup.technical.capacity_mw"]
         key = "project_setup|editable|project_setup.technical.capacity_mw"
         assert _macro_digest(html, verified_editable=True) == _golden()["hashes"][key]
-        assert _macro_digest(html.replace("<input", "<input data-injected=\"1\"", 1), verified_editable=True) != _golden()["hashes"][key]
+        assert _macro_digest(html.replace('name="value"', 'name="value" data-injected="1"', 1), verified_editable=True) != _golden()["hashes"][key]
 
     def test_the_registry_contains_no_other_contract_field(self):
         from app.workbook.registry import WORKBOOK
