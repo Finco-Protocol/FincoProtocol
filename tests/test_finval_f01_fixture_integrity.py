@@ -61,7 +61,13 @@ def test_authority_mock_has_only_its_missing_unit_added():
     assert original.count(historical)==1
     approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_cohorts import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
     extended = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)\n'
-    assert actual == original.replace(historical, approved_valuation_extension + extended)
+    # WF-04 successor lineage (tests/wf04_scope.py): the file is either the FIN-V2-3 state, or exactly that state plus the one reviewed WF-04 block that
+    # hash-locks the four presentations of the two new debt.contract.* inputs and widens the final set equality by exactly that set. Nothing else.
+    approved_wf04_extension = '        # WF-04 adds the two contractual DSCR INPUT fields (Minimum DSCR, Contractual DSCR). Like the valuation field above, their four\n        # presentations are separately hash-locked; every historical DOM hash stays unchanged and the exact CSRF/read-only checks above still run.\n        contract_additions = {\n            "debt|editable|debt.contract.contractual_dscr": "44cb85971ad47eeac8caa375435b93c19356c515cfdac7bbdb8f7bee195a0fe1",\n            "debt|editable|debt.contract.min_dscr_eod": "5f813f9a638b71ee356e5f102492a01dea6dd3bd089003151af3e95be1adc832",\n            "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",\n            "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",\n        }\n        assert {key: actual[key] for key in contract_additions} == contract_additions\n'
+    extended_wf04 = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions) | set(contract_additions)\n'
+    fin_v2_3_state = original.replace(historical, approved_valuation_extension + extended)
+    wf04_state = original.replace(historical, approved_valuation_extension + approved_wf04_extension + extended_wf04)
+    assert actual == fin_v2_3_state or actual == wf04_state
 
 def test_sensitivity_oracle_removes_only_the_documented_old_ratio_conversion():
     path='tests/test_m3_two_driver_sensitivity.py'

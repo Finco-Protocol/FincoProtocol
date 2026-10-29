@@ -17,7 +17,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `app/v2/debt_metrics_projection.py` | N | A | — | `72ff9125f14686035cf35f36df7a75efd6242270` |
 | `app/workbook/dscr_contract_terms.py` | N | A | — | `05024753c0a52a68c085a63d736289f4fa8f2f75` |
 | `app/workbook/registry.py` | P | M | `31570edc0e6ca1c0191e13e987a0598ade5c8f8b` | `7880dca5b53d87d9e01b50d2fc0d43b20e504bd6` |
-| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `aa038431f33ee7171539ffca93eeb955ba863067` |
+| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `caca040779bd620e78cd687909246e27f5b6e568` |
 | `docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json` | P | M | `45c818843183a033d76deb490f9a05f4229748dd` | `62d5711043a2ce35f2fb14cb56750c7919a1b86e` |
 | `docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json` | P | M | `16bc1fc11bdfcc966476b20ca5998aeccb652b7f` | `33ac6e10115528b0914b3e7a7fe66a6bbdb2d8b8` |
 | `docs/financial_validation/wf04_debt_metrics/CORRECTION_A_CI_AND_PERIOD_MATRIX.md` | N | A | — | `d996c3b6437dafbe9931564923f7bff21d62f74f` |
@@ -27,7 +27,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `7ea2d594f7d588612811a3737aabf622507b2507` |
 | `docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md` | N | A | — | `74c25a02616d3fe1b03fa78568242a1f8d0eadcd` |
 | `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `87dd275943448198392389b23aedd7fa65ee2d60` |
-| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `6ad8b76c5ba684865244c649ee0b026f67d34c6b` |
+| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `d4ce6e7b7e83d1be1badddb76cd2d8089d40ac45` |
 | `frontend/src/app/FinancialOverview.tsx` | P | M | `9e073447afb224ba60fc8b97d72f776b2a67ea14` | `6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432` |
 | `frontend/src/app/FinancialResults.tsx` | P | M | `c53b677f29671380db916ceb4f4cfb2e2e53beeb` | `eb5ddb89b663f8145b702df26d591b884fbb4339` |
 | `frontend/src/app/credit/CreditDecisionPanel.tsx` | M | M | `a3a39ee566be572fae9a96df7690c7bd7009b0e0` | `2a48162683d4641454876b41c2bddf0e51b0f59c` |
@@ -56,6 +56,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/model_react_wf04_debt_metrics_acceptance.py` | N | A | — | `a6fb48304c4330d345437dc50be38f67f112a4e5` |
 | `tests/test_fin_v2_3_scope.py` | P | M | `b9671b2c1d9e55e7169261f84ccd44fb5db2c61e` | `701f2514efe7edf0f9c390cdae23f610f19dda35` |
 | `tests/test_fin_v2_r1_scope.py` | P | M | `7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7` | `6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c` |
+| `tests/test_finval_f01_fixture_integrity.py` | M | M | `71c48ba68cb53e2dcd81b470a88777b3d3801d06` | `568d8ee528790981bf74b7f71eb2e688c914a41b` |
 | `tests/test_model_credit_decision_v3_real_runs.py` | P | M | `61ec7bead5f71b29e38677ef9a6b1f8c562387a7` | `e2009d63694a64d9c1ea161bc4ffc34606114feb` |
 | `tests/test_model_mutation_security_successor.py` | P | M | `4672261c9aa91f0b727e116886ccc98b3e888f5a` | `c922d847fa598a1b60815dc24db0192ebf6b41a5` |
 | `tests/test_model_react_insights_v1.py` | P | M | `29b07e518eef65a9ade11f141d433594cc6ee82a` | `d62036ab8eb8dbc72e0436d821864078e76ce556` |
@@ -70,8 +71,8 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_wf04_run_bound_terms.py` | N | A | — | `aeab52711ae1cfa0a121c07639c374a78111d861` |
 | `tests/test_wf04_scope.py` | N | A | — | `f2c659fa244fc5c04f7a1598329bd0aed0e640df` |
 | `tests/test_wsv2_core_scope.py` | P | M | `6fafea72bfca4c6be200709d55bd8466049a8bbc` | `e7a88c88cac5abb8d7bb8691f307072ea1ded615` |
-| `tests/wf04_scope.py` | N | A | — | `f2e3797a281db88a3dd0d68c351127774377ee57` |
-| `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `b4f9c3f615360f122b00a5cd3791870aead935d2` |
+| `tests/wf04_scope.py` | N | A | — | `154901ac1b18f680d9ae909c12c3abc09153e05f` |
+| `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `13cc263f66ed37e8d36f1499fd6857e9c1869902` |
 | `tools/wf04_independent_dscr_oracle.py` | N | A | — | `f286d019a6b6cbb964c48ff7ed68281e7715b65d` |
 
 ## 2 — Protected / pinned paths: reason, minimal diff, approved scope, negative controls
