@@ -9,6 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSheetFields, saveWorkbookField } from "../api";
+import { useOptionalChanges } from "../editing/ChangesProvider";
+import type { EditSection } from "../editing/pendingEdits";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
 import { BINDING_PLAIN, STRUCTURED_PLAIN, plainFieldHelp, plainOptionLabel } from "../plainCopy";
@@ -21,6 +23,9 @@ const NUMERIC = new Set(["float", "int", "keur", "pct", "bps", "years", "months"
 const INTEGER = new Set(["int", "years", "months"]);
 
 const BINDING_REASON = BINDING_PLAIN;
+
+/** Sheets whose scalar fields stage into the shared pending-change store (WS-2); other sheets keep their own drafts. */
+const SHEET_SECTION: Partial<Record<Props["sheet"], EditSection>> = { project_setup: "inputs", debt: "financing" };
 
 /** Structured configuration payloads owned by dedicated typed editors (Capital
  *  Stack proposal, bankability configuration).  They are stored as JSON documents;
@@ -59,7 +64,16 @@ interface Props {
 export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 0 }: Props) {
   const fetcher = useCallback(() => fetchSheetFields(project, sheet), [project, sheet]);
   const read = useCanonicalRead<SheetFieldsPayload>(fetcher, [project, sheet], [reloadKey]);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const store = useOptionalChanges();
+  const section = SHEET_SECTION[sheet];
+  const staged = store && section ? store : null;
+  const [localDrafts, setLocalDrafts] = useState<Record<string, string>>({});
+  const storeDrafts = useMemo<Record<string, string>>(() => {
+    if (!staged || !section) return {};
+    return Object.fromEntries(staged.edits.filter((e) => e.section === section).map((e) => [e.key, e.value]));
+  }, [staged, section]);
+  const drafts = staged ? storeDrafts : localDrafts;
+  const setDrafts = (update: (prev: Record<string, string>) => Record<string, string>) => setLocalDrafts(update);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState<string | null>(null);
@@ -68,14 +82,25 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
   // underneath it (another tab, another editor) is dropped, never rebased silently.
   const [baselines, setBaselines] = useState<Record<string, string>>({});
 
-  useEffect(() => { setDrafts({}); setErrors({}); setStatus(null); setBaselines({}); }, [project, sheet]);
-  useReportDirty(`sheet-${sheet}`, Object.keys(drafts).length);
+  useEffect(() => { setLocalDrafts({}); setErrors({}); setStatus(null); setBaselines({}); }, [project, sheet]);
+  useReportDirty(`sheet-${sheet}`, staged?.shell ? 0 : Object.keys(drafts).length);
   useReportPending(`sheet-${sheet}`, inFlight !== null || locked);
   const singleFlight = useSingleFlight();
 
   const data = read.state === "ready" ? read.data : null;
   useEffect(() => {
     if (!data) return;
+    if (staged && section) {
+      // Staged edits live in the shared store: a moved baseline is FLAGGED there (conflict), never silently dropped or rebased.
+      const mine = staged.edits.filter((e) => e.section === section);
+      if (mine.length && staged.identity) {
+        staged.rebase(staged.identity, Object.fromEntries(mine.map((e) => {
+          const field = data.fields.find((f) => f.field_id === e.key);
+          return [e.id, { value: String(field?.value ?? "") }];
+        })));
+      }
+      return;
+    }
     const lost = Object.keys(drafts).filter((id) => {
       const field = data.fields.find((f) => f.field_id === id);
       return !field || String(field.value ?? "") !== baselines[id];
@@ -96,7 +121,14 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
     return Array.from(map.values());
   }, [data]);
 
-  const setDraft = (fieldId: string, value: string, persisted: string) => {
+  const setDraft = (field: SheetFieldPayload, value: string, persisted: string) => {
+    const fieldId = field.field_id;
+    if (staged && section) {
+      staged.stage({ section, key: fieldId, label: field.label, unit: field.unit ?? "", baseline: persisted, value }, { coalesce: true });
+      setErrors((prev) => { const next = { ...prev }; delete next[fieldId]; return next; });
+      setStatus(null);
+      return;
+    }
     setBaselines((prev) => (fieldId in prev ? prev : { ...prev, [fieldId]: persisted }));
     setDrafts((prev) => {
       const next = { ...prev };
@@ -145,7 +177,8 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
       setStatus({ tone: "ok", text: `${field.label} saved and ${result.verified ? "verified in the fresh projection" : "accepted"}. The results are now out of date (STALE); the model was not run.` });
-      setDrafts((prev) => { const next = { ...prev }; delete next[field.field_id]; return next; });
+      if (staged && section) staged.revert(`${section}:${field.field_id}`);
+      else setDrafts((prev) => { const next = { ...prev }; delete next[field.field_id]; return next; });
       read.reload();
       onSaved?.();
     } else {
@@ -176,7 +209,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
           <p className="wf-group-head">{section.label}</p>
           <div className="wf-grid">
             {section.fields.map((field) => {
-              const persisted = field.value ?? "";
+              const persisted = String(field.value ?? "");   // the registry projection may carry a JSON number
               const current = drafts[field.field_id] ?? persisted;
               const id = `wf-${sheet}-${field.field_id.replace(/[^a-z0-9]+/gi, "-")}`;
               const canEdit = editable(field);
@@ -191,7 +224,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                     {(p) => canEdit ? (
                       field.field_type === "select" && field.options?.length ? (
                         <select {...p} className="fm-input" value={current} disabled={locked || inFlight !== null}
-                                onChange={(e) => setDraft(field.field_id, e.target.value, persisted)}>
+                                onChange={(e) => setDraft(field, e.target.value, persisted)}>
                           {!field.options.includes(current) && <option value={current}>{current || "—"}</option>}
                           {field.options.map((o) => <option key={o} value={o}>{field.option_labels?.[o] ?? plainOptionLabel(field.field_id, o) ?? o}</option>)}
                         </select>
@@ -199,7 +232,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                         <input {...p} className="fm-input" type="text" autoComplete="off"
                                inputMode={NUMERIC.has(field.field_type ?? "") ? "decimal" : undefined}
                                value={current} disabled={locked || inFlight !== null}
-                               onChange={(e) => setDraft(field.field_id, e.target.value, persisted)}
+                               onChange={(e) => setDraft(field, e.target.value, persisted)}
                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveField(field); } }} />
                       )
                     ) : (
@@ -216,7 +249,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
                         {inFlight === field.field_id ? "Saving…" : "Save"}
                       </button>
                       <button type="button" className="fm-btn" disabled={inFlight !== null} aria-label={`Cancel edit of ${field.label}`}
-                              onClick={() => setDraft(field.field_id, persisted, persisted)}>Cancel</button>
+                              onClick={() => setDraft(field, persisted, persisted)}>Cancel</button>
                     </div>
                   )}
                 </div>

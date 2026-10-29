@@ -84,6 +84,8 @@ export type PendingAction =
   | { type: "stage"; edit: StageInput; coalesce?: boolean }
   /** Several cells as ONE undo step (TSV paste, fill). */
   | { type: "stageMany"; edits: StageInput[] }
+  /** An editor that owns a whole-section draft (PPA) states the exact edit set of its section; coalesced into one undo step. */
+  | { type: "replaceSection"; section: EditSection; edits: StageInput[] }
   | { type: "revert"; id: string }
   | { type: "revertSection"; section: EditSection }
   | { type: "discardAll" }
@@ -139,6 +141,20 @@ export function pendingReducer(state: PendingState, action: PendingAction): Pend
       let edits = state.edits, counter = state.counter;
       for (const input of action.edits) ({ edits, counter } = applyStage(edits, input, counter));
       return push(state, edits, null, counter);
+    }
+    case "replaceSection": {
+      const keep = Object.fromEntries(Object.entries(state.edits).filter(([, e]) => e.section !== action.section));
+      let edits = keep, counter = state.counter;
+      for (const input of action.edits) ({ edits, counter } = applyStage(edits, input, counter));
+      // Same edit set as before (value, error, canonical): nothing to record.
+      const same = (a: PendingEdit | undefined, b: PendingEdit | undefined) =>
+        !!a && !!b && a.value === b.value && a.baseline === b.baseline && a.canonical === b.canonical && a.error === b.error;
+      const before = Object.values(state.edits).filter((e) => e.section === action.section);
+      const after = Object.values(edits).filter((e) => e.section === action.section);
+      if (before.length === after.length && after.every((e) => same(state.edits[e.id], e))) return state;
+      const marker = `section:${action.section}`;
+      if (state.lastKey === marker && state.past.length > 0) return { ...state, edits, counter, future: [], lastKey: marker, documents: pruneDocuments(state.documents, edits) };
+      return push(state, edits, marker, counter);
     }
     case "revert": {
       if (!state.edits[action.id]) return state;

@@ -10,12 +10,12 @@ import { build } from 'esbuild';
 const output = await mkdtemp(join(tmpdir(), 'finco-editing-test-'));
 await build({
   stdin: {
-    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll'; export * as N from './saveAllApi';`,
+    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll'; export * as N from './saveAllApi'; export * as Q from './ppaStaging'; export * as SS from './saveAllSession';`,
     resolveDir: new URL('..', import.meta.url).pathname, loader: 'ts',
   },
   bundle: true, outfile: join(output, 'editing.mjs'), format: 'esm', platform: 'node',
 });
-const { P, D, S, G, A, N } = await import(pathToFileURL(join(output, 'editing.mjs')));
+const { P, D, S, G, A, N, Q, SS } = await import(pathToFileURL(join(output, 'editing.mjs')));
 test.after(() => rm(output, { recursive: true, force: true }));
 
 // ── M-013: PPA percent <-> canonical ratio ──
@@ -240,4 +240,62 @@ test('Save All outcomes: saved, stale, rejected with per-line conflicts, unknown
   assert.equal((await N.postSaveAll('/x', req, fakeFetch(0, null, true))).kind, 'unknown');
   assert.equal((await N.postSaveAll('/x', req, fakeFetch(502, undefined))).kind, 'unknown');
   assert.equal((await N.postSaveAll('/x', req, fakeFetch(401, undefined))).kind, 'rejected');
+});
+
+// ── Save All attempt bookkeeping: an id follows ONE exact body ──
+test('request id is reused only while the body is identical (CSRF refresh does not change it); an edit starts a new id', async () => {
+  const { build } = await import('esbuild');
+  const { mkdtemp } = await import('node:fs/promises');
+  const out = await mkdtemp(join(tmpdir(), 'finco-session-'));
+  await build({ entryPoints: [new URL('../saveAllSession.ts', import.meta.url).pathname], bundle: true, outfile: join(out, 's.mjs'), format: 'esm', platform: 'node' });
+  const { createSaveAllSession } = await import(pathToFileURL(join(out, 's.mjs')));
+  const base = { project: 'p', csrf_token: 't1', workbook_version: 'v', content_hash: 'h', scenario_id: null, request_id: 'x', cells: [{ field_id: 'a', value: '1' }], contracts_json: null, cost_lines: [] };
+  let n = 0; const mk = () => `id-${++n}`;
+  const s = createSaveAllSession();
+  const first = s.next(base, mk);
+  assert.equal(first.request_id, 'id-1');
+  assert.equal(s.next({ ...base, csrf_token: 't2' }, mk).request_id, 'id-1');            // unknown outcome retried unchanged
+  assert.equal(s.next({ ...base, cells: [{ field_id: 'a', value: '2' }] }, mk).request_id, 'id-2');   // edited body => new id
+  s.settle();
+  assert.equal(s.next(base, mk).request_id, 'id-3');                                     // after a definitive outcome
+  await rm(out, { recursive: true, force: true });
+});
+
+// ── WS-2 integration: PPA document staging, replaceSection, request-id discipline ──
+const stream = (over = {}) => ({ id: 'ppa-1', type: 'ppa', start_date: '2027-01-01', end_date: '2037-01-01', volume_share: '0.8', price_eur_mwh: '60', indexation_rate: '0.02', source_ref: 'PPA 1', capture_rate: '', curve: null, isNew: false, ...over });
+const model = (streams) => ({ version: 2, technology: 'solar', streams, preservedKeys: streams.map(() => []) });
+test('PPA percent edits are listed as human percent with the exact canonical ratio', () => {
+  const inputs = Q.ppaStageInputs(model([stream()]), model([stream({ volume_share: '1', indexation_rate: '0.025' })]));
+  const vol = inputs.find((e) => e.key === 'ppa-1:volume_share'), idx = inputs.find((e) => e.key === 'ppa-1:indexation_rate');
+  assert.deepEqual([vol.baseline, vol.value, vol.canonical], ['80', '100', '1']);
+  assert.deepEqual([idx.baseline, idx.value, idx.canonical], ['2', '2.5', '0.025']);
+  assert.equal(inputs.length, 2);
+});
+test('PPA: unchanged draft stages nothing; added and removed contracts are listed', () => {
+  assert.equal(Q.ppaStageInputs(model([stream()]), model([stream()])).length, 0);
+  const added = Q.ppaStageInputs(model([stream()]), model([stream(), stream({ id: 'ppa-2', isNew: true })]));
+  assert.equal(added.length, 1); assert.match(added[0].label, /added/);
+  const removed = Q.ppaStageInputs(model([stream(), stream({ id: 'ppa-2' })]), model([stream()]));
+  assert.equal(removed.length, 1); assert.match(removed[0].label, /removed/);
+});
+test('replaceSection states a section exactly, is one coalesced undo step, and is a no-op when identical', () => {
+  const id = { projectId: 'p', workbookVersion: 'v', contentHash: 'h', activeScenario: null, lastRunSnapshotId: null };
+  let st = S.initialState(id);
+  const input = (value) => ({ section: 'ppa', key: 'ppa-1:volume_share', label: 'x', unit: '%', baseline: '80', value, canonical: '1' });
+  st = S.pendingReducer(st, { type: 'replaceSection', section: 'ppa', edits: [input('100')] });
+  st = S.pendingReducer(st, { type: 'document', section: 'ppa', json: '{"a":1}' });
+  const same = S.pendingReducer(st, { type: 'replaceSection', section: 'ppa', edits: [input('100')] });
+  assert.equal(same, st);
+  const next = S.pendingReducer(st, { type: 'replaceSection', section: 'ppa', edits: [input('90')] });
+  assert.equal(next.past.length, st.past.length);                       // coalesced with the previous step
+  const cleared = S.pendingReducer(next, { type: 'replaceSection', section: 'ppa', edits: [] });
+  assert.equal(S.totalCount(cleared), 0); assert.equal(cleared.documents.ppa, undefined);
+});
+test('request id follows the body: identical body keeps the id, any change gets a new one', () => {
+  const session = SS.createSaveAllSession();
+  const body = { project: 'p', csrf_token: 'c1', workbook_version: 'v', content_hash: 'h', scenario_id: null, request_id: '', cells: [{ field_id: 'a', value: '1' }], contracts_json: null, cost_lines: [] };
+  let n = 0; const mint = () => `id-${++n}`;
+  const first = session.next(body, mint);
+  assert.equal(session.next({ ...body, csrf_token: 'c2' }, mint).request_id, first.request_id);   // token is not part of the meaning
+  assert.notEqual(session.next({ ...body, cells: [{ field_id: 'a', value: '2' }] }, mint).request_id, first.request_id);
 });

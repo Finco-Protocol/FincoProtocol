@@ -19,7 +19,12 @@ import {
   type PendingState, type StageInput,
 } from "./pendingEdits";
 
+/** Leave-guard key of the shell store; moving between workspace sections ignores it (drafts survive), leaving the page does not. */
+export const CHANGES_STORE_DIRTY_KEY = "changes-store";
+
 export interface ChangesApi {
+  /** True for the shell's ONE provider (its total is reported to the leave guard once); false for a private fallback provider. */
+  shell: boolean;
   state: PendingState;
   identity: EditIdentity | null;
   edits: PendingEdit[];
@@ -34,6 +39,7 @@ export interface ChangesApi {
   get: (section: EditSection, key: string) => PendingEdit | undefined;
   stage: (edit: StageInput, options?: { coalesce?: boolean }) => void;
   stageMany: (edits: StageInput[]) => void;
+  replaceSection: (section: EditSection, edits: StageInput[]) => void;
   revert: (id: string) => void;
   revertSection: (section: EditSection) => void;
   discardAll: () => void;
@@ -47,7 +53,7 @@ export interface ChangesApi {
 
 const ChangesContext = createContext<ChangesApi | null>(null);
 
-export function ChangesProvider({ identity, children }: { identity: EditIdentity | null; children: ReactNode }) {
+export function ChangesProvider({ identity, children, shell = false }: { identity: EditIdentity | null; children: ReactNode; shell?: boolean }) {
   const [state, dispatch] = useReducer(pendingReducer, identity, initialState);
   const identityKey = identity ? `${identity.projectId}|${identity.activeScenario}|${identity.contentHash}` : "";
   const first = useRef(true);
@@ -71,6 +77,7 @@ export function ChangesProvider({ identity, children }: { identity: EditIdentity
 
   const send = useCallback((action: PendingAction) => dispatch(action), []);
   const api = useMemo<ChangesApi>(() => ({
+    shell,
     state,
     identity: state.identity,
     edits: orderedEdits(state),
@@ -84,6 +91,7 @@ export function ChangesProvider({ identity, children }: { identity: EditIdentity
     get: (section, key) => state.edits[editId(section, key)],
     stage: (edit, options) => send({ type: "stage", edit, coalesce: options?.coalesce }),
     stageMany: (edits) => send({ type: "stageMany", edits }),
+    replaceSection: (section, edits) => send({ type: "replaceSection", section, edits }),
     revert: (id) => send({ type: "revert", id }),
     revertSection: (section) => send({ type: "revertSection", section }),
     discardAll: () => send({ type: "discardAll" }),
@@ -93,7 +101,7 @@ export function ChangesProvider({ identity, children }: { identity: EditIdentity
     markRejected: (conflicts) => send({ type: "markRejected", conflicts }),
     setDocument: (section, json) => send({ type: "document", section, json }),
     committed: (ids, next) => send({ type: "committed", ids, identity: next }),
-  }), [state, total, send]);
+  }), [state, total, send, shell]);
 
   return <ChangesContext.Provider value={api}>{children}</ChangesContext.Provider>;
 }

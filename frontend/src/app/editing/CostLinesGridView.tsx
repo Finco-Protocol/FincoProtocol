@@ -16,7 +16,7 @@ import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLin
 import { friendlyMessage } from "../productLanguage";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { CostLineManager } from "../workflow/CostLineManager";
-import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
+import { useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
 import { sumDecimals } from "./decimal";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
@@ -49,7 +49,6 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const singleFlight = useSingleFlight();
-  const confirmIfDirty = useLeaveGuard();
   const live = useRef(0);
 
   const load = useCallback(async () => {
@@ -70,7 +69,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   useEffect(() => {
     if (!requestedSheet || requestNonce === lastRequest.current) return;
     lastRequest.current = requestNonce;
-    if (requestedSheet !== sheet) confirmIfDirty(() => setSheet(requestedSheet), { ignore: (key) => !key.startsWith("cost-") });
+    if (requestedSheet !== sheet) setSheet(requestedSheet);   // staged lines live in the pending-change store, so switching sheets loses nothing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedSheet, requestNonce]);
 
@@ -78,7 +77,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const mine = changes.edits.filter((e) => e.section === section);
   // One dirty count per staged LINE so the shell's leave guard reads the same number the old editor reported.
   const stagedLines = new Set(mine.map((e) => e.key.split("#")[0])).size;
-  useReportDirty(`cost-lines-${sheet}`, stagedLines);
+  useReportDirty(`cost-lines-${sheet}`, changes.shell ? 0 : stagedLines);
   useReportPending(`cost-lines-${sheet}`, inFlight);
 
   const columns = sheet === "opex" ? COLUMNS_OPEX : COLUMNS_CAPEX;
@@ -188,7 +187,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     setInFlight(false);
   };
 
-  const switchSheet = (next: Sheet) => { if (next !== sheet) confirmIfDirty(() => setSheet(next), { ignore: (key) => !key.startsWith("cost-") }); };
+  const switchSheet = (next: Sheet) => { if (next !== sheet) setSheet(next); };
   const headingId = useId();
 
   if (!data) return loadError

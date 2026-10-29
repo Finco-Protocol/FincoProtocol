@@ -1,11 +1,11 @@
 /* WS-2 editing surfaces: Changes drawer, keyboard grid, basic PPA form.  Additive; uses the existing rx-/fm- tokens. */
-.ws2-changes { position: relative; }
+/* The Changes dock is IN FLOW (never a fixed overlay): the grid and every field stay reachable at 1440/1366/768/390.
+   The open panel pushes the content down and scrolls internally. */
+.ws2-changes { position: relative; margin: 0 0 8px; }
 .ws2-changes-badge { display: inline-block; min-width: 1.4em; padding: 0 .4em; margin-left: .4em; border-radius: 999px; background: var(--accent, #1f5f8b); color: #fff; font-size: .78rem; text-align: center; }
-.ws2-changes-panel { border: 1px solid var(--line, #dce3e9); background: var(--surface, #fbfcfc); padding: 12px; margin-top: 8px; max-width: 100%; }
+.ws2-changes-panel { border: 1px solid var(--line, #dce3e9); background: var(--surface, #fbfcfc); padding: 12px; margin-top: 8px; max-width: 100%; box-sizing: border-box; max-height: min(60vh, 560px); overflow-y: auto; }
 .ws2-changes-panel[hidden] { display: none; }
-@media (min-width: 1024px) {
-  .ws2-changes-panel { position: fixed; top: 64px; right: 0; bottom: 0; width: min(420px, 90vw); overflow-y: auto; z-index: 40; margin: 0; box-shadow: -4px 0 12px rgba(0,0,0,.12); }
-}
+.ws2-changes-foot { position: sticky; bottom: -12px; background: var(--surface, #fbfcfc); padding-bottom: 4px; }
 .ws2-changes-head h2, .ws2-changes-section h3 { font-size: 1rem; margin: .2rem 0; }
 .ws2-changes-section h3 { display: flex; align-items: center; gap: .5rem; }
 .ws2-changes-section h3 .fm-btn { margin-left: auto; }
