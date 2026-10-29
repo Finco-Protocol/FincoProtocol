@@ -55,7 +55,7 @@
     "tests/test_fin_v2_r1_scope.py": "c3a66983e78a7701ac3f43104a023f1f93b81d8f",
     "tests/test_model_workspace_consolidation_browser.py": "ebb16147dc846bdc6d2963a839e1d6bc54e713b8",
     "tests/test_project_lifecycle.py": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
-    "tests/test_project_lifecycle_browser.py": "cad044d6cdc5daab8c782910124f33a7e7b55321",
+    "tests/test_project_lifecycle_browser.py": "5ddbec1fd3d72c4d4903a6708358157c8c5475a5",
     "tests/test_rcux_governance.py": "5a36b15e6b787934a38a3da870ec1d613b33213d",
     "tests/test_setup_draft_promotion.py": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
     "tests/test_true_blank_readiness.py": "430ea655203bfec8fa03875e02378c80a0173528",
@@ -597,7 +597,7 @@
     {
       "path": "tests/test_project_lifecycle_browser.py",
       "before_blob": null,
-      "after_blob": "cad044d6cdc5daab8c782910124f33a7e7b55321",
+      "after_blob": "5ddbec1fd3d72c4d4903a6708358157c8c5475a5",
       "entry_points": [
         "_context",
         "_financial",

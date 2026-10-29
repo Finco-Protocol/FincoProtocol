@@ -110,35 +110,66 @@ def check_visible_https_archive_restore_matrix(servers,browser,template,width,th
     mutations=[]
     page.on('request',lambda req:mutations.append((req.method,req.url)) if req.method=='POST' else None)
     identity=f'{template}-{width}-{theme or "default"}'
+    stage='navigate_library'
+    responses=[]
+    page.on('response',lambda r:responses.append({
+        'method':r.request.method,'status':r.status,
+        'path':r.url.split('?',1)[0].split(origin,1)[-1]
+    }) if ('/library/projects/' in r.url or '/model-react/' in r.url) else None)
     try:
         page.goto(origin+'/v2/model-react/')
+        stage='initial_archive_button'
         page.get_by_role('button',name='Archive project',exact=True).wait_for()
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         assert page.locator('#finco-react-root').get_attribute('data-fm-theme')==theme
         page.screenshot(path=str(evidence/(identity+'-active.png')),full_page=True)
+        stage='archive_post'
         with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/archive')) as sent:
             page.get_by_role('button',name='Archive project',exact=True).click()
         assert sent.value.status==200 and sent.value.json()['ok']
+        stage='archive_library_refresh'
         page.get_by_role('button',name='Archive project',exact=True).wait_for(state='detached')
+        stage='show_archived_projects'
         page.get_by_role('button',name='Show archived projects',exact=True).click()
+        stage='archived_library_restore_visible'
         page.get_by_role('button',name='Restore project',exact=True).wait_for()
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         page.screenshot(path=str(evidence/(identity+'-archived.png')),full_page=True)
+        stage='archived_project_open'
         page.locator('[data-open-project='+json.dumps(record.project_code)+']').click()
+        stage='archived_workspace_interstitial'
         page.locator('[data-workspace-state="PROJECT_ARCHIVED"]').wait_for()
         assert page.get_by_role('button',name='Run model',exact=True).count()==0
         page.screenshot(path=str(evidence/(identity+'-interstitial.png')),full_page=True)
+        stage='restore_post'
         with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/unarchive')) as restored:
             page.get_by_role('button',name='Restore project',exact=True).click()
         assert restored.value.status==200 and restored.value.json()['current']['lifecycle_version']==2
+        stage='restored_workspace_ready'
         page.locator('[data-workspace-state="PROJECT_ARCHIVED"]').wait_for(state='detached')
-        page.wait_for_load_state('networkidle')
+        # Assert real application readiness instead of unrelated browser-wide
+        # network idleness (optional projections can continue loading).
+        page.locator('[data-workspace-status="true"]').wait_for(timeout=30000)
+        stage='financial_neutrality_and_no_implicit_run'
         assert _financial(record)==before,'Lifecycle or its visible read flow changed financial state/history'
         assert not any(url.split('?')[0].endswith(('/run','/save-run')) for method,url in mutations)
         assert not errors,errors
         (evidence/(identity+'.json')).write_text(json.dumps({'template':template,'width':width,'theme':theme,
             'https':True,'before_financial_sha256':before,'after_financial_sha256':_financial(record),
             'mutations':mutations,'page_errors':errors,'model_executed':False},indent=2),encoding='utf-8')
+    except Exception as exc:
+        # Persist the first failing phase independently of pytest's final
+        # traceback: the CI supervisor may terminate the full suite early.
+        failure_dir=Path('artifacts')/'wf03-archive-failures'
+        failure_dir.mkdir(parents=True,exist_ok=True)
+        (failure_dir/(identity+'.json')).write_text(json.dumps({
+            'case':identity,'stage':stage,'error_type':type(exc).__name__,
+            'error':str(exc)[:4000],'http':responses[-40:],
+            'page_errors':errors,'mutations':mutations,
+        },indent=2),encoding='utf-8')
+        try: page.screenshot(path=str(failure_dir/(identity+'.png')),full_page=True,timeout=5000)
+        except Exception: pass
+        raise
     finally: context.close()
 
 
