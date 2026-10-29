@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRevenueContracts } from "../api";
 import { PercentInput } from "../editing/PercentInput";
-import { PPA_STORE_DIRTY_KEY, useOptionalChanges } from "../editing/ChangesProvider";
+import { useOptionalChanges } from "../editing/ChangesProvider";
 import { ppaBaselines, ppaStageInputs } from "../editing/ppaStaging";
 import { plain } from "../productLanguage";
 import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
@@ -151,10 +151,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
 
   const errors = useMemo(() => (draft ? validateContractModel(withSourceDefaults(draft)) : {}), [draft]);
   const editCount = savedModel && draft ? countContractEdits(savedModel, draft) : creating && draft ? 1 : 0;
-  // A staged contract edit is mirrored into the shell store, but this editor keeps reporting it itself (same render-then-register timing
-  // as before); the bridge excludes the `ppa` section and section navigation ignores PPA_STORE_DIRTY_KEY, because the draft survives.
-  // A brand-new contract that was never staged keeps the full leave guard.
-  useReportDirty(creating ? "revenue-ppa-create" : PPA_STORE_DIRTY_KEY, editCount);
+  useReportDirty("revenue-ppa", editCount);
   useReportPending("revenue-ppa", inFlight || lockedByUnknown);
   const singleFlight = useSingleFlight();
   const readOnly = protectedReference || inFlight || lockedByUnknown;

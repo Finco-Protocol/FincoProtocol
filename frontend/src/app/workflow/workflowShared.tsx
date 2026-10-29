@@ -60,6 +60,8 @@ interface DirtyContextValue {
   setUnresolved: (key: string, unresolved: boolean) => void;
   /** Run `proceed` now when nothing relevant is unsaved, otherwise ask the user. */
   confirmIfDirty: (proceed: () => void, options?: LeaveOptions) => void;
+  /** Called with the dirty registry keys the user explicitly chose to discard ("Discard changes and continue"); a shell-level draft store clears just those editors' drafts. Returns the unregister. */
+  registerDiscard: (handler: (keys: string[]) => void) => () => void;
 }
 
 const DirtyContext = createContext<DirtyContextValue>({
@@ -67,6 +69,7 @@ const DirtyContext = createContext<DirtyContextValue>({
   registerPending: () => undefined, pendingKeys: [],
   isUnresolved: () => false, setUnresolved: () => undefined,
   confirmIfDirty: (proceed) => proceed(),
+  registerDiscard: () => () => undefined,
 });
 
 interface PendingLeave { proceed: () => void; onStay?: () => void; keys: string[]; count: number; unresolved: string[] }
@@ -79,6 +82,8 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Record<string, true>>({});
   const countsRef = useRef<Record<string, number>>({});
   const [leave, setLeave] = useState<PendingLeave | null>(null);
+  const discardHandlers = useRef<Set<(keys: string[]) => void>>(new Set());
+  const registerDiscard = useCallback((handler: (keys: string[]) => void) => { discardHandlers.current.add(handler); return () => { discardHandlers.current.delete(handler); }; }, []);
   const unresolvedRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef<Set<string>>(new Set());
   const [unresolved, setUnresolvedState] = useState<string[]>([]);
@@ -127,8 +132,8 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
 
   const pendingKeys = useMemo(() => Array.from(new Set([...Object.keys(pending), ...unresolved])), [pending, unresolved]);
   const value = useMemo(
-    () => ({ register, total, breakdown: counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty }),
-    [register, total, counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty],
+    () => ({ register, total, breakdown: counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty, registerDiscard }),
+    [register, total, counts, registerPending, pendingKeys, isUnresolved, setUnresolved, confirmIfDirty, registerDiscard],
   );
   return (
     <DirtyContext.Provider value={value}>
@@ -148,7 +153,7 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
           ].filter(Boolean).join(" ")}
           confirmLabel={leave.count > 0 ? "Discard changes and continue" : "Leave anyway"} cancelLabel="Stay and keep editing" danger
           onCancel={() => { const l = leave; setLeave(null); l.onStay?.(); }}
-          onConfirm={() => { const l = leave; setLeave(null); l.proceed(); }} />
+          onConfirm={() => { const l = leave; setLeave(null); if (l.count > 0) discardHandlers.current.forEach((h) => h(l.keys)); l.proceed(); }} />
       )}
     </DirtyContext.Provider>
   );
@@ -156,6 +161,7 @@ export function DirtyProvider({ children }: { children: ReactNode }) {
 
 export const useDirtyTotal = () => useContext(DirtyContext);
 export const useLeaveGuard = () => useContext(DirtyContext).confirmIfDirty;
+export const useRegisterDiscard = () => useContext(DirtyContext).registerDiscard;
 
 /** Report this editor's unsaved-edit count; cleared on unmount. */
 export function useReportDirty(key: string, count: number) {

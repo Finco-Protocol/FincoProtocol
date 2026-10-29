@@ -19,13 +19,6 @@ import {
   type PendingState, type StageInput,
 } from "./pendingEdits";
 
-/** Leave-guard key of the shell store; moving between workspace sections ignores it (drafts survive), leaving the page does not. */
-export const CHANGES_STORE_DIRTY_KEY = "changes-store";
-/** The PPA editor reports its own staged edits under this key (see PPAEditorView); the shell bridge therefore excludes the `ppa` section. */
-export const PPA_STORE_DIRTY_KEY = "revenue-ppa";
-/** Keys that section-to-section navigation ignores because their drafts survive in the store. */
-export const NAVIGATION_IGNORED_DIRTY_KEYS: readonly string[] = ["run", CHANGES_STORE_DIRTY_KEY, PPA_STORE_DIRTY_KEY];
-
 export interface ChangesApi {
   /** True for the shell's ONE provider (its total is reported to the leave guard once); false for a private fallback provider. */
   shell: boolean;

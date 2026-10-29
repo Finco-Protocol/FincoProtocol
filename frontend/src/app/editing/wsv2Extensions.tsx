@@ -11,10 +11,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { fetchWorkspace } from "../api";
 import type { WorkspaceExtensionContext, WorkspaceExtensions } from "../workspaceExtensions";
-import { useReportDirty, useReportPending } from "../workflow/workflowShared";
+import { useRegisterDiscard, useReportPending } from "../workflow/workflowShared";
 import { ChangesDrawer } from "./ChangesDrawer";
-import { CHANGES_STORE_DIRTY_KEY, ChangesProvider, useChanges } from "./ChangesProvider";
-import type { EditIdentity } from "./pendingEdits";
+import { ChangesProvider, useChanges } from "./ChangesProvider";
+import type { EditIdentity, EditSection } from "./pendingEdits";
 import { buildSaveAllRequest, saveAllAvailability, type SaveAllCapability, type SaveAllOutcome } from "./saveAll";
 import { createSaveAllSession } from "./saveAllSession";
 import { postSaveAll } from "./saveAllApi";
@@ -24,11 +24,26 @@ const toIdentity = (c: WorkspaceExtensionContext): EditIdentity => ({
   activeScenario: c.activeScenario, lastRunSnapshotId: c.lastRunSnapshotId,
 });
 
-/** The shell provider reports ONE total to the existing leave guard (Run, My Projects, external links).  Section-to-section navigation
- *  ignores it (`LEAVE_IGNORES_STORE`), because staged drafts survive in the store; store-backed editors therefore do not report themselves. */
+/** Editors keep reporting their own unsaved counts to the existing leave guard (Run, section navigation, My Projects, external links all
+ *  still ask, exactly as before).  The store only adds: an explicit "Discard changes and continue" also clears the staged drafts, so nothing
+ *  discarded can reappear later, and an unresolved conflict is reported as pending. */
+/** Scalar fields are shared between the assumption grid and the sheet editors (one field = one pending edit), so discarding any of those
+ *  editors clears the scalar sections; the other sections map one-to-one. */
+const sectionsOfDirtyKey = (key: string): EditSection[] =>
+  key === "input-grid" || key.startsWith("sheet-project_setup") || key.startsWith("sheet-debt") ? ["inputs", "financing"]
+    : key === "revenue-ppa" ? ["ppa"]
+      : key === "cost-lines-capex" ? ["capex"]
+        : key === "cost-lines-opex" ? ["opex"] : [];
+
 function DirtyBridge() {
   const changes = useChanges();
-  useReportDirty(CHANGES_STORE_DIRTY_KEY, changes.edits.filter((e) => e.section !== "ppa").length);
+  const registerDiscard = useRegisterDiscard();
+  const revert = useRef(changes.revertSection);
+  revert.current = changes.revertSection;
+  useEffect(() => registerDiscard((keys) => {
+    const sections = new Set(keys.flatMap(sectionsOfDirtyKey));
+    sections.forEach((section) => revert.current(section));
+  }), [registerDiscard]);
   useReportPending("changes-store-conflict", changes.conflictCount > 0);
   return null;
 }

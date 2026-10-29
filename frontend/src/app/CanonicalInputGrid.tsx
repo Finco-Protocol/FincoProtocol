@@ -5,6 +5,7 @@ import { useDirtyTotal, useReportDirty, useReportPending, useSingleFlight } from
 import { plain } from "./productLanguage";
 import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
 import { useOptionalChanges } from "./editing/ChangesProvider";
+import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -72,10 +73,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
   // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
   // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
   const store = useOptionalChanges();
+  const rowByCodeEarly = useMemo(() => new Map(rows.map((r) => [r.field_id || r.code, r])), [rows]);
   const [localDrafts, setLocalDrafts] = useState<Draft>({});
   const storeDrafts = useMemo<Draft>(() => {
     if (!store) return {};
-    return Object.fromEntries(store.edits.filter((e) => e.section === "inputs").map((e) => [e.key, e.value]));
+    return Object.fromEntries(store.edits.filter((e) => SCALAR_SECTIONS.includes(e.section) && rowByCodeEarly.has(e.key)).map((e) => [e.key, e.value]));
   }, [store]);
   const drafts: Draft = store ? storeDrafts : localDrafts;
   const rowByCode = useMemo(() => new Map(rows.map((r) => [r.field_id || r.code, r])), [rows]);
@@ -84,13 +86,12 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
     if (!store) { setLocalDrafts(next); return; }
     const changed = Object.keys(next).filter((code) => next[code] !== drafts[code]);
     const removed = Object.keys(drafts).filter((code) => !(code in next));
-    if (Object.keys(next).length === 0) { if (removed.length) store.revertSection("inputs"); return; }
-    for (const code of removed) store.revert(`inputs:${code}`);
+    for (const code of removed) store.revert(`${sectionOfField(code)}:${code}`);
     for (const code of changed) {
       const row = rowByCode.get(code);
       if (!row) continue;
       store.stage({
-        section: "inputs", key: code, label: plain(row.label), unit: row.unit, baseline: row.value ?? "", value: next[code],
+        section: sectionOfField(code), key: code, label: plain(row.label), unit: row.unit, baseline: row.value ?? "", value: next[code],
       }, { coalesce: true });
     }
   };
@@ -118,7 +119,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
   // Unsaved work: only cells whose staged value really differs from the persisted
   // one.  Unresolved work: a Save in flight, an UNKNOWN outcome or a CAS conflict.
   // Both are reported to the workspace so Run, navigation and Reload see them.
-  useReportDirty("input-grid", store?.shell ? 0 : dirtyCodes.length);
+  useReportDirty("input-grid", dirtyCodes.length);
   useReportPending("input-grid", status === "saving" || status === "conflict" || status === "unknown" || status === "reconciling" || busy);
 
   function stage(code: string, value: string) {
