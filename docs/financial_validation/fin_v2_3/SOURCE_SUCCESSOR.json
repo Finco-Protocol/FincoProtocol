@@ -45,7 +45,7 @@
     "tests/test_fin_v2_3_goal_seek.py": "b4eddd0ad9d92ed2dbe3b402ec135a4a691aa790",
     "tests/test_fin_v2_3_lifecycle.py": "7a32249a36092fa1bd340ef4de27fada7389be05",
     "tests/test_fin_v2_3_numerical.py": "97654d2c98204dffc27083505727a94a9b6060af",
-    "tests/test_fin_v2_3_scope.py": "b9671b2c1d9e55e7169261f84ccd44fb5db2c61e",
+    "tests/test_fin_v2_3_scope.py": "701f2514efe7edf0f9c390cdae23f610f19dda35",
     "tests/test_finval_f01_fixture_integrity.py": "71c48ba68cb53e2dcd81b470a88777b3d3801d06",
     "tests/test_finval_rate_successor.py": "d731a912b8e97d6f014d113816b69290c6e13056",
     "tests/test_model_mutation_security_successor.py": "4672261c9aa91f0b727e116886ccc98b3e888f5a",

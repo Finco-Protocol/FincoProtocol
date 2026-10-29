@@ -8,11 +8,11 @@
     "app/v2/debt_metrics_projection.py": "bba29a14b1f87f0eb2fca13974a8d43d72da1d06",
     "app/workbook/dscr_contract_terms.py": "d1b4816c0710e9b67703789c23229d2507c092e3",
     "app/workbook/registry.py": "e5f2fd222881a3be50bbe572d13dcc72e53fab47",
-    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "773ed7b3fc0ee6498b1eee1a3c47bf2ea8c0a5b3",
-    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "d1ee9fbd235e7fcc08b6ee4e5b79aa3cf84e09e0",
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "31dfb2d3278112a8896ceb83520fd60688b7a16d",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "dc8f1f07e0ddc073bef7ab0fec816717192046bd",
     "docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md": "55fc9e4d7120313ba8906fed287f2a3efde2bd90",
     "docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md": "19866ff518d953d368fbebd56c3fffa72e431aab",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "3680c47871b7e1e4c70f1ff26619e8c4b2187fdd",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "14e0db288f89fe57365ca7f5bbaeceaf932f1266",
     "frontend/src/app/FinancialOverview.tsx": "6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432",
     "frontend/src/app/FinancialResults.tsx": "eb5ddb89b663f8145b702df26d591b884fbb4339",
     "frontend/src/app/credit/CreditDecisionPanel.tsx": "2a48162683d4641454876b41c2bddf0e51b0f59c",
@@ -33,12 +33,15 @@
     "static/react/finco-react.css": "ca0c9d94d8c81e86bda7ce7e0407454fd09591ad",
     "static/react/finco-react.js": "7bc1c19157f6edeb55fbdbd77f9fa378565a7884",
     "tests/fin_v2_cohorts.py": "244c3949a8c6adc193eafc0fa118094e6719058a",
+    "tests/test_fin_v2_3_scope.py": "701f2514efe7edf0f9c390cdae23f610f19dda35",
+    "tests/test_fin_v2_r1_scope.py": "6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c",
+    "tests/test_rcux_governance.py": "6b2a24a5a51cf72ee5b90874d9c030945e4a538b",
     "tests/test_wf04_credit_debt_metrics.py": "40489ef564913ed34cc8ee0812f995d8b7fec0c9",
     "tests/test_wf04_debt_metrics_browser.py": "94eb9f52adff39255fd722cbc00f8cc3dd8e343f",
     "tests/test_wf04_dscr_contract_terms.py": "d4431cdd35e19667ad1e1368ac80f52182fa8722",
     "tests/test_wf04_run_bound_terms.py": "d66368330a8a57e058833740048e1c8ec4418d0e",
-    "tests/test_wsv2_core_scope.py": "e432de85a0737b170fb08f121e05f18362202fd0",
-    "tests/wf04_scope.py": "587a5f199667e61066623a9031f258dc7a8e895b",
-    "tests/wsv2_core_scope.py": "e020c94f6a30d14d764197a17e931faf0fdf0fd3"
+    "tests/test_wsv2_core_scope.py": "6fe0a785f070f680d884b36f0362d22207bc41e0",
+    "tests/wf04_scope.py": "c53c175501dc14a5844529864ff65232b6a9f6c0",
+    "tests/wsv2_core_scope.py": "c3427ee3dfc402f8472ad47e717ade56cd6313d5"
   }
 }

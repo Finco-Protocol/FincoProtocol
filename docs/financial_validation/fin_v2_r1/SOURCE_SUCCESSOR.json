@@ -15,7 +15,7 @@
     "tests/test_ci_acceptance.py": "5ff17455782fff2a5ddf7e93e55e963682197714",
     "tests/test_fin_v2_r1_reserve_coverage.py": "925ceea8054f94063dd515068090c2ef9c7f4411",
     "tests/test_fin_v2_r1_reserve_workspace.py": "8de076b60de62c7326987c932ec2139dcbf50fff",
-    "tests/test_fin_v2_r1_scope.py": "7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7",
+    "tests/test_fin_v2_r1_scope.py": "6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c",
     "tests/test_finance_integrity_governance.py": "1f0afdf2acacb10b12c70522f0c53462ebc5c412",
     "tests/test_model_react_overnight_b_governance.py": "4776948cc684952359ba5b64ade70c49275d0984",
     "tests/test_rcm_governance.py": "414373f3aaa0da42d4521df88d2788e40f60c02d",
