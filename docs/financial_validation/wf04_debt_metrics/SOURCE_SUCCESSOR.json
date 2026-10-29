@@ -5,6 +5,7 @@
   "approved_main_tree": "a96566a21154fd8e673676c20bd2e4e093599330",
   "authorization": "Financial Owner authorised execution of the unified WF-04 prompt section 0A (2026-10-29): two contractual DSCR inputs, Run-bound terms, strict EoD/covenant evaluation and the Debt Metrics workspace. Exact presentation, read-only credit projection, governance and test admission only; no financial_engine/finco_core/domain, CI, Save All, writer-route, signed-certificate, merge or deployment authority. Post-#397 synchronisation (Owner correction B, 2026-10-29): the delta is judged against the approved main that contains the merged WS-2 Save All PR; BASE stays the historical origin.",
   "source_blobs": {
+    ".github/workflows/protocol_ui_browser.yml": "442a614d1a09fc91a79cc5a7700338ce455347a4",
     "app/persistence/workspace_repository.py": "4fe0058b65b8cb987c04af50387385466903a6dc",
     "app/v2/credit_decision_projection.py": "d194e824006c2df5e016c5abb0176ee2219533e8",
     "app/v2/debt_metrics_projection.py": "72ff9125f14686035cf35f36df7a75efd6242270",
@@ -66,7 +67,7 @@
     "tests/test_wf04_save_all_integration.py": "7566b61542f8cfbb0811040e6d0d2874f909b20f",
     "tests/test_wf04_scope.py": "73c5cd5434321c6741b9c3de64723b20be2b28d7",
     "tests/test_wsv2_core_scope.py": "b17cb809acc44b8fb3b800800fff3daaeeb00741",
-    "tests/wf04_scope.py": "2cbc1db9e2e5750931c3fe32909a8d48d3e3a39c",
+    "tests/wf04_scope.py": "098ee0ce968eeac31ea495a13ec788dff82cb295",
     "tests/wsv2_core_scope.py": "5622eebb60cff4526196a0bbc2e265d4b9747bbc",
     "tools/wf04_independent_dscr_oracle.py": "f286d019a6b6cbb964c48ff7ed68281e7715b65d"
   }

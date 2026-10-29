@@ -23,6 +23,7 @@ MANIFEST = 'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'
 SCHEMA = 'WF04_DEBT_METRICS_EXACT_SOURCE_V1'
 # @@OWNED_PATHS_BEGIN@@
 OWNED_PATHS = frozenset((
+    '.github/workflows/protocol_ui_browser.yml',
     'app/persistence/workspace_repository.py',
     'app/v2/credit_decision_projection.py',
     'app/v2/debt_metrics_projection.py',
@@ -129,8 +130,25 @@ ROLE_MODULE = 'tests/test_model_workspace_consolidation_browser.py'
 ROLE_ACCEPTANCE = 'tests/model_react_wf04_debt_metrics_acceptance.py'
 ROLE_IMPORT_BLOCK = ['', '', '# WF-04 Debt Metrics: Owner-authorised mandatory acceptance; additive import only.',
                      'from tests.model_react_wf04_debt_metrics_acceptance import *  # noqa: E402,F401,F403']
-# No financial, security, CI or writer namespace may ever be owned by this cohort.
+# No financial, security, CI or writer namespace may ever be owned by this cohort. The ONE exception to the `.github/` prohibition is the single workflow
+# below, and only for the Financial-Owner-approved timeout hunk (Correction C, 2026-10-29); every other `.github/` path stays forbidden.
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'frontend/src/app/editing/')
+WORKFLOW_PATH = '.github/workflows/protocol_ui_browser.yml'
+WORKFLOW_OLD_BLOB = '097a1e3cfb1677294b8a59116f6a46d5a3751fda'      # the exact bytes at APPROVED_MAIN
+# The approved hunk, as exact literal replacements of the approved-main text: (1) outer job limit 45 -> 105 minutes; (2) a role-local inner pytest budget -
+# 3600 s for the consolidation role ONLY, 1200 s (the unchanged global value) for the five other roles - announced before the role starts.
+WORKFLOW_HUNK = (
+    ('    timeout-minutes: 45\n', '    timeout-minutes: 105\n'),
+    ('            echo "CI_BROWSER_ROLE_START=$role HEAD=$HEAD_SHA"\n            python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"\n',
+     '            echo "CI_BROWSER_ROLE_START=$role HEAD=$HEAD_SHA"\n'
+     '            if [ "$role" = "consolidation" ]; then\n'
+     '              export FINCO_CI_PYTEST_BUDGET_S=3600\n'
+     '            else\n'
+     '              export FINCO_CI_PYTEST_BUDGET_S=1200\n'
+     '            fi\n'
+     '            echo "CI_BROWSER_ROLE_BUDGET role=$role seconds=$FINCO_CI_PYTEST_BUDGET_S"\n'
+     '            python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"\n'),
+)
 FORBIDDEN_PATHS = frozenset((
     'main_web.py', 'app/v2/router.py', 'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py',
     'app/v2/mutation_csrf.py', 'app/workbook/update_service.py', 'app/workbook/bankability_config.py',
@@ -205,8 +223,22 @@ def _historical_manifests_ok(root, ref):
 
 
 def _owned_ok():
-    return (not any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in OWNED_PATHS)
+    return (not any((p.startswith(FORBIDDEN_PREFIXES) and p != WORKFLOW_PATH) or p in FORBIDDEN_PATHS for p in OWNED_PATHS)
             and all(p == MANIFEST or '..' not in p.split('/') for p in OWNED_PATHS))
+
+
+def _workflow_hunk_ok(root, ref):
+    """The approved-main workflow with exactly the approved hunk applied equals the current bytes; the old blob is the approved-main blob; any other
+    byte (permissions, triggers, pinned actions, checkout SHA, role list, verification steps, a second budget change) fails closed."""
+    old = _read(root, WORKFLOW_PATH, APPROVED_MAIN)
+    if _blob(old) != WORKFLOW_OLD_BLOB:
+        return False
+    text = old.decode()
+    for before, after in WORKFLOW_HUNK:
+        if text.count(before) != 1:
+            return False
+        text = text.replace(before, after, 1)
+    return _read(root, WORKFLOW_PATH, ref) == text.encode()
 
 
 # F01/Browser attestations write untracked proof into evidence/ before the full acceptance suite; non-executable evidence is not source.
@@ -227,7 +259,7 @@ def exact_blobs_ok(repo=None, ref=None):
             return False
         if any(_blob(_read(root, p, ref)) != b for p, b in pins.items()):
             return False
-        if not _historical_manifests_ok(root, ref):
+        if not _historical_manifests_ok(root, ref) or not _workflow_hunk_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', APPROVED_MAIN, *([ref] if ref else []), '--').decode().splitlines()
         if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
