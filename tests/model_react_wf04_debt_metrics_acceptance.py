@@ -297,6 +297,57 @@ def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_th
         context.close()
 
 
+def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_and_never_runs(world, live_server, browser, rcm_react_flag):
+    """WS-2 x WF-04: both contractual terms are staged in the shared pending-change store beside another financing edit, listed in the Changes
+    panel, saved by ONE all-or-none Save All request, never run the model and leave the Last Run STALE; a malformed term makes the server refuse the WHOLE request (nothing saved)."""
+    record = world.env.create("wind")
+    run(world.env, record)
+    runs_before = len(history_rows(record))
+    context, page, errors = context_for(browser, live_server)
+    try:
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+        page.wait_for_selector("[data-sheet-editor='debt']", timeout=30000)
+        from app.persistence import db
+        from app.persistence.workspace_repository import get_workspace_state
+
+        def ledger_rows():
+            with db.get_cursor() as cur:
+                cur.execute("SELECT COUNT(*) AS n FROM save_all_requests WHERE project_id=?", (record.project_id,))
+                return cur.fetchone()["n"]
+
+        before = dict(get_workspace_state(USER, record.project_id).draft_snapshot)
+        page.locator("#wf-debt-debt-contract-min-dscr-eod").fill("1.15")
+        page.locator("#wf-debt-debt-contract-contractual-dscr").fill("abc")             # malformed: the server refuses the WHOLE request
+        page.locator("#wf-debt-debt-senior-gearing-pct").fill("70")
+        page.locator("[data-changes-toggle='true']").click()
+        page.wait_for_selector("[data-changes-drawer='open']")
+        assert page.locator("[data-changes-count]").first.get_attribute("data-changes-count") == "3"
+        page.locator("[data-save-all='true']").click()
+        page.wait_for_selector("[data-save-all-message='error']", timeout=30000)
+        assert "Nothing was saved" in page.locator("[data-save-all-message='error']").inner_text()
+        assert dict(get_workspace_state(USER, record.project_id).draft_snapshot) == before and ledger_rows() == 0      # all-or-nothing
+        page.locator("[data-changes-toggle='true']").click()
+        page.locator("#wf-debt-debt-contract-contractual-dscr").fill("1.25")
+        panel = page.get_by_role("region", name="Pending changes")
+        assert page.locator("[data-changes-count]").first.get_attribute("data-changes-count") == "3"
+        text = panel.inner_text()
+        assert "Minimum DSCR" in text and "Contractual DSCR" in text
+        assert page.locator("[data-save-all='true']").is_enabled()
+        page.locator("[data-save-all='true']").click()
+        page.wait_for_selector("[data-save-all-message='ok']", timeout=30000)
+        draft = dict(get_workspace_state(USER, record.project_id).draft_snapshot)
+        assert draft["dscr_min_eod_x"] == "1.15" and draft["dscr_contractual_x"] == "1.25" and float(draft["gearing_pct"]) == 70.0     # exact, as entered
+        assert ledger_rows() == 1                                                                # ONE successful request, ONE ledger row
+        assert len(history_rows(record)) == runs_before                                          # Save All never runs the model
+        page.evaluate("() => { window.location.hash = '#financing'; }")
+        page.locator("[data-financing-tab-button='debt-metrics']").click()
+        page.wait_for_selector("[data-debt-metrics='true']")
+        assert page.locator("[data-dm-stale='true']").count() == 1                                # the committed Run is now outdated, not rewritten
+        assert errors == []
+    finally:
+        context.close()
+
+
 def test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload(world, live_server, browser, rcm_react_flag):
     context, page, errors = context_for(browser, live_server)
     try:
@@ -427,6 +478,7 @@ __all__ = [
     'test_csv_export_downloads_raw_persisted_values',
     'test_picker_shows_each_runs_own_terms_stale_banner_and_historical_note',
     'test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_the_saved_run',
+    'test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_and_never_runs',
     'test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload',
     'test_every_viewport_and_theme_stays_legible_without_page_overflow',
     'test_period_status_matrix_is_a_compact_keyboard_grid_that_jumps_to_the_schedule_and_never_writes',

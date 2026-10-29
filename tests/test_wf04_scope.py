@@ -340,7 +340,7 @@ def test_browser_acceptance_is_an_additive_import_in_the_existing_role_with_no_s
     tests = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')]
     exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                     and isinstance(n.targets[0], ast.Name) and n.targets[0].id == '__all__')
-    assert len(tests) == 13 and exported == ['world'] + tests
+    assert len(tests) == 14 and exported == ['world'] + tests
     assert not any(token in helper for token in ('importorskip', 'pytest.skip', 'mark.skip', 'skipif', 'xfail', 'autouse'))
     assert not W.ROLE_ACCEPTANCE.rsplit('/', 1)[-1].startswith('test_')       # never collected on its own
     assert 'FINCO_MODEL_REACT_V1' not in helper                               # the flag is the shared per-test fixture, not a module side effect
