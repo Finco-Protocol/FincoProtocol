@@ -476,7 +476,7 @@ def _wf04_findings(run: Mapping[str, Any], dm: Mapping[str, Any], links: Mapping
     achieved = _num(_mapping(ev["achieved_min_dscr"]).get("min"))
     specs = (
         # finding id, evaluation key, title, term label, breach status, compliant status, breach code, not-configured code
-        ("CD-EOD", "eod", "Event of Default threshold (Minimum DSCR)", "Minimum DSCR (EoD threshold)", _terms.EOD_TRIGGERED,
+        ("CD-EOD", "eod", "Minimum DSCR (model-evaluated Event-of-Default condition)", "Minimum DSCR", _terms.EOD_TRIGGERED,
          _terms.EOD_NOT_TRIGGERED, "DSCR_BELOW_EOD_THRESHOLD", "EOD_THRESHOLD_NOT_CONFIGURED"),
         ("CD-COV-DSCR", "covenant", "Contractual DSCR covenant", "Contractual DSCR (covenant)", _terms.COV_BREACHED,
          _terms.COV_COMPLIANT, "DSCR_BELOW_CONTRACTUAL_DSCR", "CONTRACTUAL_DSCR_NOT_CONFIGURED"),

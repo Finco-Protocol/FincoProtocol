@@ -17,7 +17,7 @@ export interface DmPeriod {
   period_index: number; date: string | null; year: number | null; period_in_year: number | null; label: string; has_debt_service: boolean;
   dscr: number | null; bank_dscr: number | null; sizing_target_dscr: number | null;
   base_cfads_keur: number | null; bank_cfads_keur: number | null; debt_service_keur: number | null; principal_keur: number | null; interest_keur: number | null;
-  senior_opening_keur: number | null; senior_closing_keur: number | null; shortfall_keur: number | null;
+  senior_opening_keur: number | null; senior_closing_keur: number | null; shortfall_keur: number | null; cash_after_senior_keur: number | null;
   below_one: boolean | null; eod_breach: boolean | null; covenant_breach: boolean | null; lockup_active: boolean | null;
   dsra_balance_keur: number | null; dsra_contribution_keur: number | null; dsra_funding_keur: number | null; dsra_release_keur: number | null;
   distribution_keur: number | null; cash_sweep_keur: number | null; senior_balance_keur: number | null;
@@ -38,6 +38,13 @@ export interface DmReserves {
   dsrf: { available: boolean; reason: string }; lockup: DmLockup;
   unavailable_conclusions: Array<{ id: string; label: string; status: string; missing: string[] }>;
 }
+export type MxStatus = "OK" | "ALERT" | "WARN" | "NA";
+export interface DmMatrixRow { id: string; label: string; source: string; map: string; cells: Array<[MxStatus, string]> }
+export interface DmPeriodMatrix {
+  available: boolean; reason: string; periods?: number; rows: DmMatrixRow[];
+  summary: Array<{ id: string; label: string; alerts: number | null; evaluated: number; applicable: number }>;
+  gaps: Array<{ id: string; label: string; status: string; reason: string }>; legend?: Record<string, string>;
+}
 export interface DebtMetricsView {
   schema: string; available: boolean; reason: string; run_state: string; basis_note: string;
   contract_terms: {
@@ -49,6 +56,6 @@ export interface DebtMetricsView {
   axis: { frequency: string; periods_per_year: number | null; period_count: number; note: string };
   periods: DmPeriod[];
   series: { llcr: { available: boolean; reason: string }; thresholds: { coverage_x: number; eod_x: number | null; contractual_x: number | null; sizing_target_note: string } };
-  reserves: DmReserves | null; schedule: Array<{ id: string; label: string; rows: DmScheduleRow[] }>;
+  reserves: DmReserves | null; period_matrix: DmPeriodMatrix | null; schedule: Array<{ id: string; label: string; rows: DmScheduleRow[] }>;
   integrity: { status: string; failures: Array<{ id: string; title?: string; reason?: string }> };
 }

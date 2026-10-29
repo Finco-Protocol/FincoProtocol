@@ -57,7 +57,8 @@ def test_fields_are_registered_as_two_distinct_editable_ratio_inputs():
     assert (eod.snapshot_key, cov.snapshot_key) == ("dscr_min_eod_x", "dscr_contractual_x")
     for spec in (eod, cov):
         assert spec.unit == "x" and spec.editable and spec.persisted and not spec.required and (spec.min_value, spec.max_value) == (0.01, 10.0)
-    assert eod.label != cov.label and "EoD" in eod.label and "Contractual" in cov.label
+    assert eod.label == "Minimum DSCR" and cov.label != eod.label and "Contractual" in cov.label
+    assert "Event-of-Default" in eod.description and "not a legal declaration" in eod.description    # the model-condition meaning stays in the field disclosure
     # the existing independent controls are untouched and are NOT these fields
     assert WORKBOOK.field("debt.senior.target_dscr").label == "Target DSCR"
     assert {f.field_id for f in WORKBOOK.all_fields() if "dscr" in f.field_id} == {"debt.senior.target_dscr", EOD, COV}

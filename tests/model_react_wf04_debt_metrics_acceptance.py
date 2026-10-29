@@ -282,7 +282,7 @@ def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_th
         field = page.locator("#wf-debt-debt-contract-min-dscr-eod")
         assert float(field.input_value()) == 1.0
         field.fill("1.30")
-        page.get_by_role("button", name="Save Minimum DSCR (EoD threshold)").click()
+        page.get_by_role("button", name="Save Minimum DSCR").click()
         page.wait_for_selector("[data-wf-status='ok']", timeout=20000)
         assert len(history_rows(record)) == before                                               # Save is not Run
         page.locator("[data-financing-tab-button='debt-metrics']").click()
@@ -319,7 +319,7 @@ def test_overview_results_and_credit_link_to_the_same_view_without_a_document_re
 # ── responsive and themes ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 def test_every_viewport_and_theme_stays_legible_without_page_overflow(world, live_server, browser, rcm_react_flag):
     from tests.model_react_overnight_b_acceptance import CONTRAST_JS, THEMES
-    selector = ".dm-root :is(h2,h3,h4,label,p,li,button,a,th,td,dt,dd,summary,select,.dm-status,.dm-chip)"
+    selector = ".dm-root :is(h2,h3,h4,label,p,li,button,a,th,td,dt,dd,summary,select,.dm-status,.dm-chip,.dm-dot)"
     for width, height in VIEWPORTS:
         context, page, errors = context_for(browser, live_server, (width, height))
         try:
@@ -331,11 +331,89 @@ def test_every_viewport_and_theme_stays_legible_without_page_overflow(world, liv
                 weak = [s for s in page.evaluate(CONTRAST_JS, selector) if s["ratio"] < 4.5]
                 assert not weak, f"{width}px / {theme}: contrast below 4.5:1 for {weak[:4]}"
                 assert page.locator("[data-dm-covenants='true']").is_visible() and page.locator("[data-dm-schedule='true']").count() == 1
+                matrix = page.locator("[data-dm-matrix='true']")
+                assert matrix.is_visible() and matrix.locator("td[data-s]").count() == 5 * 54
+                assert page.locator("[data-dm-mx-scroll='true']").evaluate("el => el.scrollWidth > el.clientWidth + 50"), "the matrix scrolls inside its own box"
+                if SHOTS:
+                    matrix.screenshot(path=os.path.join(SHOTS, f"wf04-matrix-{width}-{theme.replace(' ', '_')}.png"))
                 if theme == THEMES[0]:
                     shot(page, f"weak-{width}")
             assert errors == []
         finally:
             context.close()
+
+
+def test_period_status_matrix_is_a_compact_keyboard_grid_that_jumps_to_the_schedule_and_never_writes(world, live_server, browser, rcm_react_flag):
+    context, page, errors = context_for(browser, live_server)
+    posts: list[str] = []
+    page.on("request", lambda r: posts.append(r.url) if r.method == "POST" else None)
+    try:
+        open_metrics(page, live_server, world.weak)
+        matrix = page.locator("[data-dm-matrix='true']")
+        assert matrix.is_visible()
+        assert [r.get_attribute("data-dm-mx-row") for r in matrix.locator("tbody tr").all()] == ["LOCKUP", "MIN_DSCR", "CONTRACTUAL_DSCR", "COVERAGE_1X", "CASH_SHORTFALL"]
+        assert matrix.locator("th[scope='row']").count() == 5 and matrix.locator("td[data-s]").count() == 5 * 54
+        assert matrix.locator("thead th[scope='colgroup']").count() >= 20 and matrix.locator("thead tr").count() == 2        # year hierarchy over 54 semiannual periods
+        text = matrix.inner_text()
+        assert "OPEN" not in text and "LOCKED" not in text                                                                     # dots, not comparator-style tiles
+        summary = page.locator("[data-dm-mx-summary='true']").inner_text()
+        assert "54" in summary and "Below Minimum DSCR" in summary and "Covenant breaches" in summary and "Coverage below 1.00x" in summary
+        # every status has its own glyph; an unrecorded figure would be a dash, never a tick
+        for status, glyph in (("OK", "✓"), ("ALERT", "×"), ("WARN", "!"), ("NA", "—")):
+            cells = matrix.locator(f"td[data-s='{status}'] .dm-dot")
+            if cells.count():
+                assert cells.first.inner_text() == glyph
+        assert matrix.locator("td[data-s='OK'] .dm-dot").count() > 0 and matrix.locator("td[data-s='ALERT'] .dm-dot").count() > 0
+        # roving focus: exactly one tab stop; arrows move; the selected-period panel and aria labels carry the text alternative
+        assert matrix.locator("td[tabindex='0']").count() == 1
+        first = matrix.locator("td[data-r='1'][data-c='0']")
+        first.focus()
+        label = first.get_attribute("aria-label")
+        assert label.startswith(matrix.locator("thead tr").nth(1).locator("th").first.get_attribute("title").split(" · ")[0]) and "Minimum DSCR" in label
+        page.keyboard.press("ArrowRight")
+        assert page.evaluate("() => document.activeElement.getAttribute('data-c')") == "1"
+        page.keyboard.press("ArrowDown")
+        assert page.evaluate("() => document.activeElement.getAttribute('data-r')") == "2"
+        page.keyboard.press("End")
+        assert page.evaluate("() => document.activeElement.getAttribute('data-c')") == "53"
+        assert matrix.locator("[data-dm-mx-detail='true']").inner_text().count("—") >= 5
+        # Enter on a period shows the same column in the debt schedule; nothing is written or re-run
+        page.keyboard.press("Home")
+        page.keyboard.press("ArrowRight")
+        page.keyboard.press("ArrowRight")
+        page.keyboard.press("Enter")
+        col = matrix.locator("td[data-r='2'][data-c='2']").get_attribute("data-dm-period")
+        assert page.evaluate("() => document.activeElement?.getAttribute('data-dm-col')") == col
+        assert not [u for u in posts if "/v2/workbook/" in u]
+        # the DSRA requirement is disclosed outside the matrix, never as a synthetic green row
+        gap = matrix.locator("[data-dm-mx-gap='DSRA_REQUIRED']").inner_text()
+        assert "UNAVAILABLE" in gap and "required DSRA" in gap
+        assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
+        assert len(history_rows(world.weak)) == 1 and errors == []
+        shot(page, "matrix-1440")
+    finally:
+        context.close()
+
+
+def test_the_visible_labels_say_minimum_dscr_and_keep_the_model_condition_disclosure(world, live_server, browser, rcm_react_flag):
+    context, page, errors = context_for(browser, live_server)
+    try:
+        open_metrics(page, live_server, world.weak)
+        root = page.locator("[data-debt-metrics='true']")
+        visible = root.inner_text()
+        assert "EoD threshold" not in visible and "EoD floor" not in visible                                  # not a primary label anywhere on the screen
+        terms = page.locator("[data-dm-terms='true']").inner_text()
+        assert "Minimum DSCR" in terms and "Contractual DSCR" in terms and "Achieved Minimum DSCR" in terms
+        assert page.locator("[data-dm-terms='true'] dt").count() == 3                                          # exactly two inputs + one read-only result
+        assert "Minimum DSCR: Triggered" in page.locator("[data-dm-credit='eod']").inner_text()
+        assert "not a legally adjudicated Event of Default" in page.locator("[data-dm-model-condition='true']").inner_text()
+        assert "legally adjudicated" in page.locator("[data-dm-credit='eod']").get_attribute("title")
+        assert "EVENT_OF_DEFAULT: TRIGGERED" in page.locator("[data-dm-row='EOD_FLOOR']").inner_text()        # the canonical verdict is unchanged
+        assert "Minimum DSCR" in page.locator("[data-dm-row='EOD_FLOOR']").inner_text()
+        assert "(EoD threshold)" not in page.locator("[data-dm-row='EOD_FLOOR']").inner_text()
+        assert errors == []
+    finally:
+        context.close()
 
 
 __all__ = [
@@ -351,4 +429,6 @@ __all__ = [
     'test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_the_saved_run',
     'test_overview_results_and_credit_link_to_the_same_view_without_a_document_reload',
     'test_every_viewport_and_theme_stays_legible_without_page_overflow',
+    'test_period_status_matrix_is_a_compact_keyboard_grid_that_jumps_to_the_schedule_and_never_writes',
+    'test_the_visible_labels_say_minimum_dscr_and_keep_the_model_condition_disclosure',
 ]

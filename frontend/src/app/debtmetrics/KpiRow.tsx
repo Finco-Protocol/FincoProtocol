@@ -8,7 +8,7 @@ export function KpiRow({ view }: { view: DebtMetricsView }) {
   const requirement = (key: string): string[] => {
     if (key !== "achieved_min_dscr" || !terms.recorded) return [];
     const out: string[] = [];
-    if (terms.eod_minimum_dscr.status === "CONFIGURED") out.push(`EoD threshold ≥ ${terms.eod_minimum_dscr.raw}x`);
+    if (terms.eod_minimum_dscr.status === "CONFIGURED") out.push(`Minimum DSCR ≥ ${terms.eod_minimum_dscr.raw}x`);
     if (terms.contractual_dscr.status === "CONFIGURED") out.push(`Contractual ≥ ${terms.contractual_dscr.raw}x`);
     return out;
   };

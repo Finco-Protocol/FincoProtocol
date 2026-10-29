@@ -1,38 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { reportAmount } from "../reportFormatting";
 import { brokenPath, labelIndexes, linearScale, niceTicks } from "./format";
 import type { DebtMetricsView } from "./types";
 
 const W = 420, H = 200, M = { left: 56, right: 12, top: 12, bottom: 34 };
-const GRID_LIMIT = 24;
 
-/** Distribution lock-up by the Run's actual periods and the cash DSRA balance it persisted.  A requirement or a facility the Run did not persist is
+/** The cash DSRA balance the Run persisted (per-period lock-up status lives in the Period status matrix).  A requirement or a facility the Run did not persist is
  *  stated as missing — no zero balance is drawn and no green OPEN label is shown without the underlying evidence. */
 export function ReservesPanel({ view, precision }: { view: DebtMetricsView; precision: number }) {
   const reserves = view.reserves;
-  const [all, setAll] = useState(false);
   if (!reserves) return null;
-  const lock = reserves.lockup;
-  const cells = lock.available ? (all ? lock.periods : lock.periods.slice(0, GRID_LIMIT)) : [];
   return (
     <section className="dm-card" data-dm-reserves="true" aria-labelledby="dm-res-h">
-      <h3 id="dm-res-h" className="rcm-h3">Distribution &amp; reserves</h3>
+      <h3 id="dm-res-h" className="rcm-h3">Reserves</h3>
       <div className="dm-res-cols">
-        <div data-dm-lockup="true">
-          <h4 className="dm-h4">Distribution lock-up</h4>
-          {lock.available ? <>
-            <p className="dm-sub" data-dm-lockup-summary="true">{lock.periods.length - (lock.active_count ?? 0)} open · {lock.active_count ?? 0} locked, of {lock.periods.length} periods with a persisted flag</p>
-            <ul className="dm-lock-grid" aria-label="Lock-up by period">
-              {cells.map((c) => (
-                <li key={c.period_index} className={c.active ? "dm-lock dm-lock-on" : "dm-lock"} data-dm-lock={c.active ? "active" : "inactive"}>
-                  <span className="dm-lock-l">{c.label}</span><span className="dm-lock-s">{c.active ? "LOCKED" : "OPEN"}</span>
-                </li>
-              ))}
-            </ul>
-            {lock.periods.length > GRID_LIMIT && <button type="button" className="dm-link" onClick={() => setAll((v) => !v)}>{all ? "Show fewer periods" : `Show all ${lock.periods.length} periods`}</button>}
-            <p className="dm-note">{lock.note}</p>
-          </> : <p className="dm-na" role="status">{lock.reason}</p>}
-        </div>
         <div data-dm-dsra="true">
           <h4 className="dm-h4">Cash DSRA balance</h4>
           {!reserves.dsra.available ? <p className="dm-na" role="status">{reserves.dsra.reason}</p>

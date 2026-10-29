@@ -40,7 +40,7 @@ export function DscrProfileChart({ view }: { view: DebtMetricsView }) {
     setActive(next);
   };
   const cur = active === null ? null : periods[active];
-  const flags = (p: DmPeriod) => [p.below_one ? "below 1.00x" : "", p.eod_breach ? "below the EoD threshold" : "", p.covenant_breach ? "below the contractual DSCR" : "", p.lockup_active ? "lock-up active" : ""].filter(Boolean).join(", ");
+  const flags = (p: DmPeriod) => [p.below_one ? "below 1.00x" : "", p.eod_breach ? "below the Minimum DSCR" : "", p.covenant_breach ? "below the contractual DSCR" : "", p.lockup_active ? "lock-up active" : ""].filter(Boolean).join(", ");
   const refs = [1, th.eod_x, th.contractual_x].filter((v): v is number => typeof v === "number");
   return (
     <section className="dm-card" data-dm-chart="available" aria-labelledby="dm-chart-h">
@@ -58,7 +58,7 @@ export function DscrProfileChart({ view }: { view: DebtMetricsView }) {
           ))}
           <line x1={M.left} x2={W - M.right} y1={y(th.coverage_x)} y2={y(th.coverage_x)} className="dm-rule dm-rule-cov" />
           <text x={W - M.right + 4} y={y(th.coverage_x) + 4} className="dm-rule-label">1.00x</text>
-          {th.eod_x !== null && <><line x1={M.left} x2={W - M.right} y1={y(th.eod_x)} y2={y(th.eod_x)} className="dm-rule dm-rule-eod" /><text x={W - M.right + 4} y={y(th.eod_x) + 4} className="dm-rule-label dm-lab-eod">EoD {formatRatio(th.eod_x, refs)}</text></>}
+          {th.eod_x !== null && <><line x1={M.left} x2={W - M.right} y1={y(th.eod_x)} y2={y(th.eod_x)} className="dm-rule dm-rule-eod" /><text x={W - M.right + 4} y={y(th.eod_x) + 4} className="dm-rule-label dm-lab-eod">Min {formatRatio(th.eod_x, refs)}</text></>}
           {th.contractual_x !== null && <><line x1={M.left} x2={W - M.right} y1={y(th.contractual_x)} y2={y(th.contractual_x)} className="dm-rule dm-rule-cov2" /><text x={W - M.right + 4} y={y(th.contractual_x) + 4} className="dm-rule-label dm-lab-cov">Covenant {formatRatio(th.contractual_x, refs)}</text></>}
           <path d={line((p) => p.sizing_target_dscr !== null && p.has_debt_service ? p.sizing_target_dscr : null)} className="dm-line dm-line-target" fill="none" />
           <path d={line((p) => p.bank_dscr)} className="dm-line dm-line-bank" fill="none" />
@@ -79,7 +79,7 @@ export function DscrProfileChart({ view }: { view: DebtMetricsView }) {
       <ul className="dm-legend" aria-label="Chart legend">
         <li><span className="dm-sw dm-sw-dscr" />DSCR (base case)</li><li><span className="dm-sw dm-sw-bank" />DSCR (bank case)</li>
         <li><span className="dm-sw dm-sw-target" />Sizing target (assumption)</li><li><span className="dm-sw dm-sw-cov" />1.00x coverage</li>
-        {th.eod_x !== null && <li><span className="dm-sw dm-sw-eod" />Minimum DSCR (EoD threshold)</li>}
+        {th.eod_x !== null && <li><span className="dm-sw dm-sw-eod" />Minimum DSCR</li>}
         {th.contractual_x !== null && <li><span className="dm-sw dm-sw-cov2" />Contractual DSCR</li>}
       </ul>
       <p className="dm-note" data-dm-llcr-note="true">LLCR curve: {view.series.llcr.reason}</p>

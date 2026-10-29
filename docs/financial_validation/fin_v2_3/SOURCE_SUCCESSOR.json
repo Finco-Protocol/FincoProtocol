@@ -18,7 +18,7 @@
     "app/v2/react_goal_seek.py": "b5bf2d2a920f5b278f2a6a98dd64944e80869ceb",
     "app/v2/router.py": "8d6a26331e6160b69ad2cad687ae11abadf64a15",
     "app/workbook/financial_core_config.py": "699d7944fb6f0fd14951fe66039abad70dc87e8d",
-    "app/workbook/registry.py": "e5f2fd222881a3be50bbe572d13dcc72e53fab47",
+    "app/workbook/registry.py": "7880dca5b53d87d9e01b50d2fc0d43b20e504bd6",
     "app/workbook/update_service.py": "9dd883018fd26f62b49e9d040eeeca05ba8abe4c",
     "financial_engine/adapters/project_inputs.py": "48346ad0ca9c0d3621fd872e7916f04641457e47",
     "financial_engine/shl/timing_contract.py": "bfce31d7f6cd22ce427e1911eab8bcbc5e1a894b",

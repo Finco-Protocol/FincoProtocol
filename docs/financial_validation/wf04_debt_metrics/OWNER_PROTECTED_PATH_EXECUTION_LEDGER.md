@@ -13,41 +13,47 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | Path | Kind | Status | Old blob (`main`) | New blob |
 |---|---|---|---|---|
 | `app/persistence/workspace_repository.py` | P | M | `3dbcd861d363d1c3f3ef1ff148f0ecae173612f7` | `7841d30e091bafd3a179862e8d9a8e94d3cc961f` |
-| `app/v2/credit_decision_projection.py` | M | M | `a487670ba14b49092902c4ffbc8c42872490b85f` | `f50701f83008d32a48925847f734982851f08c7d` |
-| `app/v2/debt_metrics_projection.py` | N | A | — | `df626acd4306795b786138feed9dfc3d7436d60a` |
+| `app/v2/credit_decision_projection.py` | M | M | `a487670ba14b49092902c4ffbc8c42872490b85f` | `d194e824006c2df5e016c5abb0176ee2219533e8` |
+| `app/v2/debt_metrics_projection.py` | N | A | — | `72ff9125f14686035cf35f36df7a75efd6242270` |
 | `app/workbook/dscr_contract_terms.py` | N | A | — | `05024753c0a52a68c085a63d736289f4fa8f2f75` |
-| `app/workbook/registry.py` | P | M | `31570edc0e6ca1c0191e13e987a0598ade5c8f8b` | `e5f2fd222881a3be50bbe572d13dcc72e53fab47` |
-| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `d2730525db04ac77e23f2a4a93dfb59b363ae79d` |
+| `app/workbook/registry.py` | P | M | `31570edc0e6ca1c0191e13e987a0598ade5c8f8b` | `7880dca5b53d87d9e01b50d2fc0d43b20e504bd6` |
+| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `6cc5fe796fb88cece5171f9c1facc30fc3171745` |
 | `docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json` | P | M | `45c818843183a033d76deb490f9a05f4229748dd` | `62d5711043a2ce35f2fb14cb56750c7919a1b86e` |
 | `docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json` | P | M | `16bc1fc11bdfcc966476b20ca5998aeccb652b7f` | `33ac6e10115528b0914b3e7a7fe66a6bbdb2d8b8` |
+| `docs/financial_validation/wf04_debt_metrics/CORRECTION_A_CI_AND_PERIOD_MATRIX.md` | N | A | — | `a19814df36fcd7d977a4b432ecd0e98bce037465` |
 | `docs/financial_validation/wf04_debt_metrics/INDEPENDENT_ORACLE_AND_PARITY.md` | N | A | — | `1d65e0250386f2111f437082cb4f83e66bdcea29` |
 | `docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md` | N | A | — | `7c2921bf6d010da2b85015dcf778aa3f709602d8` |
 | `docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md` | N | A | — | `55fc9e4d7120313ba8906fed287f2a3efde2bd90` |
 | `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `bdfdcf487b7e63a36abf3c61389e2da4cd0ee1c8` |
 | `docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md` | N | A | — | `74c25a02616d3fe1b03fa78568242a1f8d0eadcd` |
-| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `8ba30abacc8331b018c0d06f85c89c220d55f11a` |
-| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `773e8805278f2d837235fa7e2dd3913ad1f919c0` |
+| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `bb8ed5a2488c2bc810771833d5add8023495eea0` |
+| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `b15e668757745cf14040278c079f65e9079fb0b9` |
 | `frontend/src/app/FinancialOverview.tsx` | P | M | `9e073447afb224ba60fc8b97d72f776b2a67ea14` | `6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432` |
 | `frontend/src/app/FinancialResults.tsx` | P | M | `c53b677f29671380db916ceb4f4cfb2e2e53beeb` | `eb5ddb89b663f8145b702df26d591b884fbb4339` |
 | `frontend/src/app/credit/CreditDecisionPanel.tsx` | M | M | `a3a39ee566be572fae9a96df7690c7bd7009b0e0` | `2a48162683d4641454876b41c2bddf0e51b0f59c` |
 | `frontend/src/app/debtmetrics/CovenantTable.tsx` | N | A | — | `730af51b994e1d95fa54ea277d44e24039195c6a` |
-| `frontend/src/app/debtmetrics/DebtMetricsWorkspace.tsx` | N | A | — | `b7e33854b38f1de8be632c3dde7a7d2d5b2a89cf` |
-| `frontend/src/app/debtmetrics/DscrProfileChart.tsx` | N | A | — | `8492d59dc23e9697b87fee409b1b8a0011246ba4` |
-| `frontend/src/app/debtmetrics/KpiRow.tsx` | N | A | — | `c3c9d138f92e0e4182cc9890d871f11430af3d62` |
+| `frontend/src/app/debtmetrics/DebtMetricsWorkspace.tsx` | N | A | — | `2f726058e8079194c6dae85893da31dd44f9aef7` |
+| `frontend/src/app/debtmetrics/DscrProfileChart.tsx` | N | A | — | `bab34a6173111d74bcececf0cd2de68eaa64c51e` |
+| `frontend/src/app/debtmetrics/KpiRow.tsx` | N | A | — | `7a07365413f11ca18eaa92950d21806aecc66f4f` |
 | `frontend/src/app/debtmetrics/PeriodSchedule.tsx` | N | A | — | `b1bf9e571646dbc295a05f3f9b2176f549ff4dac` |
-| `frontend/src/app/debtmetrics/ReservesPanel.tsx` | N | A | — | `36cb517319934b2036773dedacdb9b70fdf700af` |
+| `frontend/src/app/debtmetrics/PeriodStatusMatrix.tsx` | N | A | — | `f38d4a0e926555d4b3af3dc502ec2645b51c8b78` |
+| `frontend/src/app/debtmetrics/ReservesPanel.tsx` | N | A | — | `f2cd6a9890c7af68c28b3aba24f3ec017b85c662` |
 | `frontend/src/app/debtmetrics/__tests__/debtMetrics.test.mjs` | N | A | — | `8fc9960b4c32d0de5e61469aa19a4953b9539e5d` |
+| `frontend/src/app/debtmetrics/__tests__/periodMatrix.test.mjs` | N | A | — | `a4063d13c3795c918f49bda89d5a59dbb8dc65f9` |
 | `frontend/src/app/debtmetrics/api.ts` | N | A | — | `0192ba2a78214af8d6d2dc5ad777cbcb5a75dd9e` |
 | `frontend/src/app/debtmetrics/debtMetricsLink.ts` | N | A | — | `a704d29f9f1120c4c0e80208248eb8e56858db56` |
 | `frontend/src/app/debtmetrics/format.ts` | N | A | — | `10ac26b23dfb88082decc62191b42b2811d74a0e` |
-| `frontend/src/app/debtmetrics/types.ts` | N | A | — | `c5b5b2ae44e377932261482d47cf5656dd95e3dc` |
+| `frontend/src/app/debtmetrics/types.ts` | N | A | — | `829efdf3080323cb75129c22c525be759898d2af` |
 | `frontend/src/app/financing/FinancingStudio.tsx` | M | M | `fdc8ff8b4b8bc270765c5f99ac89772ce6b00bf0` | `72917e28ebd8278ac02cf13d88390d9e05766728` |
 | `frontend/src/app/workflow/WorkflowBar.tsx` | P | M | `f478c911513c4dd1bc8e0b5fc8250bdca863aa0d` | `5f7d657e7fe50886426c2255cc1c44ecabf1a7b4` |
-| `frontend/src/styles/rcm-debtmetrics.css` | N | A | — | `9bdc81c6f1b51b27cc65368e7f437908f7e22c6c` |
-| `static/react/finco-react.css` | P | M | `3a1eab32a691696787aa5b54893fe24812186608` | `60fe94880c56578645f35954313b361623749ab4` |
-| `static/react/finco-react.js` | P | M | `74531cc4c53fa4fdedde0a4ec5967b75db6e3697` | `ac0992cc2a07f1e9530f9671d98377cfcfb9e3f4` |
+| `frontend/src/styles/rcm-debtmetrics.css` | N | A | — | `7e4cdd3e5e0f36e50b47fc06a3f08a4c24a9c321` |
+| `per1_fail.txt` | N | A | — | `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` |
+| `per2_fail.txt` | N | A | — | `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` |
+| `static/react/finco-react.css` | P | M | `3a1eab32a691696787aa5b54893fe24812186608` | `9a1346c08aa6cbed4bdbb077c090e84f6e4ccf69` |
+| `static/react/finco-react.js` | P | M | `74531cc4c53fa4fdedde0a4ec5967b75db6e3697` | `e08f91399e460a63d09d14332467d25b1e023d00` |
 | `tests/fin_v2_cohorts.py` | P | M | `f3c320bcd022539eb5ee8c53d09ac7050cfb553b` | `244c3949a8c6adc193eafc0fa118094e6719058a` |
-| `tests/model_react_wf04_debt_metrics_acceptance.py` | N | A | — | `d45046e859a4b43c61bd8737877cc3517a610da9` |
+| `tests/model_react_rcm_financing_acceptance.py` | P | M | `e44930875947bf0043ce4e2e49c8fceeb87d851e` | `df42c9e19f43a597a8267c5f6c973dea6f6ff884` |
+| `tests/model_react_wf04_debt_metrics_acceptance.py` | N | A | — | `a6fb48304c4330d345437dc50be38f67f112a4e5` |
 | `tests/test_fin_v2_3_scope.py` | P | M | `b9671b2c1d9e55e7169261f84ccd44fb5db2c61e` | `701f2514efe7edf0f9c390cdae23f610f19dda35` |
 | `tests/test_fin_v2_r1_scope.py` | P | M | `7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7` | `6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c` |
 | `tests/test_model_credit_decision_v3_real_runs.py` | P | M | `61ec7bead5f71b29e38677ef9a6b1f8c562387a7` | `e2009d63694a64d9c1ea161bc4ffc34606114feb` |
@@ -59,10 +65,11 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_wf04_credit_debt_metrics.py` | N | A | — | `5223cc75c81bb680aa717032bd986a997c668bd8` |
 | `tests/test_wf04_dscr_contract_terms.py` | N | A | — | `c0572ce139f19b9b223a9f4502a8ed6f8aa8032f` |
 | `tests/test_wf04_independent_oracle.py` | N | A | — | `2131ea106c1758b6020b42ca49bbc0f567c76994` |
-| `tests/test_wf04_run_bound_terms.py` | N | A | — | `181dd0b5ce20d93378c2839985289772a41f0ab4` |
-| `tests/test_wf04_scope.py` | N | A | — | `8d8a88abdfdbd90a57fbe9f2bd7414fd1a1b298b` |
+| `tests/test_wf04_period_matrix.py` | N | A | — | `1f9e83c385f1055c1c1e1b3bb481b16fa52202ac` |
+| `tests/test_wf04_run_bound_terms.py` | N | A | — | `aeab52711ae1cfa0a121c07639c374a78111d861` |
+| `tests/test_wf04_scope.py` | N | A | — | `f2c659fa244fc5c04f7a1598329bd0aed0e640df` |
 | `tests/test_wsv2_core_scope.py` | P | M | `6fafea72bfca4c6be200709d55bd8466049a8bbc` | `e7a88c88cac5abb8d7bb8691f307072ea1ded615` |
-| `tests/wf04_scope.py` | N | A | — | `d98d84d183b878e4dac5a10b1e7e07ae6619d13c` |
+| `tests/wf04_scope.py` | N | A | — | `60d28a6896b25eee8c539421cb3cfc8155fd1e88` |
 | `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `c3427ee3dfc402f8472ad47e717ade56cd6313d5` |
 | `tools/wf04_independent_dscr_oracle.py` | N | A | — | `f286d019a6b6cbb964c48ff7ed68281e7715b65d` |
 
@@ -164,6 +171,12 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 * **Approved scope:** §0A (protected acceptance nodes)
 * **Tests / negative controls / pins:** see section 3
 
+### `tests/model_react_rcm_financing_acceptance.py`
+* **Why protected:** RC-M Financing real-Chromium acceptance body (run by the mandatory consolidation role); pinned by the WS1 cohort
+* **Minimal diff:** `test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated`: the expected tab list gains exactly one entry, `Debt metrics`, after `Overview` (the node id is unchanged)
+* **Approved scope:** §0A / CI-A (the previous exact head was RED in the mandatory role for exactly this reason)
+* **Tests / negative controls / pins:** see section 3
+
 ### `tests/test_model_credit_decision_v3_real_runs.py`
 * **Why protected:** Real-Run credit acceptance; exact-pinned in the D-029 security-successor `BLOBS`; admitted through the WF-04 cohort pin
 * **Minimal diff:** One assertion: the `CD-EOD` row of a Run with no configured floor is `NOT_CONFIGURED` (was a fixed `UNAVAILABLE` placeholder because no EoD mechanic existed)
@@ -210,6 +223,7 @@ Each edit keeps the original assertion's security/financial intent; nothing is s
 | `test_fin_v2_r1_scope::test_native_and_historical_financial_authorities_are_not_rewritten` | same, eight paths | same single exception | same |
 | `test_rcux_governance::test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path` | no changed path under `app/workbook/` etc., one prior pinned exception (`run_intent_service.py`) | adds a second pinned exception: exactly `registry.py` and `dscr_contract_terms.py` at WF-04 blobs | every other `app/workbook/` path still fails the test |
 | `test_rcux_governance::test_layer_is_a_subset…`, `test_rcm_governance::test_layer_is_exactly_six…`, `test_wsv2_core_scope::test_original_presentation…` | current bytes of a presentation path == the WS1 state | `== WS1 state` **or** `presentation_successor(path)` (three paths only, exact WF-04 pin) | any other byte still fails; the historical dictionaries remain immutable and individually admitted |
+| `test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated` (in `model_react_rcm_financing_acceptance.py`) | the `[role=tab]` list `==` the six original tab names | the same list with one inserted entry `Debt metrics` after `Overview`; every other assertion of the node (authority text, closed structures, senior terms, tab navigation, reload) is unchanged | the original intent - the Financing workspace shows exactly its governed sections in a fixed order, no silent extras - is kept: the one new section is the Owner-approved Debt Metrics view |
 | `test_model_credit_decision_v3_real_runs::test_real_run_renders_credit_evidence_with_explicit_classification` (4 params) | `CD-EOD` status `== "UNAVAILABLE"` | `== "NOT_CONFIGURED"` | the intent — a Run with no configured floor never shows PASS/TRIGGERED and assumes no default — is kept and made stricter; the classification assertion on the same row is unchanged |
 | `test_model_react_insights_v1::test_legacy_absent_root_identity_fields_preserve_committed_evidence[True]` | payload with the identity removed `==` payload with identity | `==` after removing only the Run-bound term verdicts, which must read `UNAVAILABLE`/`NOT_RECORDED` | the Run-bound terms live in the identity by design (never read from the Working Copy); every other byte — metrics, identity, evidence — is still compared. The `[False]` parameter (root fields removed, terms kept) is unchanged and still requires full equality |
 | `test_model_mutation_security_successor::test_d029_browser_wrappers_…` and `test_wsv2_core_scope::test_correction_e_d029_role_pin_is_additive_…` | the role module blob `==` the WS1 pinned state | `==` the WS1 state **or** `presentation_successor(role)` (exact WF-04 pin, whole cohort valid) | the wrapper-name list, extra-wrapper and `@pytest.mark.skip` negative controls are untouched and still fail on any extra/skipped wrapper |

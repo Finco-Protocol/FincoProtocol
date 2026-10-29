@@ -117,8 +117,8 @@ def _covenant_table(ev: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], su
     eod_label = {"TRIGGERED": "EVENT_OF_DEFAULT: TRIGGERED", T.EOD_NOT_TRIGGERED: "NOT TRIGGERED UNDER THIS FLOOR",
                  T.NOT_CONFIGURED: "NOT CONFIGURED", T.UNAVAILABLE: "UNAVAILABLE", T.NOT_APPLICABLE: "NOT APPLICABLE"}[eod["status"]]
     table.append(_status_row(
-        row_id="EOD_FLOOR", label="Minimum DSCR — EoD threshold", role="INPUT",
-        description="Model-evaluated Event-of-Default threshold on the entered credit terms. Not a legally declared default.",
+        row_id="EOD_FLOOR", label="Minimum DSCR", role="INPUT",
+        description="Minimum DSCR recorded with this Run. A triggered result is a model-evaluated Event-of-Default condition on the entered terms - not a legally adjudicated Event of Default, nonpayment or default.",
         basis="Strict comparison (actual < threshold) of each period's raw base-case DSCR; equal is not a trigger.",
         required=eod.get("threshold_x"), operator="≥", actual=achieved, status=eod["status"], status_label=eod_label, severity=eod_sev,
         reason=eod.get("reason", ""), periods=eod.get("breaching_periods") or ([worst_period] if worst_period and eod["status"] == T.EOD_NOT_TRIGGERED else []),
@@ -131,7 +131,7 @@ def _covenant_table(ev: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], su
     table.append(_status_row(
         row_id="CONTRACTUAL_DSCR", label="Contractual DSCR — covenant", role="INPUT",
         description="The contractual DSCR requirement. A breach does not by itself mean unpaid debt service or an Event of Default.",
-        basis="Same documented basis and test periods as the EoD threshold; a separately stored value that never inherits the sizing target.",
+        basis="Same documented basis and test periods as the Minimum DSCR; a separately stored value that never inherits the sizing target.",
         required=cov.get("threshold_x"), operator="≥", actual=achieved, status=cov["status"], status_label=cov_label, severity=cov_sev,
         reason=cov.get("reason", ""), periods=cov.get("breaching_periods") or [], actual_reason=_map(ev["achieved_min_dscr"]).get("reason", "")))
 
@@ -221,6 +221,8 @@ def _series(entry: Any, rows: Sequence[Mapping[str, Any]], terms: T.RunTerms) ->
     cash = {r["period_index"]: r for r in _rows(_map(_map(getattr(entry, "financial_statements", None)).get("pf_cash_waterfall")).get("periods"))
             if isinstance(r.get("period_index"), int)}
     ev = {r["period_index"]: r for r in rows}
+    cash_after_senior = {r["period_index"]: _num(r.get("cash_after_senior_before_reserves"))
+                         for r in _rows(_map(getattr(entry, "integrity_evidence", None)).get("cash")) if isinstance(r.get("period_index"), int)}
     evidence_rows = {p["period_index"]: p for p in _rows(_map(_map(getattr(entry, "integrity_evidence", None)).get("senior_debt")).get("periods"))
                      if isinstance(p.get("period_index"), int)}
     indexes = sorted(set(ev) | {i for i, r in debt.items() if r.get("is_operation")})
@@ -241,7 +243,7 @@ def _series(entry: Any, rows: Sequence[Mapping[str, Any]], terms: T.RunTerms) ->
             "base_cfads_keur": r.get("base_cfads_keur"), "bank_cfads_keur": r.get("bank_cfads_keur"),
             "debt_service_keur": r.get("debt_service_keur"), "principal_keur": r.get("principal_keur"), "interest_keur": r.get("interest_keur"),
             "senior_opening_keur": _num(e.get("opening")), "senior_closing_keur": _num(e.get("closing")),
-            "shortfall_keur": r.get("shortfall_keur"),
+            "shortfall_keur": r.get("shortfall_keur"), "cash_after_senior_keur": cash_after_senior.get(i),
             "below_one": None if dscr is None else dscr < 1.0,
             "eod_breach": None if (dscr is None or eod_x is None) else dscr < eod_x,
             "covenant_breach": None if (dscr is None or cov_x is None) else dscr < cov_x,
@@ -261,6 +263,90 @@ def _lockup(series: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return {"available": True, "reason": "", "active_count": sum(1 for p in flagged if p["lockup_active"]),
             "periods": [{"period_index": p["period_index"], "label": p["label"], "date": p["date"], "active": p["lockup_active"]} for p in flagged],
             "note": "Per-period flags persisted by the distribution schedule; the lock-up threshold value is not persisted with a Run."}
+
+
+# ── Period Status Matrix (presentation only: every cell is a status of an already-persisted number, evaluated here, never in the browser) ──
+CASH_TOL_KEUR = 1e-6                    # equals the Run Integrity tolerance (test-pinned)
+OK, ALERT, WARN, NA = "OK", "ALERT", "WARN", "NA"
+_RUN_RESULT, _RUN_INPUT = "RUN RESULT", "INPUT RECORDED WITH THIS RUN"
+_NO_SERVICE = "No scheduled Senior debt service in this period"
+_MODEL_CONDITION = "model-evaluated condition on the entered terms, not a legally adjudicated Event of Default, nonpayment or default"
+
+
+def _dscr_row(series: Sequence[Mapping[str, Any]], terms: T.RunTerms, term: T.Term, flag: str, *, row_id: str, label: str, breach: str, met: str) -> dict[str, Any]:
+    value = term.value if (terms.recorded and term.status == T.CONFIGURED) else None
+    cells: list[list[str]] = []
+    for p in series:
+        if value is None:
+            reason = ("Not recorded: this Run was committed before the terms were recorded" if not terms.recorded
+                      else f"No {label} is configured in this Run" if term.status == T.NOT_CONFIGURED else f"The saved {label} is not a valid multiple")
+            cells.append([NA, f"{p['label']} — {label}: {reason}"])
+        elif not p["has_debt_service"]:
+            cells.append([NA, f"{p['label']} — {label}: {_NO_SERVICE}"])
+        elif p["dscr"] is None or p[flag] is None:
+            cells.append([NA, f"{p['label']} — {label}: DSCR not persisted for this period"])
+        else:
+            refs = (1.0, value)
+            actual, req = T.format_ratio(p["dscr"], refs), T.format_ratio(value, refs)
+            if p[flag]:
+                tail = f"; {_MODEL_CONDITION}" if row_id == "MIN_DSCR" else ""
+                cells.append([ALERT, f"{p['label']} — {breach}: actual {actual}, {label} {req}{tail}"])
+            else:
+                cells.append([OK, f"{p['label']} — {met}: actual {actual}, {label} {req}"])
+    return {"id": row_id, "label": label, "source": _RUN_INPUT, "cells": cells,
+            "map": f"integrity_evidence.senior_debt.periods[period_index].reported_dscr vs last_runtime_identity.dscr_contract_terms ({label}); strict raw comparison"}
+
+
+_SUMMARY_LABELS = {"LOCKUP": "Lock-up", "MIN_DSCR": "Below Minimum DSCR", "CONTRACTUAL_DSCR": "Covenant breaches", "COVERAGE_1X": "Coverage below 1.00x",
+                   "CASH_SHORTFALL": "Cash shortfall"}
+
+
+def _period_matrix(series: Sequence[Mapping[str, Any]], terms: T.RunTerms) -> dict[str, Any]:
+    if not series:
+        return {"available": False, "reason": "This Run persisted no per-period debt evidence.", "rows": [], "summary": [], "gaps": []}
+    lock: list[list[str]] = []
+    cover: list[list[str]] = []
+    cash: list[list[str]] = []
+    for p in series:
+        flag = p["lockup_active"]
+        lock.append([NA, f"{p['label']} — Distribution lock-up: no lock-up flag recorded for this period"] if flag is None
+                    else [WARN, f"{p['label']} — Distribution lock-up: locked (lock-up active in this period)"] if flag
+                    else [OK, f"{p['label']} — Distribution lock-up: open (no lock-up recorded as active)"])
+        if not p["has_debt_service"]:
+            cover.append([NA, f"{p['label']} — Debt-service coverage: {_NO_SERVICE}"])
+        elif p["dscr"] is None or p["below_one"] is None:
+            cover.append([NA, f"{p['label']} — Debt-service coverage: DSCR not persisted for this period"])
+        elif p["below_one"]:
+            cover.append([ALERT, f"{p['label']} — Debt-service coverage below 1.00x: actual {T.format_ratio(p['dscr'], (1.0,))}"])
+        else:
+            cover.append([OK, f"{p['label']} — Debt-service coverage meets 1.00x: actual {T.format_ratio(p['dscr'], (1.0,))}"])
+        c = p["cash_after_senior_keur"]
+        cash.append([NA, f"{p['label']} — Cash shortfall: cash after Senior debt service not persisted for this period"] if c is None
+                    else [ALERT, f"{p['label']} — Cash shortfall after Senior debt service (before reserves): {c:,.2f} kEUR"] if c < -CASH_TOL_KEUR
+                    else [OK, f"{p['label']} — No cash shortfall after Senior debt service (before reserves)"])
+    rows = [
+        {"id": "LOCKUP", "label": "Distribution lock-up", "source": _RUN_RESULT, "cells": lock,
+         "map": "distribution_schedule.periods[period].lockup_active; an open period is not a proof of bankability"},
+        _dscr_row(series, terms, terms.eod, "eod_breach", row_id="MIN_DSCR", label="Minimum DSCR", breach="Minimum DSCR breached", met="Meets Minimum DSCR"),
+        _dscr_row(series, terms, terms.contractual, "covenant_breach", row_id="CONTRACTUAL_DSCR", label="Contractual DSCR", breach="Contractual DSCR breached",
+                  met="Meets Contractual DSCR"),
+        {"id": "COVERAGE_1X", "label": "Debt-service coverage 1.00x", "source": _RUN_RESULT, "cells": cover,
+         "map": "integrity_evidence.senior_debt.periods[period].reported_dscr (base-case CFADS ÷ scheduled Senior debt service) < 1.0, raw"},
+        {"id": "CASH_SHORTFALL", "label": "Cash shortfall (before reserves)", "source": _RUN_RESULT, "cells": cash,
+         "map": f"integrity_evidence.cash[period_index].cash_after_senior_before_reserves < -{CASH_TOL_KEUR:g} kEUR"},
+    ]
+    summary = []
+    for r in rows:
+        evaluated = sum(1 for c in r["cells"] if c[0] != NA)
+        applicable = sum(1 for p, c in zip(series, r["cells"]) if r["id"] in ("LOCKUP", "CASH_SHORTFALL") or p["has_debt_service"])
+        alerts = sum(1 for c in r["cells"] if c[0] in (ALERT, WARN))
+        summary.append({"id": r["id"], "label": _SUMMARY_LABELS[r["id"]], "alerts": alerts if evaluated else None, "evaluated": evaluated, "applicable": applicable})
+    return {
+        "available": True, "reason": "", "periods": len(series), "rows": rows, "summary": summary,
+        "gaps": [{"id": "DSRA_REQUIRED", "label": "DSRA requirement / reserve draw", "status": UNAVAILABLE,
+                  "reason": "Unavailable — the required DSRA amount and any reserve draw per period are not recorded with this Run."}],
+        "legend": {OK: "Met / open", ALERT: "Breached / shortfall", WARN: "Locked", NA: "Not recorded or not applicable"},
+    }
 
 
 # Conclusions a Run cannot support today.  They stay UNAVAILABLE (never PASS, never inferred from DSCR) until a Run persists the listed evidence.
@@ -298,7 +384,7 @@ _SCHEDULE = (
         ("bank_dscr", "DSCR (bank case)", "x"), ("shortfall_keur", "Period shortfall (service − base CFADS; negative = surplus)", "kEUR"))),
     ("terms", "Thresholds and tests", (
         ("sizing_target_dscr", "Sizing target DSCR (assumption)", "x"), ("below_one", "DSCR below 1.00x", "flag"),
-        ("covenant_breach", "Below Contractual DSCR", "flag"), ("eod_breach", "Below Minimum DSCR (EoD threshold)", "flag"),
+        ("covenant_breach", "Below Contractual DSCR", "flag"), ("eod_breach", "Below Minimum DSCR", "flag"),
         ("lockup_active", "Distribution lock-up", "flag"))),
     ("reserves", "Reserves and distributions", (
         ("dsra_balance_keur", "DSRA balance", "kEUR"), ("dsra_funding_keur", "DSRA funding", "kEUR"), ("dsra_release_keur", "DSRA release", "kEUR"),
@@ -315,7 +401,7 @@ def _schedule(series: Sequence[Mapping[str, Any]], terms: T.RunTerms) -> list[di
             available = any(v is not None for v in values)
             reason = "" if available else "Not persisted by this Run."
             if key == "eod_breach" and not (terms.recorded and terms.eod.status == T.CONFIGURED):
-                reason = "No Minimum DSCR (EoD threshold) is recorded with this Run."
+                reason = "No Minimum DSCR is recorded with this Run."
                 values, available = [None for _ in series], False
             if key == "covenant_breach" and not (terms.recorded and terms.contractual.status == T.CONFIGURED):
                 reason = "No Contractual DSCR is recorded with this Run."
@@ -372,7 +458,7 @@ def build_debt_metrics(entry: Any, *, integrity: Optional[Mapping[str, Any]] = N
         "run_state": state, "basis_note": BASIS_NOTE,
         "contract_terms": {
             "recorded": terms.recorded, "reason": terms.reason,
-            "eod_minimum_dscr": {"status": terms.eod.status, "value": terms.eod.value, "raw": terms.eod.raw, "label": "Minimum DSCR (EoD threshold)"},
+            "eod_minimum_dscr": {"status": terms.eod.status, "value": terms.eod.value, "raw": terms.eod.raw, "label": "Minimum DSCR"},
             "contractual_dscr": {"status": terms.contractual.status, "value": terms.contractual.value, "raw": terms.contractual.raw, "label": "Contractual DSCR (covenant)"},
             "test_basis": dict(T.TEST_BASIS),
             "note": "The two inputs are recorded with each Run when it is committed; editing them later never changes a historical Run.",
@@ -390,6 +476,7 @@ def build_debt_metrics(entry: Any, *, integrity: Optional[Mapping[str, Any]] = N
                            "sizing_target_note": "The sizing target varies by period and is plotted from each period's persisted value."},
         },
         "reserves": _reserves(entry, series, lockup) if available else None,
+        "period_matrix": _period_matrix(series, terms) if available else None,
         "schedule": _schedule(series, terms) if available else [],
         "integrity": {"status": (integrity or {}).get("status", UNAVAILABLE), "failures": list((integrity or {}).get("failures") or [])},
     }

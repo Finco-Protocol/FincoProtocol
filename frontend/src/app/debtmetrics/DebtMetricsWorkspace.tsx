@@ -8,11 +8,15 @@ import { RUN_PARAM, selectedRunFromUrl } from "./debtMetricsLink";
 import { DscrProfileChart } from "./DscrProfileChart";
 import { KpiRow } from "./KpiRow";
 import { PeriodSchedule, type ScheduleHandle } from "./PeriodSchedule";
+import { PeriodStatusMatrix } from "./PeriodStatusMatrix";
 import { ReservesPanel } from "./ReservesPanel";
 
 const RUN_TEXT: Record<string, string> = {
   "LAST RUN · CURRENT": "Completed · current Last Run", "LAST RUN · STALE": "Completed · Last Run is STALE (inputs changed since)", HISTORICAL: "Completed · historical Run",
 };
+/** Credit-summary wording of the Minimum DSCR condition; the canonical verdict (`ev.eod.status`) is unchanged and shown in the covenant monitor. */
+const MIN_DSCR_WORD: Record<string, string> = { TRIGGERED: "Triggered", NOT_TRIGGERED_UNDER_THIS_FLOOR: "Met", NOT_CONFIGURED: "Not recorded", UNAVAILABLE: "Unavailable", NOT_APPLICABLE: "Not applicable" };
+const MODEL_CONDITION = "Model-evaluated Event-of-Default condition on the Minimum DSCR entered for this Run. It is not a legally adjudicated Event of Default, nonpayment or default.";
 const label = (v: string) => v.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 /** Debt Metrics of ONE committed Run: covenant monitor, key metrics, DSCR profile, distribution & reserves and the dated schedule.  Read-only: it never
@@ -74,7 +78,7 @@ export function DebtMetricsWorkspace({ project, reloadKey, onEditTerms }: { proj
         <li className="dm-chip dm-chip-credit" data-dm-chip="credit"><span className="dm-chip-k">Credit</span>
           <span data-dm-credit="coverage"> Coverage: {label(ev.coverage.status)}</span> ·
           <span data-dm-credit="covenant"> Covenant: {label(ev.covenant.status)}</span> ·
-          <span data-dm-credit="eod"> EoD threshold: {label(ev.eod.status)}</span></li>
+          <span data-dm-credit="eod" title={MODEL_CONDITION}> Minimum DSCR: {MIN_DSCR_WORD[ev.eod.status] ?? label(ev.eod.status)}</span></li>
       </ul>
       {String(run.identity.state).includes("STALE") && <p className="rx-banner rx-banner-stale" role="status" data-dm-stale="true">STALE — these figures belong to the saved Run; the inputs changed after it. Terms edited since then apply to the next Run only. Save, then Run explicitly to update.</p>}
       {String(run.identity.state) === "HISTORICAL" && <p className="dm-note" role="status" data-dm-historical="true">Historical Run — evaluated against the terms recorded when it was committed, never against today&rsquo;s inputs.</p>}
@@ -90,6 +94,7 @@ export function DebtMetricsWorkspace({ project, reloadKey, onEditTerms }: { proj
           <DscrProfileChart view={view} />
           <ReservesPanel view={view} precision={precision} />
         </div>
+        {view.period_matrix && <PeriodStatusMatrix matrix={view.period_matrix} periods={view.periods} onJump={(i) => schedule.current?.jumpTo(i)} />}
         <PeriodSchedule ref={schedule} view={view} precision={precision} runId={String(run.identity.history_id)} />
       </>}
       <p className="dm-note" data-dm-disclosure="true">{view.basis_note} {payload.disclosure}</p>
@@ -105,13 +110,14 @@ function TermsPanel({ view, onEditTerms }: { view: import("./types").DebtMetrics
       <h3 id="dm-terms-h" className="rcm-h3">Contractual DSCR terms recorded with this Run</h3>
       {!t.recorded ? <p className="dm-na" role="status" data-dm-terms-unrecorded="true">{t.reason}</p> : null}
       <dl className="dm-terms">
-        <div><dt>Minimum DSCR (EoD threshold) <span className="dm-tag">Input</span></dt><dd data-dm-term="eod">{t.recorded ? show(t.eod_minimum_dscr) : "Not recorded"}</dd></div>
-        <div><dt>Contractual DSCR (covenant) <span className="dm-tag">Input</span></dt><dd data-dm-term="contractual">{t.recorded ? show(t.contractual_dscr) : "Not recorded"}</dd></div>
+        <div><dt title={MODEL_CONDITION}>Minimum DSCR <span className="dm-tag">Input</span></dt><dd data-dm-term="eod">{t.recorded ? show(t.eod_minimum_dscr) : "Not recorded"}</dd></div>
+        <div><dt>Contractual DSCR <span className="dm-tag">Input</span></dt><dd data-dm-term="contractual">{t.recorded ? show(t.contractual_dscr) : "Not recorded"}</dd></div>
         <div><dt>Achieved Minimum DSCR <span className="dm-tag dm-tag-result">Run result</span></dt>
           <dd data-dm-term="achieved">{view.kpis.achieved_min_dscr.available ? view.kpis.achieved_min_dscr.display : "Not available"}</dd></div>
       </dl>
       <p className="dm-note">{t.note} The Senior sizing target and the lock-up threshold are separate controls and are not these terms.{" "}
         {onEditTerms && <button type="button" className="dm-link" onClick={onEditTerms} data-dm-edit-terms="true">Edit the two terms in Debt terms</button>}</p>
+      <p className="dm-note" data-dm-model-condition="true">{MODEL_CONDITION}</p>
       <details className="dm-more"><summary>Test basis</summary>
         <ul>{Object.entries(t.test_basis).map(([k, v]) => <li key={k}><strong>{label(k)}:</strong> {v}</li>)}</ul></details>
     </section>
