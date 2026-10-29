@@ -215,6 +215,7 @@ def test_series_and_schedule_carry_only_persisted_values_and_never_fabricate_a_s
     assert view["series"]["llcr"]["available"] is False and "per-period LLCR series" in view["series"]["llcr"]["reason"]
     assert view["axis"]["frequency"] == "SEMIANNUAL" and view["axis"]["period_count"] == len(view["periods"])
     assert view["kpis"]["achieved_min_dscr"]["value"] == raw_min(entry)
+    assert entry.runtime_summary["min_dscr"] == raw_min(entry)                    # the persisted summary minimum is the same raw value
     assert view["kpis"]["llcr"]["available"] is False and view["kpis"]["plcr"]["available"] is False
     rows = {r["key"]: r for g in view["schedule"] for r in g["rows"]}
     assert rows["eod_breach"]["available"] and rows["covenant_breach"]["available"] and rows["dsra_balance_keur"]["unit"] == "kEUR"

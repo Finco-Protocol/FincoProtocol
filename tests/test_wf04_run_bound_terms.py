@@ -161,3 +161,39 @@ def test_other_users_cannot_read_or_change_the_terms(env):
     saved(env, record, EOD, "1.05")
     from app.persistence.run_history_repository import get_run_history
     assert list(get_run_history("someone-else", record.project_id)) == []
+
+
+# ── the existing atomic batch writer (the one a combined Save All uses for scalar cells) carries the two inputs unchanged ───────────────
+from tests.test_fin_val_b1_capex_save_integrity import (  # noqa: E402,F401  (fixture + helpers)
+    _grid_save, _page_tokens, _snapshot as _grid_snapshot, env as grid_env,
+)
+
+
+def test_batch_writer_saves_both_terms_with_other_cells_atomically_and_rolls_back_together(grid_env):
+    record = grid_env.create("wind")
+    ok = _grid_save(grid_env, record, [{"field_id": EOD, "value": "1.05"}, {"field_id": COV, "value": "1.2"},
+                                       {"field_id": "debt.senior.gearing_pct", "value": "70"}])
+    assert ok.status_code == 200, ok.text[:400]
+    snapshot = _grid_snapshot(record)
+    assert snapshot["dscr_min_eod_x"] == "1.05" and snapshot["dscr_contractual_x"] == "1.2" and float(snapshot["gearing_pct"]) == 70.0
+    before = _grid_snapshot(record)
+    refused = _grid_save(grid_env, record, [{"field_id": EOD, "value": "1.5"}, {"field_id": COV, "value": "abc"}])
+    assert refused.status_code == 422
+    assert _grid_snapshot(record) == before                                 # one invalid cell: NOTHING from the batch is written
+    out_of_range = _grid_save(grid_env, record, [{"field_id": EOD, "value": "0"}])
+    assert out_of_range.status_code == 422 and _grid_snapshot(record) == before
+
+
+def test_batch_writer_keeps_csrf_cas_and_save_is_not_run(grid_env):
+    record = grid_env.create("wind")
+    tokens = _page_tokens(grid_env, record)
+    cells = [{"field_id": EOD, "value": "1.05"}]
+    forged = grid_env.client.post("/v2/workbook/grid/save", json={
+        "project": record.project_code, "csrf_token": "forged", "content_hash": tokens["grid_hash"],
+        "workbook_version": tokens["workbook_version"], "scenario_id": None, "cells": cells})
+    assert forged.status_code == 403
+    assert _grid_save(grid_env, record, cells, tokens, content_hash="0" * 64).status_code == 409        # stale CAS
+    assert not _grid_snapshot(record).get("dscr_min_eod_x")
+    assert _grid_save(grid_env, record, cells, tokens).status_code == 200
+    from app.persistence.run_history_repository import get_run_history
+    assert list(get_run_history("fin-val-b1-user", record.project_id)) == []                            # a batch Save never runs the model
