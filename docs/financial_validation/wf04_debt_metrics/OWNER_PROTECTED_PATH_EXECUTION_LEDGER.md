@@ -56,7 +56,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/model_react_wf04_debt_metrics_acceptance.py` | N | A | — | `a6fb48304c4330d345437dc50be38f67f112a4e5` |
 | `tests/test_fin_v2_3_scope.py` | P | M | `b9671b2c1d9e55e7169261f84ccd44fb5db2c61e` | `701f2514efe7edf0f9c390cdae23f610f19dda35` |
 | `tests/test_fin_v2_r1_scope.py` | P | M | `7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7` | `6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c` |
-| `tests/test_finval_f01_fixture_integrity.py` | M | M | `71c48ba68cb53e2dcd81b470a88777b3d3801d06` | `568d8ee528790981bf74b7f71eb2e688c914a41b` |
+| `tests/test_finval_f01_fixture_integrity.py` | P | M | `71c48ba68cb53e2dcd81b470a88777b3d3801d06` | `568d8ee528790981bf74b7f71eb2e688c914a41b` |
 | `tests/test_model_credit_decision_v3_real_runs.py` | P | M | `61ec7bead5f71b29e38677ef9a6b1f8c562387a7` | `e2009d63694a64d9c1ea161bc4ffc34606114feb` |
 | `tests/test_model_mutation_security_successor.py` | P | M | `4672261c9aa91f0b727e116886ccc98b3e888f5a` | `c922d847fa598a1b60815dc24db0192ebf6b41a5` |
 | `tests/test_model_react_insights_v1.py` | P | M | `29b07e518eef65a9ade11f141d433594cc6ee82a` | `d62036ab8eb8dbc72e0436d821864078e76ce556` |
@@ -185,6 +185,12 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 * **Approved scope:** §0A (protected acceptance nodes) - the hermetic CI worker 4 of the previous head failed on exactly this node
 * **Tests / negative controls / pins:** see section 3
 
+### `tests/test_finval_f01_fixture_integrity.py`
+* **Why protected:** FIN-VAL F01 exact-reconciliation test of the workspace DOM golden test; pinned by the FIN-V2-3 manifest
+* **Minimal diff:** `test_authority_mock_has_only_its_missing_unit_added`: the reviewed file state may equal the FIN-V2-3 state OR exactly that state plus the one WF-04 block (literal text) that hash-locks the four `debt.contract.*` presentations
+* **Approved scope:** §0A (protected acceptance nodes)
+* **Tests / negative controls / pins:** see section 3
+
 ### `tests/test_model_credit_decision_v3_real_runs.py`
 * **Why protected:** Real-Run credit acceptance; exact-pinned in the D-029 security-successor `BLOBS`; admitted through the WF-04 cohort pin
 * **Minimal diff:** One assertion: the `CD-EOD` row of a Run with no configured floor is `NOT_CONFIGURED` (was a fixed `UNAVAILABLE` placeholder because no EoD mechanic existed)
@@ -232,6 +238,7 @@ Each edit keeps the original assertion's security/financial intent; nothing is s
 | `test_rcux_governance::test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path` | no changed path under `app/workbook/` etc., one prior pinned exception (`run_intent_service.py`) | adds a second pinned exception: exactly `registry.py` and `dscr_contract_terms.py` at WF-04 blobs | every other `app/workbook/` path still fails the test |
 | `test_rcux_governance::test_layer_is_a_subset…`, `test_rcm_governance::test_layer_is_exactly_six…`, `test_wsv2_core_scope::test_original_presentation…` | current bytes of a presentation path == the WS1 state | `== WS1 state` **or** `presentation_successor(path)` (three paths only, exact WF-04 pin) | any other byte still fails; the historical dictionaries remain immutable and individually admitted |
 | `test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated` (in `model_react_rcm_financing_acceptance.py`) | the `[role=tab]` list `==` the six original tab names | the same list with one inserted entry `Debt metrics` after `Overview`; every other assertion of the node (authority text, closed structures, senior terms, tab navigation, reload) is unchanged | the original intent - the Financing workspace shows exactly its governed sections in a fixed order, no silent extras - is kept: the one new section is the Owner-approved Debt Metrics view |
+| `test_finval_f01_fixture_integrity::test_authority_mock_has_only_its_missing_unit_added` | the workspace DOM-golden test file `==` the FIN-V2-3 state exactly | `==` the FIN-V2-3 state **or** exactly that state plus the literal WF-04 block (no other byte may differ) | still an exact-text reconciliation: any other edit to the file fails; the F01 baseline replacement and the cohort `matches` assertion are unchanged |
 | `test_model_workspace_productivity_v1::…test_macro_output_matches_the_base_commit_except_three_additive_attributes` | the set of rendered field presentations `==` golden hashes ∪ financing additions ∪ valuation additions | `==` the same ∪ **four** new, individually sha256-locked presentations of the two `debt.contract.*` inputs (the assertion that each equals its pinned hash is added) | no historical DOM hash changes (`drifted` check unchanged); the new fields are additions locked by value, not allowed by wildcard |
 | `test_model_credit_decision_v3_real_runs::test_real_run_renders_credit_evidence_with_explicit_classification` (4 params) | `CD-EOD` status `== "UNAVAILABLE"` | `== "NOT_CONFIGURED"` | the intent — a Run with no configured floor never shows PASS/TRIGGERED and assumes no default — is kept and made stricter; the classification assertion on the same row is unchanged |
 | `test_model_react_insights_v1::test_legacy_absent_root_identity_fields_preserve_committed_evidence[True]` | payload with the identity removed `==` payload with identity | `==` after removing only the Run-bound term verdicts, which must read `UNAVAILABLE`/`NOT_RECORDED` | the Run-bound terms live in the identity by design (never read from the Working Copy); every other byte — metrics, identity, evidence — is still compared. The `[False]` parameter (root fields removed, terms kept) is unchanged and still requires full equality |
