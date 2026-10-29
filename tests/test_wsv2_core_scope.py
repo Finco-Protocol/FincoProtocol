@@ -180,7 +180,9 @@ def test_predecessor_manifest_pins_and_metadata_remain_verbatim():
         now = json.loads(F._read(F.ROOT, path, None))
         assert now['historical_source_blobs'][F.AUTHORIZATION_HEAD] == old['source_blobs']
         for p, value in old['source_blobs'].items():
-            if path != F.PREDECESSOR_MANIFESTS[-1] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')):
+            # WF-04 successor lineage: only the named, owner-authorised re-pins may move (tests/test_wf04_scope.py proves each equals the WF-04 pin).
+            if path != F.PREDECESSOR_MANIFESTS[-1] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')) \
+                    and p not in F.WF04_SUCCESSOR_REPIN.get(path, ()):
                 assert now['source_blobs'][p] == value
 
 
@@ -232,8 +234,13 @@ def test_browser_registration_preserves_original_role_and_exact_new_exports():
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\ndef ' + TESTS[1]))
 
 
+# The accepted WS1 integration (merged PR 398). Later, separately owned cohorts (WF-04, tests/wf04_scope.py) are judged by their own manifest and
+# negative controls; this test keeps judging exactly the WS1 diff.
+WS1_ACCEPTED_MERGE = 'b76ac65c99e7fc9b486a557ae3c5ba9a711f50b3'
+
+
 def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
-    changed = F._git(F.ROOT, 'diff', '--name-only', F.BASE, '--').decode().splitlines()
+    changed = F._git(F.ROOT, 'diff', '--name-only', F.BASE, WS1_ACCEPTED_MERGE, '--').decode().splitlines()
     authorities = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'app/persistence/',
                    'app/workbook/', 'app/services/', 'frontend/src/app/editing/')
     assert not [p for p in changed if p.startswith(authorities)]

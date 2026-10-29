@@ -214,6 +214,11 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
     from tests import fin_v2_pr394_corr_scope as PR394
     hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
+    # The second later, separately governed exception: the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly these two workbook paths
+    # (the registered contractual-DSCR inputs and their pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
+    from tests import wf04_scope as WF04
+    hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
+                                    and WF04.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden

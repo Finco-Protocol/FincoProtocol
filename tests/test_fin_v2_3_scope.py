@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 from tests import fin_v2_3_scope as F
+from tests import wf04_scope as WF04
 
 
 def test_exact_cohort_requires_history_and_does_not_activate_native(tmp_path):
@@ -45,7 +46,11 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
            'app/persistence/workspace_repository.py','app/persistence/run_history_repository.py']
     for path in paths:
         before=subprocess.check_output(['git','show',F.BASE+':'+path],cwd=F.ROOT)
-        assert (F.ROOT/path).read_bytes()==before
+        current=(F.ROOT/path).read_bytes()
+        # The ONE later, separately governed exception: the Owner-authorised WF-04 additive hunk in v2_atomic_run_commit (tests/wf04_scope.py pins the
+        # exact blob; tests/test_wf04_scope.py proves the hunk is the only change). Any other byte, or any other path, still has to equal the base.
+        if path=='app/persistence/workspace_repository.py' and WF04.matches(path,current):continue
+        assert current==before
 
 
 @pytest.mark.parametrize('path', sorted(F.INTEGRATED_DEPENDENCIES))
