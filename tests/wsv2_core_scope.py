@@ -91,6 +91,8 @@ OWNED_PATHS = frozenset((
 OWNER_APPROVED_ACCEPTANCE_PIN = 'tests/model_react_mvp_acceptance.py'
 
 GOVERNANCE_PINS = frozenset((
+    'tests/test_fin_v2_3_scope.py',                      # WS-2 gate A: exact successor-aware assertion in the predecessor cohort tests
+    'tests/test_fin_v2_r1_scope.py',
     'tests/test_model_mutation_security_successor.py',  # Correction E exact path; no financial/app pins
     'tests/model_mutation_security_successor.py',
     'tests/fin_v2_cohorts.py',
@@ -140,7 +142,7 @@ def _historical_manifests_ok(root, ref):
             return False
         if set(before) != set(after):
             return False
-        allowed = ({'app/v2/react_rcux.py'} if path == PREDECESSOR_MANIFESTS[-1]
+        allowed = ({'app/v2/react_rcux.py', 'app/v2/react_workspace_router.py'} if path == PREDECESSOR_MANIFESTS[-1]
                    else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN} if path == PREDECESSOR_MANIFESTS[0] else set()))
         if any(before[p] != after[p] and p not in allowed for p in before):
             return False
@@ -160,6 +162,31 @@ def _ci_evidence_only(path):
     return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
 
 
+#: The three gate A/D test sources the WS-2 correction edits that are exact-pinned by OTHER registered cohorts (fin_v2_3, fin_v2_r1, rc_ux).
+#: Closed list: each is admitted only while a registered cohort pins it (that cohort re-verifies the exact blob inside the composite).
+WS2_GATE_TESTS = frozenset((
+    'tests/model_react_wf2_browser_acceptance.py',
+    'tests/test_fin_v2_3_scope.py',
+    'tests/test_fin_v2_r1_scope.py',
+))
+
+
+def _ws2_allows(path, root, ref):
+    """ONLY the separately registered WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py), and only while it is itself exact: its manifest identity, every
+    pinned blob and its ancestry hold, and the path is one of its enumerated paths (pinned sources, its manifest, its documents, its closed
+    presentation list).  Anything else - another cohort, a pattern, a new file, an absent or altered WS-2 cohort - fails closed."""
+    try:
+        from tests import fin_v2_wsv2_scope as WS2
+        from tests.fin_v2_cohorts import cohorts
+    except ImportError:
+        return False
+    if WS2 not in cohorts() or not WS2.exact_blobs_ok(root, ref):
+        return False
+    if path in WS2_GATE_TESTS:
+        return any(m.__name__ != __name__ and m is not WS2 and m.allowed_path(path, root, ref) for m in cohorts())
+    return WS2.allowed_path(path, root, ref)
+
+
 def exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
@@ -173,11 +200,11 @@ def exact_blobs_ok(repo=None, ref=None):
         if not _historical_manifests_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _ws2_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError):

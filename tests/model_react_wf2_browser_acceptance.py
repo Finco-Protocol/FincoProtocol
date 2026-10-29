@@ -315,16 +315,17 @@ def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser,
         stream = panel.locator("[data-ppa-stream]").first
         assert stream.get_by_label("Start date").input_value() and stream.get_by_label("End date").input_value()
 
-        # nothing is invented: an empty tariff and source reference are refused field by field
+        # nothing is invented: an empty tariff and volume are refused field by field; the source reference is optional (Advanced)
         panel.locator("[data-ppa-save='true']").click()
         assert "required" in stream.locator(".wf-error").first.inner_text().lower() or stream.locator(".wf-error").count() >= 2
-        assert stream.get_by_label("Source reference").get_attribute("aria-invalid") == "true"
+        assert stream.get_by_label("Source reference").get_attribute("aria-invalid") is None
         assert stream.get_by_label("Tariff").get_attribute("aria-invalid") == "true"
 
         assert stream.get_by_label("Contracted volume share").get_attribute("aria-invalid") == "true"
+        stream.locator("[data-ppa-advanced] summary").click()                       # the user's own source reference is entered under Advanced
         stream.get_by_label("Source reference").fill("Signed PPA 2026")
         stream.get_by_label("Tariff").fill("55")
-        stream.get_by_label("Contracted volume share").fill("0.8")
+        stream.get_by_label("Contracted volume share").fill("80")                   # human percent in the UI
         panel.locator("[data-ppa-save='true']").click()
         try:
             page.wait_for_selector("[data-ppa-editor='guided']", timeout=20000)
@@ -336,14 +337,18 @@ def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser,
         saved = context.request.get(f"{base}/v2/model-react/revenue?project={record.project_code}").json()["contracts"]
         book = json.loads(saved["raw"])
         assert book["version"] == 2 and book["indexation_basis"] == "OPERATING_YEAR"
-        assert book["streams"][0]["price_eur_mwh"] == 55 and book["streams"][0]["source_ref"] == "Signed PPA 2026"
+        assert book["streams"][0]["price_eur_mwh"] == 55 and book["streams"][0]["source_ref"] == "Signed PPA 2026"   # a user-entered source is kept identically
+        assert book["streams"][0]["volume_share"] == 0.8, "80% in the UI is saved as the canonical ratio 0.8"
 
         # edit the tariff and the indexation: becomes Indexed
-        stream.get_by_label("Indexation rate").fill("0.02")
+        stream.get_by_label("Indexation rate").fill("2")                            # human percent in the UI
         assert page.locator("[data-unsaved-indicator='true']").count() == 1
         ppa_panel(page).locator("[data-ppa-save='true']").click()
         wait_status(page, "ok", "verified", "[data-ppa-editor]")
         assert ppa_panel(page).locator("[data-ppa-stream]").first.get_attribute("data-contract-class") == "Indexed"
+        indexed = json.loads(context.request.get(f"{base}/v2/model-react/revenue?project={record.project_code}").json()["contracts"]["raw"])["streams"][0]
+        assert indexed["indexation_rate"] == 0.02, "2% in the UI is saved as the canonical ratio 0.02"
+        assert indexed["volume_share"] == 0.8 and indexed["source_ref"] == "Signed PPA 2026" and indexed["price_eur_mwh"] == 55
         # The verified POST starts a parent projection refresh. Wait for the
         # clean editor before typing: its raw-payload effect resets the draft.
         page.locator("[data-unsaved-indicator='true']").wait_for(state="detached")
@@ -359,7 +364,7 @@ def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser,
         assert posts == [], "client-side validation sends nothing"
         stream.get_by_role("button", name="Remove contract ppa").is_disabled()   # the last contract cannot be removed
         ppa_panel(page).get_by_role("button", name="Cancel edits").click()
-        expect(ppa_panel(page).locator("[data-ppa-stream]").first.get_by_label("Indexation rate")).to_have_value("0.02", timeout=20000)
+        expect(ppa_panel(page).locator("[data-ppa-stream]").first.get_by_label("Indexation rate")).to_have_value("2", timeout=20000)
 
         # switch to a scheduled price curve: chronological order is enforced per point
         stream = ppa_panel(page).locator("[data-ppa-stream]").first

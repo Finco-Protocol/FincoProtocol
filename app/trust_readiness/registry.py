@@ -636,6 +636,23 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         tables=("model_run_intents",),
     ),
     DataStoreEntry(
+        "data.save_all_requests", "Save All request ledger (WS-2)", "SQLite database",
+        "user_id, project_id",
+        "One row per Save All request: the client request id, a one-way SHA-256 digest of the canonical request "
+        "body and the stored outcome (the resulting content hash and the per-section counts). No credentials, "
+        "no tokens and no financial results; the submitted values are not copied here.", False,
+        "Not automatically deleted: rows are small and let an interrupted Save All be repeated safely (the same "
+        "request id with an identical body returns the stored outcome; a different body under the same id is "
+        "refused). Retention is an open owner decision; until it is approved rows are kept.",
+        "No deletion path exists. Rows carry identifiers and digests only and are removed only by an approved, "
+        "explicitly authorized retention procedure.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/db.py", "CREATE TABLE IF NOT EXISTS save_all_requests"),),
+        "Ledger rows of a deleted or disposed project are retained until the retention decision is made; "
+        "they carry identifiers and digests only.",
+        tables=("save_all_requests",),
+    ),
+    DataStoreEntry(
         "data.backups", "Database backups", "Files on the host (default under the data directory)",
         "whole database", "A full copy of every table above.", True,
         "Automatic backups: the newest 10 are kept. Manual and pre-restore safety backups are "

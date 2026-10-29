@@ -21,6 +21,7 @@ PROTECTED = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 
 
 OWNED_PATHS = frozenset((
     'app/persistence/db.py',
+    'app/trust_readiness/registry.py',   # gate C (Option 1): classification of the new save_all_requests table (one reviewed DataStoreEntry)
     'app/persistence/workspace_repository.py',
     'app/v2/capex_commands.py',
     'app/v2/cost_batch_commands.py',
@@ -28,9 +29,39 @@ OWNED_PATHS = frozenset((
     'app/v2/react_workspace_router.py',
     'app/v2/save_all_commands.py',
     'app/workbook/revenue_contracts_service.py',
+    'docs/readiness/02_data_handling.md',        # gate C: generated from the registry by tools/render_readiness_docs.py
+    'docs/readiness/06_retention_and_deletion.md',
     'tests/fin_v2_wsv2_scope.py',
     'tests/test_fin_v2_wsv2_scope.py',
     'tests/test_save_all_atomic_v1.py',
+    'tests/test_trust_readiness_registry.py',    # gate C: chained exact-content successor, mirrors D-029
+))
+
+#: WS-2 React presentation sources: an EXACT, closed list (no prefix, no pattern).  They are not blob-pinned here because their bytes are fixed by
+#: the single committed bundle built from them (pinned in the WS-1 manifest and the WSV2_EDITING_SUCCESSORS layer); listing them admits their presence
+#: in the diff and nothing else.  A new or renamed file fails closed until it is added here by a reviewed change.
+PRESENTATION_PATHS = frozenset((
+    'frontend/src/app/CanonicalInputGrid.tsx',
+    'frontend/src/app/editing/ChangesDrawer.tsx',
+    'frontend/src/app/editing/ChangesProvider.tsx',
+    'frontend/src/app/editing/CostLinesGridView.tsx',
+    'frontend/src/app/editing/PercentInput.tsx',
+    'frontend/src/app/editing/__tests__/editing.test.mjs',
+    'frontend/src/app/editing/decimal.ts',
+    'frontend/src/app/editing/fieldSection.ts',
+    'frontend/src/app/editing/grid.ts',
+    'frontend/src/app/editing/pendingEdits.ts',
+    'frontend/src/app/editing/percent.ts',
+    'frontend/src/app/editing/ppaStaging.ts',
+    'frontend/src/app/editing/saveAll.ts',
+    'frontend/src/app/editing/saveAllApi.ts',
+    'frontend/src/app/editing/saveAllSession.ts',
+    'frontend/src/app/editing/useGridKeys.ts',
+    'frontend/src/app/editing/wsv2Extensions.tsx',
+    'frontend/src/app/workflow/PPAEditorView.tsx',
+    'frontend/src/app/workflow/SheetFieldsEditor.tsx',
+    'frontend/src/app/workflow/workflowShared.tsx',
+    'frontend/src/styles/ws2-editing.css',
 ))
 
 #: WS-2 documents (not executable): admitted by EXACT path only, no blob pin, so prose can be corrected without re-pinning code.
@@ -75,7 +106,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def allowed_path(path, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
-    return path in pins or path == MANIFEST or path in DOC_PATHS
+    return path in pins or path == MANIFEST or path in DOC_PATHS or path in PRESENTATION_PATHS
 
 
 def _other_cohort_allows(path, root, ref):

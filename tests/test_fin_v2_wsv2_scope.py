@@ -21,10 +21,20 @@ def test_the_cohort_is_registered_valid_and_owns_no_financial_namespace(tmp_path
 
 def test_the_owned_set_is_exactly_the_authorised_app_paths_the_cohort_and_its_tests():
     assert sorted(p for p in F.OWNED_PATHS if p.startswith('app/')) == [
-        'app/persistence/db.py', 'app/persistence/workspace_repository.py', 'app/v2/capex_commands.py', 'app/v2/cost_batch_commands.py',
-        'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py', 'app/workbook/revenue_contracts_service.py']
+        'app/persistence/db.py', 'app/persistence/workspace_repository.py', 'app/trust_readiness/registry.py', 'app/v2/capex_commands.py',
+        'app/v2/cost_batch_commands.py', 'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py',
+        'app/workbook/revenue_contracts_service.py']          # the eight Save All paths + the one reviewed Trust classification (gate C)
     assert sorted(p for p in F.OWNED_PATHS if not p.startswith('app/')) == [
-        'tests/fin_v2_wsv2_scope.py', 'tests/test_fin_v2_wsv2_scope.py', 'tests/test_save_all_atomic_v1.py']
+        'docs/readiness/02_data_handling.md', 'docs/readiness/06_retention_and_deletion.md', 'tests/fin_v2_wsv2_scope.py',
+        'tests/test_fin_v2_wsv2_scope.py', 'tests/test_save_all_atomic_v1.py', 'tests/test_trust_readiness_registry.py']
+
+
+def test_the_presentation_list_is_closed_exact_and_present():
+    assert all(not any(c in p for c in '*?[') and p.startswith('frontend/src/') for p in F.PRESENTATION_PATHS)
+    assert all((F.ROOT / p).is_file() for p in F.PRESENTATION_PATHS)
+    on_disk = {p for p in F._git(F.ROOT, 'ls-files', 'frontend/src/app/editing').decode().splitlines()}
+    assert on_disk <= F.PRESENTATION_PATHS, sorted(on_disk - F.PRESENTATION_PATHS)       # a new editing file needs a reviewed list change
+    assert not F.allowed_path('frontend/src/app/editing/rogue.ts') and not F.allowed_path('frontend/src/app/rogue.tsx')
 
 
 @pytest.mark.parametrize('path', SOURCES)

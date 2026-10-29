@@ -351,6 +351,9 @@ FINV2_D01_SENSITIVITY_SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9b
 # WS-2 atomic Save All (Financial Owner approval 2026-10-28): ADDITIVE layer for the two pinned routers it extends. Every earlier layer stays
 # admitted; the bundle blobs are added once, after WS-1, by the single controlled re-pin.
 WSV2_SAVE_ALL_SUCCESSORS={'app/v2/grid_router.py': 'a9779991ffd75fc82093c8bc38b4aa6f5dfe5298', 'app/v2/react_workspace_router.py': 'd1b045a6c788be534e567ef877ed321abb966c11'}
+# Financial Owner WS-2 editing integration (after merged WS-1; gates A-E, 2026-10-29): exact reviewed sources of the shell editing mount, the joint bundle built from
+# them and the two PPA-percent browser acceptance sources. Additive: WSV2_PRESENTATION/BROWSER/ACCEPTANCE successors and every historical dictionary stay immutable.
+WSV2_EDITING_SUCCESSORS={'frontend/src/app/WorkspaceView.tsx': 'a86ee44d17e22dc88ca68d9408d87f5689af1372', 'static/react/finco-react.css': 'db348f3af0a6d5869e412e6fb540eed928d1bde3', 'static/react/finco-react.js': '59a306f9420b4f3f1602de939790316b31f60c0c', 'tests/model_react_mvp_acceptance.py': '12cc69a78ded7a79dc00b699a5bb5d173feb3b08', 'tests/model_react_wf2_browser_acceptance.py': 'b56aa7cd7db41a5cc21bd9487355cff047e4bb84'}
 
 
 def violations(sources,*,check_pin=True):
@@ -373,6 +376,7 @@ def violations(sources,*,check_pin=True):
         if path in WSV2_ACCEPTANCE_SUCCESSORS:admitted=admitted|{WSV2_ACCEPTANCE_SUCCESSORS[path]}
         if path in WSV2_PREVIOUS_STATES:admitted=admitted|{WSV2_PREVIOUS_STATES[path]}
         if path in WSV2_SAVE_ALL_SUCCESSORS:admitted=admitted|{WSV2_SAVE_ALL_SUCCESSORS[path]}
+        if path in WSV2_EDITING_SUCCESSORS:admitted=admitted|{WSV2_EDITING_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.
@@ -448,7 +452,7 @@ def current_mutation_successor_valid(*,repo=None):
             return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
         for path,(source,parent,blob) in _browser_layers().items():
             # provenance is verified while the layer's blob OR a later admitted successor of the path is current
-            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path),RC_UX_SUCCESSORS.get(path)}:continue
+            if git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path),RC_UX_SUCCESSORS.get(path),WSV2_EDITING_SUCCESSORS.get(path)}:continue
             if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
             if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
             if read_git("rev-parse",source+":"+path)!=blob:return False

@@ -5,14 +5,18 @@
   "source_blobs": {
     "app/persistence/db.py": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
     "app/persistence/workspace_repository.py": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+    "app/trust_readiness/registry.py": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
     "app/v2/capex_commands.py": "a7d7fe9420dae6bba5e5f1ce812162ea6ca3916c",
     "app/v2/cost_batch_commands.py": "ecb2be6279d26db8bc603c4bb5dde55de1a8ed98",
     "app/v2/grid_router.py": "a9779991ffd75fc82093c8bc38b4aa6f5dfe5298",
     "app/v2/react_workspace_router.py": "d1b045a6c788be534e567ef877ed321abb966c11",
     "app/v2/save_all_commands.py": "bf605d172962f732c4722c348e37d02ee74ed909",
     "app/workbook/revenue_contracts_service.py": "f08aefdd809742b503d6f045aabb301ac031bb53",
-    "tests/fin_v2_wsv2_scope.py": "1c55f35f9c16a52882d234d3c3522c0cc553d50c",
-    "tests/test_fin_v2_wsv2_scope.py": "55300d7909f996ce9c1c12beddffade758cd2906",
-    "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96"
+    "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+    "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
+    "tests/fin_v2_wsv2_scope.py": "3899c01ebda7775faabcf6dd70e3d4a0d23623f4",
+    "tests/test_fin_v2_wsv2_scope.py": "3f210d55e74e1636dadf3a20632795672a282a71",
+    "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
+    "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516"
   }
 }
