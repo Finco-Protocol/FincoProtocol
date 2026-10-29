@@ -73,6 +73,8 @@ OWNED_PATHS = frozenset((
     'tests/model_react_rcux_product_acceptance.py',
     'tests/test_model_react_poc_browser_acceptance.py',
     'tests/model_react_wf1_browser_acceptance.py',
+    'tests/model_react_rcm_financing_acceptance.py',    # Correction H: Sources & Uses display follows the shared Report precision
+    'tests/model_react_rcux_runs_acceptance.py',        # Correction H: Compare money cells follow the shared Report precision
     'tests/model_react_rcm_investors_acceptance.py',
     'tests/model_react_rcux_analysis_acceptance.py',
     'tests/model_react_wsv2_acceptance.py',

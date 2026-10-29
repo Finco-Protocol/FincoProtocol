@@ -110,6 +110,8 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       }
       // A committed Run whose history cannot be read back needs a reload before anything else.
       setLocked(result.outcome === "HISTORY_UNAVAILABLE");
+      // The typed outcome keeps its established status contract (conflict for an unreadable history, error otherwise) next to the guidance notice.
+      setStatus({ tone: result.outcome === "HISTORY_UNAVAILABLE" ? "conflict" : "error", text: result.message });
       setFailure({ code: result.errorCode, message: result.message });
     }
     setRunning(false);

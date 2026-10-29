@@ -345,7 +345,14 @@ def test_senior_facilities_and_sources_uses_show_the_canonical_evidence(live_ser
     page.wait_for_selector("[data-sources-uses='true'] [data-su-table='Sources']", timeout=30000)
     api = studio(context, live_server, record.project_code)["sources_uses"]["view"]
     senior = next(r for r in api["sources"] if r["label"].startswith("Senior debt"))
-    assert senior["display"] in page.locator("[data-su-table='Sources']").inner_text()
+    # The server's own display text carries two decimals; the table follows the shared Report precision (default 0 decimals).  The canonical
+    # numeric value is unchanged, so the independent oracle re-expresses that same value at the selected precision (ROUND_HALF_UP).
+    from decimal import Decimal, ROUND_HALF_UP
+    precision = int(page.get_by_label("Report precision", exact=True).input_value())
+    expected = f"{Decimal(repr(float(senior['value']))).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP):,.{precision}f}"
+    assert expected in page.locator("[data-su-table='Sources']").inner_text()
+    page.get_by_label("Report precision", exact=True).select_option("2")
+    assert senior["display"] in page.locator("[data-su-table='Sources']").inner_text()          # at two decimals the table equals the server text
     assert page.locator("[data-su-balance='true']").inner_text().startswith("Balance:")
     shot(page, "sources-uses-1440")
     page.locator("[data-financing-tab-button='facilities']").click()

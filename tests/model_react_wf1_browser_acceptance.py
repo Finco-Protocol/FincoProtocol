@@ -294,6 +294,9 @@ def check_results_and_analysis_values_are_the_canonical_values_of_the_same_run(s
     # chart geometry is driven by the canonical numeric value, not parsed display text
     assert [float(bars.nth(i).get_attribute("data-v")) for i in range(bars.count())] == \
         [v for v in pl["revenues_keur"]["annual_v"] if v is not None]
+    # The shared Report precision resets to its default (0) when the Analysis route is opened; select the precision the oracle expects, then
+    # the bar title must be the independent Decimal re-expression of the same canonical value.
+    page.get_by_label("Report precision", exact=True).select_option("1")
     title = bars.nth(1).locator("title").text_content()
     assert expect_display_v(pl["revenues_keur"]["annual_v"][1], "kEUR", "kEUR", 1) in title and "kEUR" in title
     assert page.locator("[data-chart='dscr']").get_attribute("data-chart-state") == "available"

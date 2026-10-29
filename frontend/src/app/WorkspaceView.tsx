@@ -413,7 +413,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
 
   // Statements carry their own project block; if it names a different project than the authorized
   // workspace, nothing from it is shown (no cross-project data under the wrong identity).
-  const statementsConflict = Boolean(statements && (statements.project.code !== workspace.project.code
+  // A project block without a code makes no identity claim (as before); a code that differs, or a Run/state that differs from the
+  // workspace's own Run, withholds every figure.
+  const statementsConflict = Boolean(statements && ((statements.project.code && statements.project.code !== workspace.project.code)
     || (statements.snapshot && (statements.status.runId !== workspace.identity?.snapshot_id
       || statements.state !== workspace.freshness.state))));
 
@@ -469,7 +471,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ? <StatementIdentityConflict workspace={workspace} statements={statements} />
             : <FinancialOverview project={project} payload={statements} />
             : <p role="status">Loading saved Run overview…</p>)}
-          <details className="rx-advanced"><summary>Project status and audit details</summary><StatusRow workspace={workspace} /></details>
+          <StatusRow workspace={workspace} />
         </>}
         {section === "inputs" && (
           recovery
@@ -542,6 +544,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ? statementsConflict
             ? <StatementIdentityConflict workspace={workspace} statements={statements} />
             : <div data-results-view="true" data-results-state={statements.state}>
+              <div className="rx-badges" data-results-freshness="true"><FreshnessBadge state={workspace.freshness.state} /></div>
               <VerticalScopeBanner vertical={workspace.vertical} />
               <FinancialResults payload={statements} page="results" />
               <RunsView project={project} />

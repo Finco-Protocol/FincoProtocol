@@ -98,7 +98,7 @@ export function CompareWorkspace({ project, historyIds, workbookHash, onClear }:
                     <td className="rcm-input-cell">{r.unit || "—"}</td>
                     {r.values.map((v, i) => (
                       <td key={payload.columns[i].history_id} data-availability={r.availability[i]} data-history-id={payload.columns[i].history_id}>
-                        <span title={r.raw_values[i] == null ? v : String(r.raw_values[i])}>{reportCell(v, resolveRowFormat(r.label, r.unit), "kEUR", precision, r.raw_values[i])}</span>
+                        <span title={r.raw_values[i] == null ? v : String(r.raw_values[i])}>{r.raw_values[i] == null && r.availability[i] === "available" ? v : reportCell(v, resolveRowFormat(r.label, r.unit), "kEUR", precision, r.raw_values[i])}</span>
                         {r.availability[i] !== "available" && <span className="rcm-delta">not available</span>}
                         {i > 0 && (mode === "abs" || mode === "both") && <span className="rcm-delta" data-abs-delta="true" title={r.abs_deltas[i]}>Δ {reportDelta(r.abs_deltas[i], r.unit, precision)}</span>}
                         {i > 0 && (mode === "pct" || mode === "both") && <span className="rcm-delta" data-pct-delta="true">Δ% {r.pct_deltas[i]}</span>}

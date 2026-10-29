@@ -222,9 +222,9 @@ FINVAL_RATE_SUCCESSORS={
 # Additive presentation-only pins; every historical dictionary above stays immutable.
 WSV2_PRESENTATION_SUCCESSORS={
     "frontend/src/app/FinancialResults.tsx":"c53b677f29671380db916ceb4f4cfb2e2e53beeb",
-    "frontend/src/app/WorkspaceView.tsx":"c5f9ec51120d9145b8ffee001a63362ef9f83ee6",
+    "frontend/src/app/WorkspaceView.tsx":"67f393604cde997406dc526d5ddb52901ff68f3b",
     "static/react/finco-react.css":"3a1eab32a691696787aa5b54893fe24812186608",
-    "static/react/finco-react.js":"0c9725723b8473f961fda2df51ddd49b61628e60",
+    "static/react/finco-react.js":"74531cc4c53fa4fdedde0a4ec5967b75db6e3697",
 }
 
 # Separately authorized mandatory-role import; never a security or financial writer.
@@ -240,8 +240,16 @@ WSV2_ACCEPTANCE_SUCCESSORS={
     "tests/model_react_rcux_navigation_acceptance.py":"c42e00a05333b8f71fb03a33988d832a97955bc6",
     "tests/model_react_rcux_product_acceptance.py":"26193998bd2978ddac55982176cb541b58f4e75e",
     "tests/test_model_react_poc_browser_acceptance.py":"75f8f87492538f5521bdaf804982c8372b6645e4",
-    "tests/model_react_wf1_browser_acceptance.py":"6f60735fbb3317aa8b04ef5fb09c7107997b1995",
+    "tests/model_react_wf1_browser_acceptance.py":"3924c454ae607e50554c0d9908c4bfab6dd4bd68",
     "tests/model_react_rcm_investors_acceptance.py":"6bf989629935a247cd392a61dea23914b20c29bc",
+    "tests/model_react_rcux_analysis_acceptance.py":"447024dad7de056ee0d56e9dd3c554898e83c053",
+}
+
+# Correction H: the previous exact WS1 states stay individually admitted (additive; the dictionaries above hold the current pins).
+WSV2_PREVIOUS_STATES={
+    "frontend/src/app/WorkspaceView.tsx":"c5f9ec51120d9145b8ffee001a63362ef9f83ee6",
+    "static/react/finco-react.js":"0c9725723b8473f961fda2df51ddd49b61628e60",
+    "tests/model_react_wf1_browser_acceptance.py":"6f60735fbb3317aa8b04ef5fb09c7107997b1995",
     "tests/model_react_rcux_analysis_acceptance.py":"2afd19681bbb7cd1a758129603b9e2ecfb21011d",
 }
 
@@ -359,6 +367,7 @@ def violations(sources,*,check_pin=True):
         if path in WSV2_PRESENTATION_SUCCESSORS:admitted=admitted|{WSV2_PRESENTATION_SUCCESSORS[path]}
         if path in WSV2_BROWSER_SUCCESSORS:admitted=admitted|{WSV2_BROWSER_SUCCESSORS[path]}
         if path in WSV2_ACCEPTANCE_SUCCESSORS:admitted=admitted|{WSV2_ACCEPTANCE_SUCCESSORS[path]}
+        if path in WSV2_PREVIOUS_STATES:admitted=admitted|{WSV2_PREVIOUS_STATES[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.
