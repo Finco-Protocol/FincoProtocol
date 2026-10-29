@@ -31,9 +31,12 @@ OWNED_PATHS = frozenset((
     'app/workbook/revenue_contracts_service.py',
     'docs/readiness/02_data_handling.md',        # gate C: generated from the registry by tools/render_readiness_docs.py
     'docs/readiness/06_retention_and_deletion.md',
+    'docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json',   # Correction M: exact receipt of the WS-2 Trust-source state (D-029 x WS-2)
     'tests/fin_v2_wsv2_scope.py',
     'tests/test_fin_v2_wsv2_scope.py',
+    'tests/test_ci_v3_outcome_reconciliation.py',   # Correction M: D-029 historical positives/negatives + the WS-2 successor state proofs
     'tests/test_save_all_atomic_v1.py',
+    'tools/ci_v3_production.py',                  # Correction M: the CI v3 verifier recognises exactly the D-029 or the WS-2 Trust tuple
     'tests/test_trust_readiness_registry.py',    # gate C: chained exact-content successor, mirrors D-029
 ))
 

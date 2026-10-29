@@ -1,0 +1,40 @@
+{
+  "authorization": "Financial Owner, PR #397 Correction M (WS-2 Gate C Option 1; relayed in the PR thread)",
+  "current_blobs": {
+    "app/trust_readiness/registry.py": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
+    "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+    "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
+    "tests/test_trust_readiness_controls.py": "cd5b3114d9a11ca4507667a099bb853573d056d3",
+    "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516"
+  },
+  "d029_main": "36edeeb5d9a14749fdfafcd3b60a0d384cac73ba",
+  "predecessor_record": "docs/model_v2/d029/evidence/D029_CI_V3_OUTCOME_RECONCILIATION.json",
+  "predecessor_record_blob": "3de6bae74c873570f20037912dcb32f74f19e41d",
+  "required_passing_nodes": [
+    "tests/test_trust_readiness_registry.py::test_generated_documents_are_up_to_date",
+    "tests/test_trust_readiness_registry.py::test_csrf_registry_correction_is_only_the_two_approved_sentences",
+    "tests/test_trust_readiness_registry.py::test_demo_retention_exception_accepts_only_exact_approved_content",
+    "tests/test_trust_readiness_registry.py::test_f4_csrf_correction_preserves_historical_content_and_authorities",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_exact_baseline_and_exact_new_content",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_entry_makes_only_accurate_retention_claims",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_does_not_weaken_historical_layers",
+    "tests/test_trust_readiness_registry.py::test_d029_successor_refuses_a_second_application_or_a_missing_anchor",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[unrelated edit-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[historical entry removed-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[misleading retention claim-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[altered security statement-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry duplicated-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry moved-<lambda>]",
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry softened-<lambda>]",
+    "tests/test_trust_readiness_controls.py::test_every_persisted_table_is_tenant_keyed_and_classified"
+  ],
+  "schema": "WS2_CI_V3_TRUST_SUCCESSOR_V1",
+  "scope": "current Trust-source state after the WS-2 save_all_requests classification; not a second historical outcome reconciliation",
+  "trust_scope_changed_paths": [
+    "app/trust_readiness/registry.py",
+    "docs/readiness/02_data_handling.md",
+    "docs/readiness/06_retention_and_deletion.md",
+    "tests/test_trust_readiness_controls.py",
+    "tests/test_trust_readiness_registry.py"
+  ]
+}

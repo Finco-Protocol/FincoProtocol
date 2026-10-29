@@ -25,8 +25,10 @@ def test_the_owned_set_is_exactly_the_authorised_app_paths_the_cohort_and_its_te
         'app/v2/cost_batch_commands.py', 'app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py',
         'app/workbook/revenue_contracts_service.py']          # the eight Save All paths + the one reviewed Trust classification (gate C)
     assert sorted(p for p in F.OWNED_PATHS if not p.startswith('app/')) == [
-        'docs/readiness/02_data_handling.md', 'docs/readiness/06_retention_and_deletion.md', 'tests/fin_v2_wsv2_scope.py',
-        'tests/test_fin_v2_wsv2_scope.py', 'tests/test_save_all_atomic_v1.py', 'tests/test_trust_readiness_registry.py']
+        'docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json', 'docs/readiness/02_data_handling.md',
+        'docs/readiness/06_retention_and_deletion.md', 'tests/fin_v2_wsv2_scope.py', 'tests/test_ci_v3_outcome_reconciliation.py',
+        'tests/test_fin_v2_wsv2_scope.py', 'tests/test_save_all_atomic_v1.py', 'tests/test_trust_readiness_registry.py',
+        'tools/ci_v3_production.py']
 
 
 def test_the_presentation_list_is_closed_exact_and_present():

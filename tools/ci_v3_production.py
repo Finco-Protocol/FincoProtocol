@@ -213,15 +213,45 @@ D029_EVIDENCE_NODES=tuple(_D+n for n in (
   'unrelated edit','historical entry removed','misleading retention claim','altered security statement','entry duplicated','entry moved','entry softened'))))
 D029_RECORD='docs/model_v2/d029/evidence/D029_CI_V3_OUTCOME_RECONCILIATION.json'
 
+# ── WS-2 Gate C (PR #397, Financial Owner Option 1): the SEPARATE, closed successor of the current Trust-source state ──────────
+# D-029 above is the immutable historical reconciliation.  WS-2 adds ONE data store (`save_all_requests`) to the Trust inventory, so
+# at HEAD the three Trust sources are one coherent, independently reviewed LATER state.  The transition is recognised against exactly
+# one of two atomic states - never a per-file mix: STATE A = the original D-029 tuple, STATE B = the WS-2 tuple below together with the
+# exact reviewed Trust test blobs, the exact receipt, the unchanged D-029 record, the WS-2 manifest pins and the extra same-run
+# evidence nodes.  It is not a second outcome reconciliation: the only reconciled node and transition stay the D-029 ones.
+WS2_RECEIPT='docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json'
+WS2_MANIFEST='docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json'
+WS2_TRUST_BLOBS={'app/trust_readiness/registry.py':'c616833bdce263b60b4bccec217cad1fb4e8d7d8',
+ 'docs/readiness/02_data_handling.md':'7b8a8ca074757aee5f098c2e3299153b8f0e960b',
+ 'docs/readiness/06_retention_and_deletion.md':'4e46c27f1e74095554608bb084182af8960b14ee'}
+WS2_TRUST_EXTRA_BLOBS={'tests/test_trust_readiness_registry.py':'69e0b15e0c4cfd36102d1442e577f7cc6d9b6516'}
+WS2_RECORD_BLOB='3de6bae74c873570f20037912dcb32f74f19e41d'
+WS2_EXTRA_NODES=('tests/test_trust_readiness_controls.py::test_every_persisted_table_is_tenant_keyed_and_classified',)
+
 def d029_expected_record():
  return {'authorization':'Financial Owner, PR #384 Correction C (relayed in the PR thread)','node':D029_NODE,
   'transition':{'from':'SKIPPED','reason':D029_SKIP_REASON,'to':'PASSED'},'scope':'single node; no other historical outcome may change',
   'main':D029_MAIN,'main_blobs':D029_MAIN_BLOBS,'current_blobs':{**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS},
   'trust_scope_changed_paths':sorted(D029_TRUST_CHANGED),'required_passing_nodes':list(D029_EVIDENCE_NODES)}
 
+def ws2_expected_receipt():
+ return {'schema':'WS2_CI_V3_TRUST_SUCCESSOR_V1','authorization':'Financial Owner, PR #397 Correction M (WS-2 Gate C Option 1; relayed in the PR thread)',
+  'scope':'current Trust-source state after the WS-2 save_all_requests classification; not a second historical outcome reconciliation',
+  'predecessor_record':D029_RECORD,'predecessor_record_blob':WS2_RECORD_BLOB,'d029_main':D029_MAIN,
+  'current_blobs':{**WS2_TRUST_BLOBS,**WS2_TRUST_EXTRA_BLOBS,**D029_TRUST_CHANGED_BLOBS},
+  'trust_scope_changed_paths':sorted(D029_TRUST_CHANGED),'required_passing_nodes':list(D029_EVIDENCE_NODES+WS2_EXTRA_NODES)}
+
 def d029_source_facts():
  facts={'record':read_json(D029_RECORD),'blobs':{p:git('rev-parse','HEAD:'+p) for p in {**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS}}}
  facts['main_blobs']={p:git('rev-parse',D029_MAIN+':'+p) for p in D029_MAIN_BLOBS}
+ # WS-2 successor facts, read from Git/HEAD exactly like the D-029 ones; an unreadable receipt is `None` and can never match.
+ facts['ws2_extra_blobs']={p:git('rev-parse','HEAD:'+p) for p in WS2_TRUST_EXTRA_BLOBS}
+ facts['record_blob']=git('rev-parse','HEAD:'+D029_RECORD)
+ try:facts['ws2_receipt']=read_json(WS2_RECEIPT)
+ except (OSError,ValueError,ContractError):facts['ws2_receipt']=None
+ try:
+  pins=read_json(WS2_MANIFEST)['source_blobs'];facts['ws2_manifest_pins']={p:pins.get(p) for p in {**WS2_TRUST_BLOBS,**WS2_TRUST_EXTRA_BLOBS}}
+ except (OSError,ValueError,KeyError,TypeError,ContractError):facts['ws2_manifest_pins']=None
  git('merge-base','--is-ancestor',D029_MAIN,'HEAD')
  facts['changed']=frozenset(git('diff','--name-only',D029_MAIN,'HEAD','--',*D029_TRUST_PATHS).splitlines())
  return facts
@@ -237,10 +267,15 @@ def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,fa
   if shape(new_phases)!=[('setup','passed',None),('call','passed',None),('teardown','passed',None)] or outcome(new_phases)['status']!='passed':problems.append('current execution is not three passed phases')
   if tuple(new_native)[0]!='passed':problems.append('current native JUnit does not confirm PASSED')
   if facts['record']!=d029_expected_record():problems.append('reconciliation record differs from the reviewed constants')
-  if facts['blobs']!={**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS}:problems.append('Trust sources are not the exact reviewed blobs')
+  # ONE coherent state: STATE A (original D-029 tuple) or STATE B (the WS-2 tuple with its receipt, manifest pins and extra evidence).  Never a mix.
+  state_a=facts['blobs']=={**D029_BLOBS,**D029_TRUST_CHANGED_BLOBS}
+  state_b=(not state_a and facts['blobs']=={**WS2_TRUST_BLOBS,**D029_TRUST_CHANGED_BLOBS}
+           and facts.get('ws2_extra_blobs')==WS2_TRUST_EXTRA_BLOBS and facts.get('record_blob')==WS2_RECORD_BLOB
+           and facts.get('ws2_receipt')==ws2_expected_receipt() and facts.get('ws2_manifest_pins')=={**WS2_TRUST_BLOBS,**WS2_TRUST_EXTRA_BLOBS})
+  if not (state_a or state_b):problems.append('Trust sources are not the exact reviewed blobs')
   if facts['main_blobs']!=D029_MAIN_BLOBS:problems.append('Trust baseline is not the pinned main')
   if facts['changed']!=D029_TRUST_CHANGED:problems.append('Trust-scope diff differs from the reviewed set')
-  for ev in D029_EVIDENCE_NODES:
+  for ev in D029_EVIDENCE_NODES+(WS2_EXTRA_NODES if state_b else ()):
    if ev not in run_phases or outcome(run_phases[ev])['status']!='passed' or tuple(run_native.get(ev,('missing',)))[0]!='passed':problems.append('required successor test did not pass: '+ev)
  except (KeyError,IndexError,TypeError,ValueError,ContractError) as e:problems.append('malformed evidence: '+type(e).__name__)
  return problems
