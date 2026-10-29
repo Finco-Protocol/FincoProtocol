@@ -52,7 +52,7 @@
     "tests/test_model_react_overnight_b_governance.py": "735a92318431b7efa92c9aca02b0fed938aea28d",
     "tests/test_model_react_rcm_goal_seek_v1.py": "da8be4580594a9a45894f499f4011898a65931ba",
     "tests/test_model_workspace_productivity_v1.py": "024c1c9dfea3dd18186a59e0ef6cc55c54671231",
-    "tests/test_rcm_governance.py": "414373f3aaa0da42d4521df88d2788e40f60c02d",
+    "tests/test_rcm_governance.py": "afccbf85706876146a7569f1489c9fa16c5f803d",
     "tests/test_tax_wf10_candidate.py": "a1efc13cd47804d1ff377e845e497c2dd81c7e72",
     "tests/test_v11_stage3_successor.py": "9748d3fe5c3f3979575b89d65ef675f2d69e1dcf",
     "tests/v11_stage3_successor.py": "3d6baf9968c00248fd69e8e43f2dc06c2c7db6cb",
