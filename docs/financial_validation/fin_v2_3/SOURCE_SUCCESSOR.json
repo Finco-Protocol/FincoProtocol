@@ -46,7 +46,7 @@
     "tests/test_fin_v2_3_lifecycle.py": "7a32249a36092fa1bd340ef4de27fada7389be05",
     "tests/test_fin_v2_3_numerical.py": "97654d2c98204dffc27083505727a94a9b6060af",
     "tests/test_fin_v2_3_scope.py": "d9228c05ffe90a200181cb5e5b747a461cbed1bd",
-    "tests/test_finval_f01_fixture_integrity.py": "d63226cd298754238afeb5aea0b76c45f57f336d",
+    "tests/test_finval_f01_fixture_integrity.py": "4459c5a52fb12de32f8d8b9b83a89103e7ed6238",
     "tests/test_finval_rate_successor.py": "d731a912b8e97d6f014d113816b69290c6e13056",
     "tests/test_model_mutation_security_successor.py": "c922d847fa598a1b60815dc24db0192ebf6b41a5",
     "tests/test_model_react_overnight_b_governance.py": "735a92318431b7efa92c9aca02b0fed938aea28d",

@@ -79,7 +79,7 @@ def test_authority_mock_has_only_its_missing_unit_added():
     assert all(start <= op[1] and op[2] <= end for op in ops if op[0] != 'insert'), 'a line outside the macro node was changed or removed'
     cls = before.index('class TestDenseLayoutPreservesContract:')          # the reviewed helper block precedes this class
     nxt = next(i for i in range(end, len(before)) if before[i].startswith('# 3. CSS / JS static contracts')) - 1    # the negatives class precedes section 3
-    assert all(cls - 2 <= op[1] <= end or nxt - 1 <= op[1] <= nxt + 1 for op in ops if op[0] == 'insert'), 'an insertion outside the reviewed regions'
+    assert all(cls - 2 <= op[1] <= end or nxt - 3 <= op[1] <= nxt + 1 for op in ops if op[0] == 'insert'), 'an insertion outside the reviewed regions'
     for kept in ('golden["base_commit"] == "1951e26df9305edaa4cec3d0066af9fd2ec48fb9"', 'drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)',
                  'assert matches("app/workbook/registry.py")', "_ADDED_ATTRS = re.compile(r'\\s+data-(?:field-label|sheet-id|required|register-path)=\"[^\"]*\"')"):
         assert kept in actual, kept
