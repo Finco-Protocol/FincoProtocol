@@ -199,7 +199,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
 
   return (
-    <section className="fm-card fm-section" aria-labelledby={headingId} data-cost-grid={sheet}>
+    <section className="fm-card fm-section" aria-label={`${title} line items`} data-cost-grid={sheet}>
       <div className="fm-card-title">
         <h2 id={headingId}>{sheet === "capex" ? "CAPEX construction plan" : "OPEX operating profile"}</h2>
         <span className="fm-toolbar">
@@ -208,7 +208,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         </span>
       </div>
       <p className="rx-save-scope" data-save-scope="cost-lines">
-        <strong>Saves:</strong> every edited {title} line, together — all are saved or none. Saving does not run the model.
+        <strong>Saves:</strong> every edited {title} line below, together — all are saved or none. Saving does not run the model.
         {" "}Edits stay staged while you move between sections and are listed under <em>Changes</em>.
       </p>
       <p className="ws2-grid-keys rx-note">Enter or ↓ next row · ↑ previous · Tab next cell · Esc cancels the cell · paste a block from Excel · Ctrl+Z / Ctrl+Y undo / redo.</p>
@@ -223,12 +223,12 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
             {lines.map((line, r) => {
               const rowEditable = editableLine(line);
               return (
-                <tr key={line.sub_line_id} data-inactive={!line.active || undefined} data-line={line.sub_line_id}>
+                <tr key={line.sub_line_id} data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
                   {columns.map((col, c) => {
                     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
                     const value = valueOf(line, col);
                     const errorId = `${headingId}-${r}-${c}-err`;
-                    const label = `${col === "label" ? "Description" : col === "amount" ? "Amount (kEUR)" : "Inflation (%)"} for ${line.label}`;
+                    const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
                     return (
                       <td key={col}>
                         <input className={`fm-input ws2-cell ${col === "label" ? "ws2-cell-text" : ""}`} type="text"
@@ -265,7 +265,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
       </div>
       <div className="fm-toolbar" style={{ marginTop: 10 }}>
         <button type="button" className="fm-btn fm-btn-primary" data-cost-save="true" disabled={locked || !stagedLines || readOnlyProject || changes.invalidCount > 0} onClick={() => void save()}>
-          Save {stagedLines || ""} edited line{stagedLines === 1 ? "" : "s"} atomically
+          Save {stagedLines || ""} staged line{stagedLines === 1 ? "" : "s"} atomically
         </button>
         <button type="button" className="fm-btn" disabled={locked || !mine.length} onClick={() => changes.revertSection(section)}>Discard staged edits</button>
         <button type="button" className="fm-btn" disabled={!changes.canUndo} onClick={changes.undo}>Undo</button>

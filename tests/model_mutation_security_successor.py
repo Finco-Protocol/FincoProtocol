@@ -353,7 +353,7 @@ FINV2_D01_SENSITIVITY_SUCCESSORS={'app/v2/router.py': 'cd5091083433dab5aeb493d9b
 WSV2_SAVE_ALL_SUCCESSORS={'app/v2/grid_router.py': 'a9779991ffd75fc82093c8bc38b4aa6f5dfe5298', 'app/v2/react_workspace_router.py': 'd1b045a6c788be534e567ef877ed321abb966c11'}
 # Financial Owner WS-2 editing integration (after merged WS-1; gates A-E, 2026-10-29): exact reviewed sources of the shell editing mount, the joint bundle built from
 # them and the two PPA-percent browser acceptance sources. Additive: WSV2_PRESENTATION/BROWSER/ACCEPTANCE successors and every historical dictionary stay immutable.
-WSV2_EDITING_SUCCESSORS={'frontend/src/app/workflow/workflowShared.tsx': '3f63606c7afce806a10bbd3617e91718d2975d27', 'frontend/src/app/WorkspaceView.tsx': 'a86ee44d17e22dc88ca68d9408d87f5689af1372', 'static/react/finco-react.css': 'db348f3af0a6d5869e412e6fb540eed928d1bde3', 'static/react/finco-react.js': '59a306f9420b4f3f1602de939790316b31f60c0c', 'tests/model_react_mvp_acceptance.py': '12cc69a78ded7a79dc00b699a5bb5d173feb3b08', 'tests/model_react_wf2_browser_acceptance.py': 'b56aa7cd7db41a5cc21bd9487355cff047e4bb84'}
+WSV2_EDITING_SUCCESSORS={'frontend/src/app/workflow/workflowShared.tsx': '3f63606c7afce806a10bbd3617e91718d2975d27', 'frontend/src/app/WorkspaceView.tsx': 'a86ee44d17e22dc88ca68d9408d87f5689af1372', 'static/react/finco-react.css': 'db348f3af0a6d5869e412e6fb540eed928d1bde3', 'static/react/finco-react.js': 'ba14207b51843f27e43f60f632d5cd1878d99fa8', 'tests/model_react_mvp_acceptance.py': '12cc69a78ded7a79dc00b699a5bb5d173feb3b08', 'tests/model_react_wf2_browser_acceptance.py': 'b56aa7cd7db41a5cc21bd9487355cff047e4bb84'}
 
 
 def violations(sources,*,check_pin=True):
