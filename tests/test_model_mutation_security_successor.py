@@ -177,7 +177,8 @@ def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_a
     import re
     path="tests/test_model_workspace_consolidation_browser.py"
     source=SOURCES[path]
-    assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path]  # exact owner-approved later WS1 role; no historical repin
+    from tests import wf04_scope as WF04  # WF-04 successor lineage: the WS1 role state, or exactly the WF-04 pinned later state (whole cohort valid)
+    assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path] or WF04.presentation_successor(path, source)  # exact owner-approved later role; no historical repin
     assert S.RC_UX_SUCCESSORS[path] != S.WSV2_BROWSER_SUCCESSORS[path]  # the prior role's pin remains immutable                       # strict: exactly the latest reviewed state of the role file
     for name in ("check_react_run_sends_a_uuid_intent_and_consumes_it_on_commit",
                  "check_react_lost_response_survives_reload_and_resumes_the_original_run",

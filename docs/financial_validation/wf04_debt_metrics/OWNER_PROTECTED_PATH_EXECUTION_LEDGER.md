@@ -17,16 +17,16 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `app/v2/debt_metrics_projection.py` | N | A | — | `df626acd4306795b786138feed9dfc3d7436d60a` |
 | `app/workbook/dscr_contract_terms.py` | N | A | — | `05024753c0a52a68c085a63d736289f4fa8f2f75` |
 | `app/workbook/registry.py` | P | M | `31570edc0e6ca1c0191e13e987a0598ade5c8f8b` | `e5f2fd222881a3be50bbe572d13dcc72e53fab47` |
-| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `402627d06fca04eeaf3537308b9d299795aef194` |
+| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `d2730525db04ac77e23f2a4a93dfb59b363ae79d` |
 | `docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json` | P | M | `45c818843183a033d76deb490f9a05f4229748dd` | `62d5711043a2ce35f2fb14cb56750c7919a1b86e` |
-| `docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json` | P | M | `16bc1fc11bdfcc966476b20ca5998aeccb652b7f` | `473c97f1ce68adf5a51efa91f08bd01ee96372f7` |
+| `docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json` | P | M | `16bc1fc11bdfcc966476b20ca5998aeccb652b7f` | `33ac6e10115528b0914b3e7a7fe66a6bbdb2d8b8` |
 | `docs/financial_validation/wf04_debt_metrics/INDEPENDENT_ORACLE_AND_PARITY.md` | N | A | — | `1d65e0250386f2111f437082cb4f83e66bdcea29` |
 | `docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md` | N | A | — | `7c2921bf6d010da2b85015dcf778aa3f709602d8` |
 | `docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md` | N | A | — | `55fc9e4d7120313ba8906fed287f2a3efde2bd90` |
 | `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `bdfdcf487b7e63a36abf3c61389e2da4cd0ee1c8` |
 | `docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md` | N | A | — | `74c25a02616d3fe1b03fa78568242a1f8d0eadcd` |
 | `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `8ba30abacc8331b018c0d06f85c89c220d55f11a` |
-| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `148c728c932adea634fa9d4591ae992338a83b3b` |
+| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `773e8805278f2d837235fa7e2dd3913ad1f919c0` |
 | `frontend/src/app/FinancialOverview.tsx` | P | M | `9e073447afb224ba60fc8b97d72f776b2a67ea14` | `6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432` |
 | `frontend/src/app/FinancialResults.tsx` | P | M | `c53b677f29671380db916ceb4f4cfb2e2e53beeb` | `eb5ddb89b663f8145b702df26d591b884fbb4339` |
 | `frontend/src/app/credit/CreditDecisionPanel.tsx` | M | M | `a3a39ee566be572fae9a96df7690c7bd7009b0e0` | `2a48162683d4641454876b41c2bddf0e51b0f59c` |
@@ -51,6 +51,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_fin_v2_3_scope.py` | P | M | `b9671b2c1d9e55e7169261f84ccd44fb5db2c61e` | `701f2514efe7edf0f9c390cdae23f610f19dda35` |
 | `tests/test_fin_v2_r1_scope.py` | P | M | `7dd9f42f00eb8a6f849ad29d5e565c2f924ce7c7` | `6153c2edb7f0cb2ad3dad59ec860f1dd6d1b745c` |
 | `tests/test_model_credit_decision_v3_real_runs.py` | P | M | `61ec7bead5f71b29e38677ef9a6b1f8c562387a7` | `e2009d63694a64d9c1ea161bc4ffc34606114feb` |
+| `tests/test_model_mutation_security_successor.py` | P | M | `4672261c9aa91f0b727e116886ccc98b3e888f5a` | `c922d847fa598a1b60815dc24db0192ebf6b41a5` |
 | `tests/test_model_react_insights_v1.py` | P | M | `29b07e518eef65a9ade11f141d433594cc6ee82a` | `d62036ab8eb8dbc72e0436d821864078e76ce556` |
 | `tests/test_model_workspace_consolidation_browser.py` | P | M | `7c6478289c029f8b53e16103fa22b22123cbd19a` | `e5f3ace7a7406fc2b487ef90eab369e4ed51955b` |
 | `tests/test_rcm_governance.py` | P | M | `414373f3aaa0da42d4521df88d2788e40f60c02d` | `7b173cb4de41d910e5fe3c0796b62ad5ab9eb98e` |
@@ -60,8 +61,8 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_wf04_independent_oracle.py` | N | A | — | `2131ea106c1758b6020b42ca49bbc0f567c76994` |
 | `tests/test_wf04_run_bound_terms.py` | N | A | — | `181dd0b5ce20d93378c2839985289772a41f0ab4` |
 | `tests/test_wf04_scope.py` | N | A | — | `8d8a88abdfdbd90a57fbe9f2bd7414fd1a1b298b` |
-| `tests/test_wsv2_core_scope.py` | P | M | `6fafea72bfca4c6be200709d55bd8466049a8bbc` | `4d0abda9e45f75023d98ede17e82cac8dac8f690` |
-| `tests/wf04_scope.py` | N | A | — | `a452dee9e38c83798757702abfb3e1a21bb269ad` |
+| `tests/test_wsv2_core_scope.py` | P | M | `6fafea72bfca4c6be200709d55bd8466049a8bbc` | `e7a88c88cac5abb8d7bb8691f307072ea1ded615` |
+| `tests/wf04_scope.py` | N | A | — | `d98d84d183b878e4dac5a10b1e7e07ae6619d13c` |
 | `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `c3427ee3dfc402f8472ad47e717ade56cd6313d5` |
 | `tools/wf04_independent_dscr_oracle.py` | N | A | — | `f286d019a6b6cbb964c48ff7ed68281e7715b65d` |
 
@@ -157,6 +158,12 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 * **Approved scope:** §0A "CI-selected mandatory-browser evidence"; CI V3 collection governance (a standalone browser module added a collection skip and failed `safety-and-smoke / plan`)
 * **Tests / negative controls / pins:** test_wf04_scope::test_browser_acceptance_is_an_additive_import_in_the_existing_role_with_no_skip_of_its_own and `…role_import_block_cannot_be_widened`; `test_wsv2_core_scope::test_browser_registration_preserves_original_role_and_exact_new_exports`
 
+### `tests/test_model_mutation_security_successor.py`
+* **Why protected:** D-029 security-successor tests; pinned by the FIN-V2-3, D-01/D-02 and WS1 manifests
+* **Minimal diff:** `test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused`: the role file may equal the WS1 pinned state OR exactly the WF-04 pinned state (`presentation_successor`); the seven wrapper-name, extra-wrapper and skip negative controls are unchanged
+* **Approved scope:** §0A (protected acceptance nodes)
+* **Tests / negative controls / pins:** see section 3
+
 ### `tests/test_model_credit_decision_v3_real_runs.py`
 * **Why protected:** Real-Run credit acceptance; exact-pinned in the D-029 security-successor `BLOBS`; admitted through the WF-04 cohort pin
 * **Minimal diff:** One assertion: the `CD-EOD` row of a Run with no configured floor is `NOT_CONFIGURED` (was a fixed `UNAVAILABLE` placeholder because no EoD mechanic existed)
@@ -205,6 +212,7 @@ Each edit keeps the original assertion's security/financial intent; nothing is s
 | `test_rcux_governance::test_layer_is_a_subset…`, `test_rcm_governance::test_layer_is_exactly_six…`, `test_wsv2_core_scope::test_original_presentation…` | current bytes of a presentation path == the WS1 state | `== WS1 state` **or** `presentation_successor(path)` (three paths only, exact WF-04 pin) | any other byte still fails; the historical dictionaries remain immutable and individually admitted |
 | `test_model_credit_decision_v3_real_runs::test_real_run_renders_credit_evidence_with_explicit_classification` (4 params) | `CD-EOD` status `== "UNAVAILABLE"` | `== "NOT_CONFIGURED"` | the intent — a Run with no configured floor never shows PASS/TRIGGERED and assumes no default — is kept and made stricter; the classification assertion on the same row is unchanged |
 | `test_model_react_insights_v1::test_legacy_absent_root_identity_fields_preserve_committed_evidence[True]` | payload with the identity removed `==` payload with identity | `==` after removing only the Run-bound term verdicts, which must read `UNAVAILABLE`/`NOT_RECORDED` | the Run-bound terms live in the identity by design (never read from the Working Copy); every other byte — metrics, identity, evidence — is still compared. The `[False]` parameter (root fields removed, terms kept) is unchanged and still requires full equality |
+| `test_model_mutation_security_successor::test_d029_browser_wrappers_…` and `test_wsv2_core_scope::test_correction_e_d029_role_pin_is_additive_…` | the role module blob `==` the WS1 pinned state | `==` the WS1 state **or** `presentation_successor(role)` (exact WF-04 pin, whole cohort valid) | the wrapper-name list, extra-wrapper and `@pytest.mark.skip` negative controls are untouched and still fail on any extra/skipped wrapper |
 | `test_wsv2_core_scope::browser_contract_ok` (used by `test_browser_registration_preserves_original_role_and_exact_new_exports`) | after the WS1 marker the role module contains exactly the WS1 import line | exactly the WS1 import line, optionally followed by exactly the WF-04 block `ROLE_IMPORT_BLOCK` | every original negative control still holds (removed line, duplicated line, missing/skipped export all fail); any other trailing content fails |
 | `test_wsv2_core_scope::test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change` | `git diff BASE` (to the working tree) has no financial/persistence/workbook/service/editing path | the diff is bounded to the accepted WS1 merge `b76ac65c…` | the test judges WS1's own diff, exactly what it was written for; WF-04's own diff is judged by `test_wf04_scope` (no engine/core/domain/CI/Save-All/writer/security path) |
 | `test_wsv2_core_scope::test_predecessor_manifest_pins_and_metadata_remain_verbatim` | every non-React pin in the predecessor manifests equals its authorization-head value | same, except the named `WF04_SUCCESSOR_REPIN` pins | `test_wf04_scope::…named_repins` pins each moved value to the WF-04 pin and the real bytes; `historical_source_blobs` keeps the previous map |

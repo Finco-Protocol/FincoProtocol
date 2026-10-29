@@ -146,7 +146,9 @@ def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls(
     source = (F.ROOT / path).read_text()
     assert F.manifest()['source_blobs'][path] == F._blob(source.encode())
     assert S.RC_UX_SUCCESSORS[ROLE] != S.WSV2_BROWSER_SUCCESSORS[ROLE]
-    assert S.git_blob((F.ROOT / ROLE).read_text()) == S.WSV2_BROWSER_SUCCESSORS[ROLE]
+    role_source = (F.ROOT / ROLE).read_text()
+    # WF-04 successor lineage: the WS1 role state, or - only while the whole WF-04 cohort is valid - exactly the WF-04 pinned later state.
+    assert S.git_blob(role_source) == S.WSV2_BROWSER_SUCCESSORS[ROLE] or WF04.presentation_successor(ROLE, role_source)
     assert 'test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused' in source
     assert "assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path]" in source
     assert 'assert skipped[path]!=source and S.violations(skipped)' in source

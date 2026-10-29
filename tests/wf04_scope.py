@@ -56,6 +56,7 @@ OWNED_PATHS = frozenset((
     'tests/test_fin_v2_3_scope.py',
     'tests/test_fin_v2_r1_scope.py',
     'tests/test_model_credit_decision_v3_real_runs.py',
+    'tests/test_model_mutation_security_successor.py',
     'tests/test_model_react_insights_v1.py',
     'tests/test_model_workspace_consolidation_browser.py',
     'tests/test_rcm_governance.py',
@@ -78,9 +79,10 @@ FIN_V2_D01_MANIFEST = 'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.
 WSV2_CORE_MANIFEST = 'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json'
 # Predecessor manifests that WF-04 re-pins, and the exact pins each one may move (everything else must stay byte-for-byte what it was at BASE).
 PREDECESSOR_REPINS = {
-    FIN_V2_3_MANIFEST: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_rcm_governance.py')),
+    FIN_V2_3_MANIFEST: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_rcm_governance.py',
+                                  'tests/test_model_mutation_security_successor.py')),
     FIN_V2_R1_MANIFEST: frozenset(('tests/fin_v2_cohorts.py', 'tests/test_fin_v2_r1_scope.py', 'tests/test_rcm_governance.py')),
-    FIN_V2_D01_MANIFEST: frozenset(('tests/test_rcm_governance.py',)),
+    FIN_V2_D01_MANIFEST: frozenset(('tests/test_rcm_governance.py', 'tests/test_model_mutation_security_successor.py')),
     WSV2_CORE_MANIFEST: frozenset((
         'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
         'docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json',
@@ -92,6 +94,7 @@ PREDECESSOR_REPINS = {
         'static/react/finco-react.js',
         'tests/fin_v2_cohorts.py',
         'tests/test_rcm_governance.py',
+        'tests/test_model_mutation_security_successor.py',
         'tests/test_model_workspace_consolidation_browser.py',
         'tests/test_rcux_governance.py',
         'tests/test_wsv2_core_scope.py',
