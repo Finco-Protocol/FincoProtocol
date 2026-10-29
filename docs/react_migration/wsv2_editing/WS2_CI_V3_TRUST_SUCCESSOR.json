@@ -25,8 +25,7 @@
     "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[altered security statement-<lambda>]",
     "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry duplicated-<lambda>]",
     "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry moved-<lambda>]",
-    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry softened-<lambda>]",
-    "tests/test_trust_readiness_controls.py::test_every_persisted_table_is_tenant_keyed_and_classified"
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_rejects_arbitrary_registry_drift[entry softened-<lambda>]"
   ],
   "schema": "WS2_CI_V3_TRUST_SUCCESSOR_V1",
   "scope": "current Trust-source state after the WS-2 save_all_requests classification; not a second historical outcome reconciliation",

@@ -226,7 +226,9 @@ WS2_TRUST_BLOBS={'app/trust_readiness/registry.py':'c616833bdce263b60b4bccec217c
  'docs/readiness/06_retention_and_deletion.md':'4e46c27f1e74095554608bb084182af8960b14ee'}
 WS2_TRUST_EXTRA_BLOBS={'tests/test_trust_readiness_registry.py':'69e0b15e0c4cfd36102d1442e577f7cc6d9b6516'}
 WS2_RECORD_BLOB='3de6bae74c873570f20037912dcb32f74f19e41d'
-WS2_EXTRA_NODES=('tests/test_trust_readiness_controls.py::test_every_persisted_table_is_tenant_keyed_and_classified',)
+# State B needs exactly the same 15 same-run D-029 evidence nodes as state A: they execute the registry chain against the WS-2 text. (The
+# table-classification test also runs in CI but is not part of the aggregate's original-node evidence set, so it cannot be required here.)
+WS2_EXTRA_NODES=()
 
 def d029_expected_record():
  return {'authorization':'Financial Owner, PR #384 Correction C (relayed in the PR thread)','node':D029_NODE,

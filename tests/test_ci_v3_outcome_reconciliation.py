@@ -274,8 +274,9 @@ def test_ws2_state_rejects_hybrids_incomplete_tuples_and_tampered_receipts(name,
     assert problems(facts=facts, run=ws2_run_evidence()), name
 
 
-def test_ws2_state_requires_its_extra_same_run_evidence():
-    for missing in prod.WS2_EXTRA_NODES:
+def test_ws2_state_requires_all_fifteen_same_run_evidence_nodes():
+    assert prod.WS2_EXTRA_NODES == () and len(prod.D029_EVIDENCE_NODES) == 15
+    for missing in prod.D029_EVIDENCE_NODES:
         phases, native = ws2_run_evidence()
         del phases[missing]
         assert problems(run=(phases, native)), missing

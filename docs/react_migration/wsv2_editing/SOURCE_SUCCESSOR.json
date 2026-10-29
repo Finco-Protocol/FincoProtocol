@@ -12,14 +12,14 @@
     "app/v2/react_workspace_router.py": "d1b045a6c788be534e567ef877ed321abb966c11",
     "app/v2/save_all_commands.py": "bf605d172962f732c4722c348e37d02ee74ed909",
     "app/workbook/revenue_contracts_service.py": "f08aefdd809742b503d6f045aabb301ac031bb53",
-    "docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json": "d3153e89532ba88f0df394fdb5332a5b31a772fc",
+    "docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json": "dc4e5ea659a5fbab2a4550ed294069b6e2122607",
     "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
     "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
     "tests/fin_v2_wsv2_scope.py": "315b0340fe346ad24f0cccfe1d5aae75838cea98",
-    "tests/test_ci_v3_outcome_reconciliation.py": "f3345e6cd9e7f115dacbb8202c2971283fb3b825",
+    "tests/test_ci_v3_outcome_reconciliation.py": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
     "tests/test_fin_v2_wsv2_scope.py": "31454d227504467134724302fad199ad0a936ac9",
     "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
     "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
-    "tools/ci_v3_production.py": "86dd0b26c139e1d0d31d92b79ca17b7709816fb6"
+    "tools/ci_v3_production.py": "ef9f18c6ba3eb13dbf70aaec19c572c42686bcda"
   }
 }
