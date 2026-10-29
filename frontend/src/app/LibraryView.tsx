@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import "../finco/_group.css";
 import "../styles/finco-live.css";
 import "../styles/rcm-new-project.css";
 import "../styles/rcux-product.css";
 import { Shell } from "../finco/_shared/FincoShell";
-import { fetchMyProjects } from "./library/api";
+import { fetchMyProjects, changeLifecycle } from "./library/api";
 import { NO_FILTERS, type MyProjects, type ProjectCard, type ProjectFilters } from "./library/types";
 import { FriendlyError } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
@@ -31,20 +31,62 @@ function go(event: MouseEvent<HTMLAnchorElement>, to: () => void) {
   to();
 }
 
+function filtersFromUrl(): ProjectFilters {
+  const q = new URLSearchParams(window.location.search);
+  return { ...NO_FILTERS, search: q.get("search") || "", technology: q.get("technology") || "", country: q.get("country") || "",
+    status: q.get("status") || "", edited: q.get("edited") || "", hasRuns: q.get("has_runs") === "1",
+    archived: q.get("archived") === "1", sort: q.get("sort") || "recent",
+    page: Number.isSafeInteger(Number(q.get("page"))) && Number(q.get("page")) > 0 ? Number(q.get("page")) : 1 };
+}
+
 /** My Projects: the user's own saved projects and work history.  System templates are not projects and never appear here —
  *  they are chosen when creating a project. */
 export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) => void }) {
-  const [filters, setFilters] = useState<ProjectFilters>(NO_FILTERS);
-  const [searchInput, setSearchInput] = useState("");
+  const [filters, setFilters] = useState<ProjectFilters>(filtersFromUrl);
+  const [searchInput, setSearchInput] = useState(() => filtersFromUrl().search);
   const [data, setData] = useState<MyProjects | null>(null);
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lifecycleBusy, setLifecycleBusy] = useState("");
+  const [lifecycleMessage, setLifecycleMessage] = useState("");
+  const fromHistory = useRef(false);
+  const restoreScroll = useRef<number | null>(null);
+
+  useEffect(() => {
+    const changed = (event: PopStateEvent) => {
+      fromHistory.current = true;
+      restoreScroll.current = (event.state as { wf03Scroll?: number } | null)?.wf03Scroll ?? 0;
+      const next = filtersFromUrl(); setFilters(next); setSearchInput(next.search);
+    };
+    window.addEventListener("popstate", changed);
+    return () => window.removeEventListener("popstate", changed);
+  }, []);
+  useEffect(() => {
+    if (fromHistory.current) { fromHistory.current = false; return; }
+    const q = new URLSearchParams();
+    for (const key of ["search", "technology", "country", "status", "edited"] as const) if (filters[key]) q.set(key, filters[key]);
+    if (filters.sort !== "recent") q.set("sort", filters.sort);
+    if (filters.archived) q.set("archived", "1");
+    if (filters.hasRuns) q.set("has_runs", "1");
+    if (filters.page > 1) q.set("page", String(filters.page));
+    const query = q.toString();
+    if (query !== window.location.search.slice(1)) {
+      window.history.replaceState({ ...window.history.state, wf03Scroll: window.scrollY }, "");
+      window.history.pushState({ wf03Scroll: window.scrollY }, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+    }
+  }, [filters]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     const result = await fetchMyProjects(filters, signal);
     if (signal?.aborted) return;
-    if (result.ok) { setData(result); setError(null); } else if (result.code !== "CANCELLED") setError(result);
+    if (result.ok) {
+      setData(result); setError(null);
+      if (restoreScroll.current !== null) {
+        const top = restoreScroll.current; restoreScroll.current = null;
+        requestAnimationFrame(() => window.scrollTo({ top }));
+      }
+    } else if (result.code !== "CANCELLED") setError(result);
     setLoading(false);
   }, [filters]);
 
@@ -57,6 +99,16 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
   const patch = (change: Partial<ProjectFilters>) => setFilters((f) => ({ ...f, ...change, page: change.page ?? 1 }));
   const filtered = filters.search !== "" || filters.technology !== "" || filters.country !== "" || filters.status !== "" || filters.edited !== "" || filters.hasRuns;
   const newProject = (path = "") => { window.location.hash = `new-project${path}`; };
+  const lifecycleAction = async (project: ProjectCard) => {
+    if (!project.lifecycle || lifecycleBusy) return;
+    if (!project.archived && !window.confirm(`Archive ${project.name}? Saved inputs and Run history will be preserved.`)) return;
+    setLifecycleBusy(project.code);
+    try {
+      const result = await changeLifecycle(project.code, project.lifecycle);
+      setLifecycleMessage(result.message);
+      if (result.confirmed) await load();
+    } finally { setLifecycleBusy(""); }
+  };
 
   if (error && !data) {
     return (
@@ -90,6 +142,9 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
                onClick={(e) => go(e, () => newProject("/template"))}>Choose a template</a>
           </div>
         </header>
+        <p><button type="button" className="rx-button rx-button-secondary" aria-pressed={filters.archived}
+          onClick={() => patch({ archived: !filters.archived })}>{filters.archived ? "Show active projects" : "Show archived projects"}</button></p>
+        {lifecycleMessage && <p className="rx-note" role="status">{lifecycleMessage}</p>}
 
         {empty ? (
           <section className="rx-card rcux-empty" data-library-empty="true" aria-labelledby="rcux-empty-h">
@@ -171,6 +226,9 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
                         : "Not run yet"}</dd>
                     </dl>
                     <div className="rcux-project-links">
+                      {p.lifecycle && (p.lifecycle.can_archive || p.lifecycle.can_restore) && <button type="button"
+                        className="rx-button rx-button-secondary" data-project-lifecycle={p.code} disabled={!!lifecycleBusy}
+                        onClick={() => void lifecycleAction(p)}>{lifecycleBusy === p.code ? "Checking…" : p.archived ? "Restore project" : "Archive project"}</button>}
                       <a href={p.links.open} data-open-project={p.code} onClick={(e) => go(e, () => onOpenProject(p.code))}>Open project →</a>
                       <a href={p.links.scenarios} data-project-scenarios={p.code}>Scenarios</a>
                       <a href={p.links.run_history} data-project-run-history={p.code}>Run history</a>

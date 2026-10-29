@@ -2066,6 +2066,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     if project_record is None:
         return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
 
+    if project_record.archived:
+        return HTMLResponse('<main><h1>Project archived</h1><p>Saved inputs and Run history are preserved.</p>'
+                            '<a href="/v2/model-react/">Open My Projects to restore an eligible project</a></main>', status_code=409)
+
     with span("workspace_read"):
         ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -3026,6 +3030,14 @@ async def v2_workbook_run(
             refused_message="This is a protected reference model and cannot be run. Create a working copy to run the model.")
         if _ri_decision.terminal:
             return _run_intent_response(request, _ri_decision, is_htmx, project)
+
+    if project_record.archived:
+        return JSONResponse({"ok": False, "code": "PROJECT_ARCHIVED",
+                             "message": "Restore the project before starting a new Run."}, status_code=409)
+    _creation = (project_record.replay_metadata or {}).get("create_request")
+    if _creation is not None and (not isinstance(_creation, dict) or _creation.get("state") != "COMPLETE"):
+        return JSONResponse({"ok": False, "code": "PROJECT_INCOMPLETE",
+                             "message": "Project creation is incomplete. Nothing was run."}, status_code=409)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:

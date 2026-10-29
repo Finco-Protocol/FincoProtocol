@@ -34,7 +34,8 @@ NEW_NATIVE = ("passed", "")
 
 def run_evidence(**changes):
     # the 15 original D-029 evidence nodes, plus the WS-2 same-run evidence node(s) the current (WS-2) Trust state also requires
-    nodes = prod.D029_EVIDENCE_NODES + prod.WS2_EXTRA_NODES
+    from tests import wf03_lifecycle_scope as WF03
+    nodes = prod.D029_EVIDENCE_NODES + prod.WS2_EXTRA_NODES + WF03.CI_EVIDENCE_NODES
     phases = {n: ph() for n in nodes}
     native = {n: ("passed", "") for n in nodes}
     phases[NODE], native[NODE] = NEW, NEW_NATIVE
@@ -56,6 +57,25 @@ def test_the_authorized_transition_holds_on_the_real_reviewed_sources():
     run_phases, run_native = run_evidence()
     assert prod.d029_authorized(NODE, OLD, OLD_NATIVE, NEW, NEW_NATIVE, run_phases, run_native, receipts)
     assert receipts == [{"node": NODE, "from": "SKIPPED", "to": "PASSED"}]
+
+
+def test_wf03_ci_state_rejects_mixed_blobs_and_missing_same_run_evidence():
+    from tests import wf03_lifecycle_scope as F
+    facts=real_facts()
+    assert facts.get('wf03_state') is not None
+    phases,native=run_evidence()
+    assert F.accepts_ci_trust_state(facts,phases,native)
+    for path in F.CI_TRUST_PATHS:
+        altered=copy.deepcopy(facts)
+        altered['wf03_state']['current_blobs'][path]='0'*40
+        assert not F.accepts_ci_trust_state(altered,phases,native)
+    altered=copy.deepcopy(facts);altered['wf03_state']['base']='0'*40
+    assert not F.accepts_ci_trust_state(altered,phases,native)
+    altered=copy.deepcopy(facts);altered['blobs']['app/trust_readiness/registry.py']=prod.WS2_TRUST_BLOBS['app/trust_readiness/registry.py']
+    assert not F.accepts_ci_trust_state(altered,phases,native)
+    for node in F.CI_EVIDENCE_NODES:
+        incomplete=dict(phases);incomplete.pop(node)
+        assert not F.accepts_ci_trust_state(facts,incomplete,native)
 
 
 def test_reconciliation_record_is_exact_content_and_binds_the_reviewed_constants():
@@ -215,18 +235,38 @@ def test_the_historical_d029_receipt_and_constants_are_unchanged():
     assert git_blob(prod.D029_RECORD) == prod.WS2_RECORD_BLOB          # the historical receipt itself is byte-identical
 
 
-def test_the_real_head_is_exactly_the_ws2_state_and_the_receipt_binds_it():
-    facts = real_facts()
-    assert facts["blobs"] == {**prod.WS2_TRUST_BLOBS, **prod.D029_TRUST_CHANGED_BLOBS}
+def ws2_parent_facts():
+    # Preserve the historical STATE B tests against actual immutable merged
+    # WS2 sources. Current WF03 STATE C is separately tested above, including
+    # its required same-run nodes; these negatives must not pass merely because
+    # STATE C evidence is absent.
+    from tests import wf03_lifecycle_scope as F
+    facts = copy.deepcopy(real_facts())
     for path, blob in WS2_PATHS.items():
-        assert git_blob(path) == blob, path
+        actual = subprocess.check_output(["git", "rev-parse", F.BASE + ":" + path], cwd=ROOT, text=True).strip()
+        assert actual == blob, path
+    facts["blobs"] = {**prod.WS2_TRUST_BLOBS, **prod.D029_TRUST_CHANGED_BLOBS}
+    facts["ws2_extra_blobs"] = dict(prod.WS2_TRUST_EXTRA_BLOBS)
+    facts["ws2_manifest_pins"] = {**prod.WS2_TRUST_BLOBS, **prod.WS2_TRUST_EXTRA_BLOBS}
+    facts["wf03_state"] = None
+    return facts
+
+
+def test_the_real_head_is_exactly_the_ws2_state_and_the_receipt_binds_it():
+    from tests import wf03_lifecycle_scope as F
+    current = real_facts()
+    assert current["wf03_state"] == F.ci_source_facts() and current["wf03_state"] is not None
+    assert F.accepts_ci_trust_state(current, *run_evidence())
+    facts = ws2_parent_facts()
+    assert facts["blobs"] == {**prod.WS2_TRUST_BLOBS, **prod.D029_TRUST_CHANGED_BLOBS}
     assert facts["ws2_receipt"] == prod.ws2_expected_receipt() == read_json(ROOT / prod.WS2_RECEIPT)
     assert facts["ws2_manifest_pins"] == {**prod.WS2_TRUST_BLOBS, **prod.WS2_TRUST_EXTRA_BLOBS}
     assert facts["changed"] == prod.D029_TRUST_CHANGED
-    assert problems(run=ws2_run_evidence()) == []
+    assert problems(facts=facts, run=ws2_run_evidence()) == []
     receipts = []
     run_phases, run_native = ws2_run_evidence()
-    assert prod.d029_authorized(NODE, OLD, OLD_NATIVE, NEW, NEW_NATIVE, run_phases, run_native, receipts)
+    assert prod.d029_transition_problems(NODE, OLD, OLD_NATIVE, NEW, NEW_NATIVE, facts, run_phases, run_native) == []
+    assert prod.d029_authorized(NODE, OLD, OLD_NATIVE, NEW, NEW_NATIVE, *run_evidence(), receipts)
     assert receipts == [{"node": NODE, "from": "SKIPPED", "to": "PASSED"}]
 
 
@@ -239,7 +279,7 @@ def test_the_ws2_receipt_is_a_state_attestation_not_a_second_transition():
 
 @pytest.mark.parametrize("path", sorted(WS2_PATHS))
 def test_ws2_one_byte_drift_of_any_trust_source_fails_closed(path):
-    facts = copy.deepcopy(real_facts())
+    facts = copy.deepcopy(ws2_parent_facts())
     if path in facts["blobs"]:
         facts["blobs"][path] = "0" * 40
     else:
@@ -269,7 +309,7 @@ def test_ws2_one_byte_drift_of_any_trust_source_fails_closed(path):
     ("D-029 baseline main changed", lambda f: f.update({"main_blobs": {"app/trust_readiness/registry.py": "7" * 40}})),
 ))
 def test_ws2_state_rejects_hybrids_incomplete_tuples_and_tampered_receipts(name, mutate):
-    facts = copy.deepcopy(real_facts())
+    facts = copy.deepcopy(ws2_parent_facts())
     mutate(facts)
     assert problems(facts=facts, run=ws2_run_evidence()), name
 
@@ -279,26 +319,26 @@ def test_ws2_state_requires_all_fifteen_same_run_evidence_nodes():
     for missing in prod.D029_EVIDENCE_NODES:
         phases, native = ws2_run_evidence()
         del phases[missing]
-        assert problems(run=(phases, native)), missing
+        assert problems(facts=ws2_parent_facts(), run=(phases, native)), missing
         phases, native = ws2_run_evidence()
         native[missing] = ("failed", "x")
-        assert problems(run=(phases, native)), missing
+        assert problems(facts=ws2_parent_facts(), run=(phases, native)), missing
         phases, native = ws2_run_evidence()
         phases[missing] = ph("skipped", "skipped")
         native[missing] = ("skipped", "")
-        assert problems(run=(phases, native)), missing
+        assert problems(facts=ws2_parent_facts(), run=(phases, native)), missing
 
 
 def test_ws2_state_does_not_loosen_any_outcome_rule():
     run = ws2_run_evidence()
     for kwargs in (dict(new=ph("failed", "boom"), new_native=("failed", "boom")), dict(new=ph("skipped", "x", wasxfail="e"), new_native=("xfail", "x")),
                    dict(old=ph("passed"), old_native=("passed", "")), dict(new=ph(setup_reason="different setup")), dict(new_native=())):
-        assert problems(run=run, **kwargs), kwargs
+        assert problems(facts=ws2_parent_facts(), run=run, **kwargs), kwargs
     assert problems(run=run, node="tests/test_trust_readiness_registry.py::test_keys_are_unique_and_prefixed") == ["not the authorized node"]
 
 
 def test_the_exception_is_not_selected_by_environment_branch_or_a_monkeypatched_policy(monkeypatch):
-    facts = copy.deepcopy(real_facts())
+    facts = copy.deepcopy(ws2_parent_facts())
     facts["blobs"]["app/trust_readiness/registry.py"] = "0" * 40
     for key, value in (("GITHUB_HEAD_REF", "claude/new-session-85uo4c"), ("WS2_TRUST_SUCCESSOR", "1"), ("FINCO_ALLOW_OUTCOME_RECONCILIATION", "true")):
         monkeypatch.setenv(key, value)

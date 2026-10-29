@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import "../../finco/_group.css";
 import "../../styles/finco-live.css";
 import "../../styles/rcm-new-project.css";
@@ -46,7 +46,7 @@ function TierBadge({ tier }: { tier: string }) {
  * and the effective CAPEX/OPEX come from the server preview.  The wizard holds no financial default, never runs the model, and never
  * retries an ambiguous Create.
  */
-export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
+function SeededNewProjectWizard({ onCancel }: { onCancel: () => void }) {
   const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loadError, setLoadError] = useState("");
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -260,9 +260,14 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
                       <span>Choose a ready-made starting model, review its starting assumptions and limitations, then create your own editable project from it.</span>
                     </button>
                   </div>
-                  <details className="rx-advanced" data-blank-project-constraint="true"><summary>Blank Draft · not available yet</summary>
-                    <p>A completely blank model cannot currently be saved by the project creator. It requires a separate non-runnable setup draft; approved defaults are never presented as blank. Choose Approved Defaults or a template to create a saved project.</p>
-                  </details>
+                  <div className="rx-advanced" data-blank-project-constraint="true">
+                    <button type="button" className="rx-button rx-button-secondary" onClick={() => {
+                      const url = new URL(window.location.href); url.searchParams.set("setup", "blank"); url.hash = "new-project";
+                      window.history.pushState(window.history.state, "", url);
+                      window.dispatchEvent(new HashChangeEvent("hashchange"));
+                    }}>Blank setup draft</button>
+                    <p>Save explicit inputs without starting assumptions. This is a non-runnable setup draft; promotion to a runnable model is not yet validated.</p>
+                  </div>
                 </>
               )}
               {path === "new" && (
@@ -401,7 +406,7 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
               <p><a className="rx-button" href={LIBRARY_URL} data-refresh-library="true">Go to My Projects</a></p>
             </div>
           )}
-          {created && <p className="rx-status rx-status-saved" role="status" data-create-success="true">Your project was created. Opening <a href={created.workspace_url}>{created.name}</a>…</p>}
+          {created && <p className="rx-status rx-status-saved" role="status" data-create-success="true">Your project was created without running the model. Opening <a href={created.workspace_url}>{created.name}</a> — review your inputs, then choose Run model.</p>}
 
           <div className="rcm-actions">
             <button type="button" className="rx-button rx-button-secondary" data-wizard-back="true"
@@ -415,4 +420,169 @@ export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
       </main>
     </Shell>
   );
+}
+
+type SetupField = { field_id: string; label: string; unit: string | null; required: boolean };
+type SetupDraft = { draft_id: string; technology: string; name: string; country: string; fields: Record<string, string>;
+  draft_version: number; state: string; readiness: { message: string; can_promote: boolean;
+    missing: Array<{ field_id: string; label: string }>; invalid: Array<{ field_id: string; message: string }> } };
+
+/** Separate persisted setup, never a seeded/partial canonical model. */
+function BlankSetupWizard({ onCancel }: { onCancel: () => void }) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [technology, setTechnology] = useState("");
+  const [name, setName] = useState("");
+  const [country, setCountry] = useState("");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [catalogue, setCatalogue] = useState<SetupField[]>([]);
+  const [countries, setCountries] = useState<Array<{ code: string; label: string }>>([]);
+  const [draft, setDraft] = useState<SetupDraft | null>(null);
+  const [drafts, setDrafts] = useState<SetupDraft[]>([]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [unknown, setUnknown] = useState<{ draftId: string | null; key: string } | null>(null);
+  const [scope, setScope] = useState("");
+  const [createToken, setCreateToken] = useState("");
+  const [updateToken, setUpdateToken] = useState("");
+  const baseline = useRef("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const retainedUrl = useRef(window.location.href);
+  const allowLeave = useRef(false);
+  const root = "/v2/model-react/setup-drafts";
+  const raw = JSON.stringify({ technology, name, country, fields });
+  const dirty = raw !== baseline.current && (!!name || !!country || Object.keys(fields).length > 0);
+
+  const adopt = useCallback((next: SetupDraft) => {
+    setDraft(next); setTechnology(next.technology); setName(next.name); setCountry(next.country); setFields(next.fields);
+    baseline.current = JSON.stringify({ technology: next.technology, name: next.name, country: next.country, fields: next.fields });
+  }, []);
+  const open = useCallback(async (id: string) => {
+    const response = await fetch(`${root}/${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
+    const data = await response.json() as { ok: boolean; draft?: SetupDraft; tokens?: { update: string } };
+    if (response.ok && data.ok && data.draft) { adopt(data.draft); setUpdateToken(data.tokens?.update || ""); setStep(2); }
+    else setMessage("This setup draft could not be read. Nothing was changed.");
+  }, [adopt]);
+  useEffect(() => {
+    let live = true;
+    void fetch(`${root}?technology=${encodeURIComponent(technology || "solar")}`, { credentials: "same-origin", cache: "no-store" })
+      .then((r) => r.json()).then((data: { ok: boolean; fields: SetupField[]; drafts: SetupDraft[]; scope: string; csrf_token: string; countries: Array<{ code: string; label: string }> }) => {
+        if (!live || !data.ok) return;
+        setCatalogue(data.fields); setDrafts(data.drafts); setCreateToken(data.csrf_token); setScope(data.scope);
+        setCountries(data.countries);
+        const stored = sessionStorage.getItem(`finco-wf03-setup:${data.scope}`);
+        if (stored) setUnknown(JSON.parse(stored) as { draftId: string | null; key: string });
+      }).catch(() => { if (live) setMessage("Setup drafts could not be loaded. Try again before saving."); });
+    return () => { live = false; };
+  }, [technology]);
+  useEffect(() => { heading.current?.focus(); }, [step]);
+  useLayoutEffect(() => {
+    const before = (event: BeforeUnloadEvent) => { if (dirty || unknown) { event.preventDefault(); event.returnValue = ""; } };
+    const changed = (event: Event) => {
+      const next = window.location.href;
+      if (next === retainedUrl.current) return;
+      if (allowLeave.current) { retainedUrl.current = next; return; }
+      if ((dirty || unknown) && !window.confirm("Leave this setup? Unsaved edits will be lost; a pending save must still be reconciled.")) {
+        event.stopImmediatePropagation();
+        window.history.replaceState(window.history.state, "", retainedUrl.current);
+        // The shell also tracks hashes; restore its queued route before React
+        // commits the navigation, so a refused Back cannot discard this form.
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      } else retainedUrl.current = next;
+    };
+    window.addEventListener("beforeunload", before);
+    // Capture before the shell's route listeners can unmount this dirty form.
+    window.addEventListener("hashchange", changed, true);
+    window.addEventListener("popstate", changed, true);
+    return () => { window.removeEventListener("beforeunload", before); window.removeEventListener("hashchange", changed, true); window.removeEventListener("popstate", changed, true); };
+  }, [dirty, unknown]);
+
+  const settle = async (saved: SetupDraft) => {
+    sessionStorage.removeItem(`finco-wf03-setup:${scope}`); setUnknown(null); adopt(saved);
+    await open(saved.draft_id); setStep(3); setMessage("Setup draft saved. No runnable project was created and the model was not run.");
+  };
+  const reconcile = async (attempt: { draftId: string | null; key: string }) => {
+    const url = attempt.draftId ? `${root}/${attempt.draftId}/status` : `${root}/status`;
+    const response = await fetch(`${url}?request_id=${attempt.key}`, { credentials: "same-origin", cache: "no-store" });
+    const data = await response.json() as { ok: boolean; outcome?: string; draft?: SetupDraft };
+    if (response.ok && data.ok && data.outcome === "COMMITTED" && data.draft) await settle(data.draft);
+    else setMessage("The save result is still unknown. Keep this request and check its status again; do not create a replacement draft.");
+  };
+  const save = async () => {
+    if (busy || !scope) return;
+    setBusy(true);
+    try {
+      if (unknown) { await reconcile(unknown); return; }
+      const attempt = { draftId: draft?.draft_id || null, key: crypto.randomUUID().replace(/-/g, "") };
+      sessionStorage.setItem(`finco-wf03-setup:${scope}`, JSON.stringify(attempt));
+      setUnknown(attempt);
+      const response = await fetch(draft ? `${root}/${draft.draft_id}` : root, { method: draft ? "PATCH" : "POST",
+        credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": draft ? updateToken : createToken },
+        body: JSON.stringify({ request_id: attempt.key, technology, name, country, fields, ...(draft ? { draft_version: draft.draft_version } : {}) }) });
+      const result = await response.json().catch(() => null) as { ok: boolean; draft?: SetupDraft; code?: string } | null;
+      if (response.ok && result?.ok && result.draft) await settle(result.draft);
+      else if (response.status >= 400 && response.status < 500) {
+        sessionStorage.removeItem(`finco-wf03-setup:${scope}`); setUnknown(null);
+        setMessage("The draft was not saved. Check the entered values, session and saved version before trying again.");
+      } else await reconcile(attempt);
+    } catch { setMessage("The save could not be confirmed. Check the status of the same request before saving again."); }
+    finally { setBusy(false); }
+  };
+  const cancel = () => { if ((!dirty && !unknown) || window.confirm("Leave this setup? Unsaved edits will be lost; any pending save still needs reconciliation.")) {
+    allowLeave.current = true; onCancel();
+  } };
+  return <Shell crumb="Blank setup draft" dataOrigin="canonical-run" originLabel="SETUP ONLY">
+    <main className="rx-page rcm-wizard" role="main" data-setup-draft="true" data-setup-dirty={dirty ? "true" : "false"}>
+      <h1>Blank setup draft</h1><p>Explicit inputs only. This setup is saved separately and cannot Run, create scenarios or use Save All.</p>
+      <ol className="rcm-steps">{STEPS.map((s) => <li key={s.id} className={s.id === step ? "active" : ""}>{s.id}. {s.id === 3 ? "Review & save setup" : s.label}</li>)}</ol>
+      <section className="rx-card"><h2 ref={heading} tabIndex={-1}>{step === 1 ? "1. Start" : step === 2 ? "2. Project details" : "3. Review & save setup"}</h2>
+        {message && <p role="status">{message}</p>}
+        {step === 1 && <><label>Technology <select aria-label="Technology" value={technology} disabled={busy || !!unknown || !!draft} onChange={(e) => { setTechnology(e.target.value); setFields({}); }}>
+          <option value="">Choose a technology</option><option value="solar">Solar PV</option><option value="wind">Onshore Wind</option>
+          <option value="data_center">Data Center</option><option value="ev_charging">EV Charging</option></select></label>
+          <p>Storage is not released.</p>{drafts.length > 0 && <details><summary>Resume a saved setup draft</summary>{drafts.map((d) => <p key={d.draft_id}>
+            <button type="button" className="rx-button rx-button-secondary" disabled={busy || !!unknown} onClick={() => void open(d.draft_id)}>{d.name || "Unnamed setup"} · {d.technology}</button></p>)}</details>}</>}
+        {step === 2 && <fieldset disabled={busy || !!unknown}><legend>Your explicit inputs</legend>
+          <label>Setup name <input id="setup-project_setup.identity.project_name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></label>
+          <label>Country / market <select aria-label="Country / market" id="setup-project_setup.identity.country_market" value={country} onChange={(e) => setCountry(e.target.value)}>
+            <option value="">Choose a country / market</option>{countries.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}</select></label>
+          {catalogue.map((f) => <p key={f.field_id}><label htmlFor={`setup-${f.field_id}`}>{f.label}{f.unit ? ` (${f.unit})` : ""}
+            <input id={`setup-${f.field_id}`} value={fields[f.field_id] ?? ""} onChange={(e) => setFields((old) => ({ ...old, [f.field_id]: e.target.value }))} /></label></p>)}
+        </fieldset>}
+        {step === 3 && <><p>{name || "Unnamed setup"} · {technology} · {country || "Country not entered"}</p>
+          <p>{Object.values(fields).filter((v) => v.trim() !== "").length} explicitly entered fields. Missing values are not replaced with defaults.</p>
+          <p role="note">{draft?.readiness.message || "Promotion to a runnable model remains unavailable until every consumed input can be validated without starting assumptions."}</p>
+          {!!draft?.readiness.missing.length && <details open><summary>Missing inputs</summary><ul>{draft.readiness.missing.map((f) => <li key={f.field_id}>
+            <button type="button" onClick={() => { setStep(2); requestAnimationFrame(() => document.getElementById(`setup-${f.field_id}`)?.focus()); }}>{f.label} · {f.field_id}</button></li>)}</ul></details>}
+          {!!draft?.readiness.invalid.length && <div role="alert"><h3>Review invalid inputs</h3><ul>{draft.readiness.invalid.map((f) => <li key={f.field_id}>
+            <button type="button" onClick={() => { setStep(2); requestAnimationFrame(() => document.getElementById(`setup-${f.field_id}`)?.focus()); }}>{f.field_id}: {f.message}</button></li>)}</ul></div>}
+          <button type="button" className="rx-button" disabled>Create runnable project — unavailable</button></>}
+        <div className="rcm-actions"><button type="button" className="rx-button rx-button-secondary" disabled={busy} onClick={cancel}>My Projects</button>
+          <button type="button" className="rx-button rx-button-secondary" disabled={step === 1 || busy || !!unknown} onClick={() => setStep((s) => (s - 1) as 1 | 2)}>Back</button>
+          {step < 3 && <button type="button" className="rx-button" disabled={!technology || busy || !!unknown} onClick={() => setStep((s) => (s + 1) as 2 | 3)}>Next</button>}
+          {(step === 3 || unknown) && <button type="button" className="rx-button" disabled={busy || !scope} onClick={() => void save()}>{busy ? "Checking…" : unknown ? "Reconcile saved request" : "Save setup draft"}</button>}
+        </div>
+      </section>
+    </main>
+  </Shell>;
+}
+
+export function NewProjectWizard({ onCancel }: { onCancel: () => void }) {
+  // Reuse the existing shell's released #new-project route. A distinct query
+  // choice survives reload/deep links without changing App's route authority.
+  const selected = () => new URLSearchParams(window.location.search).get("setup") === "blank";
+  const [blank, setBlank] = useState(selected);
+  useEffect(() => {
+    // The draft's navigation guard restores a refused URL during this event.
+    // Read it after all listeners, rather than unmounting the child first.
+    let pending: number | undefined;
+    const changed = () => { window.clearTimeout(pending); pending = window.setTimeout(() => setBlank(selected()), 0); };
+    window.addEventListener("hashchange", changed);
+    window.addEventListener("popstate", changed);
+    return () => { window.clearTimeout(pending); window.removeEventListener("hashchange", changed); window.removeEventListener("popstate", changed); };
+  }, []);
+  const exitBlank = () => {
+    const url = new URL(window.location.href); url.searchParams.delete("setup");
+    window.history.replaceState(window.history.state, "", url); onCancel();
+  };
+  return blank ? <BlankSetupWizard onCancel={exitBlank} /> : <SeededNewProjectWizard onCancel={onCancel} />;
 }

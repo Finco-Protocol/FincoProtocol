@@ -256,6 +256,8 @@ def d029_source_facts():
  except (OSError,ValueError,KeyError,TypeError,ContractError):facts['ws2_manifest_pins']=None
  git('merge-base','--is-ancestor',D029_MAIN,'HEAD')
  facts['changed']=frozenset(git('diff','--name-only',D029_MAIN,'HEAD','--',*D029_TRUST_PATHS).splitlines())
+ from tests import wf03_lifecycle_scope as WF03
+ facts['wf03_state']=WF03.ci_source_facts()
  return facts
 
 def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,facts,run_phases,run_native):
@@ -274,10 +276,12 @@ def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,fa
   state_b=(not state_a and facts['blobs']=={**WS2_TRUST_BLOBS,**D029_TRUST_CHANGED_BLOBS}
            and facts.get('ws2_extra_blobs')==WS2_TRUST_EXTRA_BLOBS and facts.get('record_blob')==WS2_RECORD_BLOB
            and facts.get('ws2_receipt')==ws2_expected_receipt() and facts.get('ws2_manifest_pins')=={**WS2_TRUST_BLOBS,**WS2_TRUST_EXTRA_BLOBS})
-  if not (state_a or state_b):problems.append('Trust sources are not the exact reviewed blobs')
+  from tests import wf03_lifecycle_scope as WF03
+  state_c=WF03.accepts_ci_trust_state(facts,run_phases,run_native)
+  if not (state_a or state_b or state_c):problems.append('Trust sources are not the exact reviewed blobs')
   if facts['main_blobs']!=D029_MAIN_BLOBS:problems.append('Trust baseline is not the pinned main')
   if facts['changed']!=D029_TRUST_CHANGED:problems.append('Trust-scope diff differs from the reviewed set')
-  for ev in D029_EVIDENCE_NODES+(WS2_EXTRA_NODES if state_b else ()):
+  for ev in D029_EVIDENCE_NODES+(WS2_EXTRA_NODES if state_b or state_c else ())+(WF03.CI_EVIDENCE_NODES if state_c else ()):
    if ev not in run_phases or outcome(run_phases[ev])['status']!='passed' or tuple(run_native.get(ev,('missing',)))[0]!='passed':problems.append('required successor test did not pass: '+ev)
  except (KeyError,IndexError,TypeError,ValueError,ContractError) as e:problems.append('malformed evidence: '+type(e).__name__)
  return problems

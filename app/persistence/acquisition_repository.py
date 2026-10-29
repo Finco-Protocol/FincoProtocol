@@ -40,6 +40,8 @@ def _table(conn):
         FOREIGN KEY(case_id) REFERENCES model_m6_acquisition_cases(case_id)
     )""")
     # This independent append-only case revision log never mutates historical Runs.
+    from app.persistence.project_lifecycle_repository import ensure_schema as _ensure_lifecycle_fences
+    _ensure_lifecycle_fences(conn)
 
 
 

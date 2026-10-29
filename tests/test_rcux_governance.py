@@ -31,7 +31,8 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
         later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
-        assert S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}   # or the exact reviewed WS-2 state
+        from tests import wf03_lifecycle_scope as WF03
+        assert S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)} or WF03.matches(path,SOURCES[path])
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 

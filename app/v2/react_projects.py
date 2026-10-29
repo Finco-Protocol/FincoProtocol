@@ -18,6 +18,7 @@ Feature flag: ``FINCO_MODEL_REACT_V1`` (the same gate as the rest of the React w
 from __future__ import annotations
 
 import math
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -99,7 +100,7 @@ def display_value(value: Any) -> str:
 STATUS_LABEL = {"NOT_RUN": "Not run yet", "CURRENT": "Results up to date", "STALE": "Results outdated"}
 
 
-def _entry(record, ws) -> dict[str, Any]:
+def _entry(record, ws, request=None) -> dict[str, Any]:
     from urllib.parse import quote
 
     from app.v2.react_workspace_router import _vertical_scope
@@ -119,14 +120,25 @@ def _entry(record, ws) -> dict[str, Any]:
     freshness = "NOT_RUN"
     if ws is not None and has_run:
         try:
-            identity = assemble_consistent_for_get(record.user_id, record.project_id, WORKBOOK.version)
+            from app.persistence.db import get_cursor
+            from app.workbook.workbook_identity import assemble_transactional
+            with get_cursor() as cursor:
+                if not cursor.connection.in_transaction:
+                    cursor.execute("BEGIN DEFERRED")
+                identity = assemble_transactional(
+                    draft_snapshot_json=json.dumps(ws.draft_snapshot or {}), project_id=record.project_id,
+                    user_id=record.user_id, active_scenario_id=ws.active_scenario_id,
+                    active_scenario_name=ws.active_scenario_name, cursor=cursor, workbook_version=WORKBOOK.version)
             freshness = resolve_runtime_freshness(ws, current_composite_hash=identity.composite_hash).state.value
         except (WorkbookIdentityError, ValueError):
             freshness = "UNKNOWN"
     updated = max([d for d in (getattr(ws, "updated_at", None), getattr(record, "updated_at", None)) if d is not None], default=None)
     last_run_at = getattr(ws, "last_runtime_at", None) if ws is not None else None
     base = f"/v2/model-react/{quote(record.project_code, safe='')}"
+    from app.services.project_lifecycle_service import project_capability
     return {
+        "lifecycle": project_capability(request, record.user_id, record.project_id) if request is not None else None,
+        "_project_id": record.project_id,
         "code": record.project_code, "name": record.project_name or record.project_code,
         "technology": {"key": scope["key"], "label": _TECHNOLOGY_NAME.get(scope["key"], scope["public_name"]), "pilot_tier": scope["pilot_tier"]},
         "country": {"code": snapshot.get("country_market") or None, "label": country_label(snapshot.get("country_market"))},
@@ -146,10 +158,13 @@ def _own_records(user_id: str, *, archived: bool):
     from app.persistence.db import get_cursor
     from app.persistence.records import ProjectRecord
 
-    where = ("user_id=? AND archived=? AND is_protected=0 AND is_readonly=0 AND project_role!='reference'")
+    where = ("user_id=? AND archived=? AND is_protected=0 AND is_readonly=0 AND project_role!='reference' "
+             "AND (json_extract(replay_metadata_json,'$.create_request.state') IS NULL "
+             "OR json_extract(replay_metadata_json,'$.create_request.state')='COMPLETE') "
+             "AND (archived=0 OR lifecycle_archive_origin='USER_ACTION')")
     with get_cursor() as cur:
-        cur.execute(f"SELECT * FROM projects WHERE {where} ORDER BY updated_at DESC, project_id DESC LIMIT ?",
-                    (user_id, 1 if archived else 0, MAX_PROJECTS_CONSIDERED))
+        cur.execute(f"SELECT * FROM projects WHERE {where} ORDER BY project_id DESC",
+                    (user_id, 1 if archived else 0))
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
@@ -163,59 +178,61 @@ async def react_my_projects(request: Request, search: str = "", technology: str 
         return _json({"ok": False, "code": "INVALID_QUERY", "message": "One of the filters is not valid."}, 422)
     from app.persistence.workspace_repository import get_workspace_state
 
-    show_archived = archived in ("1", "true")
-    records = _own_records(user.user_id, archived=show_archived)
-    needle = search.strip().casefold()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=EDITED_FILTERS[edited]) if edited else None
-    entries = []
-    for record in records:
-        ws = get_workspace_state(user_id=record.user_id, project_id=record.project_id)
-        entries.append(_entry(record, ws))
-    facets_t: dict[str, dict[str, Any]] = {}
-    facets_c: dict[str, dict[str, Any]] = {}
-    for e in entries:
-        t = facets_t.setdefault(e["technology"]["key"], {"key": e["technology"]["key"], "label": e["technology"]["label"], "count": 0})
-        t["count"] += 1
-        if e["country"]["code"]:
-            c = facets_c.setdefault(e["country"]["code"], {"code": e["country"]["code"], "label": e["country"]["label"], "count": 0})
-            c["count"] += 1
+    from app.persistence.db import lifecycle_transaction
+    with lifecycle_transaction(readonly=True):
+        show_archived = archived in ("1", "true")
+        records = _own_records(user.user_id, archived=show_archived)
+        needle = search.strip().casefold()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=EDITED_FILTERS[edited]) if edited else None
+        entries = []
+        for record in records:
+            ws = get_workspace_state(user_id=record.user_id, project_id=record.project_id)
+            entries.append(_entry(record, ws, request))
+        facets_t: dict[str, dict[str, Any]] = {}
+        facets_c: dict[str, dict[str, Any]] = {}
+        for e in entries:
+            t = facets_t.setdefault(e["technology"]["key"], {"key": e["technology"]["key"], "label": e["technology"]["label"], "count": 0})
+            t["count"] += 1
+            if e["country"]["code"]:
+                c = facets_c.setdefault(e["country"]["code"], {"code": e["country"]["code"], "label": e["country"]["label"], "count": 0})
+                c["count"] += 1
 
-    def keep(e: dict[str, Any]) -> bool:
-        # `total_all` and the facets describe ALL of the account's projects; the search narrows only what is listed.
-        if needle and needle not in e["name"].casefold():
-            return False
-        if technology and e["technology"]["key"] != technology:
-            return False
-        if country and e["country"]["code"] != country:
-            return False
-        if status and {"not_run": "NOT_RUN", "current": "CURRENT", "outdated": "STALE"}[status] != e["freshness"]:
-            return False
-        if has_runs in ("1", "true") and not e["has_runs"]:
-            return False
-        if cutoff is not None:
-            stamp = datetime.fromisoformat(e["last_updated"]) if e["last_updated"] else None
-            if stamp is None or (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)) < cutoff:
+        def keep(e: dict[str, Any]) -> bool:
+            # `total_all` and the facets describe ALL of the account's projects; the search narrows only what is listed.
+            if needle and needle not in e["name"].casefold():
                 return False
-        return True
+            if technology and e["technology"]["key"] != technology:
+                return False
+            if country and e["country"]["code"] != country:
+                return False
+            if status and {"not_run": "NOT_RUN", "current": "CURRENT", "outdated": "STALE"}[status] != e["freshness"]:
+                return False
+            if has_runs in ("1", "true") and not e["has_runs"]:
+                return False
+            if cutoff is not None:
+                stamp = datetime.fromisoformat(e["last_updated"]) if e["last_updated"] else None
+                if stamp is None or (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)) < cutoff:
+                    return False
+            return True
 
-    kept = [e for e in entries if keep(e)]
-    if sort == "name":
-        kept.sort(key=lambda e: e["name"].casefold())
-    elif sort == "last_run":
-        kept.sort(key=lambda e: e["last_run"]["at"] or "", reverse=True)
-    else:
-        kept.sort(key=lambda e: e["last_updated"] or "", reverse=True)
-    total = len(kept)
-    pages = max(1, math.ceil(total / PAGE_SIZE))
-    page = min(max(1, page), pages)
-    return _json({
-        "ok": True, "projects": kept[(page - 1) * PAGE_SIZE: page * PAGE_SIZE], "total": total, "total_all": len(entries),
-        "page": page, "page_size": PAGE_SIZE, "total_pages": pages, "sort": sort, "archived": show_archived,
-        "facets": {"technologies": sorted(facets_t.values(), key=lambda f: f["label"]),
-                   "countries": sorted(facets_c.values(), key=lambda f: f["label"] or "")},
-        "limits": {"considered": min(len(records), MAX_PROJECTS_CONSIDERED), "capped": len(records) >= MAX_PROJECTS_CONSIDERED},
-        "notes": {"last_updated": "The latest saved change or Run.", "recently_opened": "Opening a project is not recorded, so it cannot be filtered on."},
-    })
+        kept = [e for e in entries if keep(e)]
+        if sort == "name":
+            kept.sort(key=lambda e: (e["name"].casefold(), e["_project_id"]))
+        elif sort == "last_run":
+            kept.sort(key=lambda e: (e["last_run"]["at"] or "", e["_project_id"]), reverse=True)
+        else:
+            kept.sort(key=lambda e: (e["last_updated"] or "", e["_project_id"]), reverse=True)
+        total = len(kept)
+        pages = max(1, math.ceil(total / PAGE_SIZE))
+        page = min(max(1, page), pages)
+        return _json({
+            "ok": True, "projects": kept[(page - 1) * PAGE_SIZE: page * PAGE_SIZE], "total": total, "total_all": len(entries),
+            "page": page, "page_size": PAGE_SIZE, "total_pages": pages, "sort": sort, "archived": show_archived,
+            "facets": {"technologies": sorted(facets_t.values(), key=lambda f: f["label"]),
+                       "countries": sorted(facets_c.values(), key=lambda f: f["label"] or "")},
+            "limits": {"considered": len(records), "capped": False},
+            "notes": {"last_updated": "The latest saved change or Run.", "recently_opened": "Opening a project is not recorded, so it cannot be filtered on."},
+        })
 
 
 def _starting_assumptions(key: str, snapshot: dict[str, Any]) -> list[dict[str, str]]:

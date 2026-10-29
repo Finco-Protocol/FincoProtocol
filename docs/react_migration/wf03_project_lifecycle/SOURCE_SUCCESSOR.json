@@ -1,0 +1,755 @@
+{
+  "schema_version": "WF03_LIFECYCLE_EXACT_SOURCE_V1",
+  "base": "8a74fcb5cd57e470cf83a458bd165ea14ad394fb",
+  "base_tree": "a96566a21154fd8e673676c20bd2e4e093599330",
+  "authorization": {
+    "owner_addendum_sha256": "404fc56089a572675ab1ba42b0f33073da73aab3a625b3bba33c34c8a058e692",
+    "additional_paths": [
+      "tests/wsv2_core_scope.py",
+      "tools/ci_v3_production.py",
+      "tests/test_ci_v3_outcome_reconciliation.py"
+    ],
+    "additional_authorization": "Explicit user reply in this chat, 2026-10-29; bounded successor and additive negatives only",
+    "merge_deploy_activation": false,
+    "independent_final_review": "REQUIRED"
+  },
+  "source_blobs": {
+    "app/demo_cleanup.py": "e3d61783bec1b861b9ed2bc1feae6e5474f12d82",
+    "app/library/router.py": "5f4abfd8272f0614f16d9e6ee4063df040dca99b",
+    "app/persistence/acquisition_repository.py": "bf46817818bec5f5f9b3b64af43e75f97efa6f7f",
+    "app/persistence/db.py": "84a5ed46b89ef2131e03bfc1c477d8f7e7e64788",
+    "app/persistence/project_lifecycle_repository.py": "346043583f2f39f0a6d7aa914acc29b6c63108dc",
+    "app/persistence/projects_repository.py": "a63b0df074047d98d6379e89874269d0ec3972c8",
+    "app/persistence/records.py": "a0b5b870ccc57e744067696ab006772b3c284c54",
+    "app/persistence/setup_draft_repository.py": "7af5f43e1526b081b335942bbb83b96ce42fb4c4",
+    "app/persistence/workspace_repository.py": "a9e6058460f814c0535ce83eab2265a7dd4eda93",
+    "app/services/blank_readiness_service.py": "d91dbba24d790ca6e9e92e22c4e865aec58429e5",
+    "app/services/project_lifecycle_service.py": "043f3a968df9de2e1b0a0b4c9c694cfc94f88bc7",
+    "app/services/run_service.py": "405bc98e3667a64115a05142f59917fd7a83d424",
+    "app/services/save_run_service.py": "ba270641b4ba71a0ad6def3b98af29db2044deda",
+    "app/trust_readiness/registry.py": "ff6e97a71a3abd244e9802bbb50d095b916aa0f0",
+    "app/v2/react_new_project.py": "3708438d53790c98fa5851b0763230b23ba0e7b2",
+    "app/v2/react_projects.py": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
+    "app/v2/react_workspace_router.py": "cc56da2107598c983ba0e170ee9140c1d8cf3abf",
+    "app/v2/router.py": "fa5905a75a2fb0b6d53ea816643815eaf568293e",
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "e7f165344481a75789268995561b8c97e2cf4c05",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "bf36aed3161f663ade7aec29448096a6f63181f7",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "d036bea7618aad5cfa6d25983e53e2ed50d19886",
+    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "8171d1cef04240522bdb56da04039e2c85d43a60",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "7241cd705937ac55dbca0755342e4740d476865f",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "f8ea8115e12585540e13d7fc610ba9b4d260fa33",
+    "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
+    "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
+    "frontend/src/app/LibraryView.tsx": "f6dded97e644e66fff137c060e0ae013fdd86ae4",
+    "frontend/src/app/WorkspaceView.tsx": "ad8261c33f268e73403c91a8f77e68269c59f310",
+    "frontend/src/app/library/api.ts": "61d12652aac0be38efac710f1643e9e41554ec54",
+    "frontend/src/app/library/types.ts": "68c961b3d310f3906f8139a0409694a8ab4738e7",
+    "frontend/src/app/newProject/NewProjectWizard.tsx": "feda60dfd93f91866db75820000b1c004376e3fe",
+    "main_web.py": "1643caeeb2e506f09def5a738d5861dde738de0d",
+    "static/react/finco-react.css": "db348f3af0a6d5869e412e6fb540eed928d1bde3",
+    "static/react/finco-react.js": "cc342ed392f85dfd30d9e2abec49ce80251bb260",
+    "tests/fin_v2_cohorts.py": "93a07088a839e2fa482a5f57ef8068607dd735a8",
+    "tests/model_mutation_security_successor.py": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
+    "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
+    "tests/test_fin_v2_3_scope.py": "b0b0dac6cb3f9ef18837cdc17716cb31bb5bc1d3",
+    "tests/test_fin_v2_r1_scope.py": "c3a66983e78a7701ac3f43104a023f1f93b81d8f",
+    "tests/test_model_workspace_consolidation_browser.py": "ebb16147dc846bdc6d2963a839e1d6bc54e713b8",
+    "tests/test_project_lifecycle.py": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
+    "tests/test_project_lifecycle_browser.py": "24fef3f9778565d9567cc481be1ca30e2b8b7986",
+    "tests/test_rcux_governance.py": "5a36b15e6b787934a38a3da870ec1d613b33213d",
+    "tests/test_setup_draft_promotion.py": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
+    "tests/test_true_blank_readiness.py": "430ea655203bfec8fa03875e02378c80a0173528",
+    "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
+    "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
+    "tests/test_wf03_lifecycle_scope.py": "4f82258150e0ac836317cb4037e212a0a213cd82",
+    "tests/wf03_lifecycle_scope.py": "2a765eaa3a34e8cc9fd64e9298ab0cc8a111a2c9",
+    "tests/wsv2_core_scope.py": "a1224225cc0d2e1aa8b277eaa42b6aa6ad6feed9",
+    "tools/ci_v3_production.py": "4095f291f66b5ce72acb7adc69cd815d2436a481"
+  },
+  "predecessor_manifests": {
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "8dd5415975cef0465308bec52f1cee515ce006e1",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "1bfc453fc45a15f4dd8dc8315118f0432f532073",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "fa6b3533471fe7d5bc752b00c9c4124bbe098af0",
+    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "865f2e504fc044e253d469bcef86c9dfc471e41a",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "392bb92acd6675b4157bd1666821d797f5f05c47",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "f3c56b90089d4f43a035640e4d133c011b5e3cf2"
+  },
+  "path_ledger": [
+    {
+      "path": "app/demo_cleanup.py",
+      "before_blob": "a6a33fe83c6814e167a7cf90cb8f757c5e17741e",
+      "after_blob": "e3d61783bec1b861b9ed2bc1feae6e5474f12d82",
+      "entry_points": [
+        "_delete_owned_state",
+        "_disposal_transaction"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/library/router.py",
+      "before_blob": "2b9a0bdc2ccfbde2f1b6e9401ee6ad935382e6b5",
+      "after_blob": "5f4abfd8272f0614f16d9e6ee4063df040dca99b",
+      "entry_points": [
+        "archive_project",
+        "project_lifecycle_status",
+        "unarchive_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/acquisition_repository.py",
+      "before_blob": "e565f7937063d81fdf552d599abfb03ad8f45630",
+      "after_blob": "bf46817818bec5f5f9b3b64af43e75f97efa6f7f",
+      "entry_points": [
+        "_table"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/db.py",
+      "before_blob": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
+      "after_blob": "84a5ed46b89ef2131e03bfc1c477d8f7e7e64788",
+      "entry_points": [
+        "_init_schema",
+        "get_connection",
+        "get_cursor",
+        "lifecycle_transaction"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/project_lifecycle_repository.py",
+      "before_blob": null,
+      "after_blob": "346043583f2f39f0a6d7aa914acc29b6c63108dc",
+      "entry_points": [
+        "LifecycleError",
+        "_current",
+        "_epoch_matches",
+        "_expand_schema",
+        "_install_trigger",
+        "_now",
+        "admission_scope",
+        "admit",
+        "eligible",
+        "ensure_schema",
+        "install_connection_functions",
+        "install_write_fences",
+        "require_write_cursor",
+        "status",
+        "transition",
+        "validate_body"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/projects_repository.py",
+      "before_blob": "8e9be46fee9b257756c18bd698252792d67bb01f",
+      "after_blob": "a63b0df074047d98d6379e89874269d0ec3972c8",
+      "entry_points": [
+        "abandon_stale_create",
+        "get_project",
+        "get_project_by_code",
+        "get_project_by_id",
+        "save_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/records.py",
+      "before_blob": "a7db9a4affe131cf9b7871a25d4790c5bbfd8940",
+      "after_blob": "a0b5b870ccc57e744067696ab006772b3c284c54",
+      "entry_points": [
+        "ProjectRecord"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/setup_draft_repository.py",
+      "before_blob": null,
+      "after_blob": "7af5f43e1526b081b335942bbb83b96ce42fb4c4",
+      "entry_points": [
+        "_body",
+        "creation_status",
+        "ensure_schema",
+        "list_owned",
+        "project_view",
+        "promote",
+        "read",
+        "request_status",
+        "write"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/workspace_repository.py",
+      "before_blob": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+      "after_blob": "a9e6058460f814c0535ce83eab2265a7dd4eda93",
+      "entry_points": [
+        "save_workspace_state",
+        "v2_atomic_run_commit"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/blank_readiness_service.py",
+      "before_blob": null,
+      "after_blob": "d91dbba24d790ca6e9e92e22c4e865aec58429e5",
+      "entry_points": [
+        "catalogue",
+        "readiness"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/project_lifecycle_service.py",
+      "before_blob": null,
+      "after_blob": "043f3a968df9de2e1b0a0b4c9c694cfc94f88bc7",
+      "entry_points": [
+        "capability",
+        "handle_status",
+        "handle_transition",
+        "project_capability",
+        "response"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/run_service.py",
+      "before_blob": "5ad2cc3b95c85a60265ad892f4ef91f03001a852",
+      "after_blob": "405bc98e3667a64115a05142f59917fd7a83d424",
+      "entry_points": [
+        "_execute_generic_path",
+        "_execute_template_seeded_path",
+        "_execute_user_created_path",
+        "execute_run_route"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/save_run_service.py",
+      "before_blob": "4ca0428605bd4ded7dd69dec391a4d21d72a9c08",
+      "after_blob": "ba270641b4ba71a0ad6def3b98af29db2044deda",
+      "entry_points": [
+        "execute_save_run_route"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/trust_readiness/registry.py",
+      "before_blob": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
+      "after_blob": "ff6e97a71a3abd244e9802bbb50d095b916aa0f0",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_new_project.py",
+      "before_blob": "5abdb46a4704277a895d256a434f7a6f510206c1",
+      "after_blob": "3708438d53790c98fa5851b0763230b23ba0e7b2",
+      "entry_points": [
+        "_setup_auth",
+        "_setup_write",
+        "setup_creation_status",
+        "setup_draft_create",
+        "setup_draft_get",
+        "setup_draft_index",
+        "setup_draft_promote",
+        "setup_draft_status",
+        "setup_draft_update",
+        "setup_readiness"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_projects.py",
+      "before_blob": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
+      "after_blob": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
+      "entry_points": [
+        "_entry",
+        "_own_records",
+        "react_my_projects"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_workspace_router.py",
+      "before_blob": "d1b045a6c788be534e567ef877ed321abb966c11",
+      "after_blob": "cc56da2107598c983ba0e170ee9140c1d8cf3abf",
+      "entry_points": [
+        "_resolve_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/router.py",
+      "before_blob": "8d6a26331e6160b69ad2cad687ae11abadf64a15",
+      "after_blob": "fa5905a75a2fb0b6d53ea816643815eaf568293e",
+      "entry_points": [
+        "v2_workbook",
+        "v2_workbook_run"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
+      "before_blob": "8dd5415975cef0465308bec52f1cee515ce006e1",
+      "after_blob": "e7f165344481a75789268995561b8c97e2cf4c05",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "before_blob": "1bfc453fc45a15f4dd8dc8315118f0432f532073",
+      "after_blob": "bf36aed3161f663ade7aec29448096a6f63181f7",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "fa6b3533471fe7d5bc752b00c9c4124bbe098af0",
+      "after_blob": "d036bea7618aad5cfa6d25983e53e2ed50d19886",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json",
+      "before_blob": "865f2e504fc044e253d469bcef86c9dfc471e41a",
+      "after_blob": "8171d1cef04240522bdb56da04039e2c85d43a60",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "392bb92acd6675b4157bd1666821d797f5f05c47",
+      "after_blob": "7241cd705937ac55dbca0755342e4740d476865f",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+      "before_blob": "f3c56b90089d4f43a035640e4d133c011b5e3cf2",
+      "after_blob": "f8ea8115e12585540e13d7fc610ba9b4d260fa33",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/readiness/02_data_handling.md",
+      "before_blob": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+      "after_blob": "cc6695cb145fd212fac48e83022c69ba79d991ad",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/readiness/06_retention_and_deletion.md",
+      "before_blob": "4e46c27f1e74095554608bb084182af8960b14ee",
+      "after_blob": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/LibraryView.tsx",
+      "before_blob": "6e1679eb09c5180b0b541bd3242d46eb9633b6f0",
+      "after_blob": "f6dded97e644e66fff137c060e0ae013fdd86ae4",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/WorkspaceView.tsx",
+      "before_blob": "a86ee44d17e22dc88ca68d9408d87f5689af1372",
+      "after_blob": "ad8261c33f268e73403c91a8f77e68269c59f310",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/library/api.ts",
+      "before_blob": "d7f6d8420bacd11831ab52fa20f04d5ced3c3037",
+      "after_blob": "61d12652aac0be38efac710f1643e9e41554ec54",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/library/types.ts",
+      "before_blob": "5f0ba9a173ebce7dcfe2c36d8b3c564b993053a7",
+      "after_blob": "68c961b3d310f3906f8139a0409694a8ab4738e7",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/newProject/NewProjectWizard.tsx",
+      "before_blob": "6ebec05f08fe702eb36c0e128126f6fd38749a25",
+      "after_blob": "feda60dfd93f91866db75820000b1c004376e3fe",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "main_web.py",
+      "before_blob": "e74e94503efda5bb3e0993de71b01bbe1122b892",
+      "after_blob": "1643caeeb2e506f09def5a738d5861dde738de0d",
+      "entry_points": [
+        "_lifecycle_admission_middleware",
+        "_lifecycle_write_refusal"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "static/react/finco-react.js",
+      "before_blob": "b7a76a078632c3db212fda36ac267738b69951d0",
+      "after_blob": "cc342ed392f85dfd30d9e2abec49ce80251bb260",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/fin_v2_cohorts.py",
+      "before_blob": "079ff3949f293699882df196e3282a6f392ae5bd",
+      "after_blob": "93a07088a839e2fa482a5f57ef8068607dd735a8",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/model_mutation_security_successor.py",
+      "before_blob": "02ca1bbf373d6e7a2e5a8defcb0e54e6352cc47b",
+      "after_blob": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
+      "entry_points": [
+        "current_mutation_successor_valid"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_ci_v3_outcome_reconciliation.py",
+      "before_blob": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
+      "after_blob": "7bccd1690dc6315fdb7531070d388f1423680db7",
+      "entry_points": [
+        "run_evidence",
+        "test_the_exception_is_not_selected_by_environment_branch_or_a_monkeypatched_policy",
+        "test_the_real_head_is_exactly_the_ws2_state_and_the_receipt_binds_it",
+        "test_wf03_ci_state_rejects_mixed_blobs_and_missing_same_run_evidence",
+        "test_ws2_one_byte_drift_of_any_trust_source_fails_closed",
+        "test_ws2_state_does_not_loosen_any_outcome_rule",
+        "test_ws2_state_rejects_hybrids_incomplete_tuples_and_tampered_receipts",
+        "test_ws2_state_requires_all_fifteen_same_run_evidence_nodes",
+        "ws2_parent_facts"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_fin_v2_3_scope.py",
+      "before_blob": "a4a5cf07b6b97a2ebe849a437cbfe4a98043fc85",
+      "after_blob": "b0b0dac6cb3f9ef18837cdc17716cb31bb5bc1d3",
+      "entry_points": [
+        "test_native_and_historical_financial_authorities_are_not_rewritten"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_fin_v2_r1_scope.py",
+      "before_blob": "21177a261b7c83f068e4cbf0f66107b88c0686ce",
+      "after_blob": "c3a66983e78a7701ac3f43104a023f1f93b81d8f",
+      "entry_points": [
+        "test_native_and_historical_financial_authorities_are_not_rewritten"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_model_workspace_consolidation_browser.py",
+      "before_blob": "7c6478289c029f8b53e16103fa22b22123cbd19a",
+      "after_blob": "ebb16147dc846bdc6d2963a839e1d6bc54e713b8",
+      "entry_points": [
+        "test_wf03_blank_setup_durable_non_runnable_browser",
+        "test_wf03_https_visible_archive_restore_matrix",
+        "test_wf03_lost_response_restore_original_replay_browser"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_project_lifecycle.py",
+      "before_blob": null,
+      "after_blob": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
+      "entry_points": [
+        "command",
+        "financial_state",
+        "test_archive_restore_are_financially_neutral_and_receipt_replay_cannot_restore_old_state",
+        "test_complete_committed_run_replays_after_archive_without_last_run_overwrite",
+        "test_database_guard_requires_current_request_actor_inside_write_transaction",
+        "test_every_existing_writer_is_fenced_at_sql_boundary_even_after_aba",
+        "test_fault_in_event_insert_rolls_back_project_and_receipt",
+        "test_https_operation_tokens_and_status_owner_scope",
+        "test_ledger_immutable_and_generic_project_upsert_cannot_unarchive",
+        "test_legacy_archives_are_quarantined_not_user_restorable",
+        "test_library_all_filters_counts_and_unicode_search_precede_page_for_over_1000_projects",
+        "test_real_v2_run_cannot_commit_after_archive_wins",
+        "test_repeatable_migration_rejects_a_corrupted_same_name_write_fence",
+        "test_tenant_and_body_scope",
+        "world"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_project_lifecycle_browser.py",
+      "before_blob": null,
+      "after_blob": "24fef3f9778565d9567cc481be1ca30e2b8b7986",
+      "entry_points": [
+        "_context",
+        "_financial",
+        "check_blank_setup_is_durable_explicit_and_non_runnable",
+        "check_lost_archive_response_then_restore_and_original_replay",
+        "check_visible_https_archive_restore_matrix",
+        "wf03_browser",
+        "wf03_servers"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_rcux_governance.py",
+      "before_blob": "bb895f71a731fc106b815a3ca8ba50f4f2a51fb9",
+      "after_blob": "5a36b15e6b787934a38a3da870ec1d613b33213d",
+      "entry_points": [
+        "test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_setup_draft_promotion.py",
+      "before_blob": null,
+      "after_blob": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
+      "entry_points": [
+        "body",
+        "draft_db",
+        "test_durable_setup_replay_and_refused_promotion_make_no_canonical_rows",
+        "test_noneditable_arbitrary_fields_and_unknown_keys_cannot_be_persisted",
+        "test_two_tenants_two_tabs_and_changed_body_key_are_independently_scoped"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_true_blank_readiness.py",
+      "before_blob": null,
+      "after_blob": "430ea655203bfec8fa03875e02378c80a0173528",
+      "entry_points": [
+        "test_explicit_zero_is_preserved_as_input_and_invalid_is_reported",
+        "test_missing_economics_never_ready_and_real_registry_fields_have_units",
+        "test_storage_is_release_closed"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_trust_readiness_controls.py",
+      "before_blob": "cd5b3114d9a11ca4507667a099bb853573d056d3",
+      "after_blob": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
+      "entry_points": [
+        "test_known_gap_state_changing_posts_have_no_csrf_token"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_trust_readiness_registry.py",
+      "before_blob": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
+      "after_blob": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
+      "entry_points": [
+        "_rc1_post_merge_violations",
+        "_registry_matches_history",
+        "test_d029_trust_successor_exact_baseline_and_exact_new_content"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_wf03_lifecycle_scope.py",
+      "before_blob": null,
+      "after_blob": "4f82258150e0ac836317cb4037e212a0a213cd82",
+      "entry_points": [
+        "test_complete_closed_successor_and_unchanged_historical_maps",
+        "test_every_owned_byte_and_missing_path_fail_closed",
+        "test_manifest_forgery_and_incomplete_successor_refused",
+        "test_trust_successor_preserves_the_actual_ws2_parent_byte_content",
+        "test_wrong_ancestor_and_unreviewed_changed_path_are_refused"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": null,
+      "after_blob": "2a765eaa3a34e8cc9fd64e9298ab0cc8a111a2c9",
+      "entry_points": [
+        "_baseline_bytes",
+        "_blob",
+        "_git",
+        "_historical_maps_ok",
+        "_immutable_git_bytes",
+        "_read",
+        "accepts_ci_trust_state",
+        "allowed_path",
+        "ci_source_facts",
+        "exact_blobs_ok",
+        "historical_pin_successor",
+        "manifest",
+        "matches",
+        "protected_blobs",
+        "trust_registry_successor",
+        "valid"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/wsv2_core_scope.py",
+      "before_blob": "a336c73640382afd454bd981c2390ea4b123175f",
+      "after_blob": "a1224225cc0d2e1aa8b277eaa42b6aa6ad6feed9",
+      "entry_points": [
+        "_historical_manifests_ok",
+        "_ws2_allows"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tools/ci_v3_production.py",
+      "before_blob": "ef9f18c6ba3eb13dbf70aaec19c572c42686bcda",
+      "after_blob": "4095f291f66b5ce72acb7adc69cd815d2436a481",
+      "entry_points": [
+        "d029_source_facts",
+        "d029_transition_problems"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    }
+  ],
+  "true_blank": {
+    "persisted_setup": true,
+    "promotion_available": {
+      "solar": false,
+      "wind": false,
+      "data_center": false,
+      "ev_charging": false
+    },
+    "reason": "Unseeded consumed-input closure remains unproven; no canonical materializer is called."
+  },
+  "rollback": "Compatible lifecycle-guarded connection implementation or explicit read-only maintenance; unguarded old binaries are unsafe",
+  "validation": "See external WF03 evidence receipt and exact-head CI; this manifest is a seal, not a PASS claim"
+}
