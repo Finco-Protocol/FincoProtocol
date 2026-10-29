@@ -217,6 +217,7 @@ def test_schedule_scrolls_horizontally_by_keyboard_and_period_links_jump_to_the_
         scroller.focus()
         for _ in range(6):
             page.keyboard.press("ArrowRight")                                                   # a focused scroll region scrolls with the arrow keys
+        page.wait_for_function("() => document.querySelector(\"[data-dm-sched-scroll='true']\").scrollLeft > 0", timeout=10000)   # a smooth-scrolling box settles asynchronously
         assert scroller.evaluate("el => el.scrollLeft") > 0
         scroller.evaluate("el => { el.scrollLeft = 0; }")
         row(page, "EOD_FLOOR").locator("summary").click()
@@ -326,8 +327,10 @@ def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_an
         page.wait_for_selector("[data-save-all-message='error']", timeout=30000)
         assert "Nothing was saved" in page.locator("[data-save-all-message='error']").inner_text()
         assert dict(get_workspace_state(USER, record.project_id).draft_snapshot) == before and ledger_rows() == 0      # all-or-nothing
-        page.locator("[data-changes-toggle='true']").click()
+        page.locator("[data-changes-toggle='true']").click()                                    # close the panel to edit the field ...
         page.locator("#wf-debt-debt-contract-contractual-dscr").fill("1.25")
+        page.locator("[data-changes-toggle='true']").click()                                    # ... and open it again to review and save
+        page.wait_for_selector("[data-changes-drawer='open']")
         panel = page.get_by_role("region", name="Pending changes")
         assert page.locator("[data-changes-count]").first.get_attribute("data-changes-count") == "3"
         text = panel.inner_text()
@@ -343,7 +346,8 @@ def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_an
         page.locator("[data-financing-tab-button='debt-metrics']").click()
         page.wait_for_selector("[data-debt-metrics='true']")
         assert page.locator("[data-dm-stale='true']").count() == 1                                # the committed Run is now outdated, not rewritten
-        assert errors == []
+        # the only console error allowed is the browser's own line for the deliberately refused (HTTP 422) Save All of the malformed term
+        assert [e for e in errors if not ("422" in e and "Failed to load resource" in e)] == [], errors
     finally:
         context.close()
 

@@ -46,7 +46,7 @@
     "static/react/finco-react.js": "5fa6f964b7900a2bdc47c1cee0f2468f4e80960a",
     "tests/fin_v2_cohorts.py": "e34b55c559157d5a16761986064afb3107577eac",
     "tests/model_react_rcm_financing_acceptance.py": "df42c9e19f43a597a8267c5f6c973dea6f6ff884",
-    "tests/model_react_wf04_debt_metrics_acceptance.py": "60b84e17612c44baa3c0c9d9be6427b3e2b4a8ee",
+    "tests/model_react_wf04_debt_metrics_acceptance.py": "cb456bcbf1766c08655ab6194b8aa182a751798a",
     "tests/test_fin_v2_3_scope.py": "d9228c05ffe90a200181cb5e5b747a461cbed1bd",
     "tests/test_fin_v2_r1_scope.py": "be1947eb637a2fd032ed598f2602ae4d7497f16a",
     "tests/test_finval_f01_fixture_integrity.py": "4459c5a52fb12de32f8d8b9b83a89103e7ed6238",
