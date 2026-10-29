@@ -61,8 +61,10 @@ def wf03_servers(tmp_path_factory):
         assert not thread.is_alive(),'WF03 HTTPS fixture leaked a server thread'
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def wf03_browser():
+    # Close our sync Playwright loop before the unchanged secure-cookie and
+    # Consolidation fixtures create theirs later in this same role/module.
     from playwright.sync_api import sync_playwright
     with sync_playwright() as pw:
         options={'args':['--no-sandbox']}
