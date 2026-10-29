@@ -39,7 +39,11 @@ def test_layer_is_exactly_twelve_additive_paths_and_every_current_source_is_admi
         # strict equality, as before: the current source is exactly the Overnight B state, or — only for a path the separately reviewed
         # RC-M layer also covers — exactly that later pinned state (never "either one")
         from tests.fin_v2_cohorts import matches as fin_v2_3_matches
-        assert S.git_blob(SOURCES[path]) == S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob))))) or fin_v2_3_matches(path, SOURCES[path])   # or the exact FIN-V2-3 cohort state
+        later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, S.RC_UX_SUCCESSORS.get(path, S.RC_M_SUCCESSORS.get(path, blob)))))
+        # Owner-approved WS-2 state: admitted ONLY by the exact blob registered for this very path in WSV2_EDITING_SUCCESSORS
+        ws2 = S.WSV2_EDITING_SUCCESSORS[path] if path in S.WSV2_EDITING_SUCCESSORS else None
+        current = S.git_blob(SOURCES[path])
+        assert current == later or (ws2 is not None and current == ws2)or fin_v2_3_matches(path, SOURCES[path])   # or the exact FIN-V2-3 cohort state
     assert S.violations(SOURCES) == []
     assert S.current_mutation_successor_valid()
 
@@ -121,3 +125,23 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
     from tests.fin_v2_cohorts import matches as fin_v2_cohort_matches
     hits = [p for p in hits if not fin_v2_cohort_matches(p)]
     assert hits == [], hits
+
+
+def test_the_ws2_editing_state_is_admitted_only_by_its_exact_registered_blob(monkeypatch):
+    path = "frontend/src/app/workflow/workflowShared.tsx"
+    assert path in LAYER and path in S.WSV2_EDITING_SUCCESSORS
+    assert S.git_blob(SOURCES[path]) == S.WSV2_EDITING_SUCCESSORS[path]
+    changed = dict(SOURCES)
+    changed[path] += "\n"                                              # one byte of drift in the WS-2 source
+    assert S.violations(changed)
+    monkeypatch.setitem(S.WSV2_EDITING_SUCCESSORS, path, "0" * 40)      # an altered entry no longer admits the current bytes
+    assert S.violations(SOURCES)
+
+
+def test_an_unregistered_path_is_never_admitted_by_the_ws2_dictionary(monkeypatch):
+    other = next(p for p in sorted(LAYER) if p not in S.WSV2_EDITING_SUCCESSORS)
+    changed = dict(SOURCES)
+    changed[other] = changed[other] + "\n"
+    assert S.violations(changed)
+    monkeypatch.setitem(S.WSV2_EDITING_SUCCESSORS, "frontend/src/app/not_a_pinned_source.tsx", "1" * 40)
+    assert S.violations(changed)                                        # a foreign dictionary entry admits nothing else

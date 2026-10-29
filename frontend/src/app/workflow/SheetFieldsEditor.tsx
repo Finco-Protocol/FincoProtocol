@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSheetFields, saveWorkbookField } from "../api";
 import { useOptionalChanges } from "../editing/ChangesProvider";
-import { sectionOfField } from "../editing/fieldSection";
+import { editsOfSheet, sectionOfField } from "../editing/fieldSection";
 import type { EditSection } from "../editing/pendingEdits";
 import type { SheetFieldPayload, SheetFieldsPayload } from "../types";
 import { isIsoDate, parseStrictDecimal } from "./ModelWorkflowValidation";
@@ -27,8 +27,6 @@ const BINDING_REASON = BINDING_PLAIN;
 
 /** Sheets whose scalar fields stage into the shared pending-change store (WS-2); other sheets keep their own drafts. */
 const SHEET_SECTION: Partial<Record<Props["sheet"], EditSection>> = { project_setup: "inputs", debt: "financing" };
-/** Field-id prefix of each staged sheet (the same field is one pending edit whichever editor staged it). */
-const SHEET_PREFIX: Partial<Record<Props["sheet"], string>> = { project_setup: "project_setup.", debt: "debt." };
 
 /** Structured configuration payloads owned by dedicated typed editors (Capital
  *  Stack proposal, bankability configuration).  They are stored as JSON documents;
@@ -73,7 +71,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
   const [localDrafts, setLocalDrafts] = useState<Record<string, string>>({});
   const storeDrafts = useMemo<Record<string, string>>(() => {
     if (!staged || !section) return {};
-    return Object.fromEntries(staged.edits.filter((e) => e.key.startsWith(SHEET_PREFIX[sheet] ?? "\u0000")).map((e) => [e.key, e.value]));
+    return Object.fromEntries(editsOfSheet(staged.edits, sheet).map((e) => [e.key, e.value]));
   }, [staged, section, sheet]);
   const drafts = staged ? storeDrafts : localDrafts;
   const setDrafts = (update: (prev: Record<string, string>) => Record<string, string>) => setLocalDrafts(update);
@@ -95,7 +93,7 @@ export function SheetFieldsEditor({ project, sheet, title, onSaved, reloadKey = 
     if (!data) return;
     if (staged && section) {
       // Staged edits live in the shared store: a moved baseline is FLAGGED there (conflict), never silently dropped or rebased.
-      const mine = staged.edits.filter((e) => e.key.startsWith(SHEET_PREFIX[sheet] ?? "\u0000"));
+      const mine = editsOfSheet(staged.edits, sheet);
       if (mine.length && staged.identity) {
         staged.rebase(staged.identity, Object.fromEntries(mine.map((e) => {
           const field = data.fields.find((f) => f.field_id === e.key);

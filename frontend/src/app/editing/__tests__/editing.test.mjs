@@ -10,12 +10,12 @@ import { build } from 'esbuild';
 const output = await mkdtemp(join(tmpdir(), 'finco-editing-test-'));
 await build({
   stdin: {
-    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll'; export * as N from './saveAllApi'; export * as Q from './ppaStaging'; export * as SS from './saveAllSession';`,
+    contents: `export * as P from './percent'; export * as D from './decimal'; export * as S from './pendingEdits'; export * as G from './grid'; export * as A from './saveAll'; export * as N from './saveAllApi'; export * as Q from './ppaStaging'; export * as SS from './saveAllSession'; export * as FS from './fieldSection';`,
     resolveDir: new URL('..', import.meta.url).pathname, loader: 'ts',
   },
   bundle: true, outfile: join(output, 'editing.mjs'), format: 'esm', platform: 'node',
 });
-const { P, D, S, G, A, N, Q, SS } = await import(pathToFileURL(join(output, 'editing.mjs')));
+const { P, D, S, G, A, N, Q, SS, FS } = await import(pathToFileURL(join(output, 'editing.mjs')));
 test.after(() => rm(output, { recursive: true, force: true }));
 
 // ── M-013: PPA percent <-> canonical ratio ──
@@ -298,4 +298,18 @@ test('request id follows the body: identical body keeps the id, any change gets 
   const first = session.next(body, mint);
   assert.equal(session.next({ ...body, csrf_token: 'c2' }, mint).request_id, first.request_id);   // token is not part of the meaning
   assert.notEqual(session.next({ ...body, cells: [{ field_id: 'a', value: '2' }] }, mint).request_id, first.request_id);
+});
+
+// ── K1: a sheet owns exactly the staged edits under its own prefix ──
+test('editsOfSheet: debt and project_setup never see each other; unknown sheets own nothing', () => {
+  const edits = [{ key: 'project_setup.technical.p50_hours' }, { key: 'debt.senior.gearing_pct' }, { key: 'opex.lines.security' }, { key: '' }];
+  assert.deepEqual(FS.editsOfSheet(edits, 'project_setup').map((e) => e.key), ['project_setup.technical.p50_hours']);
+  assert.deepEqual(FS.editsOfSheet(edits, 'debt').map((e) => e.key), ['debt.senior.gearing_pct']);
+  for (const sheet of ['revenue', 'tax', '', 'constructor', '__proto__', 'toString']) assert.deepEqual(FS.editsOfSheet(edits, sheet), [], sheet);
+  assert.deepEqual(FS.editsOfSheet([], 'debt'), []);
+});
+test('sectionOfField keeps debt scalars in financing and everything else in inputs', () => {
+  assert.equal(FS.sectionOfField('debt.senior.gearing_pct'), 'financing');
+  assert.equal(FS.sectionOfField('project_setup.technical.p50_hours'), 'inputs');
+  assert.equal(FS.sectionOfField('opex.lines.security'), 'inputs');
 });
