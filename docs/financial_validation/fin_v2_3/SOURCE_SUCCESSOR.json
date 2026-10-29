@@ -37,7 +37,7 @@
     "tests/fixtures/fin_v2_3_baseline.json": "b7943a658eb39b0ac1b355dcca60c32f2ce44258",
     "tests/model_mutation_security_successor.py": "74be1f0990eb66c2f7fb703518d2a966303edaa6",
     "tests/model_react_mvp_acceptance.py": "12cc69a78ded7a79dc00b699a5bb5d173feb3b08",
-    "tests/model_react_overnight_b_acceptance.py": "3d5ca9101d8134767fe23b020e0ac380f22810a7",
+    "tests/model_react_overnight_b_acceptance.py": "c05cbacc2b2cbd55957480af3fe490545896b7ea",
     "tests/quarterly_candidate_recognition.py": "8838d05e8988cddd06d5f805b3eed9685eb74066",
     "tests/rcm_adapter_csrf_successor.py": "ddd9055119badbfd1e8a3a9c1378a94173f084ce",
     "tests/test_ci_acceptance.py": "5ff17455782fff2a5ddf7e93e55e963682197714",
