@@ -69,10 +69,16 @@ def validate_accepted_reference_successor(reference, historical, historical_nati
   require(not problems,'D-029 accepted-source successor proof rejected: '+repr(problems))
   return 'exact-D029-authorized-reference-successor'
 
+def reference_runtime_blob(head,path):
+ # Single seam: production always reads the authenticated source commit from Git
+ # and fails closed (CalledProcessError) on any unresolvable revision. Synthetic
+ # tests substitute this reader; they never relax require_reference_runtime.
+ return subprocess.check_output(['git','show',head+':'+path])
+
 def require_reference_runtime(reference):
  # A different software contract needs a fresh sequential control, before workers.
  path='docs/ci_v3/phase4/runtime/inputs.json'
- previous=subprocess.check_output(['git','show',reference['source']['head']+':'+path])
+ previous=reference_runtime_blob(reference['source']['head'],path)
  require(json.loads(previous)==read_json(path),'accepted-source runtime inputs changed; sequential bootstrap required')
 
 def route_preflight(out):
