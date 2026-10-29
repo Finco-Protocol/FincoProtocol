@@ -39,14 +39,15 @@ file (a file cannot contain its own commit): it is recorded on the PR.
 | `tests/test_wf04_scope.py` | cohort admission, drift/delete of every owned byte (×2), forged/malformed manifests, unapproved paths, ancestry, unregistered cohort, predecessor re-pin tamper (7 variants), protected-path hunks | PASS |
 | governance subset (53 files) | exact-source cohorts and successors | PASS except the 8 failures that also fail on clean `main` |
 
-## C — Pre-existing failures (identical on clean `main` in the same environment; not caused by WF-04)
+## C — Failures that also occur on clean `main` in the authoring sandbox (not caused by WF-04)
+
+Correction: an earlier version of this table also listed `test_model_workspace_productivity_v1::…macro_output…` and `test_finval_f01_fixture_integrity`. That was wrong — both PASS on a truly clean `main` (they had failed only in a worktree that carried untracked scratch files). The first one is genuinely affected by this PR's two new registry fields and was the single failing node of the hermetic CI worker 4 at `5d3199d6`; it is fixed in the next push (ledger §3). The remaining rows below were re-run on a clean `main` worktree and still fail there in this sandbox; the hermetic CI workers 0–3 ran them GREEN on the PR head, so they are sandbox-environment effects.
 
 | Test | Where it fails on `main` |
 |---|---|
 | `test_rc7b_quarterly_csrf_successor::{test_exact_router_and_security_structure, test_inventory_requires_the_exact_successor}`, `test_rc_sec_csrf_successor::{test_exact_reviewed_run_clone_and_helper_contract, test_inventory_rejects_unproven_rc_sec_while_preserving_other_successors}`, `test_wf09_csrf_successor::test_inventory_admits_the_router_only_while_the_successor_holds` | route/CSRF-inventory tests (the trust-readiness ones report `app/v2/quarterly_calendar_router.py` as an extra item) |
 | `test_trust_readiness_controls::{test_known_gap_no_product_route_deletes_user_data, test_known_gap_state_changing_posts_have_no_csrf_token}`, `test_trust_readiness_routes::test_trust_routes_are_get_only_and_exactly_the_expected_set` | same route inventory |
 | `test_model_react_rcux_{credit_decision,compare,compare_projects,capex,import,credit_headroom,projects}_v1::test_router_is_mounted_before_the_project_catch_all`, `test_model_react_insights_v1::test_served_react_router_composition…`, `test_rc_institutional_workspaces_integration::test_all_three_routes_registered_once…`, `test_sc34_historical_production_wiring` (2) | route-mount inspection of the served application |
-| `test_model_workspace_productivity_v1::…test_macro_output_matches_the_base_commit_except_three_additive_attributes`, `test_finval_f01_fixture_integrity::test_authority_mock_has_only_its_missing_unit_added` | unrelated to this change |
 | `frontend … insights.test.mjs` (3 sub-tests: money display / metric cards / sponsor columns) | identical failure on clean `main` (insights presentation fixtures) |
 | `test_model_react_rcux_goal_seek_targets_v1.py` | the file stalls at the same test (24th of the file; 23 passes first) on clean `main` **and** on this branch; neither run finished in 20+ minutes in this sandbox, so this file is **NOT RUN to completion** on either tree |
 | `test_model_credit_decision_v4_render` | needs `FINCO_TEST_CHROMIUM_PATH` in this sandbox (browser binary path), environment only |

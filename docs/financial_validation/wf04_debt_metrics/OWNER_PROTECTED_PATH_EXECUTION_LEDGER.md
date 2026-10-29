@@ -17,17 +17,17 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `app/v2/debt_metrics_projection.py` | N | A | — | `72ff9125f14686035cf35f36df7a75efd6242270` |
 | `app/workbook/dscr_contract_terms.py` | N | A | — | `05024753c0a52a68c085a63d736289f4fa8f2f75` |
 | `app/workbook/registry.py` | P | M | `31570edc0e6ca1c0191e13e987a0598ade5c8f8b` | `7880dca5b53d87d9e01b50d2fc0d43b20e504bd6` |
-| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `6cc5fe796fb88cece5171f9c1facc30fc3171745` |
+| `docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json` | P | M | `3289f350bb8a1fc564317239100f8a41508cb7ef` | `aa038431f33ee7171539ffca93eeb955ba863067` |
 | `docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json` | P | M | `45c818843183a033d76deb490f9a05f4229748dd` | `62d5711043a2ce35f2fb14cb56750c7919a1b86e` |
 | `docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json` | P | M | `16bc1fc11bdfcc966476b20ca5998aeccb652b7f` | `33ac6e10115528b0914b3e7a7fe66a6bbdb2d8b8` |
-| `docs/financial_validation/wf04_debt_metrics/CORRECTION_A_CI_AND_PERIOD_MATRIX.md` | N | A | — | `a19814df36fcd7d977a4b432ecd0e98bce037465` |
+| `docs/financial_validation/wf04_debt_metrics/CORRECTION_A_CI_AND_PERIOD_MATRIX.md` | N | A | — | `d996c3b6437dafbe9931564923f7bff21d62f74f` |
 | `docs/financial_validation/wf04_debt_metrics/INDEPENDENT_ORACLE_AND_PARITY.md` | N | A | — | `1d65e0250386f2111f437082cb4f83e66bdcea29` |
 | `docs/financial_validation/wf04_debt_metrics/OWNER_DECISION_AND_CONFLICT_REGISTER.md` | N | A | — | `7c2921bf6d010da2b85015dcf778aa3f709602d8` |
 | `docs/financial_validation/wf04_debt_metrics/P00_VERIFIED_STATE.md` | N | A | — | `55fc9e4d7120313ba8906fed287f2a3efde2bd90` |
 | `docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md` | N | A | — | `7ea2d594f7d588612811a3737aabf622507b2507` |
 | `docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md` | N | A | — | `74c25a02616d3fe1b03fa78568242a1f8d0eadcd` |
-| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `1948484081febe04140ec35c3746e5189ba73e12` |
-| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `b15e668757745cf14040278c079f65e9079fb0b9` |
+| `docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md` | N | A | — | `87dd275943448198392389b23aedd7fa65ee2d60` |
+| `docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json` | P | M | `415752eefc64d6baff4c48602b9978d5b6ad4548` | `6ad8b76c5ba684865244c649ee0b026f67d34c6b` |
 | `frontend/src/app/FinancialOverview.tsx` | P | M | `9e073447afb224ba60fc8b97d72f776b2a67ea14` | `6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432` |
 | `frontend/src/app/FinancialResults.tsx` | P | M | `c53b677f29671380db916ceb4f4cfb2e2e53beeb` | `eb5ddb89b663f8145b702df26d591b884fbb4339` |
 | `frontend/src/app/credit/CreditDecisionPanel.tsx` | M | M | `a3a39ee566be572fae9a96df7690c7bd7009b0e0` | `2a48162683d4641454876b41c2bddf0e51b0f59c` |
@@ -60,6 +60,7 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_model_mutation_security_successor.py` | P | M | `4672261c9aa91f0b727e116886ccc98b3e888f5a` | `c922d847fa598a1b60815dc24db0192ebf6b41a5` |
 | `tests/test_model_react_insights_v1.py` | P | M | `29b07e518eef65a9ade11f141d433594cc6ee82a` | `d62036ab8eb8dbc72e0436d821864078e76ce556` |
 | `tests/test_model_workspace_consolidation_browser.py` | P | M | `7c6478289c029f8b53e16103fa22b22123cbd19a` | `e5f3ace7a7406fc2b487ef90eab369e4ed51955b` |
+| `tests/test_model_workspace_productivity_v1.py` | P | M | `024c1c9dfea3dd18186a59e0ef6cc55c54671231` | `5470a0f40339aca9a60c22c864dfd8803de76e6e` |
 | `tests/test_rcm_governance.py` | P | M | `414373f3aaa0da42d4521df88d2788e40f60c02d` | `7b173cb4de41d910e5fe3c0796b62ad5ab9eb98e` |
 | `tests/test_rcux_governance.py` | P | M | `4a3b8a7d3a8f99a2061bbe38c784bd0669a9c122` | `88cd1291f9935f4d07320d328fea0137adde98ae` |
 | `tests/test_wf04_credit_debt_metrics.py` | N | A | — | `5223cc75c81bb680aa717032bd986a997c668bd8` |
@@ -69,8 +70,8 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 | `tests/test_wf04_run_bound_terms.py` | N | A | — | `aeab52711ae1cfa0a121c07639c374a78111d861` |
 | `tests/test_wf04_scope.py` | N | A | — | `f2c659fa244fc5c04f7a1598329bd0aed0e640df` |
 | `tests/test_wsv2_core_scope.py` | P | M | `6fafea72bfca4c6be200709d55bd8466049a8bbc` | `e7a88c88cac5abb8d7bb8691f307072ea1ded615` |
-| `tests/wf04_scope.py` | N | A | — | `60d28a6896b25eee8c539421cb3cfc8155fd1e88` |
-| `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `c3427ee3dfc402f8472ad47e717ade56cd6313d5` |
+| `tests/wf04_scope.py` | N | A | — | `f2e3797a281db88a3dd0d68c351127774377ee57` |
+| `tests/wsv2_core_scope.py` | P | M | `c7b6f2aedb618f068bf091ead5258f299af4f052` | `b4f9c3f615360f122b00a5cd3791870aead935d2` |
 | `tools/wf04_independent_dscr_oracle.py` | N | A | — | `f286d019a6b6cbb964c48ff7ed68281e7715b65d` |
 
 ## 2 — Protected / pinned paths: reason, minimal diff, approved scope, negative controls
@@ -177,6 +178,12 @@ Legend: **P** = protected / exactly pinned before this change (listed with reaso
 * **Approved scope:** §0A / CI-A (the previous exact head was RED in the mandatory role for exactly this reason)
 * **Tests / negative controls / pins:** see section 3
 
+### `tests/test_model_workspace_productivity_v1.py`
+* **Why protected:** Workspace field-editor DOM golden; pinned by the FIN-V2-3 manifest; it enumerates every registry field of the sheets under test
+* **Minimal diff:** `test_macro_output_matches_the_base_commit_except_three_additive_attributes`: the four presentations (editable/protected × two fields) of the two new `debt.contract.*` inputs are added as a separately hash-locked `contract_additions` set, exactly like the existing FIN-V2-3 valuation field; the set equality now includes them
+* **Approved scope:** §0A (protected acceptance nodes) - the hermetic CI worker 4 of the previous head failed on exactly this node
+* **Tests / negative controls / pins:** see section 3
+
 ### `tests/test_model_credit_decision_v3_real_runs.py`
 * **Why protected:** Real-Run credit acceptance; exact-pinned in the D-029 security-successor `BLOBS`; admitted through the WF-04 cohort pin
 * **Minimal diff:** One assertion: the `CD-EOD` row of a Run with no configured floor is `NOT_CONFIGURED` (was a fixed `UNAVAILABLE` placeholder because no EoD mechanic existed)
@@ -224,6 +231,7 @@ Each edit keeps the original assertion's security/financial intent; nothing is s
 | `test_rcux_governance::test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path` | no changed path under `app/workbook/` etc., one prior pinned exception (`run_intent_service.py`) | adds a second pinned exception: exactly `registry.py` and `dscr_contract_terms.py` at WF-04 blobs | every other `app/workbook/` path still fails the test |
 | `test_rcux_governance::test_layer_is_a_subset…`, `test_rcm_governance::test_layer_is_exactly_six…`, `test_wsv2_core_scope::test_original_presentation…` | current bytes of a presentation path == the WS1 state | `== WS1 state` **or** `presentation_successor(path)` (three paths only, exact WF-04 pin) | any other byte still fails; the historical dictionaries remain immutable and individually admitted |
 | `test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated` (in `model_react_rcm_financing_acceptance.py`) | the `[role=tab]` list `==` the six original tab names | the same list with one inserted entry `Debt metrics` after `Overview`; every other assertion of the node (authority text, closed structures, senior terms, tab navigation, reload) is unchanged | the original intent - the Financing workspace shows exactly its governed sections in a fixed order, no silent extras - is kept: the one new section is the Owner-approved Debt Metrics view |
+| `test_model_workspace_productivity_v1::…test_macro_output_matches_the_base_commit_except_three_additive_attributes` | the set of rendered field presentations `==` golden hashes ∪ financing additions ∪ valuation additions | `==` the same ∪ **four** new, individually sha256-locked presentations of the two `debt.contract.*` inputs (the assertion that each equals its pinned hash is added) | no historical DOM hash changes (`drifted` check unchanged); the new fields are additions locked by value, not allowed by wildcard |
 | `test_model_credit_decision_v3_real_runs::test_real_run_renders_credit_evidence_with_explicit_classification` (4 params) | `CD-EOD` status `== "UNAVAILABLE"` | `== "NOT_CONFIGURED"` | the intent — a Run with no configured floor never shows PASS/TRIGGERED and assumes no default — is kept and made stricter; the classification assertion on the same row is unchanged |
 | `test_model_react_insights_v1::test_legacy_absent_root_identity_fields_preserve_committed_evidence[True]` | payload with the identity removed `==` payload with identity | `==` after removing only the Run-bound term verdicts, which must read `UNAVAILABLE`/`NOT_RECORDED` | the Run-bound terms live in the identity by design (never read from the Working Copy); every other byte — metrics, identity, evidence — is still compared. The `[False]` parameter (root fields removed, terms kept) is unchanged and still requires full equality |
 | `test_model_mutation_security_successor::test_d029_browser_wrappers_…` and `test_wsv2_core_scope::test_correction_e_d029_role_pin_is_additive_…` | the role module blob `==` the WS1 pinned state | `==` the WS1 state **or** `presentation_successor(role)` (exact WF-04 pin, whole cohort valid) | the wrapper-name list, extra-wrapper and `@pytest.mark.skip` negative controls are untouched and still fail on any extra/skipped wrapper |

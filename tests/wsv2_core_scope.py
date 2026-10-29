@@ -108,7 +108,7 @@ PREDECESSOR_MANIFESTS = (
 # WF-04 successor lineage (tests/wf04_scope.py): the exact predecessor pins the Owner-authorised WF-04 change moves (each one is also an owned,
 # exactly pinned path of that cohort, and tests/test_wf04_scope.py proves every other pin is unchanged).
 WF04_SUCCESSOR_REPIN = {
-    PREDECESSOR_MANIFESTS[0]: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py')),
+    PREDECESSOR_MANIFESTS[0]: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_model_workspace_productivity_v1.py')),
     PREDECESSOR_MANIFESTS[2]: frozenset(('tests/test_fin_v2_r1_scope.py',)),
 }
 

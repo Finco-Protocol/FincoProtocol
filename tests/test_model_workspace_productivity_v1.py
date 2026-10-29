@@ -339,7 +339,16 @@ class TestDenseLayoutPreservesContract:
             "project_setup|protected|debt.valuation.configuration": "4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186",
         }
         assert {key: actual[key] for key in valuation_additions} == valuation_additions
-        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)
+        # WF-04 adds the two contractual DSCR INPUT fields (Minimum DSCR, Contractual DSCR). Like the valuation field above, their four
+        # presentations are separately hash-locked; every historical DOM hash stays unchanged and the exact CSRF/read-only checks above still run.
+        contract_additions = {
+            "debt|editable|debt.contract.contractual_dscr": "44cb85971ad47eeac8caa375435b93c19356c515cfdac7bbdb8f7bee195a0fe1",
+            "debt|editable|debt.contract.min_dscr_eod": "5f813f9a638b71ee356e5f102492a01dea6dd3bd089003151af3e95be1adc832",
+            "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",
+            "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",
+        }
+        assert {key: actual[key] for key in contract_additions} == contract_additions
+        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions) | set(contract_additions)
         drifted = sorted(k for k, v in golden["hashes"].items() if actual[k] != v)
         assert not drifted, f"macro DOM identity drifted for: {drifted}"
 
