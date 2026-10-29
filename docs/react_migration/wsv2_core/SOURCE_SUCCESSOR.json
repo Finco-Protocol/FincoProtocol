@@ -71,7 +71,7 @@
     "tests/test_model_react_wsv2_overview.py": "3c8d45dcc1bc581969ac6c697bd02ffc9843394c",
     "tests/test_model_workspace_consolidation_browser.py": "e5f3ace7a7406fc2b487ef90eab369e4ed51955b",
     "tests/test_rcm_governance.py": "0877ab11c41a394f3d921a5b6d4489fdfb99a284",
-    "tests/test_rcux_governance.py": "bba047fb5cf809c5c051caf2a5bf303995826d2b",
+    "tests/test_rcux_governance.py": "3b5a56eeaae8e0d9c5048c0b8b74df7fcd924a48",
     "tests/test_wsv2_core_scope.py": "b17cb809acc44b8fb3b800800fff3daaeeb00741",
     "tests/wsv2_core_scope.py": "5622eebb60cff4526196a0bbc2e265d4b9747bbc"
   },

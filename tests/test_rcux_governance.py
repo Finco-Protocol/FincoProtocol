@@ -228,6 +228,9 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     hits = [p for p in hits if not (p in WS2.OWNED_PATHS and WS2.matches(p, (S.ROOT / p).read_bytes()))]
     hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
                                     and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+    # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
+    # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
+    hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden

@@ -32,8 +32,8 @@ def test_cohort_is_registered_exact_closed_and_excludes_every_financial_authorit
     assert W.protected_blobs() == {}
     assert set(W.manifest()['source_blobs']) == W.OWNED_PATHS
     assert not any(p.startswith(W.FORBIDDEN_PREFIXES) or p in W.FORBIDDEN_PATHS for p in W.OWNED_PATHS)
-    assert not any(p.startswith(ENGINE_PREFIXES) for p in _changed())
-    assert not any(p.startswith(ENGINE_PREFIXES) for p in _changed_since_origin())
+    assert not any(p.startswith(ENGINE_PREFIXES) and p != W.WORKFLOW_PATH for p in _changed())            # the one approved workflow hunk is the sole exception
+    assert not any(p.startswith(ENGINE_PREFIXES) and p != W.WORKFLOW_PATH for p in _changed_since_origin())
 
 
 WS2_WRITER_PATHS = ('app/v2/grid_router.py', 'app/v2/react_workspace_router.py', 'app/v2/save_all_commands.py')
@@ -397,3 +397,79 @@ def test_the_two_accidental_empty_files_are_gone_and_lost_nothing():
                 assert W._git(W.ROOT, 'show', ref + ':' + name) == b''
             except Exception:                                              # the deleting commit has no such path
                 pass
+
+
+# ── Correction C: the single Owner-approved workflow hunk (consolidation budget 3600 s, outer limit 105 min) ─────────────────────────────────
+def _workflow_text():
+    return W._read(W.ROOT, W.WORKFLOW_PATH, None).decode()
+
+
+def test_the_workflow_is_the_only_github_path_owned_and_is_exactly_the_approved_main_bytes_plus_the_literal_hunk():
+    assert [p for p in W.OWNED_PATHS if p.startswith('.github/')] == [W.WORKFLOW_PATH]
+    assert [p for p in _changed() if p.startswith('.github/')] == [W.WORKFLOW_PATH]
+    old = W._read(W.ROOT, W.WORKFLOW_PATH, W.APPROVED_MAIN)
+    assert W._blob(old) == W.WORKFLOW_OLD_BLOB and W._workflow_hunk_ok(W.ROOT, None)
+    text = _workflow_text()
+    assert text.count('timeout-minutes: 105') == 1 and 'timeout-minutes: 45' not in text
+    assert text.count("FINCO_CI_PYTEST_BUDGET_S: '1200'") == 1 and text.count("FINCO_CI_EXIT_GRACE_S: '180'") == 1       # global value and grace unchanged
+    assert text.count('export FINCO_CI_PYTEST_BUDGET_S=3600') == 1 and text.count('export FINCO_CI_PYTEST_BUDGET_S=1200') == 1
+    assert 'if [ "$role" = "consolidation" ]; then' in text and 'for role in protocol import grid q4 outputs consolidation; do' in text
+    assert text.index('CI_BROWSER_ROLE_BUDGET') < text.index('python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"')    # announced before the role starts
+    assert 'continue-on-error' not in text
+    assert 105 * 60 > 3600 + 180                                         # the outer job limit exceeds the inner budget plus the exit grace
+    import re
+    removed = [l for l in old.decode().splitlines() if l not in text.splitlines()]
+    assert removed == ['    timeout-minutes: 45']                         # nothing else of the approved-main workflow was removed or changed
+
+
+_WORKFLOW_TAMPER = {
+    'outer_limit_changed': lambda t: t.replace('timeout-minutes: 105', 'timeout-minutes: 106'),
+    'outer_limit_reverted': lambda t: t.replace('timeout-minutes: 105', 'timeout-minutes: 45'),
+    'consolidation_budget_raised': lambda t: t.replace('=3600', '=3601'),
+    'other_roles_budget_raised': lambda t: t.replace('export FINCO_CI_PYTEST_BUDGET_S=1200', 'export FINCO_CI_PYTEST_BUDGET_S=3600'),
+    'global_budget_raised': lambda t: t.replace("FINCO_CI_PYTEST_BUDGET_S: '1200'", "FINCO_CI_PYTEST_BUDGET_S: '3600'"),
+    'grace_changed': lambda t: t.replace("FINCO_CI_EXIT_GRACE_S: '180'", "FINCO_CI_EXIT_GRACE_S: '600'"),
+    'role_selector_widened': lambda t: t.replace('"$role" = "consolidation"', '"$role" != "protocol"'),
+    'role_dropped': lambda t: t.replace('for role in protocol import grid q4 outputs consolidation; do', 'for role in protocol import grid q4 consolidation; do'),
+    'continue_on_error_added': lambda t: t.replace('    runs-on: ubuntu-24.04\n', '    runs-on: ubuntu-24.04\n    continue-on-error: true\n', 1),
+    'permissions_widened': lambda t: t.replace('permissions:\n  contents: read', 'permissions:\n  contents: write', 1),
+    'trigger_added': lambda t: t.replace('  pull_request:\n', '  pull_request:\n  pull_request_target:\n', 1),
+    'checkout_ref_changed': lambda t: t.replace("fetch-depth: 0", "fetch-depth: 1", 1),
+    'aggregate_job_result_changed': lambda t: t.replace('--job-result success', '--job-result failure'),
+    'verification_step_removed': lambda t: t.replace('python -m tools.ci_browser_job aggregate', 'echo skipped'),
+    'unrelated_step_appended': lambda t: t + '      - run: echo unreviewed\n',
+    'byte_appended': lambda t: t + '\n',
+}
+
+
+@pytest.mark.parametrize('name', sorted(_WORKFLOW_TAMPER))
+def test_any_other_workflow_byte_than_the_approved_hunk_fails_closed(name, monkeypatch):
+    changed = _WORKFLOW_TAMPER[name](_workflow_text())
+    assert changed != _workflow_text(), name
+    original = W._read
+
+    def altered(root, path, ref):
+        return changed.encode() if path == W.WORKFLOW_PATH and ref is None else original(root, path, ref)
+
+    monkeypatch.setattr(W, '_read', altered)
+    assert not W._workflow_hunk_ok(W.ROOT, None) and not W.exact_blobs_ok() and not C.valid()
+
+
+def test_the_pre_change_approved_main_workflow_is_no_longer_accepted_and_the_hunk_cannot_be_dropped(monkeypatch):
+    old = W._read(W.ROOT, W.WORKFLOW_PATH, W.APPROVED_MAIN)
+    original = W._read
+    monkeypatch.setattr(W, '_read', lambda root, path, ref: old if path == W.WORKFLOW_PATH and ref is None else original(root, path, ref))
+    assert not W._workflow_hunk_ok(W.ROOT, None) and not W.exact_blobs_ok()
+
+
+@pytest.mark.parametrize('other', ('.github/workflows/ci_browser_job.yml', '.github/workflows/ci_public_job.yml', '.github/workflows/pr_compile_and_safety.yml',
+                                   '.github/workflows/new_unreviewed.yml', '.github/CODEOWNERS', '.github/workflows/protocol_ui_browser.yml.bak'))
+def test_every_other_github_path_stays_forbidden(other, monkeypatch):
+    assert not W.allowed_path(other)
+    monkeypatch.setattr(W, 'OWNED_PATHS', W.OWNED_PATHS | {other})
+    assert not W._owned_ok() and not W.exact_blobs_ok()
+
+
+def test_a_wrong_old_blob_pin_for_the_workflow_fails_closed(monkeypatch):
+    monkeypatch.setattr(W, 'WORKFLOW_OLD_BLOB', '0' * 40)
+    assert not W._workflow_hunk_ok(W.ROOT, None) and not W.exact_blobs_ok()
