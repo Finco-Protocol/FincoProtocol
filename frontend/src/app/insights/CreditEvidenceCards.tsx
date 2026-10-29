@@ -1,3 +1,4 @@
+import { useReportPrecision } from "../ReportPrecision";
 import { EvidenceDisclosure } from './EvidenceDisclosure';
 import { evidenceDisplay, evidenceUnitLabel } from './presentation';
 import type { EvidenceCell, InsightRun } from './types';
@@ -24,6 +25,7 @@ function asCell(value: unknown): EvidenceCell | null {
   return value && typeof value === 'object' && 'v' in value && 'd' in value ? value as EvidenceCell : null;
 }
 export function CreditEvidenceCards({ project, run }: { project: string; run: InsightRun }) {
+  const { precision } = useReportPrecision();
   const reserve = run.credit.structure.reserve as Record<string, unknown> | undefined;
   const items = [
     ...CAPACITY.map(([key, label, unit]) => ({ key, label, unit, cell: asCell(run.credit.capacity[key]), source: `Credit Decision · capacity.${key}` })),
@@ -35,7 +37,7 @@ export function CreditEvidenceCards({ project, run }: { project: string; run: In
     const text = item.unit === 'text';
     const available = text ? typeof item.cell?.v === 'string' : numeric !== null;
     return <article className="fi-metric" key={item.key} data-credit-cell={item.key}>
-      <h4>{item.label}</h4><p className="fi-metric-value">{text ? item.cell?.d || 'Unavailable' : evidenceDisplay(numeric, item.cell?.d || '', item.unit)} <small>{text ? '' : evidenceUnitLabel(numeric, item.cell?.d || '', item.unit)}</small></p>
+      <h4>{item.label}</h4><p className="fi-metric-value">{text ? item.cell?.d || 'Unavailable' : evidenceDisplay(numeric, item.cell?.d || '', item.unit, precision)} <small>{text ? '' : evidenceUnitLabel(numeric, item.cell?.d || '', item.unit)}</small></p>
       <p className="fi-meta">{item.cell?.basis || 'Saved credit results'} · Run {run.identity.history_id}</p>
       {!available && <p>{item.cell?.reason || 'Not available in this Run.'}</p>}
       <EvidenceDisclosure project={project} run={run} source={item.source} unit={item.unit} period={item.cell?.basis || 'Committed Run'} limitation={item.cell?.reason} />

@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchRuns, runModel } from "../api";
 import { clearRunIntent, createRunIntent, loadRunIntent, type RunIntent } from "../runIntent";
+import { RunFailureNotice } from "../RunFailureNotice";
+import type { ConfirmedRun } from "../workspaceExtensions";
 import type { RunsPayload } from "../types";
 import { StatusNote, useCanonicalRead, useDirtyTotal, useReportPending, useUnresolvedLock, type StatusMessage } from "./workflowShared";
 
@@ -23,7 +25,8 @@ interface Props {
   protectedReference: boolean;
   contentHash: string;
   workbookVersion: string;
-  onRan: () => void;
+  reconciliationBlocked?: boolean;
+  onRan: (run: ConfirmedRun) => Promise<void>;
   onReload: () => void;
 }
 
@@ -34,11 +37,12 @@ const MEANING: Record<string, string> = {
   NOT_RUN: "No committed Run yet.",
 };
 
-export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload }: Props) {
+export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload, reconciliationBlocked = false }: Props) {
   const { total, breakdown, pendingKeys, confirmIfDirty } = useDirtyTotal();
   const fetcher = useCallback(() => fetchRuns(project), [project]);
   const read = useCanonicalRead<RunsPayload>(fetcher, [project]);
   const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [failure, setFailure] = useState<{ code?: string; message: string } | null>(null);
   const [running, setRunning] = useState(false);
   const [locked, setLocked] = useUnresolvedLock("run");
   // The unresolved intent for this project (kept across reloads; bounded client storage, no tokens).
@@ -61,6 +65,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
   // replay or refuse, never calculate against today's draft, so unsaved edits do not block it.
   const resuming = pending !== null;
   const blockedReason = protectedReference ? "Templates cannot be run. Start a project from this template."
+    : reconciliationBlocked ? "Refresh the confirmed Run views before starting another Run."
     : total > 0 ? `Save or cancel your ${total} unsaved edit${total === 1 ? "" : "s"} before running.`
       : pendingKeys.some((k) => k !== "run") ? "A save or change is still in progress or unresolved. Wait for it, or reload to reconcile, before running."
         : locked || resuming ? "The last Run outcome is not confirmed. Resume it, or reload to reconcile, before starting a new Run."
@@ -72,6 +77,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
     inFlight.current = true;
     setRunning(true);
     setStatus(null);
+    setFailure(null);
     let intent = pending;
     if (!intent) {
       try {
@@ -85,8 +91,6 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       setPending(intent);
     }
     const result = await runModel({ runUrl: contract.url, csrfToken: contract.csrf_token, project, intent });
-    setRunning(false);
-    inFlight.current = false;
     if ("kind" in result) {
       // Ambiguous: keep the intent so the next press resumes it with the original binding.
       setLocked(true);
@@ -98,7 +102,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       setStatus({ tone: "ok", text: result.outcome === "REPLAYED"
         ? "This Run was already committed; its original result is shown. Nothing was recalculated."
         : "Run complete. Results come from the saved Run only." });
-      onRan();
+      await onRan({ historyId: result.historyId, snapshotId: result.snapshotId, runIntentId: intent.id });
     } else {
       if (!result.retain) {
         clearRunIntent(project);
@@ -106,8 +110,12 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       }
       // A committed Run whose history cannot be read back needs a reload before anything else.
       setLocked(result.outcome === "HISTORY_UNAVAILABLE");
+      // The typed outcome keeps its established status contract (conflict for an unreadable history, error otherwise) next to the guidance notice.
       setStatus({ tone: result.outcome === "HISTORY_UNAVAILABLE" ? "conflict" : "error", text: result.message });
+      setFailure({ code: result.errorCode, message: result.message });
     }
+    setRunning(false);
+    inFlight.current = false;
   }
 
   return (
@@ -134,7 +142,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
         {blockedReason || "Run is a separate, deliberate action: Save, scenario selection and comparison never execute the model."}
         {resuming && " Resuming asks the server for that Run's original result; it does not calculate again."}
       </p>
-      <div style={{ flexBasis: "100%" }}><StatusNote status={status} /></div>
+      <div style={{ flexBasis: "100%" }}><StatusNote status={status} />{failure && <RunFailureNotice {...failure} />}</div>
     </div>
   );
 }

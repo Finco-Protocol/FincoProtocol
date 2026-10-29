@@ -1,3 +1,4 @@
+import { useReportPrecision } from "../ReportPrecision";
 import { evidenceDisplay } from './presentation';
 import type { InsightRun } from './types';
 
@@ -16,6 +17,7 @@ const DISTRIBUTION_FIELDS = [
   ['mra_contribution_keur', 'MRA contribution'], ['lockup_active', 'Lock-up'],
 ] as const;
 export function SponsorSchedules({ run }: { run: InsightRun }) {
+  const { precision } = useReportPrecision();
   const schedules = [
     { title: 'Sponsor cash flow components', source: run.sponsor.sponsor_source, rows: run.sponsor.sponsor_rows, fields: SPONSOR_FIELDS },
     { title: 'Distribution waterfall evidence', source: run.sponsor.distribution_source, rows: run.sponsor.distribution_rows, fields: DISTRIBUTION_FIELDS },
@@ -28,7 +30,7 @@ export function SponsorSchedules({ run }: { run: InsightRun }) {
         <tbody>{schedule.rows.map((row, index) => <tr key={index}><th scope="row">{typeof row.period === 'number' ? row.period : 'Period unavailable'}</th>
           <td>{typeof row.date === 'string' ? row.date : 'Date unavailable'}</td>
           {schedule.fields.map(([key]) => { const value = typeof row[key] === 'number' ? row[key] as number : null;
-            return <td key={key} data-source-field={key}>{key === 'lockup_active' ? row[key] === true ? 'Active' : row[key] === false ? 'Open' : 'Unavailable' : evidenceDisplay(value, '', 'kEUR')}</td>;
+            return <td key={key} data-source-field={key}>{key === 'lockup_active' ? row[key] === true ? 'Active' : row[key] === false ? 'Open' : 'Unavailable' : evidenceDisplay(value, '', 'kEUR', precision)}</td>;
           })}</tr>)}</tbody></table>
     </div>}
   </details>)}</>;

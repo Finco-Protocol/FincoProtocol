@@ -6,6 +6,7 @@ import { NewProjectWizard } from "./app/newProject/NewProjectWizard";
 import { isWizardHash } from "./app/newProject/api";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
+import { ReportPrecisionProvider } from "./app/ReportPrecision";
 import "./styles/rx-mvp-correction.css";
 
 type Phase = "loading" | "error" | "ready";
@@ -36,7 +37,7 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
  * Every other value keeps the Model workspace behavior below unchanged.
  */
 export default function App({ host }: { host: HTMLElement }) {
-  return <ModelApp host={host} />;
+  return <ReportPrecisionProvider><ModelApp host={host} /></ReportPrecisionProvider>;
 }
 
 /**

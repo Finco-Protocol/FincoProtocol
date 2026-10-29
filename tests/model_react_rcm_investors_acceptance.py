@@ -179,10 +179,20 @@ def test_save_reload_run_gives_run_bound_evidence_and_the_same_numbers_as_the_ad
     page.reload()
     page.wait_for_selector("[data-investor-workflow='INCORPORATED']", timeout=30000)
     api_rows = api(context, live_server, record.project_code)["evidence"]["investors"]
+    assert page.get_by_label("Report precision", exact=True).input_value() == "0"
     for mine in api_rows:
         cells = page.locator(f"[data-evidence-row='{mine['investor_id']}'] td").all_inner_texts()
         assert cells[0] == f"{mine['ownership_fraction'] * 100:.2f}%"
-        assert cells[4] == f"{mine['residual_distributions_keur']:,.2f}"
+        from decimal import Decimal, ROUND_HALF_UP
+        raw = Decimal(str(mine['residual_distributions_keur']))
+        def amount(digits):
+            value = raw.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
+            text = format(abs(value), f',.{digits}f')
+            return '(' + text + ')' if value < 0 else text
+        assert cells[4] == amount(0)
+        for digits in (2, 3, 0):
+            page.get_by_label("Report precision", exact=True).select_option(str(digits))
+            assert page.locator(f"[data-evidence-row='{mine['investor_id']}'] td").nth(4).inner_text() == amount(digits)
         assert cells[6] == (f"{mine['dpi']:.3f}x" if mine["dpi"] is not None else "UNAVAILABLE")
     shot(page, "evidence-1440")
     text = page.inner_text("[data-investors-panel]")

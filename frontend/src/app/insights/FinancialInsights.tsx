@@ -1,3 +1,4 @@
+import { useReportPrecision } from "../ReportPrecision";
 import { useEffect, useState } from 'react';
 import { fetchInsights, fetchInsightsHistory } from './client';
 import { CreditEvidenceCards } from './CreditEvidenceCards';
@@ -41,10 +42,11 @@ export function HistoricalRunSelector({ history, selected, onChange, onRead, bus
 }
 
 export function SponsorEvidence({ project, run }: { project: string; run: InsightRun }) {
+  const { precision } = useReportPrecision();
   return <section className="fi-panel"><h3>Sponsor and investment evidence</h3>
     <p>Project IRR, Pure Equity IRR and Total Sponsor IRR keep their separate definitions. Distributions are not total sponsor cash flow.</p>
     <div className="fi-metrics">{run.sponsor.metrics.map(metric => <article className="fi-metric" key={metric.key} data-sponsor-metric={metric.key}>
-      <h4>{metric.label}</h4><p className="fi-metric-value">{evidenceDisplay(metric.value, metric.display, metric.unit)} <small>{evidenceUnitLabel(metric.value, metric.display, metric.unit)}</small></p>
+      <h4>{metric.label}</h4><p className="fi-metric-value">{evidenceDisplay(metric.value, metric.display, metric.unit, precision)} <small>{evidenceUnitLabel(metric.value, metric.display, metric.unit)}</small></p>
       <p>{metric.availability || (metric.value === null ? 'Unavailable' : 'Persisted')} {metric.reason}</p>
       <p className="fi-source">{metric.source}</p>
       <EvidenceDisclosure project={project} run={run} source={metric.source} unit={metric.unit} period="Committed Run aggregate" limitation={metric.reason} />

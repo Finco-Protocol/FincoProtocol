@@ -39,7 +39,7 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
     for path, blob in LAYER.items():
         assert path in S.BLOBS and len(blob) == 40 and blob not in _earlier(path)          # a NEW reviewed state, never a repin
         # strict: exactly the RC-M state, or - only for a path the separately reviewed RC-UX layer also covers - exactly that later state
-        assert S.git_blob(SOURCES[path]) == S.RC_UX_SUCCESSORS.get(path, blob)
+        assert S.git_blob(SOURCES[path]) == S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, S.RC_UX_SUCCESSORS.get(path, blob)))
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 

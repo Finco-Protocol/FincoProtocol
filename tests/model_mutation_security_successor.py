@@ -218,6 +218,41 @@ RC_UX_SUCCESSORS={
 FINVAL_RATE_SUCCESSORS={
     "app/v2/router.py":"8fe930c5a1ac876de0d3a98fff689f34af646a68",
 }
+# Financial Owner WS1 approval: section A at c848a979 (2026-10-28).
+# Additive presentation-only pins; every historical dictionary above stays immutable.
+WSV2_PRESENTATION_SUCCESSORS={
+    "frontend/src/app/FinancialResults.tsx":"c53b677f29671380db916ceb4f4cfb2e2e53beeb",
+    "frontend/src/app/WorkspaceView.tsx":"67f393604cde997406dc526d5ddb52901ff68f3b",
+    "static/react/finco-react.css":"3a1eab32a691696787aa5b54893fe24812186608",
+    "static/react/finco-react.js":"74531cc4c53fa4fdedde0a4ec5967b75db6e3697",
+}
+
+# Separately authorized mandatory-role import; never a security or financial writer.
+WSV2_BROWSER_SUCCESSORS={
+    "tests/test_model_workspace_consolidation_browser.py":"7c6478289c029f8b53e16103fa22b22123cbd19a",
+}
+
+# Financial Owner §D approval at 5d5f19ee: nine exact acceptance sources; historical pins unchanged.
+WSV2_ACCEPTANCE_SUCCESSORS={
+    "tests/model_react_mvp_acceptance.py":"6df4b14e0993ac3cf3f26df3f802dc644c0ed65b",
+    "tests/model_react_rcm_new_project_acceptance.py":"b1a38b458717bdc99e25eb6159a1387a952c34eb",
+    "tests/model_react_rcm_themes_acceptance.py":"a763beb9995e537cd7c5fe88c21cd9213068ff60",
+    "tests/model_react_rcux_navigation_acceptance.py":"c42e00a05333b8f71fb03a33988d832a97955bc6",
+    "tests/model_react_rcux_product_acceptance.py":"26193998bd2978ddac55982176cb541b58f4e75e",
+    "tests/test_model_react_poc_browser_acceptance.py":"75f8f87492538f5521bdaf804982c8372b6645e4",
+    "tests/model_react_wf1_browser_acceptance.py":"3924c454ae607e50554c0d9908c4bfab6dd4bd68",
+    "tests/model_react_rcm_investors_acceptance.py":"6bf989629935a247cd392a61dea23914b20c29bc",
+    "tests/model_react_rcux_analysis_acceptance.py":"447024dad7de056ee0d56e9dd3c554898e83c053",
+}
+
+# Correction H: the previous exact WS1 states stay individually admitted (additive; the dictionaries above hold the current pins).
+WSV2_PREVIOUS_STATES={
+    "frontend/src/app/WorkspaceView.tsx":"c5f9ec51120d9145b8ffee001a63362ef9f83ee6",
+    "static/react/finco-react.js":"0c9725723b8473f961fda2df51ddd49b61628e60",
+    "tests/model_react_wf1_browser_acceptance.py":"6f60735fbb3317aa8b04ef5fb09c7107997b1995",
+    "tests/model_react_rcux_analysis_acceptance.py":"2afd19681bbb7cd1a758129603b9e2ecfb21011d",
+}
+
 ROUTES={
     "app/v2/router.py": {
         **{"v2_scenario_"+op: "scenario-"+op.replace("_","-") for op in ("create","select","rename","archive","update_overrides","remove_override")},
@@ -333,6 +368,10 @@ def violations(sources,*,check_pin=True):
         if path in FINVAL_RATE_SUCCESSORS:admitted=admitted|{FINVAL_RATE_SUCCESSORS[path]}
         if path in FINVAL_F01_COMPLETE_SUCCESSORS:admitted=admitted|{FINVAL_F01_COMPLETE_SUCCESSORS[path]}
         if path in FINV2_D01_SENSITIVITY_SUCCESSORS:admitted=admitted|{FINV2_D01_SENSITIVITY_SUCCESSORS[path]}
+        if path in WSV2_PRESENTATION_SUCCESSORS:admitted=admitted|{WSV2_PRESENTATION_SUCCESSORS[path]}
+        if path in WSV2_BROWSER_SUCCESSORS:admitted=admitted|{WSV2_BROWSER_SUCCESSORS[path]}
+        if path in WSV2_ACCEPTANCE_SUCCESSORS:admitted=admitted|{WSV2_ACCEPTANCE_SUCCESSORS[path]}
+        if path in WSV2_PREVIOUS_STATES:admitted=admitted|{WSV2_PREVIOUS_STATES[path]}
         if path in WSV2_SAVE_ALL_SUCCESSORS:admitted=admitted|{WSV2_SAVE_ALL_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial

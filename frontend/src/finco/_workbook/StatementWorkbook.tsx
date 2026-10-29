@@ -5,9 +5,12 @@ import { preferredScrollBehavior } from "../_shared/motion";
 import { statementCellTabIndex, statementCellText, statementStatusText, type StatementFacilityId, type StatementRow, type StatementSheet, type StatementSheetId, type StatementViewId, type StatementWorkbookProps } from "./statementContract";
 import "./statements.css";
 import {
-  DISPLAY_UNITS, formatStatementCell, formatUnitLabel, classifyRowUnit, formatFromCanonicalUnit, resolveRowFormat, sheetUnitLabel,
+  DISPLAY_UNITS, formatUnitLabel, classifyRowUnit, formatFromCanonicalUnit, resolveRowFormat, sheetUnitLabel,
   type DisplayUnit, type RowFormat,
 } from "../../app/units";
+
+import { reportCell as formatStatementCell } from "../../app/reportFormatting";
+import { useReportPrecision } from "../../app/ReportPrecision";
 
 type SheetId = StatementSheetId;
 type ViewId = StatementViewId;
@@ -28,7 +31,7 @@ const rowUnitSource = (row: Row, sheet: Sheet) => classifyRowUnit(row.label, row
 /** The row's canonical (source) unit label, "unit unavailable" when metadata is ambiguous. */
 const canonicalUnitText = (row: Row, sheet: Sheet): string => {
   const format = rowFormatOf(row, sheet);
-  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : "unit unavailable";
+  return format.kind === "money" ? format.base : format.kind === "ratio" ? "x" : format.kind === "percent" ? "%" : format.kind === "quantity" ? format.unit : "unit unavailable";
 };
 /** Display conversion only: canonical text in the sheet's canonical unit -> chosen display unit. */
 function displayStatementValue(value: string, format: RowFormat, unit: UnitDisplay, precision: number, numeric?: number | null) {
@@ -319,7 +322,7 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
     return Number.isFinite(candidate) ? Math.max(0, Math.min(count - 1, candidate)) : 0;
   });
   const [unit, setUnit] = useState<UnitDisplay>(() => dataOrigin === "canonical-run" ? defaultDisplayUnit(visibleSheets) : "mEUR");
-  const [precision, setPrecision] = useState(1);
+  const { precision, setPrecision, shared } = useReportPrecision();
   const regionRef = useRef<HTMLDivElement>(null);
   const activeSheet = visibleSheets.find((item) => item.id === sheetId) || visibleSheets[0];
   const facilityKeys = Object.keys(snapshot?.debtRowsByFacility ?? {});
@@ -466,11 +469,11 @@ export default function StatementWorkbook({ onSheetChange, onExplain, snapshot, 
                 {DISPLAY_UNITS.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
-            <label className="fm-sw-field" htmlFor="fm-sw-precision">Precision
+            {!shared && <label className="fm-sw-field" htmlFor="fm-sw-precision">Precision
               <select id="fm-sw-precision" className="fm-sw-select" value={precision} onChange={event => setPrecision(Number(event.target.value))}>
                 <option value={0}>0 decimals</option><option value={1}>1 decimal</option><option value={2}>2 decimals</option><option value={3}>3 decimals</option>
               </select>
-            </label>
+            </label>}
             {view === "model" && <button
               type="button"
               className="fm-sw-period-toggle"

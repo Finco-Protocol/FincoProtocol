@@ -1,15 +1,18 @@
+import { useReportPrecision } from "../ReportPrecision";
+import { reportAmount, reportEvidence } from "../reportFormatting";
 import "../../styles/rcm-financing.css";
 import type { DsraCashRow, EvidenceMetric, FinancingStudioPayload } from "./types";
 
 const FRESH: Record<string, string> = { CURRENT: "CURRENT", STALE: "STALE", NOT_RUN: "NOT RUN" };
 
 function Facts({ items, testid }: { items: EvidenceMetric[]; testid: string }) {
+  const { precision } = useReportPrecision();
   return (
     <dl className="rcm-facts" data-facts={testid}>
       {items.map((m) => (
         <div key={m.label} data-evidence-metric={m.label} title={m.source}>
           <dt>{m.label}</dt>
-          <dd>{m.display}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd>
+          <dd title={m.value == null ? undefined : String(m.value)}>{reportEvidence(m.value, m.display, m.label, precision)}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd>
         </div>
       ))}
     </dl>
@@ -19,6 +22,7 @@ function Facts({ items, testid }: { items: EvidenceMetric[]; testid: string }) {
 const periodLabel = (value: number | string | null | undefined): string => (value === null || value === undefined ? "not exposed" : String(value));
 
 function CashRows({ rows }: { rows: DsraCashRow[] }) {
+  const { precision } = useReportPrecision();
   if (!rows.length) {
     return <p className="rx-empty" data-dsra-cash-empty="true">Debt service and reserve cash by period appear after a Run that produced a cash waterfall. Nothing is estimated here.</p>;
   }
@@ -32,7 +36,7 @@ function CashRows({ rows }: { rows: DsraCashRow[] }) {
           {rows.map((r, i) => (
             <tr key={i}>
               <td className="rcm-left">{periodLabel(r.period)}</td><td className="rcm-left">{r.date ?? "—"}</td>
-              <td>{r.cfads.display}</td><td>{r.service.display}</td><td>{r.funding.display}</td><td>{r.release.display}</td>
+              <td>{r.cfads.value == null ? r.cfads.display : reportAmount(r.cfads.value, precision)}</td><td>{r.service.value == null ? r.service.display : reportAmount(r.service.value, precision)}</td><td>{r.funding.value == null ? r.funding.display : reportAmount(r.funding.value, precision)}</td><td>{r.release.value == null ? r.release.display : reportAmount(r.release.value, precision)}</td>
             </tr>
           ))}
         </tbody>

@@ -1,3 +1,5 @@
+import { useReportPrecision } from "../ReportPrecision";
+import { reportAmount, reportEvidence } from "../reportFormatting";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../styles/rcm-financing.css";
 import { StatusNote, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "../workflow/workflowShared";
@@ -19,15 +21,18 @@ async function fetchInvestors(project: string): Promise<Read> {
 }
 
 const pct = (v: number | null, digits = 2) => (v === null ? null : `${(v * 100).toFixed(digits)}%`);
-const money = (v: number | null) => (v === null ? "UNAVAILABLE" : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
 
 function Metric({ m }: { m: SponsorMetric }) {
-  return <div data-sponsor-metric={m.label}><dt>{m.label}</dt><dd>{m.display}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd></div>;
+  const { precision } = useReportPrecision();
+  return <div data-sponsor-metric={m.label}><dt>{m.label}</dt><dd>{reportEvidence(m.value, m.display, m.label, precision)}{m.value === null && m.reason && <span className="rcm-reason">{m.reason}</span>}</dd></div>;
 }
 
 /** Investor & sponsor agreement: typed common-equity holders and actual paid-in capital, saved through the canonical F4 route
  *  (session CSRF, composite-hash CAS, agreement-version CAS); Run-bound evidence and the shareholder-loan facts are read-only. */
 export function InvestorsPanel({ project, reloadKey, onSaved }: { project: string; reloadKey: number; onSaved: () => void }) {
+  const { precision } = useReportPrecision();
+  const money = (value: number | null) => reportAmount(value, precision);
   const [read, setRead] = useState<Read | null>(null);
   const [draft, setDraft] = useState<AgreementDraft>({ agreementId: "", investors: [], contributions: [] });
   const [status, setStatus] = useState<StatusMessage | null>(null);

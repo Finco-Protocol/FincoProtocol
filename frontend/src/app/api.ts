@@ -210,7 +210,7 @@ export type RunModelResult =
   /** The server committed (or had already committed) this exact intent and the exact history row was verified. */
   | { ok: true; outcome: "COMMITTED" | "REPLAYED"; historyId: string; snapshotId: string }
   /** Definitive refusal / failure.  `retain` is true only when the same intent may still be resubmitted. */
-  | { ok: false; outcome: RunOutcome | "REJECTED"; message: string; retain: boolean }
+  | { ok: false; outcome: RunOutcome | "REJECTED"; message: string; retain: boolean; errorCode?: string }
   /** Ambiguous: the intent MUST be kept and retried with its original binding (never a fresh key). */
   | { kind: "unknown"; message: string };
 
@@ -306,7 +306,8 @@ export async function runModel(args: RunModelArgs): Promise<RunModelResult> {
       const reason = message || (typed.outcome === "FAILED"
         ? "The Run did not complete and nothing was saved. The previous Last Run is unchanged."
         : `Run ${typed.outcome.toLowerCase()}.`);
-      return { ok: false, outcome: typed.outcome, retain: false, message: `${reason}${reference}` };
+      return { ok: false, outcome: typed.outcome, retain: false, message: `${reason}${reference}`,
+        errorCode: typeof typed.error_code === "string" ? typed.error_code : undefined };
     }
   }
 }

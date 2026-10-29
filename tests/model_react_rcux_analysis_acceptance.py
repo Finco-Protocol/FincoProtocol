@@ -424,7 +424,13 @@ def test_rcux_financing_overview_shows_reserve_sponsor_returns_and_cash_rows_equ
     table = page.locator("[data-dsra-cash='true'] tbody tr")
     assert table.count() == len(rows)
     first = table.first.inner_text()
-    assert rows[0]["cfads"]["display"] in first and rows[0]["service"]["display"] in first
+    # The cash cells follow the shared Report precision (default 0 decimals, unit in the column heading); the independent oracle re-expresses the
+    # same canonical value, and an unavailable value keeps the server's "Not available" text.
+    from tests.model_react_wf1_browser_acceptance import expect_display_v
+    precision = int(page.get_by_label("Report precision", exact=True).input_value())
+    for key in ("cfads", "service"):
+        cell = rows[0][key]
+        assert (expect_display_v(cell["value"], "kEUR", "kEUR", precision) if cell["value"] is not None else cell["display"]) in first, key
     assert page.locator("[data-sizing-status='true']").inner_text().startswith("Sizing and binding-constraint status")
     _shot(page, "financing-reserve-returns")
     assert [e for e in errors if "Failed to load resource" not in e] == []
@@ -615,7 +621,7 @@ def test_rcux_workspace_hash_navigation_never_leaves_the_project_for_the_library
             page.goto(f"{base}#{section}")
             page.wait_for_selector("[data-workspace-nav], nav", timeout=60000)
     for section in ("statements", "financing", "analysis", "inputs"):
-        page.locator(f"[data-workspace-nav] a[href$='#{section}'], nav a[href$='#{section}']").first.click()
+        page.locator(f"[data-workspace-nav] a[href$='#{section}']").click()
         page.wait_for_timeout(250)
         assert page.url.startswith(base), (section, page.url)
     page.go_back()

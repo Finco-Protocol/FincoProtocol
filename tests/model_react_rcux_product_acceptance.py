@@ -98,8 +98,6 @@ def _create_from_template(page, base, kind, name, *, via_hash=False):
     page.locator("[data-wizard-next='true']").click()
     page.fill("#rcm-name", name)
     page.locator("[data-wizard-next='true']").click()
-    page.wait_for_selector("[data-wizard-panel='timeline']", timeout=30000)
-    page.locator("[data-wizard-next='true']").click()
     page.wait_for_selector("[data-wizard-panel='review']")
 
 
@@ -171,7 +169,8 @@ def test_rcux_product_create_new_path_is_a_disclosed_guided_setup(live_server, u
     page.reload()
     page.wait_for_selector("[data-path-card='new']")
     assert page.locator("[data-wizard-next='true']").is_disabled()                # nothing proceeds before a path is chosen
-    assert "completely blank model is not available" in page.locator("[data-path-card='new']").inner_text()
+    page.locator("[data-blank-project-constraint] summary").click()
+    assert "cannot currently be saved" in page.locator("[data-blank-project-constraint]").inner_text()
     page.locator("[data-path-card='new']").click()
     page.wait_for_selector("[data-tech-card='solar']")
     assert "approved starting assumptions" in page.locator("[data-path-note='new']").inner_text()
@@ -181,7 +180,6 @@ def test_rcux_product_create_new_path_is_a_disclosed_guided_setup(live_server, u
     page.locator("[data-tech-card='wind']").click()
     page.locator("[data-wizard-next='true']").click()
     page.fill("#rcm-name", "Guided wind project")
-    page.locator("[data-wizard-next='true']").click()
     page.locator("[data-wizard-next='true']").click()
     page.wait_for_selector("[data-wizard-panel='review']")
     assert page.locator("[data-review='starter']").count() == 1 and page.locator("[data-review='template-assumptions']").count() == 0

@@ -839,3 +839,7 @@ from tests.model_react_rcux_whatif_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcux_import_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcux_navigation_acceptance import *  # noqa: E402,F401,F403
 from tests.model_react_rcux_analysis_acceptance import *  # noqa: E402,F401,F403
+
+
+# WS1 Workspace V2: approved mandatory acceptance; additive import only.
+from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403
