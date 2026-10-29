@@ -89,6 +89,8 @@ OWNED_PATHS = frozenset((
 
 # Exact historical manifest keys that may point at the newly authorized bytes.
 OWNER_APPROVED_ACCEPTANCE_PIN = 'tests/model_react_mvp_acceptance.py'
+# Owner-approved Chromium route-teardown correction (PR #397): the one acceptance source whose pin in the fin_v2_3 manifest may move.
+ROUTE_TEARDOWN_PIN = 'tests/model_react_overnight_b_acceptance.py'
 
 GOVERNANCE_PINS = frozenset((
     'tests/test_fin_v2_3_scope.py',                      # WS-2 gate A: exact successor-aware assertion in the predecessor cohort tests
@@ -143,7 +145,7 @@ def _historical_manifests_ok(root, ref):
         if set(before) != set(after):
             return False
         allowed = ({'app/v2/react_rcux.py', 'app/v2/react_workspace_router.py'} if path == PREDECESSOR_MANIFESTS[-1]
-                   else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN} if path == PREDECESSOR_MANIFESTS[0] else set()))
+                   else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN, ROUTE_TEARDOWN_PIN} if path == PREDECESSOR_MANIFESTS[0] else set()))
         if any(before[p] != after[p] and p not in allowed for p in before):
             return False
         # Every pre-existing metadata field remains; only the live pin map changes.
@@ -165,6 +167,7 @@ def _ci_evidence_only(path):
 #: The three gate A/D test sources the WS-2 correction edits that are exact-pinned by OTHER registered cohorts (fin_v2_3, fin_v2_r1, rc_ux).
 #: Closed list: each is admitted only while a registered cohort pins it (that cohort re-verifies the exact blob inside the composite).
 WS2_GATE_TESTS = frozenset((
+    'tests/model_react_overnight_b_acceptance.py',    # Owner-approved Chromium route-teardown correction (pinned by the fin_v2_3 cohort)
     'tests/model_react_wf2_browser_acceptance.py',
     'tests/test_fin_v2_3_scope.py',
     'tests/test_fin_v2_r1_scope.py',

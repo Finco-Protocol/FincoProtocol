@@ -184,7 +184,12 @@ def check_missing_or_conflicting_identity_fails_visibly(browser, base):
             assert placeholder not in body_text
         shot(page, "statement-identity-missing")
     finally:
-        context.close()
+        try:
+            # Both interceptors call route.fetch(); a handler still awaiting the server when the context is disposed would fail
+            # asynchronously inside the NEXT test ("Route.fetch: Request context disposed").  Drain them while the page is live.
+            page.unroute_all(behavior="wait")
+        finally:
+            context.close()
 
 
 # ── F03: Run identity ────────────────────────────────────────────────────────────────────────────────────
