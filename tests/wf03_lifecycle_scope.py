@@ -34,6 +34,7 @@ OWNED_PATHS=frozenset((
     'tests/test_rcux_governance.py', 'tests/test_trust_readiness_registry.py',
     'tests/test_trust_readiness_controls.py', 'tests/test_model_workspace_consolidation_browser.py',
     'tests/test_project_lifecycle.py', 'tests/test_project_lifecycle_browser.py',
+    'tests/model_react_rcux_product_acceptance.py',
     'tests/test_true_blank_readiness.py', 'tests/test_setup_draft_promotion.py',
     'tests/wf03_lifecycle_scope.py', 'tests/test_wf03_lifecycle_scope.py',
     # Three additional predecessor-consumer paths explicitly approved in chat.
