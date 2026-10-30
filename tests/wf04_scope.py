@@ -305,6 +305,15 @@ def _ci_evidence_only(path):
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    try:
+        from tests import wf03_lifecycle_scope as WF03
+    except ImportError:
+        return _exact_blobs_ok(repo, ref)
+    with WF03.scoped():        # the exact WF-03 check runs once per call, not once per changed path
+        return _exact_blobs_ok(repo, ref)
+
+
+def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if set(pins) != OWNED_PATHS or not _owned_ok():

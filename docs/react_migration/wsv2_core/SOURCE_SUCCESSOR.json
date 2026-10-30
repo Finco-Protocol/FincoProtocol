@@ -73,7 +73,7 @@
     "tests/test_rcm_governance.py": "0877ab11c41a394f3d921a5b6d4489fdfb99a284",
     "tests/test_rcux_governance.py": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
-    "tests/wsv2_core_scope.py": "2ae87be09f34c4e92b83b09c0c44e253fc75632c"
+    "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047"
   },
   "historical_source_blobs": {
     "8a74fcb5cd57e470cf83a458bd165ea14ad394fb": {

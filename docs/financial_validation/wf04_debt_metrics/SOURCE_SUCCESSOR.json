@@ -23,7 +23,7 @@
     "docs/financial_validation/wf04_debt_metrics/REVIEW_VERDICT.md": "7ea2d594f7d588612811a3737aabf622507b2507",
     "docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md": "74c25a02616d3fe1b03fa78568242a1f8d0eadcd",
     "docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md": "87dd275943448198392389b23aedd7fa65ee2d60",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "0ee23c531b1d18a0bc6b597c841f6be1b895139e",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "a9bec0e12032713359615ba54d3f301ac282afb9",
     "frontend/src/app/FinancialOverview.tsx": "6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432",
     "frontend/src/app/FinancialResults.tsx": "eb5ddb89b663f8145b702df26d591b884fbb4339",
@@ -67,8 +67,8 @@
     "tests/test_wf04_save_all_integration.py": "7566b61542f8cfbb0811040e6d0d2874f909b20f",
     "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
-    "tests/wf04_scope.py": "041aa5135e1b47ac08978d4828689c291edabec5",
-    "tests/wsv2_core_scope.py": "2ae87be09f34c4e92b83b09c0c44e253fc75632c",
+    "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+    "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/wf04_independent_dscr_oracle.py": "f286d019a6b6cbb964c48ff7ed68281e7715b65d"
   },
   "historical_source_blobs": {

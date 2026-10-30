@@ -8,6 +8,7 @@ from pathlib import Path
 import hashlib
 import json
 import subprocess
+from contextlib import contextmanager
 from functools import lru_cache
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -145,7 +146,29 @@ def _historical_maps_ok(root,ref,pins,data):
     return True
 
 
+_SCOPE=[]   # call-scope memo stack: see scoped()
+
+
+@contextmanager
+def scoped():
+    """Within ONE outer governance call (single-threaded, no file is written meanwhile) the result of ``exact_blobs_ok(root, ref)`` is computed once
+    instead of once per changed path. The memo lives only for that call: it is dropped on exit, never keeps bytes, and is never shared between calls."""
+    _SCOPE.append({})
+    try:
+        yield
+    finally:
+        _SCOPE.pop()
+
+
 def exact_blobs_ok(repo=None,ref=None):
+    if not _SCOPE: return _exact_blobs_ok(repo,ref)
+    key=(str(repo if repo is not None else ROOT),ref)
+    memo=_SCOPE[-1]
+    if key not in memo: memo[key]=_exact_blobs_ok(repo,ref)
+    return memo[key]
+
+
+def _exact_blobs_ok(repo=None,ref=None):
     root=Path(repo) if repo is not None else ROOT
     data=manifest(root,ref); pins=data.get('source_blobs',{})
     if set(pins)!=OWNED_PATHS: return False

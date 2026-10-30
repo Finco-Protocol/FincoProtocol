@@ -45,9 +45,9 @@
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "3536a0135285c36410bc597cfd919130bb5c818e",
     "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "9f1ca6c407cc1699d6fa3235b197d93a99fd9100",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "dad8f165e5257e6f803782ac0e5a6314c9da38e6",
     "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "0ee23c531b1d18a0bc6b597c841f6be1b895139e",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "a9bec0e12032713359615ba54d3f301ac282afb9",
     "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
     "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
@@ -95,9 +95,9 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "a48f611f98b73ef98de36eed8e8572caabdb8327",
-    "tests/wf04_scope.py": "041aa5135e1b47ac08978d4828689c291edabec5",
-    "tests/wsv2_core_scope.py": "2ae87be09f34c4e92b83b09c0c44e253fc75632c",
+    "tests/wf03_lifecycle_scope.py": "ad2f2f00b9ed8fd9658801ff6dcad1f8bb4aa766",
+    "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+    "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/ci_v3_production.py": "001294f035616903e1cd4c8358ce81e3493ca32b"
   },
   "predecessor_manifests": {
@@ -137,7 +137,7 @@
     {
       "path": "app/persistence/acquisition_repository.py",
       "before_blob": "e565f7937063d81fdf552d599abfb03ad8f45630",
-      "after_blob": "bf46817818bec5f5f9b3b64af43e75f97efa6f7f",
+      "after_blob": "ab7d139074cca93ef1a0cebbfb4cc56c335625e4",
       "entry_points": [
         "_table"
       ],
@@ -364,7 +364,7 @@
     {
       "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
       "before_blob": "8dd5415975cef0465308bec52f1cee515ce006e1",
-      "after_blob": "cfdaa05eea0291c05f612dc3afb8f9404ab17630",
+      "after_blob": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -386,7 +386,7 @@
     {
       "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
       "before_blob": "fa6b3533471fe7d5bc752b00c9c4124bbe098af0",
-      "after_blob": "ac8dbc6290947332598790bbc2bb09ba16388803",
+      "after_blob": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -397,7 +397,7 @@
     {
       "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
       "before_blob": "af3f88469a50668ac174d545514d0c2726002f19",
-      "after_blob": "cc298e8d07f266b2aa00bfb87ca7414ea582e62e",
+      "after_blob": "dad8f165e5257e6f803782ac0e5a6314c9da38e6",
       "entry_points": [
         "source_blobs",
         "historical_source_blobs[db504f6]"
@@ -420,7 +420,7 @@
     {
       "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
       "before_blob": "392bb92acd6675b4157bd1666821d797f5f05c47",
-      "after_blob": "a87d38a9dbead51d41a2931adeabef848917f797",
+      "after_blob": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -431,7 +431,7 @@
     {
       "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
       "before_blob": "f3c56b90089d4f43a035640e4d133c011b5e3cf2",
-      "after_blob": "713592c732beb959c121a76ddbc4e6aa21565fb5",
+      "after_blob": "a9bec0e12032713359615ba54d3f301ac282afb9",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -464,7 +464,7 @@
     {
       "path": "frontend/src/app/LibraryView.tsx",
       "before_blob": "6e1679eb09c5180b0b541bd3242d46eb9633b6f0",
-      "after_blob": "f6dded97e644e66fff137c060e0ae013fdd86ae4",
+      "after_blob": "1afb10cb4c6ac3111b3587b56a83d6b3e4efb7e4",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -475,7 +475,7 @@
     {
       "path": "frontend/src/app/WorkspaceView.tsx",
       "before_blob": "a86ee44d17e22dc88ca68d9408d87f5689af1372",
-      "after_blob": "ad8261c33f268e73403c91a8f77e68269c59f310",
+      "after_blob": "66b20d2d89b854cf0ffca71035404a7c8c2d1d62",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -486,7 +486,7 @@
     {
       "path": "frontend/src/app/library/api.ts",
       "before_blob": "d7f6d8420bacd11831ab52fa20f04d5ced3c3037",
-      "after_blob": "61d12652aac0be38efac710f1643e9e41554ec54",
+      "after_blob": "ee4e4b43cbefa1443c77038ab693599e3ecc01f8",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -508,7 +508,7 @@
     {
       "path": "frontend/src/app/newProject/NewProjectWizard.tsx",
       "before_blob": "6ebec05f08fe702eb36c0e128126f6fd38749a25",
-      "after_blob": "feda60dfd93f91866db75820000b1c004376e3fe",
+      "after_blob": "2fb78750c5f03e951e593ab8ec199b102868c451",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -531,7 +531,7 @@
     {
       "path": "main_web.py",
       "before_blob": "e74e94503efda5bb3e0993de71b01bbe1122b892",
-      "after_blob": "1643caeeb2e506f09def5a738d5861dde738de0d",
+      "after_blob": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
       "entry_points": [
         "_lifecycle_admission_middleware",
         "_lifecycle_write_refusal"
@@ -543,7 +543,7 @@
     {
       "path": "static/react/finco-react.js",
       "before_blob": "b7a76a078632c3db212fda36ac267738b69951d0",
-      "after_blob": "ddbf26a70927dfc186f3a8da674c6e9fe4175f6f",
+      "after_blob": "097f07e6810c5fea23d409789a0d4c3559beea4d",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -732,7 +732,7 @@
     {
       "path": "tests/test_model_workspace_consolidation_browser.py",
       "before_blob": "7c6478289c029f8b53e16103fa22b22123cbd19a",
-      "after_blob": "6a53cf0994511dc93478dade13c57ee3a7c14eda",
+      "after_blob": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
       "entry_points": [
         "test_wf03_blank_setup_durable_non_runnable_browser",
         "test_wf03_https_visible_archive_restore_matrix",
@@ -790,7 +790,7 @@
     {
       "path": "tests/test_project_lifecycle_browser.py",
       "before_blob": null,
-      "after_blob": "5ddbec1fd3d72c4d4903a6708358157c8c5475a5",
+      "after_blob": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
       "entry_points": [
         "_context",
         "_financial",
@@ -825,7 +825,7 @@
     {
       "path": "tests/test_rcux_governance.py",
       "before_blob": "bb895f71a731fc106b815a3ca8ba50f4f2a51fb9",
-      "after_blob": "b7af76ea326075aa38413909c2edaca210028104",
+      "after_blob": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
       "entry_points": [
         "test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
       ],
@@ -959,7 +959,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "1ba43edad6e907a51836c00ade18190bcff831a8",
+      "after_blob": "ad2f2f00b9ed8fd9658801ff6dcad1f8bb4aa766",
       "entry_points": [
         "_baseline_bytes",
         "_blob",
@@ -985,7 +985,7 @@
     {
       "path": "tests/wf04_scope.py",
       "before_blob": "baca1b0248abee20fa874bee4e914d82390ccd34",
-      "after_blob": "041aa5135e1b47ac08978d4828689c291edabec5",
+      "after_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
       "entry_points": [
         "_wf03",
         "_downstream_allows",
@@ -999,7 +999,7 @@
     {
       "path": "tests/wsv2_core_scope.py",
       "before_blob": "a336c73640382afd454bd981c2390ea4b123175f",
-      "after_blob": "2ae87be09f34c4e92b83b09c0c44e253fc75632c",
+      "after_blob": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
       "entry_points": [
         "_historical_manifests_ok",
         "_ws2_allows"
