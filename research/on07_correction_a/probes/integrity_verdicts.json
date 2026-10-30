@@ -1,0 +1,18 @@
+{
+ "SOL-01": {
+  "overall": "PASS",
+  "non_pass": []
+ },
+ "SOL-02": {
+  "overall": "PASS",
+  "non_pass": []
+ },
+ "WND-01": {
+  "overall": "PASS",
+  "non_pass": []
+ },
+ "WND-02-R": {
+  "overall": "PASS",
+  "non_pass": []
+ }
+}
