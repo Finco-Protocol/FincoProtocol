@@ -191,12 +191,8 @@ def test_transaction_rechecks_project_authority(env):
     from app.workbook.revenue_contracts_service import save_contracts, RevenueContractConflict
     record = env.create()
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    conn = get_connection()
-    try:
-        conn.execute("UPDATE projects SET archived=1 WHERE project_id=?", (record.project_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    from tests.wf03_fixture_seams import archive_through_lifecycle
+    archive_through_lifecycle("decision-user", record.project_code)      # archived exactly as a user would (real transition)
     with pytest.raises(RevenueContractConflict, match="unavailable or read-only"):
         save_contracts(owner="decision-user", project_id=record.project_id,
                        expected_hash=tokens(page.text)["content_hash"], raw="")

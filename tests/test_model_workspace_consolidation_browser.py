@@ -20,6 +20,11 @@ def test_wf03_stale_library_refresh_cannot_overwrite_archived_view_browser(wf03_
     check_stale_library_refresh_cannot_overwrite_the_archived_view(wf03_servers,wf03_browser)
 
 
+def test_wf03_reload_after_lost_response_reads_authoritative_state_browser(wf03_servers,wf03_browser):
+    from tests.test_project_lifecycle_browser import check_reload_after_lost_response_reads_authoritative_state_and_persists_nothing
+    check_reload_after_lost_response_reads_authoritative_state_and_persists_nothing(wf03_servers,wf03_browser)
+
+
 def test_wf03_blank_setup_durable_non_runnable_browser(wf03_servers,wf03_browser):
     from tests.test_project_lifecycle_browser import check_blank_setup_is_durable_explicit_and_non_runnable
     check_blank_setup_is_durable_explicit_and_non_runnable(wf03_servers,wf03_browser)

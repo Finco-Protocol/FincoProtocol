@@ -44,6 +44,18 @@ OWNED_PATHS=frozenset((
     # Three additional predecessor-consumer paths explicitly approved in chat.
     'tests/wsv2_core_scope.py', 'tools/ci_v3_production.py', 'tests/test_ci_v3_outcome_reconciliation.py',
     'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json',   # post-#399: WF-04's own pin map follows only the exact WF-03 pins
+    # Post-merge fixture layer: tests that predate the WF-03 fences set up archived/foreign-owner state through the REAL lifecycle transition or the
+    # scoped fixture-only forgery seam (tests/wf03_fixture_seams.py); every assertion and negative is unchanged unless the ledger says otherwise.
+    'tests/test_model_insight_q3_scenario_reads.py',
+    'tests/test_model_react_rcux_projects_v1.py',
+    'tests/test_model_v2_metadata.py',
+    'tests/test_portfolio_monitoring_real_runs.py',
+    'tests/test_rc7b_quarterly_csrf_successor.py',
+    'tests/test_sc34_effective_revenue_inputs.py',
+    'tests/test_sc34_project_identity.py',
+    'tests/test_wf07_revenue_workspace.py',
+    'tests/test_m6_lifecycle_boundary.py',
+    'tests/wf03_fixture_seams.py',
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
     'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes
     'tests/test_wf04_scope.py',   # post-#399: WF-04's own delta assertions are evaluated at the merged #399 commit

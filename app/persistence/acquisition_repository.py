@@ -40,8 +40,23 @@ def _table(conn):
         FOREIGN KEY(case_id) REFERENCES model_m6_acquisition_cases(case_id)
     )""")
     # This independent append-only case revision log never mutates historical Runs.
-    from app.persistence.project_lifecycle_repository import ensure_schema as _ensure_lifecycle_fences
-    _ensure_lifecycle_fences(conn)
+    # WF-03 database-level lifecycle fences are installed on the CANONICAL projects schema (always the case in production). An isolated
+    # minimal/older schema lacks the columns those fences and their migration need; it is NOT thereby made writable: save_case always runs
+    # _project_write_permission (owner / archived / protected / read-only, failing closed on a missing row or a missing security column).
+    if _canonical_projects_schema(conn):
+        from app.persistence.project_lifecycle_repository import ensure_schema as _ensure_lifecycle_fences
+        _ensure_lifecycle_fences(conn)
+
+
+# Every column the WF-03 lifecycle migration and write fences read or write on ``projects``.
+_CANONICAL_PROJECT_COLUMNS = frozenset({
+    "project_id", "user_id", "project_code", "project_role", "project_origin", "archived", "is_protected", "is_readonly",
+    "replay_metadata_json"})
+
+
+def _canonical_projects_schema(conn):
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+    return _CANONICAL_PROJECT_COLUMNS <= columns
 
 
 

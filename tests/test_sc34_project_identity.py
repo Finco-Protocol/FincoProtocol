@@ -176,13 +176,17 @@ def test_rename_project_update_failure_rolls_back_entire_workspace(identity_case
     with get_cursor() as cur:
         assert cur.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         if failure == "owner_mismatch":
-            cur.execute("UPDATE projects SET user_id=? WHERE project_id=?", ("other-owner", record.project_id))
+            from tests.wf03_fixture_seams import foreign_row_forgery
+            with foreign_row_forgery(cur):      # fixture-only: the project now belongs to somebody else
+                cur.execute("UPDATE projects SET user_id=? WHERE project_id=?", ("other-owner", record.project_id))
         else:
             action = "IGNORE" if failure == "ignore" else "ABORT, 'synthetic project update failure'"
             cur.execute(f"CREATE TRIGGER reject_project_rename BEFORE UPDATE OF project_name ON projects BEGIN SELECT RAISE({action}); END")
     before = _atomic_rows(record)
-    expected_error = sqlite3.IntegrityError if failure == "abort" else StaleContentError
-    message = "synthetic project update failure" if failure == "abort" else "PROJECT_NAME_WRITE_CONFLICT"
+    expected_error = sqlite3.IntegrityError if failure in ("abort", "owner_mismatch") else StaleContentError
+    # owner_mismatch: the WF-03 tenant write fence now refuses the cross-owner workspace write before the name mirror is reached - a stronger,
+    # earlier fail-closed control; the assertion below still proves the ENTIRE workspace rolled back unchanged.
+    message = {"abort": "synthetic project update failure", "owner_mismatch": "WF03_LIFECYCLE_CONFLICT"}.get(failure, "PROJECT_NAME_WRITE_CONFLICT")
     with pytest.raises(expected_error, match=message):
         v2_atomic_draft_update(
             user_id=record.user_id, project_id=record.project_id, expected_content_hash=token,

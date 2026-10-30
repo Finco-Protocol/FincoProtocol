@@ -219,6 +219,48 @@ def check_stale_library_refresh_cannot_overwrite_the_archived_view(servers,brows
     finally: context.close()
 
 
+def check_reload_after_lost_response_reads_authoritative_state_and_persists_nothing(servers,browser):
+    """RC5 quarantine: no browser-side persistence of the pending request. A real server commit whose response is lost, followed by a full
+    page reload, loses the key honestly: the page re-reads the authoritative server state (archived), no replay is claimed, no extra transition
+    exists, nothing was written to browser storage, and a fresh Restore is a NEW request (not a replay) with a single further transition."""
+    from app.persistence.db import get_cursor
+    from app.services.reference_seed_service import create_reference_seeded_project
+    origin,evidence=servers
+    owner='wf03-reload-browser-'+uuid.uuid4().hex
+    record=create_reference_seeded_project(user_id=owner,template_source='generic_solar_reference',requested_name='Reload',capacity_mw=40)
+    before=_financial(record)
+    context,page,errors=_context(browser,origin,owner)
+    try:
+        page.goto(origin+'/v2/model-react/')
+        page.get_by_role('button',name='Archive project',exact=True).wait_for()
+        def lose_response(route):
+            result=route.fetch()
+            assert result.status==200
+            route.abort('failed')                         # real server commit, lost browser response
+        page.route('**/library/projects/*/archive',lose_response)
+        page.route('**/lifecycle/status?*',lambda route:route.abort('failed'))
+        page.get_by_role('button',name='Archive project',exact=True).click()
+        page.get_by_text('The result is unknown.',exact=False).wait_for()
+        page.unroute('**/library/projects/*/archive')
+        page.unroute('**/lifecycle/status?*')
+        page.reload()                                      # the in-memory key is gone: unknown is resolved from the server, not replayed
+        page.get_by_role('button',name='Archive project',exact=True).wait_for(state='detached')
+        storage=page.evaluate('({s:Object.keys(window.sessionStorage),l:Object.keys(window.localStorage)})')
+        assert not [k for k in storage['s']+storage['l'] if k.startswith('finco-wf03')],storage
+        with get_cursor() as cur:
+            assert cur.execute('SELECT count(*) FROM project_lifecycle_events WHERE project_id=?',(record.project_id,)).fetchone()[0]==1
+        page.get_by_role('button',name='Show archived projects',exact=True).click()
+        with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/unarchive')) as fresh:
+            page.get_by_role('button',name='Restore project',exact=True).click()
+        payload=fresh.value.json()
+        assert payload['ok'] and payload['replayed'] is False and payload['current']['archived'] is False
+        with get_cursor() as cur:
+            assert cur.execute('SELECT count(*) FROM project_lifecycle_events WHERE project_id=?',(record.project_id,)).fetchone()[0]==2
+        assert _financial(record)==before
+        assert not errors,errors
+    finally: context.close()
+
+
 def check_blank_setup_is_durable_explicit_and_non_runnable(servers,browser):
     from app.persistence.db import get_cursor
     origin,evidence=servers

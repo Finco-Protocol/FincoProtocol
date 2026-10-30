@@ -9,6 +9,7 @@ import {
   clearPending, createNewProject, fetchTemplates, fetchWizardOptions, fetchWizardPreview, fetchWizardStatus, pathFromHash, readPending, savePending,
   type WizardPath,
 } from "./api";
+import { pendingRequest, releasePendingRequest, retainPendingRequest } from "../library/api";
 import type {
   CreatedProject, PendingNotice, TemplateCard, WizardFieldError, WizardInput, WizardOptions, WizardPreview, WizardTechnology,
 } from "./types";
@@ -469,8 +470,8 @@ function BlankSetupWizard({ onCancel }: { onCancel: () => void }) {
         if (!live || !data.ok) return;
         setCatalogue(data.fields); setDrafts(data.drafts); setCreateToken(data.csrf_token); setScope(data.scope);
         setCountries(data.countries);
-        const stored = sessionStorage.getItem(`finco-wf03-setup:${data.scope}`);
-        if (stored) setUnknown(JSON.parse(stored) as { draftId: string | null; key: string });
+        const stored = pendingRequest<{ draftId: string | null; key: string }>(`finco-wf03-setup:${data.scope}`);
+        if (stored) setUnknown(stored);
       }).catch(() => { if (live) setMessage("Setup drafts could not be loaded. Try again before saving."); });
     return () => { live = false; };
   }, [technology]);
@@ -497,7 +498,7 @@ function BlankSetupWizard({ onCancel }: { onCancel: () => void }) {
   }, [dirty, unknown]);
 
   const settle = async (saved: SetupDraft) => {
-    sessionStorage.removeItem(`finco-wf03-setup:${scope}`); setUnknown(null); adopt(saved);
+    releasePendingRequest(`finco-wf03-setup:${scope}`); setUnknown(null); adopt(saved);
     await open(saved.draft_id); setStep(3); setMessage("Setup draft saved. No runnable project was created and the model was not run.");
   };
   const reconcile = async (attempt: { draftId: string | null; key: string }) => {
@@ -513,7 +514,7 @@ function BlankSetupWizard({ onCancel }: { onCancel: () => void }) {
     try {
       if (unknown) { await reconcile(unknown); return; }
       const attempt = { draftId: draft?.draft_id || null, key: crypto.randomUUID().replace(/-/g, "") };
-      sessionStorage.setItem(`finco-wf03-setup:${scope}`, JSON.stringify(attempt));
+      retainPendingRequest(`finco-wf03-setup:${scope}`, attempt);
       setUnknown(attempt);
       const response = await fetch(draft ? `${root}/${draft.draft_id}` : root, { method: draft ? "PATCH" : "POST",
         credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": draft ? updateToken : createToken },
@@ -521,7 +522,7 @@ function BlankSetupWizard({ onCancel }: { onCancel: () => void }) {
       const result = await response.json().catch(() => null) as { ok: boolean; draft?: SetupDraft; code?: string } | null;
       if (response.ok && result?.ok && result.draft) await settle(result.draft);
       else if (response.status >= 400 && response.status < 500) {
-        sessionStorage.removeItem(`finco-wf03-setup:${scope}`); setUnknown(null);
+        releasePendingRequest(`finco-wf03-setup:${scope}`); setUnknown(null);
         setMessage("The draft was not saved. Check the entered values, session and saved version before trying again.");
       } else await reconcile(attempt);
     } catch { setMessage("The save could not be confirmed. Check the status of the same request before saving again."); }
