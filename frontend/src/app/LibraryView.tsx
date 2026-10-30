@@ -51,6 +51,9 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
   const [lifecycleMessage, setLifecycleMessage] = useState("");
   const fromHistory = useRef(false);
   const restoreScroll = useRef<number | null>(null);
+  /** Monotonic ticket of the newest list request: an older answer (e.g. the post-Archive refresh of the ACTIVE list arriving after the user opened
+   *  "Show archived projects") must never replace the newer view. Aborted requests are already discarded; the lifecycle refresh is not abortable. */
+  const latestLoad = useRef(0);
 
   useEffect(() => {
     const changed = (event: PopStateEvent) => {
@@ -77,9 +80,10 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
   }, [filters]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    const ticket = ++latestLoad.current;
     setLoading(true);
     const result = await fetchMyProjects(filters, signal);
-    if (signal?.aborted) return;
+    if (signal?.aborted || ticket !== latestLoad.current) return;
     if (result.ok) {
       setData(result); setError(null);
       if (restoreScroll.current !== null) {

@@ -173,6 +173,52 @@ def check_visible_https_archive_restore_matrix(servers,browser,template,width,th
     finally: context.close()
 
 
+def check_stale_library_refresh_cannot_overwrite_the_archived_view(servers,browser):
+    """Deterministic regression for the intermittent Archive/Restore matrix failure (run 40953784314: stage archived_library_restore_visible).
+
+    After Archive the library refreshes its ACTIVE list; the user then opens "Show archived projects". If the older active-list response arrives
+    AFTER the archived-list response it must not replace it. The first post-archive list request is held until the archived-list response has
+    been received, then released: the visible archived view (and its Restore control) must survive. Real HTTPS Chromium, visible controls only."""
+    from app.services.reference_seed_service import create_reference_seeded_project
+    origin,evidence=servers
+    owner='wf03-stale-refresh-'+uuid.uuid4().hex
+    record=create_reference_seeded_project(user_id=owner,template_source='generic_solar_reference',requested_name='WF03 stale refresh',capacity_mw=40)
+    context,page,errors=_context(browser,origin,owner,1440,None)
+    held=[]
+    archived_seen=[]
+    state={'archived_posted':False}
+    def gate(route):
+        url=route.request.url
+        if 'archived=1' in url:
+            route.continue_(); return
+        if state['archived_posted'] and not held:
+            held.append(route); return                      # the stale ACTIVE-list refresh: answered only after the archived list
+        route.continue_()
+    page.route('**/v2/model-react/my-projects?*',gate)
+    page.on('response',lambda r:archived_seen.append(r.url) if 'my-projects' in r.url and 'archived=1' in r.url else None)
+    try:
+        page.goto(origin+'/v2/model-react/')
+        page.get_by_role('button',name='Archive project',exact=True).wait_for()
+        with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/archive')) as sent:
+            state['archived_posted']=True
+            page.get_by_role('button',name='Archive project',exact=True).click()
+        assert sent.value.status==200 and sent.value.json()['ok']
+        deadline=time.monotonic()+30
+        while not held:
+            assert time.monotonic()<deadline,'the post-archive list refresh was never requested'
+            page.wait_for_timeout(50)
+        page.get_by_role('button',name='Show archived projects',exact=True).click()
+        deadline=time.monotonic()+30
+        while not archived_seen:
+            assert time.monotonic()<deadline,'the archived list was never requested'
+            page.wait_for_timeout(50)
+        held[0].continue_()                                   # now the OLDER active list arrives last
+        page.get_by_role('button',name='Restore project',exact=True).wait_for(timeout=30000)
+        assert page.locator('[data-open-project='+json.dumps(record.project_code)+']').count()==1
+        assert not errors,errors
+    finally: context.close()
+
+
 def check_blank_setup_is_durable_explicit_and_non_runnable(servers,browser):
     from app.persistence.db import get_cursor
     origin,evidence=servers
