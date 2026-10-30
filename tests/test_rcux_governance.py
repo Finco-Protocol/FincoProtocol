@@ -237,6 +237,9 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     from tests import wf03_lifecycle_scope as WF03
     WF03_PATHS = ("main_web.py", "app/v2/router.py", "app/persistence/projects_repository.py", "app/services/run_service.py")
     hits = [p for p in hits if not (p in WF03_PATHS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+    # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
+    # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
+    hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
@@ -297,3 +300,15 @@ def test_each_rcux_acceptance_module_is_not_collected_alone_exports_exactly_its_
     assert sorted(exported) == sorted(tests + fixtures) and len(set(exported)) == len(exported)
     for forbidden in ("importorskip", "pytest.skip", "mark.skip", "skipif", "xfail", "autouse", "from playwright", "import playwright"):
         assert forbidden not in source, forbidden
+
+
+def test_the_wf03_ci_workflow_successor_is_exact_path_and_exact_blob_only():
+    """Negatives for the RC-UX CI-workflow successor: exactly the three WF-03 workflows at their exact pins; no other .github/ path, no other byte."""
+    from tests import wf03_lifecycle_scope as WF03
+    assert WF03.CI_TIMEOUT_WORKFLOWS == {".github/workflows/ci_public_job.yml", ".github/workflows/ci_v3_required_job.yml",
+                                         ".github/workflows/public_safety_and_smoke.yml"}
+    for path in sorted(WF03.CI_TIMEOUT_WORKFLOWS):
+        raw = (S.ROOT / path).read_bytes()
+        assert WF03.matches(path, raw) and not WF03.matches(path, raw + b"\n") and not WF03.matches(path, raw.replace(b"timeout-minutes", b"timeout-minutez", 1))
+    for other in (".github/workflows/protocol_ui_browser.yml", ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/new_unreviewed.yml"):
+        assert other not in WF03.CI_TIMEOUT_WORKFLOWS and not WF03.allowed_path(other)

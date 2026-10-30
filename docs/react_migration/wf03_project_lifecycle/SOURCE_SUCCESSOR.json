@@ -39,6 +39,16 @@
       "authorization": "Owner incident prompt FINCO_PR400_OPUS_ROOT_CAUSE_CI_V3_ARTIFACT_ATTEMPT_INTEGRITY_FIX_2026-10-30 (scoped repair of CI artifact transport/provenance, fail-closed reruns and strictly necessary additive governance successor records/tests)",
       "not_authorized": "financial, security, coverage, source/ancestry or immutable-evidence relaxation",
       "merge_deploy_activation": false
+    },
+    "owner_three_exact_pin_successors": {
+      "paths": [
+        "tests/test_model_mutation_security_successor.py",
+        "tests/test_rcm_governance.py",
+        "tests/test_rcux_governance.py"
+      ],
+      "authorization": "Financial Owner approval FINCO_PR400_OWNER_APPROVAL_THREE_EXACT_PIN_SUCCESSORS_2026-10-30 (finite to the three successors)",
+      "not_authorized": "weakening tests, rewriting historical expected results, other protected paths or silent pin refreshes",
+      "merge_deploy_activation": false
     }
   },
   "source_blobs": {
@@ -66,12 +76,12 @@
     "docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md": "b78645e02dee38ad6beb1cfadb77703a9228eba3",
     "docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md": "d5a2e7013a2f8e4d5cc23b3949cf18ecd48f4c53",
     "docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md": "736fae8e02769362285b5a09148aef99ec83e8d8",
-    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
-    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "3536a0135285c36410bc597cfd919130bb5c818e",
-    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "2706986f182a1a34020020897c9167e78b2fce53",
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "3b993ee14aab75ac642182749c53f1de69b2411b",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "ffd99564424905cd582aec37a997f5b8508cf6ce",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "9ce2a362865c6657775f0ac6da90a87295e80aa6",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "0d2bbf6acdb880746e2af090e58816a751aee356",
     "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "68066dea57238818ad9c84a48c78c0fc4505d10d",
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
     "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
     "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
@@ -99,6 +109,7 @@
     "tests/test_finv2_d01_governance.py": "b1fb79a1d6c92ae5ee345fb77838641d352c4238",
     "tests/test_m6_lifecycle_boundary.py": "40afc439885530147db2d571f8c7d76a23cae45f",
     "tests/test_model_insight_q3_scenario_reads.py": "250630f5aef2dba7cecf5a38bd43d5332c1d2d04",
+    "tests/test_model_mutation_security_successor.py": "33a9ae6051fede0dabe52c79fb2fd151950676fe",
     "tests/test_model_react_rcux_projects_v1.py": "cb13519db953d1e318152dde03bf418d98a2cdb3",
     "tests/test_model_v2_metadata.py": "6153641cd452cfcd5e30ddc2e70a0d5356cef2af",
     "tests/test_model_workspace_consolidation_browser.py": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
@@ -110,7 +121,8 @@
     "tests/test_rc5_ci_successor_governance.py": "047bb44c052cc4b35f5a595d76056d86754000f2",
     "tests/test_rc7b_quarterly_csrf_successor.py": "536d64a52f5fdc3aa162734f446d41e88ee5e714",
     "tests/test_rcm_adapter_csrf_successor.py": "bd92eacfcb58db302e203fd9aad87b15b534dde7",
-    "tests/test_rcux_governance.py": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
+    "tests/test_rcm_governance.py": "5eaeee7f40ebf867e32fe99593082da3dcefb7d2",
+    "tests/test_rcux_governance.py": "9c763e7e64afe4ecdd3777d142e0c3cae8299c46",
     "tests/test_sc34_effective_revenue_inputs.py": "b28d54dcedb15dd5067da50dd6dfa28433e244a7",
     "tests/test_sc34_project_identity.py": "a5d181d01bedd5b8545ffc19f89175518789be7e",
     "tests/test_setup_draft_promotion.py": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
@@ -122,7 +134,7 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
+    "tests/wf03_lifecycle_scope.py": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
@@ -1221,6 +1233,96 @@
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
       "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tests/test_rcux_governance.py",
+      "before_blob": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
+      "after_blob": "9c763e7e64afe4ecdd3777d142e0c3cae8299c46",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/test_rcm_governance.py",
+      "before_blob": "0877ab11c41a394f3d921a5b6d4489fdfb99a284",
+      "after_blob": "5eaeee7f40ebf867e32fe99593082da3dcefb7d2",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/test_model_mutation_security_successor.py",
+      "before_blob": "c922d847fa598a1b60815dc24db0192ebf6b41a5",
+      "after_blob": "33a9ae6051fede0dabe52c79fb2fd151950676fe",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
+      "after_blob": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
+      "entry_points": [],
+      "invariant": "+2 exact owned paths (the two governance tests of the Owner-approved successors); no .github/ path added",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
+      "before_blob": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
+      "after_blob": "3b993ee14aab75ac642182749c53f1de69b2411b",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
+      "after_blob": "9ce2a362865c6657775f0ac6da90a87295e80aa6",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "before_blob": "3536a0135285c36410bc597cfd919130bb5c818e",
+      "after_blob": "ffd99564424905cd582aec37a997f5b8508cf6ce",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
+      "after_blob": "68066dea57238818ad9c84a48c78c0fc4505d10d",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "2706986f182a1a34020020897c9167e78b2fce53",
+      "after_blob": "0d2bbf6acdb880746e2af090e58816a751aee356",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
     }
   ],
   "true_blank": {

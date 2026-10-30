@@ -69,6 +69,9 @@ OWNED_PATHS=frozenset((
     # Owner-authorized CI artifact run-attempt integrity repair (PR #400 incident, run 41099667692): attempt-scoped artifact identity end to end,
     # plus the RC-3 inventory test following the CI-340M chain like the RC-5 one (Correction F pattern). No .github/ path beyond the three above.
     'tools/ci_v3_source_reference.py',
+    # Financial Owner approval 2026-10-30 (three finite exact-pin successors): the D-029 browser-identity and RC-M governance tests admit only the exact
+    # WF-03 browser names / router blob; tests/test_rcux_governance.py (already owned) admits only the three exact WF-03 CI workflow pins.
+    'tests/test_model_mutation_security_successor.py', 'tests/test_rcm_governance.py',
     'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',
