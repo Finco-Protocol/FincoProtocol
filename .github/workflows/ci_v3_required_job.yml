@@ -61,6 +61,11 @@ jobs:
   plan:
     outputs:
       worker_matrix: ${{ steps.distribution.outputs.worker_matrix }}
+      plan_attempt: ${{ steps.seal.outputs.attempt }}
+      plan_artifact_id: ${{ steps.plan_upload.outputs.artifact-id }}
+      plan_artifact_digest: ${{ steps.plan_upload.outputs.artifact-digest }}
+      runtime_artifact_id: ${{ steps.runtime_upload.outputs.artifact-id }}
+      runtime_artifact_digest: ${{ steps.runtime_upload.outputs.artifact-digest }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -100,19 +105,34 @@ jobs:
       run: "python - <<'PYCODE'\nimport json, os\nfrom pathlib import Path\nfrom tools.ci_v3_production import worker_matrix\n\
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    print('worker_matrix='+json.dumps(worker_matrix(Path('plan')),\
         \ separators=(',', ':')), file=stream)\nPYCODE\n"
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      if: ${{ always() }}
+    - name: Seal the complete plan to this run attempt, source and runtime archive
+      id: seal
+      run: python -m tools.ci_v3_production seal --plan plan --runtime runtime-image.tar.gz --output plan-seal
+    - name: Publish the authoritative current-attempt plan (only after a complete sealed plan)
+      id: plan_upload
+      if: ${{ success() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: public-ci-v3-plan
+        name: public-ci-v3-plan-attempt-${{ github.run_attempt }}
         path: plan/
         if-no-files-found: error
         retention-days: 30
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      if: ${{ always() }}
+    - name: Publish the sealed current-attempt runtime archive
+      id: runtime_upload
+      if: ${{ success() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: ci-v3-runtime
+        name: ci-v3-runtime-attempt-${{ github.run_attempt }}
         path: runtime-image.tar.gz
         if-no-files-found: error
+        retention-days: 30
+    - name: Keep partial plan output as a diagnostic, never under the authoritative name
+      if: ${{ failure() || cancelled() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: ci-v3-diagnostic-plan-attempt-${{ github.run_attempt }}
+        path: plan/
+        if-no-files-found: warn
         retention-days: 30
   worker:
     runs-on: ubuntu-24.04
@@ -126,9 +146,22 @@ jobs:
     needs:
     - route
     - plan
-    if: ${{ needs.route.outputs.execution_mode == 'parallel' }}
+    if: ${{ success() && needs.plan.result == 'success' && needs.route.outputs.execution_mode == 'parallel' }}
     timeout-minutes: 200
     steps:
+    - name: Refuse a plan produced by another run attempt (re-run all jobs instead)
+      env:
+        PLAN_ATTEMPT: ${{ needs.plan.outputs.plan_attempt }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        PLAN_ID: ${{ needs.plan.outputs.plan_artifact_id }}
+        RUNTIME_ID: ${{ needs.plan.outputs.runtime_artifact_id }}
+      run: 'echo "plan artifact $PLAN_ID and runtime artifact $RUNTIME_ID from attempt $PLAN_ATTEMPT; this is attempt $RUN_ATTEMPT"
+
+        test "$PLAN_ATTEMPT" = "$RUN_ATTEMPT"
+
+        test -n "$PLAN_ID" -a -n "$RUNTIME_ID"
+
+        '
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: ${{ inputs.tested-sha }}
@@ -139,20 +172,30 @@ jobs:
         python-version: '3.12'
     - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        name: public-ci-v3-plan
-        path: evidence/public-ci-v3-plan
+        artifact-ids: ${{ needs.plan.outputs.plan_artifact_id }}
+        path: handoff
     - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        name: ci-v3-runtime
-        path: .
+        artifact-ids: ${{ needs.plan.outputs.runtime_artifact_id }}
+        path: handoff
     - name: 'Execute original nodes: ${{ matrix.nodes }}'
-      run: python -m tools.ci_v3_production worker --worker ${{ matrix.index }} --output worker-${{ matrix.index }}
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      if: ${{ always() }}
+      run: python -m tools.ci_v3_production worker --worker ${{ matrix.index }} --plan handoff/public-ci-v3-plan-attempt-${{ github.run_attempt }}
+        --runtime handoff/ci-v3-runtime-attempt-${{ github.run_attempt }}/runtime-image.tar.gz --output worker-${{ matrix.index }}
+    - name: Publish the authoritative current-attempt worker evidence
+      if: ${{ success() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: public-ci-v3-worker-${{ matrix.index }}
+        name: public-ci-v3-worker-${{ matrix.index }}-attempt-${{ github.run_attempt }}
         path: worker-${{ matrix.index }}/
         if-no-files-found: error
+        retention-days: 30
+    - name: Keep failed worker output as a diagnostic, never under the authoritative name
+      if: ${{ failure() || cancelled() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: ci-v3-diagnostic-worker-${{ matrix.index }}-attempt-${{ github.run_attempt }}
+        path: worker-${{ matrix.index }}/
+        if-no-files-found: warn
         retention-days: 30
     name: worker-${{ matrix.index }}
     strategy:
@@ -178,9 +221,13 @@ jobs:
       env:
         WORKERS: ${{ needs.worker.result }}
         PLAN: ${{ needs.plan.result }}
+        PLAN_ATTEMPT: ${{ needs.plan.outputs.plan_attempt }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
       run: 'test "$PLAN" = success
 
         test "$WORKERS" = success
+
+        test "$PLAN_ATTEMPT" = "$RUN_ATTEMPT"
 
         '
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -193,18 +240,27 @@ jobs:
         python-version: '3.12'
     - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
-        pattern: public-ci-v3-*
+        pattern: public-ci-v3-*-attempt-${{ github.run_attempt }}
         path: evidence
     - name: Independently authenticate all current worker artifacts and verify complete phases/native JUnit
       env:
         GH_TOKEN: ${{ github.token }}
       run: python -m tools.ci_v3_production verify --independent --output proof
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      if: ${{ always() }}
+    - name: Publish the authoritative current-attempt aggregate proof
+      if: ${{ success() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: public-ci-v3-aggregate
+        name: public-ci-v3-aggregate-attempt-${{ github.run_attempt }}
         path: proof/
         if-no-files-found: error
+        retention-days: 30
+    - name: Keep failed aggregate output as a diagnostic, never under the authoritative name
+      if: ${{ failure() || cancelled() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: ci-v3-diagnostic-aggregate-attempt-${{ github.run_attempt }}
+        path: proof/
+        if-no-files-found: warn
         retention-days: 30
   tests:
     name: tests

@@ -402,7 +402,7 @@ def collect(ref=INTEGRATION_HEAD, head="HEAD"):
         "post_merge_protected_delta": sorted(
             p for p in git("diff", "--name-only", INTEGRATION_HEAD, head).splitlines()
             if p in POST_MERGE_PROTECTED and not (
-                p == RC3_CI_WORKFLOW and _blob_or_none(head, p) in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB)
+                p == RC3_CI_WORKFLOW and _blob_or_none(head, p) in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB, CI340_WORKFLOW_BLOB)
                 and not current_workflow_chain_violations(_show(ref, p) + "\n", _show(head, p) + "\n"))),
         "ci_workflow_current_text": _show(head, RC3_CI_WORKFLOW) + "\n",
         "m7_blobs_at_head": {p: _blob_or_none(head, p) for p in M7_PROTECTED_BLOBS},
@@ -813,18 +813,23 @@ def test_the_rc5_workflow_is_exactly_the_three_authorised_limits_over_the_rc3_wo
 
 
 def test_the_current_workflow_is_the_exact_ci200_successor_over_rc5(facts):
+    # Original node id and its historical CI-200M contract, judged on the CI-200M state DERIVED from the pinned RC-5 reference (never the
+    # worktree, which Correction E moved to the CI-340M successor). The worktree itself must be an exact member of the verified chain.
     head, current = facts["ci_workflow_head_text"], facts["ci_workflow_current_text"]
     rc5 = rc5_reference_text(head)
-    assert git_blob_sha(current) == CI200_WORKFLOW_BLOB
-    assert ci200_workflow_successor_violations(rc5, current) == []
-    assert current_workflow_chain_violations(head, current) == []
-    assert current.count("timeout-minutes: 220") == 1 and current.count("FINCO_CI_PYTEST_BUDGET_S: '12000'") == 1
+    ci200 = ci200_reference_text(rc5)
+    assert git_blob_sha(ci200) == CI200_WORKFLOW_BLOB
+    assert ci200_workflow_successor_violations(rc5, ci200) == []
+    assert current_workflow_chain_violations(head, ci200) == []
+    assert ci200.count("timeout-minutes: 220") == 1 and ci200.count("FINCO_CI_PYTEST_BUDGET_S: '12000'") == 1
     assert 12000 + 240 + 15 * 60 <= 220 * 60                                                  # budget + exit grace + job overhead fit the ceiling
+    assert current_workflow_chain_violations(head, current) == [] and git_blob_sha(current) in (CI200_WORKFLOW_BLOB, CI340_WORKFLOW_BLOB)
 
 
 def _ci200_bad(facts, transform):
     rc5 = rc5_reference_text(facts["ci_workflow_head_text"])
-    current = facts["ci_workflow_current_text"]
+    current = ci200_reference_text(rc5)                                                       # the historical CI-200M state, content-pinned
+    assert git_blob_sha(current) == CI200_WORKFLOW_BLOB
     candidate = transform(current)
     assert candidate != current                                                               # the mutation really changed the candidate
     assert ci200_workflow_successor_violations(rc5, candidate)

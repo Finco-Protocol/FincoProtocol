@@ -82,7 +82,7 @@ def reconciliation(snapshot,inventory):
             'current_original_nodes':len(current),'added':sorted(current-previous),'removed':removed,
             'collection_skips_equal':True,'new_nonpass_policy':'reject','changed_outcomes_policy':'reject'}
 
-def _download(api,run,listing,names,out):
+def _download(api,run,listing,names,out,folders=None):
     anchors=[]
     for name in names:
         found=[a for a in listing if a['name']==name and not a['expired']]
@@ -90,7 +90,7 @@ def _download(api,run,listing,names,out):
         a=found[0];require(a['workflow_run']['head_sha']==run['head_sha'],'accepted reference artifact source')
         raw=api.raw(f'/repos/{REPO}/actions/artifacts/{a["id"]}/zip',archive=True)
         require('sha256:'+hashlib.sha256(raw).hexdigest()==a['digest'],'accepted reference service archive digest')
-        extract_archive(raw,out/name)
+        extract_archive(raw,out/(folders or {}).get(name,name))
         anchors.append({k:a[k] for k in ['id','name','digest']})
     return anchors
 
@@ -122,20 +122,26 @@ def authenticate_reference(api,base,out,anchor=None):
         matches=[j for j in jobs if j['name']==name]
         require(len(matches)==1 and matches[0]['status']=='completed' and matches[0]['conclusion']=='success','accepted reference required check failed')
     listing=api.listing(f'/repos/{REPO}/actions/runs/{rid}/artifacts','artifacts')
-    parallel=any(a['name']=='public-ci-v3-plan' for a in listing)
-    names=['public-source-safety','public-shadow-proof']
+    # Attempt-scoped parallel evidence (PR #400 incident) is selected for the reference run's own final attempt only and
+    # extracted under its logical folder names for that source's verifier; legacy unsuffixed runs keep the original rule.
+    suffix=f'-attempt-{attempt}';scoped=any(a['name']=='public-ci-v3-plan'+suffix for a in listing)
+    service=(lambda n:n+suffix) if scoped else (lambda n:n)
+    parallel=scoped or any(a['name']=='public-ci-v3-plan' for a in listing)
+    names=['public-source-safety','public-shadow-proof'];folders={}
     if parallel:
         config=json.loads(git('show',head+':docs/ci_v3/phase4/production-routing.json'))
         count=worker_count(config['worker_count'])
-        expected={f'public-ci-v3-worker-{i}' for i in range(count)}
-        require({a['name'] for a in listing if a['name'].startswith('public-ci-v3-worker-')}==expected,'accepted reference worker set')
+        expected={service(f'public-ci-v3-worker-{i}') for i in range(count)}
+        current=(lambda n:n.endswith(suffix)) if scoped else (lambda n:'-attempt-' not in n)
+        require({a['name'] for a in listing if a['name'].startswith('public-ci-v3-worker-') and current(a['name'])}==expected,'accepted reference worker set')
         for i in range(count):
             matches=[j for j in jobs if j['name']=='safety-and-smoke / worker-'+str(i)]
             require(len(matches)==1 and matches[0]['conclusion']=='success','accepted reference worker producer failed')
-        names += ['public-ci-v3-plan','public-ci-v3-aggregate',*sorted(expected)]
+        logical=['public-ci-v3-plan','public-ci-v3-aggregate',*sorted(f'public-ci-v3-worker-{i}' for i in range(count))]
+        names += [service(n) for n in logical];folders={service(n):n for n in logical}
     else:
         names += ['public-verification-results']
-    evidence=out/'evidence';anchors=_download(api,run,listing,names,evidence)
+    evidence=out/'evidence';anchors=_download(api,run,listing,names,evidence,folders)
     if anchor:require(anchors==anchor['artifacts'],'accepted reference artifact pins changed')
     clone=out/'checkout'
     subprocess.run(['git','clone','--quiet','--shared','--no-checkout','.',str(clone)],check=True)

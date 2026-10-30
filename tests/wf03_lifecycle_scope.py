@@ -66,6 +66,12 @@ OWNED_PATHS=frozenset((
     'tests/d029_executor_hold.py', 'tests/test_p0b_executor_recovery_d029.py',
     # Owner-directed 2x CI timeouts (Correction E): CI-only limits + the CI-340M workflow successor chain; no semantics, no coverage change
     '.github/workflows/ci_public_job.yml', '.github/workflows/ci_v3_required_job.yml', '.github/workflows/public_safety_and_smoke.yml', 'tests/test_ci_v3_production.py', 'tests/test_rc3_integration_inventory.py', 'tests/test_rc5_ci_successor_governance.py', 'tools/ci_v3_container.py',
+    # Owner-authorized CI artifact run-attempt integrity repair (PR #400 incident, run 41099667692): attempt-scoped artifact identity end to end,
+    # plus the RC-3 inventory test following the CI-340M chain like the RC-5 one (Correction F pattern). No .github/ path beyond the three above.
+    'tools/ci_v3_source_reference.py',
+    'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
+    'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
+    'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',
     'tests/test_demo_history_retention.py',
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
     'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes
