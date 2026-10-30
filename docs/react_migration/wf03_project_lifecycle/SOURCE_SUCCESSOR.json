@@ -79,10 +79,10 @@
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "0b264cdd00de3a4ad2144b5d48f1bbe7e803071c",
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
     "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "b4560df3ff57e04ca5bb09e514bdff7ebb10673d",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "c9cbcd170692b93932d3cb3ae3dba4ad53d5b93e",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "bec49e167223d469ac05fc03af2e96585686661e",
     "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "04def693c0ed90d0a8a20ae236b55e8fe804a901",
-    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "70ba41995ee7744fca9f3e86a63f5921a3b5da66",
     "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
     "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
     "frontend/src/app/LibraryView.tsx": "1afb10cb4c6ac3111b3587b56a83d6b3e4efb7e4",
@@ -101,7 +101,7 @@
     "tests/model_react_wsv2_acceptance.py": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
     "tests/rcm_adapter_csrf_successor.py": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
     "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
-    "tests/test_ci_v3_production.py": "80e81828b4d687af1e60ebd9140a0c8ae9f730ea",
+    "tests/test_ci_v3_production.py": "5a94e38e8c9fed6010a506d7ee15b2184ac33ba7",
     "tests/test_ci_v3_reference_admission_successor.py": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
     "tests/test_demo_history_retention.py": "0d71f9060f6a238a0deb0e05081c19cfb602fb54",
     "tests/test_fin_v2_3_scope.py": "c8f1ed92b297105f3b049fba1b8775b596c0a5c4",
@@ -138,7 +138,7 @@
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
-    "tools/ci_v3_production.py": "25d06ce034cfb200597dad0b6352a227b322e013",
+    "tools/ci_v3_production.py": "741a23af65a910f0f3bead213cc60af5f6142a84",
     "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee"
   },
   "predecessor_manifests": {
@@ -1383,6 +1383,48 @@
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
       "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "tools/ci_v3_production.py",
+      "before_blob": "25d06ce034cfb200597dad0b6352a227b322e013",
+      "after_blob": "741a23af65a910f0f3bead213cc60af5f6142a84",
+      "entry_points": [
+        "verify_data"
+      ],
+      "invariant": "verify_data: D-029 same-run evidence judged over every worker of the run (was: only the reconciled node worker); every per-worker check unchanged",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "tests/test_ci_v3_production.py",
+      "before_blob": "80e81828b4d687af1e60ebd9140a0c8ae9f730ea",
+      "after_blob": "5a94e38e8c9fed6010a506d7ee15b2184ac33ba7",
+      "entry_points": [],
+      "invariant": "additive regression test (fails on the old per-worker evidence view)",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+      "before_blob": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
+      "after_blob": "70ba41995ee7744fca9f3e86a63f5921a3b5da66",
+      "entry_points": [],
+      "invariant": "predecessor pins follow the two exact WF-03 pins; history unchanged",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "c9cbcd170692b93932d3cb3ae3dba4ad53d5b93e",
+      "after_blob": "bec49e167223d469ac05fc03af2e96585686661e",
+      "entry_points": [],
+      "invariant": "WF-04 pin of the wsv2_editing manifest follows the exact WF-03 pin",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
     }
   ],
   "true_blank": {

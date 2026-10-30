@@ -678,3 +678,22 @@ def test_reference_runtime_check_fails_closed_for_unresolvable_or_changed_source
  changed=dict(read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json'),tampered=True)
  monkeypatch.setattr(prod,'reference_runtime_blob',lambda h,p:json.dumps(changed).encode())
  with pytest.raises(ContractError):prod.require_reference_runtime(ref)
+
+
+def test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker(evidence,monkeypatch):
+    """Run 41127287044: the D-029 node ran on worker-1, its WF-03 evidence nodes on workers 0 and 6. The reconciliation must see the
+    whole run's phases/native (still requiring every evidence node passed), never only the worker that ran the reconciled node."""
+    plan,workers=evidence
+    folder=workers[0];f=folder/'execution/child/adapter.json';r=read_json(f)
+    node=next(ph['nodeid'] for ph in r['phases'] if ph['when']=='call')
+    ph=next(x for x in r['phases'] if x['nodeid']==node and x['when']=='call');ph['reason']='SYNTHETIC changed historical outcome'
+    write_json(f,r)
+    seen=[]
+    def recording(n,old,oldn,new,newn,run_phases,run_native,receipts):
+        seen.append((n,set(run_phases),set(run_native)))
+        return False
+    monkeypatch.setattr(prod,'d029_authorized',recording)
+    with pytest.raises(ContractError,match='outcome regression'):prod.verify_data(plan,workers)
+    everyone=set()
+    for w in workers:everyone|={p['nodeid'] for p in read_json(w/'execution/child/adapter.json')['phases']}
+    assert seen and all(phases==everyone and native==everyone for _,phases,native in seen)   # whole run, not one worker

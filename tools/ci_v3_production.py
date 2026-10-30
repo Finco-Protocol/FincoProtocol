@@ -418,6 +418,11 @@ def verify_data(planfolder,workers):
  runtime_packages(data['collection_environment'])
  reconciled=[]
  seen={};skips=skip_counter(data['inventory']['collection_skips']);expected={n['nodeid'] for n in data['inventory']['nodes']}
+ # D-029 "same run" evidence spans every worker of THIS run: its successor nodes may be planned onto another worker than the reconciled
+ # node. This map only feeds d029_authorized; every worker's own phases/native are still fully verified below.
+ run_phases,run_native={},{}
+ for folder in workers:
+  rr=read_json(folder/'execution/child/adapter.json');run_phases.update(phase_map(rr));run_native.update(native_cases((folder/'execution/child/native.xml').read_bytes(),rr))
  for index,folder in enumerate(workers):
   binding=read_json(folder/'binding.json');require(binding=={'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':data['image']},'worker binding')
   proc=read_json(folder/'process.json');cleanup=proc.get('descendant_cleanup') or {}
@@ -432,9 +437,9 @@ def verify_data(planfolder,workers):
   require(not set(seen)&set(phases),'duplicate execution')
   for n,v in phases.items():
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
-   if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],phases,native,reconciled),'original phase/native outcome regression: '+n)
+   if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],run_phases,run_native,reconciled),'original phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
-   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],phases,native,reconciled) or original_d029_outcome_reproduced(n,v,native[n],bp,bn),'accepted-source phase/native outcome regression: '+n)
+   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],run_phases,run_native,reconciled) or original_d029_outcome_reproduced(n,v,native[n],bp,bn),'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')
