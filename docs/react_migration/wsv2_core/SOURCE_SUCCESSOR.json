@@ -64,7 +64,7 @@
     "tests/model_react_rcux_product_acceptance.py": "9fdb9b7f699564798be0d374ed8f1d81534cd2af",
     "tests/model_react_rcux_runs_acceptance.py": "6b1b7edeafa3c755b09568a0105fedeca3990915",
     "tests/model_react_wf1_browser_acceptance.py": "3924c454ae607e50554c0d9908c4bfab6dd4bd68",
-    "tests/model_react_wsv2_acceptance.py": "a43810efe0f3298f7867da467885550e2613ff35",
+    "tests/model_react_wsv2_acceptance.py": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
     "tests/test_model_mutation_security_successor.py": "c922d847fa598a1b60815dc24db0192ebf6b41a5",
     "tests/test_model_react_overnight_b_governance.py": "735a92318431b7efa92c9aca02b0fed938aea28d",
     "tests/test_model_react_poc_browser_acceptance.py": "75f8f87492538f5521bdaf804982c8372b6645e4",
