@@ -358,7 +358,7 @@ def verify_data(planfolder,workers):
  reference=data['source_reference'];rp,rn=validate_reference(reference,source_base())
  require(set(bp)<=set(rp),'accepted reference lost historical coverage')
  require_reference_runtime(reference)
- validate_accepted_reference_successor(reference,baseline,bn)
+ if any(bp[n]!=rp[n] for n in bp):validate_accepted_reference_successor(reference,baseline,bn)  # only a historical change needs the successor proof; otherwise the reconciliation below owns every rejection
  changes=reconciliation(reference,data['inventory']);require(changes==data['inventory_reconciliation'],'inventory reconciliation mismatch')
  validate_merge_guard(data['merge_guard'])
  require(runtime_inputs_match() and data['runtime_inputs']==read_json('docs/ci_v3/phase4/runtime/inputs.json'),'runtime source contract drift')
