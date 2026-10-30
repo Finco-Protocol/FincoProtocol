@@ -5,6 +5,7 @@ import type { SourcesUsesView, SuRow } from "./financing/types";
 import { useReportPrecision } from "./ReportPrecision";
 import { reportAmount, reportMetric, reportUnitText } from "./reportFormatting";
 import { RunIdentityLabel } from "./runIdentity";
+import { debtMetricsHref, prepareDebtMetrics } from "./debtmetrics/debtMetricsLink";
 
 export interface OverviewSupplement {
   ok: true;
@@ -55,12 +56,17 @@ export function FinancialOverview({ project, payload }: { project: string; paylo
   return <section data-financial-overview="true" data-overview-snapshot={usable ? snapshot : ""}>
     <div className="wsv2-overview-heading"><h2>Financial Overview</h2><span className="rx-badge">{payload.state === "NOT_RUN" ? "NOT RUN" : payload.state}</span></div>
     {usable && <p className="rx-note">Last Run: <RunIdentityLabel snapshotId={snapshot} /> · {payload.results.scenario || "Scenario unavailable"} · amounts in kEUR</p>}
+    {usable && <p className="rx-note" data-overview-debt-metrics="true"><a href={debtMetricsHref()} onClick={(event) => prepareDebtMetrics(event)}>Open Debt Metrics</a> — covenants, DSCR profile, reserves and the dated debt schedule of this Run.</p>}
     {payload.state === "STALE" && <p className="rx-banner rx-banner-stale" role="status">STALE — these figures and assumptions belong to the prior saved Run. Save changes, then Run explicitly to update them.</p>}
     {integrity === "FAIL" && <div className="rx-status rx-status-error" role="alert" data-overview-integrity="FAIL">
       <strong>INTEGRITY FAIL — review this Run before relying on its financial results.</strong>
       <p>A completed calculation or CURRENT inputs do not establish financial viability. The financial verdict is unchanged.</p>
       <a href="#diagnostics">Open Model checks and authoritative failure details</a>
       <ul>{payload.integrity?.failures.map((failure, index) => <li key={failure.id || index}>{failure.title || failure.id || "Failed check"}{failure.reason ? `: ${failure.reason}` : ""}</li>)}</ul>
+    </div>}
+    {integrity === "INCOMPLETE" && <div className="rx-status rx-status-conflict" role="status" data-overview-integrity="INCOMPLETE">
+      <strong>INTEGRITY INCOMPLETE — some Run checks could not be evaluated from the saved evidence.</strong>
+      <p>Missing evidence is not a pass and not a breach. <a href="#diagnostics">Open Model checks</a></p>
     </div>}
     {!usable ? <p className="rx-empty" role="status">{payload.state === "NOT_RUN" ? "No committed Run yet. Enter and save inputs, then choose Run model. No financial values are estimated." : payload.message || "Run evidence is unavailable. Refresh to retry."}</p> : <>
       <div className="wsv2-overview-grid">

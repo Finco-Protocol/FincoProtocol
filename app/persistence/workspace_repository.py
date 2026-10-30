@@ -1149,6 +1149,18 @@ def v2_atomic_run_commit(
                 f"Contingency authority could not be captured for run identity: {_exc}"
             ) from _exc
 
+        # WF-04: record the two contractual DSCR terms exactly as saved in the draft that is being committed, inside this Run's immutable
+        # identity.  A historical Run is therefore tested against ITS OWN terms and never against a later Working Copy edit.  The terms
+        # feed no calculation; a missing or invalid value is recorded as such (never defaulted) and cannot fail the Run.
+        try:
+            from app.workbook.dscr_contract_terms import IDENTITY_KEY as _DSCR_TERMS_KEY, capture as _capture_dscr_terms
+            _identity_payload[_DSCR_TERMS_KEY] = _capture_dscr_terms(draft_snapshot)
+        except Exception as _exc:  # fail closed: never commit a Run without its contractual-terms record
+            conn.execute("ROLLBACK")
+            raise V2RunCommitConflictError(
+                f"Contractual DSCR terms could not be captured for run identity: {_exc}"
+            ) from _exc
+
         # Correction C: persist engine version at run commit time so the XLSX export
         # reads the version that CREATED this run, not the current export-time version.
         try:

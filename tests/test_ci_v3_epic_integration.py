@@ -19,7 +19,7 @@ def test_main_and_epic_pushes_and_prs_keep_public_contract():
  flow=yaml.load((ROOT/'.github/workflows/public_safety_and_smoke.yml').read_text(),Loader=yaml.BaseLoader)
  assert set(flow['jobs'])=={'source-safety','safety-and-smoke','mandatory-evidence'}
  assert 'source-base' in flow['jobs']['safety-and-smoke']['with']
- assert prod.routing()['worker_count']==5
+ assert prod.routing()['worker_count']==8
 
 
 def report(status='passed'):

@@ -101,7 +101,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       setLocked(false);
       setStatus({ tone: "ok", text: result.outcome === "REPLAYED"
         ? "This Run was already committed; its original result is shown. Nothing was recalculated."
-        : "Run complete. Results come from the saved Run only." });
+        : "Run committed. Results come from the saved Run only. Check Run Integrity and Credit findings before relying on them." });
       await onRan({ historyId: result.historyId, snapshotId: result.snapshotId, runIntentId: intent.id });
     } else {
       if (!result.retain) {

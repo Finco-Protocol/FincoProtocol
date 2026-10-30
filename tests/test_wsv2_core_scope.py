@@ -8,6 +8,7 @@ import pytest
 from tests import fin_v2_cohorts as C
 from tests import model_mutation_security_successor as S
 from tests import wsv2_core_scope as F
+from tests import wf04_scope as WF04
 
 PRESENTATION = frozenset((
     'frontend/src/app/FinancialResults.tsx', 'frontend/src/app/WorkspaceView.tsx',
@@ -145,7 +146,9 @@ def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls(
     source = (F.ROOT / path).read_text()
     assert F.manifest()['source_blobs'][path] == F._blob(source.encode())
     assert S.RC_UX_SUCCESSORS[ROLE] != S.WSV2_BROWSER_SUCCESSORS[ROLE]
-    assert S.git_blob((F.ROOT / ROLE).read_text()) == S.WSV2_BROWSER_SUCCESSORS[ROLE]
+    role_source = (F.ROOT / ROLE).read_text()
+    # WF-04 successor lineage: the WS1 role state, or - only while the whole WF-04 cohort is valid - exactly the WF-04 pinned later state.
+    assert S.git_blob(role_source) == S.WSV2_BROWSER_SUCCESSORS[ROLE] or WF04.presentation_successor(ROLE, role_source)
     assert 'test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused' in source
     assert "assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path]" in source
     assert 'assert skipped[path]!=source and S.violations(skipped)' in source
@@ -164,7 +167,9 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
         if name in ('SOURCE_HEAD', 'BLOBS') or name.endswith('_SUCCESSORS'):
             assert getattr(S, name) == ast.literal_eval(node.value), name
     for path in PRESENTATION | {ROLE}:
-        assert S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
+        # WF-04 successor lineage: for the presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
+        assert (S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
+                or WF04.presentation_successor(path, sources[path]))
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)
@@ -180,7 +185,9 @@ def test_predecessor_manifest_pins_and_metadata_remain_verbatim():
         now = json.loads(F._read(F.ROOT, path, None))
         assert now['historical_source_blobs'][F.AUTHORIZATION_HEAD] == old['source_blobs']
         for p, value in old['source_blobs'].items():
-            if path != F.PREDECESSOR_MANIFESTS[-1] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')):
+            # WF-04 successor lineage: only the named, owner-authorised re-pins may move (tests/test_wf04_scope.py proves each equals the WF-04 pin).
+            if path != F.PREDECESSOR_MANIFESTS[-1] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')) \
+                    and p not in F.WF04_SUCCESSOR_REPIN.get(path, ()):
                 assert now['source_blobs'][p] == value
 
 
@@ -208,7 +215,9 @@ def test_historical_record_or_unapproved_repin_cannot_be_resealed(tamper, monkey
 def browser_contract_ok(role, acceptance):
     marker = '# WS1 Workspace V2'
     expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
-    if role.count(marker) != 1 or role[role.index(marker):].splitlines()[1:] != [expected]:
+    # WF-04 successor lineage: the one later, separately governed block that may follow the WS1 import (tests/test_wf04_scope.py proves it exactly).
+    tail = role[role.index(marker):].splitlines()[1:] if role.count(marker) == 1 else None
+    if tail is None or tail[:1] != [expected] or tail[1:] not in ([], WF04.ROLE_IMPORT_BLOCK):
         return False
     prior = F._read(F.ROOT, ROLE, F.AUTHORIZATION_HEAD).decode()
     if role[:role.index(marker)].rstrip() != prior.rstrip():
@@ -232,8 +241,13 @@ def test_browser_registration_preserves_original_role_and_exact_new_exports():
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\ndef ' + TESTS[1]))
 
 
+# The accepted WS1 integration (merged PR 398). Later, separately owned cohorts (WF-04, tests/wf04_scope.py) are judged by their own manifest and
+# negative controls; this test keeps judging exactly the WS1 diff.
+WS1_ACCEPTED_MERGE = 'b76ac65c99e7fc9b486a557ae3c5ba9a711f50b3'
+
+
 def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
-    changed = F._git(F.ROOT, 'diff', '--name-only', F.BASE, '--').decode().splitlines()
+    changed = F._git(F.ROOT, 'diff', '--name-only', F.BASE, WS1_ACCEPTED_MERGE, '--').decode().splitlines()
     authorities = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'app/persistence/',
                    'app/workbook/', 'app/services/', 'frontend/src/app/editing/')
     from tests import fin_v2_wsv2_scope as WS2

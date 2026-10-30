@@ -9,6 +9,7 @@ import subprocess
 import pytest
 
 from tests import model_mutation_security_successor as S
+from tests import wf04_scope as WF04
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_M_SUCCESSORS
@@ -48,7 +49,8 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
             or S.RC_UX_SUCCESSORS.get(path)
             or blob
         )
-        assert S.git_blob(SOURCES[path]) == expected_current, path
+        # WF-04 successor lineage: for the presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
+        assert S.git_blob(SOURCES[path]) == expected_current or WF04.presentation_successor(path, SOURCES[path]), path
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 

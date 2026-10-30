@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 from tests import fin_v2_3_scope as F
+from tests import wf04_scope as WF04
 
 
 def test_exact_cohort_requires_history_and_does_not_activate_native(tmp_path):
@@ -48,7 +49,8 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
         data=(F.ROOT/path).read_bytes()
         from tests import fin_v2_wsv2_scope as WS2
         from tests import wf03_lifecycle_scope as WF03
-        assert data==before or WS2.matches(path,data) or (path in WF03.D029_APPROVED_PATHS and WF03.matches(path,data))
+        if path=='app/persistence/workspace_repository.py' and WF04.matches(path,data):continue   # the later, separately governed Owner-authorised WF-04 hunk (tests/wf04_scope.py pins the exact blob)
+        assert data==before or WS2.matches(path,data) or (path in WF03.D029_APPROVED_PATHS and WF03.matches(path,data))   # Owner-approved WS-2 exact blob, or the WF-03 exact blob (tests/wf03_lifecycle_scope.py)
 
 
 @pytest.mark.parametrize('path', sorted(F.INTEGRATED_DEPENDENCIES))

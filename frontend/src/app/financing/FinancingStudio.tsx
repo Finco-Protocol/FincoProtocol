@@ -6,12 +6,14 @@ import { BankabilityEditor } from "./BankabilityEditor";
 import { fetchFinancingStudio } from "./financingApi";
 import { CapitalStackView, OverviewView, SourcesUsesPanel } from "./FinancingViews";
 import { InvestorsPanel } from "./InvestorsPanel";
+import { DebtMetricsWorkspace } from "../debtmetrics/DebtMetricsWorkspace";
 import type { FinancingStudioPayload } from "./types";
 
-type Tab = "overview" | "terms" | "bankability" | "facilities" | "sources-uses" | "investors";
+type Tab = "overview" | "terms" | "bankability" | "facilities" | "sources-uses" | "investors" | "debt-metrics";
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "terms", label: "Debt terms" },
   { id: "overview", label: "Overview" },
+  { id: "debt-metrics", label: "Debt metrics" },
   { id: "bankability", label: "Bankability" },
   { id: "facilities", label: "Senior facilities" },
   { id: "sources-uses", label: "Sources & uses" },
@@ -41,7 +43,7 @@ export function FinancingStudio({ project, reloadKey, onSaved }: {
   }, [project]);
   // The studio read is heavy (the full Debt-sheet context); the default Debt terms tab and Investors use their own reads, so it is
   // fetched only when a tab that shows it is open — the section's original editor then opens with exactly its original request timing.
-  const needsStudio = tab !== "terms" && tab !== "investors";
+  const needsStudio = tab !== "terms" && tab !== "investors" && tab !== "debt-metrics";
   useEffect(() => { if (needsStudio) void load(); }, [load, reloadKey, nonce, needsStudio]);
 
   function choose(next: Tab) {
@@ -67,7 +69,7 @@ export function FinancingStudio({ project, reloadKey, onSaved }: {
       <div id="rcm-fin-panel" role="tabpanel" aria-labelledby={`rcm-fin-tab-${tab}`}>
         {/* Debt terms never waits for the studio read: it is the section's original editor and opens immediately */}
         {tab === "terms" && <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={reloadKey} onSaved={onSaved} />}
-        {tab !== "terms" && !studio && (error
+        {tab !== "terms" && tab !== "debt-metrics" && tab !== "investors" && !studio && (error
           ? <UnavailableNote message={error.message || "The financing view is unavailable right now. Nothing was changed."} onRetry={() => setNonce((n) => n + 1)} />
           : <LoadingNote label="Loading the financing view…" />)}
         {studio && tab === "overview" && <OverviewView studio={studio} />}
@@ -77,6 +79,7 @@ export function FinancingStudio({ project, reloadKey, onSaved }: {
         )}
         {studio && tab === "facilities" && <CapitalStackView studio={studio} />}
         {studio && tab === "sources-uses" && <SourcesUsesPanel studio={studio} />}
+        {tab === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={reloadKey} onEditTerms={() => choose("terms")} />}
         {tab === "investors" && <InvestorsPanel project={project} reloadKey={reloadKey} onSaved={() => { onSaved(); setNonce((n) => n + 1); }} />}
       </div>
     </div>

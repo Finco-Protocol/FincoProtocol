@@ -13,6 +13,10 @@ from functools import lru_cache
 ROOT=Path(__file__).resolve().parents[1]
 BASE='8a74fcb5cd57e470cf83a458bd165ea14ad394fb'
 BASE_TREE='a96566a21154fd8e673676c20bd2e4e093599330'
+# PARENT: main after the merged PR #401 (CI V3 eight-worker) and PR #399 (WF-04), the parent this cohort's delta is now judged against. BASE (main
+# at the merge of PR #397) keeps its historical proofs; PARENT adds one more authenticated layer on top of them. Both are checked by ancestry + tree.
+PARENT='db504f6408cb456c617c9342a1ffa202ee455283'
+PARENT_TREE='9b96717bae39a4dbb496879c7e6c028e675492d3'
 MANIFEST='docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json'
 SCHEMA='WF03_LIFECYCLE_EXACT_SOURCE_V1'
 OWNED_PATHS=frozenset((
@@ -39,6 +43,8 @@ OWNED_PATHS=frozenset((
     'tests/wf03_lifecycle_scope.py', 'tests/test_wf03_lifecycle_scope.py',
     # Three additional predecessor-consumer paths explicitly approved in chat.
     'tests/wsv2_core_scope.py', 'tools/ci_v3_production.py', 'tests/test_ci_v3_outcome_reconciliation.py',
+    'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json',   # post-#399: WF-04's own pin map follows only the exact WF-03 pins
+    'tests/wf04_scope.py',     # post-#399 successor: the WF-04 cohort follows only the exact WF-03 pins (tests/wf04_scope.py _downstream_* helpers)
     'docs/readiness/02_data_handling.md', 'docs/readiness/06_retention_and_deletion.md',
     'docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json',
     'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
@@ -47,7 +53,8 @@ OWNED_PATHS=frozenset((
     'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json',
     'docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json',
 ))
-PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json')))
+WF04_MANIFEST='docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'   # introduced after BASE: pinned by blob, no BASE-layer history
+PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p!=WF04_MANIFEST))
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
 CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py'})
 
@@ -84,7 +91,8 @@ def manifest(repo=None,ref=None):
     root=Path(repo) if repo is not None else ROOT
     try:
         data=json.loads(_read(root,MANIFEST,ref))
-        return data if data.get('schema_version')==SCHEMA and data.get('base')==BASE else {}
+        return data if (data.get('schema_version')==SCHEMA and data.get('base')==BASE
+                        and data.get('parent')==PARENT and data.get('parent_tree')==PARENT_TREE) else {}
     except (OSError,ValueError,subprocess.CalledProcessError):
         return {}
 
@@ -93,18 +101,22 @@ def _historical_maps_ok(root,ref,pins,data):
     expected=data.get('predecessor_manifests',{})
     if set(expected)!=set(PREDECESSOR_MANIFESTS): return False
     for path in PREDECESSOR_MANIFESTS:
-        raw=_baseline_bytes(root,path,BASE,_read,_git)
+        # Layer 1 (unchanged proof): the pin map at BASE (main at the merge of PR #397) survives byte-for-byte under history[BASE].
+        base_old=json.loads(_baseline_bytes(root,path,BASE,_read,_git))
+        # Layer 2: the predecessor manifest at PARENT (main after PR #401 + PR #399). Its blob is recorded in this manifest.
+        raw=_baseline_bytes(root,path,PARENT,_read,_git)
         if _blob(raw)!=expected[path]: return False
         old=json.loads(raw); current=json.loads(_read(root,path,ref))
         before=old['source_blobs']; after=current['source_blobs']
         if set(before)!=set(after): return False
         history=current.get('historical_source_blobs',{})
-        if history.get(BASE)!=before: return False
+        if history.get(BASE)!=base_old['source_blobs']: return False
+        if history.get(PARENT)!=before: return False
         old_history=old.get('historical_source_blobs',{})
-        if set(history)!=set(old_history)|{BASE}: return False
+        if set(history)!=set(old_history)|{BASE,PARENT}: return False
         if any(history.get(k)!=v for k,v in old_history.items()): return False
         if any(current.get(k)!=v for k,v in old.items() if k not in ('source_blobs','historical_source_blobs')): return False
-        if set(current)!=set(old)|{'historical_source_blobs'}: return False
+        if set(current)!=set(old)|{'historical_source_blobs'} and set(current)!=set(old): return False
         for source,value in before.items():
             if after[source]!=value and (source not in OWNED_PATHS or after[source]!=pins[source]): return False
     return True
@@ -117,6 +129,9 @@ def exact_blobs_ok(repo=None,ref=None):
     try:
         _git(root,'merge-base','--is-ancestor',BASE,ref or 'HEAD')
         if _git(root,'rev-parse',BASE+'^{tree}').decode().strip()!=BASE_TREE: return False
+        _git(root,'merge-base','--is-ancestor',PARENT,ref or 'HEAD')
+        _git(root,'merge-base','--is-ancestor',BASE,PARENT)
+        if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
         if any(_blob(_read(root,p,ref))!=sha for p,sha in pins.items()): return False
         return _historical_maps_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
@@ -131,7 +146,7 @@ def valid(repo=None,ref=None):
     root=Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root,ref): return False
     try:
-        changed=_git(root,'diff','--name-only',BASE,*([ref] if ref else []),'--').decode().splitlines()
+        changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
         if any(not allowed_path(p) for p in changed): return False
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()

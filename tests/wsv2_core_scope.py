@@ -109,6 +109,15 @@ PREDECESSOR_MANIFESTS = (
 )
 
 
+# WF-04 successor lineage (tests/wf04_scope.py): the exact predecessor pins the Owner-authorised WF-04 change moves (each one is also an owned,
+# exactly pinned path of that cohort, and tests/test_wf04_scope.py proves every other pin is unchanged).
+WF04_SUCCESSOR_REPIN = {
+    PREDECESSOR_MANIFESTS[0]: frozenset(('app/workbook/registry.py', 'tests/test_fin_v2_3_scope.py', 'tests/test_model_workspace_productivity_v1.py',
+                                                'tests/test_finval_f01_fixture_integrity.py')),
+    PREDECESSOR_MANIFESTS[2]: frozenset(('tests/test_fin_v2_r1_scope.py',)),
+}
+
+
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
@@ -145,7 +154,8 @@ def _historical_manifests_ok(root, ref):
         if set(before) != set(after):
             return False
         allowed = ({'app/v2/react_rcux.py', 'app/v2/react_workspace_router.py'} if path == PREDECESSOR_MANIFESTS[-1]
-                   else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN, ROUTE_TEARDOWN_PIN} if path == PREDECESSOR_MANIFESTS[0] else set()))
+                   else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN, ROUTE_TEARDOWN_PIN} if path == PREDECESSOR_MANIFESTS[0] else set())
+                   | WF04_SUCCESSOR_REPIN.get(path, frozenset()))
         from tests import wf03_lifecycle_scope as WF03
         if any(before[p] != after[p] and p not in allowed
                and not WF03.historical_pin_successor(path, p, before[p], after[p], root, ref) for p in before):
@@ -164,6 +174,15 @@ _CI_EVIDENCE_EXTENSIONS = ('.json', '.xml', '.png', '.webp', '.jpg', '.jpeg', '.
 
 def _ci_evidence_only(path):
     return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
+
+
+def _successor_allows(path, root, ref):
+    """A path owned by the closed WF-04 successor cohort is that cohort's exact-blob responsibility; a missing or altered cohort widens nothing."""
+    try:
+        from tests import wf04_scope
+    except ImportError:
+        return False
+    return wf04_scope.allowed_path(path, root, ref)
 
 
 #: The three gate A/D test sources the WS-2 correction edits that are exact-pinned by OTHER registered cohorts (fin_v2_3, fin_v2_r1, rc_ux).
@@ -213,11 +232,12 @@ def exact_blobs_ok(repo=None, ref=None):
         if not _historical_manifests_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) and not _successor_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _ws2_allows(p, root, ref) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _ws2_allows(p, root, ref)
+                   and not _successor_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError):

@@ -142,7 +142,7 @@ def captured_value(body: str) -> str:
 def test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated(live_server, fin_session):
     context, page, record, errors = fin_session("rcm-fin-struct")
     open_tab(page, live_server, record.project_code, "overview")
-    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Debt terms", "Overview", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]
+    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Debt terms", "Overview", "Debt metrics", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]   # WF-04 adds exactly one tab, "Debt metrics"
     assert page.locator("[data-senior-pricing='FLAT']").count() == 1 and page.locator("[data-senior-dscr='FLAT_SCALAR']").count() == 1
     closed = page.locator("[data-financing-closed='true']").inner_text()
     for needle in ("Junior / subordinated", "Mezzanine / PIK", "Third or further senior", "Floating-rate"):

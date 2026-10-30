@@ -9,6 +9,7 @@ import subprocess
 import pytest
 
 from tests import model_mutation_security_successor as S
+from tests import wf04_scope as WF04
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
@@ -32,7 +33,9 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
         later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
         from tests import wf03_lifecycle_scope as WF03
-        assert S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)} or WF03.matches(path,SOURCES[path])
+        # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
+        assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
+                or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path]))
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -218,9 +221,17 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
     from tests import fin_v2_pr394_corr_scope as PR394
     hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
-    # The Owner-approved WS-2 Save All cohort pins the exact blob of each of its own paths (tests/fin_v2_wsv2_scope.py); nothing else is attributed to it.
+    # Two later, separately governed exceptions: the Owner-approved WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py) pins the exact blob of each of its own
+    # paths; the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly the two workbook paths below (the registered contractual-DSCR inputs and their
+    # pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
     from tests import fin_v2_wsv2_scope as WS2
+    from tests import wf04_scope as WF04
     hits = [p for p in hits if not (p in WS2.OWNED_PATHS and WS2.matches(p, (S.ROOT / p).read_bytes()))]
+    hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
+                                    and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+    # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
+    # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
+    hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
