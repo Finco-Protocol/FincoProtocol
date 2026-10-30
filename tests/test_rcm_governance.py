@@ -10,6 +10,10 @@ import pytest
 
 from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
+from tests import wf03_lifecycle_scope as WF03
+
+# Financial Owner approval 2026-10-30 (RC-M successor, router + reviewed WorkspaceView extension): the only WF-03 states admitted here.
+WF03_RCM_PATHS = frozenset({"app/v2/react_workspace_router.py", "frontend/src/app/WorkspaceView.tsx"})
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_M_SUCCESSORS
@@ -50,7 +54,10 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
             or blob
         )
         # WF-04 successor lineage: for the presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
-        assert S.git_blob(SOURCES[path]) == expected_current or WF04.presentation_successor(path, SOURCES[path]), path
+        # WF-03 successor (Owner-approved, PR #400): exactly the two WF03_RCM_PATHS, each at exactly its WF-03-pinned blob (archived-project 409 refusal
+        # after the unchanged ownership check; archived interstitial/restore UI and current-projection PPA Save); any other path or byte still fails.
+        assert (S.git_blob(SOURCES[path]) == expected_current or WF04.presentation_successor(path, SOURCES[path])
+                or (path in WF03_RCM_PATHS and WF03.matches(path, SOURCES[path]))), path
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -232,3 +239,21 @@ def test_the_react_flag_defaults_off_and_creation_is_atomic_through_the_canonica
     source = (S.ROOT / "app/v2/react_new_project.py").read_text(encoding="utf-8")
     assert "create_reference_seeded_project_once(" in source and "react_request_claims" not in source
     assert "ux_projects_user_create_request" in (S.ROOT / "app/persistence/db.py").read_text(encoding="utf-8")
+
+
+def test_the_wf03_rcm_successor_is_two_paths_at_their_exact_blobs():
+    """Negatives for the WF-03 RC-M successor: only the two WF03_RCM_PATHS, only at their exact WF-03 blobs; never any other layer path."""
+    assert WF03_RCM_PATHS <= set(LAYER) and len(WF03_RCM_PATHS) == 2
+    for path in sorted(WF03_RCM_PATHS):
+        assert WF03.matches(path, SOURCES[path])
+        assert not WF03.matches(path, SOURCES[path] + "\n")
+        assert not WF03.matches(path, SOURCES[path].replace("PROJECT_ARCHIVED", "PROJECT_ARCHIVED_X", 1)), path
+    view = "frontend/src/app/WorkspaceView.tsx"
+    assert S.git_blob(SOURCES[view]) == "66b20d2d89b854cf0ffca71035404a7c8c2d1d62"                      # the exact Owner-reviewed blob
+    stale_save = SOURCES[view].replace("refreshing={revenueVersion !== dataVersion}", "refreshing={false}", 1)
+    unordered = SOURCES[view].replace("if (ticket !== revenueTicket.current) return;", "", 1)
+    for label, changed in (("PPA Save may use a stale projection", stale_save), ("an older answer may replace a newer one", unordered)):
+        assert changed != SOURCES[view] and not WF03.matches(view, changed), label
+    for other in sorted(set(LAYER) - WF03_RCM_PATHS):
+        assert not WF03.matches(other, SOURCES[other] + "\n"), other
+    assert not WF03.matches("frontend/src/app/LibraryView.tsx", SOURCES[view])                         # the reviewed bytes under another path

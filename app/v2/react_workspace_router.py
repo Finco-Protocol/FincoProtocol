@@ -62,6 +62,11 @@ def _resolve_project(request: Request, project: str):
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return None, None, None, _json({"ok": False, "code": "PROJECT_NOT_FOUND"}, 404)
+    if record.archived and not request.url.path.endswith(("/runs", "/diagnostics", "/trust")):
+        from app.services.project_lifecycle_service import project_capability
+        return None, None, None, _json({"ok": False, "code": "PROJECT_ARCHIVED",
+            "message": "This project is archived. Its saved inputs and history are preserved.",
+            "lifecycle": project_capability(request, owner, record.project_id)}, 409)
     return user, record, owner, None
 
 

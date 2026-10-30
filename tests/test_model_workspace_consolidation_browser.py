@@ -4,6 +4,36 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser  # noqa: F401
+
+
+@pytest.mark.parametrize('template',['generic_solar_reference','generic_wind_reference','generic_data_center_reference','generic_ev_charging_reference'])
+@pytest.mark.parametrize('width',[320,390,768,1440])
+@pytest.mark.parametrize('theme',[None,'b-slate-teal','d-high-contrast','g-forest-green-white'])
+def test_wf03_https_visible_archive_restore_matrix(wf03_servers,wf03_browser,template,width,theme):
+    from tests.test_project_lifecycle_browser import check_visible_https_archive_restore_matrix
+    check_visible_https_archive_restore_matrix(wf03_servers,wf03_browser,template,width,theme)
+
+
+def test_wf03_stale_library_refresh_cannot_overwrite_archived_view_browser(wf03_servers,wf03_browser):
+    from tests.test_project_lifecycle_browser import check_stale_library_refresh_cannot_overwrite_the_archived_view
+    check_stale_library_refresh_cannot_overwrite_the_archived_view(wf03_servers,wf03_browser)
+
+
+def test_wf03_reload_after_lost_response_reads_authoritative_state_browser(wf03_servers,wf03_browser):
+    from tests.test_project_lifecycle_browser import check_reload_after_lost_response_reads_authoritative_state_and_persists_nothing
+    check_reload_after_lost_response_reads_authoritative_state_and_persists_nothing(wf03_servers,wf03_browser)
+
+
+def test_wf03_blank_setup_durable_non_runnable_browser(wf03_servers,wf03_browser):
+    from tests.test_project_lifecycle_browser import check_blank_setup_is_durable_explicit_and_non_runnable
+    check_blank_setup_is_durable_explicit_and_non_runnable(wf03_servers,wf03_browser)
+
+
+def test_wf03_lost_response_restore_original_replay_browser(wf03_servers,wf03_browser):
+    from tests.test_project_lifecycle_browser import check_lost_archive_response_then_restore_and_original_replay
+    check_lost_archive_response_then_restore_and_original_replay(wf03_servers,wf03_browser)
+
 from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 from tests.model_mutation_cookie_policy_acceptance import mutation_browser_servers  # noqa: F401
 

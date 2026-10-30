@@ -151,9 +151,10 @@ def test_repository_reads_recheck_ownership_and_exclude_archived(penv, monkeypat
     from app.persistence.db import get_cursor
     from app.v2 import portfolio_reads as reads
     owned, foreign, archived = [penv.create(kind) for kind in ("solar", "wind", "ev_charging")]
-    with get_cursor() as cursor:
+    from tests.wf03_fixture_seams import archive_through_lifecycle, foreign_row_forgery
+    with get_cursor() as cursor, foreign_row_forgery(cursor):      # fixture-only: a project that belongs to somebody else
         cursor.execute("UPDATE projects SET user_id='foreign' WHERE project_id=?", (foreign.project_id,))
-        cursor.execute("UPDATE projects SET archived=1 WHERE project_id=?", (archived.project_id,))
+    archive_through_lifecycle(USER, archived.project_code)         # archived exactly as a user would (real transition)
     assert [row.record.project_id for row in reads.load_portfolio(USER)] == [owned.project_id]
     original, calls = reads._projects, 0
     def transfer(connection, owner):

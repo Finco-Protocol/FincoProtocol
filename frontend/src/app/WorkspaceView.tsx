@@ -34,6 +34,8 @@ import { WorkflowBar } from "./workflow/WorkflowBar";
 import { DirtyProvider, useLeaveGuard, useDirtyTotal } from "./workflow/workflowShared";
 import { isRecoveryPayload, type InputsPayload, type RecoveryPayload, type RevenueContractsPayload, type StatementsPayload, type WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
+import { changeLifecycle } from "./library/api";
+import type { LifecycleCapability } from "./library/types";
 
 type Section = WorkspaceSection;
 
@@ -129,6 +131,10 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   const displayedInputs = useMemo(() => inputs ? financialInputOrder(inputs) : null, [inputs]);
   const [recovery, setRecovery] = useState<RecoveryPayload | null>(null);
   const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
+  // The data version the revenue projection (and so its CAS identity) was read at, and the newest request ticket: a PPA Save may use the
+  // projection only when it is current, and an older answer can never replace a newer one.
+  const [revenueVersion, setRevenueVersion] = useState(0);
+  const revenueTicket = useRef(0);
   const [busy, setBusy] = useState(false);
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
   // unsaved drafts in other editors are reconciled, never silently rebased.
@@ -162,9 +168,15 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  const dataVersionRef = useRef(0);
+  dataVersionRef.current = dataVersion;      // mirrors the rendered version: every bump path (afterMutation and the direct ones) is covered
   const loadRevenue = useCallback(async () => {
+    const version = dataVersionRef.current;
+    const ticket = ++revenueTicket.current;
     const result = await fetchRevenueContracts(project);
-    if (result.ok === true) setRevenuePayload(result);
+    if (ticket !== revenueTicket.current) return;
+    if (result.ok === true) { setRevenuePayload(result); setRevenueVersion(version); }
+    else setRevenuePayload(null);      // a failed refresh must not leave an outdated identity usable: drop it; the missing-projection effect retries once
   }, [project]);
 
   const afterMutation = useCallback(() => {
@@ -395,11 +407,24 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   }, [inputs, project, afterMutation]);
 
   if (error) {
+    const lifecycle = (error as { lifecycle?: LifecycleCapability }).lifecycle;
     return (
       <main className="rx-page" role="main">
         <section className="rx-card" data-workspace-state={error.code}>
-          <h2>This project is unavailable</h2>
+          <h2>{error.code === "PROJECT_ARCHIVED" ? "Project archived" : "This project is unavailable"}</h2>
           <FriendlyError code={error.code} message={error.message} />
+          {error.code === "PROJECT_ARCHIVED" && lifecycle?.can_restore && <p><button type="button" className="rx-button"
+            onClick={async (event) => {
+              const button = event.currentTarget;
+              button.disabled = true;
+              try {
+                const result = await changeLifecycle(project, lifecycle);
+                if (result.confirmed) await loadWorkspace();
+                else setError({ ...error, message: result.message });
+              } finally { button.disabled = false; }
+            }}>Restore project</button></p>}
+          {error.code === "PROJECT_ARCHIVED" && !lifecycle?.can_restore && <p>This archived record cannot be restored because its completed user archive could not be proven.</p>}
+          {error.code === "PROJECT_ARCHIVED" && <RunsView project={project} />}
           <p>
             <button type="button" className="rx-button rx-button-secondary" onClick={onNavigateToLibrary}>Back to My Projects</button>
           </p>
@@ -498,6 +523,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                     protectedReference={Boolean(workspace.project.protected_reference)}
                     contracts={revenuePayload.contracts}
                     save={revenuePayload.save}
+                    refreshing={revenueVersion !== dataVersion}
                     onSaved={afterMutation}
                   />
                 )}

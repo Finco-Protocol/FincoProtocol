@@ -45,6 +45,122 @@ from app.workbook.financing_csrf import extract_bound_token, issue_token
 
 router = APIRouter()
 
+
+def _setup_auth(request, resource, operation=None):
+    user = resolve_request_session(request)
+    if user is None:
+        return None, _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
+    if resource != "new-setup":
+        from app.persistence.db import get_cursor
+        with get_cursor() as cur:
+            if cur.execute("SELECT 1 FROM setup_drafts WHERE user_id=? AND draft_id=?", (user.user_id,resource)).fetchone() is None:
+                return None, _json({"ok":False,"code":"SETUP_DRAFT_NOT_FOUND"},404)
+    if operation is not None:
+        origin = request.headers.get("origin")
+        if ((origin and origin.rstrip("/") != str(request.base_url).rstrip("/"))
+                or request.headers.get("sec-fetch-site") == "cross-site"
+                or not validate_csrf_token(extract_bound_token(request, resource,
+                    request.headers.get("x-csrf-token", ""), purpose="wf03-setup:"+operation))):
+            return None, _json({"ok": False, "code": "CSRF_INVALID"}, 403)
+    return user, None
+
+
+@router.get("/model-react/setup-drafts")
+async def setup_draft_index(request: Request, technology: str = "solar"):
+    user, refused = _setup_auth(request, "new-setup")
+    if refused is not None: return refused
+    from app.services.blank_readiness_service import catalogue, VERTICALS
+    from app.persistence.setup_draft_repository import list_owned
+    from app.workbook.country_options import COUNTRY_CODE_TO_LABEL
+    import hashlib
+    if technology not in VERTICALS:
+        return _json({"ok": False, "code": "SETUP_TECHNOLOGY_NOT_RELEASED"}, 422)
+    return _json({"ok": True, "drafts": list_owned(user.user_id), "fields": catalogue(technology),
+                  "countries": [{"code":code,"label":label} for code,label in COUNTRY_CODE_TO_LABEL.items()],
+                  "scope": hashlib.sha256(user.user_id.encode()).hexdigest(),
+                  "technologies": list(VERTICALS), "csrf_token": issue_token(request, "new-setup", purpose="wf03-setup:CREATE")})
+
+
+@router.get("/model-react/setup-drafts/status")
+async def setup_creation_status(request: Request, request_id: str = ""):
+    user, refused=_setup_auth(request,"new-setup")
+    if refused is not None: return refused
+    from app.persistence.setup_draft_repository import creation_status
+    from app.persistence.project_lifecycle_repository import LifecycleError
+    try:
+        return _json(creation_status(user.user_id,request_id))
+    except LifecycleError as exc:
+        return _json({"ok":False,"code":exc.code},exc.status)
+
+
+@router.get("/model-react/setup-drafts/{draft_id}")
+async def setup_draft_get(request: Request, draft_id: str):
+    user, refused = _setup_auth(request, draft_id)
+    if refused is not None: return refused
+    from app.persistence.setup_draft_repository import read
+    from app.persistence.project_lifecycle_repository import LifecycleError
+    try:
+        draft=read(user.user_id,draft_id)
+        return _json({"ok":True,"draft":draft,"tokens":{op.lower():issue_token(request,draft_id,purpose="wf03-setup:"+op)
+                                                       for op in ("UPDATE","PROMOTE")}})
+    except LifecycleError as exc:
+        return _json({"ok":False,"code":exc.code},exc.status)
+
+
+@router.get("/model-react/setup-drafts/{draft_id}/readiness")
+async def setup_readiness(request: Request, draft_id: str):
+    return await setup_draft_get(request,draft_id)
+
+
+@router.get("/model-react/setup-drafts/{draft_id}/status")
+async def setup_draft_status(request: Request, draft_id: str, request_id: str = ""):
+    user, refused = _setup_auth(request,draft_id)
+    if refused is not None: return refused
+    from app.persistence.setup_draft_repository import request_status
+    from app.persistence.project_lifecycle_repository import LifecycleError
+    try:
+        return _json(request_status(user.user_id,draft_id,request_id))
+    except LifecycleError as exc:
+        return _json({"ok":False,"code":exc.code},exc.status)
+
+
+async def _setup_write(request, draft_id=None, promotion=False):
+    resource=draft_id or "new-setup"
+    op="PROMOTE" if promotion else "UPDATE" if draft_id else "CREATE"
+    user, refused=_setup_auth(request,resource,op)
+    if refused is not None: return refused
+    from app.persistence.setup_draft_repository import write, promote
+    from app.persistence.project_lifecycle_repository import LifecycleError
+    import json
+    try:
+        if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+            raise LifecycleError("INVALID_SETUP_BODY",422)
+        raw=b""
+        async for chunk in request.stream():
+            raw+=chunk
+            if len(raw)>200_000: raise LifecycleError("SETUP_BODY_TOO_LARGE",422)
+        data=json.loads(raw)
+        return _json(promote(user.user_id,draft_id,data) if promotion else write(user.user_id,data,draft_id))
+    except (json.JSONDecodeError,UnicodeDecodeError):
+        return _json({"ok":False,"code":"INVALID_SETUP_BODY"},422)
+    except LifecycleError as exc:
+        return _json({"ok":False,"code":exc.code},exc.status)
+
+
+@router.post("/model-react/setup-drafts")
+async def setup_draft_create(request: Request):
+    return await _setup_write(request)
+
+
+@router.patch("/model-react/setup-drafts/{draft_id}")
+async def setup_draft_update(request: Request, draft_id: str):
+    return await _setup_write(request,draft_id)
+
+
+@router.post("/model-react/setup-drafts/{draft_id}/promote")
+async def setup_draft_promote(request: Request, draft_id: str):
+    return await _setup_write(request,draft_id,promotion=True)
+
 PURPOSE = "react-new-project-v1"
 REQUEST_STAMP_KEY = "react_new_project"
 # Adapter-level sanity bounds.  The lower bound is the canonical registry minimum for

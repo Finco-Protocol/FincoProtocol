@@ -102,7 +102,13 @@ def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
     old, new = top(base), top(now)
     assert set(old) == set(new)                                  # no handler/import/constant added or removed at module level
     changed = sorted(k for k in old if old[k] != new[k])
-    assert changed == [("AsyncFunctionDef", HANDLER)]
+    expected = [("AsyncFunctionDef", HANDLER)]
+    # WF-03 successor lineage: exactly two further handlers carry the archived / incomplete-creation guards, and only while the WF-03 cohort pins this
+    # exact router blob. Nothing else may differ.
+    from tests import wf03_lifecycle_scope as WF03
+    if WF03.matches(ROUTER, SOURCES[ROUTER]):
+        expected = sorted(expected + [("AsyncFunctionDef", "v2_workbook"), ("AsyncFunctionDef", "v2_workbook_run")])
+    assert changed == expected
 
 
 def test_d029_run_order_csrf_gates_and_protected_reference_guard_are_unchanged():

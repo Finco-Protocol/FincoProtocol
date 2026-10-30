@@ -216,13 +216,16 @@ def test_metadata_preserved_on_update_and_archive(seeded_db):
         source_project_template="custom",
         project_stage="ready_to_build",
         model_perspective="ipp",
+        project_origin="user_created",       # only a user-created project is archivable (WF-03 eligibility)
     )
-    # Archive path (update_project_record) must not drop metadata.
-    update_project_record(
-        user_id="v2-meta-user",
-        project_code="archive-proj",
-        archived=True,
-    )
+    # Archive path must not drop metadata. The generic update path can no longer archive (WF-03: archive is a lifecycle command with a version
+    # CAS and an immutable receipt), so the project is archived through the real transition.
+    from app.persistence.workspace_repository import save_workspace_state
+    from tests.wf03_fixture_seams import archive_through_lifecycle
+    created = get_project_by_code("v2-meta-user", "archive-proj")
+    save_workspace_state(user_id="v2-meta-user", project_id=created.project_id, project_code="archive-proj",
+                         draft_snapshot={}, saved_snapshot={})       # a lifecycle-eligible project owns its workspace
+    archive_through_lifecycle("v2-meta-user", "archive-proj")
     record = get_project_by_code("v2-meta-user", "archive-proj")
     assert record.archived is True
     assert record.project_stage == "ready_to_build"

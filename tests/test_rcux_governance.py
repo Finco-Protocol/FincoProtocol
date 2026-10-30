@@ -32,9 +32,10 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
         assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
         later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
-        # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid
+        from tests import wf03_lifecycle_scope as WF03
+        # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
         assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
-                or WF04.presentation_successor(path, SOURCES[path]))
+                or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path]))
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -231,6 +232,14 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
     # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
     hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+    # Fourth: the Owner-approved WF-03 lifecycle cohort (tests/wf03_lifecycle_scope.py) owns exactly these four paths (archive / restore fences, request
+    # admission, creation completeness, demo-provisioning prefixes); only that exact path with exactly that pinned blob is attributed to it.
+    from tests import wf03_lifecycle_scope as WF03
+    WF03_PATHS = ("main_web.py", "app/v2/router.py", "app/persistence/projects_repository.py", "app/services/run_service.py")
+    hits = [p for p in hits if not (p in WF03_PATHS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+    # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
+    # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
+    hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
@@ -291,3 +300,15 @@ def test_each_rcux_acceptance_module_is_not_collected_alone_exports_exactly_its_
     assert sorted(exported) == sorted(tests + fixtures) and len(set(exported)) == len(exported)
     for forbidden in ("importorskip", "pytest.skip", "mark.skip", "skipif", "xfail", "autouse", "from playwright", "import playwright"):
         assert forbidden not in source, forbidden
+
+
+def test_the_wf03_ci_workflow_successor_is_exact_path_and_exact_blob_only():
+    """Negatives for the RC-UX CI-workflow successor: exactly the three WF-03 workflows at their exact pins; no other .github/ path, no other byte."""
+    from tests import wf03_lifecycle_scope as WF03
+    assert WF03.CI_TIMEOUT_WORKFLOWS == {".github/workflows/ci_public_job.yml", ".github/workflows/ci_v3_required_job.yml",
+                                         ".github/workflows/public_safety_and_smoke.yml"}
+    for path in sorted(WF03.CI_TIMEOUT_WORKFLOWS):
+        raw = (S.ROOT / path).read_bytes()
+        assert WF03.matches(path, raw) and not WF03.matches(path, raw + b"\n") and not WF03.matches(path, raw.replace(b"timeout-minutes", b"timeout-minutez", 1))
+    for other in (".github/workflows/protocol_ui_browser.yml", ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/new_unreviewed.yml"):
+        assert other not in WF03.CI_TIMEOUT_WORKFLOWS and not WF03.allowed_path(other)

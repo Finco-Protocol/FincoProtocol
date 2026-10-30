@@ -24,6 +24,8 @@ PREVIOUS_APPROVED_MAIN = '8a74fcb5cd57e470cf83a458bd165ea14ad394fb'
 PREVIOUS_APPROVED_MAIN_TREE = 'a96566a21154fd8e673676c20bd2e4e093599330'
 APPROVED_MAIN = '35848541f4d894f7e0a119ab8709276133d0da89'
 APPROVED_MAIN_TREE = 'b2d001f934fa135ba7e501c8f63aca9d44ef2701'
+# WF03_PARENT: main after the merged PR #399 (this cohort's own approved state); a later WF-03 successor may move only pins it owns and re-pins identically.
+WF03_PARENT = 'db504f6408cb456c617c9342a1ffa202ee455283'
 MANIFEST = 'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'
 SCHEMA = 'WF04_DEBT_METRICS_EXACT_SOURCE_V1'
 # @@OWNED_PATHS_BEGIN@@
@@ -177,6 +179,45 @@ def _blob(raw):
     return hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
 
 
+def _wf03(root, ref):
+    """The separately registered WF-03 lifecycle successor (tests/wf03_lifecycle_scope.py), only while it is itself exact. Its pins are the ONLY
+    later state this cohort follows; a missing, altered or invalid WF-03 cohort widens nothing."""
+    try:
+        from tests import wf03_lifecycle_scope as WF03
+    except ImportError:
+        return None
+    return WF03 if WF03.exact_blobs_ok(root, ref) else None
+
+
+def _downstream_allows(path, root, ref):
+    WF03 = _wf03(root, ref)
+    return WF03 is not None and WF03.allowed_path(path, root, ref)
+
+
+def _downstream_pin(path, value, root, ref):
+    """True when WF-03 (exact) owns ``path`` and pins exactly ``value``."""
+    WF03 = _wf03(root, ref)
+    return WF03 is not None and path in WF03.OWNED_PATHS and WF03.manifest(root, ref).get('source_blobs', {}).get(path) == value
+
+
+def _own_manifest_follows_only_wf03(root, ref):
+    """This cohort's own pin map equals its state at the merged PR #399 main except pins the exact WF-03 successor now owns and pins identically;
+    the previous map is then preserved byte-for-byte under ``historical_source_blobs[WF03_PARENT]``."""
+    old = json.loads(_read(root, MANIFEST, WF03_PARENT))
+    now = json.loads(_read(root, MANIFEST, ref))
+    before, after = old['source_blobs'], now['source_blobs']
+    if set(before) != set(after):
+        return False
+    moved = [p for p in before if before[p] != after[p]]
+    if not moved:
+        return True
+    if (now.get('historical_source_blobs') or {}).get(WF03_PARENT) != before:
+        return False
+    if any(now.get(k) != v for k, v in old.items() if k not in ('source_blobs', 'historical_source_blobs')):
+        return False
+    return all(_downstream_pin(p, after[p], root, ref) for p in moved)
+
+
 def manifest(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -229,7 +270,7 @@ def _historical_manifests_ok(root, ref):
             return False                                          # the pre-#401 approved-main pin map must survive byte-for-byte
         if set(before) != set(after):
             return False
-        if any(before[p] != after[p] and p not in allowed for p in before):
+        if any(before[p] != after[p] and p not in allowed and not _downstream_pin(p, after[p], root, ref) for p in before):
             return False
         if any(now.get(k) != v for k, v in old.items() if k not in ('source_blobs', 'historical_source_blobs')):
             return False
@@ -264,6 +305,15 @@ def _ci_evidence_only(path):
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    try:
+        from tests import wf03_lifecycle_scope as WF03
+    except ImportError:
+        return _exact_blobs_ok(repo, ref)
+    with WF03.scoped():        # the exact WF-03 check runs once per call, not once per changed path
+        return _exact_blobs_ok(repo, ref)
+
+
+def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if set(pins) != OWNED_PATHS or not _owned_ok():
@@ -276,11 +326,13 @@ def exact_blobs_ok(repo=None, ref=None):
         if not _historical_manifests_ok(root, ref) or not _workflow_hunk_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', APPROVED_MAIN, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _downstream_allows(p, root, ref) for p in changed):
+            return False
+        if not _own_manifest_follows_only_wf03(root, ref):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _downstream_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):

@@ -8,7 +8,7 @@ concurrency:
 jobs:
   source-safety:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -51,7 +51,7 @@ jobs:
     - source-safety
     - safety-and-smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read

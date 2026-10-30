@@ -101,6 +101,8 @@ async def execute_run_route(
     from app.services.run_stage_timing import mark as _stage_mark
     snapshot = deps.collect_form_snapshot(form)
     project_record, workspace_state = deps.project_workspace_from_snapshot(user, snapshot)
+    from app.persistence.project_lifecycle_repository import admit
+    admit(project_record)  # also captures a just-created Legacy working copy before computation
     _stage_mark("project_workspace_resolved")
     project_code = project_record.project_code
     project_name = project_record.project_name
@@ -470,42 +472,46 @@ async def _execute_user_created_path(
             scenario_provenance=scenario_provenance,
             warning_note=runtime_warning,
         )
-        deps.record_workspace_runtime(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_record.project_code,
-            runtime_snapshot=runtime_snapshot,
-            runtime_summary=result["kpis"],
-            runtime_snapshot_id=runtime_snapshot_id,
-            runtime_origin=effective_runtime_origin,
-            governance_state=deps.governance_snapshot(project_record.project_code),
-            active_scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
-            active_scenario_name=bound_scenario_name if effective_runtime_origin == "saved_state" else None,
-            replay_metadata=replay_metadata,
-            financial_statements=result.get("financial_statements"),
-            debt_schedule=result.get("debt_schedule"),
-            tax_schedule=result.get("tax_schedule"),
-            distribution_schedule=result.get("distribution_schedule"),
-            sponsor_schedule=result.get("sponsor_schedule"),
-        )
-        _stage_mark("persistence_completed")
-        if effective_runtime_origin == "saved_state" and bound_scenario_id:
-            scenario_replay = deps.replay_metadata_for_project(
-                project_record.project_code,
+        from app.persistence.db import lifecycle_transaction
+        from app.persistence.project_lifecycle_repository import require_write_cursor
+        with lifecycle_transaction() as lifecycle_conn:
+            require_write_cursor(lifecycle_conn.cursor(), user.user_id, project_record.project_id)
+            deps.record_workspace_runtime(
+                user_id=user.user_id,
                 project_id=project_record.project_id,
-                scenario_id=workspace_state.active_scenario_id,
-                scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
-                runtime_timestamp=_utc_now_iso_full_iso(),
+                project_code=project_record.project_code,
+                runtime_snapshot=runtime_snapshot,
+                runtime_summary=result["kpis"],
                 runtime_snapshot_id=runtime_snapshot_id,
-                export_type="scenario_runtime_summary",
-                active_scenario_id=bound_scenario_id,
-                active_scenario_name=bound_scenario_name,
-                scenario_provenance=scenario_provenance,
-                warning_note=runtime_warning,
+                runtime_origin=effective_runtime_origin,
+                governance_state=deps.governance_snapshot(project_record.project_code),
+                active_scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if effective_runtime_origin == "saved_state" else None,
+                replay_metadata=replay_metadata,
+                financial_statements=result.get("financial_statements"),
+                debt_schedule=result.get("debt_schedule"),
+                tax_schedule=result.get("tax_schedule"),
+                distribution_schedule=result.get("distribution_schedule"),
+                sponsor_schedule=result.get("sponsor_schedule"),
             )
-            deps.update_scenario_last_run_summary(
-                user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
-            )
+            _stage_mark("persistence_completed")
+            if effective_runtime_origin == "saved_state" and bound_scenario_id:
+                scenario_replay = deps.replay_metadata_for_project(
+                    project_record.project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
+                    runtime_timestamp=_utc_now_iso_full_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="scenario_runtime_summary",
+                    active_scenario_id=bound_scenario_id,
+                    active_scenario_name=bound_scenario_name,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
+                )
+                deps.update_scenario_last_run_summary(
+                    user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
+                )
 
         result_messages = list(result.get("messages", []))
         if runtime_warning:
@@ -613,42 +619,46 @@ async def _execute_template_seeded_path(
             scenario_provenance=scenario_provenance,
             warning_note=runtime_warning,
         )
-        deps.record_workspace_runtime(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_record.project_code,
-            runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
-            runtime_summary=result["kpis"],
-            runtime_snapshot_id=runtime_snapshot_id,
-            runtime_origin=runtime_origin,
-            governance_state=deps.governance_snapshot(project_record.project_code),
-            active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
-            active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
-            replay_metadata=replay_metadata,
-            financial_statements=result.get("financial_statements"),
-            debt_schedule=result.get("debt_schedule"),
-            tax_schedule=result.get("tax_schedule"),
-            distribution_schedule=result.get("distribution_schedule"),
-            sponsor_schedule=result.get("sponsor_schedule"),
-        )
-        _stage_mark("persistence_completed")
-        if runtime_origin == "saved_state" and bound_scenario_id:
-            scenario_replay = deps.replay_metadata_for_project(
-                project_record.project_code,
+        from app.persistence.db import lifecycle_transaction
+        from app.persistence.project_lifecycle_repository import require_write_cursor
+        with lifecycle_transaction() as lifecycle_conn:
+            require_write_cursor(lifecycle_conn.cursor(), user.user_id, project_record.project_id)
+            deps.record_workspace_runtime(
+                user_id=user.user_id,
                 project_id=project_record.project_id,
-                scenario_id=workspace_state.active_scenario_id,
-                scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
-                runtime_timestamp=_utc_now_iso_full_iso(),
+                project_code=project_record.project_code,
+                runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
+                runtime_summary=result["kpis"],
                 runtime_snapshot_id=runtime_snapshot_id,
-                export_type="scenario_runtime_summary",
-                active_scenario_id=bound_scenario_id,
-                active_scenario_name=bound_scenario_name,
-                scenario_provenance=scenario_provenance,
-                warning_note=runtime_warning,
+                runtime_origin=runtime_origin,
+                governance_state=deps.governance_snapshot(project_record.project_code),
+                active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
+                replay_metadata=replay_metadata,
+                financial_statements=result.get("financial_statements"),
+                debt_schedule=result.get("debt_schedule"),
+                tax_schedule=result.get("tax_schedule"),
+                distribution_schedule=result.get("distribution_schedule"),
+                sponsor_schedule=result.get("sponsor_schedule"),
             )
-            deps.update_scenario_last_run_summary(
-                user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
-            )
+            _stage_mark("persistence_completed")
+            if runtime_origin == "saved_state" and bound_scenario_id:
+                scenario_replay = deps.replay_metadata_for_project(
+                    project_record.project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
+                    runtime_timestamp=_utc_now_iso_full_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="scenario_runtime_summary",
+                    active_scenario_id=bound_scenario_id,
+                    active_scenario_name=bound_scenario_name,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
+                )
+                deps.update_scenario_last_run_summary(
+                    user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
+                )
 
         result_messages = list(result.get("messages", []))
         if runtime_warning:
@@ -757,42 +767,46 @@ async def _execute_generic_path(
             scenario_provenance=scenario_provenance,
             warning_note=runtime_warning,
         )
-        deps.record_workspace_runtime(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_record.project_code,
-            runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
-            runtime_summary=result["kpis"],
-            runtime_snapshot_id=runtime_snapshot_id,
-            runtime_origin=runtime_origin,
-            governance_state=deps.governance_snapshot(project_record.project_code),
-            active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
-            active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
-            replay_metadata=replay_metadata,
-            financial_statements=result.get("financial_statements"),
-            debt_schedule=result.get("debt_schedule"),
-            tax_schedule=result.get("tax_schedule"),
-            distribution_schedule=result.get("distribution_schedule"),
-            sponsor_schedule=result.get("sponsor_schedule"),
-        )
-        _stage_mark("persistence_completed")
-        if runtime_origin == "saved_state" and bound_scenario_id:
-            scenario_replay = deps.replay_metadata_for_project(
-                project_record.project_code,
+        from app.persistence.db import lifecycle_transaction
+        from app.persistence.project_lifecycle_repository import require_write_cursor
+        with lifecycle_transaction() as lifecycle_conn:
+            require_write_cursor(lifecycle_conn.cursor(), user.user_id, project_record.project_id)
+            deps.record_workspace_runtime(
+                user_id=user.user_id,
                 project_id=project_record.project_id,
-                scenario_id=workspace_state.active_scenario_id,
-                scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
-                runtime_timestamp=_utc_now_iso_full_iso(),
+                project_code=project_record.project_code,
+                runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
+                runtime_summary=result["kpis"],
                 runtime_snapshot_id=runtime_snapshot_id,
-                export_type="scenario_runtime_summary",
-                active_scenario_id=bound_scenario_id,
-                active_scenario_name=bound_scenario_name,
-                scenario_provenance=scenario_provenance,
-                warning_note=runtime_warning,
+                runtime_origin=runtime_origin,
+                governance_state=deps.governance_snapshot(project_record.project_code),
+                active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
+                replay_metadata=replay_metadata,
+                financial_statements=result.get("financial_statements"),
+                debt_schedule=result.get("debt_schedule"),
+                tax_schedule=result.get("tax_schedule"),
+                distribution_schedule=result.get("distribution_schedule"),
+                sponsor_schedule=result.get("sponsor_schedule"),
             )
-            deps.update_scenario_last_run_summary(
-                user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
-            )
+            _stage_mark("persistence_completed")
+            if runtime_origin == "saved_state" and bound_scenario_id:
+                scenario_replay = deps.replay_metadata_for_project(
+                    project_record.project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
+                    runtime_timestamp=_utc_now_iso_full_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="scenario_runtime_summary",
+                    active_scenario_id=bound_scenario_id,
+                    active_scenario_name=bound_scenario_name,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
+                )
+                deps.update_scenario_last_run_summary(
+                    user.user_id, bound_scenario_id, result["kpis"], replay_metadata=scenario_replay,
+                )
 
         result_messages = list(result.get("messages", []))
         if runtime_warning:

@@ -422,7 +422,8 @@ def save_workspace_state(
         with get_cursor() as cur:
             # F01: read the current provenance and commit it with its value under
             # the same writer lock. A browser form cannot relabel old history.
-            cur.execute("BEGIN IMMEDIATE")
+            if not cur.connection.in_transaction:
+                cur.execute("BEGIN IMMEDIATE")
             cur.execute(
                 "SELECT draft_snapshot_json, saved_snapshot_json FROM workspace_states "
                 "WHERE workspace_id=? AND user_id=?", (workspace_id, user_id))
@@ -498,7 +499,7 @@ def save_workspace_state(
                 active_scenario_name=active_scenario_name,
             )
         with get_cursor() as cur:
-            if run_history_payload is not None:
+            if run_history_payload is not None and not cur.connection.in_transaction:
                 cur.execute("BEGIN IMMEDIATE")
             cur.execute(
                 """
@@ -1043,6 +1044,14 @@ def v2_atomic_run_commit(
         if row is None:
             conn.execute("ROLLBACK")
             raise V2RunCommitConflictError("Workspace not found during run commit.")
+
+        # WF03 R2: final parent/epoch fence under this very same writer lock.
+        # Known committed D029 replay never enters this new-commit function.
+        from app.persistence.project_lifecycle_repository import require_write_cursor, LifecycleError
+        try:
+            require_write_cursor(cur, user_id, project_id)
+        except LifecycleError as exc:
+            raise V2RunCommitConflictError("Project lifecycle changed during Run; nothing was committed.") from exc
 
         # Final CAS: re-derive composite hash from current draft state.
         identity = assemble_transactional(

@@ -91,31 +91,70 @@ def test_idle_workers_killed_then_new_intents_commit_and_failed_intent_is_termin
     assert stats["active"] == 0 and stats["admitted"] == stats["completed"] + stats["failed"] and stats["pools_created"] == 2
 
 
-def test_worker_killed_during_calculation_leaves_a_terminal_intent_and_no_history(env):
+def _wait_for(predicate, what, timeout=30.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.02)
+    raise AssertionError(f"timed out waiting for {what}")
+
+
+def _is_dead(pid):
+    try:
+        return "Z" in open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1][:3]
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+
+
+def test_worker_killed_during_calculation_leaves_a_terminal_intent_and_no_history(env, monkeypatch, tmp_path):
+    """Deterministic: the REAL worker is held INSIDE the calculation (before it can return or commit), then that exact pid is SIGKILLed."""
+    import app.api.project_runner as project_runner
+    from functools import partial
+    from tests.d029_executor_hold import held_run_project
+
     record = env.create("solar")
     ex = executor()
-    commit(env, record)                                            # spawn and warm the pool
+    commit(env, record)                                            # spawn and warm the pool with the canonical calculation
+    rows_before = len(history(record))
     key_b = str(uuid.uuid4())
     form_b = run_form(env, record, key_b)
     form_b2 = dict(form_b, csrf_token=run_form(env, record, key_b)["csrf_token"])    # prepared before the Run starts
-    with ThreadPoolExecutor(1) as pool:
-        running = pool.submit(post, env, form_b)
-        deadline = time.monotonic() + 15
-        while ex.stats()["active"] < 1 and time.monotonic() < deadline:
-            time.sleep(0.01)
-        # an unresolved intent is visible to a concurrent request and is NOT started a second time
-        admitted = ex.stats()["admitted"]
-        second = post(env, form_b2)
-        assert second.status_code == 409 and second.json()["outcome"] == "IN_PROGRESS"
-        assert ex.stats()["admitted"] == admitted
-        kill_all(ex)
-        outcome = running.result(60).json()
+    real = project_runner.run_project
+    hold = tmp_path / "hold"
+    hold.mkdir()
+    monkeypatch.setattr(project_runner, "run_project", partial(held_run_project, str(hold)))
+    pid = None
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            running = pool.submit(post, env, form_b)
+            marker = _wait_for(lambda: next(iter(hold.glob("reached.*")), None), "the worker to enter the calculation")
+            pid = int(marker.read_text(encoding="utf-8"))
+            # positive evidence: this pid is a live worker of the pool, the intent is unresolved and nothing was committed
+            assert pid in worker_pids(ex) and not _is_dead(pid) and pid != os.getpid()
+            assert intent_state(key_b)["state"] not in ("COMMITTED", "FAILED") and len(history(record)) == rows_before
+            # an unresolved intent is visible to a concurrent request and is NOT started a second time
+            admitted = ex.stats()["admitted"]
+            second = post(env, form_b2)
+            assert second.status_code == 409 and second.json()["outcome"] == "IN_PROGRESS"
+            assert ex.stats()["admitted"] == admitted and len(list(hold.glob("reached.*"))) == 1
+            assert not running.done()
+            os.kill(pid, signal.SIGKILL)                           # the actual in-flight child, before it can return
+            _wait_for(lambda: _is_dead(pid), f"worker {pid} to die", timeout=10)
+            outcome = running.result(60).json()
+    finally:
+        (hold / "release").write_text("1", encoding="utf-8")        # bounded teardown even if an assertion failed
+        if pid is not None and not _is_dead(pid):
+            os.kill(pid, signal.SIGKILL)
+        monkeypatch.setattr(project_runner, "run_project", real)
     assert outcome["outcome"] == "FAILED" and intent_state(key_b)["state"] == "FAILED"
-    assert len(history(record)) == 1                                # nothing committed for the killed calculation
+    assert len(history(record)) == rows_before                      # nothing committed for the killed calculation
     retry = post(env, dict(form_b, csrf_token=run_form(env, record, key_b)["csrf_token"])).json()
     assert retry["outcome"] == "FAILED" and ex.stats()["admitted"] == admitted     # not re-executed after recovery
     commit(env, record)
-    assert len(history(record)) == 2 and ex.stats()["active"] == 0
+    assert len(history(record)) == rows_before + 1 and ex.stats()["active"] == 0
+    assert len(list(hold.glob("reached.*"))) == 1                   # the held calculation ran exactly once; the fresh key used the real one
 
 
 def test_lost_response_after_commit_is_replayed_without_touching_a_broken_executor(env):

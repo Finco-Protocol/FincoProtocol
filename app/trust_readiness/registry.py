@@ -653,6 +653,34 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         tables=("save_all_requests",),
     ),
     DataStoreEntry(
+        "data.project_lifecycle_events", "Project lifecycle receipts (WF03)", "SQLite database",
+        "user_id, project_id",
+        "Immutable archive/restore request identifiers, SHA-256 body digests, owner/project identifiers, "
+        "action, before/after visibility and lifecycle versions, and timestamps. No credentials, tokens or financial snapshots.", False,
+        "Not automatically deleted. No TTL or cascading project deletion. Minimal identifier/digest receipts "
+        "remain after authorized terminal demo disposal; an additional explicitly authorized retention procedure is required for erasure.",
+        "No individual receipt deletion API. Database triggers refuse UPDATE and DELETE. "
+        "No automatic erasure or erasure SLA is claimed.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/project_lifecycle_repository.py", "CREATE TABLE IF NOT EXISTS project_lifecycle_events"),),
+        "Retained tombstones deliberately have no cascading parent FK; access to status still requires the current owner/project.",
+        tables=("project_lifecycle_events",),
+    ),
+    DataStoreEntry(
+        "data.setup_drafts", "Non-runnable setup drafts (WF03)", "SQLite database",
+        "user_id",
+        "User-entered setup name, country, selected technology and explicit field IDs/values, draft version/state, "
+        "timestamps and minimal per-request digests/receipts. Drafts contain user text and financial assumptions, "
+        "but no calculated results, credentials or CSRF/session tokens.", True,
+        "Not automatically deleted. No TTL or erasure SLA. Setup drafts and their request evidence are "
+        "retained until an explicitly authorized retention/disposal mechanism exists.",
+        "No product deletion path or cascading project deletion. No canonical project exists before approved promotion.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/setup_draft_repository.py", "CREATE TABLE IF NOT EXISTS setup_drafts"),),
+        "Promotion is fail-closed while the strict no-default input mapping remains unproven. Draft storage is not financial readiness.",
+        tables=("setup_drafts",),
+    ),
+    DataStoreEntry(
         "data.backups", "Database backups", "Files on the host (default under the data directory)",
         "whole database", "A full copy of every table above.", True,
         "Automatic backups: the newest 10 are kept. Manual and pre-restore safety backups are "

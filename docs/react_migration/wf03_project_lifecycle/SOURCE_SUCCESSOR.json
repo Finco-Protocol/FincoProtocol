@@ -1,0 +1,1442 @@
+{
+  "schema_version": "WF03_LIFECYCLE_EXACT_SOURCE_V1",
+  "base": "8a74fcb5cd57e470cf83a458bd165ea14ad394fb",
+  "base_tree": "a96566a21154fd8e673676c20bd2e4e093599330",
+  "parent": "db504f6408cb456c617c9342a1ffa202ee455283",
+  "parent_tree": "9b96717bae39a4dbb496879c7e6c028e675492d3",
+  "authorization": {
+    "owner_addendum_sha256": "404fc56089a572675ab1ba42b0f33073da73aab3a625b3bba33c34c8a058e692",
+    "additional_paths": [
+      "tests/wsv2_core_scope.py",
+      "tools/ci_v3_production.py",
+      "tests/test_ci_v3_outcome_reconciliation.py"
+    ],
+    "additional_authorization": "Explicit user reply in this chat, 2026-10-29; bounded successor and additive negatives only",
+    "merge_deploy_activation": false,
+    "independent_final_review": "REQUIRED",
+    "rcm_csrf_successor": {
+      "paths": [
+        "tests/rcm_adapter_csrf_successor.py",
+        "tests/test_rcm_adapter_csrf_successor.py"
+      ],
+      "authorization": "Explicit Owner instruction in this chat, 2026-10-30 (FINAL CORRECTION: OWNER-APPROVED RCM ADAPTER CSRF SUCCESSOR); successor and additive negatives only; tests/test_trust_readiness_controls.py stays byte-identical",
+      "merge_deploy_activation": false
+    },
+    "ci_artifact_attempt_successor": {
+      "paths": [
+        ".github/workflows/ci_v3_required_job.yml",
+        "docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md",
+        "docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md",
+        "docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md",
+        "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+        "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+        "tests/test_ci_v3_production.py",
+        "tests/test_rc3_integration_inventory.py",
+        "tests/wf03_lifecycle_scope.py",
+        "tools/ci_v3_production.py",
+        "tools/ci_v3_source_reference.py"
+      ],
+      "authorization": "Owner incident prompt FINCO_PR400_OPUS_ROOT_CAUSE_CI_V3_ARTIFACT_ATTEMPT_INTEGRITY_FIX_2026-10-30 (scoped repair of CI artifact transport/provenance, fail-closed reruns and strictly necessary additive governance successor records/tests)",
+      "not_authorized": "financial, security, coverage, source/ancestry or immutable-evidence relaxation",
+      "merge_deploy_activation": false
+    },
+    "owner_three_exact_pin_successors": {
+      "paths": [
+        "tests/test_model_mutation_security_successor.py",
+        "tests/test_rcm_governance.py",
+        "tests/test_rcux_governance.py"
+      ],
+      "authorization": "Financial Owner approval FINCO_PR400_OWNER_APPROVAL_THREE_EXACT_PIN_SUCCESSORS_2026-10-30 (finite to the three successors)",
+      "not_authorized": "weakening tests, rewriting historical expected results, other protected paths or silent pin refreshes",
+      "merge_deploy_activation": false
+    }
+  },
+  "source_blobs": {
+    ".github/workflows/ci_public_job.yml": "248c1e4e46fa36e7a308b9b8e88c6fe27bafa830",
+    ".github/workflows/ci_v3_required_job.yml": "e96fe1eecc28fb3adc80ec7af64a32475f45f440",
+    ".github/workflows/public_safety_and_smoke.yml": "25c3c01d15664f859bee4f32251ab0f0b4b6dc85",
+    "app/demo_cleanup.py": "e3d61783bec1b861b9ed2bc1feae6e5474f12d82",
+    "app/library/router.py": "5f4abfd8272f0614f16d9e6ee4063df040dca99b",
+    "app/persistence/acquisition_repository.py": "ab7d139074cca93ef1a0cebbfb4cc56c335625e4",
+    "app/persistence/db.py": "84a5ed46b89ef2131e03bfc1c477d8f7e7e64788",
+    "app/persistence/project_lifecycle_repository.py": "346043583f2f39f0a6d7aa914acc29b6c63108dc",
+    "app/persistence/projects_repository.py": "a63b0df074047d98d6379e89874269d0ec3972c8",
+    "app/persistence/records.py": "a0b5b870ccc57e744067696ab006772b3c284c54",
+    "app/persistence/setup_draft_repository.py": "7af5f43e1526b081b335942bbb83b96ce42fb4c4",
+    "app/persistence/workspace_repository.py": "dafad754f237d5a50853145235a421a1749480eb",
+    "app/services/blank_readiness_service.py": "d91dbba24d790ca6e9e92e22c4e865aec58429e5",
+    "app/services/project_lifecycle_service.py": "043f3a968df9de2e1b0a0b4c9c694cfc94f88bc7",
+    "app/services/run_service.py": "405bc98e3667a64115a05142f59917fd7a83d424",
+    "app/services/save_run_service.py": "ba270641b4ba71a0ad6def3b98af29db2044deda",
+    "app/trust_readiness/registry.py": "ff6e97a71a3abd244e9802bbb50d095b916aa0f0",
+    "app/v2/react_new_project.py": "3708438d53790c98fa5851b0763230b23ba0e7b2",
+    "app/v2/react_projects.py": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
+    "app/v2/react_workspace_router.py": "cc56da2107598c983ba0e170ee9140c1d8cf3abf",
+    "app/v2/router.py": "fa5905a75a2fb0b6d53ea816643815eaf568293e",
+    "docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md": "b78645e02dee38ad6beb1cfadb77703a9228eba3",
+    "docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md": "d5a2e7013a2f8e4d5cc23b3949cf18ecd48f4c53",
+    "docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md": "736fae8e02769362285b5a09148aef99ec83e8d8",
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "0b264cdd00de3a4ad2144b5d48f1bbe7e803071c",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "b4560df3ff57e04ca5bb09e514bdff7ebb10673d",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "bec49e167223d469ac05fc03af2e96585686661e",
+    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "04def693c0ed90d0a8a20ae236b55e8fe804a901",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "70ba41995ee7744fca9f3e86a63f5921a3b5da66",
+    "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
+    "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
+    "frontend/src/app/LibraryView.tsx": "1afb10cb4c6ac3111b3587b56a83d6b3e4efb7e4",
+    "frontend/src/app/WorkspaceView.tsx": "66b20d2d89b854cf0ffca71035404a7c8c2d1d62",
+    "frontend/src/app/library/api.ts": "ee4e4b43cbefa1443c77038ab693599e3ecc01f8",
+    "frontend/src/app/library/types.ts": "68c961b3d310f3906f8139a0409694a8ab4738e7",
+    "frontend/src/app/newProject/NewProjectWizard.tsx": "2fb78750c5f03e951e593ab8ec199b102868c451",
+    "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
+    "main_web.py": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
+    "static/react/finco-react.css": "0568204f30a7764474ac830dc2b3fe4cb1d3d778",
+    "static/react/finco-react.js": "097f07e6810c5fea23d409789a0d4c3559beea4d",
+    "tests/d029_executor_hold.py": "9e0db180cc6f05a402bff97c460a0ea15bd41a7d",
+    "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+    "tests/model_mutation_security_successor.py": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
+    "tests/model_react_rcux_product_acceptance.py": "9fdb9b7f699564798be0d374ed8f1d81534cd2af",
+    "tests/model_react_wsv2_acceptance.py": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
+    "tests/rcm_adapter_csrf_successor.py": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
+    "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
+    "tests/test_ci_v3_production.py": "5a94e38e8c9fed6010a506d7ee15b2184ac33ba7",
+    "tests/test_ci_v3_reference_admission_successor.py": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
+    "tests/test_demo_history_retention.py": "0d71f9060f6a238a0deb0e05081c19cfb602fb54",
+    "tests/test_fin_v2_3_scope.py": "c8f1ed92b297105f3b049fba1b8775b596c0a5c4",
+    "tests/test_fin_v2_r1_scope.py": "39ab04b5cff692b8eccd32e983fbaac117ad8c20",
+    "tests/test_finv2_d01_governance.py": "b1fb79a1d6c92ae5ee345fb77838641d352c4238",
+    "tests/test_m6_lifecycle_boundary.py": "40afc439885530147db2d571f8c7d76a23cae45f",
+    "tests/test_model_insight_q3_scenario_reads.py": "250630f5aef2dba7cecf5a38bd43d5332c1d2d04",
+    "tests/test_model_mutation_security_successor.py": "33a9ae6051fede0dabe52c79fb2fd151950676fe",
+    "tests/test_model_react_rcux_projects_v1.py": "cb13519db953d1e318152dde03bf418d98a2cdb3",
+    "tests/test_model_v2_metadata.py": "6153641cd452cfcd5e30ddc2e70a0d5356cef2af",
+    "tests/test_model_workspace_consolidation_browser.py": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
+    "tests/test_p0b_executor_recovery_d029.py": "8252c0d62d63d6f1b69dc91a8787b6b9f0eaeef6",
+    "tests/test_portfolio_monitoring_real_runs.py": "a3d629deb8c4ccea370d7332533d4c8ba1bbf94e",
+    "tests/test_project_lifecycle.py": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
+    "tests/test_project_lifecycle_browser.py": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
+    "tests/test_rc3_integration_inventory.py": "e20effae0ff72542dae2966adfa85359ca32167a",
+    "tests/test_rc5_ci_successor_governance.py": "047bb44c052cc4b35f5a595d76056d86754000f2",
+    "tests/test_rc7b_quarterly_csrf_successor.py": "536d64a52f5fdc3aa162734f446d41e88ee5e714",
+    "tests/test_rcm_adapter_csrf_successor.py": "bd92eacfcb58db302e203fd9aad87b15b534dde7",
+    "tests/test_rcm_governance.py": "5cded8afe380e9282080351a7760c3a3121d2e94",
+    "tests/test_rcux_governance.py": "9c763e7e64afe4ecdd3777d142e0c3cae8299c46",
+    "tests/test_sc34_effective_revenue_inputs.py": "b28d54dcedb15dd5067da50dd6dfa28433e244a7",
+    "tests/test_sc34_project_identity.py": "a5d181d01bedd5b8545ffc19f89175518789be7e",
+    "tests/test_setup_draft_promotion.py": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
+    "tests/test_true_blank_readiness.py": "430ea655203bfec8fa03875e02378c80a0173528",
+    "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
+    "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
+    "tests/test_wf03_lifecycle_scope.py": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
+    "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
+    "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
+    "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
+    "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
+    "tests/wf03_lifecycle_scope.py": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
+    "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+    "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
+    "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
+    "tools/ci_v3_production.py": "741a23af65a910f0f3bead213cc60af5f6142a84",
+    "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee"
+  },
+  "predecessor_manifests": {
+    "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "33dc43e6cb5bcfe00cb2132bdb451ebbec80816b",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "aab22ae6beba0287f4332dccebb9502add45d3d3",
+    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "865f2e504fc044e253d469bcef86c9dfc471e41a",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "790f6e6875f4c2d476121bdaa0aeb00e452dfbe2",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "1b8432b359900da53d2eb8967b30660c68302167"
+  },
+  "path_ledger": [
+    {
+      "path": ".github/workflows/ci_public_job.yml",
+      "before_blob": "f843237cae125867b8978fb2cc38665dcf0c64d8",
+      "after_blob": "248c1e4e46fa36e7a308b9b8e88c6fe27bafa830",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": ".github/workflows/ci_v3_required_job.yml",
+      "before_blob": "f989ca25dafc560e010486dab9800b75b837ea50",
+      "after_blob": "7a320b59cc8c0f1f6fd6b22157b2d7e9ed2649ef",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": ".github/workflows/public_safety_and_smoke.yml",
+      "before_blob": "b5618c7fa2ef47bbd480bb74541c424c3e9552a2",
+      "after_blob": "25c3c01d15664f859bee4f32251ab0f0b4b6dc85",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "app/demo_cleanup.py",
+      "before_blob": "a6a33fe83c6814e167a7cf90cb8f757c5e17741e",
+      "after_blob": "e3d61783bec1b861b9ed2bc1feae6e5474f12d82",
+      "entry_points": [
+        "_delete_owned_state",
+        "_disposal_transaction"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/library/router.py",
+      "before_blob": "2b9a0bdc2ccfbde2f1b6e9401ee6ad935382e6b5",
+      "after_blob": "5f4abfd8272f0614f16d9e6ee4063df040dca99b",
+      "entry_points": [
+        "archive_project",
+        "project_lifecycle_status",
+        "unarchive_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/acquisition_repository.py",
+      "before_blob": "e565f7937063d81fdf552d599abfb03ad8f45630",
+      "after_blob": "ab7d139074cca93ef1a0cebbfb4cc56c335625e4",
+      "entry_points": [
+        "_table"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/db.py",
+      "before_blob": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
+      "after_blob": "84a5ed46b89ef2131e03bfc1c477d8f7e7e64788",
+      "entry_points": [
+        "_init_schema",
+        "get_connection",
+        "get_cursor",
+        "lifecycle_transaction"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/project_lifecycle_repository.py",
+      "before_blob": null,
+      "after_blob": "346043583f2f39f0a6d7aa914acc29b6c63108dc",
+      "entry_points": [
+        "LifecycleError",
+        "_current",
+        "_epoch_matches",
+        "_expand_schema",
+        "_install_trigger",
+        "_now",
+        "admission_scope",
+        "admit",
+        "eligible",
+        "ensure_schema",
+        "install_connection_functions",
+        "install_write_fences",
+        "require_write_cursor",
+        "status",
+        "transition",
+        "validate_body"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/projects_repository.py",
+      "before_blob": "8e9be46fee9b257756c18bd698252792d67bb01f",
+      "after_blob": "a63b0df074047d98d6379e89874269d0ec3972c8",
+      "entry_points": [
+        "abandon_stale_create",
+        "get_project",
+        "get_project_by_code",
+        "get_project_by_id",
+        "save_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/records.py",
+      "before_blob": "a7db9a4affe131cf9b7871a25d4790c5bbfd8940",
+      "after_blob": "a0b5b870ccc57e744067696ab006772b3c284c54",
+      "entry_points": [
+        "ProjectRecord"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/setup_draft_repository.py",
+      "before_blob": null,
+      "after_blob": "7af5f43e1526b081b335942bbb83b96ce42fb4c4",
+      "entry_points": [
+        "_body",
+        "creation_status",
+        "ensure_schema",
+        "list_owned",
+        "project_view",
+        "promote",
+        "read",
+        "request_status",
+        "write"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/persistence/workspace_repository.py",
+      "before_blob": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+      "after_blob": "dafad754f237d5a50853145235a421a1749480eb",
+      "entry_points": [
+        "save_workspace_state",
+        "v2_atomic_run_commit"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/blank_readiness_service.py",
+      "before_blob": null,
+      "after_blob": "d91dbba24d790ca6e9e92e22c4e865aec58429e5",
+      "entry_points": [
+        "catalogue",
+        "readiness"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/project_lifecycle_service.py",
+      "before_blob": null,
+      "after_blob": "043f3a968df9de2e1b0a0b4c9c694cfc94f88bc7",
+      "entry_points": [
+        "capability",
+        "handle_status",
+        "handle_transition",
+        "project_capability",
+        "response"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/run_service.py",
+      "before_blob": "5ad2cc3b95c85a60265ad892f4ef91f03001a852",
+      "after_blob": "405bc98e3667a64115a05142f59917fd7a83d424",
+      "entry_points": [
+        "_execute_generic_path",
+        "_execute_template_seeded_path",
+        "_execute_user_created_path",
+        "execute_run_route"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/services/save_run_service.py",
+      "before_blob": "4ca0428605bd4ded7dd69dec391a4d21d72a9c08",
+      "after_blob": "ba270641b4ba71a0ad6def3b98af29db2044deda",
+      "entry_points": [
+        "execute_save_run_route"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/trust_readiness/registry.py",
+      "before_blob": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
+      "after_blob": "ff6e97a71a3abd244e9802bbb50d095b916aa0f0",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_new_project.py",
+      "before_blob": "5abdb46a4704277a895d256a434f7a6f510206c1",
+      "after_blob": "3708438d53790c98fa5851b0763230b23ba0e7b2",
+      "entry_points": [
+        "_setup_auth",
+        "_setup_write",
+        "setup_creation_status",
+        "setup_draft_create",
+        "setup_draft_get",
+        "setup_draft_index",
+        "setup_draft_promote",
+        "setup_draft_status",
+        "setup_draft_update",
+        "setup_readiness"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_projects.py",
+      "before_blob": "19fdff7af2dee3d6cb3e276a2cb2952490ed2012",
+      "after_blob": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
+      "entry_points": [
+        "_entry",
+        "_own_records",
+        "react_my_projects"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/react_workspace_router.py",
+      "before_blob": "d1b045a6c788be534e567ef877ed321abb966c11",
+      "after_blob": "cc56da2107598c983ba0e170ee9140c1d8cf3abf",
+      "entry_points": [
+        "_resolve_project"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "app/v2/router.py",
+      "before_blob": "8d6a26331e6160b69ad2cad687ae11abadf64a15",
+      "after_blob": "fa5905a75a2fb0b6d53ea816643815eaf568293e",
+      "entry_points": [
+        "v2_workbook",
+        "v2_workbook_run"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
+      "before_blob": "8dd5415975cef0465308bec52f1cee515ce006e1",
+      "after_blob": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "before_blob": "1bfc453fc45a15f4dd8dc8315118f0432f532073",
+      "after_blob": "3536a0135285c36410bc597cfd919130bb5c818e",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "fa6b3533471fe7d5bc752b00c9c4124bbe098af0",
+      "after_blob": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "af3f88469a50668ac174d545514d0c2726002f19",
+      "after_blob": "09fd8ad2c500b7d60538fe24447659995e05aada",
+      "entry_points": [
+        "source_blobs",
+        "historical_source_blobs[db504f6]"
+      ],
+      "invariant": "only pins the exact WF-03 cohort owns and pins identically may move; previous WF-04 map preserved under historical_source_blobs; no financial change",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Post-#399 lineage successor; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json",
+      "before_blob": "865f2e504fc044e253d469bcef86c9dfc471e41a",
+      "after_blob": "4651058c88953ed39383bbf83e29bcc90959ce34",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "392bb92acd6675b4157bd1666821d797f5f05c47",
+      "after_blob": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+      "before_blob": "f3c56b90089d4f43a035640e4d133c011b5e3cf2",
+      "after_blob": "ede43ffbe19aaf79cb2481010b739034d2579517",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/readiness/02_data_handling.md",
+      "before_blob": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+      "after_blob": "cc6695cb145fd212fac48e83022c69ba79d991ad",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "docs/readiness/06_retention_and_deletion.md",
+      "before_blob": "4e46c27f1e74095554608bb084182af8960b14ee",
+      "after_blob": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/LibraryView.tsx",
+      "before_blob": "6e1679eb09c5180b0b541bd3242d46eb9633b6f0",
+      "after_blob": "1afb10cb4c6ac3111b3587b56a83d6b3e4efb7e4",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/WorkspaceView.tsx",
+      "before_blob": "a86ee44d17e22dc88ca68d9408d87f5689af1372",
+      "after_blob": "66b20d2d89b854cf0ffca71035404a7c8c2d1d62",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/library/api.ts",
+      "before_blob": "d7f6d8420bacd11831ab52fa20f04d5ced3c3037",
+      "after_blob": "ee4e4b43cbefa1443c77038ab693599e3ecc01f8",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/library/types.ts",
+      "before_blob": "5f0ba9a173ebce7dcfe2c36d8b3c564b993053a7",
+      "after_blob": "68c961b3d310f3906f8139a0409694a8ab4738e7",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/newProject/NewProjectWizard.tsx",
+      "before_blob": "6ebec05f08fe702eb36c0e128126f6fd38749a25",
+      "after_blob": "2fb78750c5f03e951e593ab8ec199b102868c451",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "frontend/src/app/workflow/PPAEditorView.tsx",
+      "before_blob": "ef055732e13a97bfaa3a5fd589bfea8d95299f23",
+      "after_blob": "925c5262b59a92feef3512f7fde7c481a3567262",
+      "entry_points": [
+        "PPAEditorView refreshing prop",
+        "runSubmit guard"
+      ],
+      "invariant": "Save is gated only while the revenue projection is older than the project; typed draft kept; server CAS (409 on stale identity, no write) unchanged; no sleep/retry/timeout change",
+      "negative_test": "out-of-repo probe: real Solar MVP acceptance under CPU load, 0/6 failures after vs 3/9 before",
+      "rationale": "Browser run 41042323291 (test_mvp_internal_path_with_financial_intelligence[solar]): POST revenue/contracts 409 with the pre-CAPEX content_hash; independent review required"
+    },
+    {
+      "path": "main_web.py",
+      "before_blob": "e74e94503efda5bb3e0993de71b01bbe1122b892",
+      "after_blob": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
+      "entry_points": [
+        "_lifecycle_admission_middleware",
+        "_lifecycle_write_refusal"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "static/react/finco-react.js",
+      "before_blob": "b7a76a078632c3db212fda36ac267738b69951d0",
+      "after_blob": "097f07e6810c5fea23d409789a0d4c3559beea4d",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/d029_executor_hold.py",
+      "before_blob": null,
+      "after_blob": "9e0db180cc6f05a402bff97c460a0ea15bd41a7d",
+      "entry_points": [
+        "held_run_project"
+      ],
+      "invariant": "new: test-only hold point inside the real spawned worker; inert unless a test installs it",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction D: D-029 worker-kill regression made deterministic after CI run 41066396196 (worker-1); scoped Owner authorization in the instruction; independent review still required"
+    },
+    {
+      "path": "tests/fin_v2_cohorts.py",
+      "before_blob": "079ff3949f293699882df196e3282a6f392ae5bd",
+      "after_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "entry_points": [
+        "exact module/data/presentation contract"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/model_mutation_security_successor.py",
+      "before_blob": "02ca1bbf373d6e7a2e5a8defcb0e54e6352cc47b",
+      "after_blob": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
+      "entry_points": [
+        "current_mutation_successor_valid"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/model_react_rcux_product_acceptance.py",
+      "before_blob": "26193998bd2978ddac55982176cb541b58f4e75e",
+      "after_blob": "9fdb9b7f699564798be0d374ed8f1d81534cd2af",
+      "entry_points": [
+        "test_rcux_product_create_new_path_is_a_disclosed_guided_setup"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/model_react_wsv2_acceptance.py",
+      "before_blob": "a43810efe0f3298f7867da467885550e2613ff35",
+      "after_blob": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
+      "entry_points": [
+        "test_wsv2_wizard_three_steps_library_and_safe_exception"
+      ],
+      "invariant": "blank-path limitation still asserted; expectation moved from the superseded collapsible note to the approved WF-03 non-runnable setup-draft disclosure; no test removed, skipped or weakened",
+      "negative_test": "tests/test_rcux_product_create_new_path_is_a_disclosed_guided_setup (model_react_rcux_product_acceptance)",
+      "rationale": "Outdated expectation contradicted the approved WF-03 contract (run 41021664401); independent review still required"
+    },
+    {
+      "path": "tests/rcm_adapter_csrf_successor.py",
+      "before_blob": "ddd9055119badbfd1e8a3a9c1378a94173f084ce",
+      "after_blob": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
+      "entry_points": [
+        "violations",
+        "legacy_violations",
+        "_setup_violations",
+        "current_rcm_adapter_valid"
+      ],
+      "invariant": "Owner-approved RCM adapter CSRF successor: finite reviewed successor retaining the historical pin (5abdb46a) and legacy negatives; no loosened test; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 final correction: Owner-approved RCM adapter CSRF successor (explicit chat instruction); independent review still required"
+    },
+    {
+      "path": "tests/test_ci_v3_outcome_reconciliation.py",
+      "before_blob": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
+      "after_blob": "7bccd1690dc6315fdb7531070d388f1423680db7",
+      "entry_points": [
+        "run_evidence",
+        "test_the_exception_is_not_selected_by_environment_branch_or_a_monkeypatched_policy",
+        "test_the_real_head_is_exactly_the_ws2_state_and_the_receipt_binds_it",
+        "test_wf03_ci_state_rejects_mixed_blobs_and_missing_same_run_evidence",
+        "test_ws2_one_byte_drift_of_any_trust_source_fails_closed",
+        "test_ws2_state_does_not_loosen_any_outcome_rule",
+        "test_ws2_state_rejects_hybrids_incomplete_tuples_and_tampered_receipts",
+        "test_ws2_state_requires_all_fifteen_same_run_evidence_nodes",
+        "ws2_parent_facts"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_ci_v3_production.py",
+      "before_blob": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
+      "after_blob": "5ade816350d4ef2dc3e4f63b06b5a8848e1d2fba",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tests/test_ci_v3_reference_admission_successor.py",
+      "before_blob": "061b211b7bb8e7f919a7608d908e452b570e751d",
+      "after_blob": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
+      "entry_points": [
+        "fixture"
+      ],
+      "invariant": "every strict assertion unchanged; only the synthetic accepted reference additionally carries the WF-03 evidence nodes as passed",
+      "negative_test": "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change",
+      "rationale": "#401 unit test run on the WF-03 (State C) tree; independent review still required"
+    },
+    {
+      "path": "tests/test_demo_history_retention.py",
+      "before_blob": "c56232944fb1c06cf037252be570413c15b92e29",
+      "after_blob": "0d71f9060f6a238a0deb0e05081c19cfb602fb54",
+      "entry_points": [
+        "test_mismatched_ownership_aborts_before_deletion",
+        "test_bootstrap_protected_demo_refused_before_first_mutation"
+      ],
+      "invariant": "Original demo cleanup refusals and rollback are preserved: test-only scoped foreign-row forgery installs invalid legacy state while production WF-03 tenant fences are restored before cleanup; historical protected demo retains all run history before being protected",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Correction B: exact-head CI-8 worker-1 artifact 12977963724: nine historic demo-cleanup fixtures failed before assertions at WF03_LIFECYCLE_CONFLICT; no production modification or general bypass; independent review required"
+    },
+    {
+      "path": "tests/test_fin_v2_3_scope.py",
+      "before_blob": "a4a5cf07b6b97a2ebe849a437cbfe4a98043fc85",
+      "after_blob": "c8f1ed92b297105f3b049fba1b8775b596c0a5c4",
+      "entry_points": [
+        "test_native_and_historical_financial_authorities_are_not_rewritten"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_fin_v2_r1_scope.py",
+      "before_blob": "21177a261b7c83f068e4cbf0f66107b88c0686ce",
+      "after_blob": "39ab04b5cff692b8eccd32e983fbaac117ad8c20",
+      "entry_points": [
+        "test_native_and_historical_financial_authorities_are_not_rewritten"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_finv2_d01_governance.py",
+      "before_blob": "5d7f0057e8b69c1221f6c27d5c9d40faf9017b4d",
+      "after_blob": "b1fb79a1d6c92ae5ee345fb77838641d352c4238",
+      "entry_points": [],
+      "invariant": "router-change confinement: expects exactly the two WF-03 guard handlers in addition to the D01 handler, only while WF-03 pins the exact router blob",
+      "negative_test": "the same file keeps its original negative controls; WF-03 pin must match exactly",
+      "rationale": "CI-8 worker 4 (run 41042323428) governance failures; independent review required"
+    },
+    {
+      "path": "tests/test_m6_lifecycle_boundary.py",
+      "before_blob": null,
+      "after_blob": "40afc439885530147db2d571f8c7d76a23cae45f",
+      "entry_points": [],
+      "invariant": "new: canonical vs minimal-schema M6 boundary, fail-closed negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_model_insight_q3_scenario_reads.py",
+      "before_blob": "c953ae5459dc0aa725b9972400b94ec583186623",
+      "after_blob": "250630f5aef2dba7cecf5a38bd43d5332c1d2d04",
+      "entry_points": [],
+      "invariant": "forged other-owner rows are created inside the fixture-only forgery seam; all read-isolation assertions unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_model_react_rcux_projects_v1.py",
+      "before_blob": "35cc12d1f101580d93aafd5a0b4ee471aa512bae",
+      "after_blob": "cb13519db953d1e318152dde03bf418d98a2cdb3",
+      "entry_points": [],
+      "invariant": "the archived project is archived through the real USER_ACTION transition (only those are listed/restorable); assertions unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_model_v2_metadata.py",
+      "before_blob": "4f2afcf1cddab29d331565eda96a4164895354e1",
+      "after_blob": "6153641cd452cfcd5e30ddc2e70a0d5356cef2af",
+      "entry_points": [],
+      "invariant": "archive through the real transition on a user-created project; metadata-preservation assertions unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_model_workspace_consolidation_browser.py",
+      "before_blob": "7c6478289c029f8b53e16103fa22b22123cbd19a",
+      "after_blob": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
+      "entry_points": [
+        "test_wf03_blank_setup_durable_non_runnable_browser",
+        "test_wf03_https_visible_archive_restore_matrix",
+        "test_wf03_lost_response_restore_original_replay_browser"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_p0b_executor_recovery_d029.py",
+      "before_blob": "58aa6d29334c6507f41906f0f3c6d51cf8f5bef7",
+      "after_blob": "8252c0d62d63d6f1b69dc91a8787b6b9f0eaeef6",
+      "entry_points": [
+        "test_worker_killed_during_calculation_leaves_a_terminal_intent_and_no_history"
+      ],
+      "invariant": "same assertions (FAILED terminal, no history, replay FAILED, fresh key commits) with a deterministic in-worker hold + real SIGKILL of that pid",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction D: D-029 worker-kill regression made deterministic after CI run 41066396196 (worker-1); scoped Owner authorization in the instruction; independent review still required"
+    },
+    {
+      "path": "tests/test_portfolio_monitoring_real_runs.py",
+      "before_blob": "2f095d831317d4661a9c2e6255a5f9e2c8e67ad1",
+      "after_blob": "a3d629deb8c4ccea370d7332533d4c8ba1bbf94e",
+      "entry_points": [],
+      "invariant": "foreign-owner project forged in the seam; archived project archived through the real transition; assertions unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_project_lifecycle.py",
+      "before_blob": null,
+      "after_blob": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
+      "entry_points": [
+        "command",
+        "financial_state",
+        "test_archive_restore_are_financially_neutral_and_receipt_replay_cannot_restore_old_state",
+        "test_complete_committed_run_replays_after_archive_without_last_run_overwrite",
+        "test_database_guard_requires_current_request_actor_inside_write_transaction",
+        "test_every_existing_writer_is_fenced_at_sql_boundary_even_after_aba",
+        "test_fault_in_event_insert_rolls_back_project_and_receipt",
+        "test_https_operation_tokens_and_status_owner_scope",
+        "test_ledger_immutable_and_generic_project_upsert_cannot_unarchive",
+        "test_legacy_archives_are_quarantined_not_user_restorable",
+        "test_library_all_filters_counts_and_unicode_search_precede_page_for_over_1000_projects",
+        "test_real_v2_run_cannot_commit_after_archive_wins",
+        "test_repeatable_migration_rejects_a_corrupted_same_name_write_fence",
+        "test_tenant_and_body_scope",
+        "world"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_project_lifecycle_browser.py",
+      "before_blob": null,
+      "after_blob": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
+      "entry_points": [
+        "_context",
+        "_financial",
+        "check_blank_setup_is_durable_explicit_and_non_runnable",
+        "check_lost_archive_response_then_restore_and_original_replay",
+        "check_visible_https_archive_restore_matrix",
+        "wf03_browser",
+        "wf03_servers"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_rc3_integration_inventory.py",
+      "before_blob": "2e46a5bd8d022cc618fa0d102772aa4a92935d04",
+      "after_blob": "5116f668205c4318a01ebd142828de99256df32f",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tests/test_rc5_ci_successor_governance.py",
+      "before_blob": "ad6857eb2dec1110a4277f4cf0afb6ca0d19b24f",
+      "after_blob": "047bb44c052cc4b35f5a595d76056d86754000f2",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tests/test_rc7b_quarterly_csrf_successor.py",
+      "before_blob": "7dcc3871efe2f6a421d42a8ea9679842088726f1",
+      "after_blob": "536d64a52f5fdc3aa162734f446d41e88ee5e714",
+      "entry_points": [],
+      "invariant": "reference workspace bootstrapped while writable, then sealed read-only; identical 403/unchanged-state assertions plus a direct post-seal write negative",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_rcm_adapter_csrf_successor.py",
+      "before_blob": "183bb2ec0ab25f25b36309fcd4b98507d01203c0",
+      "after_blob": "bd92eacfcb58db302e203fd9aad87b15b534dde7",
+      "entry_points": [],
+      "invariant": "Owner-approved RCM adapter CSRF successor: finite reviewed successor retaining the historical pin (5abdb46a) and legacy negatives; no loosened test; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 final correction: Owner-approved RCM adapter CSRF successor (explicit chat instruction); independent review still required"
+    },
+    {
+      "path": "tests/test_rcux_governance.py",
+      "before_blob": "bb895f71a731fc106b815a3ca8ba50f4f2a51fb9",
+      "after_blob": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
+      "entry_points": [
+        "test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_sc34_effective_revenue_inputs.py",
+      "before_blob": "90d8e9a7e9abd812c1d277fd43f09560759fb3cf",
+      "after_blob": "b28d54dcedb15dd5067da50dd6dfa28433e244a7",
+      "entry_points": [],
+      "invariant": "foreign-owner scenario forged in the seam; out-of-scope scenario still must not supply a display tariff",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_sc34_project_identity.py",
+      "before_blob": "f648f4a9a7b58836d0ff735c881068dc18ac03c5",
+      "after_blob": "a5d181d01bedd5b8545ffc19f89175518789be7e",
+      "entry_points": [],
+      "invariant": "owner_mismatch is now refused earlier by the WF-03 tenant fence (IntegrityError WF03_LIFECYCLE_CONFLICT); full-workspace rollback assertion unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_setup_draft_promotion.py",
+      "before_blob": null,
+      "after_blob": "1ee213c24e752f8cb49c9a3ae91326bf56cab561",
+      "entry_points": [
+        "body",
+        "draft_db",
+        "test_durable_setup_replay_and_refused_promotion_make_no_canonical_rows",
+        "test_noneditable_arbitrary_fields_and_unknown_keys_cannot_be_persisted",
+        "test_two_tenants_two_tabs_and_changed_body_key_are_independently_scoped"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_true_blank_readiness.py",
+      "before_blob": null,
+      "after_blob": "430ea655203bfec8fa03875e02378c80a0173528",
+      "entry_points": [
+        "test_explicit_zero_is_preserved_as_input_and_invalid_is_reported",
+        "test_missing_economics_never_ready_and_real_registry_fields_have_units",
+        "test_storage_is_release_closed"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_trust_readiness_controls.py",
+      "before_blob": "cd5b3114d9a11ca4507667a099bb853573d056d3",
+      "after_blob": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
+      "entry_points": [
+        "test_known_gap_state_changing_posts_have_no_csrf_token"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_trust_readiness_registry.py",
+      "before_blob": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
+      "after_blob": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
+      "entry_points": [
+        "_rc1_post_merge_violations",
+        "_registry_matches_history",
+        "test_d029_trust_successor_exact_baseline_and_exact_new_content"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_wf03_lifecycle_scope.py",
+      "before_blob": null,
+      "after_blob": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
+      "entry_points": [
+        "test_complete_closed_successor_and_unchanged_historical_maps",
+        "test_every_owned_byte_and_missing_path_fail_closed",
+        "test_manifest_forgery_and_incomplete_successor_refused",
+        "test_trust_successor_preserves_the_actual_ws2_parent_byte_content",
+        "test_wrong_ancestor_and_unreviewed_changed_path_are_refused"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_wf04_scope.py",
+      "before_blob": "407cad44f1ab90cff05cbae07745e0d4198d4138",
+      "after_blob": "60ce0963903f78837041321902873b4b18253ba1",
+      "entry_points": [
+        "REF=WF03_PARENT"
+      ],
+      "invariant": "WF-04 delta assertions unchanged in meaning; evaluated at the immutable merged #399 commit so the WF-03 successor cannot blur them",
+      "negative_test": "tests/test_wf04_scope.py::test_the_ws2_cohort_is_valid_with_the_wf04_delta_present_and_wf04_is_not_a_wildcard",
+      "rationale": "Post-#399 lineage successor; independent review still required"
+    },
+    {
+      "path": "tests/test_wf07_revenue_workspace.py",
+      "before_blob": "0d2a4895dc85d4e5a5f359b302b2ace53d379814",
+      "after_blob": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
+      "entry_points": [],
+      "invariant": "archived between page load and save through the real transition; RevenueContractConflict assertion unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/test_wsv2_core_scope.py",
+      "before_blob": "b17cb809acc44b8fb3b800800fff3daaeeb00741",
+      "after_blob": "0bfcad6086eae93538a1de4e7929474204827442",
+      "entry_points": [],
+      "invariant": "WS-1 core scope tests: four assertions also admit the exact WF-03 state (presentation/role/acceptance pin, WF-03-owned re-pins, additive-only role prefix); every original strict check and negative remains",
+      "negative_test": "the same file keeps its original negative controls; WF-03 pin must match exactly",
+      "rationale": "CI-8 worker 4 (run 41042323428) governance failures; independent review required"
+    },
+    {
+      "path": "tests/wf03_fixture_seams.py",
+      "before_blob": null,
+      "after_blob": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
+      "entry_points": [],
+      "invariant": "new: fixture-only seams (real archive transition; scoped forgery window)",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "CI-8 worker failures on ccd3c44a (run 41029045753); independent review still required"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": null,
+      "after_blob": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
+      "entry_points": [
+        "_baseline_bytes",
+        "_blob",
+        "_git",
+        "_historical_maps_ok",
+        "_immutable_git_bytes",
+        "_read",
+        "accepts_ci_trust_state",
+        "allowed_path",
+        "ci_source_facts",
+        "exact_blobs_ok",
+        "historical_pin_successor",
+        "manifest",
+        "matches",
+        "protected_blobs",
+        "trust_registry_successor",
+        "valid"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/wf04_scope.py",
+      "before_blob": "baca1b0248abee20fa874bee4e914d82390ccd34",
+      "after_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "entry_points": [
+        "_wf03",
+        "_downstream_allows",
+        "_downstream_pin",
+        "_own_manifest_follows_only_wf03"
+      ],
+      "invariant": "WF-04 cohort follows ONLY pins that the exact WF-03 cohort owns and pins identically; previous WF-04 pin map preserved under historical_source_blobs[db504f6]; no financial formula or WF-04 semantics changed",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Post-#399 lineage successor required for the ordinary merge of main into #400; independent review still required"
+    },
+    {
+      "path": "tests/wsv2_core_scope.py",
+      "before_blob": "a336c73640382afd454bd981c2390ea4b123175f",
+      "after_blob": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
+      "entry_points": [
+        "_historical_manifests_ok",
+        "_ws2_allows"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tools/ci_v3_container.py",
+      "before_blob": "a72d2552525aefaa2fd4ca8171a05bd1786de6ea",
+      "after_blob": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tools/ci_v3_production.py",
+      "before_blob": "ef9f18c6ba3eb13dbf70aaec19c572c42686bcda",
+      "after_blob": "9ca394a18f6856bd5cad49af87c05ae0f6cf04d6",
+      "entry_points": [
+        "d029_source_facts",
+        "d029_transition_problems"
+      ],
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged | timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": ".github/workflows/ci_v3_required_job.yml",
+      "before_blob": "7a320b59cc8c0f1f6fd6b22157b2d7e9ed2649ef",
+      "after_blob": "e96fe1eecc28fb3adc80ec7af64a32475f45f440",
+      "entry_points": [],
+      "invariant": "attempt-scoped artifact names; success-only authoritative uploads plus failure diagnostics; plan seal step; immutable plan/runtime artifact-ID handoff; worker attempt guard; aggregate attempt check. Timeouts, jobs, needs, matrix, coverage unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tools/ci_v3_production.py",
+      "before_blob": "9ca394a18f6856bd5cad49af87c05ae0f6cf04d6",
+      "after_blob": "25d06ce034cfb200597dad0b6352a227b322e013",
+      "entry_points": [],
+      "invariant": "seal_attempt/check_seal_binding/preflight before Docker; loaded image identity; authenticate_current selects only current-attempt names (exactly one each, run/head bound, producer success in /attempts/N/jobs, archive digest and byte equality) and records artifact IDs. verify_data, D-029/WS-2/WF-03 outcome rules unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tools/ci_v3_source_reference.py",
+      "before_blob": "7563bddea3d26f50e904ef1983ff252a14208a39",
+      "after_blob": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee",
+      "entry_points": [],
+      "invariant": "accepted-reference authentication reads the reference run final attempt scoped names (logical folders for that source verifier); legacy unsuffixed runs keep the original rule; all uniqueness/digest/producer checks unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tests/test_ci_v3_production.py",
+      "before_blob": "5ade816350d4ef2dc3e4f63b06b5a8848e1d2fba",
+      "after_blob": "80e81828b4d687af1e60ebd9140a0c8ae9f730ea",
+      "entry_points": [],
+      "invariant": "existing node ids/attacks kept (service fixture uses the current attempt names); additive incident-replay cases A-F with real ZIP round trips, workflow-contract and reference-selection negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tests/test_rc3_integration_inventory.py",
+      "before_blob": "5116f668205c4318a01ebd142828de99256df32f",
+      "after_blob": "e20effae0ff72542dae2966adfa85359ca32167a",
+      "entry_points": [],
+      "invariant": "Gate 1 finding: node ids kept; historical CI-200M contract judged on the text derived from the pinned RC-5 reference; worktree must be an exact member of the RC-3->RC-5->CI-200M->CI-340M chain; every negative kept",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
+      "after_blob": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
+      "entry_points": [],
+      "invariant": "four additional exact owned paths (one tool, three incident documents); no new .github/ path",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+      "before_blob": "ede43ffbe19aaf79cb2481010b739034d2579517",
+      "after_blob": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
+      "entry_points": [],
+      "invariant": "predecessor pin map follows the two exact WF-03 pins (tools/ci_v3_production.py, tests/test_ci_v3_production.py); history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "09fd8ad2c500b7d60538fe24447659995e05aada",
+      "after_blob": "2706986f182a1a34020020897c9167e78b2fce53",
+      "entry_points": [],
+      "invariant": "WF-04 pin of the wsv2_editing manifest follows the exact WF-03 pin (downstream rule); nothing else changed",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md",
+      "before_blob": "2ed3653b62720bb490c048ab58cac6410d279fd2:docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md",
+      "after_blob": "d5a2e7013a2f8e4d5cc23b3949cf18ecd48f4c53",
+      "entry_points": [],
+      "invariant": "incident report (documentation only)",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md",
+      "before_blob": "2ed3653b62720bb490c048ab58cac6410d279fd2:docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md",
+      "after_blob": "b78645e02dee38ad6beb1cfadb77703a9228eba3",
+      "entry_points": [],
+      "invariant": "change ledger (documentation only)",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md",
+      "before_blob": "2ed3653b62720bb490c048ab58cac6410d279fd2:docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md",
+      "after_blob": "736fae8e02769362285b5a09148aef99ec83e8d8",
+      "entry_points": [],
+      "invariant": "Gate 1 evidence (documentation only)",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "tests/test_rcux_governance.py",
+      "before_blob": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
+      "after_blob": "9c763e7e64afe4ecdd3777d142e0c3cae8299c46",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/test_rcm_governance.py",
+      "before_blob": "0877ab11c41a394f3d921a5b6d4489fdfb99a284",
+      "after_blob": "5eaeee7f40ebf867e32fe99593082da3dcefb7d2",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/test_model_mutation_security_successor.py",
+      "before_blob": "c922d847fa598a1b60815dc24db0192ebf6b41a5",
+      "after_blob": "33a9ae6051fede0dabe52c79fb2fd151950676fe",
+      "entry_points": [],
+      "invariant": "Owner-approved finite exact-pin successor (2026-10-30); every historical assertion and negative kept; additive negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
+      "after_blob": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
+      "entry_points": [],
+      "invariant": "+2 exact owned paths (the two governance tests of the Owner-approved successors); no .github/ path added",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
+      "before_blob": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
+      "after_blob": "3b993ee14aab75ac642182749c53f1de69b2411b",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
+      "after_blob": "9ce2a362865c6657775f0ac6da90a87295e80aa6",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "before_blob": "3536a0135285c36410bc597cfd919130bb5c818e",
+      "after_blob": "ffd99564424905cd582aec37a997f5b8508cf6ce",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
+      "after_blob": "68066dea57238818ad9c84a48c78c0fc4505d10d",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "2706986f182a1a34020020897c9167e78b2fce53",
+      "after_blob": "0d2bbf6acdb880746e2af090e58816a751aee356",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: three finite exact-pin governance successors (run 41115403654 workers 3/4)",
+      "successor": "owner-three-exact-pin"
+    },
+    {
+      "path": "tests/test_rcm_governance.py",
+      "before_blob": "5eaeee7f40ebf867e32fe99593082da3dcefb7d2",
+      "after_blob": "5cded8afe380e9282080351a7760c3a3121d2e94",
+      "entry_points": [],
+      "invariant": "RC-M successor: exactly router + WorkspaceView.tsx at their WF-03 blobs; all historical assertions and negatives kept",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json",
+      "before_blob": "3b993ee14aab75ac642182749c53f1de69b2411b",
+      "after_blob": "0b264cdd00de3a4ad2144b5d48f1bbe7e803071c",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "9ce2a362865c6657775f0ac6da90a87295e80aa6",
+      "after_blob": "b4560df3ff57e04ca5bb09e514bdff7ebb10673d",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "before_blob": "ffd99564424905cd582aec37a997f5b8508cf6ce",
+      "after_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "68066dea57238818ad9c84a48c78c0fc4505d10d",
+      "after_blob": "04def693c0ed90d0a8a20ae236b55e8fe804a901",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "0d2bbf6acdb880746e2af090e58816a751aee356",
+      "after_blob": "c9cbcd170692b93932d3cb3ae3dba4ad53d5b93e",
+      "entry_points": [],
+      "invariant": "predecessor pin map: only the exact pins of the three successor tests follow the WF-03 pins; history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Financial Owner approval 2026-10-30: RC-M successor extended to the reviewed WF-03 WorkspaceView.tsx blob",
+      "successor": "owner-rcm-workspaceview"
+    },
+    {
+      "path": "tools/ci_v3_production.py",
+      "before_blob": "25d06ce034cfb200597dad0b6352a227b322e013",
+      "after_blob": "741a23af65a910f0f3bead213cc60af5f6142a84",
+      "entry_points": [
+        "verify_data"
+      ],
+      "invariant": "verify_data: D-029 same-run evidence judged over every worker of the run (was: only the reconciled node worker); every per-worker check unchanged",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "tests/test_ci_v3_production.py",
+      "before_blob": "80e81828b4d687af1e60ebd9140a0c8ae9f730ea",
+      "after_blob": "5a94e38e8c9fed6010a506d7ee15b2184ac33ba7",
+      "entry_points": [],
+      "invariant": "additive regression test (fails on the old per-worker evidence view)",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
+      "before_blob": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
+      "after_blob": "70ba41995ee7744fca9f3e86a63f5921a3b5da66",
+      "entry_points": [],
+      "invariant": "predecessor pins follow the two exact WF-03 pins; history unchanged",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "c9cbcd170692b93932d3cb3ae3dba4ad53d5b93e",
+      "after_blob": "bec49e167223d469ac05fc03af2e96585686661e",
+      "entry_points": [],
+      "invariant": "WF-04 pin of the wsv2_editing manifest follows the exact WF-03 pin",
+      "negative_test": "tests/test_ci_v3_production.py::test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker",
+      "rationale": "FINCO PR #400 run 41127287044: aggregate rejected the D-029 node because its WF-03 evidence ran on other workers (CI verifier defect)",
+      "successor": "d029-run-wide-evidence"
+    }
+  ],
+  "true_blank": {
+    "persisted_setup": true,
+    "promotion_available": {
+      "solar": false,
+      "wind": false,
+      "data_center": false,
+      "ev_charging": false
+    },
+    "reason": "Unseeded consumed-input closure remains unproven; no canonical materializer is called."
+  },
+  "rollback": "Compatible lifecycle-guarded connection implementation or explicit read-only maintenance; unguarded old binaries are unsafe",
+  "validation": "See external WF03 evidence receipt and exact-head CI; this manifest is a seal, not a PASS claim"
+}

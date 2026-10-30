@@ -1156,6 +1156,11 @@ def _registry_matches_history(original):
     current = _read_current("app/trust_readiness/registry.py").strip()
     if current == original:
         return True
+    from tests import wf03_lifecycle_scope as WF03
+    if WF03.matches("app/trust_readiness/registry.py",current+"\n"):
+        # The complete WF03 source layer proves the actual merged WS2 parent;
+        # only its exact append-only registry successor is admitted here.
+        return WF03.trust_registry_successor(original, current)
     try:
         f35b = _f35b_csrf_registry(original)
         m4 = _m4_registry(f35b)
@@ -1763,7 +1768,8 @@ def _rc1_post_merge_violations(f) -> list[str]:
         base_registry = _f35b_csrf_registry(f["registry_base"]).strip()
         reviewed = (base_registry, _m4_registry(base_registry)) \
             + _registry_with_d029(base_registry)[1:] + _registry_with_d029(_m4_registry(base_registry))[1:]
-        if f["registry_current"].strip() not in reviewed:
+        from tests import wf03_lifecycle_scope as WF03
+        if f["registry_current"].strip() not in reviewed and not WF03.trust_registry_successor(f["registry_base"], f["registry_current"]):
             problems.append("Trust registry is not the reviewed text")
         if frozenset(f["call_sites"]) not in (F4_CSRF_CALL_SITES, M4_CALL_SITES):
             problems.append("CSRF validation call sites differ from the reviewed inventory")
@@ -1869,8 +1875,14 @@ def test_d029_trust_successor_exact_baseline_and_exact_new_content():
     base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
     assert _git("rev-parse", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py") == D029_TRUST_MAIN_REGISTRY_BLOB
     current = _read_current("app/trust_readiness/registry.py")
-    assert _git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") in (D029_TRUST_REGISTRY_BLOB, WS2_TRUST_REGISTRY_BLOB)
-    assert current.strip() in (_d029_registry(base).strip(), _ws2_registry(_d029_registry(base)).strip())   # main + the reviewed entries, nothing else
+    from tests import wf03_lifecycle_scope as WF03
+    historical = _git("cat-file", "blob", D029_TRUST_REGISTRY_BLOB)
+    ws2_historical = _git("cat-file", "blob", WS2_TRUST_REGISTRY_BLOB)
+    assert historical.strip() == _d029_registry(base).strip()
+    assert ws2_historical.strip() == _ws2_registry(_d029_registry(base)).strip()
+    assert (_git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") in (D029_TRUST_REGISTRY_BLOB, WS2_TRUST_REGISTRY_BLOB)
+            or WF03.trust_registry_successor(ws2_historical,current))
+    assert current.strip() in (_d029_registry(base).strip(), _ws2_registry(_d029_registry(base)).strip()) or WF03.trust_registry_successor(ws2_historical,current)
     removed = [l for l in __import__("difflib").unified_diff(base.splitlines(), current.splitlines(), lineterm="", n=0)
                if l.startswith("-") and not l.startswith("---")]
     assert removed == [], "the D-029 successor may only ADD lines"
