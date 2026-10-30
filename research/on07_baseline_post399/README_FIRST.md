@@ -1,3 +1,5 @@
+> **Superseded in part:** the #400 head `21d3ad8f` and the "WND-02 diagnostic" in this earlier study are stale. See `../on07_correction_a/README_FIRST.md` and `SOURCE_GOVERNANCE_DECISION.md` (two-layer SHL finding; true-route cost-line entry; construction-draw schedule IS exposed; payload `sources_uses` is 6-dp quantised).
+
 # FINCO ON-07 Executable Local Baseline (post-#399) — VERDICT: **PARTIAL**
 
 `BASELINE_READY_FOR_POST400_LIVE_ACCEPTANCE` is **not** claimed. The harness is executable and reproducible, and 3 of 4 fixtures produced real engine Runs, but: WND-02 is refused by the engine (recorded, not coerced); the Run route does not bind the fixture CAPEX/OPEX totals (see Finding 1); several template metrics are not exposed by the Run payload; the ON-05 oracle was not supplied; contractual-DSCR/covenant status is not part of the Run payload. Exact blockers are in section 5.

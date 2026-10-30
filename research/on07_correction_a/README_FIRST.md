@@ -1,3 +1,5 @@
+> **Status update (later on 2026-10-30):** PR heads below are snapshots (#400 has since moved to `e66b7346...`). Merge status of PR #403 is governed by `SOURCE_GOVERNANCE_DECISION.md` (`BLOCKED_SOURCE_GOVERNANCE`: any added path fails the closed-world exact-source guards). Inputs/re-run: `INPUTS_AND_PROVENANCE.md`.
+
 # FINCO ON-07 Correction A - true-route fixture materialisation + WND-02 SHL forensics
 ## VERDICT: **PARTIAL** (`BASELINE_READY_FOR_POST400_LIVE_ACCEPTANCE` is NOT claimed)
 Why: (1) the original WND-02 does not run and its runnable replacement WND-02-R is **not yet owner-accepted** and does not preserve the high-executed-leverage stress; (2) no `COMMITTED_RUN` and no `LIVE_UI_PARITY` evidence exists; (3) NPV/LLCR/PLCR are NOT_CONFIGURED; (4) P90/P99 are derived, not enterable; (5) the cost-line allocation rule (OD-2) is mine, not the fixture author's. What IS established: SOL-01, SOL-02, WND-01 materialise as intended on the user-created route (every compared input MATCH), run, satisfy the independent identities and the ON-05 oracle, and reproduce across 3 fresh databases.
