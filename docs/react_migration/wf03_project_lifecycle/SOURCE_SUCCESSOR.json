@@ -65,11 +65,12 @@
     "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
     "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
     "tests/test_wf03_lifecycle_scope.py": "4f82258150e0ac836317cb4037e212a0a213cd82",
-    "tests/wf03_lifecycle_scope.py": "bb1130770a898e9cea4570e82e9b31791bc6c009",
+    "tests/wf03_lifecycle_scope.py": "9587901f98ec27bebc287dd78bcf2c4490b07a7e",
     "tests/wsv2_core_scope.py": "2ae87be09f34c4e92b83b09c0c44e253fc75632c",
     "tools/ci_v3_production.py": "001294f035616903e1cd4c8358ce81e3493ca32b",
     "tests/wf04_scope.py": "041aa5135e1b47ac08978d4828689c291edabec5",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "cc298e8d07f266b2aa00bfb87ca7414ea582e62e"
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "a99ec55078cdd03e877bac58b9902030890e8626",
+    "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1"
   },
   "predecessor_manifests": {
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
@@ -716,6 +717,17 @@
       "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_wf04_scope.py",
+      "before_blob": "407cad44f1ab90cff05cbae07745e0d4198d4138",
+      "after_blob": "60ce0963903f78837041321902873b4b18253ba1",
+      "entry_points": [
+        "REF=WF03_PARENT"
+      ],
+      "invariant": "WF-04 delta assertions unchanged in meaning; evaluated at the immutable merged #399 commit so the WF-03 successor cannot blur them",
+      "negative_test": "tests/test_wf04_scope.py::test_the_ws2_cohort_is_valid_with_the_wf04_delta_present_and_wf04_is_not_a_wildcard",
+      "rationale": "Post-#399 lineage successor; independent review still required"
     },
     {
       "path": "tests/wf03_lifecycle_scope.py",
