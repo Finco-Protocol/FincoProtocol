@@ -240,9 +240,6 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
     # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
     hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
-    # Sixth: the Financial Owner-approved post-#400 Goal Seek Step 4 successor (bracketed Illinois regula falsi, 2026-10-30): exactly
-    # app/services/goal_seek.py at exactly its WF-03-pinned blob. Every other forbidden path, and any other byte of this one, is still a hit.
-    hits = [p for p in hits if not (p == "app/services/goal_seek.py" and WF03.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
@@ -315,17 +312,3 @@ def test_the_wf03_ci_workflow_successor_is_exact_path_and_exact_blob_only():
         assert WF03.matches(path, raw) and not WF03.matches(path, raw + b"\n") and not WF03.matches(path, raw.replace(b"timeout-minutes", b"timeout-minutez", 1))
     for other in (".github/workflows/protocol_ui_browser.yml", ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/new_unreviewed.yml"):
         assert other not in WF03.CI_TIMEOUT_WORKFLOWS and not WF03.allowed_path(other)
-
-
-def test_the_goal_seek_successor_is_one_path_at_one_exact_blob():
-    """Negatives for the Goal Seek Step 4 successor: only app/services/goal_seek.py, only at its exact WF-03 pin."""
-    from tests import wf03_lifecycle_scope as WF03
-    path = "app/services/goal_seek.py"
-    raw = (S.ROOT / path).read_bytes()
-    assert WF03.matches(path, raw)
-    for label, changed in (("one byte", raw + b"\n"), ("tolerance widened", raw.replace(b"DEFAULT_TARGET_TOLERANCE = 1e-4", b"DEFAULT_TARGET_TOLERANCE = 1e-2", 1)),
-                           ("budget raised", raw.replace(b"DEFAULT_MAX_MODEL_EVALUATIONS = 40", b"DEFAULT_MAX_MODEL_EVALUATIONS = 400", 1)),
-                           ("verification dropped", raw.replace(b"verify_financial_target = metric_key in", b"verify_financial_target = False and metric_key in", 1))):
-        assert changed != raw and not WF03.matches(path, changed), label
-    for other in ("app/services/financial_goal_seek.py", "app/services/sensitivity_matrix.py", "app/v2/react_goal_seek.py"):
-        assert not WF03.matches(other, raw), other

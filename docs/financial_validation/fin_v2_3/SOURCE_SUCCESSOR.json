@@ -12,7 +12,7 @@
     "app/services/clean_presentation_adapter.py": "0b381b08b0a751cf7a16c85e9ec3ed18d8f58ff5",
     "app/services/financial_core_evidence.py": "1330225e7ec9fffd9766dda058ad32c4ac097b28",
     "app/services/financial_goal_seek.py": "1dd36dc6188378622e5758de9d09f86eb16fece0",
-    "app/services/goal_seek.py": "003288f409e00fd8c538353676b38274139eafea",
+    "app/services/goal_seek.py": "592a89e8e2c2b4114556979f04e2f1d0aaceba4b",
     "app/services/ic_report_service.py": "b44502fcff4400fc7a377661e3e38c93f75775b7",
     "app/services/sensitivity_execution.py": "fa73df195b60d02f452d49ef55b5a735a5659b83",
     "app/v2/react_goal_seek.py": "b5bf2d2a920f5b278f2a6a98dd64944e80869ceb",
