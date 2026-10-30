@@ -143,6 +143,10 @@ BRACKET_UPPER_MULTIPLE = 3.0      # initial upper = 3x current tariff
 BRACKET_MAX_EXPANSIONS = 2
 BRACKET_EXPANSION_FACTOR = 4.0
 LADDER_POINTS = 5                 # interior resolution of the bracket ladder
+#: Step 4 candidate safeguards (bracketed Illinois regula falsi, see _illinois_candidate): an interpolated
+#: candidate closer than this fraction of the live bracket to either endpoint is replaced by the midpoint (stalls are
+#: handled separately: two steps that do not halve the bracket force one midpoint step).
+ILLINOIS_INTERIOR_FRACTION = 1e-3
 
 
 class GoalSeekModelRunError(Exception):
@@ -301,6 +305,26 @@ async def solve_tariff_for_metric(
             bracket_upper=None,
             started_from_value=current_tariff,
             message="Evaluation budget exhausted before the target could be solved.")
+
+
+def _illinois_candidate(lo: float, hi: float, w_lo: float, w_hi: float, force_bisection: bool) -> tuple[float, str]:
+    """Next Step 4 tariff inside the live certified bracket ``(lo, hi)``.
+
+    ``w_lo`` (< 0) and ``w_hi`` (> 0) are the Illinois-damped residuals used ONLY to place the candidate; the
+    canonical evidence stays the evaluated endpoint metrics held by the caller. Never extrapolates: a non-finite,
+    degenerate, out-of-bracket or endpoint-skewed interpolation, or a forced safeguard step, returns the
+    deterministic midpoint instead."""
+    mid = (lo + hi) / 2.0
+    if force_bisection:
+        return mid, "bisection"
+    denominator = w_hi - w_lo
+    if not (math.isfinite(w_lo) and math.isfinite(w_hi) and math.isfinite(denominator)) or denominator <= 0.0:
+        return mid, "bisection"
+    candidate = hi - w_hi * (hi - lo) / denominator
+    margin = (hi - lo) * ILLINOIS_INTERIOR_FRACTION
+    if not math.isfinite(candidate) or not (lo + margin < candidate < hi - margin):
+        return mid, "bisection"
+    return candidate, "illinois"
 
 
 async def _solve_impl(
@@ -624,8 +648,17 @@ async def _solve_impl(
                 expansions=expansions,
                 message=f"Solved at a probed bracket edge.")
 
-    # ── Step 4: bisection (deterministic) ─────────────────────────────────── #
+    # ── Step 4: safeguarded bracketed Illinois regula falsi (deterministic) ─── #
+    # Candidates are placed by Illinois interpolation on damped residuals (w_lo/w_hi) and fall back to the
+    # midpoint whenever interpolation is unsafe or the bracket stops halving; the bracket itself only ever
+    # moves to canonically evaluated points, and every acceptance/refusal rule below is the bisection one.
     lo, hi, f_lo_v, f_hi_v = t_lo, t_hi, f_lo, f_hi
+    w_lo, w_hi = f_lo - target_value, f_hi - target_value
+    retained_side: Optional[str] = None
+    widths = [hi - lo]
+    # A bracket that straddles an explored point whose metric was unavailable is NOT certified continuous: there the
+    # step runs exactly the historical midpoint bisection, so its discontinuity refusal is reproduced unchanged.
+    uncertified = any(f is None and t_lo < t < t_hi for t, f in probes)
     iterations = 0
     best: tuple[float, float] = (
         (t_lo, f_lo) if abs(f_lo - target_value) <= abs(f_hi - target_value)
@@ -635,7 +668,8 @@ async def _solve_impl(
             break
         if (hi - lo) <= tariff_eps:
             break
-        mid = (lo + hi) / 2.0
+        stalled = len(widths) >= 3 and widths[-1] > 0.5 * widths[-3]   # two steps without halving the bracket
+        mid, _method = _illinois_candidate(lo, hi, w_lo, w_hi, force_bisection=uncertified or stalled)
         try:
             batch = await _eval([mid])
         except GoalSeekModelRunError as exc:
@@ -673,9 +707,16 @@ async def _solve_impl(
             f_lo_v, f_hi_v = f_mid, f_mid
             break
         if f_mid < target_value:
-            lo, f_lo_v = mid, f_mid
+            lo, f_lo_v, w_lo = mid, f_mid, f_mid - target_value
+            if retained_side == "hi":
+                w_hi /= 2.0               # Illinois: the upper endpoint survived twice, damp its weight (never its evidence)
+            retained_side = "hi"
         else:
-            hi, f_hi_v = mid, f_mid
+            hi, f_hi_v, w_hi = mid, f_mid, f_mid - target_value
+            if retained_side == "lo":
+                w_lo /= 2.0
+            retained_side = "lo"
+        widths.append(hi - lo)
 
     solved_tariff, achieved = best
     error = abs(achieved - target_value)

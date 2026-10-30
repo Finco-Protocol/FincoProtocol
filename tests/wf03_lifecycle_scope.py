@@ -75,6 +75,8 @@ OWNED_PATHS=frozenset((
     # Post-#400 performance layer (Financial Owner approval 2026-10-30, separate Draft PR): WS-2 exact check memoised once per outer call + its evidence docs.
     'docs/ci_v3/incidents/pr400_performance/ROOT_CAUSE.md', 'docs/ci_v3/incidents/pr400_performance/TIMING_LEDGER.md',
     'docs/ci_v3/incidents/pr400_performance/FIX_AND_VALIDATION.md',
+    # Goal Seek Step 4 successor (bracketed Illinois regula falsi; Financial Owner approval 2026-10-30): the solver, its independent oracle, the evidence.
+    'app/services/goal_seek.py', 'tests/test_goal_seek_illinois.py',
     'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',
