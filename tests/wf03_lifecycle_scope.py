@@ -61,6 +61,8 @@ OWNED_PATHS=frozenset((
     'tests/wf03_fixture_seams.py',
     # Owner-approved RCM adapter CSRF successor (PR #400 final correction): finite successor for app/v2/react_new_project.py (4 reviewed mutations, 2 validators, 1 ownership read)
     'tests/rcm_adapter_csrf_successor.py', 'tests/test_rcm_adapter_csrf_successor.py',
+    # D-029 executor-kill regression made deterministic (hold point inside the real worker; no production code, no weakened assertion)
+    'tests/d029_executor_hold.py', 'tests/test_p0b_executor_recovery_d029.py',
     'tests/test_demo_history_retention.py',
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
     'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes
