@@ -139,6 +139,9 @@ def test_skip_list_contains_exactly_one_new_prefix():
     assert "/trust" in prefixes
     assert {"/static", "/login", "/logout", "/public-health", "/readyz", "/health", "/favicon",
             "/api", "/protocol/finco", "/verify/run"} <= prefixes
-    assert len(prefixes) == 11
+    # WF-03 (reviewer-visible): exactly two further prefixes, each of which makes the demo-identity PROVISIONING skip STRICTER, never looser:
+    # the request must already carry an authenticated session, otherwise no demo identity is minted on that path.
+    assert {"/library/projects/", "/v2/model-react/setup-drafts"} <= prefixes
+    assert len(prefixes) == 13
     # The unchanged prefixes keep their meaning: /roadmap and /docs are still provisioned.
     assert not any("/roadmap".startswith(p) or "/docs".startswith(p) for p in prefixes)
