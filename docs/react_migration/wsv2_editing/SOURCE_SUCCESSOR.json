@@ -16,13 +16,14 @@
     "docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json": "dc4e5ea659a5fbab2a4550ed294069b6e2122607",
     "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
     "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
-    "tests/fin_v2_wsv2_scope.py": "e55d8c339ba00b7b7c862c8d95a110160f27e1ce",
+    "tests/fin_v2_wsv2_scope.py": "310bdc5baba96589c98229763b13b609d6c5f142",
+    "tests/test_ci_v3_epic_integration.py": "79a76c5cd53f315a12c98c7595a0f80a38c97bf3",
     "tests/test_ci_v3_outcome_reconciliation.py": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
     "tests/test_ci_v3_production.py": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
     "tests/test_ci_v3_reference_admission_successor.py": "aeb9ae2937ed219b288ccd87abce5f96cf89be9b",
-    "tests/test_fin_v2_wsv2_scope.py": "aadbf6130ebe8fcdf047220f97c0f9acba9666de",
+    "tests/test_fin_v2_wsv2_scope.py": "d55076f41ace68c95cf77935ee8e17c20bf745d0",
     "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
     "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
-    "tools/ci_v3_production.py": "b3327331201e0a2e66235f1d71cce84b7b2f5692"
+    "tools/ci_v3_production.py": "79f8893f3e6f73d0d9e7288754d4f9dfa66b10fc"
   }
 }

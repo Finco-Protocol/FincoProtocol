@@ -38,6 +38,7 @@ OWNED_PATHS = frozenset((
     'tests/test_save_all_atomic_v1.py',
     'tools/ci_v3_production.py',                  # Correction M: the CI v3 verifier recognises exactly the D-029 or the WS-2 Trust tuple
     'docs/ci_v3/phase4/production-routing.json',  # PR #401: eight-worker routing (CI-only; no financial path)
+    'tests/test_ci_v3_epic_integration.py',       # PR #401: public contract now pins eight workers
     'tests/test_ci_v3_production.py',             # PR #401: runtime-identity seam + fail-closed negative control
     'tests/test_ci_v3_reference_admission_successor.py',   # PR #401: exact D-029 admission successor negatives
     'tests/test_trust_readiness_registry.py',    # gate C: chained exact-content successor, mirrors D-029

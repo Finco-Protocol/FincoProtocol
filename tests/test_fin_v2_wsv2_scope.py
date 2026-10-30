@@ -27,7 +27,7 @@ def test_the_owned_set_is_exactly_the_authorised_app_paths_the_cohort_and_its_te
     assert sorted(p for p in F.OWNED_PATHS if not p.startswith('app/')) == [
         'docs/ci_v3/phase4/production-routing.json',
         'docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json', 'docs/readiness/02_data_handling.md',
-        'docs/readiness/06_retention_and_deletion.md', 'tests/fin_v2_wsv2_scope.py', 'tests/test_ci_v3_outcome_reconciliation.py',
+        'docs/readiness/06_retention_and_deletion.md', 'tests/fin_v2_wsv2_scope.py', 'tests/test_ci_v3_epic_integration.py', 'tests/test_ci_v3_outcome_reconciliation.py',
         'tests/test_ci_v3_production.py', 'tests/test_ci_v3_reference_admission_successor.py',
         'tests/test_fin_v2_wsv2_scope.py', 'tests/test_save_all_atomic_v1.py', 'tests/test_trust_readiness_registry.py',
         'tools/ci_v3_production.py']

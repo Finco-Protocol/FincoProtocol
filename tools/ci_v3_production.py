@@ -50,10 +50,11 @@ def validate_accepted_reference_successor(reference, historical, historical_nati
  try:
   validate_reference_policy(reference,historical)
   return 'historical-phase-exact'
- except ContractError:
+ except ContractError as policy_error:
   original=phase_map(historical);accepted=phase_map(reference['report'])
   require(set(original)<=set(accepted),'accepted reference lost historical coverage')
   changed=sorted(n for n in original if original[n]!=accepted[n])
+  if changed==[]:raise policy_error  # no historical change: the unmodified policy's own rejection stands
   require(changed==[D029_NODE],
           'accepted reference historical phase mismatches are not the single approved D-029 node: '+repr(changed[:30]))
   unexpected=sorted(n for n in accepted if n not in original and outcome(accepted[n])['status']!='passed')
