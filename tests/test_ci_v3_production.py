@@ -96,6 +96,13 @@ def evidence(real_tiny,tmp_path,monkeypatch):
  monkeypatch.setattr(ref,'git',lambda *args:subprocess.check_output(['git','-C',str(d['project']),*args],text=True).strip())
  monkeypatch.setattr(prod,'runtime_packages',lambda environment:None)
  monkeypatch.setenv('FINCO_PRODUCTION_MERGE_SHA','')
+ # Synthetic source heads are not Git commits: serve the authenticated runtime
+ # inputs for exactly that synthetic head only; any other revision still fails closed.
+ runtime_path='docs/ci_v3/phase4/runtime/inputs.json'
+ def synthetic_runtime_blob(head,path):
+  if head==ctx['source']['head'] and path==runtime_path:return (ROOT/runtime_path).read_bytes()
+  raise subprocess.CalledProcessError(128,['git','show',head+':'+path])
+ monkeypatch.setattr(prod,'reference_runtime_blob',synthetic_runtime_blob)
  write_json(plan/'plan.json',{'context':ctx,'inventory':d['bundle']['inventory'],'plan':allocation,'image':image,'collection_environment':first['environment'],'collection_plugins':semantic_plugin_profile(first['plugin_registrations']),'source_reference':snapshot,'inventory_reconciliation':ref.reconciliation(snapshot,d['bundle']['inventory']),'merge_guard':{'head':ctx['source']['head'],'tree':ctx['source']['tree'],'merge_sha':None,'merge_tree':None,'mode':'main-head','equivalent':True},'runtime_inputs':read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json')})
  workers=[]
  for i in range(3):
@@ -447,3 +454,11 @@ def test_accepted_sequential_success_does_not_authorize_new_nonpass(evidence):
  # independently blocking even though the accepted-source run was successful.
  with pytest.raises(ContractError,match='nonhistorical nonpass requires explicit reviewed authority'):
   prod.verify_data(plan,workers)
+
+
+def test_reference_runtime_check_fails_closed_for_unresolvable_or_changed_source(monkeypatch):
+ ref={'source':{'head':'88baaef'+'0'*33}}
+ with pytest.raises(subprocess.CalledProcessError):prod.require_reference_runtime(ref)
+ changed=dict(read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json'),tampered=True)
+ monkeypatch.setattr(prod,'reference_runtime_blob',lambda h,p:json.dumps(changed).encode())
+ with pytest.raises(ContractError):prod.require_reference_runtime(ref)
