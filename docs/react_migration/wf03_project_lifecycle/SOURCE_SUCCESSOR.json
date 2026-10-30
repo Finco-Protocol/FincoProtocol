@@ -65,7 +65,7 @@
     "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
     "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
     "tests/test_wf03_lifecycle_scope.py": "4f82258150e0ac836317cb4037e212a0a213cd82",
-    "tests/wf03_lifecycle_scope.py": "e58f5f53bfa50538ff9b4698c25fa3eed6a45dce",
+    "tests/wf03_lifecycle_scope.py": "2a4ca336ce26164162d94c6dfa5484ef83081317",
     "tests/wsv2_core_scope.py": "2ae87be09f34c4e92b83b09c0c44e253fc75632c",
     "tools/ci_v3_production.py": "001294f035616903e1cd4c8358ce81e3493ca32b",
     "tests/wf04_scope.py": "041aa5135e1b47ac08978d4828689c291edabec5",
@@ -82,7 +82,8 @@
     "tests/test_sc34_project_identity.py": "a5d181d01bedd5b8545ffc19f89175518789be7e",
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_m6_lifecycle_boundary.py": "40afc439885530147db2d571f8c7d76a23cae45f",
-    "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa"
+    "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
+    "tests/test_trust_readiness_routes.py": "ca99791c1c46b6cabe0c89f90484759e66bdb84d"
   },
   "predecessor_manifests": {
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
@@ -808,6 +809,17 @@
       "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_trust_readiness_routes.py",
+      "before_blob": "a9a13da4034ce3a42c521e2dd245ba3b918621c4",
+      "after_blob": "ca99791c1c46b6cabe0c89f90484759e66bdb84d",
+      "entry_points": [
+        "test_skip_list_contains_exactly_one_new_prefix"
+      ],
+      "invariant": "pins the exact 13-prefix set; the two WF-03 prefixes only make demo-identity provisioning stricter (an authenticated session is required); unchanged prefixes keep their meaning",
+      "negative_test": "tests/test_trust_readiness_routes.py::test_skip_list_contains_exactly_one_new_prefix",
+      "rationale": "CI-8 worker 4 (run 41029045753); security-adjacent, independent review required"
     },
     {
       "path": "tests/test_wf03_lifecycle_scope.py",
