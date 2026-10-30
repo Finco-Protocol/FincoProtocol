@@ -37,6 +37,9 @@ OWNED_PATHS = frozenset((
     'tests/test_ci_v3_outcome_reconciliation.py',   # Correction M: D-029 historical positives/negatives + the WS-2 successor state proofs
     'tests/test_save_all_atomic_v1.py',
     'tools/ci_v3_production.py',                  # Correction M: the CI v3 verifier recognises exactly the D-029 or the WS-2 Trust tuple
+    'docs/ci_v3/phase4/production-routing.json',  # PR #401: eight-worker routing (CI-only; no financial path)
+    'tests/test_ci_v3_production.py',             # PR #401: runtime-identity seam + fail-closed negative control
+    'tests/test_ci_v3_reference_admission_successor.py',   # PR #401: exact D-029 admission successor negatives
     'tests/test_trust_readiness_registry.py',    # gate C: chained exact-content successor, mirrors D-029
 ))
 
@@ -70,7 +73,7 @@ PRESENTATION_PATHS = frozenset((
 #: WS-2 documents (not executable): admitted by EXACT path only, no blob pin, so prose can be corrected without re-pinning code.
 DOC_PATHS = frozenset('docs/react_migration/wsv2_editing/' + name for name in (
     'GOVERNANCE_PIN_REQUEST.md', 'P00_BASELINE_RECEIPT.md', 'PROTECTED_PATH_REQUEST_SAVE_ALL.md', 'SAVE_ALL_TRANSACTION_DESIGN.md',
-    'SHARED_FILE_INTEGRATION.md', 'WSV2_GAP_COVERAGE_SONNET.md', 'WSV2_INTERFACE_CONTRACT.md'))
+    'SHARED_FILE_INTEGRATION.md', 'WSV2_GAP_COVERAGE_SONNET.md', 'WSV2_INTERFACE_CONTRACT.md')) | {'docs/ci_v3/phase4/CI_V3_EIGHT_WORKER_DESIGN.md'}
 
 
 def _git(root, *args):
