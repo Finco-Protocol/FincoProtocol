@@ -55,8 +55,9 @@ OWNED_PATHS=frozenset((
     'tests/test_sc34_project_identity.py',
     'tests/test_wf07_revenue_workspace.py',
     'tests/test_m6_lifecycle_boundary.py',
+    'tests/test_wsv2_core_scope.py',
+    'tests/test_finv2_d01_governance.py',
     'frontend/src/app/workflow/PPAEditorView.tsx',   # PPA Save waits for a current revenue projection (stale-identity 409 under load)
-    'tests/test_trust_readiness_routes.py',   # reviewer-visible: demo-provisioning skip list names the two reviewed WF-03 prefixes
     'tests/wf03_fixture_seams.py',
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
     'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes

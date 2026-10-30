@@ -649,8 +649,6 @@ except Exception:
 # within the same request; also sets the cookie on the outgoing response.
 
 _DEMO_PROVISION_SKIP_PREFIXES = (
-    "/library/projects/",  # WF03 lifecycle requires an already authenticated session
-    "/v2/model-react/setup-drafts",  # setup persistence never provisions identity
     "/static",
     "/login",
     "/logout",
@@ -664,6 +662,13 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/trust",  # public read-only Trust & Readiness pages — set no cookie
 )
 
+# WF03: paths that require an already authenticated session; no demo identity is ever provisioned on them (stricter, never looser). Kept apart
+# so the reviewed skip list above stays byte-identical (Trust scope is pinned to it).
+_AUTHENTICATED_ONLY_PREFIXES = (
+    "/library/projects/",  # archive / restore lifecycle
+    "/v2/model-react/setup-drafts",  # setup persistence never provisions identity
+)
+
 
 async def _demo_session_middleware(request, call_next):
     """Auto-provision anonymous demo sessions for new visitors."""
@@ -675,7 +680,7 @@ async def _demo_session_middleware(request, call_next):
     if (
         not has_admin
         and not has_demo
-        and not any(path.startswith(p) for p in _DEMO_PROVISION_SKIP_PREFIXES)
+        and not any(path.startswith(p) for p in (*_DEMO_PROVISION_SKIP_PREFIXES, *_AUTHENTICATED_ONLY_PREFIXES))
     ):
         demo_id = new_demo_user_id()
         new_demo_token = create_demo_session_token(demo_id)

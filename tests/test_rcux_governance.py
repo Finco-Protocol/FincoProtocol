@@ -232,6 +232,11 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
     # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
     hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+    # Fourth: the Owner-approved WF-03 lifecycle cohort (tests/wf03_lifecycle_scope.py) owns exactly these four paths (archive / restore fences, request
+    # admission, creation completeness, demo-provisioning prefixes); only that exact path with exactly that pinned blob is attributed to it.
+    from tests import wf03_lifecycle_scope as WF03
+    WF03_PATHS = ("main_web.py", "app/v2/router.py", "app/persistence/projects_repository.py", "app/services/run_service.py")
+    hits = [p for p in hits if not (p in WF03_PATHS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
