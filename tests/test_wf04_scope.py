@@ -31,7 +31,9 @@ def test_cohort_is_registered_exact_closed_and_excludes_every_financial_authorit
     assert W.exact_blobs_ok() and W.valid() and C.valid()
     assert W.protected_blobs() == {}
     assert set(W.manifest()['source_blobs']) == W.OWNED_PATHS
-    assert not any(p.startswith(W.FORBIDDEN_PREFIXES) or p in W.FORBIDDEN_PATHS for p in W.OWNED_PATHS)
+    # the ONLY forbidden-prefix path the cohort owns is the single Owner-approved workflow (Correction C timeout hunk), enforced byte-exactly by _workflow_hunk_ok
+    assert {p for p in W.OWNED_PATHS if p.startswith(W.FORBIDDEN_PREFIXES)} == {W.WORKFLOW_PATH}
+    assert not any(p in W.FORBIDDEN_PATHS for p in W.OWNED_PATHS)
     assert not any(p.startswith(ENGINE_PREFIXES) and p != W.WORKFLOW_PATH for p in _changed())            # the one approved workflow hunk is the sole exception
     assert not any(p.startswith(ENGINE_PREFIXES) and p != W.WORKFLOW_PATH for p in _changed_since_origin())
 

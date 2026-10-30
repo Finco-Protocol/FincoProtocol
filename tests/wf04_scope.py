@@ -17,8 +17,13 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'b76ac65c99e7fc9b486a557ae3c5ba9a711f50b3'
-APPROVED_MAIN = '8a74fcb5cd57e470cf83a458bd165ea14ad394fb'
-APPROVED_MAIN_TREE = 'a96566a21154fd8e673676c20bd2e4e093599330'
+# PREVIOUS_APPROVED_MAIN: main at the merge of PR #397 (the lineage this cohort was approved against). APPROVED_MAIN: main at the merge of PR #401
+# (CI V3 eight-worker routing, a CI-only successor whose bytes are owned by the CI/WS-2 cohorts); WF-04's delta is judged against it. Both layers are
+# authenticated by ancestry + tree, and every predecessor manifest keeps its pin map for BOTH under ``historical_source_blobs``.
+PREVIOUS_APPROVED_MAIN = '8a74fcb5cd57e470cf83a458bd165ea14ad394fb'
+PREVIOUS_APPROVED_MAIN_TREE = 'a96566a21154fd8e673676c20bd2e4e093599330'
+APPROVED_MAIN = '35848541f4d894f7e0a119ab8709276133d0da89'
+APPROVED_MAIN_TREE = 'b2d001f934fa135ba7e501c8f63aca9d44ef2701'
 MANIFEST = 'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'
 SCHEMA = 'WF04_DEBT_METRICS_EXACT_SOURCE_V1'
 # @@OWNED_PATHS_BEGIN@@
@@ -190,7 +195,10 @@ def _lineage_ok(root, ref):
     _git(root, 'merge-base', '--is-ancestor', BASE, head)
     _git(root, 'merge-base', '--is-ancestor', APPROVED_MAIN, head)
     _git(root, 'merge-base', '--is-ancestor', BASE, APPROVED_MAIN)
-    return _git(root, 'rev-parse', APPROVED_MAIN + '^{tree}').decode().strip() == APPROVED_MAIN_TREE
+    _git(root, 'merge-base', '--is-ancestor', PREVIOUS_APPROVED_MAIN, head)
+    _git(root, 'merge-base', '--is-ancestor', PREVIOUS_APPROVED_MAIN, APPROVED_MAIN)
+    return (_git(root, 'rev-parse', APPROVED_MAIN + '^{tree}').decode().strip() == APPROVED_MAIN_TREE
+            and _git(root, 'rev-parse', PREVIOUS_APPROVED_MAIN + '^{tree}').decode().strip() == PREVIOUS_APPROVED_MAIN_TREE)
 
 
 def _historical_manifests_ok(root, ref):
@@ -213,6 +221,12 @@ def _historical_manifests_ok(root, ref):
             return False
         if any(history.get(k) != v for k, v in (old.get('historical_source_blobs') or {}).items()):
             return False
+        try:
+            previous = json.loads(_read(root, path, PREVIOUS_APPROVED_MAIN))['source_blobs']
+        except subprocess.CalledProcessError:
+            previous = None
+        if previous is not None and history.get(PREVIOUS_APPROVED_MAIN) != previous:
+            return False                                          # the pre-#401 approved-main pin map must survive byte-for-byte
         if set(before) != set(after):
             return False
         if any(before[p] != after[p] and p not in allowed for p in before):
