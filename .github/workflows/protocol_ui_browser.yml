@@ -47,7 +47,7 @@ jobs:
           python -m tools.ci_acceptance run --expected '${{ github.event.pull_request.head.sha || github.sha }}' --label install --output artifacts/install.json -- \
             bash -e -c 'python -m pip install --upgrade pip; pip install -r requirements.txt -c constraints.txt; python -m pip check; pip install playwright==1.63.0; python -m pip check'
       - name: Cache version-bound Chromium
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/ms-playwright
           key: chromium-${{ runner.os }}-${{ runner.arch }}-ubuntu24-py312-pw1.63.0
