@@ -26,6 +26,9 @@ def fixture():
  old={node:phase("skipped","Skipped: "+prod.D029_SKIP_REASON)}
  accepted={node:phase()}
  accepted.update({n:phase() for n in prod.D029_EVIDENCE_NODES+prod.WS2_EXTRA_NODES})
+ # The real checkout may be in the WF-03 Trust state (State C), which additionally requires the WF-03 evidence nodes to have passed in the run.
+ from tests import wf03_lifecycle_scope as WF03
+ accepted.update({n:phase() for n in getattr(WF03,'CI_EVIDENCE_NODES',())})
  reference={"report":report(accepted),
             "native":{n:["passed",""] for n in accepted}}
  original=report(old)

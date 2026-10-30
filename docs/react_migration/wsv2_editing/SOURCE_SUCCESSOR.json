@@ -20,7 +20,7 @@
     "tests/test_ci_v3_epic_integration.py": "79a76c5cd53f315a12c98c7595a0f80a38c97bf3",
     "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
     "tests/test_ci_v3_production.py": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
-    "tests/test_ci_v3_reference_admission_successor.py": "061b211b7bb8e7f919a7608d908e452b570e751d",
+    "tests/test_ci_v3_reference_admission_successor.py": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
     "tests/test_fin_v2_wsv2_scope.py": "d55076f41ace68c95cf77935ee8e17c20bf745d0",
     "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
     "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",

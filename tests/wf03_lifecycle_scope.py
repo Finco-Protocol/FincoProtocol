@@ -45,6 +45,7 @@ OWNED_PATHS=frozenset((
     'tests/wsv2_core_scope.py', 'tools/ci_v3_production.py', 'tests/test_ci_v3_outcome_reconciliation.py',
     'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json',   # post-#399: WF-04's own pin map follows only the exact WF-03 pins
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
+    'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes
     'tests/test_wf04_scope.py',   # post-#399: WF-04's own delta assertions are evaluated at the merged #399 commit
     'tests/wf04_scope.py',     # post-#399 successor: the WF-04 cohort follows only the exact WF-03 pins (tests/wf04_scope.py _downstream_* helpers)
     'docs/readiness/02_data_handling.md', 'docs/readiness/06_retention_and_deletion.md',
