@@ -24,7 +24,7 @@
     "docs/financial_validation/wf04_debt_metrics/TWO_DSCR_CONTRACT_MAPPING.md": "74c25a02616d3fe1b03fa78568242a1f8d0eadcd",
     "docs/financial_validation/wf04_debt_metrics/WF04_ACCEPTANCE_MATRIX.md": "87dd275943448198392389b23aedd7fa65ee2d60",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
-    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "ede43ffbe19aaf79cb2481010b739034d2579517",
+    "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
     "frontend/src/app/FinancialOverview.tsx": "6ec33e4695a1fbb2289b9dea26aeaa5d7f29d432",
     "frontend/src/app/FinancialResults.tsx": "eb5ddb89b663f8145b702df26d591b884fbb4339",
     "frontend/src/app/credit/CreditDecisionPanel.tsx": "2a48162683d4641454876b41c2bddf0e51b0f59c",

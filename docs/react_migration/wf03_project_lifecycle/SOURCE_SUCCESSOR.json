@@ -28,6 +28,7 @@
         "docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md",
         "docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md",
         "docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md",
+        "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
         "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
         "tests/test_ci_v3_production.py",
         "tests/test_rc3_integration_inventory.py",
@@ -68,7 +69,7 @@
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "28d97f24f98270fcdd8eff6b0cfab5c01856574e",
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "3536a0135285c36410bc597cfd919130bb5c818e",
     "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "bd0c40f2d2148efad93569f91bb0f9f73d27f634",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "09fd8ad2c500b7d60538fe24447659995e05aada",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "2706986f182a1a34020020897c9167e78b2fce53",
     "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b5d9660fffe71a00250a251e9a63c5f8c6939ccc",
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
@@ -1177,6 +1178,16 @@
       "after_blob": "9df7183d9b1e7a95beaac650785abc5be85b53a3",
       "entry_points": [],
       "invariant": "predecessor pin map follows the two exact WF-03 pins (tools/ci_v3_production.py, tests/test_ci_v3_production.py); history unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
+      "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "09fd8ad2c500b7d60538fe24447659995e05aada",
+      "after_blob": "2706986f182a1a34020020897c9167e78b2fce53",
+      "entry_points": [],
+      "invariant": "WF-04 pin of the wsv2_editing manifest follows the exact WF-03 pin (downstream rule); nothing else changed",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
       "successor": "ci-artifact-attempt"
