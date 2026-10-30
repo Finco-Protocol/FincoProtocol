@@ -39,7 +39,7 @@
     "tests/model_react_mvp_acceptance.py": "12cc69a78ded7a79dc00b699a5bb5d173feb3b08",
     "tests/model_react_overnight_b_acceptance.py": "c05cbacc2b2cbd55957480af3fe490545896b7ea",
     "tests/quarterly_candidate_recognition.py": "8838d05e8988cddd06d5f805b3eed9685eb74066",
-    "tests/rcm_adapter_csrf_successor.py": "ddd9055119badbfd1e8a3a9c1378a94173f084ce",
+    "tests/rcm_adapter_csrf_successor.py": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
     "tests/test_ci_acceptance.py": "5ff17455782fff2a5ddf7e93e55e963682197714",
     "tests/test_fin_v2_3_contracts.py": "35eb371c887a0f2fbcd2e231e25aaf8dc1bb64b4",
     "tests/test_fin_v2_3_goal_seek.py": "b4eddd0ad9d92ed2dbe3b402ec135a4a691aa790",
