@@ -349,14 +349,11 @@ def d029_authorized(node,old_phases,old_native,new_phases,new_native,run_phases,
  if d029_transition_problems(node,old_phases,old_native,new_phases,new_native,facts,run_phases,run_native):return False
  receipts.append({'node':node,'from':'SKIPPED','to':'PASSED'});return True
 
-def accepted_source_outcome_ok(node,phases_now,native_now,bp,bn,rp,rn,run_phases,run_native,receipts):
- # Exact accepted-source outcome, or the authorized D-029 transition. The D-029 guard only runs when
- # the diff touches the Trust pack, so a PR that does not touch it reproduces the node's original
- # authenticated historical outcome. That is admitted for this single node only, and only when it is
- # byte-identical (phases and native, including the skip reason) to the original; the reference's
+def original_d029_outcome_reproduced(node,phases_now,native_now,bp,bn):
+ # The D-029 guard only runs when the diff touches the Trust pack, so a PR that does not reproduces the
+ # node's original authenticated historical outcome. Admitted for this single node only, and only when
+ # byte-identical to the original (phases and native, including the skip reason). The reference's
  # different outcome was already proven as the authorized successor by validate_accepted_reference_successor.
- if phases_now==rp[node] and list(native_now)==rn[node]:return True
- if d029_authorized(node,rp[node],rn[node],phases_now,native_now,run_phases,run_native,receipts):return True
  return node==D029_NODE and node in bp and phases_now==bp[node] and list(native_now)==list(bn[node])
 
 def verify_data(planfolder,workers):
@@ -391,7 +388,7 @@ def verify_data(planfolder,workers):
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
    if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],phases,native,reconciled),'original phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
-   if n in rp:require(accepted_source_outcome_ok(n,v,native[n],bp,bn,rp,rn,phases,native,reconciled),'accepted-source phase/native outcome regression: '+n)
+   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],phases,native,reconciled) or original_d029_outcome_reproduced(n,v,native[n],bp,bn),'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')

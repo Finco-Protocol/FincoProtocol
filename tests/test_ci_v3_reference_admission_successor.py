@@ -92,15 +92,12 @@ def test_unreviewed_exact_trust_blob_cannot_admit_successor(monkeypatch):
 
 def test_d029_node_may_reproduce_its_original_historical_outcome_but_nothing_else_may():
  skipped=[{'nodeid':prod.D029_NODE,'when':w,'outcome':o,'reason':r,'wasxfail':None} for w,o,r in (('setup','passed',''),('call','skipped','Skipped: trust pack not part of this diff'),('teardown','passed',''))]
- passed=[dict(p,outcome='passed',reason='') for p in skipped]
- native_skip=['skipped','trust pack not part of this diff'];native_pass=['passed','']
+ native_skip=['skipped','trust pack not part of this diff']
  other='tests/test_other.py::test_x'
- def ok(node,now,nat,bp,bn,rp,rn):return prod.accepted_source_outcome_ok(node,now,nat,bp,bn,rp,rn,{},{},[])
  bp={prod.D029_NODE:skipped,other:skipped};bn={prod.D029_NODE:native_skip,other:native_skip}
- rp={prod.D029_NODE:passed,other:passed};rn={prod.D029_NODE:native_pass,other:native_pass}
- assert ok(prod.D029_NODE,skipped,native_skip,bp,bn,rp,rn)                    # original outcome, D-029 node only
- assert not ok(other,skipped,native_skip,bp,bn,rp,rn)                          # any other node stays strict
- assert not ok(prod.D029_NODE,skipped,['skipped','a different reason'],bp,bn,rp,rn)   # native must be identical
- assert not ok(prod.D029_NODE,skipped[:2]+[dict(skipped[2],outcome='failed')],native_skip,bp,bn,rp,rn)
- assert not ok(prod.D029_NODE,skipped,native_skip,{},{},rp,rn)                 # no authenticated original, no admission
- assert ok(other,passed,native_pass,bp,bn,rp,rn)                               # exact accepted outcome still accepted
+ f=prod.original_d029_outcome_reproduced
+ assert f(prod.D029_NODE,skipped,native_skip,bp,bn)                                  # original outcome, D-029 node only
+ assert not f(other,skipped,native_skip,bp,bn)                                       # any other node stays strict
+ assert not f(prod.D029_NODE,skipped,['skipped','a different reason'],bp,bn)          # native must be identical
+ assert not f(prod.D029_NODE,skipped[:2]+[dict(skipped[2],outcome='failed')],native_skip,bp,bn)
+ assert not f(prod.D029_NODE,skipped,native_skip,{},{})                              # no authenticated original, no admission

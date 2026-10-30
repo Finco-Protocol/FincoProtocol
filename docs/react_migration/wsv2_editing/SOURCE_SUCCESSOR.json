@@ -20,10 +20,10 @@
     "tests/test_ci_v3_epic_integration.py": "79a76c5cd53f315a12c98c7595a0f80a38c97bf3",
     "tests/test_ci_v3_outcome_reconciliation.py": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
     "tests/test_ci_v3_production.py": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
-    "tests/test_ci_v3_reference_admission_successor.py": "1cef9db8c501c0d9bd1100c4610ce0e7ca97a65b",
+    "tests/test_ci_v3_reference_admission_successor.py": "061b211b7bb8e7f919a7608d908e452b570e751d",
     "tests/test_fin_v2_wsv2_scope.py": "d55076f41ace68c95cf77935ee8e17c20bf745d0",
     "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
     "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
-    "tools/ci_v3_production.py": "2ae789f3d1f5fe9bbb7d6e6798ea49a737b8a35b"
+    "tools/ci_v3_production.py": "1169154e1e9c6c5ebc087945691216479ed424dc"
   }
 }
