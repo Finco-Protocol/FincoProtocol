@@ -54,7 +54,7 @@ def test_incompatible_source_is_always_routed_sequentially(tmp_path,route_trees,
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
  f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker','aggregate','tests'}
- assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==155
+ assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==310
  assert jobs['sequential']['uses']=='./.github/workflows/ci_public_job.yml'
  assert jobs['worker']['needs']==['route','plan']
  assert jobs['worker']['strategy']['fail-fast']=='false'

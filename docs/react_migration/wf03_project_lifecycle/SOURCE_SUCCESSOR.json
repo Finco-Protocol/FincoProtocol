@@ -24,6 +24,9 @@
     }
   },
   "source_blobs": {
+    ".github/workflows/ci_public_job.yml": "248c1e4e46fa36e7a308b9b8e88c6fe27bafa830",
+    ".github/workflows/ci_v3_required_job.yml": "7a320b59cc8c0f1f6fd6b22157b2d7e9ed2649ef",
+    ".github/workflows/public_safety_and_smoke.yml": "25c3c01d15664f859bee4f32251ab0f0b4b6dc85",
     "app/demo_cleanup.py": "e3d61783bec1b861b9ed2bc1feae6e5474f12d82",
     "app/library/router.py": "5f4abfd8272f0614f16d9e6ee4063df040dca99b",
     "app/persistence/acquisition_repository.py": "ab7d139074cca93ef1a0cebbfb4cc56c335625e4",
@@ -67,11 +70,13 @@
     "tests/model_react_wsv2_acceptance.py": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
     "tests/rcm_adapter_csrf_successor.py": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
     "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
+    "tests/test_ci_v3_production.py": "5ade816350d4ef2dc3e4f63b06b5a8848e1d2fba",
     "tests/test_ci_v3_reference_admission_successor.py": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
     "tests/test_demo_history_retention.py": "0d71f9060f6a238a0deb0e05081c19cfb602fb54",
     "tests/test_fin_v2_3_scope.py": "c8f1ed92b297105f3b049fba1b8775b596c0a5c4",
     "tests/test_fin_v2_r1_scope.py": "39ab04b5cff692b8eccd32e983fbaac117ad8c20",
     "tests/test_finv2_d01_governance.py": "b1fb79a1d6c92ae5ee345fb77838641d352c4238",
+    "tests/test_m3_two_driver_sensitivity.py": "01d2e0fa9dda9cc4bebc76ea9a293f2ff51fe503",
     "tests/test_m6_lifecycle_boundary.py": "40afc439885530147db2d571f8c7d76a23cae45f",
     "tests/test_model_insight_q3_scenario_reads.py": "250630f5aef2dba7cecf5a38bd43d5332c1d2d04",
     "tests/test_model_react_rcux_projects_v1.py": "cb13519db953d1e318152dde03bf418d98a2cdb3",
@@ -81,6 +86,8 @@
     "tests/test_portfolio_monitoring_real_runs.py": "a3d629deb8c4ccea370d7332533d4c8ba1bbf94e",
     "tests/test_project_lifecycle.py": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
     "tests/test_project_lifecycle_browser.py": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
+    "tests/test_rc3_integration_inventory.py": "5116f668205c4318a01ebd142828de99256df32f",
+    "tests/test_rc5_ci_successor_governance.py": "78fed1fa6c29c53bd443656f979bfdcca7aa86ab",
     "tests/test_rc7b_quarterly_csrf_successor.py": "536d64a52f5fdc3aa162734f446d41e88ee5e714",
     "tests/test_rcm_adapter_csrf_successor.py": "bd92eacfcb58db302e203fd9aad87b15b534dde7",
     "tests/test_rcux_governance.py": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
@@ -95,10 +102,11 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "ad2f2f00b9ed8fd9658801ff6dcad1f8bb4aa766",
+    "tests/wf03_lifecycle_scope.py": "87de6ad140c78c0d715c479ecdfbd2cbdf369900",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
-    "tools/ci_v3_production.py": "001294f035616903e1cd4c8358ce81e3493ca32b"
+    "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
+    "tools/ci_v3_production.py": "9ca394a18f6856bd5cad49af87c05ae0f6cf04d6"
   },
   "predecessor_manifests": {
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
@@ -109,6 +117,33 @@
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "1b8432b359900da53d2eb8967b30660c68302167"
   },
   "path_ledger": [
+    {
+      "path": ".github/workflows/ci_public_job.yml",
+      "before_blob": "f843237cae125867b8978fb2cc38665dcf0c64d8",
+      "after_blob": "248c1e4e46fa36e7a308b9b8e88c6fe27bafa830",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": ".github/workflows/ci_v3_required_job.yml",
+      "before_blob": "f989ca25dafc560e010486dab9800b75b837ea50",
+      "after_blob": "7a320b59cc8c0f1f6fd6b22157b2d7e9ed2649ef",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": ".github/workflows/public_safety_and_smoke.yml",
+      "before_blob": "b5618c7fa2ef47bbd480bb74541c424c3e9552a2",
+      "after_blob": "25c3c01d15664f859bee4f32251ab0f0b4b6dc85",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
     {
       "path": "app/demo_cleanup.py",
       "before_blob": "a6a33fe83c6814e167a7cf90cb8f757c5e17741e",
@@ -640,6 +675,15 @@
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
     },
     {
+      "path": "tests/test_ci_v3_production.py",
+      "before_blob": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
+      "after_blob": "5ade816350d4ef2dc3e4f63b06b5a8848e1d2fba",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
       "path": "tests/test_ci_v3_reference_admission_successor.py",
       "before_blob": "061b211b7bb8e7f919a7608d908e452b570e751d",
       "after_blob": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
@@ -692,6 +736,15 @@
       "invariant": "router-change confinement: expects exactly the two WF-03 guard handlers in addition to the D01 handler, only while WF-03 pins the exact router blob",
       "negative_test": "the same file keeps its original negative controls; WF-03 pin must match exactly",
       "rationale": "CI-8 worker 4 (run 41042323428) governance failures; independent review required"
+    },
+    {
+      "path": "tests/test_m3_two_driver_sensitivity.py",
+      "before_blob": "e2fc12e413e07940da8a31c467a2a5fb7e77fdcc",
+      "after_blob": "01d2e0fa9dda9cc4bebc76ea9a293f2ff51fe503",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
     },
     {
       "path": "tests/test_m6_lifecycle_boundary.py",
@@ -803,6 +856,24 @@
       "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
+    },
+    {
+      "path": "tests/test_rc3_integration_inventory.py",
+      "before_blob": "2e46a5bd8d022cc618fa0d102772aa4a92935d04",
+      "after_blob": "5116f668205c4318a01ebd142828de99256df32f",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tests/test_rc5_ci_successor_governance.py",
+      "before_blob": "ad6857eb2dec1110a4277f4cf0afb6ca0d19b24f",
+      "after_blob": "78fed1fa6c29c53bd443656f979bfdcca7aa86ab",
+      "entry_points": [],
+      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
     },
     {
       "path": "tests/test_rc7b_quarterly_csrf_successor.py",
@@ -1009,14 +1080,23 @@
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
     },
     {
+      "path": "tools/ci_v3_container.py",
+      "before_blob": "a72d2552525aefaa2fd4ca8171a05bd1786de6ea",
+      "after_blob": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
+      "entry_points": [],
+      "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
       "path": "tools/ci_v3_production.py",
       "before_blob": "ef9f18c6ba3eb13dbf70aaec19c572c42686bcda",
-      "after_blob": "001294f035616903e1cd4c8358ce81e3493ca32b",
+      "after_blob": "9ca394a18f6856bd5cad49af87c05ae0f6cf04d6",
       "entry_points": [
         "d029_source_facts",
         "d029_transition_problems"
       ],
-      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged",
+      "invariant": "Owner-approved lifecycle/explicit setup/UX or finite successor only; financial formulas unchanged | timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
     }

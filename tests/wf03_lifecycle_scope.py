@@ -64,6 +64,8 @@ OWNED_PATHS=frozenset((
     'tests/rcm_adapter_csrf_successor.py', 'tests/test_rcm_adapter_csrf_successor.py',
     # D-029 executor-kill regression made deterministic (hold point inside the real worker; no production code, no weakened assertion)
     'tests/d029_executor_hold.py', 'tests/test_p0b_executor_recovery_d029.py',
+    # Owner-directed 2x CI timeouts (Correction E): CI-only limits + the CI-340M workflow successor chain; no semantics, no coverage change
+    '.github/workflows/ci_public_job.yml', '.github/workflows/ci_v3_required_job.yml', '.github/workflows/public_safety_and_smoke.yml', 'tests/test_ci_v3_production.py', 'tests/test_m3_two_driver_sensitivity.py', 'tests/test_rc3_integration_inventory.py', 'tests/test_rc5_ci_successor_governance.py', 'tools/ci_v3_container.py',
     'tests/test_demo_history_retention.py',
     'tests/model_react_wsv2_acceptance.py',   # WS-1 acceptance: blank-path disclosure updated to the approved WF-03 non-runnable setup-draft contract
     'tests/test_ci_v3_reference_admission_successor.py',   # D-029 successor unit fixture supplies the WF-03 State C evidence nodes

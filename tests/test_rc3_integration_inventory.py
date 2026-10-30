@@ -189,6 +189,15 @@ CI200_EDITS = (("timeout-minutes: 130", "timeout-minutes: 220"),
                ("FINCO_CI_PYTEST_BUDGET_S: '6000'", "FINCO_CI_PYTEST_BUDGET_S: '12000'"))
 
 
+# ── CI-340M successor (Owner-directed 2x CI timeouts, 2026-10-30; NOT a financial approval) ───────────────────────────────────────────
+# Additive over CI-200M: the CI-200M verifier above is untouched and keeps judging the historical CI-200M state. Exactly TWO values may differ again
+# (job ceiling 220 -> 340 min, pytest supervisor budget 12000 -> 19200 s). 340 min stays under the 360-minute GitHub-hosted job ceiling.
+CI340_WORKFLOW_BLOB = "248c1e4e46fa36e7a308b9b8e88c6fe27bafa830"
+CI340_EDITS = (("timeout-minutes: 220", "timeout-minutes: 340"),
+               ("FINCO_CI_PYTEST_BUDGET_S: '12000'", "FINCO_CI_PYTEST_BUDGET_S: '19200'"))
+GITHUB_HOSTED_JOB_CEILING_MINUTES = 360
+
+
 def git_blob_sha(text: str) -> str:
     """Git blob identity of ``text`` (UTF-8, as stored); pure, so verifiers never trust a filename or the working tree."""
     import hashlib
@@ -242,8 +251,54 @@ def ci200_workflow_successor_violations(rc5_text: str, head_text: str) -> list[s
         return [f"workflow facts incomplete or malformed: {exc!r}"]
 
 
+def ci200_reference_text(rc5_text: str) -> str:
+    """The accepted CI-200M workflow text, derived from the RC-5 text by the fixed CI-200M edits ('' if not exactly editable)."""
+    text = rc5_text
+    for old, new_value in CI200_EDITS:
+        if text.count(old) != 1:
+            return ""
+        text = text.replace(old, new_value, 1)
+    return text
+
+
+def ci340_workflow_successor_violations(ci200_text: str, head_text: str) -> list[str]:
+    """Pure verifier: ``head_text`` must equal the accepted CI-200M workflow with exactly the two authorised values replaced, be the pinned blob and fit."""
+    import re
+    try:
+        bad = []
+        expected = ci200_text
+        for old, new_value in CI340_EDITS:
+            if expected.count(old) != 1:
+                bad.append(f"the accepted CI-200M workflow does not contain exactly one {old!r}")
+                continue
+            expected = expected.replace(old, new_value, 1)
+        if head_text != expected:
+            bad.append("the workflow differs from the accepted CI-200M workflow in more (or other) than the two authorised limit values")
+        if git_blob_sha(head_text) != CI340_WORKFLOW_BLOB:
+            bad.append("the workflow is not the pinned CI-340M successor blob")
+        budget = int(re.search(r"FINCO_CI_PYTEST_BUDGET_S: '(\d+)'", head_text).group(1))
+        grace = int(re.search(r"FINCO_CI_EXIT_GRACE_S: '(\d+)'", head_text).group(1))
+        stall = int(re.search(r"FINCO_CI_STALL_S: '(\d+)'", head_text).group(1))
+        timeout = int(re.search(r"timeout-minutes: (\d+)", head_text).group(1))
+        if (budget, timeout, grace, stall) != (19200, 340, 240, 300):
+            bad.append("budget/timeout/grace/stall are not the authorised 19200 s / 340 min / 240 s / 300 s")
+        if timeout > GITHUB_HOSTED_JOB_CEILING_MINUTES:
+            bad.append("the job timeout exceeds the 360-minute GitHub-hosted job ceiling")
+        if budget + grace + 15 * 60 > timeout * 60:
+            bad.append("the job timeout cannot accommodate budget + exit grace + job overhead")
+        for needle in ("--junitxml=artifacts/results.xml", "tools/ci_pytest_runner.py", "FULL, UNSHARDED, EXACT HEAD",
+                       "if-no-files-found: error", "public-verification-results"):
+            if needle not in head_text:
+                bad.append(f"required evidence/selection element is missing: {needle}")
+        if "continue-on-error" in head_text or "--deselect" in head_text or "-k " in head_text:
+            bad.append("test selection or failure handling was altered")
+        return bad
+    except (AttributeError, TypeError, ValueError) as exc:
+        return [f"workflow facts incomplete or malformed: {exc!r}"]
+
+
 def current_workflow_chain_violations(rc3_text: str, current_text: str) -> list[str]:
-    """CURRENT workflow: exactly the accepted RC-3 workflow, its RC-5 limit successor, or the CI-200M successor over RC-5. Nothing in between."""
+    """CURRENT workflow: exactly the accepted RC-3 workflow, its RC-5 limit successor, the CI-200M successor over RC-5, or the CI-340M successor over CI-200M. Nothing in between."""
     if current_text == rc3_text:
         return []
     rc5 = rc5_reference_text(rc3_text)
@@ -253,7 +308,13 @@ def current_workflow_chain_violations(rc3_text: str, current_text: str) -> list[
     if not rc5 or rc5_workflow_successor_violations(rc3_text, rc5):
         return ["the RC-5 reference cannot be derived from the accepted RC-3 workflow"] + rc5_bad
     ci200_bad = ci200_workflow_successor_violations(rc5, current_text)
-    return [] if not ci200_bad else rc5_bad + ci200_bad
+    if not ci200_bad:
+        return []
+    ci200 = ci200_reference_text(rc5)
+    if not ci200 or ci200_workflow_successor_violations(rc5, ci200):
+        return ["the CI-200M reference cannot be derived from the accepted RC-5 workflow"] + rc5_bad + ci200_bad
+    ci340_bad = ci340_workflow_successor_violations(ci200, current_text)
+    return [] if not ci340_bad else rc5_bad + ci200_bad + ci340_bad
 
 
 def git(*args):

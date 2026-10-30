@@ -230,7 +230,7 @@ def worker(project,out,planfolder,index):
  require(sha('runtime-image.tar.gz')==plan['image_archive_sha256'],'runtime transfer bytes')
  subprocess.run(['docker','load','--input','runtime-image.tar.gz'],check=True)
  request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':dict(STEADY_STATE_CONTRACT)}
- child,proc=observe_container(request,out/'execution',project,plan['image'],5400,built_image=True)
+ child,proc=observe_container(request,out/'execution',project,plan['image'],10800,built_image=True)
  write_json(out/'process.json',proc);write_json(out/'binding.json',{'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':plan['image']})
  import shutil
  for name in ['source','bootstrap']:shutil.rmtree(out/'execution'/name)
