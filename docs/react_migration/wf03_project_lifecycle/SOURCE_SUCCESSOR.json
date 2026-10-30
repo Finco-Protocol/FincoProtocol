@@ -97,12 +97,12 @@
     "tests/test_true_blank_readiness.py": "430ea655203bfec8fa03875e02378c80a0173528",
     "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
     "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
-    "tests/test_wf03_lifecycle_scope.py": "4f82258150e0ac836317cb4037e212a0a213cd82",
+    "tests/test_wf03_lifecycle_scope.py": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
     "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "87de6ad140c78c0d715c479ecdfbd2cbdf369900",
+    "tests/wf03_lifecycle_scope.py": "7601782080183b6ae799342a49a71c837eb1446f",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
@@ -432,7 +432,7 @@
     {
       "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
       "before_blob": "af3f88469a50668ac174d545514d0c2726002f19",
-      "after_blob": "dad8f165e5257e6f803782ac0e5a6314c9da38e6",
+      "after_blob": "09fd8ad2c500b7d60538fe24447659995e05aada",
       "entry_points": [
         "source_blobs",
         "historical_source_blobs[db504f6]"
@@ -466,7 +466,7 @@
     {
       "path": "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json",
       "before_blob": "f3c56b90089d4f43a035640e4d133c011b5e3cf2",
-      "after_blob": "a9bec0e12032713359615ba54d3f301ac282afb9",
+      "after_blob": "ede43ffbe19aaf79cb2481010b739034d2579517",
       "entry_points": [
         "exact module/data/presentation contract"
       ],
@@ -977,7 +977,7 @@
     {
       "path": "tests/test_wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "4f82258150e0ac836317cb4037e212a0a213cd82",
+      "after_blob": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
       "entry_points": [
         "test_complete_closed_successor_and_unchanged_historical_maps",
         "test_every_owned_byte_and_missing_path_fail_closed",
@@ -1030,7 +1030,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "ad2f2f00b9ed8fd9658801ff6dcad1f8bb4aa766",
+      "after_blob": "7601782080183b6ae799342a49a71c837eb1446f",
       "entry_points": [
         "_baseline_bytes",
         "_blob",

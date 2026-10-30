@@ -14,7 +14,10 @@ def test_complete_closed_successor_and_unchanged_historical_maps(tmp_path):
     assert F.D029_APPROVED_PATHS=={'app/persistence/workspace_repository.py'}
     assert not F.matches('financial_engine/native_v11/config.py')
     assert not F.allowed_path('app/unreviewed_writer.py')
-    assert all(not p.startswith(('financial_engine/','finco_core/','domain/','.github/')) for p in F.OWNED_PATHS)
+    assert all(not p.startswith(('financial_engine/','finco_core/','domain/')) for p in F.OWNED_PATHS)
+    # Finite successor of the former 'no .github/ path' rule: exactly the three Owner-directed CI-timeout workflows, nothing else under .github/.
+    assert {p for p in F.OWNED_PATHS if p.startswith('.github/')}==F.CI_TIMEOUT_WORKFLOWS
+    assert not F.allowed_path('.github/workflows/protocol_ui_browser.yml') and not F.allowed_path('.github/workflows/new_unreviewed.yml')
     data=F.manifest()
     for path in F.PREDECESSOR_MANIFESTS:
         old=json.loads(F._read(F.ROOT,path,F.BASE))

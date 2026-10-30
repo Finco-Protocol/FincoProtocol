@@ -82,6 +82,8 @@ OWNED_PATHS=frozenset((
 WF04_MANIFEST='docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'   # introduced after BASE: pinned by blob, no BASE-layer history
 PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p!=WF04_MANIFEST))
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
+# The ONLY workflow files this cohort may own: the Owner-directed 2x timeout successor (Correction E). Any other .github/ path stays unowned.
+CI_TIMEOUT_WORKFLOWS=frozenset({'.github/workflows/ci_public_job.yml','.github/workflows/ci_v3_required_job.yml','.github/workflows/public_safety_and_smoke.yml'})
 CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py'})
 
 
