@@ -6,6 +6,7 @@ import pytest
 
 from tests import fin_v2_cohorts as C
 from tests import fin_v2_r1_scope as F
+from tests import wf04_scope as WF04
 
 
 def test_exact_cohort_requires_history_and_does_not_activate_native(tmp_path):
@@ -68,6 +69,9 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
         before = subprocess.check_output(['git', 'show', F.BASE + ':' + path], cwd=F.ROOT)
         data = (F.ROOT / path).read_bytes()
         from tests import fin_v2_wsv2_scope as WS2
+        # The later, separately governed exception: the Owner-authorised WF-04 additive hunk in v2_atomic_run_commit (tests/wf04_scope.py pins the exact blob).
+        if path == 'app/persistence/workspace_repository.py' and WF04.matches(path, data):
+            continue
         assert data == before or WS2.matches(path, data), path      # only the Owner-approved WS-2 exact blob
 
 

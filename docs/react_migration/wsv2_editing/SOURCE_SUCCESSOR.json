@@ -4,7 +4,7 @@
   "authorization": "Financial Owner approved the WS-2 Save All exact-source successor (2026-10-28, PR #397 verified HEAD cb00721): factoring of the existing validated writers into cursor-bodies, one composing module and route, the save_all capability descriptor and the idempotency ledger. No financial formula, Senior/SHL, Run Integrity, golden, native, CSRF-module or CI change; no merge or deployment. Self-generated exact blobs: a review proposal, not an approval.",
   "source_blobs": {
     "app/persistence/db.py": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
-    "app/persistence/workspace_repository.py": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+    "app/persistence/workspace_repository.py": "4fe0058b65b8cb987c04af50387385466903a6dc",
     "app/trust_readiness/registry.py": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
     "app/v2/capex_commands.py": "a7d7fe9420dae6bba5e5f1ce812162ea6ca3916c",
     "app/v2/cost_batch_commands.py": "ecb2be6279d26db8bc603c4bb5dde55de1a8ed98",
@@ -25,5 +25,51 @@
     "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
     "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
     "tools/ci_v3_production.py": "1169154e1e9c6c5ebc087945691216479ed424dc"
+  },
+  "historical_source_blobs": {
+    "8a74fcb5cd57e470cf83a458bd165ea14ad394fb": {
+      "app/persistence/db.py": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
+      "app/persistence/workspace_repository.py": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+      "app/trust_readiness/registry.py": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
+      "app/v2/capex_commands.py": "a7d7fe9420dae6bba5e5f1ce812162ea6ca3916c",
+      "app/v2/cost_batch_commands.py": "ecb2be6279d26db8bc603c4bb5dde55de1a8ed98",
+      "app/v2/grid_router.py": "a9779991ffd75fc82093c8bc38b4aa6f5dfe5298",
+      "app/v2/react_workspace_router.py": "d1b045a6c788be534e567ef877ed321abb966c11",
+      "app/v2/save_all_commands.py": "bf605d172962f732c4722c348e37d02ee74ed909",
+      "app/workbook/revenue_contracts_service.py": "f08aefdd809742b503d6f045aabb301ac031bb53",
+      "docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json": "dc4e5ea659a5fbab2a4550ed294069b6e2122607",
+      "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+      "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
+      "tests/fin_v2_wsv2_scope.py": "315b0340fe346ad24f0cccfe1d5aae75838cea98",
+      "tests/test_ci_v3_outcome_reconciliation.py": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
+      "tests/test_fin_v2_wsv2_scope.py": "31454d227504467134724302fad199ad0a936ac9",
+      "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
+      "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
+      "tools/ci_v3_production.py": "ef9f18c6ba3eb13dbf70aaec19c572c42686bcda"
+    },
+    "35848541f4d894f7e0a119ab8709276133d0da89": {
+      "app/persistence/db.py": "99e2f531a4aa8b304410acbda40e4cee2c8db513",
+      "app/persistence/workspace_repository.py": "3422393e8f426871ebb48a91f72858ab2cc6ed77",
+      "app/trust_readiness/registry.py": "c616833bdce263b60b4bccec217cad1fb4e8d7d8",
+      "app/v2/capex_commands.py": "a7d7fe9420dae6bba5e5f1ce812162ea6ca3916c",
+      "app/v2/cost_batch_commands.py": "ecb2be6279d26db8bc603c4bb5dde55de1a8ed98",
+      "app/v2/grid_router.py": "a9779991ffd75fc82093c8bc38b4aa6f5dfe5298",
+      "app/v2/react_workspace_router.py": "d1b045a6c788be534e567ef877ed321abb966c11",
+      "app/v2/save_all_commands.py": "bf605d172962f732c4722c348e37d02ee74ed909",
+      "app/workbook/revenue_contracts_service.py": "f08aefdd809742b503d6f045aabb301ac031bb53",
+      "docs/ci_v3/phase4/production-routing.json": "3587ae2e4eeeaac4aa3b273078b6bff3345e425e",
+      "docs/react_migration/wsv2_editing/WS2_CI_V3_TRUST_SUCCESSOR.json": "dc4e5ea659a5fbab2a4550ed294069b6e2122607",
+      "docs/readiness/02_data_handling.md": "7b8a8ca074757aee5f098c2e3299153b8f0e960b",
+      "docs/readiness/06_retention_and_deletion.md": "4e46c27f1e74095554608bb084182af8960b14ee",
+      "tests/fin_v2_wsv2_scope.py": "310bdc5baba96589c98229763b13b609d6c5f142",
+      "tests/test_ci_v3_epic_integration.py": "79a76c5cd53f315a12c98c7595a0f80a38c97bf3",
+      "tests/test_ci_v3_outcome_reconciliation.py": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
+      "tests/test_ci_v3_production.py": "89e2cc35e4c9c771e02bd11bd498e58ee76f165e",
+      "tests/test_ci_v3_reference_admission_successor.py": "061b211b7bb8e7f919a7608d908e452b570e751d",
+      "tests/test_fin_v2_wsv2_scope.py": "d55076f41ace68c95cf77935ee8e17c20bf745d0",
+      "tests/test_save_all_atomic_v1.py": "88e8427f47ed0fd18914ff1c6b7dd20671d54b96",
+      "tests/test_trust_readiness_registry.py": "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516",
+      "tools/ci_v3_production.py": "1169154e1e9c6c5ebc087945691216479ed424dc"
+    }
   }
 }

@@ -1028,7 +1028,36 @@ _dt_senior = _section("senior", "Senior Debt Inputs", _DT, order=0, fields=[
        export_mapping="Tenor (years)", order=3),
 ])
 
-_SHEET_DEBT = _sheet(_DT, "Senior Debt", [_dt_senior], icon="🏦", order=4)
+# WF-04 (Financial Owner, 2026-10-29, V3): exactly TWO contractual DSCR multiples.  They feed no calculation: the credit projection compares
+# each committed Run's own persisted per-period DSCR with the values that were saved when THAT Run was committed (see
+# app.workbook.dscr_contract_terms).  The Senior sizing target, sculpting targets and the lock-up threshold are separate, existing controls.
+_dt_contract = _section("contract", "Contractual DSCR terms", _DT, order=1, fields=[
+    _f(f"{_DT}.contract.min_dscr_eod", "Minimum DSCR", "dscr_min_eod_x", FieldType.FLOAT, _DT, "contract",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="credit_terms.min_dscr_eod",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, unit="x", min_value=0.01, max_value=10.0, decimals=4,
+       description=("Project-specific Event-of-Default floor, entered as a DSCR multiple (1.05 means 1.05x). If the DSCR of any period with "
+                    "scheduled Senior debt service is strictly below this value, the Run reports a model-evaluated Event of Default "
+                    "condition; equal is not a trigger. Leave blank when no floor applies — no value is assumed. This is an input; the "
+                    "achieved minimum DSCR is a Run result. It changes no debt sizing, cash flow or other financial result, and it is not a "
+                    "legal declaration of default or proof of a missed payment."),
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None,
+       export_mapping="Minimum DSCR - EoD threshold (x)", order=0),
+    _f(f"{_DT}.contract.contractual_dscr", "Contractual DSCR (covenant)", "dscr_contractual_x", FieldType.FLOAT, _DT, "contract",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="credit_terms.contractual_dscr",
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True, unit="x", min_value=0.01, max_value=10.0, decimals=4,
+       description=("The contractual DSCR requirement of the financing, entered as a multiple (1.20 means 1.20x). Each committed Run is "
+                    "tested against the value saved when that Run was committed. A DSCR below it is a covenant breach (the debt may "
+                    "still be covered from CFADS); it is evaluated separately from the Minimum DSCR, the Senior sizing "
+                    "target and the lock-up threshold, none of which it replaces. Leave blank when no covenant applies."),
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None,
+       export_mapping="Contractual DSCR (x)", order=1),
+])
+
+_SHEET_DEBT = _sheet(_DT, "Senior Debt", [_dt_senior, _dt_contract], icon="🏦", order=4)
 
 
 # ---------------------------------------------------------------------------

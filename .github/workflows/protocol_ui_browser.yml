@@ -19,7 +19,7 @@ jobs:
   # on ONE runner with ONE dependency + Chromium installation. No test selection is removed.
   mandatory-browser-evidence:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 105
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -67,6 +67,12 @@ jobs:
             mkdir -p "$RUNNER_TEMP/finco-browser-$role"
             export TMPDIR="$RUNNER_TEMP/finco-browser-$role"
             echo "CI_BROWSER_ROLE_START=$role HEAD=$HEAD_SHA"
+            if [ "$role" = "consolidation" ]; then
+              export FINCO_CI_PYTEST_BUDGET_S=3600
+            else
+              export FINCO_CI_PYTEST_BUDGET_S=1200
+            fi
+            echo "CI_BROWSER_ROLE_BUDGET role=$role seconds=$FINCO_CI_PYTEST_BUDGET_S"
             python -m tools.ci_browser_job "$role" --expected "$HEAD_SHA"
             mv artifacts "evidence/browser-$role"
             echo "CI_BROWSER_ROLE_DONE=$role"

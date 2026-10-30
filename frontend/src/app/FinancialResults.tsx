@@ -11,6 +11,7 @@ import {
 import { reportCell as formatStatementCell, reportMetric as formatMetricDisplay } from "./reportFormatting";
 import { useReportPrecision } from "./ReportPrecision";
 import { plain } from "./productLanguage";
+import { debtMetricsHref, prepareDebtMetrics } from "./debtmetrics/debtMetricsLink";
 
 // Canonical presentation of the persisted Run.  Every figure on this page is a
 // server-formatted value read from the project's saved Run (statements,
@@ -112,6 +113,7 @@ function columnLabels(table: CanonicalTable | null | undefined): string[] {
 function RunContext({ payload }: { payload: StatementsPayload }) {
   const { status, results, state } = payload;
   const identity = status.runId && status.runId !== "Not supplied" ? status.runId : null;
+  const integrity: string = status.integrity;   // the server sends the evaluated status (PASS / FAIL / INCOMPLETE / UNAVAILABLE); the shared type is narrower than the payload
   return (
     <section className="rx-live-context" aria-label="Run context" data-run-context="true" data-run-state={state}>
       <div className={`rx-live-state rx-live-state-${state.toLowerCase()}`} data-run-state-label={state}>{STATE_TEXT[state] ?? state}</div>
@@ -120,7 +122,8 @@ function RunContext({ payload }: { payload: StatementsPayload }) {
         <div><dt>Ran</dt><dd>{results.ran_at || "unavailable"}</dd></div>
         <div><dt>Scenario</dt><dd>{results.scenario || "unavailable"}</dd></div>
         <div><dt>Engine</dt><dd>{status.engineVersion || "identity unavailable"}</dd></div>
-        <div><dt>Integrity</dt><dd>Integrity: {status.integrity}</dd></div>
+        <div><dt>Integrity</dt><dd data-integrity={integrity}>Integrity: {integrity}{integrity === "FAIL" && <> — this Run completed but failed Run Integrity; its results are not a bankable scenario. <a href="#diagnostics">Failed checks</a></>}</dd></div>
+        <div><dt>Debt Metrics</dt><dd data-results-debt-metrics="true"><a href={debtMetricsHref()} onClick={(event) => prepareDebtMetrics(event)}>Covenants, DSCR profile and schedule</a></dd></div>
       </dl>
     </section>
   );
