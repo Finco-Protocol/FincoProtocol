@@ -76,7 +76,6 @@
     "tests/test_fin_v2_3_scope.py": "c8f1ed92b297105f3b049fba1b8775b596c0a5c4",
     "tests/test_fin_v2_r1_scope.py": "39ab04b5cff692b8eccd32e983fbaac117ad8c20",
     "tests/test_finv2_d01_governance.py": "b1fb79a1d6c92ae5ee345fb77838641d352c4238",
-    "tests/test_m3_two_driver_sensitivity.py": "01d2e0fa9dda9cc4bebc76ea9a293f2ff51fe503",
     "tests/test_m6_lifecycle_boundary.py": "40afc439885530147db2d571f8c7d76a23cae45f",
     "tests/test_model_insight_q3_scenario_reads.py": "250630f5aef2dba7cecf5a38bd43d5332c1d2d04",
     "tests/test_model_react_rcux_projects_v1.py": "cb13519db953d1e318152dde03bf418d98a2cdb3",
@@ -87,7 +86,7 @@
     "tests/test_project_lifecycle.py": "77070a53db7017ff4cb45bf6d6ae829e755abb6f",
     "tests/test_project_lifecycle_browser.py": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
     "tests/test_rc3_integration_inventory.py": "5116f668205c4318a01ebd142828de99256df32f",
-    "tests/test_rc5_ci_successor_governance.py": "78fed1fa6c29c53bd443656f979bfdcca7aa86ab",
+    "tests/test_rc5_ci_successor_governance.py": "047bb44c052cc4b35f5a595d76056d86754000f2",
     "tests/test_rc7b_quarterly_csrf_successor.py": "536d64a52f5fdc3aa162734f446d41e88ee5e714",
     "tests/test_rcm_adapter_csrf_successor.py": "bd92eacfcb58db302e203fd9aad87b15b534dde7",
     "tests/test_rcux_governance.py": "d6a3567bcddaad2a9f17138fd7150f8577b1c1e0",
@@ -102,7 +101,7 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "7601782080183b6ae799342a49a71c837eb1446f",
+    "tests/wf03_lifecycle_scope.py": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
@@ -738,15 +737,6 @@
       "rationale": "CI-8 worker 4 (run 41042323428) governance failures; independent review required"
     },
     {
-      "path": "tests/test_m3_two_driver_sensitivity.py",
-      "before_blob": "e2fc12e413e07940da8a31c467a2a5fb7e77fdcc",
-      "after_blob": "01d2e0fa9dda9cc4bebc76ea9a293f2ff51fe503",
-      "entry_points": [],
-      "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
-      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
-      "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
-    },
-    {
       "path": "tests/test_m6_lifecycle_boundary.py",
       "before_blob": null,
       "after_blob": "40afc439885530147db2d571f8c7d76a23cae45f",
@@ -869,7 +859,7 @@
     {
       "path": "tests/test_rc5_ci_successor_governance.py",
       "before_blob": "ad6857eb2dec1110a4277f4cf0afb6ca0d19b24f",
-      "after_blob": "78fed1fa6c29c53bd443656f979bfdcca7aa86ab",
+      "after_blob": "047bb44c052cc4b35f5a595d76056d86754000f2",
       "entry_points": [],
       "invariant": "bounds/successor chain updated for the doubled limits; every old negative and historical pin retained; CI-340M verifier is additive over CI-200M",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -1030,7 +1020,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "7601782080183b6ae799342a49a71c837eb1446f",
+      "after_blob": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
       "entry_points": [
         "_baseline_bytes",
         "_blob",

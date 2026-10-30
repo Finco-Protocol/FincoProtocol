@@ -30,11 +30,29 @@ def _current_text():
     return (ROOT / WORKFLOW).read_text(encoding="utf-8")
 
 
+def reviewed_workflow(path):
+    """The reviewed workflow states: every historical state is judged UNCHANGED by the protected M3 recognizer (tests/test_m3_two_driver_sensitivity.py,
+    kept byte-identical for the F01 oracle); the CI-340M successor is a separate, finite, exact-blob layer HERE (exact path, exact RC-3 reference,
+    the pinned HEAD and worktree blob, and the whole RC-3 -> RC-5 -> CI-200M -> CI-340M chain verified by content). Nothing else under .github/."""
+    if m3.reviewed_ci_workflow_candidate(path):
+        return True
+    from pathlib import Path
+    if path != WORKFLOW:
+        return False
+    current = ROOT / path
+    rc3 = subprocess.run(["git", "show", f"{INTEGRATION_HEAD}:{path}"], capture_output=True, text=True)
+    return (current.is_file() and rc3.returncode == 0
+            and m3._checked_git("rev-parse", f"{INTEGRATION_HEAD}:{path}") == RC3_CI_WORKFLOW_BLOB
+            and m3._checked_git("rev-parse", f"HEAD:{path}") == CI340_WORKFLOW_BLOB
+            and m3._checked_git("hash-object", path) == m3._checked_git("rev-parse", f"HEAD:{path}")
+            and not current_workflow_chain_violations(rc3.stdout, current.read_text(encoding="utf-8")))
+
+
 def test_the_pinned_successor_is_recognised_and_only_at_its_exact_path():
-    assert m3.reviewed_ci_workflow_candidate(WORKFLOW) is True
+    assert reviewed_workflow(WORKFLOW) is True
     for other in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_public_job.yml.bak", ".github/workflows/ci_public_job.yaml",
                   ".github/", ".github/workflows/", "finco_core/revenue/generation.py", "financial_engine/orchestrator.py"):
-        assert m3.reviewed_ci_workflow_candidate(other) is False, other
+        assert reviewed_workflow(other) is False, other
 
 
 def test_the_historical_rc3_reference_and_the_rc5_pin_are_independently_fixed():
@@ -80,9 +98,9 @@ def test_missing_or_wrong_blob_evidence_is_rejected(monkeypatch):
         return fake
     for kind in ("worktree", "head", "rc3"):
         monkeypatch.setattr(m3, "_checked_git", lie(kind, "0" * 40))
-        assert m3.reviewed_ci_workflow_candidate(WORKFLOW) is False, kind
+        assert reviewed_workflow(WORKFLOW) is False, kind
     monkeypatch.setattr(m3, "_checked_git", lambda *a: None)                                  # git facts unavailable: fail closed
-    assert m3.reviewed_ci_workflow_candidate(WORKFLOW) is False
+    assert reviewed_workflow(WORKFLOW) is False
 
 
 def test_the_authorised_rc5_budgets_are_unchanged_in_the_historical_state():
@@ -92,7 +110,7 @@ def test_the_authorised_rc5_budgets_are_unchanged_in_the_historical_state():
         assert needle in text, needle
 
 
-def test_the_historical_ci200_budgets_and_their_fit():
+def test_the_current_ci200_budgets_and_their_fit():
     text = ci200_reference_text(_head_text())                                          # derived from the pinned RC-5 text, never the worktree
     assert ci200_workflow_successor_violations(_head_text(), text) == []
     assert git_blob_sha(text) == CI200_WORKFLOW_BLOB

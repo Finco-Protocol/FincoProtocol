@@ -568,16 +568,16 @@ def reviewed_ci_workflow_candidate(path):
             and rc2_workflow_delta_valid(baseline.stdout, current_path.read_text(encoding="utf-8"))):
         return True
     from tests.test_rc3_integration_inventory import (
-        CI200_WORKFLOW_BLOB, CI340_WORKFLOW_BLOB, INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB,
+        CI200_WORKFLOW_BLOB, INTEGRATION_HEAD, RC3_CI_WORKFLOW_BLOB, RC5_CI_WORKFLOW_BLOB,
         current_workflow_chain_violations,
     )
     rc3 = subprocess.run(["git", "show", f"{INTEGRATION_HEAD}:{path}"], capture_output=True, text=True)
-    # RC-5 / CI-200M successor (historical) or CI-340M successor (current): exact RC-3 reference, exact pinned blob at HEAD and in the worktree, and the
+    # RC-5 successor (historical) or CI-200M successor (current): exact RC-3 reference, exact pinned blob at HEAD and in the worktree, and the
     # whole RC-3 -> RC-5 -> CI-200M chain verified by content (no other value, no ``.github/`` exception).
     return (
         rc3.returncode == 0
         and _checked_git("rev-parse", f"{INTEGRATION_HEAD}:{path}") == RC3_CI_WORKFLOW_BLOB
-        and _checked_git("rev-parse", f"HEAD:{path}") in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB, CI340_WORKFLOW_BLOB)
+        and _checked_git("rev-parse", f"HEAD:{path}") in (RC5_CI_WORKFLOW_BLOB, CI200_WORKFLOW_BLOB)
         and _checked_git("hash-object", path) == _checked_git("rev-parse", f"HEAD:{path}")
         and not current_workflow_chain_violations(rc3.stdout, current_path.read_text(encoding="utf-8"))
     )
