@@ -354,3 +354,24 @@ def test_ws2_admission_requires_the_ws2_cohort_to_be_exact(monkeypatch):
         return raw + b'\n' if path == 'app/v2/save_all_commands.py' and ref is None else raw
     monkeypatch.setattr(WS2, '_read', drifted)
     assert not WS2.exact_blobs_ok() and not F._ws2_allows('app/v2/save_all_commands.py', F.ROOT, None) and not F.exact_blobs_ok()
+
+
+def test_the_ws2_exact_check_runs_once_per_outer_call_and_is_never_shared(monkeypatch):
+    """Performance successor (PR #400 CI forensics): one exact_blobs_ok() call evaluated WS2.exact_blobs_ok once per changed path
+    (2436x in one governance test).  It is now evaluated once per outer call; a later call evaluates again, and verdicts are unchanged."""
+    from tests import fin_v2_wsv2_scope as WS2
+    paths = ['docs/SYNTHETIC/unowned-%d.md' % i for i in range(5)]          # owned by no cohort: every path reaches the WS-2 branch
+    calls = []
+    def counted(repo=None, ref=None):
+        calls.append((str(repo), ref))
+        return True
+    monkeypatch.setattr(WS2, 'exact_blobs_ok', counted)
+    monkeypatch.setattr(F, '_exact_blobs_ok', lambda repo=None, ref=None: [F._ws2_allows(p, F.ROOT, ref) for p in paths])
+    verdicts = F.exact_blobs_ok()
+    assert len(calls) == 1 and F._WS2_SCOPE == []                          # once per outer call (was once per path)
+    F.exact_blobs_ok()
+    assert len(calls) == 2 and F._WS2_SCOPE == []                          # never reused across outer calls
+    assert verdicts == [F._ws2_allows(p, F.ROOT, None) for p in paths]     # unmemoised evaluation gives the same verdicts
+    assert len(calls) == 2 + len(paths)                                    # outside a call nothing is memoised
+    monkeypatch.setattr(WS2, 'exact_blobs_ok', lambda repo=None, ref=None: False)
+    assert not any(F.exact_blobs_ok())                                     # a failing WS-2 check still refuses every path
