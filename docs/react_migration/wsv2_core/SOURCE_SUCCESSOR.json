@@ -72,8 +72,8 @@
     "tests/test_model_workspace_consolidation_browser.py": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
     "tests/test_rcm_governance.py": "5cded8afe380e9282080351a7760c3a3121d2e94",
     "tests/test_rcux_governance.py": "9c763e7e64afe4ecdd3777d142e0c3cae8299c46",
-    "tests/test_wsv2_core_scope.py": "0bfcad6086eae93538a1de4e7929474204827442",
-    "tests/wsv2_core_scope.py": "aa5a7e022edce9273f7baa6b3edc5f140476a047"
+    "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
+    "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a"
   },
   "historical_source_blobs": {
     "8a74fcb5cd57e470cf83a458bd165ea14ad394fb": {
