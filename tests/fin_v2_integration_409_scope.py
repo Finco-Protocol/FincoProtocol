@@ -63,6 +63,14 @@ HISTORY_MANIFESTS = (
 )
 BASE = MAIN
 OWNED_PATHS = PINNED_PATHS | SEAL_PATHS
+# Generated CI evidence (same closed rule as the older cohorts): untracked, under evidence/, non-executable extension only.
+_CI_EVIDENCE_EXTENSIONS = ('.json', '.xml', '.png', '.webp', '.jpg', '.jpeg', '.txt', '.csv', '.svg', '.html', '.zip')
+
+
+def _ci_evidence_only(path):
+    return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
+
+
 _PROTECTED_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/')
 
 
@@ -188,7 +196,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in allowed for p in untracked):
+            if any(p not in allowed and not _ci_evidence_only(p) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

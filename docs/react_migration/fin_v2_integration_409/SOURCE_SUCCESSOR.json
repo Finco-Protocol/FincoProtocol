@@ -26,9 +26,9 @@
     "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "a76b056405a6d4ac80e8b95b80fd3ecef6a9698b",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b9695cb441230ca84dbb06c60c6b65de72c111f3",
     "tests/fin_v2_cohorts.py": "e538a8d3bac912602aaae76eca4942f69b422c46",
-    "tests/fin_v2_integration_409_scope.py": "bbd41b7875536461d10847408e43849ea342fb2a",
+    "tests/fin_v2_integration_409_scope.py": "d5dd9379214c11094b1c904b60755469f7ba6786",
     "tests/fin_v2_wf06a_scope.py": "77429db8ac014aec2afaf7ebc11857ebc90efa92",
-    "tests/test_fin_v2_integration_409_scope.py": "c774290237d7e619ea30c8ff4e307fc3e2757f6b",
+    "tests/test_fin_v2_integration_409_scope.py": "d708abbd85b63c88fa1540a91996e016437d3517",
     "tests/wf03_lifecycle_scope.py": "ac3a3770d0fdd8bc09d9406e94801d5defb8b491",
     "tests/wf04_scope.py": "abdc1a4a1ed64e9a059ab731daabe2d258f79020",
     "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"

@@ -198,6 +198,17 @@ def test_4_extra_unreviewed_path_or_wildcard_is_rejected(wt):
     assert INT.admits_pin("app/unreviewed_extra.py", git("hash-object", "app/unreviewed_extra.py", cwd=wt), wt) is False
 
 
+def test_4_generated_ci_evidence_is_tolerated_only_as_untracked_non_executable_evidence(wt):
+    (wt / "evidence").mkdir(exist_ok=True)
+    (wt / "evidence" / "merge-tree.json").write_text("{}")
+    assert INT.exact_blobs_ok(wt) is True                                                  # what the hosted workflows write before the tests run
+    (wt / "evidence" / "run.py").write_text("x = 1\n")
+    assert INT.exact_blobs_ok(wt) is False                                                 # executable extension under evidence/ is not tolerated
+    (wt / "evidence" / "run.py").unlink()
+    (wt / "elsewhere.json").write_text("{}")
+    assert INT.exact_blobs_ok(wt) is False                                                 # evidence tolerance is not a general untracked allowance
+
+
 def test_5_substituted_parent_wrong_tree_or_missing_ancestor_is_rejected(wt):
     manifest = wt / INT.MANIFEST
     original = json.loads(manifest.read_text())
