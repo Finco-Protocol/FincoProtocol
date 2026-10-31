@@ -1,0 +1,47 @@
+metric_id,prior_rows_NOT_EXTRACTED,exposure_class,value_extracted_in_correction_A,evidence_path,runs
+GEN-01,0,EXTRACTED_LOCAL_ENGINE,YES,derivation_evidence.revenue.revenue_periods[].generation_mwh (sum),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+GEN-02,0,EXTRACTED_LOCAL_ENGINE,YES,derivation_evidence.revenue.revenue_periods[],PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+REV-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_revenue_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+REV-02,0,EXTRACTED_LOCAL_ENGINE,YES,derivation_evidence.revenue.revenue_periods[],PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+EBITDA-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_ebitda_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+EBITDA-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,financial_statements.pnl.periods[] revenues_keur - operating_expenses_keur (derived; 2-dp),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+CAPEX-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_capex_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+CAPEX-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,financing_evidence.construction_funding.periods[].project_cash_uses_keur (full precision),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+OPEX-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_opex_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+OPEX-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,financial_statements.pnl.periods[].operating_expenses_keur (2-dp),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+TAX-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_tax_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+TAX-02,0,EXTRACTED_LOCAL_ENGINE,YES,tax_schedule.periods[].corporate_tax_cash_keur (payload rounded 2dp),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+TAX-03,6,NOT_EXPOSED_BY_PAYLOAD,YES,tax_schedule.periods[].taxable_profit_keur present; loss-ledger/audit fields (tax_loss_*_audit_keur) are null -> loss ledger NOT exposed,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+CFADS-01,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].base_cfads,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+CFADS-02,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].bank_cfads,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DEBT-01,0,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,financing_evidence.construction_funding.periods[].senior_draw_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DEBT-02,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.senior_debt_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DEBT-03,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].interest,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DEBT-04,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].principal,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DEBT-05,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].closing,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DSCR-01,0,EXTRACTED_LOCAL_ENGINE,YES,integrity_evidence.senior_debt.periods[].reported_dscr (debt-service periods),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DSCR-02,0,EXTRACTED_LOCAL_ENGINE,YES,"kpis.min_dscr, kpis.avg_dscr",PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DSCR-03,0,EXTRACTED_LOCAL_ENGINE,YES,derived bank_cfads/debt_service from integrity evidence (bank_sizing_dscr array not exposed),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+DSCR-04,0,PERSISTED_RUN_AVAILABLE,YES,PURE evaluation of app.workbook.dscr_contract_terms on sealed per-period evidence; fixtures carry NO contractual terms (NOT_CONFIGURED); Run-bound verdict exists only for a committed Run (last_runtime_identity.dscr_contract_terms),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+EQU-01,0,EXTRACTED_LOCAL_ENGINE,YES,sources_uses,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+EQU-02,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.total_distributions_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RET-01,0,EXTRACTED_LOCAL_ENGINE,YES,kpis,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RET-02,0,EXTRACTED_LOCAL_ENGINE,YES,kpis,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RET-03,0,EXTRACTED_LOCAL_ENGINE,YES,kpis.project_irr,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+NPV-01,0,NOT_CONFIGURED,NO,financing_evidence.financial_core_v1.valuation_summary.project_npv.status = NOT_CONFIGURED (no valuation policy/discount rate); kpis.project_npv_keur None,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+NPV-02,0,NOT_CONFIGURED,NO,equity NPV: valuation policy absent; kpis.equity_npv_keur None; sponsor_npv status see financial_core_v1.sponsor_npv,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+LLCR-01,0,NOT_CONFIGURED,NO,valuation_summary.lender_coverage.llcr.status = COVERAGE_CFADS_CASE_NOT_CONFIGURED; senior llcr_inputs.llcr_status = NOT_COMPUTED_BY_THIS_EVIDENCE,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+PLCR-01,6,NOT_COMPUTED,NO,kpis.plcr None; tables.returns carries 'n/a' rows; no PLCR vector in payload,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RES-01,0,EXTRACTED_LOCAL_ENGINE,YES,debt_schedule.periods[].dsra_balance_keur (payload 2dp),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RES-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,debt_schedule.periods[].dsra_contribution_keur (net contribution only; top-up/draw/release split NOT exposed),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+RES-03,0,EXTRACTED_LOCAL_ENGINE,YES,sources_uses.initial_dsra_funding_keur (C.18 reserve detail not exposed),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+IDENT-01,0,EXTRACTED_LOCAL_ENGINE,YES,sources_uses.difference_keur,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+IDENT-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,computed here from integrity_evidence.senior_debt (see FIXTURE_RUNS_AND_IDENTITIES.csv),PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+IDENT-03,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,"DSCR = base_cfads/debt_service, full precision",PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+IDENT-04,6,NOT_EXPOSED_BY_PAYLOAD,NO,no template-defined cash-conservation identity is machine-readable; not invented,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+STATE-01,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,"financial_statements (pnl, balance_sheet, pf_cash_waterfall) digest; full payload in capture",PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+WARN-01,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,financing_evidence.bankability.binding_senior_constraint; integrity_evidence.senior_debt.diagnostics,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+WARN-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,YES,"run payload messages (the /api/v1/validate warnings list is a v1-API surface, not run in this study)",PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+WARN-03,0,EXTRACTED_LOCAL_ENGINE,YES,run payload runtime_authority,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+PROV-01,0,PERSISTED_RUN_AVAILABLE,YES,local sha256(repr(effective ProjectInputs)); engine EngineProvenance.input_fingerprint / composite_hash / history_id exist only for a committed Run,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R
+PROV-02,6,ENGINE_AVAILABLE_BUT_HARNESS_MISSING,NO,tools/numerical_validation/reconcile.py state vocabulary not executed in this study,PRIOR_VARIANT_B;TR;TR_REPLACEMENT_WND-02-R

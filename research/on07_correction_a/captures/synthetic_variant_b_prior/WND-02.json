@@ -1,0 +1,292 @@
+{
+ "fixture": "WND-02",
+ "status": "REFUSED_OR_ERROR",
+ "snapshot_applied_keys": {
+  "cod_date": [
+   "cod_date"
+  ],
+  "construction_months": [
+   "construction_months"
+  ],
+  "horizon_years": [
+   "horizon_years"
+  ],
+  "capacity_mw": [
+   "capacity_mw"
+  ],
+  "p50_hours": [
+   "p50_hours"
+  ],
+  "operating_hours_p90_10y": [
+   "operating_hours_p90_10y"
+  ],
+  "rev_ppa_base_tariff": [
+   "rev_ppa_base_tariff",
+   "tariff_eur_mwh"
+  ],
+  "rev_ppa_term_years": [
+   "rev_ppa_term_years",
+   "ppa_term_years"
+  ],
+  "rev_ppa_index": [
+   "rev_ppa_index"
+  ],
+  "rev_ppa_production_share": [
+   "rev_ppa_production_share"
+  ],
+  "rev_ppa_indexation_start_policy": [
+   "rev_ppa_indexation_start_policy"
+  ],
+  "rev_merchant_price_curve_json": [
+   "rev_merchant_price_curve_json"
+  ],
+  "rev_merchant_balancing_pct": [
+   "rev_merchant_balancing_pct"
+  ],
+  "rev_balancing_cost_eur_per_mwh": [
+   "rev_balancing_cost_eur_per_mwh"
+  ],
+  "rev_co2_enabled": [
+   "rev_co2_enabled"
+  ],
+  "rev_co2_price_eur_mwh": [
+   "rev_co2_price_eur_mwh"
+  ],
+  "total_capex_keur": [
+   "total_capex_keur"
+  ],
+  "opex_y1_keur": [
+   "opex_y1_keur"
+  ],
+  "gearing_pct": [
+   "gearing_pct"
+  ],
+  "interest_rate_pct": [
+   "interest_rate_pct"
+  ],
+  "tenor_years": [
+   "tenor_years"
+  ],
+  "target_dscr": [
+   "target_dscr"
+  ]
+ },
+ "registry_validation": {
+  "cod_date": "VALID",
+  "construction_months": "VALID",
+  "horizon_years": "VALID",
+  "capacity_mw": "VALID",
+  "p50_hours": "VALID",
+  "operating_hours_p90_10y": "NOT_VALIDATED(registry-less or empty)",
+  "rev_ppa_base_tariff": "VALID",
+  "rev_ppa_term_years": "VALID",
+  "rev_ppa_index": "VALID",
+  "rev_ppa_production_share": "VALID",
+  "rev_ppa_indexation_start_policy": "VALID",
+  "rev_merchant_price_curve_json": "VALID",
+  "rev_merchant_balancing_pct": "VALID",
+  "rev_balancing_cost_eur_per_mwh": "VALID",
+  "rev_co2_enabled": "VALID",
+  "rev_co2_price_eur_mwh": "VALID",
+  "total_capex_keur": "NOT_VALIDATED(registry-less or empty)",
+  "opex_y1_keur": "NOT_VALIDATED(registry-less or empty)",
+  "gearing_pct": "VALID",
+  "interest_rate_pct": "VALID",
+  "tenor_years": "VALID",
+  "target_dscr": "VALID"
+ },
+ "seed_snapshot_digest": "e7aee9d3a3f6228748d61b377cf82e4a06fc385337a65c4ba26cf71344fea82e",
+ "fixture_snapshot_digest": "ddc1855239f99132ba75187769cf96be06a7a8c7d6c5aac0bf78ad911e54e26a",
+ "unknown_keys": [
+  "_finval_interest_rate_origin",
+  "_finval_interest_rate_unit",
+  "_reference_seed_profile",
+  "operating_hours_p90_10y",
+  "tax_template"
+ ],
+ "coercion_errors": [],
+ "workbook_version": "2.3.0",
+ "workbook_snapshot_fingerprint_NOT_STABLE_ACROSS_DBS": "e24fd145826e8e4618779d710d89e08baa1892d6ec3e13d2be064916f6344f46",
+ "fixture_cell_digest": "87d2a0f5dd01a9a241bb8681209c643bedd0fdd7a2a1288e8b68a6e21a0c0d7b",
+ "effective_before_folds": {
+  "capacity_mw": "40.0",
+  "p50_hours": "2800.0",
+  "operating_hours_p90_10y": "2520.0",
+  "operating_hours_p99_1y": "2240.0",
+  "pv_degradation": "0.0",
+  "cod_date": "2031-07-01",
+  "construction_months": "18",
+  "financial_close": "2030-01-01",
+  "horizon_years": "25",
+  "rev_ppa_base_tariff": "58.0",
+  "rev_ppa_term_years": "7",
+  "rev_ppa_index": "0.02",
+  "rev_ppa_production_share": "0.55",
+  "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+  "rev_balancing_cost_eur_per_mwh": "0.0",
+  "rev_co2_enabled": "False",
+  "rev_co2_price_eur_mwh": "0.0",
+  "total_capex_keur": "52000.0",
+  "gearing_pct": "0.88",
+  "tenor_years": "12",
+  "target_dscr": "1.35",
+  "cit_rate_pct": "0.25",
+  "loss_carryforward_years": "5",
+  "opex_y1_keur": "1150.0",
+  "interest_rate_pct": "(0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675)",
+  "rev_merchant_curve": "[45.0, 45.9, 46.82, 47.75, 48.71, 49.68, 50.68, 51.69, 52.72, 53.78, 54.85, 55.95, 57.07, 58.21, 59.38, 60.56, 61.78, 63.01, 64.27, 65.56, 66.87, 68.2, 69.57, 70.96, 72.38, 73.83]",
+  "rev_merchant_balancing_pct": "[0.04, 8.0]"
+ },
+ "variant": "SNAPSHOT_TOTALS_NO_SUBLINE_FOLD (NOT the Run route)",
+ "effective_inputs": {
+  "capacity_mw": "40.0",
+  "p50_hours": "2800.0",
+  "operating_hours_p90_10y": "2520.0",
+  "operating_hours_p99_1y": "2240.0",
+  "pv_degradation": "0.0",
+  "cod_date": "2031-07-01",
+  "construction_months": "18",
+  "financial_close": "2030-01-01",
+  "horizon_years": "25",
+  "rev_ppa_base_tariff": "58.0",
+  "rev_ppa_term_years": "7",
+  "rev_ppa_index": "0.02",
+  "rev_ppa_production_share": "0.55",
+  "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+  "rev_balancing_cost_eur_per_mwh": "0.0",
+  "rev_co2_enabled": "False",
+  "rev_co2_price_eur_mwh": "0.0",
+  "total_capex_keur": "52000.0",
+  "gearing_pct": "0.88",
+  "tenor_years": "12",
+  "target_dscr": "1.35",
+  "cit_rate_pct": "0.25",
+  "loss_carryforward_years": "5",
+  "opex_y1_keur": "1150.0",
+  "interest_rate_pct": "(0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675, 0.0675)",
+  "rev_merchant_curve": "[45.0, 45.9, 46.82, 47.75, 48.71, 49.68, 50.68, 51.69, 52.72, 53.78, 54.85, 55.95, 57.07, 58.21, 59.38, 60.56, 61.78, 63.01, 64.27, 65.56, 66.87, 68.2, 69.57, 70.96, 72.38, 73.83]",
+  "rev_merchant_balancing_pct": "[0.04, 8.0]"
+ },
+ "binding_check": {
+  "cod_date": {
+   "verdict": "MATCH",
+   "detail": "effective=2031-07-01",
+   "intended": "2031-07-01"
+  },
+  "construction_months": {
+   "verdict": "MATCH",
+   "detail": "effective=18",
+   "intended": "18"
+  },
+  "horizon_years": {
+   "verdict": "MATCH",
+   "detail": "effective=25",
+   "intended": "25"
+  },
+  "capacity_mw": {
+   "verdict": "MATCH",
+   "detail": "effective=40.0",
+   "intended": "40.0"
+  },
+  "p50_hours": {
+   "verdict": "MATCH",
+   "detail": "effective=2800.0",
+   "intended": "2800"
+  },
+  "operating_hours_p90_10y": {
+   "verdict": "MATCH",
+   "detail": "effective=2520.0",
+   "intended": "2520"
+  },
+  "rev_ppa_base_tariff": {
+   "verdict": "MATCH",
+   "detail": "effective=58.0",
+   "intended": "58.00"
+  },
+  "rev_ppa_term_years": {
+   "verdict": "MATCH",
+   "detail": "effective=7",
+   "intended": "7"
+  },
+  "rev_ppa_index": {
+   "verdict": "MATCH",
+   "detail": "effective=0.02",
+   "intended": "2.00"
+  },
+  "rev_ppa_production_share": {
+   "verdict": "MATCH",
+   "detail": "effective=0.55",
+   "intended": "55.0"
+  },
+  "rev_ppa_indexation_start_policy": {
+   "verdict": "MATCH",
+   "detail": "effective=FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+   "intended": "FIRST_FULL_CALENDAR_YEAR_AS_BASE"
+  },
+  "rev_merchant_price_curve_json": {
+   "verdict": "MATCH",
+   "intended": "26 points",
+   "detail": "effective points=26; intended prefix equal=True"
+  },
+  "rev_merchant_balancing_pct": {
+   "verdict": "MATCH",
+   "detail": "effective(pv_fraction, wind_eur_mwh)=[0.04, 8.0]; Solar reads balancing_cost_pv; Wind path unconfirmed",
+   "intended": "4.00"
+  },
+  "rev_balancing_cost_eur_per_mwh": {
+   "verdict": "MATCH",
+   "detail": "effective=0.0",
+   "intended": "0.00"
+  },
+  "rev_co2_enabled": {
+   "verdict": "MATCH",
+   "detail": "effective=False",
+   "intended": "false"
+  },
+  "rev_co2_price_eur_mwh": {
+   "verdict": "MATCH",
+   "detail": "effective=0.0",
+   "intended": "0.00"
+  },
+  "total_capex_keur": {
+   "verdict": "MATCH",
+   "detail": "effective=52000.0",
+   "intended": "52000"
+  },
+  "opex_y1_keur": {
+   "verdict": "MATCH",
+   "detail": "effective=1150.0",
+   "intended": "1150"
+  },
+  "gearing_pct": {
+   "verdict": "MATCH",
+   "detail": "effective=0.88",
+   "intended": "88.0"
+  },
+  "interest_rate_pct": {
+   "verdict": "MATCH",
+   "detail": "effective=[0.0675, 0.0675, 0.0675]",
+   "intended": "6.75"
+  },
+  "tenor_years": {
+   "verdict": "MATCH",
+   "detail": "effective=12",
+   "intended": "12"
+  },
+  "target_dscr": {
+   "verdict": "MATCH",
+   "detail": "effective=1.35",
+   "intended": "1.35"
+  }
+ },
+ "error_type": "CleanProductionRunUnavailable",
+ "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED: maturity_period_index=57",
+ "environment": {
+  "main_sha": "db504f6408cb456c617c9342a1ffa202ee455283",
+  "tree": "9b96717bae39a4dbb496879c7e6c028e675492d3",
+  "python": "3.13.17",
+  "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+  "db": "none (in-process engine call, no persistence)",
+  "network": "none"
+ }
+}

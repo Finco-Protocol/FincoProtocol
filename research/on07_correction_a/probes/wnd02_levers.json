@@ -1,0 +1,277 @@
+{
+ "diagnostic_only": true,
+ "timeline_override": {
+  "construction_months": "20",
+  "horizon_years": "27"
+ },
+ "bisect_capex": [
+  {
+   "overrides": {
+    "total_capex_keur": "36000.00"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 19537.026408045032,
+   "actual_gearing": 0.5007028751556186,
+   "min_dscr": 1.4789349237005869,
+   "sponsor_xirr": 0.0862215348475759,
+   "project_irr": 0.07417271059885211,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "44000.00"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 10476.348430397940 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "40000.00"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 7515.135253377936 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38000.00"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 19537.026408045032,
+   "actual_gearing": 0.4763172989074275,
+   "min_dscr": 1.552935929855233,
+   "sponsor_xirr": 0.08049531575047861,
+   "project_irr": 0.06956501169433812,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "39000.00"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 2779.812658444601 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38500.00"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 473.265956597422 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38250.00"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 19537.026408045032,
+   "actual_gearing": 0.47343510360013524,
+   "min_dscr": 1.552935929855233,
+   "sponsor_xirr": 0.07978558758564472,
+   "project_irr": 0.06901544309501045,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38375.00"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 19537.026408045032,
+   "actual_gearing": 0.4720070466116885,
+   "min_dscr": 1.552935929855233,
+   "sponsor_xirr": 0.07943385548408002,
+   "project_irr": 0.06874273726509297,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38437.50"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 179.125882938895 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "total_capex_keur": "38406.25"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 31.862764767744 kEUR remains at maturity period_index=57"
+  }
+ ],
+ "bisect_tariff": [
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "89.00"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 8930.608312570959 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "104.50"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 5381.979163620726 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "112.25"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 1121.144262641522 kEUR remains at maturity period_index=57"
+  },
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "116.12"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 33081.76767010826,
+   "actual_gearing": 0.5758278289656507,
+   "min_dscr": 1.3879035778502768,
+   "sponsor_xirr": 0.08933193641372485,
+   "project_irr": 0.07493131081441176,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "114.19"
+   },
+   "status": "RUN_OK",
+   "refusal": null,
+   "senior": 32724.38104927549,
+   "actual_gearing": 0.5703348588707007,
+   "min_dscr": 1.3523561109444575,
+   "sponsor_xirr": 0.08789889843667281,
+   "project_irr": 0.07385380664574878,
+   "mismatch": [],
+   "error": ""
+  },
+  {
+   "overrides": {
+    "rev_ppa_base_tariff": "113.22"
+   },
+   "status": "REFUSED_OR_ERROR",
+   "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+   "senior": null,
+   "actual_gearing": null,
+   "min_dscr": null,
+   "sponsor_xirr": null,
+   "project_irr": null,
+   "mismatch": [],
+   "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 418.016066688588 kEUR remains at maturity period_index=57"
+  }
+ ],
+ "route_consistent_unaltered": {
+  "overrides": {},
+  "status": "REFUSED_OR_ERROR",
+  "refusal": "SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
+  "senior": null,
+  "actual_gearing": null,
+  "min_dscr": null,
+  "sponsor_xirr": null,
+  "project_irr": null,
+  "mismatch": [],
+  "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 62130.029632313941 kEUR remains at maturity period_index=57"
+ },
+ "capex_20000": {
+  "overrides": {
+   "total_capex_keur": "20000"
+  },
+  "status": "RUN_OK",
+  "refusal": null,
+  "senior": 17797.23872351848,
+  "actual_gearing": 0.7782932094247907,
+  "min_dscr": 1.4635044915040396,
+  "sponsor_xirr": 0.20949882232318245,
+  "project_irr": 0.1350401991495997,
+  "mismatch": [],
+  "error": ""
+ },
+ "capex_boundary_feasible_at": 38375.0,
+ "tariff_120": {
+  "overrides": {
+   "rev_ppa_base_tariff": "120.00"
+  },
+  "status": "RUN_OK",
+  "refusal": null,
+  "senior": 33799.48083676055,
+  "actual_gearing": 0.5868158356529971,
+  "min_dscr": 1.4007929307209042,
+  "sponsor_xirr": 0.09239169594504132,
+  "project_irr": 0.07711639215553422,
+  "mismatch": [],
+  "error": ""
+ },
+ "tariff_boundary_feasible_at": 114.1875
+}

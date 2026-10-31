@@ -1,0 +1,14 @@
+# Post-#400 live parity execution script (NOT executed; read-only prep)
+Authority: `ON07_RUNBOOK.md` (package). **Hard precondition (its section 0): #399 and #400 MERGED and staging deployed from that main at a recorded exact SHA.** #399 is merged (`db504f6`); #400 is Draft `21d3ad8f` (dirty). Re-verify both and record the staging build SHA before step 1. Do not mutate or load-test app.finco.one / staging.finco.one before then. Finmodels.io: BLOCKED (no authorised access or verified mapping; do not log in/scrape/claim equivalence).
+## Owner decisions needed first
+(a) staging SHA + four owner-created test accounts (out-of-band; never recorded here); (b) decide the CAPEX/OPEX entry method and expected effective totals (README Finding 1); (c) decision on WND-02 (refused locally); (d) whether U-07/U-08 are fixed first, otherwise those inputs are NOT_COMPARABLE.
+## Script (per fixture; scripted as Playwright against staging, screenshots `ON07_<section>_<check>_<ui>.png`)
+1. Create two copies per fixture (React wizard, Legacy `/projects/create`) with unique 32-hex request ids; record `project_code`s.
+2. Enter EXPLICIT cells from ON07_PROJECT_FIXTURES.csv only; CAPEX/OPEX via cost-lines editor; **read back** every field and compare with ON07_FIXTURE_BINDING_AUDIT.csv `intended_value`; hash the canonical input JSON per copy; **equal hashes required** or STOP (INPUT_MISMATCH).
+3. Save All once (note request id; replay same id, expect idempotent replay; changed body, expect refusal); confirm Last Run STALE after any later edit; confirm no new `history_id` without an explicit Run (G-03).
+4. Explicit Run on each copy; record `history_id`, `runtime_snapshot_id`, `ran_at`, `engine_version`, `composite_hash`; each Run adds exactly one immutable history row. Past-Run immutability after Save All (G-04).
+5. Fill `obs_react` / `obs_legacy` in a copy of ON07_LOCAL_BASELINE.csv only from persisted Run payloads (never from the local-engine column, never from screenshots); assign one discrepancy class per row (`DIFFERENT_DEFINITION | INPUT_MISMATCH | ROUNDING_ONLY | ENGINE_CALCULATION_DIFFERENCE | MISSING_FEATURE | NOT_RUN | INCONCLUSIVE`). Local numbers are a regression reference for the engine, not parity proof.
+6. WND-02: expect a typed fail-closed refusal in both UIs unless the engine gap is fixed; record exactly.
+7. Execute ON07_GAP_REGISTER_UPDATED.md (44 rows; reconcile with "36"): `[TESTABLE_WITHOUT_#400]` first; `[DEPENDS_ON_#400]` (B-06 Archive, Restore interstitial, setup drafts) and `[REVERIFY_AFTER_#400]` (wizard/Library) only after #400 is deployed.
+8. Negative tests: account isolation (cross-user 404/401), no hidden writes on browsing (workspace content hash and save ledger unchanged), per-project ownership with interleaved tabs, typed errors (429/503/refusals), no implicit Runs.
+9. Completion: staging SHA, engine_version, composite hashes, all observed columns evidence-linked; anything unobserved stays `NOT_OBSERVED`.

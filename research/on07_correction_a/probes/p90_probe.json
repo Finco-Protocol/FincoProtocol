@@ -1,0 +1,24 @@
+{
+ "seeded": {
+  "p50": 1500.0,
+  "p90_10y": 1350.0,
+  "p99_1y": 1200.0,
+  "snapshot_p90": 1400.0,
+  "snapshot_p99": null
+ },
+ "after_p50_1600": {
+  "p50": 1600.0,
+  "p90_10y": 1440.0,
+  "p99_1y": 1280.0,
+  "snapshot_p90": 1400.0,
+  "snapshot_p99": null
+ },
+ "after_p50_1500": {
+  "p50": 1500.0,
+  "p90_10y": 1350.0,
+  "p99_1y": 1200.0,
+  "snapshot_p90": 1400.0,
+  "snapshot_p99": null
+ },
+ "registry_fields_matching_p90_p99": []
+}

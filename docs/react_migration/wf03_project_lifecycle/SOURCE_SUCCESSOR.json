@@ -61,6 +61,15 @@
       ],
       "authorization": "Owner prompt POST-#404 (2026-10-31): bounded integration of PR #402 six reviewed paths; no financial-engine, solver or Goal Seek change",
       "merge_deploy_activation": false
+    },
+    "on07_research": {
+      "directories": [
+        "research/on07_baseline_post399/",
+        "research/on07_correction_a/"
+      ],
+      "files": 66,
+      "authorization": "Owner prompt POST-#404 (2026-10-31): narrow, auditable, path-limited research admission; research only, not financial authority",
+      "merge_deploy_activation": false
     }
   },
   "source_blobs": {
@@ -112,6 +121,72 @@
     "frontend/src/app/newProject/NewProjectWizard.tsx": "2fb78750c5f03e951e593ab8ec199b102868c451",
     "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
     "main_web.py": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
+    "research/on07_baseline_post399/IMPLEMENTATION_GAP_SHORTLIST.md": "9f226f7e8ea3f225f78e451bdd51b7e0fa59ea5d",
+    "research/on07_baseline_post399/POST400_LIVE_PARITY_RUNBOOK.md": "635ec8640b616ead24c2f3a00b29fb8125f7fad0",
+    "research/on07_baseline_post399/README_FIRST.md": "6210188b641bb80c39d3a15d2964c2bf68d5ca16",
+    "research/on07_baseline_post399/U07_U08_FINDINGS.md": "6ed62dc6dbfefe8c5264344af2ffd5b831676253",
+    "research/on07_baseline_post399/WF04_VERIFICATION.md": "2d87132abb34d2030406dc5db79b2c02ad7fc734",
+    "research/on07_baseline_post399/harness/analyze_captures.py": "ecee27f54fbf4bbbb22cf3ab318219c37310d11d",
+    "research/on07_baseline_post399/harness/binding_probe.py": "5183ef243b0cfcca727724ae4ca737e268eb936f",
+    "research/on07_baseline_post399/harness/build_fixture_binding_audit.py": "f7ab3ef7d533afa9e9c10cf23f5fb8c59a0ed707",
+    "research/on07_baseline_post399/harness/diagnose_refusal.py": "7efb0a62368ad1ed383a8bbb897ba7ef58ed1c76",
+    "research/on07_baseline_post399/harness/on07_common.py": "89002e5d38582e6aa6c0dc69585dc21f0c9dd8e4",
+    "research/on07_baseline_post399/harness/run_on07_workbook.py": "7dc2fc5bd351dbe57e2c83788b898b58f0fe36de",
+    "research/on07_correction_a/COST_LINE_ALLOCATION_LEDGER.csv": "90faec6dce6018d0bc0f2074463e3ecbb1cfc298",
+    "research/on07_correction_a/FIXTURE_RUNS_AND_IDENTITIES.csv": "9adfd7a563165a8eaf6b938738a3391fb438a7a2",
+    "research/on07_correction_a/GOVERNANCE_DISPOSITION.md": "92d07179d4afa27e19769fb5b895bba4512e6047",
+    "research/on07_correction_a/INPUTS_AND_PROVENANCE.md": "274706eebd5c3dfe811a5b21c87219e5b9da6516",
+    "research/on07_correction_a/ON07_LOCAL_BASELINE_TRUE_ROUTE.csv": "963f9d7826f823701143897be6cdcb808bbbba53",
+    "research/on07_correction_a/ON07_PACKAGE_FILE_HASHES.md": "6dbcc6cd6556b694834e68696565410cbf1dd086",
+    "research/on07_correction_a/ORIGINAL_VS_REVISED_FIXTURE_DIFF.csv": "db958c3aa212aa3383081696b4752533a3fc9ccb",
+    "research/on07_correction_a/OUTPUT_EXPOSURE_REGISTER.csv": "4cfa8e6f0494eb7f0255c53da1340aa51a168603",
+    "research/on07_correction_a/OWNER_DECISION_REGISTER.md": "0f7e90ab60760789b8debd6618ad8b27c037b350",
+    "research/on07_correction_a/README_FIRST.md": "15bb9f81b156b470d2d442fb302d46f07477e960",
+    "research/on07_correction_a/REPRODUCIBILITY_3_FRESH_DBS.csv": "46f0e116671d7b0f9bacefb91d784608ce2afca4",
+    "research/on07_correction_a/SHA256SUMS.txt": "ecf7d0c781f9c236bd4c78ac9dc89b837e1e9bbe",
+    "research/on07_correction_a/SOURCE_GOVERNANCE_DECISION.md": "bfe0e4ee617ce8353917de37c5e4543cae934e16",
+    "research/on07_correction_a/TRUE_ROUTE_INPUT_LEDGER.csv": "dfa7d7e6da889e0b5f42522018a78b29ba4a1e81",
+    "research/on07_correction_a/WND02_SHL_MATURITY_FORENSICS.md": "cd3412209891dc8d7941ebcb91a6c117ee110eaf",
+    "research/on07_correction_a/captures/synthetic_variant_b_prior/SOL-01.json": "fc6b9d3c6d09db05a8f2e23231f7139587106de5",
+    "research/on07_correction_a/captures/synthetic_variant_b_prior/SOL-02.json": "30aa1f8687a33d0b72bd0745096c08beb492cd9f",
+    "research/on07_correction_a/captures/synthetic_variant_b_prior/WND-01.json": "59c2c92cc994df1ce63a5c89022e6677552b6eab",
+    "research/on07_correction_a/captures/synthetic_variant_b_prior/WND-02.json": "7c679d2a0f14612dc2ad11c2cb8242664281106c",
+    "research/on07_correction_a/captures/user_created_core_run/tr1_SOL-01.json": "472d9f206bfe9c905d048584c72d712b45c7b543",
+    "research/on07_correction_a/captures/user_created_core_run/tr1_SOL-02.json": "d182ce1f287ef9711e7de059eac533ff03209d77",
+    "research/on07_correction_a/captures/user_created_core_run/tr1_WND-01.json": "a79ef4a8541056b2db8c4a051f721f4105221ba1",
+    "research/on07_correction_a/captures/user_created_core_run/tr1_WND-02.json": "1dbb158734d879f0b27e94df9ff2c7d53d6a882d",
+    "research/on07_correction_a/captures/user_created_core_run/wr1_WND-02.json": "1dd3fdfae9cd8fd9ff37dc258de310f54f5691ac",
+    "research/on07_correction_a/governance_probe/FAILING_ON_UNMODIFIED_MAIN_LOCAL_ENV.txt": "f7616f8d4043ac49e59b1ac164cf44ffed8bddf1",
+    "research/on07_correction_a/governance_probe/NEWLY_FAILING_AFTER_ONE_HARMLESS_FILE.txt": "3ca8e5cb9771cafa18fc3401eeb523197b6c8b31",
+    "research/on07_correction_a/governance_probe/cohort_probe.py": "57a9f071d536a1821d18d08f1ea2717a10c2ce5a",
+    "research/on07_correction_a/governance_probe/guard_probe.py": "038f851c98dca266f846a53db1014a1582bb8c05",
+    "research/on07_correction_a/harness/analyze_ca.py": "c0dd7234a41b274d7b820a030e8512bd133136c9",
+    "research/on07_correction_a/harness/analyze_captures.py": "ecee27f54fbf4bbbb22cf3ab318219c37310d11d",
+    "research/on07_correction_a/harness/build_handover.py": "1a6b96d0a7b8d34679aa734201a43f16757b1ed1",
+    "research/on07_correction_a/harness/integrity_verdicts.py": "6fda0a55b60fe1130d9079fb4b2d957ac618c2df",
+    "research/on07_correction_a/harness/on07_common.py": "89002e5d38582e6aa6c0dc69585dc21f0c9dd8e4",
+    "research/on07_correction_a/harness/p90_probe.py": "a7602261405a74abb9cab286c6a411f2bbf5eadd",
+    "research/on07_correction_a/harness/run_on07_workbook_helpers.py": "d7033ee94897465d93ee8b3d93c32722fb1bc1c7",
+    "research/on07_correction_a/harness/shl_forensics.py": "4b95c9c7ffd3c28e09f461dd6f1bc45ccc105d3d",
+    "research/on07_correction_a/harness/true_route.py": "7dff5987409263c4aaa6a4b43113634579840a3b",
+    "research/on07_correction_a/harness/wnd02_levers.py": "3bc57be0cdd6f230b4cae726fd38ec217db03fad",
+    "research/on07_correction_a/harness/wnd02_rederived_diag.py": "f457aa155d494450f0a69ee2790540717c0ed6f3",
+    "research/on07_correction_a/harness/wnd_minimal_repro.py": "4ab256351154e4eb4272dc24cf662f5c52fb6e8d",
+    "research/on07_correction_a/isolated_revised_copies/ON07_CHECKLIST_AUDIT.csv": "eb4c9f6ceb2fe68da11a5543ca0d681bfdb84bab",
+    "research/on07_correction_a/isolated_revised_copies/ON07_CHECKLIST_AUDIT.md": "e587d4a08737fc9e0603983117da44c7abf803d6",
+    "research/on07_correction_a/isolated_revised_copies/ON07_FIELD_MAPPING_REVISED.csv": "37ea361e3f5cd4b2ca9e574c159ccad8a216e46f",
+    "research/on07_correction_a/isolated_revised_copies/ON07_GAP_REGISTER_UPDATED_PRIOR.md": "b13c00ed7a0486f7fffd1932bd07f17689f97355",
+    "research/on07_correction_a/isolated_revised_copies/ON07_OUTPUT_COMPARISON_TEMPLATE_REVISED.csv": "96bb589fbd29fab980641e114737daafdf7bd0dc",
+    "research/on07_correction_a/isolated_revised_copies/ON07_PROJECT_FIXTURES_REVISED.csv": "7c08e801773cabf66c69299e8c6d8412068250ba",
+    "research/on07_correction_a/isolated_revised_copies/ON07_RUNBOOK_REVISED.md": "fd03649ff18c318b3ee7e76aa45be3c0a731f6f1",
+    "research/on07_correction_a/isolated_revised_copies/ON07_UNVERIFIED_ASSUMPTIONS_REVISED.md": "182352ca408db1af58cfe69293d405c1fd6c6070",
+    "research/on07_correction_a/probes/integrity_verdicts.json": "1e3c187c92bef1931d2aaf3deb2a0fb4c464b625",
+    "research/on07_correction_a/probes/min_solar.json": "9e90c128b712a0ad64e2c4104fab914f0503ff6c",
+    "research/on07_correction_a/probes/min_wind.json": "e1051420a519670780d9af9904dacb1b341f9560",
+    "research/on07_correction_a/probes/p90_probe.json": "1380ff5b9b6045f105509d9ff22c7af08f1446f6",
+    "research/on07_correction_a/probes/shl_e1.json": "01fb256806a8e2b70591ed954cc77581e46c1176",
+    "research/on07_correction_a/probes/wnd02_levers.json": "642629dd25344fe5029aec2f469f78594194cd59",
+    "research/on07_correction_a/probes/wnd02_rederived.json": "d70303bc76aa39d639817584191c351fa2289d8d",
     "static/react/finco-react.css": "0568204f30a7764474ac830dc2b3fe4cb1d3d778",
     "static/react/finco-react.js": "097f07e6810c5fea23d409789a0d4c3559beea4d",
     "tests/d029_executor_hold.py": "9e0db180cc6f05a402bff97c460a0ea15bd41a7d",
@@ -150,12 +225,12 @@
     "tests/test_true_blank_readiness.py": "430ea655203bfec8fa03875e02378c80a0173528",
     "tests/test_trust_readiness_controls.py": "8b96b52f7b5e756892ff96ad376f2c6397f70c39",
     "tests/test_trust_readiness_registry.py": "eeb8302dce96e535e1ad9aa2a93b5a684197fdec",
-    "tests/test_wf03_lifecycle_scope.py": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
+    "tests/test_wf03_lifecycle_scope.py": "cf2921b7258d819955ce87a936b000364536f237",
     "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "46bd40b4bb0b29799971181371d53dca09972dae",
+    "tests/wf03_lifecycle_scope.py": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
@@ -905,6 +980,600 @@
       "rationale": "Standing Owner addendum and three-path supplemental approval; independent review still required"
     },
     {
+      "path": "research/on07_baseline_post399/IMPLEMENTATION_GAP_SHORTLIST.md",
+      "before_blob": null,
+      "after_blob": "9f226f7e8ea3f225f78e451bdd51b7e0fa59ea5d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/POST400_LIVE_PARITY_RUNBOOK.md",
+      "before_blob": null,
+      "after_blob": "635ec8640b616ead24c2f3a00b29fb8125f7fad0",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/README_FIRST.md",
+      "before_blob": null,
+      "after_blob": "6210188b641bb80c39d3a15d2964c2bf68d5ca16",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/U07_U08_FINDINGS.md",
+      "before_blob": null,
+      "after_blob": "6ed62dc6dbfefe8c5264344af2ffd5b831676253",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/WF04_VERIFICATION.md",
+      "before_blob": null,
+      "after_blob": "2d87132abb34d2030406dc5db79b2c02ad7fc734",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/analyze_captures.py",
+      "before_blob": null,
+      "after_blob": "ecee27f54fbf4bbbb22cf3ab318219c37310d11d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/binding_probe.py",
+      "before_blob": null,
+      "after_blob": "5183ef243b0cfcca727724ae4ca737e268eb936f",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/build_fixture_binding_audit.py",
+      "before_blob": null,
+      "after_blob": "f7ab3ef7d533afa9e9c10cf23f5fb8c59a0ed707",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/diagnose_refusal.py",
+      "before_blob": null,
+      "after_blob": "7efb0a62368ad1ed383a8bbb897ba7ef58ed1c76",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/on07_common.py",
+      "before_blob": null,
+      "after_blob": "89002e5d38582e6aa6c0dc69585dc21f0c9dd8e4",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_baseline_post399/harness/run_on07_workbook.py",
+      "before_blob": null,
+      "after_blob": "7dc2fc5bd351dbe57e2c83788b898b58f0fe36de",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/COST_LINE_ALLOCATION_LEDGER.csv",
+      "before_blob": null,
+      "after_blob": "90faec6dce6018d0bc0f2074463e3ecbb1cfc298",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/FIXTURE_RUNS_AND_IDENTITIES.csv",
+      "before_blob": null,
+      "after_blob": "9adfd7a563165a8eaf6b938738a3391fb438a7a2",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/GOVERNANCE_DISPOSITION.md",
+      "before_blob": null,
+      "after_blob": "92d07179d4afa27e19769fb5b895bba4512e6047",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/INPUTS_AND_PROVENANCE.md",
+      "before_blob": null,
+      "after_blob": "274706eebd5c3dfe811a5b21c87219e5b9da6516",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/ON07_LOCAL_BASELINE_TRUE_ROUTE.csv",
+      "before_blob": null,
+      "after_blob": "963f9d7826f823701143897be6cdcb808bbbba53",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/ON07_PACKAGE_FILE_HASHES.md",
+      "before_blob": null,
+      "after_blob": "6dbcc6cd6556b694834e68696565410cbf1dd086",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/ORIGINAL_VS_REVISED_FIXTURE_DIFF.csv",
+      "before_blob": null,
+      "after_blob": "db958c3aa212aa3383081696b4752533a3fc9ccb",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/OUTPUT_EXPOSURE_REGISTER.csv",
+      "before_blob": null,
+      "after_blob": "4cfa8e6f0494eb7f0255c53da1340aa51a168603",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/OWNER_DECISION_REGISTER.md",
+      "before_blob": null,
+      "after_blob": "0f7e90ab60760789b8debd6618ad8b27c037b350",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/README_FIRST.md",
+      "before_blob": null,
+      "after_blob": "15bb9f81b156b470d2d442fb302d46f07477e960",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/REPRODUCIBILITY_3_FRESH_DBS.csv",
+      "before_blob": null,
+      "after_blob": "46f0e116671d7b0f9bacefb91d784608ce2afca4",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/SHA256SUMS.txt",
+      "before_blob": null,
+      "after_blob": "ecf7d0c781f9c236bd4c78ac9dc89b837e1e9bbe",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/SOURCE_GOVERNANCE_DECISION.md",
+      "before_blob": null,
+      "after_blob": "bfe0e4ee617ce8353917de37c5e4543cae934e16",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/TRUE_ROUTE_INPUT_LEDGER.csv",
+      "before_blob": null,
+      "after_blob": "dfa7d7e6da889e0b5f42522018a78b29ba4a1e81",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/WND02_SHL_MATURITY_FORENSICS.md",
+      "before_blob": null,
+      "after_blob": "cd3412209891dc8d7941ebcb91a6c117ee110eaf",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/synthetic_variant_b_prior/SOL-01.json",
+      "before_blob": null,
+      "after_blob": "fc6b9d3c6d09db05a8f2e23231f7139587106de5",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/synthetic_variant_b_prior/SOL-02.json",
+      "before_blob": null,
+      "after_blob": "30aa1f8687a33d0b72bd0745096c08beb492cd9f",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/synthetic_variant_b_prior/WND-01.json",
+      "before_blob": null,
+      "after_blob": "59c2c92cc994df1ce63a5c89022e6677552b6eab",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/synthetic_variant_b_prior/WND-02.json",
+      "before_blob": null,
+      "after_blob": "7c679d2a0f14612dc2ad11c2cb8242664281106c",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/user_created_core_run/tr1_SOL-01.json",
+      "before_blob": null,
+      "after_blob": "472d9f206bfe9c905d048584c72d712b45c7b543",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/user_created_core_run/tr1_SOL-02.json",
+      "before_blob": null,
+      "after_blob": "d182ce1f287ef9711e7de059eac533ff03209d77",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/user_created_core_run/tr1_WND-01.json",
+      "before_blob": null,
+      "after_blob": "a79ef4a8541056b2db8c4a051f721f4105221ba1",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/user_created_core_run/tr1_WND-02.json",
+      "before_blob": null,
+      "after_blob": "1dbb158734d879f0b27e94df9ff2c7d53d6a882d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/captures/user_created_core_run/wr1_WND-02.json",
+      "before_blob": null,
+      "after_blob": "1dd3fdfae9cd8fd9ff37dc258de310f54f5691ac",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/governance_probe/FAILING_ON_UNMODIFIED_MAIN_LOCAL_ENV.txt",
+      "before_blob": null,
+      "after_blob": "f7616f8d4043ac49e59b1ac164cf44ffed8bddf1",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/governance_probe/NEWLY_FAILING_AFTER_ONE_HARMLESS_FILE.txt",
+      "before_blob": null,
+      "after_blob": "3ca8e5cb9771cafa18fc3401eeb523197b6c8b31",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/governance_probe/cohort_probe.py",
+      "before_blob": null,
+      "after_blob": "57a9f071d536a1821d18d08f1ea2717a10c2ce5a",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/governance_probe/guard_probe.py",
+      "before_blob": null,
+      "after_blob": "038f851c98dca266f846a53db1014a1582bb8c05",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/analyze_ca.py",
+      "before_blob": null,
+      "after_blob": "c0dd7234a41b274d7b820a030e8512bd133136c9",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/analyze_captures.py",
+      "before_blob": null,
+      "after_blob": "ecee27f54fbf4bbbb22cf3ab318219c37310d11d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/build_handover.py",
+      "before_blob": null,
+      "after_blob": "1a6b96d0a7b8d34679aa734201a43f16757b1ed1",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/integrity_verdicts.py",
+      "before_blob": null,
+      "after_blob": "6fda0a55b60fe1130d9079fb4b2d957ac618c2df",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/on07_common.py",
+      "before_blob": null,
+      "after_blob": "89002e5d38582e6aa6c0dc69585dc21f0c9dd8e4",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/p90_probe.py",
+      "before_blob": null,
+      "after_blob": "a7602261405a74abb9cab286c6a411f2bbf5eadd",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/run_on07_workbook_helpers.py",
+      "before_blob": null,
+      "after_blob": "d7033ee94897465d93ee8b3d93c32722fb1bc1c7",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/shl_forensics.py",
+      "before_blob": null,
+      "after_blob": "4b95c9c7ffd3c28e09f461dd6f1bc45ccc105d3d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/true_route.py",
+      "before_blob": null,
+      "after_blob": "7dff5987409263c4aaa6a4b43113634579840a3b",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/wnd02_levers.py",
+      "before_blob": null,
+      "after_blob": "3bc57be0cdd6f230b4cae726fd38ec217db03fad",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/wnd02_rederived_diag.py",
+      "before_blob": null,
+      "after_blob": "f457aa155d494450f0a69ee2790540717c0ed6f3",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/harness/wnd_minimal_repro.py",
+      "before_blob": null,
+      "after_blob": "4ab256351154e4eb4272dc24cf662f5c52fb6e8d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_CHECKLIST_AUDIT.csv",
+      "before_blob": null,
+      "after_blob": "eb4c9f6ceb2fe68da11a5543ca0d681bfdb84bab",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_CHECKLIST_AUDIT.md",
+      "before_blob": null,
+      "after_blob": "e587d4a08737fc9e0603983117da44c7abf803d6",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_FIELD_MAPPING_REVISED.csv",
+      "before_blob": null,
+      "after_blob": "37ea361e3f5cd4b2ca9e574c159ccad8a216e46f",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_GAP_REGISTER_UPDATED_PRIOR.md",
+      "before_blob": null,
+      "after_blob": "b13c00ed7a0486f7fffd1932bd07f17689f97355",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_OUTPUT_COMPARISON_TEMPLATE_REVISED.csv",
+      "before_blob": null,
+      "after_blob": "96bb589fbd29fab980641e114737daafdf7bd0dc",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_PROJECT_FIXTURES_REVISED.csv",
+      "before_blob": null,
+      "after_blob": "7c08e801773cabf66c69299e8c6d8412068250ba",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_RUNBOOK_REVISED.md",
+      "before_blob": null,
+      "after_blob": "fd03649ff18c318b3ee7e76aa45be3c0a731f6f1",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/isolated_revised_copies/ON07_UNVERIFIED_ASSUMPTIONS_REVISED.md",
+      "before_blob": null,
+      "after_blob": "182352ca408db1af58cfe69293d405c1fd6c6070",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/integrity_verdicts.json",
+      "before_blob": null,
+      "after_blob": "1e3c187c92bef1931d2aaf3deb2a0fb4c464b625",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/min_solar.json",
+      "before_blob": null,
+      "after_blob": "9e90c128b712a0ad64e2c4104fab914f0503ff6c",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/min_wind.json",
+      "before_blob": null,
+      "after_blob": "e1051420a519670780d9af9904dacb1b341f9560",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/p90_probe.json",
+      "before_blob": null,
+      "after_blob": "1380ff5b9b6045f105509d9ff22c7af08f1446f6",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/shl_e1.json",
+      "before_blob": null,
+      "after_blob": "01fb256806a8e2b70591ed954cc77581e46c1176",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/wnd02_levers.json",
+      "before_blob": null,
+      "after_blob": "642629dd25344fe5029aec2f469f78594194cd59",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
+      "path": "research/on07_correction_a/probes/wnd02_rederived.json",
+      "before_blob": null,
+      "after_blob": "d70303bc76aa39d639817584191c351fa2289d8d",
+      "entry_points": [],
+      "invariant": "ON-07 research evidence only (PARTIAL; not a COMMITTED_RUN, not LIVE_UI_PARITY, PRODUCTION_READY=false); synthetic non-sensitive data; no financial authority",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #403 research admitted as a finite path-limited layer after #404 (Owner post-#404 instruction); independent review still required"
+    },
+    {
       "path": "static/react/finco-react.js",
       "before_blob": "b7a76a078632c3db212fda36ac267738b69951d0",
       "after_blob": "097f07e6810c5fea23d409789a0d4c3559beea4d",
@@ -1376,7 +2045,7 @@
     {
       "path": "tests/test_wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "31df2f36a32fdf750c41468a61fd80ec82b29b0e",
+      "after_blob": "cf2921b7258d819955ce87a936b000364536f237",
       "entry_points": [
         "test_complete_closed_successor_and_unchanged_historical_maps",
         "test_every_owned_byte_and_missing_path_fail_closed",
@@ -1439,7 +2108,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "46bd40b4bb0b29799971181371d53dca09972dae",
+      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
       "entry_points": [
         "_baseline_bytes",
         "_blob",
@@ -1465,7 +2134,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
-      "after_blob": "46bd40b4bb0b29799971181371d53dca09972dae",
+      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
       "entry_points": [],
       "invariant": "four additional exact owned paths (one tool, three incident documents); no new .github/ path",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -1475,7 +2144,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
-      "after_blob": "46bd40b4bb0b29799971181371d53dca09972dae",
+      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
       "entry_points": [],
       "invariant": "+2 exact owned paths (the two governance tests of the Owner-approved successors); no .github/ path added",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -1485,7 +2154,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
-      "after_blob": "46bd40b4bb0b29799971181371d53dca09972dae",
+      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
       "entry_points": [],
       "invariant": "post-#400 performance layer: exact blob only; every historical pin, assertion and negative kept",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",

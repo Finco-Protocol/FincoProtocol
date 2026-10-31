@@ -1,0 +1,45 @@
+id,section,check,scope_tag
+A-01,A,Login/session gate present on both UIs,TESTABLE_WITHOUT_#400
+A-02,A,Project Library list,REVERIFY_AFTER_#400
+A-03,A,Workspace shell loads per project,TESTABLE_WITHOUT_#400
+A-04,A,Feature flag gate behaviour,TESTABLE_WITHOUT_#400
+A-05,A,Protected reference read-onlyness,TESTABLE_WITHOUT_#400
+B-01,B,Technology cards (Solar/Wind creatable; Data Center/EV preview-ack; Storage refused),REVERIFY_AFTER_#400
+B-02,B,Preview shows effective scaled CAPEX/OPEX before create,REVERIFY_AFTER_#400
+B-03,B,Create is idempotent by request_id; replay returns same project,REVERIFY_AFTER_#400
+B-04,B,Preview acknowledgement required for PREVIEW-tier technologies,REVERIFY_AFTER_#400
+B-05,B,Legacy `/projects/create` creates the same seeded working copy,REVERIFY_AFTER_#400
+B-06,B,**Archive**,DEPENDS_ON_#400
+B-07,B,Capacity bounds enforced in wizard,REVERIFY_AFTER_#400
+C-01,C,Grid cell set == canonical editable cell list (exact equality),TESTABLE_WITHOUT_#400
+C-02,C,"Grid save bound: CAS on `composite_hash`, ≤50 cells",TESTABLE_WITHOUT_#400
+C-03,C,"Save All atomic: one transaction, nothing on failure",TESTABLE_WITHOUT_#400
+C-04,C,Save All idempotency: same request_id + same body replays; different body refused,TESTABLE_WITHOUT_#400
+C-05,C,"Save All limits: ≤200 items, ≤50 cells; excluded fields refused (`debt.financing.instrumen",TESTABLE_WITHOUT_#400
+C-06,C,"Pending-change store / Changes drawer present (WS-2, merged #397)",TESTABLE_WITHOUT_#400
+C-07,C,OPEX/CAPEX line editing with inflation via cost-lines editor,TESTABLE_WITHOUT_#400
+C-08,C,Locked controls on calibrated schedules (rate/DSCR lock),TESTABLE_WITHOUT_#400
+C-09,C,Editing does NOT run the model; Last Run marked STALE after save,TESTABLE_WITHOUT_#400
+C-10,C,Draft recovery state on corrupt draft,TESTABLE_WITHOUT_#400
+D-01,D,Run only on explicit user action (`POST /v2/workbook/run`),TESTABLE_WITHOUT_#400
+D-02,D,"Run commits immutable history entry with `history_id`, `runtime_snapshot_id`, `ran_at`, `e",TESTABLE_WITHOUT_#400
+D-03,D,Historical Run export bound to one immutable row; no engine execution,TESTABLE_WITHOUT_#400
+D-04,D,Busy/failed/timeout surfaces typed states (429 Retry-After; 503),TESTABLE_WITHOUT_#400
+D-05,D,WND-02 shows gearing warning (>85%) path; SOL-02 at 85% shows none,TESTABLE_WITHOUT_#400
+D-06,D,Statements view of an earlier Run renders without recalculation,TESTABLE_WITHOUT_#400
+E-01,E,Scenario list & compare endpoints,TESTABLE_WITHOUT_#400
+E-02,E,Built-in Base/Downside/Upside deltas applied as documented,TESTABLE_WITHOUT_#400
+E-03,E,ScenarioPolicy.OVERRIDE fields scenario-scoped; NOT_ALLOWED fields refuse,TESTABLE_WITHOUT_#400
+E-04,E,Sensitivity / goal-seek parity surfaces (0.01 pp tolerance),TESTABLE_WITHOUT_#400
+E-05,E,Lender-case route,TESTABLE_WITHOUT_#400
+F-01,F,Debt metrics / period status rendering,TESTABLE_WITHOUT_#400
+F-02,F,"Bankability configuration editor (typed JSON, bounded)",TESTABLE_WITHOUT_#400
+F-03,F,Financing Studio serializer parity (byte-identical documents),TESTABLE_WITHOUT_#400
+F-04,F,Investor agreement (F4) editor,TESTABLE_WITHOUT_#400
+F-05,F,"Reports/exports (Excel, CSV) reflect the SAME committed Run",TESTABLE_WITHOUT_#400
+F-06,F,kEUR/EUR/mEUR unit labelling correctness (defect B1 class),TESTABLE_WITHOUT_#400
+G-01,G,No data leakage between users,TESTABLE_WITHOUT_#400
+G-02,G,No hidden writes when browsing,TESTABLE_WITHOUT_#400
+G-03,G,No automatic Run on save/browse,TESTABLE_WITHOUT_#400
+G-04,G,Past Run not mutated after Save All,TESTABLE_WITHOUT_#400
+G-05,G,No cross-project mix-ups,TESTABLE_WITHOUT_#400
