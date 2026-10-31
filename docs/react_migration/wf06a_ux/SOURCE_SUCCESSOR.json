@@ -5,10 +5,10 @@
   "authorization": {},
   "source_blobs": {
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "1eeefdeb7ce384629ef10dc9c2854fbb05703b74",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "396941343261cba54281d5c181e08355d96f8a9d",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "2d35c169407859ce707a294f8f5a6b2976fa78b4",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "2b7058d21f1338b2a286faf61bddd671a83dddd1",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "fb3a6ef428de42dbc813e80de95d294291509c66",
     "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "3cfd965627faa99d719f3ecd28b03f674f3825f6",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6f1c1451a4669bbcb1571275245c850e14fb003c",
     "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
     "frontend/src/app/RunFailureNotice.tsx": "83adb17a55c518cf98225b9d29e3e020d3607248",
     "frontend/src/app/__tests__/wf06a.test.mjs": "39a5b7b779a2f4af7314113fae6a97c8f2bc2348",
@@ -24,7 +24,7 @@
     "tests/test_wf03_lifecycle_scope.py": "0c0f0efbc945bf37e977e95023cf84095c0939dc",
     "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
     "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
-    "tests/wf03_lifecycle_scope.py": "70606a7d5a0fa15320e0f7d6e60153df39b8ecb1",
+    "tests/wf03_lifecycle_scope.py": "007d8b0166346e87e9212ca01a7d773c8b0baa6b",
     "tests/wf04_scope.py": "4432d4ae2586d4d6c1f55fee27a1c5db6f3d836d",
     "tests/wsv2_core_scope.py": "6ca3afa6771ac236fc9c518007a002fd5a17568e"
   },
