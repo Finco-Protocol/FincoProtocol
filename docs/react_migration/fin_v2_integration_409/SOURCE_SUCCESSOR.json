@@ -18,16 +18,17 @@
   },
   "authorization": "Financial Owner, PR #409 Correction A: limited exact-source integration seal for the literal union of PR #406, #407 and #408 over main ebf1f151; no financial engine, application, CI or security change.",
   "source_blobs": {
+    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
     "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "1910e073d6be139791a1ff31cc5f687e7463291e",
     "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
     "docs/react_migration/fin_v2_integration_409/PR409_CORRECTION_A_EXACT_HEAD_REPORT.md": "39802f6428047a6881d60cc21775c8daf1708107",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "e2a33380fb2f6560042200d1cdff5817b001eebe",
-    "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "24bae5dbdccc7210b2e61a4195eaded1702dbf3a",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
+    "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "9b704696bd2982ffd5888015df6edff5af14a777",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
     "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
     "tests/fin_v2_cohorts.py": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
-    "tests/fin_v2_integration_409_scope.py": "2d423d00878e1be34a9ae8594d94e49da61d0a7f",
+    "tests/fin_v2_integration_409_scope.py": "4c04642a41c0ab1506f69995bb0c966ae2c735e6",
     "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
     "tests/test_fin_v2_integration_409_scope.py": "c5f7cb7b80c871034890d87cb7a0c9c3efcd1bc9",
     "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
@@ -36,6 +37,18 @@
     "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
   },
   "repin_ledger": [
+    {
+      "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
+      "base_blob": null,
+      "owner_prs": [
+        "PR407"
+      ],
+      "pr406_blob": null,
+      "pr407_blob": "2462d6735af5a9f998012802e7f115877a29666f",
+      "pr408_blob": null,
+      "integrated_blob": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
+      "resolution": "PR407 seal. Only its current source_blobs pin of tests/fin_truth_b1/test_source_successor.py moved (that test became composition-aware); historical_source_blobs, correction_b_history and the ledger are unchanged."
+    },
     {
       "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
       "base_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
@@ -86,7 +99,7 @@
       "pr406_blob": "2d35c169407859ce707a294f8f5a6b2976fa78b4",
       "pr407_blob": "9ec28c4e86f4e0e555f24cadd01c613225197979",
       "pr408_blob": "434adb89c94fbdc64f65d66bc4fe10f36a193ec8",
-      "integrated_blob": "e2a33380fb2f6560042200d1cdff5817b001eebe",
+      "integrated_blob": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
       "resolution": "PR406 (WF-06A pins), PR407 (B1 layer pins/ledger rows) and PR408 (ON-08 owned paths) all edit it. Final = union of the three source_blobs additions with each file at its merged blob; B1 ledger rows kept."
     },
     {
@@ -98,7 +111,7 @@
       "pr406_blob": "98a9509880921285f2fe95e4edb65c29f475f026",
       "pr407_blob": null,
       "pr408_blob": null,
-      "integrated_blob": "24bae5dbdccc7210b2e61a4195eaded1702dbf3a",
+      "integrated_blob": "9b704696bd2982ffd5888015df6edff5af14a777",
       "resolution": "PR406 manifest; its source_blobs pin the live blobs of the overlapping WF-03/WF-04/WS-V2 files and the scope modules, which moved in the composition; only those pin values were recomputed."
     },
     {

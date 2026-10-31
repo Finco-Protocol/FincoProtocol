@@ -56,6 +56,8 @@ PINNED_PATHS = frozenset((
     # stand-alone negative/lineage tests of the older cohorts, made composition-aware without weakening them
     'tests/test_fin_v2_wf06a_scope.py',
     'tests/fin_truth_b1/test_source_successor.py',
+    # B1's own seal: only its CURRENT pin of the test above follows the file; its historical maps and correction history are untouched
+    'docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json',
 ))
 # Predecessor manifests that several PRs edit: their identity, history maps and ledger prefix must survive from main exactly.
 HISTORY_MANIFESTS = (

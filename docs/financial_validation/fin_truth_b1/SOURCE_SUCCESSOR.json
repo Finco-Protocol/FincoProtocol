@@ -4,7 +4,7 @@
   "authorization": "Owner-submitted FIN-TRUTH-B1 implementation scope, 2026-10-31; source provenance/export/units only; no engine, SHL, balancing or deployment authority.",
   "source_blobs": {
     "tests/fin_truth_b1/test_sensitivity_source.py": "ff03220a622d50a0be9ebca3b97075e407da71f9",
-    "tests/fin_truth_b1/test_source_successor.py": "488eb62c3cba3c2c25cc67816d345ed97d1095d7",
+    "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
     "docs/financial_validation/fin_truth_b1/README.md": "00d6c0cf620cabe4cfe9a2db6ceca8275d4478fb",
     "tests/test_model_rc7_capex_binding_surfaces.py": "f69bfa99c101d7463c4c44ca797e46c6f538158c",
     "main_web.py": "750700f59cea9c93662fe8b9a48566f989c93daf",

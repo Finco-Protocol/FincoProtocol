@@ -253,7 +253,7 @@
     "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee",
     "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
     "tests/fin_truth_b1/test_sensitivity_source.py": "ff03220a622d50a0be9ebca3b97075e407da71f9",
-    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "2462d6735af5a9f998012802e7f115877a29666f",
+    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
     "docs/financial_validation/fin_truth_b1/README.md": "00d6c0cf620cabe4cfe9a2db6ceca8275d4478fb",
     "tests/test_model_rc7_capex_binding_surfaces.py": "f69bfa99c101d7463c4c44ca797e46c6f538158c"
   },
