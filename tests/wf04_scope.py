@@ -189,15 +189,31 @@ def _wf03(root, ref):
     return WF03 if WF03.exact_blobs_ok(root, ref) else None
 
 
+def _wf06a(root, ref):
+    """The separately registered closed WF-06A cohort (tests/fin_v2_wf06a_scope.py, PR #406, Owner Correction B), only while it is itself exact. Its
+    check is low level (never calls this module); a missing, forged, newer or altered cohort widens nothing."""
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError:
+        return None
+    return WF06A if WF06A.exact_blobs_ok(root, ref) else None
+
+
 def _downstream_allows(path, root, ref):
     WF03 = _wf03(root, ref)
-    return WF03 is not None and WF03.allowed_path(path, root, ref)
+    if WF03 is not None and WF03.allowed_path(path, root, ref):
+        return True
+    WF06A = _wf06a(root, ref)
+    return WF06A is not None and WF06A.allowed_path(path, root, ref)
 
 
 def _downstream_pin(path, value, root, ref):
-    """True when WF-03 (exact) owns ``path`` and pins exactly ``value``."""
+    """True when WF-03 (exact) owns ``path`` and pins exactly ``value``, or the closed WF-06A cohort (exact) pins exactly ``value`` for a path it owns."""
     WF03 = _wf03(root, ref)
-    return WF03 is not None and path in WF03.OWNED_PATHS and WF03.manifest(root, ref).get('source_blobs', {}).get(path) == value
+    if WF03 is not None and path in WF03.OWNED_PATHS and WF03.manifest(root, ref).get('source_blobs', {}).get(path) == value:
+        return True
+    WF06A = _wf06a(root, ref)
+    return WF06A is not None and path in WF06A.OWNED_PATHS and WF06A.manifest(root, ref).get('source_blobs', {}).get(path) == value
 
 
 def _own_manifest_follows_only_wf03(root, ref):
@@ -309,7 +325,12 @@ def exact_blobs_ok(repo=None, ref=None):
         from tests import wf03_lifecycle_scope as WF03
     except ImportError:
         return _exact_blobs_ok(repo, ref)
-    with WF03.scoped():        # the exact WF-03 check runs once per call, not once per changed path
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError:
+        with WF03.scoped():
+            return _exact_blobs_ok(repo, ref)
+    with WF03.scoped(), WF06A.scoped():        # the exact WF-03 / WF-06A checks run once per call, not once per changed path
         return _exact_blobs_ok(repo, ref)
 
 

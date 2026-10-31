@@ -375,3 +375,24 @@ def test_the_ws2_exact_check_runs_once_per_outer_call_and_is_never_shared(monkey
     assert len(calls) == 2 + len(paths)                                    # outside a call nothing is memoised
     monkeypatch.setattr(WS2, 'exact_blobs_ok', lambda repo=None, ref=None: False)
     assert not any(F.exact_blobs_ok())                                     # a failing WS-2 check still refuses every path
+
+
+# ── WF-06A (PR #406, Owner Correction B): additive controls for the bounded hook ──────────────────────────────────────────────────────────
+def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):
+    from tests import fin_v2_wf06a_scope as WF06A
+    assert F.exact_blobs_ok()
+    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):
+        assert F._wf06a_allows(owned, F.ROOT, None), owned
+    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',
+                     'tests/test_new_unreviewed.py'):
+        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger
+    git = F._git
+
+    def extra(root, *args):
+        raw = git(root, *args)
+        return raw + b'frontend/src/app/NewUnreviewed.tsx\n' if args[:2] == ('diff', '--name-only') else raw
+    monkeypatch.setattr(F, '_git', extra)
+    assert not F.exact_blobs_ok()                                           # an unreviewed changed path is still refused
+    monkeypatch.setattr(F, '_git', git)
+    monkeypatch.setattr(WF06A, 'exact_blobs_ok', lambda *a, **k: False)
+    assert not F._wf06a_allows('frontend/src/app/InputsGuide.tsx', F.ROOT, None)   # a forged/missing cohort widens nothing

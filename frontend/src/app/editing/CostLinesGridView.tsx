@@ -9,13 +9,13 @@
 //     transaction needs the gated endpoint (see saveAll.ts).  The model is never run.
 // Row notes stay available behind a disclosure; derived/committed status text is gone.
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import "../../styles/ws2-editing.css";
 import { fetchCostLines, saveCostLinesBatch } from "../api";
 import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLineEditWire } from "../costLinePayload";
 import { friendlyMessage } from "../productLanguage";
 import type { CostLinePayload, CostLinesPayload } from "../types";
-import { CostLineManager } from "../workflow/CostLineManager";
+import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
 import { sumDecimals } from "./decimal";
@@ -222,8 +222,16 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
           <tbody>
             {lines.map((line, r) => {
               const rowEditable = editableLine(line);
+              // Group heading (presentation only): the same label may legitimately exist in two groups, e.g. "Project Controls" in C.09 and C.12.
+              const startsGroup = r === 0 || lines[r - 1].category !== line.category;
               return (
-                <tr key={line.sub_line_id} data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
+                <Fragment key={line.sub_line_id}>
+                {startsGroup && line.category && (
+                  <tr className="ws2-group-row" data-group-row={line.category}>
+                    <th scope="colgroup" colSpan={columns.length}>{costGroupLabel(line.category, data.line_management?.eligible_groups ?? [])}</th>
+                  </tr>
+                )}
+                <tr data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
                   {columns.map((col, c) => {
                     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
                     const value = valueOf(line, col);
@@ -254,6 +262,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                     );
                   })}
                 </tr>
+                </Fragment>
               );
             })}
             {!lines.length && <tr><td colSpan={columns.length}><span role="status">No line items were projected for this sheet.</span></td></tr>}

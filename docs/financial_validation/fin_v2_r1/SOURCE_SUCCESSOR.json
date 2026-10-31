@@ -8,7 +8,7 @@
     "financial_engine/dsra/forward_coverage.py": "4d109a9a1e95282d6adf3a474e4b42f7273bd69d",
     "financial_engine/dsra/reserve_authority.py": "569dbe5be70446ac8b7c6f8f1982de5366897f96",
     "financial_engine/dsra/target.py": "f47ad9d561fd4f622fdea718584b7119e06771dc",
-    "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+    "tests/fin_v2_cohorts.py": "17c97498d0cf95b98f22a98c6fea3e6998b2c2a7",
     "tests/fin_v2_r1_scope.py": "5f42363a3e0fdba3f423f547fd8ec19c43fb574f",
     "tests/finance_integrity_governance.py": "cd35de839d11d35d198634f7140ae980e7762e25",
     "tests/quarterly_candidate_recognition.py": "8838d05e8988cddd06d5f805b3eed9685eb74066",
