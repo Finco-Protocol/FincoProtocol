@@ -5320,7 +5320,8 @@ async def scenario_sensitivity_endpoint(
             source.validate_current()
             response.headers.update(_sensitivity_source_headers(source))
             return response
-        result = await _run_model_thread(run_sensitivity, source.inputs, shock_types, shock_levels, source.vertical, dc)
+        profile_args = (source.profile_basis,) if source.profile_basis is not None else ()
+        result = await _run_model_thread(run_sensitivity, source.inputs, shock_types, shock_levels, source.vertical, dc, *profile_args)
         result["source"] = source.provenance
         from urllib.parse import urlencode
         query = urlencode(dict(project=project, scenario_id=scenario_id, shocks=shocks, levels=levels, tornado_kpi=tornado_kpi))
@@ -5374,7 +5375,8 @@ async def scenario_sensitivity_export_endpoint(
             raise SensitivitySourceError("SENSITIVITY_VERTICAL_UNAVAILABLE", 422)
         if fmt not in {"csv", "xlsx"}:
             raise SensitivitySourceError("SENSITIVITY_FORMAT_INVALID", 422)
-        result = await _run_model_thread(run_sensitivity, source.inputs, types, parsed, source.vertical, dc)
+        profile_args = (source.profile_basis,) if source.profile_basis is not None else ()
+        result = await _run_model_thread(run_sensitivity, source.inputs, types, parsed, source.vertical, dc, *profile_args)
         result["source"] = source.provenance
         if fmt == "xlsx":
             content = export_sensitivity_xlsx(result)

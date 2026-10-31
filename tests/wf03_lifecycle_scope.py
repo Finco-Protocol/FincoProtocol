@@ -166,12 +166,15 @@ RESEARCH_PATHS=frozenset((
 ))
 # FIN-TRUTH-B1: literal source/test/document layer; no additional financial authority.
 B1_BASE='ebf1f15113ec95d69d29e8aa4e4635686dd1f39a'
+B1_CORRECTION_B_BASE='861ff18f21764a05f2fc739de92bd1ac62538f34'
+B1_CORRECTION_B_TREE='42c9b4659cac9a739abd0cc248d67a1252ebb5c4'
 B1_MANIFEST='docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json'
 B1_PATHS=frozenset((
     B1_MANIFEST,
     'tests/fin_truth_b1/test_sensitivity_source.py',
     'tests/fin_truth_b1/test_source_successor.py',
     'docs/financial_validation/fin_truth_b1/README.md',
+    'tests/test_model_rc7_capex_binding_surfaces.py',
 ))
 B1_REPINS=frozenset((
     'main_web.py', 'app/services/sensitivity_service.py', 'tests/wf03_lifecycle_scope.py',
@@ -232,27 +235,35 @@ def manifest(repo=None,ref=None):
 
 
 def _b1_layer_ok(root, ref, pins, data):
-    """Preserve the complete pre-B1 layer and admit only this finite transition."""
+    """Preserve pre-B1 and reviewed B1 layers; admit the finite Correction B."""
     old=json.loads(_baseline_bytes(root, MANIFEST, B1_BASE, _read, _git))
+    previous=json.loads(_baseline_bytes(root, MANIFEST, B1_CORRECTION_B_BASE, _read, _git))
+    _git(root,'merge-base','--is-ancestor',B1_CORRECTION_B_BASE,ref or 'HEAD')
+    if _git(root,'rev-parse',B1_CORRECTION_B_BASE+'^{tree}').decode().strip()!=B1_CORRECTION_B_TREE:
+        return False
     seal=json.loads(_read(root, B1_MANIFEST, ref))
     if seal.get('schema_version')!='FIN_TRUTH_B1_EXACT_SOURCE_V1' or seal.get('base')!=B1_BASE:
         return False
     if seal.get('historical_source_blobs')!={B1_BASE:old['source_blobs']}:
         return False
+    if seal.get('correction_b_history')!={B1_CORRECTION_B_BASE:previous['source_blobs']}:
+        return False
     if set(pins)!=set(old['source_blobs'])|B1_PATHS:
         return False
     if any(pins[p]!=value and p not in B1_REPINS for p,value in old['source_blobs'].items()):
         return False
+    if any(pins[p]!=value and p not in B1_REPINS|B1_PATHS for p,value in previous['source_blobs'].items()):
+        return False
     if any(data.get(k)!=v for k,v in old.items() if k not in ('source_blobs','path_ledger')):
         return False
     ledger=data.get('path_ledger',[])
-    previous=old['path_ledger']
-    additions=ledger[len(previous):]
+    previous_ledger=previous['path_ledger']
+    additions=ledger[len(previous_ledger):]
     delta=B1_REPINS|B1_PATHS
-    if (ledger[:len(previous)]!=previous or len(additions)!=len(delta)
+    if (ledger[:len(previous_ledger)]!=previous_ledger or len(additions)!=len(delta)
             or {row.get('path') for row in additions}!=delta):
         return False
-    if any(row.get('before_blob')!=old['source_blobs'].get(row['path'])
+    if any(row.get('before_blob')!=previous['source_blobs'].get(row['path'])
            or row.get('after_blob')!=pins[row['path']] for row in additions):
         return False
     expected=(B1_PATHS-{B1_MANIFEST})|{'main_web.py','app/services/sensitivity_service.py'}

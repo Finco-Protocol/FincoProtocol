@@ -186,6 +186,7 @@ class SensitivitySource:
     vertical: str
     snapshot: Any = None
     context: Any = None
+    profile_basis: Any = None
 
     def validate_current(self):
         if self.context is not None:
@@ -234,6 +235,7 @@ def resolve_sensitivity_source(user: Any, project: str, scenario_id: str = "") -
     from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
     from app.workbook.workbook_identity import WorkbookIdentityError
     from app.workbook.service import WorkbookService
+    from app.capex_profiles.config import SNAPSHOT_KEY as PROFILE_KEY
     from app.services.sensitivity_matrix import Basis, pre_financing_inputs, materialise_financing
 
     key = (project or "").strip()
@@ -303,7 +305,8 @@ def resolve_sensitivity_source(user: Any, project: str, scenario_id: str = "") -
         pi, effective_pis, _ = pre_financing_inputs(basis, [])
         pi = materialise_financing(basis, pi, effective_pis)
         source = SensitivitySource(pi, "Working Copy draft — " + name + " (not a committed Run)",
-                                   vertical, snapshot, context)
+                                   vertical, snapshot, context,
+                                   basis if effective_pis.snapshot_origin.get(PROFILE_KEY) else None)
         source.validate_current()
         return source
     except SensitivitySourceError:
@@ -593,6 +596,7 @@ def run_sensitivity(
     shock_levels: list[float] | None = None,
     vertical: str | None = None,
     dc_drivers: Any | None = None,
+    profile_basis: Any | None = None,
 ) -> dict[str, Any]:
     """Run full sensitivity matrix.
 
@@ -620,6 +624,13 @@ def run_sensitivity(
       kpi_defs: list                — ordered KPI metadata
       shock_registry: dict          — human labels for shock types
     """
+    # A saved monthly profile is a construction-financing authority derived
+    # from the point's inputs. Shock the folded inputs BEFORE binding it so
+    # construction rates/cash timing cannot retain the unshocked financing.
+    unbound_proj = proj
+    if profile_basis is not None:
+        from app.services.sensitivity_matrix import pre_financing_inputs, materialise_financing
+        unbound_proj, profile_pis, _ = pre_financing_inputs(profile_basis, [])
     base_kpis = _run_once(proj)
 
     rows = []
@@ -628,10 +639,12 @@ def run_sensitivity(
             DEFAULT_RATE_SHOCK_LEVELS if stype == "interest_rate" else DEFAULT_SHOCK_LEVELS)
         for level in levels:
             try:
-                shocked_proj = _apply_shock(proj, stype, level, dc_drivers, vertical)
-                if level != 0 and shocked_proj == proj:
+                shocked_proj = _apply_shock(unbound_proj, stype, level, dc_drivers, vertical)
+                if level != 0 and shocked_proj == unbound_proj:
                     # FIN-V2-D01: an unapplied shock is refused, never reported as a valid flat KPI row.
                     raise ShockNotApplied(stype, level)
+                if profile_basis is not None:
+                    shocked_proj = materialise_financing(profile_basis, shocked_proj, profile_pis)
                 evidence = (rate_shock_evidence(proj, shocked_proj, level)
                             if stype == "interest_rate" and level != 0 else None)
                 shocked_kpis = _run_once(shocked_proj)
