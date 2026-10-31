@@ -124,9 +124,9 @@ def apply_generic_shl_index_authority(
         construction_months=info.construction_months, horizon_years=info.horizon_years,
         senior_tenor_years=fin.senior_tenor_years, period_frequency=_value(info.period_frequency))
     if maturity < eligibility:
-        raise On08ShlIndexRefusal(
-            "ON08_SHL_UNSERVICEABLE_GEOMETRY",
-            f"SHL maturity period {maturity} is before eligibility start {eligibility}: the horizon must exceed the senior tenor")
+        # Horizon not longer than the senior tenor: nothing is rewritten and nothing is refused here, so the existing downstream refusal and its
+        # precise explanation (run_failure_explanation: "horizon is not longer than the senior debt tenor") apply exactly as before.
+        return override, ShlIndexOutcome(NOT_ELIGIBLE, "unserviceable geometry: existing downstream refusal applies")
     try:
         grid_last_index = grid_last_provider(override) if grid_last_provider is not None else None
     except On08ShlIndexRefusal:

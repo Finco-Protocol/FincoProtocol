@@ -265,6 +265,16 @@ def test_archived_project_is_refused_before_any_rewrite(env, spy):
     assert response.status_code in (404, 409) and not spy.fingerprint and not spy.engine
 
 
+def test_unserviceable_geometry_is_left_to_the_existing_refusal_and_explanation(env, spy):
+    record = env.create("wind")
+    env.save(record, [(H, "12")])                       # horizon 12 <= senior tenor 15
+    before = len(env.history(record))
+    response = env.run(record)
+    assert response.headers["X-Finco-Run-Outcome"] == "FAILED" and len(env.history(record)) == before
+    assert "ON08_" not in response.text, "the hook must not pre-empt the existing, more precise explanation"
+    assert indices(spy.fingerprint[-1]) == (57, 34), "nothing is rewritten for an unserviceable geometry"
+
+
 def test_eligible_lineage_with_unsupported_frequency_refuses_before_fingerprint():
     ref = SimpleNamespace(user_id="__reference__", project_role="reference", is_protected=True, archived=False,
                           template_source="generic_wind_reference", project_id="ref-1")
