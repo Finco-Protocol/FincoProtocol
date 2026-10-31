@@ -66,6 +66,8 @@ OWNED_PATHS=frozenset((
     'app/services/lender_case_service.py', 'app/services/rate_shock.py', 'app/services/sensitivity_service.py', 'app/templates/partials/credit_summary.html', 'app/templates/partials/scenario_sensitivity.html', 'tests/test_on05_numerical_truth.py',
     # D-029 executor-kill regression made deterministic (hold point inside the real worker; no production code, no weakened assertion)
     'tests/d029_executor_hold.py', 'tests/test_p0b_executor_recovery_d029.py',
+    # PR #405 Correction A: bounded retry of transient GitHub API 5xx in the hosted transport (CI-only; no auth/origin/redirect/identity change)
+    'tools/ci_v3_hosted_transport.py', 'tests/test_ci_v3_hosted_transport_retry.py',
     # Owner-directed 2x CI timeouts (Correction E): CI-only limits + the CI-340M workflow successor chain; no semantics, no coverage change
     '.github/workflows/ci_public_job.yml', '.github/workflows/ci_v3_required_job.yml', '.github/workflows/public_safety_and_smoke.yml', 'tests/test_ci_v3_production.py', 'tests/test_rc3_integration_inventory.py', 'tests/test_rc5_ci_successor_governance.py', 'tools/ci_v3_container.py',
     # Owner-authorized CI artifact run-attempt integrity repair (PR #400 incident, run 41099667692): attempt-scoped artifact identity end to end,

@@ -10,6 +10,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +19,10 @@ import zipfile
 from tools.ci_v3_schema import _pairs, _invalid_constant, require
 
 MAX_ARCHIVE = 512 * 1024 * 1024
+# Transient GitHub API server errors only. The identical GET goes to the identical trusted endpoint; nothing else is ever retried.
+TRANSIENT_STATUS = frozenset({500, 502, 503, 504})
+API_ATTEMPTS = 3
+API_BACKOFF_SECONDS = (1, 2)          # deterministic, bounded: at most 3 seconds of waiting per request
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -32,6 +37,19 @@ class GitHub:
     def __init__(self, token=None):
         self.token = token if token is not None else os.environ.get("GH_TOKEN", "")
         self.opener = urllib.request.build_opener(NoRedirect)
+        self.transient_retries = 0
+
+    def _open_api(self, request):
+        """Open the API request, retrying ONLY a bounded number of transient HTTP 5xx answers; every other outcome (including the final 5xx) is raised unchanged."""
+        for attempt in range(API_ATTEMPTS):
+            try:
+                return self.opener.open(request, timeout=60)
+            except urllib.error.HTTPError as exc:
+                if exc.code not in TRANSIENT_STATUS or attempt == API_ATTEMPTS - 1:
+                    raise
+                exc.close()
+                self.transient_retries += 1
+                time.sleep(API_BACKOFF_SECONDS[attempt])
 
     def raw(self, path, archive=False):
         require(path.startswith("/repos/") and ".." not in path and "\\" not in path, "unsafe API route")
@@ -41,7 +59,7 @@ class GitHub:
             headers["Authorization"] = "Bearer " + self.token
         request = urllib.request.Request("https://api.github.com" + path, headers=headers)
         try:
-            response = self.opener.open(request, timeout=60)
+            response = self._open_api(request)
         except urllib.error.HTTPError as exc:
             require(archive and exc.code == 302, "GitHub GET failed: " + str(exc.code))
             url = exc.headers["Location"]

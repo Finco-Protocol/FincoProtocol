@@ -70,6 +70,14 @@
       "files": 66,
       "authorization": "Owner prompt POST-#404 (2026-10-31): narrow, auditable, path-limited research admission; research only, not financial authority",
       "merge_deploy_activation": false
+    },
+    "transport_retry": {
+      "paths": [
+        "tools/ci_v3_hosted_transport.py",
+        "tests/test_ci_v3_hosted_transport_retry.py"
+      ],
+      "authorization": "Financial Owner decision, PR #405 Correction A: APPROVED OPTION 1 (bounded fail-closed 5xx retry in tools/ci_v3_hosted_transport.py)",
+      "merge_deploy_activation": false
     }
   },
   "source_blobs": {
@@ -195,6 +203,7 @@
     "tests/model_react_rcux_product_acceptance.py": "9fdb9b7f699564798be0d374ed8f1d81534cd2af",
     "tests/model_react_wsv2_acceptance.py": "d07d3e517de5eb7d9b420eaba2e511aedff71466",
     "tests/rcm_adapter_csrf_successor.py": "97a99bc9c695b76a462a44e4c4fe8352e8bfa4c0",
+    "tests/test_ci_v3_hosted_transport_retry.py": "b75ac06d2af7411fc7b419632ad8fc122decfdae",
     "tests/test_ci_v3_outcome_reconciliation.py": "7bccd1690dc6315fdb7531070d388f1423680db7",
     "tests/test_ci_v3_production.py": "5a94e38e8c9fed6010a506d7ee15b2184ac33ba7",
     "tests/test_ci_v3_reference_admission_successor.py": "5e95d66c8fdd24f5c0cec1a6534ad4a2b94b6129",
@@ -230,10 +239,11 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
+    "tests/wf03_lifecycle_scope.py": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
+    "tools/ci_v3_hosted_transport.py": "23d73334fc9a163e68d76404abf36f18065251d0",
     "tools/ci_v3_production.py": "741a23af65a910f0f3bead213cc60af5f6142a84",
     "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee"
   },
@@ -1654,6 +1664,15 @@
       "rationale": "FINCO PR #400 final correction: Owner-approved RCM adapter CSRF successor (explicit chat instruction); independent review still required"
     },
     {
+      "path": "tests/test_ci_v3_hosted_transport_retry.py",
+      "before_blob": null,
+      "after_blob": "b75ac06d2af7411fc7b419632ad8fc122decfdae",
+      "entry_points": [],
+      "invariant": "positive 502->200, persistent 502, non-retryable statuses, transport errors, secure artifact redirect and untrusted-redirect negatives",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #405 Correction A: Owner-approved OPTION 1 (2026-10-31) after two transient GitHub 502s; independent review still required"
+    },
+    {
       "path": "tests/test_ci_v3_outcome_reconciliation.py",
       "before_blob": "c32fb76444b8d64fa156f0a07dbf901fd51279f0",
       "after_blob": "7bccd1690dc6315fdb7531070d388f1423680db7",
@@ -2108,7 +2127,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": null,
-      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
+      "after_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
       "entry_points": [
         "_baseline_bytes",
         "_blob",
@@ -2134,7 +2153,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "2e77008952219d72e7bfb70fa40e5ab3d2b8a5fe",
-      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
+      "after_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
       "entry_points": [],
       "invariant": "four additional exact owned paths (one tool, three incident documents); no new .github/ path",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -2144,7 +2163,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "db591dd35e7931ce8355ca0ec95aeeee906dde4f",
-      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
+      "after_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
       "entry_points": [],
       "invariant": "+2 exact owned paths (the two governance tests of the Owner-approved successors); no .github/ path added",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -2154,7 +2173,7 @@
     {
       "path": "tests/wf03_lifecycle_scope.py",
       "before_blob": "64dbb3ff1ab5f06f6eb9bc7c5de5447461395b4f",
-      "after_blob": "935e11f6d84cb8825e4a045febef7aa948e3b7a0",
+      "after_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
       "entry_points": [],
       "invariant": "post-#400 performance layer: exact blob only; every historical pin, assertion and negative kept",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
@@ -2205,6 +2224,17 @@
       "invariant": "timeout limits doubled only (worker 5400->10800 s; required/public job timeouts x2; sequential 220->340 min, budget 12000->19200 s under the 360-minute hosted cap); node coverage, evidence and negatives unchanged",
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "FINCO PR #400 Correction E: Owner-directed doubling of CI timeouts after run 41076288645 (workers 2/3 cut at 5400 s); CI-only; independent review still required"
+    },
+    {
+      "path": "tools/ci_v3_hosted_transport.py",
+      "before_blob": "81012b945318ba07a4b4eff7a1daccf7e1fb0615",
+      "after_blob": "23d73334fc9a163e68d76404abf36f18065251d0",
+      "entry_points": [
+        "_open_api"
+      ],
+      "invariant": "retries ONLY HTTP 500/502/503/504 on the identical GET to the identical trusted API endpoint (3 attempts, 1 s + 2 s); 403/404/redirect/digest/schema/attempt rejections and storage requests are never retried; the final failure is unchanged",
+      "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
+      "rationale": "PR #405 Correction A: Owner-approved OPTION 1 (2026-10-31) after two transient GitHub 502s; independent review still required"
     },
     {
       "path": "tools/ci_v3_production.py",
