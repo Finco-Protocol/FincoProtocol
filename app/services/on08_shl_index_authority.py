@@ -27,6 +27,7 @@ _PERIODS_PER_YEAR = {"Annual": 1, "Semestrial": 2}
 _SHL_TERM_FIELDS = ("clean_shl_repayment_method", "shl_rate", "shl_day_count_convention", "shl_construction_day_count_fraction")
 
 NOT_ELIGIBLE, UNCHANGED, CORRECTED = "NOT_ELIGIBLE", "UNCHANGED", "CORRECTED"
+UNSERVICEABLE = "ELIGIBLE_UNSERVICEABLE"     # eligible lineage, but horizon is not longer than the senior tenor: left to the existing refusal
 
 
 class On08ShlIndexRefusal(ValueError):
@@ -126,7 +127,7 @@ def apply_generic_shl_index_authority(
     if maturity < eligibility:
         # Horizon not longer than the senior tenor: nothing is rewritten and nothing is refused here, so the existing downstream refusal and its
         # precise explanation (run_failure_explanation: "horizon is not longer than the senior debt tenor") apply exactly as before.
-        return override, ShlIndexOutcome(NOT_ELIGIBLE, "unserviceable geometry: existing downstream refusal applies")
+        return override, ShlIndexOutcome(UNSERVICEABLE, "unserviceable geometry: existing downstream refusal applies")
     try:
         grid_last_index = grid_last_provider(override) if grid_last_provider is not None else None
     except On08ShlIndexRefusal:
@@ -150,3 +151,19 @@ def effective_grid_last_index(override: Any) -> int:
     if not periods:
         raise On08ShlIndexRefusal("ON08_SHL_INDEX_OFF_GRID", "empty period grid")
     return periods[-1].index
+
+
+def runtime_key_for(project_record: Any) -> "str | None":
+    """'Solar' / 'Wind' from the PERSISTED project type, else None (never from a form field)."""
+    return {"solar": "Solar", "wind": "Wind"}.get(((getattr(project_record, "project_type", None) or "").strip().lower()))
+
+
+def persisted_reference_facts(project_record: Any) -> "tuple[Any, Any]":
+    """(canonical reference row, factory reference inputs) for a Solar/Wind Working Copy, else (None, None). Read-only DB reads."""
+    template = getattr(project_record, "template_source", None)
+    if template not in _TECH_TO_TEMPLATE.values():
+        return None, None
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.reference_seed_service import get_reference_inputs
+    reference = get_reference_by_template_source(template)
+    return (reference, get_reference_inputs(template)) if reference is not None else (None, None)

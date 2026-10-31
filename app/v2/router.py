@@ -498,10 +498,13 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     return apply_ev_presentation(rows, pis)
 
 
-def _ps_horizon_notice(pis):
-    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed)."""
+def _ps_horizon_notice(pis, project_record=None, request=None):
+    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed).
+
+    ON-08: a project whose Run re-derives the two SHL indices (persisted lineage, not user-asserted) gets no stale-index notice."""
     from app.v2.horizon_readiness import shl_horizon_notice
-    return shl_horizon_notice(pis)
+    user = _get_current_user(request) if request is not None else None
+    return shl_horizon_notice(pis, project_record=project_record, actor_user_id=getattr(user, "user_id", None))
 
 
 def _build_ps_fields(pis) -> list[dict]:
@@ -782,7 +785,7 @@ def _render_htmx_sheet(
     """Render the project_setup sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
     ctx["ps_fields"] = _build_ps_fields(pis)
-    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis)
+    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis, project_record, request)
     sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -2188,7 +2191,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
-        "ps_horizon_notice": _ps_horizon_notice(pis),
+        "ps_horizon_notice": _ps_horizon_notice(pis, project_record, request),
         "technical_fields": _build_sheet_fields("project_setup", pis),
         "is_bess": _project_type_lower == "storage",
         "capex_fields": _build_sheet_fields("capex", pis),

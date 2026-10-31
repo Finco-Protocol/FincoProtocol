@@ -6,7 +6,7 @@
     "app/services/lender_case_service.py": "5f4cdcd670e42b47947262434cb0c403f274e5f0",
     "app/services/rate_shock.py": "dffd53601babebfc137db70848b919ee023c3ecd",
     "app/services/sensitivity_service.py": "b0e15a0f8b9568ef16d9f06d35c640a583617b00",
-    "app/v2/router.py": "efdf03ba0e90067ef5ab41499065d14dec0ddaa5",
+    "app/v2/router.py": "d1df6c7d8a3cb85ac43b1f47f39b93fe49268ec9",
     "tests/fin_v2_d01_scope.py": "791cc59ed59b31a7cb642ab4e57377c0b64e6f67",
     "tests/finval_f01_scope.py": "800dee25495e68c9f89456d87e1e95ccc3c6e72b",
     "tests/model_mutation_security_successor.py": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
