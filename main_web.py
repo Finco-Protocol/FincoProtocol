@@ -5234,274 +5234,146 @@ _SENSITIVITY_DEFAULT_TORNADO_KPI = "equity_irr"
 
 
 def _resolve_sensitivity_project(user, project: str, scenario_id: str = "") -> Any:
-    """Resolve ProjectInputs for the sensitivity run.
+    from app.services.sensitivity_service import _resolve_sensitivity_project as resolve
+    return resolve(user, project, scenario_id)
 
-    Uses the named scenario's snapshot if provided, otherwise uses the
-    factory base for the named project (generic_wind_reference/generic_solar_reference/generic).
-    """
-    if scenario_id:
-        from app.persistence.repository import get_scenario
-        rec = get_scenario(scenario_id, user.user_id)
-        if rec is not None and rec.snapshot:
-            return build_projectinputs_from_snapshot(dict(rec.snapshot)), (rec.scenario_name if rec else "Base")
-    # Fall back to factory base
-    p = project.lower()
-    if p == "generic_solar_reference":
-        from app.project_factories import create_generic_solar_reference
-        return create_generic_solar_reference(), "Generic Solar Reference (factory)"
-    if p in {"generic_data_center_reference", "generic_data_center"}:
-        from app.project_factories import create_generic_data_center_reference
-        return create_generic_data_center_reference(), "Generic Data Center Reference (factory)"
-    from app.project_factories import create_generic_wind_reference
-    return create_generic_wind_reference(), "Generic Wind Reference"
+
+def _sensitivity_request(user, project, scenario_id, shocks, levels):
+    """One read-only source, request-unit contract and capacity check for HTML/export."""
+    import math
+    from app.services.sensitivity_service import (
+        resolve_sensitivity_source, SensitivitySourceError, SHOCK_REGISTRY,
+        supported_sensitivity_drivers, DEFAULT_RATE_SHOCK_LEVELS, DEFAULT_SHOCK_LEVELS,
+    )
+    from app.services.sensitivity_execution import sensitivity_grid_size_error
+    source = resolve_sensitivity_source(user, project, scenario_id)
+    allowed = supported_sensitivity_drivers(source.vertical)
+    types = list(dict.fromkeys(s.strip() for s in shocks.split(",") if s.strip())) if shocks else [
+        s for s in _SENSITIVITY_DEFAULT_SHOCKS if s in allowed]
+    if not types or any(s not in SHOCK_REGISTRY or s not in allowed for s in types):
+        raise SensitivitySourceError("SENSITIVITY_DRIVER_UNSUPPORTED", 422)
+    parsed = None
+    if levels.strip():
+        try:
+            parsed = [float(v.strip()) for v in levels.split(",")]
+            if not parsed or any(not math.isfinite(v) for v in parsed):
+                raise ValueError("non-finite shock")
+        except ValueError as exc:
+            raise SensitivitySourceError("SENSITIVITY_LEVEL_INVALID", 422) from exc
+    count = 1 + sum(len(parsed) if parsed is not None else len(
+        DEFAULT_RATE_SHOCK_LEVELS if t == "interest_rate" else DEFAULT_SHOCK_LEVELS) for t in types)
+    if sensitivity_grid_size_error(count):
+        raise SensitivitySourceError("SENSITIVITY_GRID_TOO_LARGE", 422)
+    if "interest_rate" in types and (parsed is None or any(v != 0 for v in parsed)):
+        from app.services.rate_shock import assert_rate_not_owned, effective_senior_rate_percent, RateShockRefusal
+        try:
+            # Validate the owner and scalar authority without inventing a
+            # positive probe shock at a boundary (e.g. an existing 20% rate).
+            assert_rate_not_owned(source.snapshot)
+            effective_senior_rate_percent(source.inputs)
+        except RateShockRefusal as exc:
+            raise SensitivitySourceError(exc.code, 422) from exc
+    dc = None
+    if source.vertical == "data_center":
+        from app.data_center_authority import drivers_from_snapshot
+        dc = drivers_from_snapshot(dict(source.snapshot or {}))
+    return source, types, parsed, dc
+
+
+def _sensitivity_refusal(exc):
+    return JSONResponse({"state": exc.code, "message": "Sensitivity unavailable. Reload the project and check its inputs."},
+                        status_code=exc.status, headers={"Cache-Control": "no-store"})
+
+
+def _sensitivity_source_headers(source):
+    meta = source.provenance
+    return {"Cache-Control": "no-store", "X-Finco-Sensitivity-Basis": meta["basis"],
+            "X-Finco-Sensitivity-Input-Hash": meta["input_hash"]}
 
 
 @app.get("/scenarios/sensitivity")
 async def scenario_sensitivity_endpoint(
-    request: Request,
-    project: str = "generic_wind_reference",
-    scenario_id: str = "",
-    shocks: str = "",
-    levels: str = "",
-    tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI,
+    request: Request, project: str = "generic_wind_reference", scenario_id: str = "",
+    shocks: str = "", levels: str = "", tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI,
 ):
-    """Run sensitivity analysis and render results including tornado chart.
-
-    V4-3 Parts A–C. Read-only; no persistence side effects.
-    shocks: comma-separated shock keys (defaults to all 8)
-    levels: comma-separated signed percentages (defaults to ±5/10/15%)
-    """
-    from app.services.sensitivity_service import (
-        run_sensitivity, build_tornado_data, SHOCK_REGISTRY, KPI_DEFS,
-    )
-
+    """Ephemeral draft/factory sensitivity; rate levels are bps, others relative %."""
+    from app.services.sensitivity_service import run_sensitivity, build_tornado_data, SensitivitySourceError
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-
-    project_record = _resolve_project_record(user, project)
-    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
-        _current_project_workspace(user, project_record)
-    )
-
-    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or [
-        s for s in _SENSITIVITY_DEFAULT_SHOCKS if s in SHOCK_REGISTRY]
-    shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
-    shock_levels = []
-    if levels:
-        for v in levels.split(","):
-            try:
-                shock_levels.append(float(v.strip()))
-            except ValueError:
-                pass
-    if not shock_levels:
-        shock_levels = _SENSITIVITY_DEFAULT_LEVELS
-    # Opus NEW-M-1: derive the vertical from CANONICAL project authority
-    # (never a user-supplied string) and fail closed on unsupported drivers.
-    from app.services.sensitivity_service import (
-        resolve_vertical as _resolve_vertical,
-        supported_sensitivity_drivers as _supported_drivers,
-        UnsupportedSensitivityDriverError as _UnsupportedDriver,
-    )
-    _sens_project_type = (project_record.project_type
-                          or _project_identity_from_template_source(project)[1])
-    _sens_vertical = _resolve_vertical(_sens_project_type)
-    _allowed = _supported_drivers(_sens_vertical)
-    _rejected = [s for s in shock_types if s not in _allowed]
-    if _rejected:
-        return JSONResponse({
-            "state": "SENSITIVITY_DRIVER_UNSUPPORTED",
-            "message": (
-                f"Sensitivity driver(s) {_rejected} are not supported for "
-                f"vertical {_sens_vertical!r}."
-            ),
-        }, status_code=422)
-    # Correction C: resolve the ACTUAL canonical DC source-driver context
-    # for this project/scenario (scenario snapshot wins over base draft).
-    _dc_drivers = None
-    if _sens_vertical == "data_center":
-        from app.data_center_authority import drivers_from_snapshot
-        _dc_snap = None
-        if scenario_id:
-            from app.persistence.scenarios_repository import get_scenario
-            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
-            if _sc is not None and _sc.snapshot:
-                _dc_snap = dict(_sc.snapshot)
-        elif workspace_state is not None and workspace_state.draft_snapshot:
-            _dc_snap = dict(workspace_state.draft_snapshot)
-        if _dc_snap is None and workspace_state is None:
-            from app.persistence.workspace_repository import get_workspace_state
-            workspace_state = get_workspace_state(
-                user_id=user.user_id, project_id=project_record.project_id)
-        if _dc_snap is not None:
-            _dc_drivers = drivers_from_snapshot(_dc_snap)
-    # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
-    from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
-    _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
-    if _grid_error:
-        return JSONResponse({"state": "SENSITIVITY_GRID_TOO_LARGE", "message": _grid_error}, status_code=422)
-
-    error_state: str | None = None
-    sens_result = None
-    tornado = None
-    scenario_name = "Base"
-
     try:
-        proj, scenario_name = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = await _run_model_thread(
-            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
-            _dc_drivers)
-        tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
-    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        source, shock_types, shock_levels, dc = _sensitivity_request(user, project, scenario_id, shocks, levels)
+        result = await _run_model_thread(run_sensitivity, source.inputs, shock_types, shock_levels, source.vertical, dc)
+        result["source"] = source.provenance
+        from urllib.parse import urlencode
+        query = urlencode(dict(project=project, scenario_id=scenario_id, shocks=shocks, levels=levels, tornado_kpi=tornado_kpi))
+        defs = {k: (label, fmt) for k, label, fmt in result["kpi_defs"]}
+        label, fmt = defs.get(tornado_kpi, (tornado_kpi, ""))
+        extra = {"sensitivity_scenario_name": source.label, "sensitivity_shock_types": shock_types,
+                 "sensitivity_levels": shock_levels, "tornado_data": build_tornado_data(result, tornado_kpi),
+                 "tornado_kpi_label": label, "tornado_kpi_is_pct": fmt == "pct",
+                 "sensitivity_export_csv_url": "/scenarios/sensitivity/export?" + query + "&fmt=csv",
+                 "sensitivity_export_xlsx_url": "/scenarios/sensitivity/export?" + query + "&fmt=xlsx"}
+        if source.context is None:
+            # Explicit factory aliases have no saved project/workspace. Render
+            # the existing surface without provisioning a placeholder record.
+            response = templates.TemplateResponse(request=request, name="scenarios_page.html", context={
+                "user": user, "project_record": None, "workspace_state": None,
+                "sensitivity_result": result, "sensitivity_error": None, **extra})
+        else:
+            c = source.context
+            response = _render_scenario_workspace(
+                request, user, c.project_record, c.workspace, list(c.scenarios), [], [], [], [],
+                message="Read-only sensitivity of the current Working Copy draft.",
+                sensitivity_result=result, sensitivity_extra=extra)
+        source.validate_current()  # includes concurrent Save/archive/scenario changes during execution/render
+        response.headers.update(_sensitivity_source_headers(source))
+        return response
+    except _ModelBusy:
         raise
-    except Exception as exc:
-        error_state = _friendly_error(exc, "sensitivity analysis")
-
-    # Tornado KPI label and format hint
-    kpi_label_map = {k: lbl for k, lbl, _ in (sens_result["kpi_defs"] if sens_result else KPI_DEFS)}
-    kpi_fmt_map = {k: fmt for k, _, fmt in (sens_result["kpi_defs"] if sens_result else KPI_DEFS)}
-    tornado_kpi_label = kpi_label_map.get(tornado_kpi, tornado_kpi)
-    tornado_kpi_is_pct = kpi_fmt_map.get(tornado_kpi, "") == "pct"
-
-    # Build export URLs
-    _base_url = f"/scenarios/sensitivity/export?project={project}&scenario_id={scenario_id}&shocks={shocks}&levels={levels}&tornado_kpi={tornado_kpi}"
-    csv_url = _base_url + "&fmt=csv"
-    xlsx_url = _base_url + "&fmt=xlsx"
-
-    extra = {
-        "sensitivity_scenario_name": scenario_name,
-        "sensitivity_shock_types": shock_types,
-        "sensitivity_levels": shock_levels,
-        "tornado_data": tornado or [],
-        "tornado_kpi_label": tornado_kpi_label,
-        "tornado_kpi_is_pct": tornado_kpi_is_pct,
-        "sensitivity_export_csv_url": csv_url,
-        "sensitivity_export_xlsx_url": xlsx_url,
-    }
-
-    return _render_scenario_workspace(
-        request,
-        user,
-        project_record,
-        workspace_state,
-        scenarios,
-        history,
-        exports,
-        export_lineage,
-        scenario_summary_cards,
-        message=error_state or f"Sensitivity analysis complete — {len(sens_result['rows']) if sens_result else 0} scenarios.",
-        sensitivity_result=sens_result,
-        sensitivity_error=error_state,
-        sensitivity_extra=extra,
-    )
+    except SensitivitySourceError as exc:
+        return _sensitivity_refusal(exc)
+    except (ValueError, TypeError) as exc:
+        _logger.info("Sensitivity input refused: %s", type(exc).__name__)
+        return _sensitivity_refusal(SensitivitySourceError("SENSITIVITY_INPUT_UNAVAILABLE", 422))
 
 
 @app.get("/scenarios/sensitivity/export")
 async def scenario_sensitivity_export_endpoint(
-    request: Request,
-    project: str = "generic_wind_reference",
-    scenario_id: str = "",
-    shocks: str = "",
-    levels: str = "",
-    tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI,
-    fmt: str = "csv",
+    request: Request, project: str = "generic_wind_reference", scenario_id: str = "", shocks: str = "",
+    levels: str = "", tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI, fmt: str = "csv",
 ):
-    """Export sensitivity results as CSV or Excel.
-
-    V4-3 Part D. Read-only; no persistence side effects.
-    """
+    """Same ephemeral input/units as HTML; never Save, provision or commit a Run."""
     from fastapi.responses import Response
     from app.services.sensitivity_service import (
-        run_sensitivity, export_sensitivity_csv, export_sensitivity_xlsx, SHOCK_REGISTRY,
+        run_sensitivity, export_sensitivity_csv, export_sensitivity_xlsx, SensitivitySourceError,
     )
-
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-
-    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or [
-        s for s in _SENSITIVITY_DEFAULT_SHOCKS if s in SHOCK_REGISTRY]
-    shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
-    shock_levels = []
-    if levels:
-        for v in levels.split(","):
-            try:
-                shock_levels.append(float(v.strip()))
-            except ValueError:
-                pass
-    if not shock_levels:
-        shock_levels = _SENSITIVITY_DEFAULT_LEVELS
-    # Opus NEW-M-1: derive the vertical from CANONICAL project authority
-    # (never a user-supplied string) and fail closed on unsupported drivers.
-    from app.services.sensitivity_service import (
-        resolve_vertical as _resolve_vertical,
-        supported_sensitivity_drivers as _supported_drivers,
-        UnsupportedSensitivityDriverError as _UnsupportedDriver,
-    )
-    _sens_project_type = (project_record.project_type
-                          or _project_identity_from_template_source(project)[1])
-    _sens_vertical = _resolve_vertical(_sens_project_type)
-    _allowed = _supported_drivers(_sens_vertical)
-    _rejected = [s for s in shock_types if s not in _allowed]
-    if _rejected:
-        return JSONResponse({
-            "state": "SENSITIVITY_DRIVER_UNSUPPORTED",
-            "message": (
-                f"Sensitivity driver(s) {_rejected} are not supported for "
-                f"vertical {_sens_vertical!r}."
-            ),
-        }, status_code=422)
-    # Correction C: resolve the ACTUAL canonical DC source-driver context
-    # for this project/scenario (scenario snapshot wins over base draft).
-    _dc_drivers = None
-    if _sens_vertical == "data_center":
-        from app.data_center_authority import drivers_from_snapshot
-        _dc_snap = None
-        if scenario_id:
-            from app.persistence.scenarios_repository import get_scenario
-            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
-            if _sc is not None and _sc.snapshot:
-                _dc_snap = dict(_sc.snapshot)
-        elif workspace_state is not None and workspace_state.draft_snapshot:
-            _dc_snap = dict(workspace_state.draft_snapshot)
-        if _dc_snap is None and workspace_state is None:
-            from app.persistence.workspace_repository import get_workspace_state
-            workspace_state = get_workspace_state(
-                user_id=user.user_id, project_id=project_record.project_id)
-        if _dc_snap is not None:
-            _dc_drivers = drivers_from_snapshot(_dc_snap)
-    # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
-    from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
-    _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
-    if _grid_error:
-        return JSONResponse({"state": "SENSITIVITY_GRID_TOO_LARGE", "message": _grid_error}, status_code=422)
-
     try:
-        proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = await _run_model_thread(
-            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
-            _dc_drivers)
-    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        source, types, parsed, dc = _sensitivity_request(user, project, scenario_id, shocks, levels)
+        if fmt not in {"csv", "xlsx"}:
+            raise SensitivitySourceError("SENSITIVITY_FORMAT_INVALID", 422)
+        result = await _run_model_thread(run_sensitivity, source.inputs, types, parsed, source.vertical, dc)
+        result["source"] = source.provenance
+        if fmt == "xlsx":
+            content = export_sensitivity_xlsx(result)
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            content = export_sensitivity_csv(result)
+            media = "text/csv"
+        source.validate_current()
+        return Response(content=content, media_type=media, headers={
+            **_sensitivity_source_headers(source),
+            "Content-Disposition": "attachment; filename=sensitivity." + fmt})
+    except _ModelBusy:
         raise
-    except Exception as exc:
-        _logger.exception("Sensitivity export failed: %s", exc)
-        return Response(content="Export failed — please check your inputs.", status_code=500, media_type="text/plain")
-
-    if fmt == "xlsx":
-        content = export_sensitivity_xlsx(sens_result)
-        return Response(
-            content=content,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=sensitivity.xlsx"},
-        )
-
-    # Default: CSV
-    content = export_sensitivity_csv(sens_result)
-    return Response(
-        content=content,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=sensitivity.csv"},
-    )
+    except SensitivitySourceError as exc:
+        return _sensitivity_refusal(exc)
+    except (ValueError, TypeError) as exc:
+        _logger.info("Sensitivity export input refused: %s", type(exc).__name__)
+        return _sensitivity_refusal(SensitivitySourceError("SENSITIVITY_INPUT_UNAVAILABLE", 422))
 
 
 # ── V4-4 — Lender Case, Covenant Dashboard, Credit Summary ───────────────

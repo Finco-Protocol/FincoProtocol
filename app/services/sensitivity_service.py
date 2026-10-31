@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import csv
 import io
+import hashlib
 import math
-from dataclasses import replace, fields
+from dataclasses import dataclass, replace, fields
 from typing import Any, Optional
 
 from app.services.rate_shock import RateShockRefusal, apply_rate_shock_bps, rate_shock_evidence
@@ -170,49 +171,142 @@ KPI_DEFS: list[tuple[str, str, str]] = [
 ]
 
 
-def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "") -> tuple[Any, str]:
-    """Resolve ProjectInputs for read-only sensitivity/reporting routes.
+class SensitivitySourceError(ValueError):
+    """Typed read-only refusal; details never reveal another tenant's records."""
 
-    This helper is intentionally read-only. It mirrors the legacy route
-    contract expected by lender/report endpoints while supporting the
-    current pilot project set: Generic Wind Reference, Generic Solar Reference, Generic Solar, and Generic
-    Wind. If a scenario id is provided, the saved scenario snapshot is
-    authoritative.
+    def __init__(self, code: str, status: int = 409):
+        self.code, self.status = code, status
+        super().__init__(code)
+
+
+@dataclass(frozen=True)
+class SensitivitySource:
+    inputs: Any
+    label: str
+    vertical: str
+    snapshot: Any = None
+    context: Any = None
+
+    def validate_current(self):
+        if self.context is not None:
+            from app.v2.post_run_context import PostRunContextChanged
+            try:
+                self.context.validate_current()
+            except (PostRunContextChanged, PermissionError, ValueError) as exc:
+                raise SensitivitySourceError("SENSITIVITY_SOURCE_CHANGED") from exc
+
+    @property
+    def provenance(self):
+        c = self.context
+        return {"basis": "WORKING_COPY_DRAFT" if c else "EXPLICIT_FACTORY_ALIAS",
+                "project_id": c.project_id if c else "",
+                "scenario_id": (c.workspace.active_scenario_id or "") if c else "",
+                "input_hash": hashlib.sha256(repr(self.inputs).encode()).hexdigest(),
+                "working_copy_hash": c.identity.composite_hash if c else "", "label": self.label}
+
+
+# Compatibility is a finite alias contract, never a catch-all for saved codes.
+_FACTORY_SENSITIVITY_ALIASES = {
+    "generic_wind_reference": ("create_generic_wind_reference", "wind"),
+    "generic_solar_reference": ("create_generic_solar_reference", "solar"),
+    "generic_data_center_reference": ("create_generic_data_center_reference", "data_center"),
+    "generic_data_center": ("create_generic_data_center_reference", "data_center"),
+    "generic_solar": ("create_default_solar_project", "solar"),
+    "solar": ("create_default_solar_project", "solar"),
+    "test-solar-1": ("create_default_solar_project", "solar"),
+    "generic_wind": ("create_default_wind_project", "wind"),
+    "wind": ("create_default_wind_project", "wind"),
+    "test-wind-1": ("create_default_wind_project", "wind"),
+}
+
+
+def resolve_sensitivity_source(user: Any, project: str, scenario_id: str = "") -> SensitivitySource:
+    """Current Working Copy + active scenario, or a named immutable factory.
+
+    No provisioning, selection, backfill, Save or Run-history write. A named
+    scenario must still be the project's selected scenario; stale links refuse.
+    Materialisation reuses Run's existing cost, revenue, financing and profile
+    authorities. Unsupported scenario configurations refuse before execution.
     """
-    if scenario_id:
-        from app.input_adapter import build_projectinputs_from_snapshot as _build
-        from app.capex_profiles.runtime import guard_snapshot_builder
-        from app.persistence.repository import get_scenario
-        build_projectinputs_from_snapshot = guard_snapshot_builder(_build, "the legacy sensitivity route")
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.ui.protected_reference_service import is_protected_reference
+    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
+    from app.workbook.workbook_identity import WorkbookIdentityError
+    from app.workbook.service import WorkbookService
+    from app.services.sensitivity_matrix import Basis, pre_financing_inputs, materialise_financing
 
-        rec = get_scenario(scenario_id, user.user_id)
-        if rec is not None and rec.snapshot:
-            return (
-                build_projectinputs_from_snapshot(dict(rec.snapshot)),
-                rec.scenario_name or "Saved scenario",
-            )
+    key = (project or "").strip()
+    if not getattr(user, "user_id", None):
+        raise SensitivitySourceError("AUTH_REQUIRED", 401)
+    record, owner = resolve_accessible_project(user.user_id, key)
+    alias = _FACTORY_SENSITIVITY_ALIASES.get(key.lower())
+    if record is None and alias is not None and not scenario_id:
+        from app import project_factories
+        factory, vertical = alias
+        return SensitivitySource(getattr(project_factories, factory)(),
+                                 "Explicit factory alias: " + key.lower(), vertical)
+    if record is None:
+        raise SensitivitySourceError("SENSITIVITY_PROJECT_UNAVAILABLE", 404)
+    if (record.archived or is_protected_reference(record)
+            or record.project_role not in {"working_copy", "user_project"}
+            or owner != user.user_id):
+        raise SensitivitySourceError("SENSITIVITY_PROJECT_UNAVAILABLE", 404)
+    try:
+        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
+        context.require_scope(owner, record.project_id)
+        pr, ws = context.project_record, context.workspace
+        if (pr.archived or is_protected_reference(pr)
+                or pr.project_role not in {"working_copy", "user_project"}):
+            raise SensitivitySourceError("SENSITIVITY_PROJECT_UNAVAILABLE", 404)
+        if scenario_id and scenario_id != ws.active_scenario_id:
+            raise SensitivitySourceError("SENSITIVITY_SCENARIO_UNAVAILABLE", 404)
+        vertical = resolve_vertical(pr.project_type)
+        snapshot = dict(context.draft_inputs.snapshot_origin)
+        if resolve_vertical(snapshot.get("project_type")) != vertical:
+            raise SensitivitySourceError("SENSITIVITY_INPUT_SCOPE_INVALID")
+        pis = context.draft_inputs
+        if pis.coercion_errors:
+            raise SensitivitySourceError("SENSITIVITY_INPUT_UNAVAILABLE")
+        overrides, scope, name = None, "base", "Base"
+        if ws.active_scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
+            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+            sc = get_scenario(ws.active_scenario_id, owner)
+            if (sc is None or sc.archived or sc.project_id != pr.project_id
+                    or sc.user_id != owner):
+                raise SensitivitySourceError("SENSITIVITY_SCENARIO_UNAVAILABLE", 404)
+            overrides, name = dict(sc.overrides or {}), sc.scenario_name
+            admitted = {"tariff_eur_mwh", "rev_multistream_config_json",
+                        "_capex_sub_line_overrides", "_opex_sub_line_overrides"}
+            if set(overrides) - admitted or (sc.replay_metadata or {}).get("action") == "q4_finding_whatif_v1":
+                raise SensitivitySourceError("SENSITIVITY_SCENARIO_INPUT_UNAVAILABLE")
+            # A stale deleted line cannot be silently ignored by the fold.
+            from app.persistence.capex_sub_lines import get_active_sub_lines_for_project as capex_lines
+            from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as opex_lines
+            for kind, read_lines in (("capex", capex_lines), ("opex", opex_lines)):
+                raw = overrides.get("_" + kind + "_sub_line_overrides", {})
+                if not isinstance(raw, dict) or set(raw) - {r.sub_line_id for r in read_lines(pr.project_id)}:
+                    raise SensitivitySourceError("SENSITIVITY_SCENARIO_INPUT_UNAVAILABLE")
+            if not sc.is_base_case:
+                scope = sc.scenario_id
+                snapshot = bind_scenario_tariff(snapshot, overrides)
+                pis = WorkbookService.build_input_set(snapshot)
+        basis = Basis(pis, pr.project_id, overrides, scope, name, ws.active_scenario_id)
+        pi, effective_pis, _ = pre_financing_inputs(basis, [])
+        pi = materialise_financing(basis, pi, effective_pis)
+        source = SensitivitySource(pi, "Working Copy draft — " + name + " (not a committed Run)",
+                                   vertical, snapshot, context)
+        source.validate_current()
+        return source
+    except SensitivitySourceError:
+        raise
+    except (ValueError, TypeError, KeyError, PermissionError, WorkbookIdentityError, PostRunContextChanged) as exc:
+        raise SensitivitySourceError("SENSITIVITY_INPUT_UNAVAILABLE") from exc
 
-    key = (project or "generic_wind_reference").strip().lower()
-    if key == "generic_solar_reference":
-        from app.project_factories import create_generic_solar_reference
 
-        return create_generic_solar_reference(), "Generic Solar Reference (factory)"
-    if key == "generic_data_center_reference":
-        from app.project_factories import create_generic_data_center_reference
-
-        return create_generic_data_center_reference(), "Generic Data Center Reference (factory)"
-    if key in {"generic_solar", "solar", "test-solar-1"}:
-        from app.project_factories import create_default_solar_project
-
-        return create_default_solar_project(), "Generic Solar (factory)"
-    if key in {"generic_wind", "wind", "test-wind-1"}:
-        from app.project_factories import create_default_wind_project
-
-        return create_default_wind_project(), "Generic Wind (factory)"
-
-    from app.project_factories import create_generic_wind_reference
-
-    return create_generic_wind_reference(), "Generic Wind Reference Wind 1 (factory)"
+def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "") -> tuple[Any, str]:
+    source = resolve_sensitivity_source(user, project, scenario_id)
+    return source.inputs, source.label
 
 
 def _extract_kpis(result: Any, *, base_cfads: Any = None) -> dict[str, Optional[float]]:
@@ -635,18 +729,21 @@ def export_sensitivity_csv(sensitivity_result: dict[str, Any]) -> str:
 
     buf = io.StringIO()
     writer = csv.writer(buf)
+    source = sensitivity_result.get("source", {})
+    source_keys = list(source)
+    source_values = [source[k] for k in source_keys]
 
     kpi_attrs = [k for k, _, _ in kpi_defs]
     kpi_labels = [lbl for _, lbl, _ in kpi_defs]
 
     # Header
-    writer.writerow(["Shock Type", "Level", "Unit", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels])
+    writer.writerow(["Shock Type", "Level", "Unit", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels] + source_keys)
 
     # Base row
     writer.writerow(
         ["Base", "0", "", ""]
         + [_fmt_csv(base_kpis.get(k)) for k in kpi_attrs]
-        + [""] * len(kpi_attrs)
+        + [""] * len(kpi_attrs) + source_values
     )
 
     for row in sensitivity_result["rows"]:
@@ -654,7 +751,7 @@ def export_sensitivity_csv(sensitivity_result: dict[str, Any]) -> str:
             [row["shock_label"], row["level_pct"],
              SHOCK_REGISTRY.get(row["shock_type"], ("", "%"))[1], row["error"] or ""]
             + [_fmt_csv(row["kpis"].get(k)) for k in kpi_attrs]
-            + [_fmt_csv(row["deltas"].get(k)) for k in kpi_attrs]
+            + [_fmt_csv(row["deltas"].get(k)) for k in kpi_attrs] + source_values
         )
 
     return buf.getvalue()
@@ -682,7 +779,7 @@ def export_sensitivity_xlsx(sensitivity_result: dict[str, Any]) -> bytes:
     neg_fill = PatternFill("solid", fgColor="FFC7CE")
 
     # Header row
-    headers = ["Shock Type", "Level", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels]
+    headers = ["Shock Type", "Level", "Unit", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.fill = hdr_fill
@@ -693,7 +790,7 @@ def export_sensitivity_xlsx(sensitivity_result: dict[str, Any]) -> bytes:
     base_row = 2
     ws.cell(row=base_row, column=1, value="Base")
     ws.cell(row=base_row, column=2, value=0)
-    for col, k in enumerate(kpi_attrs, 4):
+    for col, k in enumerate(kpi_attrs, 5):
         v = base_kpis.get(k)
         cell = ws.cell(row=base_row, column=col, value=round(v, 6) if v is not None else None)
         cell.fill = base_fill
@@ -702,13 +799,14 @@ def export_sensitivity_xlsx(sensitivity_result: dict[str, Any]) -> bytes:
     for r_idx, row in enumerate(sensitivity_result["rows"], base_row + 1):
         ws.cell(row=r_idx, column=1, value=row["shock_label"])
         ws.cell(row=r_idx, column=2, value=row["level_pct"])
-        ws.cell(row=r_idx, column=3, value=row["error"] or "")
+        ws.cell(row=r_idx, column=3, value=SHOCK_REGISTRY.get(row["shock_type"], ("", "%"))[1])
+        ws.cell(row=r_idx, column=4, value=row["error"] or "")
         # KPI values
-        for col, k in enumerate(kpi_attrs, 4):
+        for col, k in enumerate(kpi_attrs, 5):
             v = row["kpis"].get(k)
             ws.cell(row=r_idx, column=col, value=round(v, 6) if v is not None else None)
         # Delta values
-        delta_start = 4 + len(kpi_attrs)
+        delta_start = 5 + len(kpi_attrs)
         for col, k in enumerate(kpi_attrs, delta_start):
             d = row["deltas"].get(k)
             cell = ws.cell(row=r_idx, column=col, value=round(d, 6) if d is not None else None)
@@ -718,6 +816,11 @@ def export_sensitivity_xlsx(sensitivity_result: dict[str, Any]) -> bytes:
     # Auto-width
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 16
+
+    if sensitivity_result.get("source"):
+        provenance = wb.create_sheet("Source")
+        for key, value in sensitivity_result["source"].items():
+            provenance.append([key, value])
 
     buf = io.BytesIO()
     wb.save(buf)
