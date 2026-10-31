@@ -289,8 +289,8 @@ def test_correction_b_positive_on_the_genuine_integrated_head():
     from tests import wf04_scope as W
     for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):
         assert W._downstream_allows(path, W.ROOT, None) is True, path
-    for path in WF06A_PATHS + (B1_PATH, "main_web.py"):                                    # the exact reviewed pin of each path passes
-        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path
+    for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):         # the exact reviewed pin of each pinned path passes
+        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path       # (a manifest never pins itself, so none is probed here)
 
 
 def test_correction_b_seal_never_owns_or_admits_a_wf06a_owned_path():
@@ -302,13 +302,14 @@ def test_correction_b_seal_never_owns_or_admits_a_wf06a_owned_path():
 
 
 @pytest.mark.parametrize("path", WF06A_PATHS)
-def test_correction_b_a_broken_wf06a_cohort_admits_none_of_its_paths_even_with_an_exact_seal(monkeypatch, path):
+def test_correction_b_a_broken_wf06a_cohort_admits_none_of_its_paths_even_with_an_exact_seal(monkeypatch, path):  # noqa: E501
     from tests import fin_v2_wf06a_scope as WF06A
     from tests import wf04_scope as W
     monkeypatch.setattr(WF06A, "exact_blobs_ok", lambda *a, **k: False)
     assert INT.exact_blobs_ok() is True                                                    # the seal alone is still exact ...
     assert W._downstream_allows(path, W.ROOT, None) is False                               # ... and may not rescue the WF-06A-owned path
-    assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is False
+    if path != "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json":                          # a manifest never pins itself
+        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is False
 
 
 def test_correction_b_a_broken_wf06a_cohort_does_not_block_integration_only_paths(monkeypatch):
@@ -319,13 +320,17 @@ def test_correction_b_a_broken_wf06a_cohort_does_not_block_integration_only_path
     assert W._downstream_allows(B1_PATH, W.ROOT, None) is True                             # owned by the B1/WF-03 layer, unaffected
 
 
-def test_correction_b_an_invalid_seal_admits_no_integration_only_path_and_does_not_affect_wf06a_paths(monkeypatch):
+def test_correction_b_an_invalid_seal_fails_the_composition_closed(monkeypatch):
+    """The composition needs BOTH contracts: with the seal invalid, the integration-only path is refused and WF-06A (which relies on the seal for the
+    foreign pins of the shared manifests) is no longer exact either, so its paths are refused too. Nothing is rescued in either direction."""
+    from tests import fin_v2_wf06a_scope as WF06A
     from tests import wf04_scope as W
     monkeypatch.setattr(INT, "exact_blobs_ok", lambda *a, **k: False)
     assert W._downstream_allows(SEAL_ONLY_PATH, W.ROOT, None) is False
     assert INT.owns(SEAL_ONLY_PATH) is False
-    for path in WF06A_PATHS:                                                               # WF-06A paths are decided by WF-06A, not by the seal
-        assert W._downstream_allows(path, W.ROOT, None) is True, path
+    assert WF06A.exact_blobs_ok() is False
+    for path in WF06A_PATHS:
+        assert W._downstream_allows(path, W.ROOT, None) is False, path
 
 
 @pytest.mark.parametrize("path", WF06A_PATHS + (B1_PATH, "main_web.py"))
@@ -344,13 +349,21 @@ def test_correction_b_unknown_and_protected_paths_are_refused_by_both_hooks(path
     assert W._downstream_pin(path, "1" * 40, W.ROOT, None) is False
 
 
-def test_correction_b_followed_manifest_controls_stay_active_in_the_wf06a_cohort(wt):
-    """The recorded-predecessor control must not be skipped because the seal is exact: forging it still invalidates WF-06A."""
+def test_correction_b_followed_manifest_controls_stay_active_in_the_wf06a_cohort(monkeypatch):
+    """The recorded-predecessor control must not be skipped because the seal is exact: forging it still invalidates WF-06A (read-level forgery,
+    so the seal itself stays untouched and exact)."""
     from tests import fin_v2_wf06a_scope as W6
-    assert W6.exact_blobs_ok(wt) is True
-    manifest = wt / W6.MANIFEST
-    data = json.loads(manifest.read_text())
-    data["predecessor_pins"][W6.WSV2_CORE_MANIFEST]["frontend/src/app/RunFailureNotice.tsx"] = "0" * 40
-    manifest.write_text(json.dumps(data))
-    assert INT.exact_blobs_ok(wt) is True
-    assert W6.exact_blobs_ok(wt) is False
+    assert W6.exact_blobs_ok() is True and INT.exact_blobs_ok() is True
+    reader = W6._read
+
+    def forged(root, path, ref):
+        raw = reader(root, path, ref)
+        if path == W6.MANIFEST and ref is None:
+            data = json.loads(raw)
+            data["predecessor_pins"][W6.WSV2_CORE_MANIFEST]["frontend/src/app/RunFailureNotice.tsx"] = "0" * 40
+            return json.dumps(data).encode()
+        return raw
+
+    monkeypatch.setattr(W6, "_read", forged)
+    assert INT.exact_blobs_ok() is True
+    assert W6.exact_blobs_ok() is False

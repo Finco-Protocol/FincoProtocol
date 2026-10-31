@@ -30,7 +30,7 @@
     "tests/fin_v2_cohorts.py": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
     "tests/fin_v2_integration_409_scope.py": "4c04642a41c0ab1506f69995bb0c966ae2c735e6",
     "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
-    "tests/test_fin_v2_integration_409_scope.py": "c5f7cb7b80c871034890d87cb7a0c9c3efcd1bc9",
+    "tests/test_fin_v2_integration_409_scope.py": "ad3932151f00930125d0b5c838fcc97ece5c2080",
     "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
     "tests/wf03_lifecycle_scope.py": "6a237eddd48da4034de7165dd8ef60746f9e6214",
     "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
