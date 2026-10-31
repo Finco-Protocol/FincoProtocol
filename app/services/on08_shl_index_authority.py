@@ -23,6 +23,7 @@ REFERENCE_OWNER = "__reference__"
 _TECH_TO_TEMPLATE = {"Solar": "generic_solar_reference", "Wind": "generic_wind_reference"}
 # Exact, case-sensitive frequency labels.  Anything else (incl. Quarterly) is NOT defaulted to semestrial.
 _PERIODS_PER_YEAR = {"Annual": 1, "Semestrial": 2}
+_QUARTERLY = "Quarterly"        # typed PeriodFrequency.QUARTERLY.value; handed off, never given ON-08 geometry
 # SHL terms that must equal the factory reference for the SHL to count as "factory generic" (indices are checked separately).
 _SHL_TERM_FIELDS = ("clean_shl_repayment_method", "shl_rate", "shl_day_count_convention", "shl_construction_day_count_fraction")
 
@@ -105,6 +106,10 @@ def apply_generic_shl_index_authority(
                           runtime_project_key=runtime_project_key, canonical_reference=canonical_reference)
     if why:
         return override, ShlIndexOutcome(NOT_ELIGIBLE, why)
+    if _value(override.info.period_frequency) == _QUARTERLY:
+        # A Quarterly selection belongs to the separate RC-7B/RC-7C quarterly authority (admission gate, 3/3 calendar, its own typed refusals).
+        # ON-08 owns no quarterly SHL geometry: the inputs are returned as the SAME object, nothing is rewritten and nothing is refused here.
+        return override, ShlIndexOutcome(NOT_ELIGIBLE, "quarterly frequency is governed by the RC-7B/RC-7C quarterly authority")
     fin, ref_fin = override.financing, factory_reference_inputs.financing
     if any(_value(getattr(fin, f, None)) != _value(getattr(ref_fin, f, None)) for f in _SHL_TERM_FIELDS):
         return override, ShlIndexOutcome(NOT_ELIGIBLE, "SHL terms differ from the factory generic SHL")

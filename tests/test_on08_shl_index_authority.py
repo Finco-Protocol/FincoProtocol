@@ -275,18 +275,53 @@ def test_unserviceable_geometry_is_left_to_the_existing_refusal_and_explanation(
     assert indices(spy.fingerprint[-1]) == (57, 34), "nothing is rewritten for an unserviceable geometry"
 
 
-def test_eligible_lineage_with_unsupported_frequency_refuses_before_fingerprint():
+def _eligible_fixture():
     ref = SimpleNamespace(user_id="__reference__", project_role="reference", is_protected=True, archived=False,
                           template_source="generic_wind_reference", project_id="ref-1")
     record = SimpleNamespace(user_id="u", project_role="working_copy", project_origin="user_created", is_protected=False, archived=False,
                              is_readonly=False, project_type="Wind", template_source="generic_wind_reference", source_project_id="ref-1")
     from app.services.reference_seed_service import get_reference_inputs
     factory = get_reference_inputs("generic_wind_reference")
-    quarterly = dataclasses.replace(factory, info=dataclasses.replace(factory.info, period_frequency=type(factory.info.period_frequency)("Quarterly")))
-    with pytest.raises(on08.On08ShlIndexRefusal):
-        on08.apply_generic_shl_index_authority(
-            quarterly, project_record=record, actor_user_id="u", owner_user_id="u", runtime_project_key="Wind",
-            canonical_reference=ref, factory_reference_inputs=factory, grid_last_provider=lambda _o: 99)
+    return ref, record, factory
+
+
+def _apply(inputs, ref, record, factory):
+    return on08.apply_generic_shl_index_authority(
+        inputs, project_record=record, actor_user_id="u", owner_user_id="u", runtime_project_key="Wind",
+        canonical_reference=ref, factory_reference_inputs=factory, grid_last_provider=lambda _o: 99)
+
+
+def test_eligible_lineage_with_an_unknown_frequency_is_refused_not_defaulted():
+    ref, record, factory = _eligible_fixture()
+    monthly = dataclasses.replace(factory, info=dataclasses.replace(factory.info, period_frequency="Monthly"))
+    with pytest.raises(on08.On08ShlIndexRefusal) as caught:
+        _apply(monthly, ref, record, factory)
+    assert caught.value.code == "ON08_SHL_UNSUPPORTED_FREQUENCY"
+
+
+def test_quarterly_is_handed_to_the_quarterly_authority_unchanged():
+    """RC-7B/RC-7C interoperability: ON-08 owns no quarterly SHL geometry. The SAME object comes back, nothing is rewritten or refused, so the
+    existing admission gate (QUARTERLY_ADMISSION_CLOSED), the 3/3 calendar and its typed refusals stay the only authority."""
+    ref, record, factory = _eligible_fixture()
+    freq_type = type(factory.info.period_frequency)
+    stale = dataclasses.replace(
+        factory, info=dataclasses.replace(factory.info, period_frequency=freq_type("Quarterly"), horizon_years=20),
+        financing=dataclasses.replace(factory.financing))
+    out, outcome = _apply(stale, ref, record, factory)
+    assert out is stale and outcome.status == on08.NOT_ELIGIBLE and "quarterly" in outcome.reason.lower()
+    assert indices(out) == indices(factory)
+
+
+@pytest.mark.parametrize("frequency", ["Semestrial", "Annual"])
+def test_annual_and_semestrial_are_still_rederived_for_an_eligible_project(frequency):
+    ref, record, factory = _eligible_fixture()
+    freq_type = type(factory.info.period_frequency)
+    inputs = dataclasses.replace(factory, info=dataclasses.replace(factory.info, period_frequency=freq_type(frequency), horizon_years=20))
+    out, outcome = _apply(inputs, ref, record, factory)
+    expected = on08.geometry_indices(construction_months=inputs.info.construction_months, horizon_years=20,
+                                     senior_tenor_years=inputs.financing.senior_tenor_years, period_frequency=frequency)
+    assert outcome.status == on08.CORRECTED and indices(out) == expected
+    assert out.financing.clean_shl_repayment_method == inputs.financing.clean_shl_repayment_method
 
 
 # ── the economic residual stays a SEPARATE refusal (original WND-02, L1 removed, L2 remains) ─────────────────
