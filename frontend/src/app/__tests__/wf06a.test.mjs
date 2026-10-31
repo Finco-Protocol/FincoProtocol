@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 
 // WF-06A: pure presentation contracts (Save All guide copy, Run failure classification, DSCR units, cost group labels).
 const output = await mkdtemp(join(tmpdir(), 'finco-wf06a-test-'));
-await build({ stdin: { contents: `export { classifyRunFailure } from './RunFailureNotice'; export { SAVE_ALL_INCLUDES, SAVE_ALL_EXCLUDES } from './InputsGuide';
+await build({ stdin: { contents: `export { classifyRunFailure } from './RunFailureNotice'; export { SAVE_ALL_INCLUDES, SAVE_ALL_EXCLUDES, RUN_SCOPE_TEXT } from './InputsGuide';
   export { costGroupLabel } from './workflow/CostLineManager'; export { reportMetric, reportCell, reportEvidence } from './reportFormatting';
   export { SAVE_ALL_EXCLUDED_KEYS } from './editing/pendingEdits'; export { buildSaveAllRequest, saveAllAvailability } from './editing/saveAll';`,
   resolveDir: new URL('..', import.meta.url).pathname, loader: 'ts' },
@@ -67,4 +67,12 @@ test('calculated cost groups are named; unknown codes are shown as received, nev
   assert.equal(W.costGroupLabel('C.13', eligible), 'C.13 Contingency');
   assert.equal(W.costGroupLabel('B.13', []), 'B.13 Contingencies');
   assert.equal(W.costGroupLabel('C.99', eligible), 'C.99');
+});
+
+test('the Run row of the guide states what Run actually reads and never implies unsaved editor text is submitted', () => {
+  assert.match(W.RUN_SCOPE_TEXT, /working draft/);
+  assert.match(W.RUN_SCOPE_TEXT, /Last Run/);
+  assert.match(W.RUN_SCOPE_TEXT, /unsaved in an editor is not used/);
+  assert.doesNotMatch(W.RUN_SCOPE_TEXT, /already saved/);
+  assert.doesNotMatch(W.RUN_SCOPE_TEXT, /submitted automatically|saves? (it|them) first/i);
 });

@@ -44,6 +44,9 @@ def check_save_scope_guide_matches_server_capability(browser, base):
                          "Financing collections", "refused as a whole", "Nothing saves automatically", "no Save runs the model"):
             assert required in text, required
         assert guide.locator("[data-save-all-row]").count() == 1
+        run_row = guide.locator("[data-run-scope-row]").inner_text()
+        assert "working draft" in run_row and "Last Run" in run_row and "unsaved in an editor is not used" in run_row, run_row
+        assert "already saved" not in run_row
         shot(page, "guide-1440")
         for width in WIDTHS:
             page.set_viewport_size({"width": width, "height": 900})

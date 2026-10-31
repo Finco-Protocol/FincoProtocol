@@ -43,6 +43,11 @@ const SCOPES: ReadonlyArray<{ editor: string; saves: string; control: string }> 
 export const SAVE_ALL_INCLUDES = "Staged Assumptions and Project setup cells, single Financing values, CAPEX and OPEX lines, and PPA contract changes";
 export const SAVE_ALL_EXCLUDES = "Financing collections (capital stack and facilities) and the multi-stream revenue contract list";
 
+/** What Run reads.  The Run route materialises the project's working draft (the state every Save writes), checks that it is still the version the
+ *  page showed, and only on success records the result as the Last Run.  Text still typed in an editor is never submitted: the Run button is
+ *  unavailable while edits are unsaved (WorkflowBar), and no Save starts a Run. */
+export const RUN_SCOPE_TEXT = "Nothing is edited. It calculates from the project's current inputs, the working draft that the Saves above write, and on success records the result as the Last Run. Text still unsaved in an editor is not used: Run is unavailable until it is saved or cancelled.";
+
 /** One honest table of what each Save control writes.  Nothing autosaves and no Save runs the model.  Save All exists only when the server
  *  advertises it for the open project; this static guide never claims it is active. */
 export function SaveScopeGuide() {
@@ -60,7 +65,7 @@ export function SaveScopeGuide() {
           <tr data-save-all-row="true"><th scope="row">Save All (when offered)</th>
             <td>Every staged change below in one all-or-none step, or nothing at all.</td>
             <td>Save All, in the Changes panel</td></tr>
-          <tr><th scope="row">Run</th><td>Nothing is edited. It calculates new results from what is already saved.</td><td>Run model, in the bar above</td></tr>
+          <tr data-run-scope-row="true"><th scope="row">Run</th><td>{RUN_SCOPE_TEXT}</td><td>Run model, in the bar above</td></tr>
         </tbody>
       </table>
       </div>

@@ -234,8 +234,26 @@ def _historical_maps_ok(root,ref,pins,data):
         if any(current.get(k)!=v for k,v in old.items() if k not in ('source_blobs','historical_source_blobs')): return False
         if set(current)!=set(old)|{'historical_source_blobs'} and set(current)!=set(old): return False
         for source,value in before.items():
-            if after[source]!=value and (source not in OWNED_PATHS or after[source]!=pins[source]): return False
+            if after[source]!=value and not ((source in OWNED_PATHS and after[source]==pins[source])
+                                             or _wf06a_repin(path,source,after[source],root,ref)): return False
     return True
+
+
+def _wf06a_repin(manifest_path,source,after,root,ref):
+    """Bounded WF-06A delegation (PR #406, Owner Correction B): a predecessor pin outside this cohort's owner set may advance only for one literal
+    (manifest, path) pair of the closed WF-06A cohort, only to that cohort's exact pin, and only while that cohort (low level, never calls back here)
+    is itself exact. Any other pin, path or manifest still fails."""
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: return False
+    return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
+
+
+def _wf06a_allows(path,root,ref):
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: return False
+    return WF06A.allowed_path(path,root,ref) and WF06A.exact_blobs_ok(root,ref)
 
 
 _SCOPE=[]   # call-scope memo stack: see scoped()
@@ -285,10 +303,10 @@ def valid(repo=None,ref=None):
     if not exact_blobs_ok(root,ref): return False
     try:
         changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
-        if any(not allowed_path(p) for p in changed): return False
+        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) for p in changed): return False
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
-            if any(not allowed_path(p) for p in untracked): return False
+            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) for p in untracked): return False
         return True
     except (OSError,ValueError,subprocess.CalledProcessError): return False
 
