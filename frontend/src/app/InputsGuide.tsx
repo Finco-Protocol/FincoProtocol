@@ -38,11 +38,18 @@ const SCOPES: ReadonlyArray<{ editor: string; saves: string; control: string }> 
   { editor: "Scenario overrides", saves: "One override at a time (Scenarios section).", control: "Save beside the override" },
 ];
 
-/** One honest table of what each Save control writes; there is no global Save and nothing autosaves. */
+/** What the single all-or-none Save All transaction can carry.  Mirrors `editing/saveAll.ts` (sections cells, contracts, cost_lines) and the
+ *  excluded collections in `editing/pendingEdits.ts` (SAVE_ALL_EXCLUDED_KEYS); the server advertises the capability per project. */
+export const SAVE_ALL_INCLUDES = "Staged Assumptions and Project setup cells, single Financing values, CAPEX and OPEX lines, and PPA contract changes";
+export const SAVE_ALL_EXCLUDES = "Financing collections (capital stack and facilities) and the multi-stream revenue contract list";
+
+/** One honest table of what each Save control writes.  Nothing autosaves and no Save runs the model.  Save All exists only when the server
+ *  advertises it for the open project; this static guide never claims it is active. */
 export function SaveScopeGuide() {
   return (
     <details className="rx-save-guide" data-save-scope-guide="true">
       <summary>What each Save writes</summary>
+      <div className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label="Save scope of every editor, scrollable">
       <table className="rx-table rx-save-table">
         <caption className="fm-sr-only">Save scope of every editor</caption>
         <thead><tr><th scope="col">Editor</th><th scope="col">One Save writes</th><th scope="col">Control</th></tr></thead>
@@ -50,10 +57,18 @@ export function SaveScopeGuide() {
           {SCOPES.map((row) => (
             <tr key={row.editor}><th scope="row">{row.editor}</th><td>{row.saves}</td><td>{row.control}</td></tr>
           ))}
+          <tr data-save-all-row="true"><th scope="row">Save All (when offered)</th>
+            <td>Every staged change below in one all-or-none step, or nothing at all.</td>
+            <td>Save All, in the Changes panel</td></tr>
           <tr><th scope="row">Run</th><td>Nothing is edited. It calculates new results from what is already saved.</td><td>Run model, in the bar above</td></tr>
         </tbody>
       </table>
-      <p className="rx-note">Each editor saves on its own. Nothing saves automatically, no Save runs the model, and unsaved edits in one editor are never saved by another.</p>
+      </div>
+      <p className="rx-note" data-save-all-scope="true">Save All appears in the Changes panel only when the server enables it for this project; it is not available
+        on a read-only project. When offered, it can save: {SAVE_ALL_INCLUDES}. Not included: {SAVE_ALL_EXCLUDES}; they keep their own Save.
+        If any staged change cannot be carried, Save All is refused as a whole and nothing is partly saved.</p>
+      <p className="rx-note">Each editor still has its own Save and you can use it at any time. Nothing saves automatically, no Save runs the model,
+        and after any Save the last Run is outdated until you choose Run model.</p>
     </details>
   );
 }

@@ -23,6 +23,14 @@ interface Props {
 
 const EMPTY: NewCostLineDraft = { group: "", label: "", amount_keur: "0", inflation_pct: "0", notes: "" };
 
+/** Groups the server computes itself are not offered for new lines, so they are absent from `eligible_groups`.  Their lines still carry the
+ *  canonical code; this names those two catalogue groups (same names as `react_workspace_router.py`) instead of showing a bare code.  Any other
+ *  unknown code is shown as received: nothing is invented and no classification code is changed. */
+const CALCULATED_GROUP_LABELS: Readonly<Record<string, string>> = { "C.13": "C.13 Contingency", "B.13": "B.13 Contingencies" };
+export function costGroupLabel(code: string, eligible: ReadonlyArray<{ code: string; label: string }>): string {
+  return eligible.find((g) => g.code === code)?.label ?? CALCULATED_GROUP_LABELS[code] ?? code;
+}
+
 export function CostLineManager({ project, data, onChanged }: Props) {
   const { sheet, line_management: mgmt } = data;
   const readOnlyProject = data.project.protected_reference;
@@ -110,7 +118,7 @@ export function CostLineManager({ project, data, onChanged }: Props) {
     for (const line of data.lines) map.set(line.category, [...(map.get(line.category) ?? []), line]);
     return Array.from(map.entries());
   }, [data.lines]);
-  const labelOf = (code: string) => mgmt.eligible_groups.find((g) => g.code === code)?.label ?? code;
+  const labelOf = (code: string) => costGroupLabel(code, mgmt.eligible_groups);
   const idp = `wf-add-${sheet}`;
 
   return (
