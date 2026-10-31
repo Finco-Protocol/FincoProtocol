@@ -498,10 +498,13 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     return apply_ev_presentation(rows, pis)
 
 
-def _ps_horizon_notice(pis):
-    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed)."""
+def _ps_horizon_notice(pis, project_record=None, request=None):
+    """SC-08: advisory notice when the horizon leaves the SHL maturity off the period grid (read-only; the Run still fails closed).
+
+    ON-08: a project whose Run re-derives the two SHL indices (persisted lineage, not user-asserted) gets no stale-index notice."""
     from app.v2.horizon_readiness import shl_horizon_notice
-    return shl_horizon_notice(pis)
+    user = _get_current_user(request) if request is not None else None
+    return shl_horizon_notice(pis, project_record=project_record, actor_user_id=getattr(user, "user_id", None))
 
 
 def _build_ps_fields(pis) -> list[dict]:
@@ -782,7 +785,7 @@ def _render_htmx_sheet(
     """Render the project_setup sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
     ctx["ps_fields"] = _build_ps_fields(pis)
-    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis)
+    ctx["ps_horizon_notice"] = _ps_horizon_notice(pis, project_record, request)
     sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -2188,7 +2191,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
-        "ps_horizon_notice": _ps_horizon_notice(pis),
+        "ps_horizon_notice": _ps_horizon_notice(pis, project_record, request),
         "technical_fields": _build_sheet_fields("project_setup", pis),
         "is_bess": _project_type_lower == "storage",
         "capex_fields": _build_sheet_fields("capex", pis),
@@ -3350,6 +3353,26 @@ async def v2_workbook_run(
         except CapexProfileBindingError as exc:
             msg = str(exc)
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ON-08 OD-1(A): after the LAST geometry-affecting replacement of ``override`` and BEFORE the D-029 fingerprint, re-derive only the two
+    # generic-SHL period indices for a persisted, factory-generic Solar/Wind Working Copy. Not eligible = same object, byte-for-byte unchanged.
+    from app.services import on08_shl_index_authority as _on08
+    from app.persistence.projects_repository import get_reference_by_template_source as _on08_reference
+    from app.services.reference_seed_service import get_reference_inputs as _on08_factory_inputs
+    _on08_tech = project_record.template_source in ("generic_solar_reference", "generic_wind_reference")
+    _on08_ref = _on08_reference(project_record.template_source) if _on08_tech else None
+    try:
+        override, _on08_outcome = _on08.apply_generic_shl_index_authority(
+            override, project_record=project_record, actor_user_id=user.user_id, owner_user_id=workspace_owner,
+            runtime_project_key=runtime_project_key, canonical_reference=_on08_ref,
+            factory_reference_inputs=_on08_factory_inputs(project_record.template_source) if _on08_ref is not None else None,
+            grid_last_provider=_on08.effective_grid_last_index)
+    except _on08.On08ShlIndexRefusal as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    if _on08_outcome.status == _on08.CORRECTED:
+        import logging
+        logging.getLogger(__name__).info("v2_workbook_run: ON-08 SHL indices %s -> %s project=%s", _on08_outcome.before, _on08_outcome.after, project)
 
     # ── Step 11: run the engine ────────────────────────────────────────────── #
     from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms

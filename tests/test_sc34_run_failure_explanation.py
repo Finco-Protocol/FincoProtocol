@@ -63,12 +63,22 @@ class P:
         return dict(get_workspace_state(self.uid, self.rec.project_id).draft_snapshot)
 
 
+def _detach_lineage(p):
+    """A project WITHOUT proven canonical lineage: ON-08 never re-derives its SHL indices, so the stored factory maturity stays authoritative
+    and a shortened horizon is a genuine, still-refused off-grid case (the pre-ON-08 SC-34 contract)."""
+    from app.persistence import db
+    with db.get_cursor() as cur:
+        cur.execute("UPDATE projects SET source_project_id=NULL WHERE project_id=?", (p.rec.project_id,))
+
+
 def _text(html):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
 def test_shortened_horizon_shows_a_guided_shl_notice_without_moving_the_maturity(env):
+    """Ineligible (no proven canonical lineage): the stored SHL maturity is authoritative, so the guided notice and its true minimum remain."""
     p = P(env, "sc34-rf-1")
+    _detach_lineage(p)
     assert "shl-horizon-notice" not in p.setup_sheet()                               # the default horizon is consistent
     before = p.snapshot()
     p.set_horizon(20)
@@ -85,8 +95,32 @@ def test_shortened_horizon_shows_a_guided_shl_notice_without_moving_the_maturity
     assert "shl-horizon-notice" not in p.setup_sheet()                               # restoring the horizon clears the notice
 
 
+def test_eligible_working_copy_gets_no_stale_index_notice_and_nothing_is_moved(env):
+    """ON-08: for a proven factory-generic Working Copy the Run re-derives the SHL indices, so the advisory must not tell the user to extend the
+    horizon to the factory's 25 years nor say the model refuses; no stored SHL term is changed by viewing or editing."""
+    p = P(env, "sc34-rf-1e")
+    before = p.snapshot()
+    p.set_horizon(20)
+    html = p.setup_sheet()
+    assert 'data-testid="shl-horizon-notice"' not in html and "shl-min-horizon" not in html
+    assert "at least 25 years" not in _text(html)
+    page = p.c.get(f"/v2/workbook?project={p.rec.project_code}").text                  # the full-workbook render consumes the same advisory
+    assert 'data-testid="shl-horizon-notice"' not in page
+    after = p.snapshot()
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert "horizon_years" in changed and not any("shl" in k or "matur" in k for k in changed)
+
+
+def test_eligible_unserviceable_horizon_shows_no_false_minimum_and_the_run_names_the_real_reason(env):
+    p = P(env, "sc34-rf-1u")
+    p.set_horizon(12)                                    # not longer than the senior tenor (15)
+    assert 'data-testid="shl-horizon-notice"' not in p.setup_sheet()
+
+
 def test_the_refused_run_is_explained_keeps_the_last_run_and_creates_no_history(env):
+    """Ineligible (no proven lineage): the stored off-grid maturity is a genuine, typed, fail-closed refusal; the Last Run is untouched."""
     p = P(env, "sc34-rf-2")
+    _detach_lineage(p)
     ok = p.run()
     assert ok.status_code == 200 and "X-Finco-Run-Outcome" not in ok.headers
     assert len(p.history()) == 1
@@ -101,6 +135,23 @@ def test_the_refused_run_is_explained_keeps_the_last_run_and_creates_no_history(
     assert 'data-sc34-goto-tab="tab-project-setup"' in bad.text
     assert "unchanged and remains STALE" in text and "no Run History entry" in text
     assert len(p.history()) == 1                                                     # no entry after the failed computation
+
+
+def test_eligible_run_with_a_shortened_horizon_commits_with_rederived_indices(env, monkeypatch):
+    """The same 20-year edit on an eligible Working Copy is now admissible: the Run commits (new history entry), only the two SHL indices differ."""
+    import app.api.project_runner as runner
+    seen = []
+    original = runner.run_project
+    monkeypatch.setattr(runner, "run_project", lambda *a, **k: (seen.append(k.get("project_inputs_override")), original(*a, **k))[1])
+    p = P(env, "sc34-rf-2e")
+    assert p.run().status_code == 200 and len(p.history()) == 1
+    p.set_horizon(20)
+    ok = p.run()
+    assert ok.status_code == 200 and "X-Finco-Run-Outcome" not in ok.headers, _text(ok.text)[:300]
+    assert len(p.history()) == 2
+    f = seen[-1].financing
+    assert (f.shl_maturity_period_index, f.shl_principal_eligibility_start_period) == (42, 33)      # 3 construction periods + 20y*2 - 1; 3 + 15y*2
+    assert f.clean_shl_repayment_method.value == "cash_sweep"
 
 
 def test_a_horizon_not_longer_than_the_senior_tenor_is_named_precisely(env):

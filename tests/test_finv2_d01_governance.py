@@ -108,6 +108,9 @@ def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
     from tests import wf03_lifecycle_scope as WF03
     if WF03.matches(ROUTER, SOURCES[ROUTER]):
         expected = sorted(expected + [("AsyncFunctionDef", "v2_workbook"), ("AsyncFunctionDef", "v2_workbook_run")])
+        # ON-08 successor (Financial Owner approvals 2026-10-31, Corrections B/E): the Run hook sits in v2_workbook_run (already listed); the Project Setup
+        # horizon advisory adds exactly its helper and its two consumers (v2_workbook, already listed, and _render_htmx_sheet). Same exact-blob gate; nothing else.
+        expected = sorted(expected + [("FunctionDef", "_ps_horizon_notice"), ("FunctionDef", "_render_htmx_sheet")])
     assert changed == expected
 
 
