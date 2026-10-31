@@ -208,6 +208,15 @@ def _int409(root, ref):
     return INT if INT.exact_blobs_ok(root, ref) else None
 
 
+def _wf06a_owned(path):
+    """Literal WF-06A ownership (its constants only). Such a path is authorised by the WF-06A cohort and by nothing else."""
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError:
+        return False
+    return path in WF06A.OWNED_PATHS or path == WF06A.MANIFEST
+
+
 def _downstream_allows(path, root, ref):
     WF03 = _wf03(root, ref)
     if WF03 is not None and WF03.allowed_path(path, root, ref):
@@ -215,6 +224,8 @@ def _downstream_allows(path, root, ref):
     WF06A = _wf06a(root, ref)
     if WF06A is not None and WF06A.allowed_path(path, root, ref):
         return True
+    if _wf06a_owned(path):
+        return False            # PR #409 Correction B: a missing/forged/broken WF-06A cohort admits none of its paths, seal or no seal
     INT = _int409(root, ref)
     return INT is not None and INT.allowed_path(path, root, ref)
 
@@ -227,6 +238,8 @@ def _downstream_pin(path, value, root, ref):
     WF06A = _wf06a(root, ref)
     if WF06A is not None and path in WF06A.OWNED_PATHS and WF06A.manifest(root, ref).get('source_blobs', {}).get(path) == value:
         return True
+    if _wf06a_owned(path):
+        return False            # PR #409 Correction B: WF-06A-owned pins follow only the exact WF-06A cohort
     INT = _int409(root, ref)
     return INT is not None and INT.admits_pin(path, value, root, ref)
 

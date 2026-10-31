@@ -14,7 +14,9 @@ def test_b1_source_complete_and_predecessor_history_unchanged():
     assert seal['correction_b_history']=={F.B1_CORRECTION_B_BASE:reviewed['source_blobs']}
     assert F.manifest()['path_ledger'][:len(reviewed['path_ledger'])]==reviewed['path_ledger']
     current=F.manifest()['source_blobs']
-    assert set(current)==set(old['source_blobs'])|F.B1_PATHS
+    extra=set(current)-set(old['source_blobs'])-F.B1_PATHS                          # empty on a stand-alone B1 tree
+    assert set(old['source_blobs'])|F.B1_PATHS<=set(current)
+    assert all(F._int409_admits(p,current[p],F.ROOT,None) for p in extra)             # PR #409: only pins the exact integration seal authorises may join
     assert not any(p.startswith(('financial_engine/','finco_core/','domain/')) for p in F.B1_PATHS|F.B1_REPINS)
     for path in ('app/unreviewed.py','tests/fin_truth_b1/new.py','docs/financial_validation/fin_truth_b1/unreviewed.md'):
         assert not F.allowed_path(path)

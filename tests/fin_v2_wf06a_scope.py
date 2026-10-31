@@ -141,30 +141,38 @@ def _followed_ok(root, ref, pins, data):
         old = json.loads(_read(root, path, BASE))
         now = json.loads(_read(root, path, ref))
         before, after = old['source_blobs'], now['source_blobs']
-        if _integration_pins_manifest(path, root, ref):
-            # PR #409 integration seal: this followed manifest is composed with FIN-TRUTH-B1 / ON-08 pin moves. Admitted ONLY as the literal blob the
-            # low-level integration seal pins (and only while that seal is exact; it verifies main's identity keys, history maps and ledger prefix).
-            continue
-        if set(before) != set(after):
-            return False
-        if any(now.get(k) != v for k, v in old.items() if k != 'source_blobs') or set(now) != set(old):
-            return False                                   # every other key and every historical map is byte-identical to BASE
+        added, removed = set(after) - set(before), set(before) - set(after)
+        if removed or any(not _integration_admits(p, after[p], root, ref) for p in added):
+            return False                                   # a new pin key must be a path the PR #409 seal literally authorises (never a WF-06A path)
+        other_equal = (all(now.get(k) == v for k, v in old.items() if k != 'source_blobs') and set(now) == set(old))
+        if not other_equal and not _integration_manifest_structure(path, root, ref):
+            return False                                   # every other key / historical map equals BASE, unless the exact seal vouches the structure
         moved = {p for p in before if before[p] != after[p]}
-        if not moved <= FOLLOWED_MOVES[path]:
-            return False
-        if recorded[path] != {p: before[p] for p in sorted(moved)}:
-            return False                                   # the BASE value of each moved pin is recorded and matches git
-        if any(p not in pins or after[p] != pins[p] for p in moved):
-            return False                                   # a moved pin must be this cohort's own exact pin of the live file
+        own = {p for p in moved if p in FOLLOWED_MOVES[path]}
+        if any(p not in own and (p in OWNED_PATHS or not _integration_admits(p, after[p], root, ref)) for p in moved):
+            return False                                   # a foreign move is admitted only if the seal pins it; a WF-06A-owned path never is
+        if recorded[path] != {p: before[p] for p in sorted(own)}:
+            return False                                   # the BASE value of each of THIS cohort's moved pins is recorded and matches git
+        if any(p not in pins or after[p] != pins[p] for p in own):
+            return False                                   # a moved pin of this cohort must be this cohort's own exact pin of the live file
     return True
 
 
-def _integration_pins_manifest(path, root, ref):
+def _integration_admits(path, value, root, ref):
+    """A FOREIGN pin (never a WF-06A-owned path) that the low-level PR #409 seal literally authorises, only while that seal is exact."""
     try:
         from tests import fin_v2_integration_409_scope as INT
     except ImportError:
         return False
-    return INT.admits_pin(path, _blob(_read(root, path, ref)), root, ref)
+    return INT.admits_pin(path, value, root, ref)
+
+
+def _integration_manifest_structure(path, root, ref):
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError:
+        return False
+    return INT.followed_manifest_ok(path, root, ref)
 
 
 def _integration_allows(path, root, ref):

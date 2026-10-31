@@ -271,3 +271,86 @@ def test_8_one_cohorts_allowed_path_cannot_authorise_another_cohorts_unreviewed_
     assert W6.allowed_path(victim, wt) is False
     assert INT.admits_pin(victim, "0" * 40, wt) is False
     assert INT.admits_pin(victim, git("rev-parse", f"HEAD:{victim}", cwd=wt), wt) is True
+
+
+# ── PR #409 Correction B: delegation precedence — the seal never substitutes for a broken WF-06A cohort ─────────────────────────────────────────
+
+WF06A_PATH = "frontend/src/app/InputsGuide.tsx"                                           # owned by the closed WF-06A cohort
+WF06A_PATHS = (WF06A_PATH, "static/react/finco-react.js", "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json")
+SEAL_ONLY_PATH = INT.MANIFEST                                                             # owned by no older cohort: eligible through the seal only
+B1_PATH = "app/services/sensitivity_service.py"                                           # PR #407 path (WF-03/B1 layer owns it)
+
+
+def head_blob(path):
+    return git("rev-parse", f"HEAD:{path}")
+
+
+def test_correction_b_positive_on_the_genuine_integrated_head():
+    from tests import wf04_scope as W
+    for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):
+        assert W._downstream_allows(path, W.ROOT, None) is True, path
+    for path in WF06A_PATHS + (B1_PATH, "main_web.py"):                                    # the exact reviewed pin of each path passes
+        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path
+
+
+def test_correction_b_seal_never_owns_or_admits_a_wf06a_owned_path():
+    for path in WF06A_PATHS:
+        assert INT.exact_blobs_ok() is True
+        assert INT.allowed_path(path) is False and INT.owns(path) is False, path
+        assert INT.admits_pin(path, head_blob(path)) is False, path
+    assert INT.allowed_path(SEAL_ONLY_PATH) is True and INT.owns(SEAL_ONLY_PATH) is True
+
+
+@pytest.mark.parametrize("path", WF06A_PATHS)
+def test_correction_b_a_broken_wf06a_cohort_admits_none_of_its_paths_even_with_an_exact_seal(monkeypatch, path):
+    from tests import fin_v2_wf06a_scope as WF06A
+    from tests import wf04_scope as W
+    monkeypatch.setattr(WF06A, "exact_blobs_ok", lambda *a, **k: False)
+    assert INT.exact_blobs_ok() is True                                                    # the seal alone is still exact ...
+    assert W._downstream_allows(path, W.ROOT, None) is False                               # ... and may not rescue the WF-06A-owned path
+    assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is False
+
+
+def test_correction_b_a_broken_wf06a_cohort_does_not_block_integration_only_paths(monkeypatch):
+    from tests import fin_v2_wf06a_scope as WF06A
+    from tests import wf04_scope as W
+    monkeypatch.setattr(WF06A, "exact_blobs_ok", lambda *a, **k: False)
+    assert W._downstream_allows(SEAL_ONLY_PATH, W.ROOT, None) is True                      # sealed integration-only path stays eligible
+    assert W._downstream_allows(B1_PATH, W.ROOT, None) is True                             # owned by the B1/WF-03 layer, unaffected
+
+
+def test_correction_b_an_invalid_seal_admits_no_integration_only_path_and_does_not_affect_wf06a_paths(monkeypatch):
+    from tests import wf04_scope as W
+    monkeypatch.setattr(INT, "exact_blobs_ok", lambda *a, **k: False)
+    assert W._downstream_allows(SEAL_ONLY_PATH, W.ROOT, None) is False
+    assert INT.owns(SEAL_ONLY_PATH) is False
+    for path in WF06A_PATHS:                                                               # WF-06A paths are decided by WF-06A, not by the seal
+        assert W._downstream_allows(path, W.ROOT, None) is True, path
+
+
+@pytest.mark.parametrize("path", WF06A_PATHS + (B1_PATH, "main_web.py"))
+def test_correction_b_a_mutated_or_missing_pin_value_is_refused(path):
+    from tests import wf04_scope as W
+    assert W._downstream_pin(path, "0" * 40, W.ROOT, None) is False
+    assert W._downstream_pin(path, "", W.ROOT, None) is False
+    assert W._downstream_pin(path, head_blob(path)[:-1] + ("0" if head_blob(path)[-1] != "0" else "1"), W.ROOT, None) is False
+
+
+@pytest.mark.parametrize("path", ["frontend/src/app/Unreviewed.tsx", "financial_engine/unreviewed.py", "finco_core/unreviewed.py",
+                                  "domain/unreviewed.py", ".github/workflows/unreviewed.yml", "app/unreviewed.py"])
+def test_correction_b_unknown_and_protected_paths_are_refused_by_both_hooks(path):
+    from tests import wf04_scope as W
+    assert W._downstream_allows(path, W.ROOT, None) is False
+    assert W._downstream_pin(path, "1" * 40, W.ROOT, None) is False
+
+
+def test_correction_b_followed_manifest_controls_stay_active_in_the_wf06a_cohort(wt):
+    """The recorded-predecessor control must not be skipped because the seal is exact: forging it still invalidates WF-06A."""
+    from tests import fin_v2_wf06a_scope as W6
+    assert W6.exact_blobs_ok(wt) is True
+    manifest = wt / W6.MANIFEST
+    data = json.loads(manifest.read_text())
+    data["predecessor_pins"][W6.WSV2_CORE_MANIFEST]["frontend/src/app/RunFailureNotice.tsx"] = "0" * 40
+    manifest.write_text(json.dumps(data))
+    assert INT.exact_blobs_ok(wt) is True
+    assert W6.exact_blobs_ok(wt) is False

@@ -67,7 +67,7 @@
     "tests/test_wf04_save_all_integration.py": "7566b61542f8cfbb0811040e6d0d2874f909b20f",
     "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
     "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
-    "tests/wf04_scope.py": "abdc1a4a1ed64e9a059ab731daabe2d258f79020",
+    "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
     "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271",
     "tools/wf04_independent_dscr_oracle.py": "f286d019a6b6cbb964c48ff7ed68281e7715b65d"
   },

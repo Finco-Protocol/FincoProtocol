@@ -53,6 +53,9 @@ PINNED_PATHS = frozenset((
     'tests/fin_v2_wf06a_scope.py',
     'tests/wf04_scope.py',
     'tests/wsv2_core_scope.py',
+    # stand-alone negative/lineage tests of the older cohorts, made composition-aware without weakening them
+    'tests/test_fin_v2_wf06a_scope.py',
+    'tests/fin_truth_b1/test_source_successor.py',
 ))
 # Predecessor manifests that several PRs edit: their identity, history maps and ledger prefix must survive from main exactly.
 HISTORY_MANIFESTS = (
@@ -249,9 +252,28 @@ def _exact_blobs_ok(repo=None, ref=None):
         return False
 
 
+def _wf06a_owned():
+    """Paths the closed WF-06A cohort owns (its literal constants only; no cohort function is called, so no recursion). ``None`` = cohort absent."""
+    try:
+        from tests import fin_v2_wf06a_scope as W6
+    except ImportError:
+        return None
+    return frozenset(W6.OWNED_PATHS) | {W6.MANIFEST}
+
+
+def _delegable(path):
+    """Delegation precedence (PR #409 Correction B): a path the WF-06A cohort owns is authorised ONLY by that cohort (which must itself be exact);
+    this seal never substitutes for a missing, forged or broken WF-06A cohort. Integration-only paths remain eligible through this seal."""
+    owned = _wf06a_owned()
+    return owned is not None and path not in owned
+
+
 def allowed_path(path, repo=None, ref=None):
-    """Literal, bounded: a path of the authenticated three-PR union or of this seal. Callers must also require ``exact_blobs_ok``."""
+    """Literal, bounded: a path of the authenticated three-PR union or of this seal that no older cohort owns exclusively. Callers must also require
+    ``exact_blobs_ok``."""
     root = Path(repo) if repo is not None else ROOT
+    if not _delegable(path):
+        return False
     if path in SEAL_PATHS or path in PINNED_PATHS:
         return True
     try:
@@ -263,7 +285,7 @@ def allowed_path(path, repo=None, ref=None):
 def admits_pin(path, value, repo=None, ref=None):
     """True only while the seal is exact and ``value`` is the one blob this seal authorises for ``path`` (its literal pin, or the single owning PR's
     reviewed blob). It never admits a value for a path outside the union."""
-    if not exact_blobs_ok(repo, ref):
+    if not _delegable(path) or not exact_blobs_ok(repo, ref):
         return False
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
@@ -271,6 +293,15 @@ def admits_pin(path, value, repo=None, ref=None):
         return pins[path] == value
     who = _union(root).get(path, [])
     return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
+
+
+def followed_manifest_ok(path, repo=None, ref=None):
+    """Structure-only relaxation for the shared predecessor manifests: this seal is exact and pins the manifest's current blob. Its exactness already
+    proved main's identity keys, every historical map and the whole ledger prefix survived. It authorises NO path and no pin by itself."""
+    if path not in HISTORY_MANIFESTS or not exact_blobs_ok(repo, ref):
+        return False
+    root = Path(repo) if repo is not None else ROOT
+    return manifest(root, ref).get('source_blobs', {}).get(path) == _blob(_read(root, path, ref))
 
 
 def source_blob(name, path, repo=None):

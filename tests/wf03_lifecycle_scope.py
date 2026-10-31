@@ -336,7 +336,13 @@ def _int409_allows(path,root,ref):
 def _int409_admits(path,value,root,ref):
     """A WF-03 pin (new or moved) that the integration seal authorises literally, only while that seal is exact."""
     INT=_int409(root,ref)
-    return bool(INT) and INT.admits_pin(path,value,root,ref)
+    if not INT: return False
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: WF06A=None
+    if WF06A is not None and (path in WF06A.OWNED_PATHS or path==WF06A.MANIFEST):
+        return WF06A.pins_exactly(path,value,root,ref)       # PR #409 Correction B: WF-06A-owned pins only through the exact WF-06A cohort
+    return INT.admits_pin(path,value,root,ref)
 
 
 def _wf06a_allows(path,root,ref):

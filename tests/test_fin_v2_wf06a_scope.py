@@ -30,9 +30,11 @@ def test_predecessor_lineage_is_recorded_and_exact():
         old = json.loads(F._read(F.ROOT, path, F.BASE))['source_blobs']
         now = json.loads((F.ROOT / path).read_text())['source_blobs']
         moved = {p for p in old if old[p] != now[p]}
-        assert moved <= F.FOLLOWED_MOVES[path]
-        assert data['predecessor_pins'][path] == {p: old[p] for p in sorted(moved)}
-        assert all(now[p] == data['source_blobs'][p] for p in moved)               # follows only this cohort's own exact pin
+        own = {p for p in moved if p in F.FOLLOWED_MOVES[path]}
+        foreign = moved - own          # empty on a stand-alone WF-06A tree; in PR #409 only pins the exact seal authorises, never a WF-06A-owned path
+        assert all(p not in F.OWNED_PATHS and F._integration_admits(p, now[p], F.ROOT, None) for p in foreign)
+        assert data['predecessor_pins'][path] == {p: old[p] for p in sorted(own)}
+        assert all(now[p] == data['source_blobs'][p] for p in own)                 # follows only this cohort's own exact pin
     # the two re-pinned historical pins of a predecessor map are exactly the delegated pair
     assert F.PREDECESSOR_REPINS == {F.WSV2_CORE_MANIFEST: frozenset(('frontend/src/app/RunFailureNotice.tsx',))}
 
