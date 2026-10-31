@@ -227,3 +227,25 @@ def test_corrupt_snapshot_and_bankability_rate_owner_refuse_before_engine(legacy
     r=legacy.client.get(EXPORT,params=dict(project=record.project_code,shocks='capex',levels='0'))
     assert r.status_code==409 and r.json()['state']=='SENSITIVITY_INPUT_UNAVAILABLE'
     assert dump(legacy)==before
+
+
+def test_legacy_ev_source_repair_preserves_unadmitted_surface_refusal(legacy,monkeypatch):
+    record=legacy.create('ev_charging')
+    def forbidden(*args,**kwargs):raise AssertionError('Legacy EV sensitivity is not admitted')
+    monkeypatch.setattr(S,'run_sensitivity',forbidden)
+    before=dump(legacy)
+    page=legacy.client.get(PAGE,params=dict(project=record.project_code,shocks='interest_rate',levels='100'))
+    export=legacy.client.get(EXPORT,params=dict(project=record.project_code,shocks='interest_rate',levels='100'))
+    assert page.status_code==200 and not BeautifulSoup(page.text,'html.parser').select('tr.sens-row')
+    assert 'An error occurred' in page.text
+    assert export.status_code==422 and export.json()['state']=='SENSITIVITY_VERTICAL_UNAVAILABLE'
+    assert dump(legacy)==before
+
+
+def test_explicit_factory_alias_html_and_export_are_read_only(legacy):
+    before=dump(legacy)
+    for path in (PAGE,EXPORT):
+        response=legacy.client.get(path,params=dict(project='generic_solar_reference',shocks='interest_rate',levels='0'))
+        assert response.status_code==200
+        assert response.headers['x-finco-sensitivity-basis']=='EXPLICIT_FACTORY_ALIAS'
+    assert dump(legacy)==before

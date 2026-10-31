@@ -5303,6 +5303,23 @@ async def scenario_sensitivity_endpoint(
         return RedirectResponse(url="/login", status_code=302)
     try:
         source, shock_types, shock_levels, dc = _sensitivity_request(user, project, scenario_id, shocks, levels)
+        if source.vertical == "ev_charging":
+            # Preserve the existing Legacy EV refusal contract (D02). Source
+            # repair must not silently admit a previously unavailable surface.
+            c = source.context
+            response = _render_scenario_workspace(
+                request, user, c.project_record, c.workspace, list(c.scenarios), [], [], [], [],
+                message="Sensitivity unavailable for this project type on this page.",
+                sensitivity_error="An error occurred. Sensitivity is unavailable for this project type on this page.")
+            # The shared partial suppresses the error text. Keep the existing
+            # visible Legacy error state while retaining its complete context.
+            error_template = templates.env.from_string(
+                '{% extends "scenarios_page.html" %}{% block body %}'
+                '<p role="alert">{{ sensitivity_error }}</p>{{ super() }}{% endblock %}')
+            response = templates.TemplateResponse(request=request, name=error_template, context=dict(response.context))
+            source.validate_current()
+            response.headers.update(_sensitivity_source_headers(source))
+            return response
         result = await _run_model_thread(run_sensitivity, source.inputs, shock_types, shock_levels, source.vertical, dc)
         result["source"] = source.provenance
         from urllib.parse import urlencode
@@ -5353,6 +5370,8 @@ async def scenario_sensitivity_export_endpoint(
         return RedirectResponse(url="/login", status_code=302)
     try:
         source, types, parsed, dc = _sensitivity_request(user, project, scenario_id, shocks, levels)
+        if source.vertical == "ev_charging":
+            raise SensitivitySourceError("SENSITIVITY_VERTICAL_UNAVAILABLE", 422)
         if fmt not in {"csv", "xlsx"}:
             raise SensitivitySourceError("SENSITIVITY_FORMAT_INVALID", 422)
         result = await _run_model_thread(run_sensitivity, source.inputs, types, parsed, source.vertical, dc)

@@ -128,7 +128,7 @@
     "frontend/src/app/library/types.ts": "68c961b3d310f3906f8139a0409694a8ab4738e7",
     "frontend/src/app/newProject/NewProjectWizard.tsx": "2fb78750c5f03e951e593ab8ec199b102868c451",
     "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
-    "main_web.py": "f6aca82a213dd3333ebd053375bcf6e7a21f2e32",
+    "main_web.py": "9b9066144306b501afd187237be106696e859132",
     "research/on07_baseline_post399/IMPLEMENTATION_GAP_SHORTLIST.md": "9f226f7e8ea3f225f78e451bdd51b7e0fa59ea5d",
     "research/on07_baseline_post399/POST400_LIVE_PARITY_RUNBOOK.md": "635ec8640b616ead24c2f3a00b29fb8125f7fad0",
     "research/on07_baseline_post399/README_FIRST.md": "6210188b641bb80c39d3a15d2964c2bf68d5ca16",
@@ -246,10 +246,10 @@
     "tools/ci_v3_hosted_transport.py": "23d73334fc9a163e68d76404abf36f18065251d0",
     "tools/ci_v3_production.py": "741a23af65a910f0f3bead213cc60af5f6142a84",
     "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee",
-    "docs/financial_validation/fin_truth_b1/README.md": "e3b94f1591f140fe6628a7c32e887c3ef09b1498",
-    "tests/fin_truth_b1/test_sensitivity_source.py": "70fc897a84c88fa311e54d01668c1f1992385830",
-    "tests/fin_truth_b1/test_source_successor.py": "823285d182951160160983674c20fa64862c4145",
-    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "fb71e4b8b2eafff34af9f419780b009d35e57822"
+    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "b66d91e8da433aede829fd0837e554df87a114d6",
+    "docs/financial_validation/fin_truth_b1/README.md": "f120a635bae51c81209debbc45797a1cbd422251",
+    "tests/fin_truth_b1/test_sensitivity_source.py": "3e64ad13304077f11c90377650000d0e55e35992",
+    "tests/fin_truth_b1/test_source_successor.py": "823285d182951160160983674c20fa64862c4145"
   },
   "predecessor_manifests": {
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
@@ -2295,7 +2295,7 @@
     {
       "path": "docs/financial_validation/fin_truth_b1/README.md",
       "before_blob": null,
-      "after_blob": "e3b94f1591f140fe6628a7c32e887c3ef09b1498",
+      "after_blob": "f120a635bae51c81209debbc45797a1cbd422251",
       "entry_points": [],
       "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
       "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
@@ -2303,7 +2303,7 @@
     {
       "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
       "before_blob": null,
-      "after_blob": "fb71e4b8b2eafff34af9f419780b009d35e57822",
+      "after_blob": "b66d91e8da433aede829fd0837e554df87a114d6",
       "entry_points": [],
       "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
       "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
@@ -2335,7 +2335,7 @@
     {
       "path": "main_web.py",
       "before_blob": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
-      "after_blob": "f6aca82a213dd3333ebd053375bcf6e7a21f2e32",
+      "after_blob": "9b9066144306b501afd187237be106696e859132",
       "entry_points": [],
       "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
       "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
@@ -2343,7 +2343,7 @@
     {
       "path": "tests/fin_truth_b1/test_sensitivity_source.py",
       "before_blob": null,
-      "after_blob": "70fc897a84c88fa311e54d01668c1f1992385830",
+      "after_blob": "3e64ad13304077f11c90377650000d0e55e35992",
       "entry_points": [],
       "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
       "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
