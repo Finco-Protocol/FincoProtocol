@@ -62,6 +62,8 @@ OWNED_PATHS=frozenset((
     'tests/wf03_fixture_seams.py',
     # Owner-approved RCM adapter CSRF successor (PR #400 final correction): finite successor for app/v2/react_new_project.py (4 reviewed mutations, 2 validators, 1 ownership read)
     'tests/rcm_adapter_csrf_successor.py', 'tests/test_rcm_adapter_csrf_successor.py',
+    # FIN-TRUTH-A (PR #402): ON-05 KPI/credit numerical-truth correction, six reviewed paths; no solver/engine/formula change
+    'app/services/lender_case_service.py', 'app/services/rate_shock.py', 'app/services/sensitivity_service.py', 'app/templates/partials/credit_summary.html', 'app/templates/partials/scenario_sensitivity.html', 'tests/test_on05_numerical_truth.py',
     # D-029 executor-kill regression made deterministic (hold point inside the real worker; no production code, no weakened assertion)
     'tests/d029_executor_hold.py', 'tests/test_p0b_executor_recovery_d029.py',
     # Owner-directed 2x CI timeouts (Correction E): CI-only limits + the CI-340M workflow successor chain; no semantics, no coverage change
