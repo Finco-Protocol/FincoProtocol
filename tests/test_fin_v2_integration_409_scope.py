@@ -149,10 +149,12 @@ def test_2_wrong_missing_and_stale_final_pin_are_rejected(wt):
 
 
 def test_3_truncated_reordered_or_rewritten_history_is_rejected(wt):
-    rel = "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json"
-    path = wt / rel
-    original = json.loads(path.read_text())
-    assert original["path_ledger"], "fixture assumption: the WF-03 ledger has history"
+    """The WF-03 manifest carries main's 193-row ledger; the d01/wf04/wsv2_core manifests carry main's historical_source_blobs maps."""
+    ledger_rel = "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json"
+    map_rels = ("docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+                "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+                "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json")
+    assert json.loads((wt / ledger_rel).read_text())["path_ledger"], "fixture assumption: the WF-03 ledger has history"
 
     def drop_first(d): d["path_ledger"].pop(0)
 
@@ -160,13 +162,29 @@ def test_3_truncated_reordered_or_rewritten_history_is_rejected(wt):
 
     def rewrite_row(d): d["path_ledger"][0] = {**d["path_ledger"][0], "after_blob": "0" * 40}
 
-    def rewrite_map(d): d["historical_source_blobs"][next(iter(d["historical_source_blobs"]))] = {}
+    def truncate(d): del d["path_ledger"][-1]
 
-    for mutate in (drop_first, reorder, rewrite_row, rewrite_map):
-        data = json.loads(json.dumps(original))
+    for mutate in (drop_first, reorder, rewrite_row, truncate):
+        path = wt / ledger_rel
+        data = json.loads(path.read_text())
         mutate(data)
         path.write_text(json.dumps(data, indent=2) + "\n")
         assert INT.exact_blobs_ok(wt) is False, mutate.__name__
+        restore(wt, ledger_rel)
+
+    for rel in map_rels:
+        path = wt / rel
+        data = json.loads(path.read_text())
+        assert data["historical_source_blobs"], rel
+        key = next(iter(data["historical_source_blobs"]))
+        data["historical_source_blobs"][key] = {}                                          # rewritten historical map
+        path.write_text(json.dumps(data, indent=2) + "\n")
+        assert INT.exact_blobs_ok(wt) is False, rel
+        restore(wt, rel)
+        data = json.loads(path.read_text())
+        data["historical_source_blobs"].pop(key)                                           # deleted historical map entry
+        path.write_text(json.dumps(data, indent=2) + "\n")
+        assert INT.exact_blobs_ok(wt) is False, rel
         restore(wt, rel)
 
 
