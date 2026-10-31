@@ -64,7 +64,8 @@ def get_project(project_id: str, user_id: str) -> "Optional[ProjectRecord]":
         cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, user_id))
         row = cur.fetchone()
     from app.persistence.records import ProjectRecord
-    return ProjectRecord.from_row(row) if row else None
+    from app.persistence.project_lifecycle_repository import admit
+    return admit(ProjectRecord.from_row(row)) if row else None
 
 
 def get_project_by_code(user_id: str, project_code: str) -> "Optional[ProjectRecord]":
@@ -75,7 +76,8 @@ def get_project_by_code(user_id: str, project_code: str) -> "Optional[ProjectRec
         )
         row = cur.fetchone()
     from app.persistence.records import ProjectRecord
-    return ProjectRecord.from_row(row) if row else None
+    from app.persistence.project_lifecycle_repository import admit
+    return admit(ProjectRecord.from_row(row)) if row else None
 
 
 def list_projects(user_id: str) -> "list[ProjectRecord]":
@@ -151,8 +153,10 @@ def find_project_by_create_request(user_id: str, request_id: str) -> "Optional[P
 def abandon_stale_create(user_id: str, project_id: str, *, created_before: str, now: str) -> bool:
     """Compare-and-set CREATING -> ABANDONED (and archive) for a create interrupted before ``created_before``; True when this call won."""
     with get_cursor() as cur:
+        cur.connection.create_function("wf03_lifecycle_command", 0, lambda: 1)
         cur.execute(
-            "UPDATE projects SET archived=1, updated_at=?, "
+            "UPDATE projects SET archived=1, lifecycle_archive_origin='CREATE_ABANDONED', "
+            "lifecycle_version=lifecycle_version+1, updated_at=?, "
             "replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'ABANDONED') "
             f"WHERE user_id=? AND project_id=? AND {_CREATE_STATE_SQL}='CREATING' AND created_at < ?",
             (now, user_id, project_id, created_before))
@@ -252,7 +256,8 @@ def get_project_by_id(project_id: str) -> "Optional[ProjectRecord]":
         cur.execute("SELECT * FROM projects WHERE project_id=?", (project_id,))
         row = cur.fetchone()
     from app.persistence.records import ProjectRecord
-    return ProjectRecord.from_row(row) if row else None
+    from app.persistence.project_lifecycle_repository import admit
+    return admit(ProjectRecord.from_row(row)) if row else None
 
 
 def get_canonical_reference_by_id(project_id: str) -> "Optional[ProjectRecord]":
@@ -463,7 +468,7 @@ def save_project(
     project_origin: str = "factory_template",
     template_source: Optional[str] = None,
     baseline_snapshot: Optional[dict[str, Any]] = None,
-    archived: bool = False,
+    archived: Optional[bool] = None,
     is_readonly: bool = False,
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,

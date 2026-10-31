@@ -177,6 +177,30 @@ app = FastAPI(
 from app.services.model_performance import ModelPerformanceMiddleware
 app.add_middleware(ModelPerformanceMiddleware)
 
+# WF03: request admission bindings survive async/thread copies and are discarded
+# after the request. Final SQLite writes recheck the original lifecycle epoch.
+from app.persistence.project_lifecycle_repository import admission_scope as _lifecycle_admission_scope
+import sqlite3 as _lifecycle_sqlite
+
+
+@app.middleware("http")
+async def _lifecycle_admission_middleware(request: Request, call_next):
+    from app.auth import resolve_request_session as _lifecycle_session
+    session = _lifecycle_session(request)
+    creator = request.method == "POST" and (
+        request.url.path in ("/v2/model-react/new-project/create", "/projects/create")
+        or request.url.path.startswith("/library/clone/"))
+    with _lifecycle_admission_scope(session.user_id if session else None, creator=creator):
+        return await call_next(request)
+
+
+@app.exception_handler(_lifecycle_sqlite.IntegrityError)
+async def _lifecycle_write_refusal(request: Request, exc):
+    if "WF03_" not in str(exc):
+        raise exc
+    return JSONResponse({"ok": False, "code": "LIFECYCLE_CONFLICT",
+                         "message": "The project lifecycle changed. Nothing was saved. Reload to reconcile."}, status_code=409)
+
 # -- P0-A: bounded model execution (typed BUSY / failure responses) ----------------
 # Expensive model computation runs behind ONE process-local admission gate
 # (app/runtime/model_execution.py). Invalid FINCO_MODEL_EXECUTION_* settings fail startup with a
@@ -638,6 +662,13 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/trust",  # public read-only Trust & Readiness pages — set no cookie
 )
 
+# WF03: paths that require an already authenticated session; no demo identity is ever provisioned on them (stricter, never looser). Kept apart
+# so the reviewed skip list above stays byte-identical (Trust scope is pinned to it).
+_AUTHENTICATED_ONLY_PREFIXES = (
+    "/library/projects/",  # archive / restore lifecycle
+    "/v2/model-react/setup-drafts",  # setup persistence never provisions identity
+)
+
 
 async def _demo_session_middleware(request, call_next):
     """Auto-provision anonymous demo sessions for new visitors."""
@@ -649,7 +680,7 @@ async def _demo_session_middleware(request, call_next):
     if (
         not has_admin
         and not has_demo
-        and not any(path.startswith(p) for p in _DEMO_PROVISION_SKIP_PREFIXES)
+        and not any(path.startswith(p) for p in (*_DEMO_PROVISION_SKIP_PREFIXES, *_AUTHENTICATED_ONLY_PREFIXES))
     ):
         demo_id = new_demo_user_id()
         new_demo_token = create_demo_session_token(demo_id)

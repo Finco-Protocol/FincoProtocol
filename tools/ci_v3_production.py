@@ -133,6 +133,47 @@ def context():
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def files(folder):return {str(f.relative_to(folder)):sha(f) for f in sorted(Path(folder).rglob('*')) if f.is_file()}
 
+# ── Run-attempt artifact identity (PR #400 incident, run 41099667692) ─────────────────────────────────────────────────
+# GitHub keeps every attempt's artifacts in one run and lets a later attempt reuse a name. actions/download-artifact then
+# resolves a name (and filters an ID list with `latest`) by the highest numeric artifact ID, and IDs are not creation-
+# ordered: attempt 2's complete plan (12998263477) lost to attempt 1's baseline-only diagnostic (12999360429). Every
+# authoritative name therefore carries the real GitHub run attempt (names are unique within one attempt), the plan
+# payload is sealed to run/attempt/source/runtime bytes, and every consumer selects only the current attempt.
+PLAN='public-ci-v3-plan';RUNTIME='ci-v3-runtime';AGGREGATE='public-ci-v3-aggregate';SEAL='attempt-seal.json'
+def worker_name(index):return f'public-ci-v3-worker-{index}'
+def attempt_name(logical,attempt):
+ require(type(attempt) is int and attempt>=1,'invalid GitHub run attempt')
+ return f'{logical}-attempt-{attempt}'
+def payload_files(folder):return {k:v for k,v in files(folder).items() if k!=SEAL}
+
+def seal_attempt(folder,runtime):
+ """Publishable only after the complete plan validates and the runtime archive is the one it names."""
+ data=production_plan(folder)
+ require(Path(runtime).is_file() and sha(runtime)==data['image_archive_sha256'],'runtime archive is not the one recorded by this plan')
+ seal={'schema':1,'kind':'ci-v3-attempt-seal','context':context(),'plan_sha256':sha(folder/'plan.json'),'image':data['image'],
+  'runtime_archive_sha256':data['image_archive_sha256'],'worker_count':data['plan']['worker_count'],'files':payload_files(folder)}
+ write_json(folder/SEAL,seal)
+ return seal
+
+def check_seal_binding(folder):
+ for name in ('plan.json',SEAL):
+  require((folder/name).is_file(),'incomplete plan artifact: missing '+name+' (a failed/partial plan is never authoritative)')
+ seal=read_json(folder/SEAL);ctx=context()
+ require(seal.get('kind')=='ci-v3-attempt-seal' and seal.get('context')==ctx,
+  'plan artifact belongs to another run/attempt/source: sealed '+repr(seal.get('context'))+', current '+repr(ctx))
+ require(payload_files(folder)==seal.get('files'),'plan artifact contents differ from the sealed attempt payload')
+ data=production_plan(folder)
+ require(seal['plan_sha256']==sha(folder/'plan.json') and seal['image']==data['image'] and seal['runtime_archive_sha256']==data['image_archive_sha256']
+  and seal['worker_count']==data['plan']['worker_count'],'attempt seal does not bind this plan')
+ return data
+
+def preflight(folder,runtime):
+ """Cheap deterministic plan+runtime binding check; runs before any Docker load or pytest."""
+ data=check_seal_binding(folder)
+ require(Path(runtime).is_file(),'missing current-attempt runtime archive')
+ require(sha(runtime)==data['image_archive_sha256'],'runtime transfer bytes: archive is not the one sealed by this attempt plan')
+ return data
+
 def authenticate_baseline(api,out):
  run=api.get(f'/repos/{REPO}/actions/runs/{BASE_RUN}')
  require(run['head_sha']==BASE_HEAD and run['run_attempt']==1 and run['conclusion']=='success'
@@ -224,13 +265,14 @@ def make_plan(project,out,image):
  import shutil
  for name in ['source','bootstrap']:shutil.rmtree(out/'collection'/name)
 
-def worker(project,out,planfolder,index):
- plan=production_plan(planfolder)
+def worker(project,out,planfolder,index,runtime='runtime-image.tar.gz'):
+ plan=preflight(planfolder,runtime)
  require(type(index) is int and 0 <= index < plan['plan']['worker_count'],'worker index outside plan')
- require(sha('runtime-image.tar.gz')==plan['image_archive_sha256'],'runtime transfer bytes')
- subprocess.run(['docker','load','--input','runtime-image.tar.gz'],check=True)
+ require(sha(runtime)==plan['image_archive_sha256'],'runtime transfer bytes')
+ subprocess.run(['docker','load','--input',str(runtime)],check=True)
+ require(subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',plan['image']],text=True).strip()==plan['image'],'loaded runtime image identity')
  request={'mode':'worker','worker':f'worker-{index}','context':context(),'inventory':plan['inventory'],'owned_modules':[m for m,w in plan['plan']['module_workers'].items() if w==f'worker-{index}'],'target_calibration':dict(STEADY_STATE_CONTRACT)}
- child,proc=observe_container(request,out/'execution',project,plan['image'],5400,built_image=True)
+ child,proc=observe_container(request,out/'execution',project,plan['image'],10800,built_image=True)
  write_json(out/'process.json',proc);write_json(out/'binding.json',{'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':plan['image']})
  import shutil
  for name in ['source','bootstrap']:shutil.rmtree(out/'execution'/name)
@@ -316,6 +358,8 @@ def d029_source_facts():
  except (OSError,ValueError,KeyError,TypeError,ContractError):facts['ws2_manifest_pins']=None
  git('merge-base','--is-ancestor',D029_MAIN,'HEAD')
  facts['changed']=frozenset(git('diff','--name-only',D029_MAIN,'HEAD','--',*D029_TRUST_PATHS).splitlines())
+ from tests import wf03_lifecycle_scope as WF03
+ facts['wf03_state']=WF03.ci_source_facts()
  return facts
 
 def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,facts,run_phases,run_native):
@@ -334,10 +378,12 @@ def d029_transition_problems(node,old_phases,old_native,new_phases,new_native,fa
   state_b=(not state_a and facts['blobs']=={**WS2_TRUST_BLOBS,**D029_TRUST_CHANGED_BLOBS}
            and facts.get('ws2_extra_blobs')==WS2_TRUST_EXTRA_BLOBS and facts.get('record_blob')==WS2_RECORD_BLOB
            and facts.get('ws2_receipt')==ws2_expected_receipt() and facts.get('ws2_manifest_pins')=={**WS2_TRUST_BLOBS,**WS2_TRUST_EXTRA_BLOBS})
-  if not (state_a or state_b):problems.append('Trust sources are not the exact reviewed blobs')
+  from tests import wf03_lifecycle_scope as WF03
+  state_c=WF03.accepts_ci_trust_state(facts,run_phases,run_native)
+  if not (state_a or state_b or state_c):problems.append('Trust sources are not the exact reviewed blobs')
   if facts['main_blobs']!=D029_MAIN_BLOBS:problems.append('Trust baseline is not the pinned main')
   if facts['changed']!=D029_TRUST_CHANGED:problems.append('Trust-scope diff differs from the reviewed set')
-  for ev in D029_EVIDENCE_NODES+(WS2_EXTRA_NODES if state_b else ()):
+  for ev in D029_EVIDENCE_NODES+(WS2_EXTRA_NODES if state_b or state_c else ())+(WF03.CI_EVIDENCE_NODES if state_c else ()):
    if ev not in run_phases or outcome(run_phases[ev])['status']!='passed' or tuple(run_native.get(ev,('missing',)))[0]!='passed':problems.append('required successor test did not pass: '+ev)
  except (KeyError,IndexError,TypeError,ValueError,ContractError) as e:problems.append('malformed evidence: '+type(e).__name__)
  return problems
@@ -372,6 +418,11 @@ def verify_data(planfolder,workers):
  runtime_packages(data['collection_environment'])
  reconciled=[]
  seen={};skips=skip_counter(data['inventory']['collection_skips']);expected={n['nodeid'] for n in data['inventory']['nodes']}
+ # D-029 "same run" evidence spans every worker of THIS run: its successor nodes may be planned onto another worker than the reconciled
+ # node. This map only feeds d029_authorized; every worker's own phases/native are still fully verified below.
+ run_phases,run_native={},{}
+ for folder in workers:
+  rr=read_json(folder/'execution/child/adapter.json');run_phases.update(phase_map(rr));run_native.update(native_cases((folder/'execution/child/native.xml').read_bytes(),rr))
  for index,folder in enumerate(workers):
   binding=read_json(folder/'binding.json');require(binding=={'context':context(),'worker':index,'plan_sha256':sha(planfolder/'plan.json'),'image':data['image']},'worker binding')
   proc=read_json(folder/'process.json');cleanup=proc.get('descendant_cleanup') or {}
@@ -386,40 +437,52 @@ def verify_data(planfolder,workers):
   require(not set(seen)&set(phases),'duplicate execution')
   for n,v in phases.items():
    require(outcome(v)['status'] in ('passed','skipped','xfail'),'failure/unexpected xpass')
-   if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],phases,native,reconciled),'original phase/native outcome regression: '+n)
+   if n in bp:require((v==bp[n] and native[n]==bn[n]) or d029_authorized(n,bp[n],bn[n],v,native[n],run_phases,run_native,reconciled),'original phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','nonhistorical nonpass requires explicit reviewed authority: '+n)
-   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],phases,native,reconciled) or original_d029_outcome_reproduced(n,v,native[n],bp,bn),'accepted-source phase/native outcome regression: '+n)
+   if n in rp:require((v==rp[n] and list(native[n])==rn[n]) or d029_authorized(n,rp[n],rn[n],v,native[n],run_phases,run_native,reconciled) or original_d029_outcome_reproduced(n,v,native[n],bp,bn),'accepted-source phase/native outcome regression: '+n)
    else:require(outcome(v)['status']=='passed','new nonpass needs explicit treatment: '+n)
   seen.update(phases)
  require(set(seen)==expected,'incomplete full coverage')
  return {'source':data['context']['source'],'run_id':data['context']['run_id'],'attempt':data['context']['attempt'],'execution_mode':'parallel','workers':data['plan']['worker_count'],'original_nodes':len(seen),'baseline_original_nodes':len(bp),'new_nodes':len(expected-set(bp)),'collection_skips':sum(skips.values()),'all_phases_verified':True,'native_junit_verified':True,'cleanup_verified':True,'original_common_outcomes_equal':not reconciled,'authorized_outcome_reconciliations':reconciled,'baseline_source':baseline['source'],'baseline_is_current_source':False,'environment_equal_to_sequential_baseline':data['collection_environment']==baseline['environment'],'accepted_reference_source':reference['source'],'accepted_reference_base':reference['base'],'accepted_reference_run_id':reference['run_id'],'accepted_reference_attempt':reference['attempt'],'accepted_reference_digest':reference['digest'],'inventory_reconciliation':changes,'current_source_execution_verified':True,'same_source_sequential_control_claimed':False}
 
 def authenticate_current(api,downloaded,out):
- ctx=context();run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
+ ctx=context();attempt=ctx['attempt'];run=api.get(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}')
  require(run['head_sha']==ctx['source']['head'] and run['run_attempt']==ctx['attempt'] and run.get('path')=='.github/workflows/public_safety_and_smoke.yml' and run.get('head_repository',{}).get('full_name')==REPO,'service current repository/workflow/source/attempt')
  listing=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/artifacts','artifacts')
  jobs=api.listing(f'/repos/{REPO}/actions/runs/{ctx["run_id"]}/attempts/{ctx["attempt"]}/jobs','jobs')
- count=production_plan(downloaded/'public-ci-v3-plan')['plan']['worker_count']
- expected={f'public-ci-v3-worker-{i}' for i in range(count)}
- require({a['name'] for a in listing if a['name'].startswith('public-ci-v3-worker-')}==expected,'unexpected/missing worker artifact identity')
- for name in ['public-ci-v3-plan',*sorted(expected)]:
-  matches=[a for a in listing if a['name']==name and not a['expired']];require(len(matches)==1,'missing/duplicate service artifact')
-  suffix='plan' if name=='public-ci-v3-plan' else name.removeprefix('public-ci-v3-')
-  producers=[j for j in jobs if j['name'].endswith('/ '+suffix) or j['name']==suffix]
+ # Only this attempt's names are current; other attempts' artifacts are history and can never be selected or counted.
+ plan_name=attempt_name(PLAN,attempt);suffix=f'-attempt-{attempt}'
+ count=production_plan(downloaded/plan_name)['plan']['worker_count']
+ expected={attempt_name(worker_name(i),attempt):worker_name(i) for i in range(count)}
+ require({a['name'] for a in listing if a['name'].startswith('public-ci-v3-worker-') and a['name'].endswith(suffix)}==set(expected),'unexpected/missing worker artifact identity')
+ receipts=[]
+ for name,logical in [(plan_name,PLAN),(attempt_name(RUNTIME,attempt),RUNTIME),*sorted(expected.items())]:
+  matches=[a for a in listing if a['name']==name and not a['expired']];require(len(matches)==1,'missing/duplicate service artifact: '+name)
+  a=matches[0];require(a.get('workflow_run',{}).get('id')==int(ctx['run_id']) and a['workflow_run'].get('head_sha')==ctx['source']['head'],'service artifact run/source binding: '+name)
+  job='plan' if logical in (PLAN,RUNTIME) else logical.removeprefix('public-ci-v3-')
+  producers=[j for j in jobs if j['name'].endswith('/ '+job) or j['name']==job]
   require(len(producers)==1 and producers[0]['status']=='completed' and producers[0]['conclusion']=='success', 'artifact producer not successful')
-  a=matches[0];payload=api.raw(f'/repos/{REPO}/actions/artifacts/{a["id"]}/zip',archive=True)
+  receipts.append({'name':name,'id':a['id'],'digest':a['digest'],'producer_job_id':producers[0].get('id')})
+  if logical==RUNTIME:continue  # bytes are bound through the sealed plan and every worker's preflight; metadata identity is attested here
+  payload=api.raw(f'/repos/{REPO}/actions/artifacts/{a["id"]}/zip',archive=True)
   require('sha256:'+hashlib.sha256(payload).hexdigest()==a['digest'],'service archive digest')
-  extract_archive(payload,out/name);require(files(out/name)==files(downloaded/name),'downloaded evidence differs from independent service archive')
- data=production_plan(out/'public-ci-v3-plan')
+  extract_archive(payload,out/logical);require(files(out/logical)==files(downloaded/name),'downloaded evidence differs from independent service archive')
+ data=check_seal_binding(out/PLAN)
+ write_json(out/'current-attempt-artifacts.json',{'run_id':ctx['run_id'],'attempt':attempt,'source':ctx['source'],'artifacts':receipts})
+ print('CI_V3_CURRENT_ATTEMPT_ARTIFACTS='+json.dumps(receipts,sort_keys=True))
  independently_verified=authenticate_reference(api,source_base(),out/'reference-authentication',anchor=data['source_reference'])
  require(independently_verified==data['source_reference'],'accepted-source reference differs from independent authentication')
  return out
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('stage',choices=['route','plan','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=range(12));p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
+ p=argparse.ArgumentParser();p.add_argument('stage',choices=['route','plan','seal','worker','verify']);p.add_argument('--output',required=True);p.add_argument('--plan',default='evidence/public-ci-v3-plan');p.add_argument('--runtime',default='runtime-image.tar.gz');p.add_argument('--evidence',default='evidence');p.add_argument('--worker',type=int,choices=range(12));p.add_argument('--image');p.add_argument('--independent',action='store_true');a=p.parse_args();out=Path(a.output).resolve();out.mkdir(parents=True,exist_ok=False)
  if a.stage=='route':route_preflight(out)
  elif a.stage=='plan':make_plan(Path.cwd(),out,a.image)
- elif a.stage=='worker':worker(Path.cwd(),out,Path(a.plan).resolve(),a.worker)
+ elif a.stage=='seal':
+  seal=seal_attempt(Path(a.plan).resolve(),Path(a.runtime).resolve());write_json(out/SEAL,seal)
+  if os.environ.get('GITHUB_OUTPUT'):
+   with open(os.environ['GITHUB_OUTPUT'],'a') as stream:print('attempt='+str(seal['context']['attempt']),file=stream)
+ elif a.stage=='worker':worker(Path.cwd(),out,Path(a.plan).resolve(),a.worker,Path(a.runtime).resolve())
  else:
   folder=Path(a.evidence).resolve()
   if a.independent:folder=authenticate_current(GitHub(),folder,out/'authenticated')

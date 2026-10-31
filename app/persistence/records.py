@@ -71,6 +71,9 @@ class ProjectRecord:
     # inferred). Validated against app.model_v2.project_metadata vocabularies.
     project_stage: Optional[str] = None
     model_perspective: Optional[str] = None
+    lifecycle_version: int = 0
+    lifecycle_archived_at: Optional[str] = None
+    lifecycle_archive_origin: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "ProjectRecord":
@@ -98,6 +101,9 @@ class ProjectRecord:
             source_project_id=row["source_project_id"] if "source_project_id" in keys else None,
             project_stage=row["project_stage"] if "project_stage" in keys else None,
             model_perspective=row["model_perspective"] if "model_perspective" in keys else None,
+            lifecycle_version=row["lifecycle_version"] if "lifecycle_version" in keys else 0,
+            lifecycle_archived_at=row["lifecycle_archived_at"] if "lifecycle_archived_at" in keys else None,
+            lifecycle_archive_origin=row["lifecycle_archive_origin"] if "lifecycle_archive_origin" in keys else None,
         )
 
 

@@ -16,14 +16,19 @@ from tests import wf04_scope as W
 ENGINE_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/')
 
 
+# WF-04's own delta is what the merged PR #399 brought: it is verified at that immutable commit (WF03_PARENT), so a later, separately governed WF-03
+# successor on top of it (tests/wf03_lifecycle_scope.py, which exact_blobs_ok() enforces on the tree) cannot blur or hide it.
+REF = W.WF03_PARENT
+
+
 def _changed():
     """The WF-04 delta: what differs from the approved main (with the merged WS-2 PR) this cohort was integrated with."""
-    return W._git(W.ROOT, 'diff', '--name-only', W.APPROVED_MAIN, '--').decode().splitlines()
+    return W._git(W.ROOT, 'diff', '--name-only', W.APPROVED_MAIN, REF, '--').decode().splitlines()
 
 
 def _changed_since_origin():
     """Everything that differs from WF-04's historical origin: the WS-2 sources arrive from main, the rest is the WF-04 delta."""
-    return W._git(W.ROOT, 'diff', '--name-only', W.BASE, '--').decode().splitlines()
+    return W._git(W.ROOT, 'diff', '--name-only', W.BASE, REF, '--').decode().splitlines()
 
 
 def test_cohort_is_registered_exact_closed_and_excludes_every_financial_authority():
@@ -56,9 +61,9 @@ def test_no_writer_route_csrf_save_all_security_or_engine_file_is_changed_by_wf0
         assert path not in changed, path
     assert not [p for p in changed if p.startswith(GUARDED_PREFIXES)]
     # every guarded path is byte-identical to the approved main, i.e. WF-04 contributes nothing to it ...
-    tracked = [p for p in W._git(W.ROOT, 'ls-files').decode().splitlines() if p.startswith(GUARDED_PREFIXES) or p in GUARDED_PATHS]
+    tracked = [p for p in W._git(W.ROOT, 'ls-tree', '-r', '--name-only', REF).decode().splitlines() if p.startswith(GUARDED_PREFIXES) or p in GUARDED_PATHS]
     for path in tracked:
-        assert W._blob(W._read(W.ROOT, path, None)) == _blob_at(W.APPROVED_MAIN, path), path
+        assert W._blob(W._read(W.ROOT, path, REF)) == _blob_at(W.APPROVED_MAIN, path), path
     # ... and the arrival of the WS-2 sources is a fact of the lineage, not hidden: they are in the origin delta, not in the WF-04 delta
     origin = set(_changed_since_origin())
     assert set(WS2_WRITER_PATHS) <= origin and any(p.startswith('frontend/src/app/editing/') for p in origin)
@@ -212,13 +217,13 @@ def test_predecessor_manifests_keep_their_approved_main_state_except_the_named_r
     assert W._historical_manifests_ok(W.ROOT, None)
     for path, allowed in W.PREDECESSOR_REPINS.items():
         old = json.loads(W._read(W.ROOT, path, W.APPROVED_MAIN))
-        now = json.loads(W._read(W.ROOT, path, None))
+        now = json.loads(W._read(W.ROOT, path, REF))
         assert now['historical_source_blobs'][W.APPROVED_MAIN] == old['source_blobs']
         moved = {p for p in old['source_blobs'] if old['source_blobs'][p] != now['source_blobs'][p]}
         assert moved <= allowed, moved - allowed
         for p in moved:                                                    # a re-pinned path is one WF-04 owns, at exactly the WF-04 pin
-            assert now['source_blobs'][p] == W.manifest()['source_blobs'][p], p
-            assert W._blob(W._read(W.ROOT, p, None)) == now['source_blobs'][p], p
+            assert now['source_blobs'][p] == W.manifest(ref=REF)['source_blobs'][p], p
+            assert W._blob(W._read(W.ROOT, p, REF)) == now['source_blobs'][p], p
         # WF-04's historical origin map is kept verbatim where the manifest already existed there (WS-2's manifest is newer than BASE)
         try:
             origin = json.loads(W._read(W.ROOT, path, W.BASE))['source_blobs']
@@ -232,7 +237,7 @@ def test_the_registry_and_workspace_repository_repins_are_the_only_financial_pin
     moved = {}
     for path in W.PREDECESSOR_REPINS:
         old = json.loads(W._read(W.ROOT, path, W.APPROVED_MAIN))['source_blobs']
-        now = json.loads(W._read(W.ROOT, path, None))['source_blobs']
+        now = json.loads(W._read(W.ROOT, path, REF))['source_blobs']
         moved[path] = {p for p in old if old[p] != now[p] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/'))}
     assert moved[W.FIN_V2_3_MANIFEST] == {'app/workbook/registry.py'}
     assert moved[W.WSV2_EDITING_MANIFEST] == {'app/persistence/workspace_repository.py'}
@@ -241,7 +246,7 @@ def test_the_registry_and_workspace_repository_repins_are_the_only_financial_pin
 
 def test_ws2_manifest_moves_only_the_run_identity_hunk_of_the_workspace_repository():
     old = json.loads(W._read(W.ROOT, W.WSV2_EDITING_MANIFEST, W.APPROVED_MAIN))
-    now = json.loads(W._read(W.ROOT, W.WSV2_EDITING_MANIFEST, None))
+    now = json.loads(W._read(W.ROOT, W.WSV2_EDITING_MANIFEST, REF))
     assert {k: v for k, v in old.items() if k not in ('source_blobs', 'historical_source_blobs')} == \
         {k: v for k, v in now.items() if k not in ('source_blobs', 'historical_source_blobs')}
     assert [p for p in old['source_blobs'] if old['source_blobs'][p] != now['source_blobs'][p]] == ['app/persistence/workspace_repository.py']
@@ -298,7 +303,7 @@ def test_a_predecessor_pin_that_disagrees_with_the_real_bytes_breaks_that_cohort
 # ── the two protected paths changed only by the reviewed additive hunks ───────────────────────────────────────────────────────────────────────
 def _opcodes(path):
     before = W._read(W.ROOT, path, W.APPROVED_MAIN).decode().splitlines()
-    after = W._read(W.ROOT, path, None).decode().splitlines()
+    after = W._read(W.ROOT, path, REF).decode().splitlines()
     ops = [op for op in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes() if op[0] != 'equal']
     return before, after, ops
 
@@ -333,8 +338,8 @@ def test_registry_change_is_the_two_contract_fields_and_the_sheet_line_only():
 
 # ── the browser acceptance joins the existing mandatory role without a collection-time skip ──────────────────────────────────────────────
 def test_browser_acceptance_is_an_additive_import_in_the_existing_role_with_no_skip_of_its_own():
-    role = (W.ROOT / W.ROLE_MODULE).read_text()
-    helper = (W.ROOT / W.ROLE_ACCEPTANCE).read_text()
+    role = W._read(W.ROOT, W.ROLE_MODULE, REF).decode()
+    helper = W._read(W.ROOT, W.ROLE_ACCEPTANCE, REF).decode()
     assert role.endswith('\n'.join(W.ROLE_IMPORT_BLOCK) + '\n') and role.count(W.ROLE_IMPORT_BLOCK[-1]) == 1
     original = W._read(W.ROOT, W.ROLE_MODULE, W.APPROVED_MAIN).decode()
     assert role.startswith(original.rstrip() + '\n')                       # nothing before the appended block changed

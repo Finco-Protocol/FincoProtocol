@@ -155,6 +155,19 @@ def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls(
     assert 'assert S.violations(extra)' in source
 
 
+def _wf03():
+    """The separately governed WF-03 cohort (tests/wf03_lifecycle_scope.py): its exact pins are the only later state also admitted below."""
+    from tests import wf03_lifecycle_scope
+    return wf03_lifecycle_scope
+
+
+def _additive_only(prior, current):
+    """True when ``current`` keeps every line of ``prior`` unchanged and in order, i.e. it only ADDS lines."""
+    import difflib
+    return not [line for line in difflib.unified_diff(prior.splitlines(), current.splitlines(), lineterm='')
+                if line.startswith('-') and not line.startswith('---')]
+
+
 def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():
     old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))
     sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}
@@ -169,7 +182,8 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
     for path in PRESENTATION | {ROLE}:
         # WF-04 successor lineage: for the presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
         assert (S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
-                or WF04.presentation_successor(path, sources[path]))
+                or WF04.presentation_successor(path, sources[path])
+                or _wf03().matches(path, sources[path]))       # WF-03 successor lineage: the exact later state its cohort pins while it is valid
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)
@@ -187,7 +201,8 @@ def test_predecessor_manifest_pins_and_metadata_remain_verbatim():
         for p, value in old['source_blobs'].items():
             # WF-04 successor lineage: only the named, owner-authorised re-pins may move (tests/test_wf04_scope.py proves each equals the WF-04 pin).
             if path != F.PREDECESSOR_MANIFESTS[-1] and p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/')) \
-                    and p not in F.WF04_SUCCESSOR_REPIN.get(path, ()):
+                    and p not in F.WF04_SUCCESSOR_REPIN.get(path, ()) \
+                    and not _wf03().historical_pin_successor(path, p, value, now['source_blobs'][p]):    # WF-03: only a re-pin its cohort owns AND pins identically
                 assert now['source_blobs'][p] == value
 
 
@@ -221,7 +236,10 @@ def browser_contract_ok(role, acceptance):
         return False
     prior = F._read(F.ROOT, ROLE, F.AUTHORIZATION_HEAD).decode()
     if role[:role.index(marker)].rstrip() != prior.rstrip():
-        return False
+        # WF-03 successor lineage: the original role survives verbatim; the only difference is the separately governed, ADDITIVE WF-03 browser block
+        # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.
+        if not (_wf03().matches(ROLE, role) and _additive_only(prior, role[:role.index(marker)])):
+            return False
     tree = ast.parse(acceptance)
     functions = tuple(n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))
     exported = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
@@ -260,7 +278,8 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
     assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS
     pins = F.manifest()['source_blobs']
     for path in OWNER_APPROVED_ACCEPTANCE:
-        assert pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
+        assert (pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
+                or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid
         original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
         current = F._read(F.ROOT, path, None).decode()
         assert S.git_blob(current) == pins[path]
@@ -335,3 +354,24 @@ def test_ws2_admission_requires_the_ws2_cohort_to_be_exact(monkeypatch):
         return raw + b'\n' if path == 'app/v2/save_all_commands.py' and ref is None else raw
     monkeypatch.setattr(WS2, '_read', drifted)
     assert not WS2.exact_blobs_ok() and not F._ws2_allows('app/v2/save_all_commands.py', F.ROOT, None) and not F.exact_blobs_ok()
+
+
+def test_the_ws2_exact_check_runs_once_per_outer_call_and_is_never_shared(monkeypatch):
+    """Performance successor (PR #400 CI forensics): one exact_blobs_ok() call evaluated WS2.exact_blobs_ok once per changed path
+    (2436x in one governance test).  It is now evaluated once per outer call; a later call evaluates again, and verdicts are unchanged."""
+    from tests import fin_v2_wsv2_scope as WS2
+    paths = ['docs/SYNTHETIC/unowned-%d.md' % i for i in range(5)]          # owned by no cohort: every path reaches the WS-2 branch
+    calls = []
+    def counted(repo=None, ref=None):
+        calls.append((str(repo), ref))
+        return True
+    monkeypatch.setattr(WS2, 'exact_blobs_ok', counted)
+    monkeypatch.setattr(F, '_exact_blobs_ok', lambda repo=None, ref=None: [F._ws2_allows(p, F.ROOT, ref) for p in paths])
+    verdicts = F.exact_blobs_ok()
+    assert len(calls) == 1 and F._WS2_SCOPE == []                          # once per outer call (was once per path)
+    F.exact_blobs_ok()
+    assert len(calls) == 2 and F._WS2_SCOPE == []                          # never reused across outer calls
+    assert verdicts == [F._ws2_allows(p, F.ROOT, None) for p in paths]     # unmemoised evaluation gives the same verdicts
+    assert len(calls) == 2 + len(paths)                                    # outside a call nothing is memoised
+    monkeypatch.setattr(WS2, 'exact_blobs_ok', lambda repo=None, ref=None: False)
+    assert not any(F.exact_blobs_ok())                                     # a failing WS-2 check still refuses every path

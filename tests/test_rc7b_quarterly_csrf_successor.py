@@ -1,6 +1,7 @@
 """Quarterly CSRF recognition is exact, fail-closed and never financial approval."""
 import ast
 from pathlib import Path
+import sqlite3
 import subprocess
 
 import pytest
@@ -99,9 +100,20 @@ def test_real_endpoint_security_preserves_workspace_and_history(env, monkeypatch
         ws = get_workspace_state(owner, project.project_id)
         project = create_project_record(user_id=owner, project_code="rc7b-security-reference",
             project_name="Synthetic protected reference", project_type="Solar", project_origin="factory_template",
-            template_source="generic_solar_reference", baseline_snapshot=dict(ws.draft_snapshot), is_readonly=True)
+            template_source="generic_solar_reference", baseline_snapshot=dict(ws.draft_snapshot), is_readonly=False)
+        # Bootstrap the reference's workspace while it is still a writable draft, THEN seal it read-only. WF-03 (intended) forbids any
+        # post-creation write to a read-only/protected user-owned project, so sealing last is the supported order.
         save_workspace_state(user_id=owner, project_id=project.project_id, project_code=project.project_code,
                              draft_snapshot=dict(ws.draft_snapshot), saved_snapshot=dict(ws.saved_snapshot))
+        from app.persistence.db import get_cursor
+        with get_cursor() as cur:
+            cur.execute("UPDATE projects SET is_readonly=1 WHERE project_id=?", (project.project_id,))
+        # Direct negative: once sealed, a repository write to the reference is refused by the lifecycle fence and changes nothing.
+        sealed = get_workspace_state(owner, project.project_id)
+        with pytest.raises(sqlite3.IntegrityError, match="WF03_LIFECYCLE_CONFLICT"):
+            save_workspace_state(user_id=owner, project_id=project.project_id, project_code=project.project_code,
+                                 draft_snapshot=dict(ws.draft_snapshot), saved_snapshot=dict(ws.saved_snapshot))
+        assert get_workspace_state(owner, project.project_id) == sealed
     def forbidden(*args, **kwargs):
         raise AssertionError("No financial calculation is authorized by opening or saving frequency")
     monkeypatch.setattr(model_execution, "run_model_process", forbidden)

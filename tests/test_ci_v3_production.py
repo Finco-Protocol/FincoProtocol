@@ -54,7 +54,7 @@ def test_incompatible_source_is_always_routed_sequentially(tmp_path,route_trees,
 
 def test_active_profile_retains_all_bounds_and_no_credential_or_failure_bypass():
  f=flow();jobs=f['jobs'];assert set(jobs)=={'route','sequential','plan','worker','aggregate','tests'}
- assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==155
+ assert sum(int(j['timeout-minutes']) for n,j in jobs.items() if n!='sequential')==310
  assert jobs['sequential']['uses']=='./.github/workflows/ci_public_job.yml'
  assert jobs['worker']['needs']==['route','plan']
  assert jobs['worker']['strategy']['fail-fast']=='false'
@@ -313,38 +313,254 @@ def test_matrix_failure_does_not_trigger_sequential_retry():
 @pytest.mark.parametrize('count',[5,8,12])
 @pytest.mark.parametrize('attack',[None,'missing','extra','duplicate','failed-producer','archive-bytes'])
 def test_independent_service_authentication_requires_exact_dynamic_workers(tmp_path,monkeypatch,count,attack):
- import hashlib,io,zipfile
- download=tmp_path/'download';plan=download/'public-ci-v3-plan';plan.mkdir(parents=True)
- ctx=scale_plan(plan,monkeypatch,count)
- monkeypatch.setattr(prod,'source_base',lambda:ctx['source'])
- monkeypatch.setattr(prod,'authenticate_reference',lambda *args,**kwargs:{})
- artifacts=[];jobs=[];archives={}
- names=['public-ci-v3-plan',*[f'public-ci-v3-worker-{i}' for i in range(count)]]
- for ident,name in enumerate(names,1):
-  folder=download/name
-  if name!='public-ci-v3-plan':folder.mkdir();(folder/'receipt.txt').write_text(name)
-  buffer=io.BytesIO()
-  with zipfile.ZipFile(buffer,'w') as archive:
-   for file in folder.rglob('*'):
-    if file.is_file():archive.writestr(str(file.relative_to(folder)),file.read_bytes())
-  data=buffer.getvalue();archives[ident]=data
-  artifacts.append({'id':ident,'name':name,'expired':False,'digest':'sha256:'+hashlib.sha256(data).hexdigest()})
-  suffix='plan' if name=='public-ci-v3-plan' else name.removeprefix('public-ci-v3-')
-  jobs.append({'name':'safety-and-smoke / '+suffix,'status':'completed','conclusion':'success'})
- if attack=='missing':artifacts.pop()
- elif attack=='extra':artifacts.append({**artifacts[-1],'name':f'public-ci-v3-worker-{count}'})
- elif attack=='duplicate':artifacts.append(dict(artifacts[-1]))
- elif attack=='failed-producer':jobs[-1]['conclusion']='failure'
- elif attack=='archive-bytes':archives[len(names)]=b'corrupted'
- class Service:
-  def get(self,path):return {'head_sha':ctx['source']['head'],'run_attempt':ctx['attempt'],'path':'.github/workflows/public_safety_and_smoke.yml','head_repository':{'full_name':prod.REPO}}
-  def listing(self,path,key):return artifacts if key=='artifacts' else jobs
-  def raw(self,path,archive):return archives[int(path.split('/')[-2])]
+ # Same identities and attacks as before; the service names are now the current attempt's (PR #400 incident).
+ download=tmp_path/'download';ctx,run=attempt_service(tmp_path,monkeypatch,count)
+ names=run.current_names
+ if attack=='missing':run.artifacts.pop()
+ elif attack=='extra':run.artifacts.append({**run.artifacts[-1],'name':prod.attempt_name(f'public-ci-v3-worker-{count}',ctx['attempt'])})
+ elif attack=='duplicate':run.artifacts.append(dict(run.artifacts[-1]))
+ elif attack=='failed-producer':run.jobs[-1]['conclusion']='failure'
+ elif attack=='archive-bytes':run.archives[run.artifacts[-1]['id']]=b'corrupted'
  if attack:
-  with pytest.raises(ContractError):prod.authenticate_current(Service(),download,tmp_path/'authenticated')
+  with pytest.raises(ContractError):prod.authenticate_current(run,download,tmp_path/'authenticated')
  else:
-  result=prod.authenticate_current(Service(),download,tmp_path/'authenticated')
-  assert {p.name for p in result.iterdir()}==set(names)
+  result=prod.authenticate_current(run,download,tmp_path/'authenticated')
+  assert {p.name for p in result.iterdir()}=={'public-ci-v3-plan',*[f'public-ci-v3-worker-{i}' for i in range(count)],'current-attempt-artifacts.json'}
+  assert len(names)==count+2
+
+
+# ── Run-attempt artifact identity: replay of PR #400 run 41099667692 (SYNTHETIC service, real ZIP round trips) ───────
+RUNTIME_BYTES=b'SYNTHETIC runtime-image.tar.gz bytes'
+
+def _zip(folder):
+ import io,zipfile
+ buffer=io.BytesIO()
+ with zipfile.ZipFile(buffer,'w') as archive:
+  for file in sorted(folder.rglob('*')):
+   if file.is_file():archive.writestr(str(file.relative_to(folder)),file.read_bytes())
+ return buffer.getvalue()
+
+def sealed(plan,runtime_bytes=RUNTIME_BYTES,image='sha256:'+'a'*64):
+ """Complete the plan exactly as the plan job does: record the runtime archive, then seal it to this attempt."""
+ import hashlib
+ data=read_json(plan/'plan.json');data.setdefault('image',image);data['image_archive_sha256']=hashlib.sha256(runtime_bytes).hexdigest()
+ write_json(plan/'plan.json',data);runtime=plan.parent/(plan.name+'.runtime-image.tar.gz');runtime.write_bytes(runtime_bytes)
+ return prod.seal_attempt(plan,runtime),runtime
+
+class AttemptRun:
+ """SYNTHETIC GitHub run: artifact listing spans every attempt (as the service does); jobs are per attempt."""
+ def __init__(self,ctx):self.ctx=ctx;self.artifacts=[];self.jobs=[];self.archives={};self.current_names=[];self.next_id=5000
+ def add(self,name,data,attempt,head=None,ident=None):
+  import hashlib
+  ident=ident or self.next_id;self.next_id+=1
+  self.artifacts.append({'id':ident,'name':name,'expired':False,'digest':'sha256:'+hashlib.sha256(data).hexdigest(),
+   'workflow_run':{'id':int(self.ctx['run_id']),'head_sha':head or self.ctx['source']['head']},'attempt(not-in-api)':attempt})
+  self.archives[ident]=data;return ident
+ def get(self,path):return {'head_sha':self.ctx['source']['head'],'run_attempt':self.ctx['attempt'],'path':'.github/workflows/public_safety_and_smoke.yml','head_repository':{'full_name':prod.REPO}}
+ def listing(self,path,key):
+  if key=='artifacts':return [{k:v for k,v in a.items() if k!='attempt(not-in-api)'} for a in self.artifacts]
+  assert path.endswith(f'/attempts/{self.ctx["attempt"]}/jobs');return self.jobs
+ def raw(self,path,archive):return self.archives[int(path.split('/')[-2])]
+
+def attempt_service(tmp_path,monkeypatch,count,attempt=1,plan_source=None,workers=None):
+ """Current attempt's plan/runtime/worker artifacts, downloaded exactly as the consumers download them."""
+ download=tmp_path/'download';download.mkdir(exist_ok=True)
+ if plan_source is None:
+  plan_source=tmp_path/'plan-source';plan_source.mkdir();ctx=scale_plan(plan_source,monkeypatch,count)
+  ctx['attempt']=attempt;data=read_json(plan_source/'plan.json');data['context']=ctx;write_json(plan_source/'plan.json',data)
+  monkeypatch.setattr(prod,'source_base',lambda:ctx['source'])
+  monkeypatch.setattr(prod,'authenticate_reference',lambda *args,**kwargs:{})
+ ctx=prod.context();sealed(plan_source)
+ run=AttemptRun(ctx)
+ plan_name=prod.attempt_name(prod.PLAN,ctx['attempt']);shutil.copytree(plan_source,download/plan_name)
+ run.add(plan_name,_zip(plan_source),ctx['attempt']);run.add(prod.attempt_name(prod.RUNTIME,ctx['attempt']),b'SYNTHETIC zip of runtime',ctx['attempt'])
+ run.jobs.append({'id':1,'name':'safety-and-smoke / plan','status':'completed','conclusion':'success'})
+ for i in range(count):
+  name=prod.attempt_name(f'public-ci-v3-worker-{i}',ctx['attempt']);folder=download/name
+  if workers:shutil.copytree(workers[i],folder)
+  else:folder.mkdir();(folder/'receipt.txt').write_text(name)
+  run.add(name,_zip(folder),ctx['attempt'])
+  run.jobs.append({'id':10+i,'name':f'safety-and-smoke / worker-{i}','status':'completed','conclusion':'success'})
+ run.current_names=[plan_name,prod.attempt_name(prod.RUNTIME,ctx['attempt']),*[prod.attempt_name(f'public-ci-v3-worker-{i}',ctx['attempt']) for i in range(count)]]
+ return ctx,run
+
+def toolkit_by_name(listing,name):
+ # actions/download-artifact (pinned d3f86a10 / @actions/artifact getArtifact): newest = highest numeric ID for that name.
+ return max((a for a in listing if a['name']==name),key=lambda a:a['id'])
+
+def stale_attempt_1_baseline_only(tmp_path):
+ folder=tmp_path/'attempt-1-plan';(folder/'baseline/public-verification-results').mkdir(parents=True)
+ (folder/'baseline/public-verification-results/inventory.json').write_text('{}')
+ return folder
+
+def no_docker(monkeypatch):
+ def refused(*args,**kwargs):raise AssertionError('Docker/pytest reached before the attempt binding was proven: '+repr(args))
+ monkeypatch.setattr(prod.subprocess,'run',refused);monkeypatch.setattr(prod.subprocess,'check_output',refused)
+ monkeypatch.setattr(prod,'observe_container',refused)
+
+def test_case_a_incident_replay_stale_attempt_1_plan_never_wins(tmp_path,monkeypatch):
+ """Run 41099667692: attempt 1's baseline-only plan got the HIGHER ID (12999360429 > 12998263477) under the same name."""
+ ctx,run=attempt_service(tmp_path,monkeypatch,8,attempt=2)
+ stale=stale_attempt_1_baseline_only(tmp_path)
+ # Attempt 1 artifacts, with higher numeric IDs exactly as observed; both the legacy and an attempt-1 scoped name.
+ for name in ['public-ci-v3-plan',prod.attempt_name(prod.PLAN,1)]:run.add(name,_zip(stale),1,ident=12999360429 if name=='public-ci-v3-plan' else 12999360430)
+ run.add(prod.attempt_name(prod.RUNTIME,1),b'SYNTHETIC attempt-1 runtime',1,ident=13000105279)
+ listing=run.listing('',"artifacts")
+ # The old design's by-name resolution is exactly the incident: the stale baseline-only artifact wins.
+ run.add('public-ci-v3-plan',_zip(tmp_path/'download'/prod.attempt_name(prod.PLAN,2)),2,ident=12998263477)
+ assert toolkit_by_name(run.listing('','artifacts'),'public-ci-v3-plan')['id']==12999360429
+ # The attempt-scoped name is unique, so the same toolkit rule can only resolve the complete attempt-2 plan.
+ current=toolkit_by_name(run.listing('','artifacts'),prod.attempt_name(prod.PLAN,2))
+ assert current['id']==run.artifacts[0]['id'] and 'plan.json' in __import__('zipfile').ZipFile(__import__('io').BytesIO(run.archives[current['id']])).namelist()
+ result=prod.authenticate_current(run,tmp_path/'download',tmp_path/'authenticated')
+ receipts=read_json(result/'current-attempt-artifacts.json')
+ assert receipts['attempt']==2 and {r['name'] for r in receipts['artifacts']}==set(run.current_names)
+ assert not {12999360429,12999360430,13000105279,12998263477}&{r['id'] for r in receipts['artifacts']}
+ # And the stale attempt-1 plan, had it been handed to a worker, is refused before Docker/pytest.
+ no_docker(monkeypatch)
+ with pytest.raises(ContractError,match='missing plan.json'):prod.worker(tmp_path,tmp_path/'w',stale,0,tmp_path/'download'/'x')
+ assert listing  # attempt-1 artifacts were present the whole time
+
+@pytest.mark.parametrize('order',['valid-first','malformed-first'])
+def test_case_b_ambiguous_current_attempt_plan_is_rejected_whatever_the_order(tmp_path,monkeypatch,order):
+ ctx,run=attempt_service(tmp_path,monkeypatch,5,attempt=2)
+ malformed=_zip(stale_attempt_1_baseline_only(tmp_path))
+ duplicate={**run.artifacts[0],'id':99,'digest':'sha256:'+__import__('hashlib').sha256(malformed).hexdigest()};run.archives[99]=malformed
+ run.artifacts.insert(0 if order=='malformed-first' else 1,duplicate)
+ with pytest.raises(ContractError,match='missing/duplicate service artifact'):prod.authenticate_current(run,tmp_path/'download',tmp_path/'authenticated')
+
+def test_case_c_baseline_only_plan_starts_no_expensive_work(tmp_path,monkeypatch):
+ (tmp_path/'current').mkdir();scale_plan(tmp_path/'current',monkeypatch,8)
+ stale=stale_attempt_1_baseline_only(tmp_path);runtime=tmp_path/'runtime-image.tar.gz';runtime.write_bytes(RUNTIME_BYTES)
+ no_docker(monkeypatch)
+ for index in range(8):
+  with pytest.raises(ContractError,match='incomplete plan artifact: missing plan.json'):prod.worker(tmp_path,tmp_path/f'w{index}',stale,index,runtime)
+ # A complete plan.json without the attempt seal (i.e. never passed the plan job's seal step) is equally refused.
+ write_json(stale/'plan.json',{'context':prod.context()})
+ with pytest.raises(ContractError,match='missing attempt-seal.json'):prod.preflight(stale,runtime)
+
+@pytest.mark.parametrize('mix',['runtime-from-other-attempt','plan-from-other-attempt','runtime-missing'])
+def test_case_d_plan_and_runtime_from_different_attempts_rejected_before_docker(tmp_path,monkeypatch,mix):
+ plan=tmp_path/'plan';plan.mkdir();ctx=scale_plan(plan,monkeypatch,8);ctx['attempt']=2
+ data=read_json(plan/'plan.json');data['context']=ctx;write_json(plan/'plan.json',data)
+ seal,runtime=sealed(plan)
+ assert prod.preflight(plan,runtime)['context']['attempt']==2
+ if mix=='runtime-from-other-attempt':runtime.write_bytes(b'SYNTHETIC attempt-1 rebuilt runtime, same HEAD')
+ elif mix=='runtime-missing':runtime.unlink()
+ else:monkeypatch.setattr(prod,'context',lambda:{**ctx,'attempt':3})
+ no_docker(monkeypatch)
+ with pytest.raises(ContractError,match='runtime|another run/attempt'):prod.worker(tmp_path,tmp_path/'w',plan,0,runtime)
+
+def test_case_e_two_attempt_end_to_end_contract_authenticates_and_verifies_current_attempt(evidence,tmp_path,monkeypatch):
+ """Attempt 1 left a baseline-only plan; attempt 2 completed. Seal -> upload -> download -> preflight -> independent verify."""
+ plan,workers=evidence;ctx=read_json(plan/'plan.json')['context']
+ monkeypatch.setattr(prod,'context',lambda:{**ctx,'attempt':2});data=read_json(plan/'plan.json');data['context']=prod.context();write_json(plan/'plan.json',data)
+ sealed(plan)   # the plan job's seal step precedes every worker, so bindings name the final plan bytes
+ for folder in workers:
+  for name in ('binding.json','execution/child/adapter.json','execution/child/calibration.json'):
+   d=read_json(folder/name);d['context']=prod.context();write_json(folder/name,d)
+  d=read_json(folder/'binding.json');d['plan_sha256']=prod.sha(plan/'plan.json');write_json(folder/'binding.json',d)
+ monkeypatch.setattr(prod,'authenticate_reference',lambda api,base,out,anchor=None:anchor)
+ attempt=tmp_path/'service';attempt.mkdir()
+ cur,run=attempt_service(attempt,monkeypatch,3,plan_source=plan,workers=workers)
+ stale=_zip(stale_attempt_1_baseline_only(tmp_path/'attempt-1'))
+ for k,name in enumerate(['public-ci-v3-plan',prod.attempt_name(prod.PLAN,1)]):run.add(name,stale,1,ident=12999360429+k)
+ # Worker preflight on the downloaded handoff, then the expensive phase is never reached in this unit test.
+ handoff=attempt/'download'/prod.attempt_name(prod.PLAN,2);runtime=plan.parent/(plan.name+'.runtime-image.tar.gz')
+ assert prod.preflight(handoff,runtime)['plan']['worker_count']==3
+ result=prod.authenticate_current(run,attempt/'download',attempt/'authenticated')
+ proof=prod.verify_data(result/'public-ci-v3-plan',[result/f'public-ci-v3-worker-{i}' for i in range(3)])
+ assert proof['attempt']==2 and proof['workers']==3 and proof['original_nodes']==6 and proof['cleanup_verified']
+
+@pytest.mark.parametrize('attack',['rerun-failed-reused-attempt-1-plan','cancelled-plan','duplicated-worker','missing-worker','wrong-head',
+ 'forged-archive','mutated-payload-after-seal','wrong-tree','wrong-run','wrong-image','stale-worker-only','runtime-missing'])
+def test_case_f_replays_reruns_and_forgeries_stay_fail_closed(tmp_path,monkeypatch,attack):
+ ctx,run=attempt_service(tmp_path,monkeypatch,8,attempt=2);download=tmp_path/'download';plan=download/prod.attempt_name(prod.PLAN,2)
+ if attack=='rerun-failed-reused-attempt-1-plan':
+  # Re-run failed jobs: plan reused from attempt 1, so this attempt has no plan job and no attempt-2 artifacts.
+  for a in run.artifacts:a['name']=a['name'].replace('-attempt-2','-attempt-1')
+  run.jobs=[j for j in run.jobs if not j['name'].endswith('/ plan')]
+ elif attack=='cancelled-plan':run.jobs[0]['conclusion']='cancelled'
+ elif attack=='duplicated-worker':run.artifacts.append({**run.artifacts[3],'id':77});run.archives[77]=run.archives[run.artifacts[3]['id']]
+ elif attack=='missing-worker':run.artifacts=[a for a in run.artifacts if a['name']!=prod.attempt_name('public-ci-v3-worker-4',2)]
+ elif attack=='wrong-head':run.artifacts[2]['workflow_run']={**run.artifacts[2]['workflow_run'],'head_sha':'f'*40}
+ elif attack=='wrong-run':run.artifacts[0]['workflow_run']={**run.artifacts[0]['workflow_run'],'id':1}
+ elif attack=='forged-archive':run.archives[run.artifacts[0]['id']]=_zip(stale_attempt_1_baseline_only(tmp_path))
+ elif attack=='mutated-payload-after-seal':
+  # Service bytes and download agree, but the payload is not the one the plan job sealed.
+  (plan/'baseline').mkdir();(plan/'baseline/injected.json').write_text('{}')
+  import hashlib;data=_zip(plan);run.archives[run.artifacts[0]['id']]=data;run.artifacts[0]['digest']='sha256:'+hashlib.sha256(data).hexdigest()
+ elif attack=='wrong-tree':monkeypatch.setattr(prod,'context',lambda:{**ctx,'source':{**ctx['source'],'tree':'e'*40}})
+ elif attack=='wrong-image':
+  import hashlib;s=read_json(plan/'attempt-seal.json');s['image']='sha256:'+'c'*64;write_json(plan/'attempt-seal.json',s)
+  data=_zip(plan);run.archives[run.artifacts[0]['id']]=data;run.artifacts[0]['digest']='sha256:'+hashlib.sha256(data).hexdigest()
+ elif attack=='stale-worker-only':
+  w=next(a for a in run.artifacts if a['name']==prod.attempt_name('public-ci-v3-worker-7',2));w['name']=prod.attempt_name('public-ci-v3-worker-7',1)
+ elif attack=='runtime-missing':run.artifacts=[a for a in run.artifacts if not a['name'].startswith('ci-v3-runtime')]
+ with pytest.raises(ContractError):prod.authenticate_current(run,download,tmp_path/'authenticated')
+
+def _plain(step_run):return step_run if isinstance(step_run,str) else ''
+
+def test_workflow_publishes_only_complete_current_attempt_artifacts_and_consumes_by_attempt():
+ jobs=flow()['jobs'];text=(ROOT/'.github/workflows/ci_v3_required_job.yml').read_text()
+ uploads=[(n,s) for n,j in jobs.items() for s in j.get('steps',[]) if s.get('uses','').startswith('actions/upload-artifact@')]
+ for job,step in uploads:
+  name=step['with']['name']
+  assert name.endswith('-attempt-${{ github.run_attempt }}'),name
+  if name.startswith(('public-','ci-v3-runtime')):assert step['if']=='${{ success() }}' and step['with']['if-no-files-found']=='error',name
+  else:assert name.startswith('ci-v3-diagnostic-') and step['if']=='${{ failure() || cancelled() }}',name
+ assert 'always()' not in ''.join(str(s.get('if','')) for _,s in uploads)
+ plan=jobs['plan']['steps'];ids=[s.get('id') for s in plan]
+ assert ids.index('distribution')<ids.index('seal')<ids.index('plan_upload')<ids.index('runtime_upload')
+ assert 'tools.ci_v3_production seal' in plan[ids.index('seal')]['run']
+ worker=jobs['worker'];assert worker['if'].startswith("${{ success() && needs.plan.result == 'success'")
+ downloads=[s for s in worker['steps'] if s.get('uses','').startswith('actions/download-artifact@')]
+ assert [s['with']['artifact-ids'] for s in downloads]==['${{ needs.plan.outputs.plan_artifact_id }}','${{ needs.plan.outputs.runtime_artifact_id }}']
+ assert all('name' not in s['with'] and 'pattern' not in s['with'] for s in downloads)
+ assert worker['steps'][0]['name'].startswith('Refuse a plan produced by another run attempt')
+ assert [s['with']['pattern'] for s in jobs['aggregate']['steps'] if s.get('uses','').startswith('actions/download-artifact@')]==['public-ci-v3-*-attempt-${{ github.run_attempt }}']
+ assert 'name: public-ci-v3-plan\n' not in text and 'name: ci-v3-runtime\n' not in text
+
+@pytest.mark.parametrize('plan_attempt,run_attempt,plan_id,ok',[('2','2','12998263477',True),('1','2','12999360429',False),('','2','',False),('2','2','',False)])
+def test_worker_attempt_guard_runs_before_any_download(plan_attempt,run_attempt,plan_id,ok):
+ step=flow()['jobs']['worker']['steps'][0]
+ env={**os.environ,'PLAN_ATTEMPT':plan_attempt,'RUN_ATTEMPT':run_attempt,'PLAN_ID':plan_id,'RUNTIME_ID':plan_id and '13000105279'}
+ assert (subprocess.run(['bash','-e','-c',step['run']],env=env,capture_output=True).returncode==0)==ok
+
+@pytest.mark.parametrize('plan_attempt,ok',[('2',True),('1',False),('',False)])
+def test_aggregate_requires_the_plan_of_this_attempt(plan_attempt,ok):
+ script=flow()['jobs']['aggregate']['steps'][0]['run']
+ env={**os.environ,'PLAN':'success','WORKERS':'success','PLAN_ATTEMPT':plan_attempt,'RUN_ATTEMPT':'2'}
+ assert (subprocess.run(['bash','-e','-c',script],env=env).returncode==0)==ok
+
+@pytest.mark.parametrize('shape',['scoped-attempt-2','legacy','scoped-missing-worker'])
+def test_accepted_reference_selects_only_its_final_attempt(tmp_path,monkeypatch,shape):
+ from tools import ci_v3_source_reference as ref
+ head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+ base={'head':head,'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=ROOT,text=True).strip()}
+ count=prod.routing()['worker_count']
+ run={'id':41,'head_sha':head,'run_attempt':2,'conclusion':'success','path':'.github/workflows/public_safety_and_smoke.yml','head_repository':{'full_name':prod.REPO}}
+ logical=['public-ci-v3-plan','public-ci-v3-aggregate',*[f'public-ci-v3-worker-{i}' for i in range(count)]]
+ if shape=='legacy':names=logical
+ else:names=[n+'-attempt-2' for n in logical]+[n+'-attempt-1' for n in logical]   # attempt 1 left complete-looking duplicates
+ if shape=='scoped-missing-worker':names.remove('public-ci-v3-worker-0-attempt-2')
+ listing=[{'id':i,'name':n,'expired':False,'digest':'sha256:0','workflow_run':{'head_sha':head}} for i,n in enumerate(['public-source-safety','public-shadow-proof',*names])]
+ jobs=[{'name':n,'status':'completed','conclusion':'success'} for n in ['source-safety','safety-and-smoke / tests','mandatory-evidence',*[f'safety-and-smoke / worker-{i}' for i in range(count)]]]
+ class Service:
+  def get(self,path):return run
+  def listing(self,path,key):return [run] if key=='workflow_runs' else listing if key=='artifacts' else jobs
+ seen={}
+ class Stop(Exception):pass
+ def capture(api,r,lst,requested,out,folders=None):seen.update(names=requested,folders=folders or {});raise Stop
+ monkeypatch.setattr(ref,'_download',capture)
+ if shape=='scoped-missing-worker':
+  with pytest.raises(ContractError,match='accepted reference worker set'):ref.authenticate_reference(Service(),base,tmp_path)
+  return
+ with pytest.raises(Stop):ref.authenticate_reference(Service(),base,tmp_path)
+ expected=[n+('-attempt-2' if shape!='legacy' else '') for n in logical]
+ assert sorted(seen['names'])==sorted(['public-source-safety','public-shadow-proof',*expected])
+ assert {seen['folders'].get(n,n) for n in expected}==set(logical)
+
 
 @pytest.mark.parametrize('mode,ready,runtime',[('parallel',True,True),('sequential',False,True),('sequential',True,False)])
 def test_source_aware_admission_selects_parallel_only_with_authenticated_reference(mode,ready,runtime):
@@ -462,3 +678,22 @@ def test_reference_runtime_check_fails_closed_for_unresolvable_or_changed_source
  changed=dict(read_json(ROOT/'docs/ci_v3/phase4/runtime/inputs.json'),tampered=True)
  monkeypatch.setattr(prod,'reference_runtime_blob',lambda h,p:json.dumps(changed).encode())
  with pytest.raises(ContractError):prod.require_reference_runtime(ref)
+
+
+def test_d029_same_run_evidence_is_judged_over_every_worker_not_only_the_reconciled_nodes_worker(evidence,monkeypatch):
+    """Run 41127287044: the D-029 node ran on worker-1, its WF-03 evidence nodes on workers 0 and 6. The reconciliation must see the
+    whole run's phases/native (still requiring every evidence node passed), never only the worker that ran the reconciled node."""
+    plan,workers=evidence
+    folder=workers[0];f=folder/'execution/child/adapter.json';r=read_json(f)
+    node=next(ph['nodeid'] for ph in r['phases'] if ph['when']=='call')
+    ph=next(x for x in r['phases'] if x['nodeid']==node and x['when']=='call');ph['reason']='SYNTHETIC changed historical outcome'
+    write_json(f,r)
+    seen=[]
+    def recording(n,old,oldn,new,newn,run_phases,run_native,receipts):
+        seen.append((n,set(run_phases),set(run_native)))
+        return False
+    monkeypatch.setattr(prod,'d029_authorized',recording)
+    with pytest.raises(ContractError,match='outcome regression'):prod.verify_data(plan,workers)
+    everyone=set()
+    for w in workers:everyone|={p['nodeid'] for p in read_json(w/'execution/child/adapter.json')['phases']}
+    assert seen and all(phases==everyone and native==everyone for _,phases,native in seen)   # whole run, not one worker
