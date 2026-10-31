@@ -40,9 +40,10 @@ MAX_RATE_PERCENT = 20.0
 #: Sensitivity KPIs that depend on Senior pricing.  ``project_irr`` (unlevered) is deliberately NOT in this set.
 FINANCING_DEPENDENT_KPIS = frozenset({
     "total_senior_ds_keur", "total_tax_keur", "total_distribution_keur", "equity_irr", "equity_npv",
-    "actual_avg_dscr", "min_dscr", "min_llcr",
+    "actual_avg_dscr", "min_dscr", "min_llcr", "_cfads_keur",
 })
-UNLEVERED_KPIS = frozenset({"project_irr", "total_revenue_keur", "total_ebitda_keur", "_cfads_keur"})
+# Base CFADS includes cash tax and can move with the interest tax shield.
+UNLEVERED_KPIS = frozenset({"project_irr", "total_revenue_keur", "total_ebitda_keur"})
 
 
 class RateShockRefusal(ValueError):

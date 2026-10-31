@@ -1,5 +1,5 @@
 {# ── V4-4 Part C — Credit Summary ────────────────────────────────────────── #}
-{# One-page printable lender credit summary. All values from canonical engine. #}
+{# One-page printable lender credit summary. Financing provenance is explicit. #}
 <div class="cs-summary" data-testid="credit-summary">
 
   <div class="scm-multi-heading">
@@ -62,7 +62,8 @@
 
         {# Capital structure card #}
         <div class="cs-card">
-          <div class="cs-card-title">Capital Structure</div>
+          <div class="cs-card-title">Capital Structure — {{ cs['financing_status'] }}</div>
+          <div class="ps-history-meta">{{ cs['financing_source'] }}. Debt and equity estimates exclude financing uses and do not reconcile to an executed Run.</div>
           {% set cap_rows = [
             ('Total CAPEX', cs['total_capex_keur'], 'kEUR'),
             ('Senior Debt', cs['debt_keur'], 'kEUR'),
@@ -137,7 +138,7 @@
       </div>{# /cs-grid #}
 
       <div class="cs-footer">
-        All values from canonical engine. Source: FINCO Protocol.
+        Return KPIs from canonical engine. Capital structure: {{ cs['financing_status'] }} (current inputs, no executed Run attribution). Source: FINCO Protocol.
       </div>
 
     </div>{# /cs-print-area #}

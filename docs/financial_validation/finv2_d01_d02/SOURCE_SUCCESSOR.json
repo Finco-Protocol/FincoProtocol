@@ -3,9 +3,9 @@
   "base": "f79e251903621c1a5c88501d51d6971960b612d3",
   "authorization": "Financial Owner assigned FIN-V2 integration prompt (standing authorization for in-scope source, governance and CI corrections); no merge, deployment or release activation. Self-generated exact blobs of the reviewed PR #392 source at its integrated bytes: a review proposal, not an approval.",
   "source_blobs": {
-    "app/services/lender_case_service.py": "60e15cb124a54078fd84b03ede6c2ab3e4cd9c36",
-    "app/services/rate_shock.py": "f21cc788f30cc078b7850a4a2ba451e53eddab0c",
-    "app/services/sensitivity_service.py": "4ea3a01fc0e3c193f1b07988638e02826a601f9b",
+    "app/services/lender_case_service.py": "5f4cdcd670e42b47947262434cb0c403f274e5f0",
+    "app/services/rate_shock.py": "dffd53601babebfc137db70848b919ee023c3ecd",
+    "app/services/sensitivity_service.py": "b0e15a0f8b9568ef16d9f06d35c640a583617b00",
     "app/v2/router.py": "fa5905a75a2fb0b6d53ea816643815eaf568293e",
     "tests/fin_v2_d01_scope.py": "791cc59ed59b31a7cb642ab4e57377c0b64e6f67",
     "tests/finval_f01_scope.py": "800dee25495e68c9f89456d87e1e95ccc3c6e72b",

@@ -7,6 +7,7 @@ Reuses _apply_shock from sensitivity_service for lender case adjustments.
 from __future__ import annotations
 
 from dataclasses import replace
+import math
 from typing import Any, Optional
 
 from app.services.reporting_kpi_sources import build_canonical_report_kpis
@@ -188,22 +189,21 @@ def build_credit_summary(
     lender_kpis: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Assemble one-page credit summary from project inputs and KPIs."""
-    from finco_core.inputs._models import CapexItem
-    from dataclasses import fields
-
     fin = proj.financing
     tech = proj.technical
     info = proj.info
     rev = proj.revenue
     tax = proj.tax
 
-    # Total equity = CAPEX - senior debt
-    senior_debt = kpis.get("total_senior_ds_keur")  # proxy; actual sizing from run
-    # Use gearing to estimate
-    gearing = getattr(fin, "gearing_ratio", None) or 0.0
+    # This legacy call receives no executed financing evidence or Run identity.
+    # Debt service is not debt principal. Until the caller supplies authentic
+    # Sources & Uses, these input-based amounts must be disclosed as estimates.
+    gearing = getattr(fin, "gearing_ratio", None)
     total_capex = proj.capex.total_capex
-    debt_keur = total_capex * gearing
-    equity_keur = total_capex * (1.0 - gearing)
+    can_estimate = (gearing is not None and math.isfinite(gearing) and 0 <= gearing <= 1
+                    and total_capex is not None and math.isfinite(total_capex) and total_capex >= 0)
+    debt_keur = total_capex * gearing if can_estimate else None
+    equity_keur = total_capex * (1.0 - gearing) if can_estimate else None
 
     # Payback: first period where cum_distributions >= equity_invest (approximate)
     payback_years = None
@@ -221,7 +221,9 @@ def build_credit_summary(
         "total_capex_keur": total_capex,
         "debt_keur": debt_keur,
         "equity_keur": equity_keur,
-        "gearing_pct": gearing * 100.0,
+        "gearing_pct": gearing * 100.0 if can_estimate else None,
+        "financing_status": "ESTIMATE" if can_estimate else "UNAVAILABLE",
+        "financing_source": "Current input CAPEX × gearing; executed Run Sources & Uses unavailable",
         "corporate_tax_rate_pct": tax.corporate_rate * 100.0,
         "senior_tenor_years": getattr(fin, "senior_tenor_years", None),
         # KPIs from base run

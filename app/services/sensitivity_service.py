@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from dataclasses import replace, fields
 from typing import Any, Optional
 
@@ -36,8 +37,9 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
     "bess_capacity_price": ("BESS Capacity Price", "%"),
 }
 
-# Default shock levels (percentage points applied as multipliers for % shocks)
+# Relative percentage changes for non-rate shocks; rates use basis-point deltas.
 DEFAULT_SHOCK_LEVELS = [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0]
+DEFAULT_RATE_SHOCK_LEVELS = [-200.0, -100.0, -50.0, 50.0, 100.0, 200.0]
 
 
 class DCDriverContextRequiredError(ValueError):
@@ -213,21 +215,26 @@ def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "")
     return create_generic_wind_reference(), "Generic Wind Reference Wind 1 (factory)"
 
 
-def _extract_kpis(result: Any) -> dict[str, Optional[float]]:
-    """Extract all KPIs from a WaterfallResult into a flat dict."""
+def _extract_kpis(result: Any, *, base_cfads: Any = None) -> dict[str, Optional[float]]:
+    """Map one execution's KPIs; CFADS is the sum of its canonical base vector.
+
+    ``base_cfads`` is the full-period tax_and_cfads.cfads_keur vector used by
+    the clean Senior base-DSCR numerator, including signed construction flows.
+    Never substitute the bank-sizing/P90 vector, post-reserve cash, or absent
+    legacy row fields. Missing or incomplete evidence remains unavailable.
+    """
     kpis: dict[str, Optional[float]] = {}
     for attr, label, _ in KPI_DEFS:
         if attr == "_cfads_keur":
-            # CFADS = r69_fcf_banks_keur (FCF to banks, the DSCR numerator)
             try:
-                kpis[attr] = sum(
-                    getattr(p, "r69_fcf_banks_keur", 0.0) or 0.0
-                    for p in result.periods
-                )
-            except Exception:
+                values = tuple(base_cfads) if base_cfads is not None else ()
+                kpis[attr] = (sum(values) if values and all(
+                    v is not None and math.isfinite(v) for v in values
+                ) else None)
+            except (TypeError, ValueError, OverflowError):
                 kpis[attr] = None
         else:
-            v = getattr(result, attr, None)
+            v = getattr(result, "actual_min_dscr" if attr == "min_dscr" else attr, None)
             kpis[attr] = float(v) if v is not None else None
     return kpis
 
@@ -472,7 +479,10 @@ def _run_once(proj: Any) -> dict[str, Optional[float]]:
     from app.services.production_waterfall_seam import execute_production_waterfall
 
     execution = execute_production_waterfall(proj)
-    return _extract_kpis(execution.result)
+    clean_run = getattr(execution, "clean_run", None)
+    model = clean_run.g2c_result.financing_result.project_model_result if clean_run is not None else None
+    tax_cfads = getattr(model, "tax_and_cfads", None)
+    return _extract_kpis(execution.result, base_cfads=getattr(tax_cfads, "cfads_keur", None))
 
 
 def run_sensitivity(
@@ -508,14 +518,13 @@ def run_sensitivity(
       kpi_defs: list                — ordered KPI metadata
       shock_registry: dict          — human labels for shock types
     """
-    if shock_levels is None:
-        shock_levels = DEFAULT_SHOCK_LEVELS
-
     base_kpis = _run_once(proj)
 
     rows = []
     for stype in shock_types:
-        for level in shock_levels:
+        levels = shock_levels if shock_levels is not None else (
+            DEFAULT_RATE_SHOCK_LEVELS if stype == "interest_rate" else DEFAULT_SHOCK_LEVELS)
+        for level in levels:
             try:
                 shocked_proj = _apply_shock(proj, stype, level, dc_drivers, vertical)
                 if level != 0 and shocked_proj == proj:
@@ -631,18 +640,19 @@ def export_sensitivity_csv(sensitivity_result: dict[str, Any]) -> str:
     kpi_labels = [lbl for _, lbl, _ in kpi_defs]
 
     # Header
-    writer.writerow(["Shock Type", "Level (%)", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels])
+    writer.writerow(["Shock Type", "Level", "Unit", "Error"] + kpi_labels + [f"Δ {lbl}" for lbl in kpi_labels])
 
     # Base row
     writer.writerow(
-        ["Base", "0", ""]
+        ["Base", "0", "", ""]
         + [_fmt_csv(base_kpis.get(k)) for k in kpi_attrs]
         + [""] * len(kpi_attrs)
     )
 
     for row in sensitivity_result["rows"]:
         writer.writerow(
-            [row["shock_label"], row["level_pct"], row["error"] or ""]
+            [row["shock_label"], row["level_pct"],
+             SHOCK_REGISTRY.get(row["shock_type"], ("", "%"))[1], row["error"] or ""]
             + [_fmt_csv(row["kpis"].get(k)) for k in kpi_attrs]
             + [_fmt_csv(row["deltas"].get(k)) for k in kpi_attrs]
         )
