@@ -79,6 +79,9 @@ OWNED_PATHS=frozenset((
     # Post-#400 performance layer (Financial Owner approval 2026-10-30, separate Draft PR): WS-2 exact check memoised once per outer call + its evidence docs.
     'docs/ci_v3/incidents/pr400_performance/ROOT_CAUSE.md', 'docs/ci_v3/incidents/pr400_performance/TIMING_LEDGER.md',
     'docs/ci_v3/incidents/pr400_performance/FIX_AND_VALIDATION.md',
+    # ON-08 Correction B (OD-1(A), Owner-approved): the two generic-SHL period indices follow the effective Run geometry on a proven factory-generic
+    # Solar/Wind Working Copy. One pure helper + one hook in the V2 Run route (already owned) + its HTTP/DB tests; financial formulas and engine unchanged.
+    'app/services/on08_shl_index_authority.py', 'tests/test_on08_shl_index_authority.py',
     'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',

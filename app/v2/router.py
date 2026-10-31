@@ -3351,6 +3351,26 @@ async def v2_workbook_run(
             msg = str(exc)
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # ON-08 OD-1(A): after the LAST geometry-affecting replacement of ``override`` and BEFORE the D-029 fingerprint, re-derive only the two
+    # generic-SHL period indices for a persisted, factory-generic Solar/Wind Working Copy. Not eligible = same object, byte-for-byte unchanged.
+    from app.services import on08_shl_index_authority as _on08
+    from app.persistence.projects_repository import get_reference_by_template_source as _on08_reference
+    from app.services.reference_seed_service import get_reference_inputs as _on08_factory_inputs
+    _on08_tech = project_record.template_source in ("generic_solar_reference", "generic_wind_reference")
+    _on08_ref = _on08_reference(project_record.template_source) if _on08_tech else None
+    try:
+        override, _on08_outcome = _on08.apply_generic_shl_index_authority(
+            override, project_record=project_record, actor_user_id=user.user_id, owner_user_id=workspace_owner,
+            runtime_project_key=runtime_project_key, canonical_reference=_on08_ref,
+            factory_reference_inputs=_on08_factory_inputs(project_record.template_source) if _on08_ref is not None else None,
+            grid_last_provider=_on08.effective_grid_last_index)
+    except _on08.On08ShlIndexRefusal as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    if _on08_outcome.status == _on08.CORRECTED:
+        import logging
+        logging.getLogger(__name__).info("v2_workbook_run: ON-08 SHL indices %s -> %s project=%s", _on08_outcome.before, _on08_outcome.after, project)
+
     # ── Step 11: run the engine ────────────────────────────────────────────── #
     from app.model_v2.investor_f4 import EVIDENCE_KEY as f4_evidence_key, parse_terms as parse_f4_terms
     from app.workbook.investor_agreement_service import effective_raw as f4_effective_raw
