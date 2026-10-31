@@ -185,6 +185,16 @@ def _successor_allows(path, root, ref):
     return wf04_scope.allowed_path(path, root, ref)
 
 
+def _wf06a_allows(path, root, ref):
+    """Bounded WF-06A hook (PR #406, Owner Correction B): a path owned by the closed WF-06A cohort (tests/fin_v2_wf06a_scope.py) is that cohort's
+    exact-blob responsibility. The cohort check is low level (never calls this module); a missing, forged, newer or altered cohort widens nothing."""
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError:
+        return False
+    return WF06A.allowed_path(path, root, ref) and WF06A.exact_blobs_ok(root, ref)
+
+
 #: The three gate A/D test sources the WS-2 correction edits that are exact-pinned by OTHER registered cohorts (fin_v2_3, fin_v2_r1, rc_ux).
 #: Closed list: each is admitted only while a registered cohort pins it (that cohort re-verifies the exact blob inside the composite).
 WS2_GATE_TESTS = frozenset((
@@ -241,7 +251,12 @@ def exact_blobs_ok(repo=None, ref=None):
             from tests import wf03_lifecycle_scope as WF03
         except ImportError:
             return _exact_blobs_ok(repo, ref)
-        with WF03.scoped():        # the exact WF-03 check runs once per call, not once per changed path
+        try:
+            from tests import fin_v2_wf06a_scope as WF06A
+        except ImportError:
+            with WF03.scoped():
+                return _exact_blobs_ok(repo, ref)
+        with WF03.scoped(), WF06A.scoped():        # the exact WF-03 / WF-06A checks run once per call, not once per changed path
             return _exact_blobs_ok(repo, ref)
     finally:
         _WS2_SCOPE.pop()
@@ -260,12 +275,12 @@ def _exact_blobs_ok(repo=None, ref=None):
         if not _historical_manifests_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) and not _successor_allows(p, root, ref) for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
             if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _ws2_allows(p, root, ref)
-                   and not _successor_allows(p, root, ref) for p in untracked):
+                   and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError):

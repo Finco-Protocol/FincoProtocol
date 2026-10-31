@@ -1,0 +1,73 @@
+{
+  "schema_version": "WF06A_UX_EXACT_SOURCE_V1",
+  "base": "ebf1f15113ec95d69d29e8aa4e4635686dd1f39a",
+  "base_tree": "45e8efdd7e8b0fa8df6497c4e9510a7a27815f85",
+  "authorization": {},
+  "source_blobs": {
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "1eeefdeb7ce384629ef10dc9c2854fbb05703b74",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "396941343261cba54281d5c181e08355d96f8a9d",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "2d35c169407859ce707a294f8f5a6b2976fa78b4",
+    "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "3cfd965627faa99d719f3ecd28b03f674f3825f6",
+    "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
+    "frontend/src/app/RunFailureNotice.tsx": "83adb17a55c518cf98225b9d29e3e020d3607248",
+    "frontend/src/app/__tests__/wf06a.test.mjs": "39a5b7b779a2f4af7314113fae6a97c8f2bc2348",
+    "frontend/src/app/editing/CostLinesGridView.tsx": "a31c064ec04c7b501edd97cd8d797c5a8e2cefa4",
+    "frontend/src/app/workflow/CostLineManager.tsx": "438e881eb950875f91b4c7e2edd494fb6c65ab3e",
+    "frontend/src/styles/ws2-editing.css": "f8a58bf4871cd02e6b4c11095ae03765b28a17fa",
+    "static/react/finco-react.css": "4634e51e1707a908dec5cd8ec4010487617a5fa0",
+    "static/react/finco-react.js": "a8e42da398fdf71f2fe4c21cbcbd8e96ab25cd8e",
+    "tests/fin_v2_cohorts.py": "17c97498d0cf95b98f22a98c6fea3e6998b2c2a7",
+    "tests/fin_v2_wf06a_scope.py": "62939bf662475e32521ed0f22de7f715b96575d1",
+    "tests/model_react_wf06a_acceptance.py": "0ee620589964bd30f6a14ab7073258bd915c5a9d",
+    "tests/test_fin_v2_wf06a_scope.py": "18e0c9603bcbe5facf59f7ad8f8f67490926e0a8",
+    "tests/test_wf03_lifecycle_scope.py": "0c0f0efbc945bf37e977e95023cf84095c0939dc",
+    "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
+    "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
+    "tests/wf03_lifecycle_scope.py": "70606a7d5a0fa15320e0f7d6e60153df39b8ecb1",
+    "tests/wf04_scope.py": "4432d4ae2586d4d6c1f55fee27a1c5db6f3d836d",
+    "tests/wsv2_core_scope.py": "6ca3afa6771ac236fc9c518007a002fd5a17568e"
+  },
+  "predecessor_pins": {
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": {
+      "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d"
+    },
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": {
+      "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
+      "static/react/finco-react.css": "0568204f30a7764474ac830dc2b3fe4cb1d3d778",
+      "static/react/finco-react.js": "097f07e6810c5fea23d409789a0d4c3559beea4d",
+      "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
+      "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
+      "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a"
+    },
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": {
+      "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "46a3935141ad287cf8b025f720b41c3f33f9ed01",
+      "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
+      "static/react/finco-react.css": "0568204f30a7764474ac830dc2b3fe4cb1d3d778",
+      "static/react/finco-react.js": "097f07e6810c5fea23d409789a0d4c3559beea4d",
+      "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "tests/test_wf03_lifecycle_scope.py": "cf2921b7258d819955ce87a936b000364536f237",
+      "tests/test_wf04_scope.py": "60ce0963903f78837041321902873b4b18253ba1",
+      "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
+      "tests/wf03_lifecycle_scope.py": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
+      "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a"
+    },
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": {
+      "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "frontend/src/app/RunFailureNotice.tsx": "a011339033d25cbf0495facb4c75b7e07bc89408",
+      "static/react/finco-react.css": "0568204f30a7764474ac830dc2b3fe4cb1d3d778",
+      "static/react/finco-react.js": "097f07e6810c5fea23d409789a0d4c3559beea4d",
+      "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
+      "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a"
+    }
+  },
+  "path_ledger": [],
+  "rollback": "Revert the WF-06A commit(s): presentation sources, bundle, governance hooks and predecessor pins return together to the BASE state.",
+  "validation": "See IMPLEMENTATION_EVIDENCE.md and exact-head CI; this manifest is a seal, not a PASS claim."
+}

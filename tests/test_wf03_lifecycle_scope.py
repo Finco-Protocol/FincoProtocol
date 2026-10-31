@@ -91,3 +91,31 @@ def test_research_layer_is_closed_literal_and_never_a_wildcard():
     for stranger in ('research/on07_correction_a/new_unreviewed.csv','research/on07_other/x.md','research/anything.py','docs/readiness/new.md'):
         assert not F.allowed_path(stranger) and not F.matches(stranger)
     assert not any(p.startswith(('financial_engine/','finco_core/','domain/','.github/')) for p in F.RESEARCH_PATHS)
+
+
+# ── WF-06A (PR #406, Owner Correction B): additive controls for the bounded delegation ─────────────────────────────────────────────────────
+def test_wf06a_delegation_is_one_literal_pair_and_future_files_cannot_exploit_it(monkeypatch):
+    from tests import fin_v2_wf06a_scope as WF06A
+    notice = 'frontend/src/app/RunFailureNotice.tsx'
+    pin = WF06A.manifest()['source_blobs'][notice]
+    assert F._wf06a_repin(WF06A.WSV2_CORE_MANIFEST, notice, pin, F.ROOT, None)
+    assert not F._wf06a_repin(WF06A.WSV2_CORE_MANIFEST, notice, '0' * 40, F.ROOT, None)                 # forged pin
+    assert not F._wf06a_repin(WF06A.WF04_MANIFEST, notice, pin, F.ROOT, None)                           # other manifest
+    assert not F._wf06a_repin(WF06A.WSV2_CORE_MANIFEST, 'frontend/src/app/WorkspaceView.tsx', pin, F.ROOT, None)
+    assert not F._wf06a_allows('frontend/src/app/NewUnreviewed.tsx', F.ROOT, None)
+    assert F.exact_blobs_ok() and F.valid()
+    reader = F._read
+
+    def forged(root, path, ref):
+        raw = reader(root, path, ref)
+        if path == WF06A.WSV2_CORE_MANIFEST and ref is None:
+            d = json.loads(raw)
+            d['source_blobs']['frontend/src/app/WorkspaceView.tsx'] = '4' * 40       # an unrelated pin moves: not delegated, not WF-03-owned
+            return json.dumps(d).encode()
+        return raw
+    monkeypatch.setattr(F, '_read', forged)
+    assert not F.exact_blobs_ok()
+    monkeypatch.setattr(F, '_read', reader)
+    monkeypatch.setattr(WF06A, 'exact_blobs_ok', lambda *a, **k: False)
+    assert not F.valid() or not F._wf06a_repin(WF06A.WSV2_CORE_MANIFEST, notice, pin, F.ROOT, None)
+    assert not F.exact_blobs_ok()                                                               # without the cohort the RunFailureNotice pin cannot move
