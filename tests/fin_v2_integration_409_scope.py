@@ -118,27 +118,73 @@ def _union_cached(root):
     return {k: tuple(v) for k, v in owners.items()}
 
 
+_RESULTS = {}
+
+
+@lru_cache(maxsize=4096)
+def _immutable_blob(root, sha, path):
+    """Blob of ``path`` at an immutable commit (None if absent). Commits never change, so this is cached for the process."""
+    return _rev(Path(root), f'{sha}:{path}')
+
+
+def _state_key(root, ref):
+    """A key that changes whenever ANY byte of the evaluated state changes.
+
+    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,
+    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new
+    key and the exact check runs again. A cached verdict is therefore never reused for different bytes."""
+    if ref is not None:
+        sha = _rev(root, ref + '^{commit}')
+        return None if sha is None else ('ref', str(root), sha)
+    head = _rev(root, 'HEAD')
+    digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()
+    names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0')
+    untracked = hashlib.sha1()
+    for name in sorted(n for n in names if n):
+        untracked.update(name + b'\0')
+        try:
+            untracked.update((Path(root) / name.decode()).read_bytes())
+        except OSError:
+            untracked.update(b'<unreadable>')
+    return ('wt', str(root), head, digest, untracked.hexdigest())
+
+
 _SCOPE = []
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
+        memo = _SCOPE[-1]
+        skey = (str(root), ref)
+        if skey not in memo:
+            memo[skey] = _cached_exact(root, repo, ref)
+        return memo[skey]
+    return _cached_exact(root, repo, ref)
+
+
+def _cached_exact(root, repo, ref):
+    try:
+        key = _state_key(root, ref)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    if key is None:
+        return False
+    if key not in _RESULTS:
+        if len(_RESULTS) > 64:
+            _RESULTS.clear()
+        _RESULTS[key] = _exact_blobs_ok(repo, ref)
+    return _RESULTS[key]
 
 
 @contextmanager
 def scoped():
-    """Within one outer governance call the exact check is computed once; dropped on exit, never keeps bytes."""
+    """Within ONE outer governance call the verdict is computed once. Dropped on exit; never keeps bytes; never shared between calls."""
     _SCOPE.append({})
     try:
         yield
     finally:
         _SCOPE.pop()
-
-
-def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
-    key = (str(repo if repo is not None else ROOT), ref)
-    memo = _SCOPE[-1]
-    if key not in memo:
-        memo[key] = _exact_blobs_ok(repo, ref)
-    return memo[key]
 
 
 def _exact_blobs_ok(repo=None, ref=None):
@@ -168,14 +214,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             expected = {'path': path, 'base_blob': _rev(root, f'{MAIN}:{path}'), 'owner_prs': sorted(owners.get(path, [])),
                         'integrated_blob': pins[path]}
             for name, (sha, _t) in SOURCES.items():
-                expected[name.lower() + '_blob'] = _rev(root, f'{sha}:{path}')
+                expected[name.lower() + '_blob'] = _immutable_blob(str(root), sha, path)
             if any(row.get(k) != v for k, v in expected.items()) or not row.get('resolution'):
                 return False
         # 3. every other path touched by exactly one PR is that PR's reviewed bytes
         for path, who in owners.items():
             if path in PINNED_PATHS or path in SEAL_PATHS:
                 continue
-            if len(who) != 1 or _blob(_read(root, path, ref)) != _rev(root, f'{SOURCES[who[0]][0]}:{path}'):
+            if len(who) != 1 or _blob(_read(root, path, ref)) != _immutable_blob(str(root), SOURCES[who[0]][0], path):
                 return False
         # 5. historical preservation of the shared predecessor manifests
         for path in HISTORY_MANIFESTS:
@@ -224,13 +270,13 @@ def admits_pin(path, value, repo=None, ref=None):
     if path in pins:
         return pins[path] == value
     who = _union(root).get(path, [])
-    return len(who) == 1 and _rev(root, f'{SOURCES[who[0]][0]}:{path}') == value
+    return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
 
 
 def source_blob(name, path, repo=None):
     """The blob a literal source PR head holds for ``path`` (None if absent): the immutable provenance of a historical ledger row."""
     root = Path(repo) if repo is not None else ROOT
-    return _rev(root, f'{SOURCES[name][0]}:{path}')
+    return _immutable_blob(str(root), SOURCES[name][0], path)
 
 
 def owns(path, repo=None, ref=None):
