@@ -62,21 +62,43 @@ OWNED_PATHS = PRESENTATION_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS | FOLLO
 
 # The ONLY pins of the followed manifests that may differ from their BASE state, and the cohort that pins the new value is this one.
 FOLLOWED_MOVES = {
-    WF03_MANIFEST: frozenset((
-        'static/react/finco-react.css', 'static/react/finco-react.js',
-        'tests/fin_v2_cohorts.py', 'tests/test_wf03_lifecycle_scope.py', 'tests/test_wsv2_core_scope.py',
-        'tests/wf03_lifecycle_scope.py', 'tests/wsv2_core_scope.py', WSV2_CORE_MANIFEST, WF04_MANIFEST,
-        'tests/test_wf04_scope.py', 'tests/wf04_scope.py', FINV2_R1_MANIFEST,
-    )),
-    WSV2_CORE_MANIFEST: frozenset((
-        'frontend/src/app/RunFailureNotice.tsx', 'static/react/finco-react.css', 'static/react/finco-react.js',
-        'tests/fin_v2_cohorts.py', 'tests/test_wsv2_core_scope.py', 'tests/wsv2_core_scope.py', FINV2_R1_MANIFEST,
+    FINV2_R1_MANIFEST: frozenset((
+        'tests/fin_v2_cohorts.py',
     )),
     WF04_MANIFEST: frozenset((
-        'static/react/finco-react.css', 'static/react/finco-react.js', WSV2_CORE_MANIFEST, FINV2_R1_MANIFEST,
-        'tests/fin_v2_cohorts.py', 'tests/wf04_scope.py', 'tests/wsv2_core_scope.py', 'tests/test_wf04_scope.py', 'tests/test_wsv2_core_scope.py',
+        FINV2_R1_MANIFEST,
+        WSV2_CORE_MANIFEST,
+        'static/react/finco-react.css',
+        'static/react/finco-react.js',
+        'tests/fin_v2_cohorts.py',
+        'tests/test_wf04_scope.py',
+        'tests/test_wsv2_core_scope.py',
+        'tests/wf04_scope.py',
+        'tests/wsv2_core_scope.py',
     )),
-    FINV2_R1_MANIFEST: frozenset(('tests/fin_v2_cohorts.py',)),
+    WF03_MANIFEST: frozenset((
+        FINV2_R1_MANIFEST,
+        WF04_MANIFEST,
+        WSV2_CORE_MANIFEST,
+        'static/react/finco-react.css',
+        'static/react/finco-react.js',
+        'tests/fin_v2_cohorts.py',
+        'tests/test_wf03_lifecycle_scope.py',
+        'tests/test_wf04_scope.py',
+        'tests/test_wsv2_core_scope.py',
+        'tests/wf03_lifecycle_scope.py',
+        'tests/wf04_scope.py',
+        'tests/wsv2_core_scope.py',
+    )),
+    WSV2_CORE_MANIFEST: frozenset((
+        FINV2_R1_MANIFEST,
+        'frontend/src/app/RunFailureNotice.tsx',
+        'static/react/finco-react.css',
+        'static/react/finco-react.js',
+        'tests/fin_v2_cohorts.py',
+        'tests/test_wsv2_core_scope.py',
+        'tests/wsv2_core_scope.py',
+    )),
 }
 # Pins that older cohorts keep for the same files and that this cohort re-pins (consumed by the bounded hook in tests/wf03_lifecycle_scope.py).
 PREDECESSOR_REPINS = {WSV2_CORE_MANIFEST: frozenset(('frontend/src/app/RunFailureNotice.tsx',))}
