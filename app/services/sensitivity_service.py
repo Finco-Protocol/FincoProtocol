@@ -240,7 +240,14 @@ def resolve_sensitivity_source(user: Any, project: str, scenario_id: str = "") -
         raise SensitivitySourceError("AUTH_REQUIRED", 401)
     record, owner = resolve_accessible_project(user.user_id, key)
     alias = _FACTORY_SENSITIVITY_ALIASES.get(key.lower())
-    if record is None and alias is not None and not scenario_id:
+    legacy_factory = (record is not None and not record.archived and owner == user.user_id
+                      and record.project_origin == "factory_template" and alias is not None
+                      and record.template_source == key.lower()
+                      and resolve_vertical(record.project_type) == alias[1])
+    if (record is None or legacy_factory) and alias is not None and not scenario_id:
+        # Older Legacy visits persisted factory selector rows. The literal
+        # alias still denotes the disclosed factory, never that row's Last Run.
+        # User-created Working Copies (even with a reserved code) use the draft.
         from app import project_factories
         factory, vertical = alias
         return SensitivitySource(getattr(project_factories, factory)(),

@@ -245,6 +245,16 @@ def _b1_layer_ok(root, ref, pins, data):
         return False
     if any(data.get(k)!=v for k,v in old.items() if k not in ('source_blobs','path_ledger')):
         return False
+    ledger=data.get('path_ledger',[])
+    previous=old['path_ledger']
+    additions=ledger[len(previous):]
+    delta=B1_REPINS|B1_PATHS
+    if (ledger[:len(previous)]!=previous or len(additions)!=len(delta)
+            or {row.get('path') for row in additions}!=delta):
+        return False
+    if any(row.get('before_blob')!=old['source_blobs'].get(row['path'])
+           or row.get('after_blob')!=pins[row['path']] for row in additions):
+        return False
     expected=(B1_PATHS-{B1_MANIFEST})|{'main_web.py','app/services/sensitivity_service.py'}
     reviewed=seal.get('source_blobs',{})
     return set(reviewed)==expected and all(pins.get(p)==v for p,v in reviewed.items())

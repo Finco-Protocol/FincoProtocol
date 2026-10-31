@@ -17,7 +17,7 @@ def test_b1_source_complete_and_predecessor_history_unchanged():
         assert not F.allowed_path(path)
 
 
-@pytest.mark.parametrize('kind',['byte','missing','history','extra-path','unrelated-pin'])
+@pytest.mark.parametrize('kind',['byte','missing','history','extra-path','unrelated-pin','ledger-history'])
 def test_b1_undeclared_or_corrupt_layer_is_not_admitted(monkeypatch,kind):
     read=F._read
     def changed(root,path,ref):
@@ -29,6 +29,9 @@ def test_b1_undeclared_or_corrupt_layer_is_not_admitted(monkeypatch,kind):
             elif kind=='history':seal['historical_source_blobs'][F.B1_BASE]['main_web.py']='0'*40
             elif kind=='extra-path':seal['source_blobs']['app/unreviewed.py']='0'*40
             return json.dumps(seal).encode()
+        if ref is None and kind=='ledger-history' and path==F.MANIFEST:
+            data=json.loads(raw);data['path_ledger'][0]['invariant']='deleted historical meaning'
+            return json.dumps(data).encode()
         if ref is None and kind=='unrelated-pin' and path==F.MANIFEST:
             data=json.loads(raw);data['source_blobs']['app/persistence/db.py']='0'*40
             return json.dumps(data).encode()

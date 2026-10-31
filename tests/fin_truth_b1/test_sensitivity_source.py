@@ -3,7 +3,6 @@ import csv
 import io
 import json
 import sqlite3
-from dataclasses import replace
 from types import SimpleNamespace
 
 import openpyxl
@@ -243,6 +242,21 @@ def test_legacy_ev_source_repair_preserves_unadmitted_surface_refusal(legacy,mon
 
 
 def test_explicit_factory_alias_html_and_export_are_read_only(legacy):
+    before=dump(legacy)
+    for path in (PAGE,EXPORT):
+        response=legacy.client.get(path,params=dict(project='generic_solar_reference',shocks='interest_rate',levels='0'))
+        assert response.status_code==200
+        assert response.headers['x-finco-sensitivity-basis']=='EXPLICIT_FACTORY_ALIAS'
+    assert dump(legacy)==before
+
+
+def test_preexisting_legacy_factory_selector_row_keeps_disclosed_alias_contract(legacy):
+    import main_web
+    factory_row=main_web._resolve_project_record(USER,'generic_solar_reference')
+    assert factory_row.project_origin=='factory_template'
+    source=S.resolve_sensitivity_source(USER,'generic_solar_reference')
+    assert source.provenance['basis']=='EXPLICIT_FACTORY_ALIAS' and source.context is None
+    assert source.vertical=='solar' and source.inputs.technical.capacity_mw==64
     before=dump(legacy)
     for path in (PAGE,EXPORT):
         response=legacy.client.get(path,params=dict(project='generic_solar_reference',shocks='interest_rate',levels='0'))
