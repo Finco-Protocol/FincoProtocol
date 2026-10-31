@@ -48,8 +48,9 @@ def test_native_and_historical_financial_authorities_are_not_rewritten():
         before=subprocess.check_output(['git','show',F.BASE+':'+path],cwd=F.ROOT)
         data=(F.ROOT/path).read_bytes()
         from tests import fin_v2_wsv2_scope as WS2
+        from tests import wf03_lifecycle_scope as WF03
         if path=='app/persistence/workspace_repository.py' and WF04.matches(path,data):continue   # the later, separately governed Owner-authorised WF-04 hunk (tests/wf04_scope.py pins the exact blob)
-        assert data==before or WS2.matches(path,data)      # only the Owner-approved WS-2 exact blob
+        assert data==before or WS2.matches(path,data) or (path in WF03.D029_APPROVED_PATHS and WF03.matches(path,data))   # Owner-approved WS-2 exact blob, or the WF-03 exact blob (tests/wf03_lifecycle_scope.py)
 
 
 @pytest.mark.parametrize('path', sorted(F.INTEGRATED_DEPENDENCIES))

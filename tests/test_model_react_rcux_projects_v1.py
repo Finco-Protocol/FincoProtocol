@@ -150,8 +150,8 @@ def test_filters_sort_search_and_pagination(lib):
 def test_archived_projects_are_listed_only_on_request_and_pages_are_bounded(lib):
     from app.persistence import db
     live, gone = make("Live"), make("Gone")
-    with sqlite3.connect(db.DB_PATH) as conn:
-        conn.execute("UPDATE projects SET archived=1 WHERE project_id=?", (gone.project_id,))
+    from tests.wf03_fixture_seams import archive_through_lifecycle
+    archive_through_lifecycle(gone.user_id, gone.project_code)       # only a real USER_ACTION archive is listed/restorable (WF-03)
     assert [p["name"] for p in listing(lib)["projects"]] == ["Live"]
     arch = listing(lib, archived="1")
     assert [p["name"] for p in arch["projects"]] == ["Gone"] and arch["archived"] is True and arch["projects"][0]["archived"] is True

@@ -279,7 +279,9 @@ def test_out_of_scope_scenario_cannot_supply_display_tariff(selected_tariff_case
         if scope == "project_mismatch":
             cur.execute("UPDATE scenarios SET project_id=? WHERE scenario_id=?", (other.project_id, scenario.scenario_id))
         elif scope == "owner_mismatch":
-            cur.execute("UPDATE scenarios SET user_id='other-owner' WHERE scenario_id=?", (scenario.scenario_id,))
+            from tests.wf03_fixture_seams import foreign_row_forgery
+            with foreign_row_forgery(cur):      # fixture-only: forge the foreign-owner row the WF-03 fences refuse in production
+                cur.execute("UPDATE scenarios SET user_id='other-owner' WHERE scenario_id=?", (scenario.scenario_id,))
         elif scope == "missing":
             cur.execute("DELETE FROM scenarios WHERE scenario_id=?", (scenario.scenario_id,))
         else:

@@ -34,7 +34,8 @@ def db_env(tmp_path, monkeypatch):
 def add_scenario(user, project, name, *, updated, base=False, archived=False):
     from app.persistence.db import get_cursor
     sid = uuid.uuid4().hex[:16]
-    with get_cursor() as cur:
+    from tests.wf03_fixture_seams import foreign_row_forgery
+    with get_cursor() as cur, foreign_row_forgery(cur):      # rows of ANOTHER user are forged on purpose: reads must never leak them
         cur.execute(
             "INSERT INTO scenarios (scenario_id, project_id, user_id, scenario_name, project_code, source_project_template,"
             " archived, is_base_case, snapshot_json, governance_state_json, last_run_summary_json, created_at, updated_at)"
@@ -59,7 +60,8 @@ def add_run(user, project, scenario_id, ran_at, *, irr=0.1, malformed=False, his
     from app.persistence.db import get_cursor
     hid = history_id or uuid.uuid4().hex
     summary = "{not json" if malformed else json.dumps({"project_irr": irr, "min_dscr": 1.3, "target_dscr": 1.2})
-    with get_cursor() as cur:
+    from tests.wf03_fixture_seams import foreign_row_forgery
+    with get_cursor() as cur, foreign_row_forgery(cur):      # includes same-ids/other-owner history rows, forged on purpose
         cur.execute(
             "INSERT INTO model_run_history (history_id, user_id, project_id, project_code, runtime_snapshot_id, ran_at,"
             " last_runtime_scenario_id, composite_hash, runtime_summary_json, financial_statements_json, debt_schedule_json,"

@@ -8,6 +8,7 @@ import pytest
 
 from app import demo_cleanup as cleanup
 from app.persistence import db, run_history_repository as history
+from tests.wf03_fixture_seams import foreign_row_forgery
 
 TABLES = ("projects", "scenario_exports", "workspace_states", "scenarios", "runs",
           "model_run_history", "capex_sub_lines", "opex_sub_lines")
@@ -149,7 +150,13 @@ def test_mismatched_ownership_aborts_before_deletion(database, table, direction)
     seed(database, "permanent-owner")
     owner = "permanent-owner" if direction == "foreign_child" else "demo_owner"
     source = "demo_owner" if direction == "foreign_child" else "permanent-owner"
-    database.execute(f"UPDATE {table} SET user_id=? WHERE user_id=?", (owner, source))
+    # Legacy-corruption fixture only: the live WF-03 tenant fence correctly forbids
+    # this ownership rewrite, so use the existing scoped test-only forgery seam.
+    # It restores the fence before the real disposal path is exercised.
+    with foreign_row_forgery(database.cursor()) as fixture_cursor:
+        fixture_cursor.execute(f"UPDATE {table} SET user_id=? WHERE user_id=?", (owner, source))
+    with pytest.raises(sqlite3.IntegrityError, match="WF03_LIFECYCLE_CONFLICT"):
+        database.execute(f"UPDATE {table} SET user_id=user_id WHERE user_id=?", (owner,))
     before = snapshot(database)
     with pytest.raises(cleanup.DemoCleanupError, match="ownership mismatch"):
         cleanup.cleanup_all_demo_data()
@@ -281,7 +288,11 @@ def test_reference_history_survives_bootstrap_exactly(database):
 
 def test_bootstrap_protected_demo_refused_before_first_mutation(database):
     references(database)
-    seed(database, "demo_protected", protected=True)
+    # Preserve full history and child evidence before the record becomes protected;
+    # protected projects rightly refuse new history writes through the WF-03 fence.
+    seed(database, "demo_protected")
+    database.execute("UPDATE projects SET is_protected=1, is_readonly=1, "
+                     "project_role='reference' WHERE user_id='demo_protected'")
     before = snapshot(database)
     statements = []
     database.set_trace_callback(statements.append)

@@ -10,6 +10,9 @@ connection still applies its own SQLite pragmas and per-connection data repair.
 import os
 import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
+
+_LIFECYCLE_TRANSACTION = ContextVar("wf03_transaction", default=None)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 DB_PATH = os.getenv("FINCO_DB_PATH", os.path.join(DATA_DIR, "finco_runs.db"))
@@ -31,11 +34,15 @@ def get_connection():
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
             conn.execute("PRAGMA foreign_keys=ON")
+            from app.persistence.project_lifecycle_repository import install_connection_functions
+            install_connection_functions(conn)
             identity = _schema_identity(conn, DB_PATH)
             if identity is not None and _SCHEMA_READY.get(identity[0]) == identity[1]:
                 # The full idempotent schema already completed for this exact file at this exact schema version in this
                 # process: only the per-connection data repair runs (unchanged statement, unchanged order of effects).
                 _backfill_reference_roles(conn)
+                from app.persistence.project_lifecycle_repository import install_write_fences
+                install_write_fences(conn)
                 conn.commit()
                 return conn
             _init_schema(conn)
@@ -453,6 +460,10 @@ def _init_schema(conn):
     # verify_schema fails closed on a corrupted or foreign preexisting table.
     from app.persistence.run_intent_repository import ensure_schema as _ensure_run_intents
     _ensure_run_intents(conn)
+    from app.persistence.project_lifecycle_repository import ensure_schema as _ensure_lifecycle
+    _ensure_lifecycle(conn)
+    from app.persistence.setup_draft_repository import ensure_schema as _ensure_setup_drafts
+    _ensure_setup_drafts(conn)
 
 
 def _backfill_reference_roles(conn) -> None:
@@ -490,6 +501,14 @@ def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> 
 def get_cursor():
     """Open a connection, yield a cursor, and close it automatically."""
     import sqlite3 as _sqlite3
+    shared = _LIFECYCLE_TRANSACTION.get()
+    if shared is not None:
+        cur = shared.cursor()
+        try:
+            yield cur
+        finally:
+            cur.close()
+        return
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -517,3 +536,31 @@ def init_db():
     """Explicitly initialize the DB schema."""
     conn = get_connection()
     conn.close()
+
+
+@contextmanager
+def lifecycle_transaction(*, readonly=False):
+    """One final Legacy write boundary, or one Library read snapshot.
+
+    The model computation is outside this context. Existing cursor-based
+    repositories retain their statement order but cannot commit a partial Run.
+    """
+    if _LIFECYCLE_TRANSACTION.get() is not None:
+        yield _LIFECYCLE_TRANSACTION.get()
+        return
+    conn = get_connection()
+    token = None
+    try:
+        conn.execute("BEGIN DEFERRED" if readonly else "BEGIN IMMEDIATE")
+        if readonly:
+            conn.execute("PRAGMA query_only=ON")
+        token = _LIFECYCLE_TRANSACTION.set(conn)
+        yield conn
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        if token is not None:
+            _LIFECYCLE_TRANSACTION.reset(token)
+        conn.close()

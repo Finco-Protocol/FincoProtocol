@@ -156,7 +156,9 @@ def _historical_manifests_ok(root, ref):
         allowed = ({'app/v2/react_rcux.py', 'app/v2/react_workspace_router.py'} if path == PREDECESSOR_MANIFESTS[-1]
                    else GOVERNANCE_PINS | ({OWNER_APPROVED_ACCEPTANCE_PIN, ROUTE_TEARDOWN_PIN} if path == PREDECESSOR_MANIFESTS[0] else set())
                    | WF04_SUCCESSOR_REPIN.get(path, frozenset()))
-        if any(before[p] != after[p] and p not in allowed for p in before):
+        from tests import wf03_lifecycle_scope as WF03
+        if any(before[p] != after[p] and p not in allowed
+               and not WF03.historical_pin_successor(path, p, before[p], after[p], root, ref) for p in before):
             return False
         # Every pre-existing metadata field remains; only the live pin map changes.
         if any(now.get(k) != v for k, v in old.items() if k != 'source_blobs'):
@@ -197,19 +199,55 @@ def _ws2_allows(path, root, ref):
     """ONLY the separately registered WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py), and only while it is itself exact: its manifest identity, every
     pinned blob and its ancestry hold, and the path is one of its enumerated paths (pinned sources, its manifest, its documents, its closed
     presentation list).  Anything else - another cohort, a pattern, a new file, an absent or altered WS-2 cohort - fails closed."""
+    # Additive WF03 layer. The old WS1/WS2 branches and historical constants
+    # below remain intact; a partial, forged or non-ancestor layer is refused.
+    try:
+        from tests import wf03_lifecycle_scope as WF03
+        if WF03.allowed_path(path, root, ref) and WF03.exact_blobs_ok(root, ref):
+            return True
+    except ImportError:
+        pass
     try:
         from tests import fin_v2_wsv2_scope as WS2
         from tests.fin_v2_cohorts import cohorts
     except ImportError:
         return False
-    if WS2 not in cohorts() or not WS2.exact_blobs_ok(root, ref):
+    if WS2 not in cohorts() or not _ws2_exact(WS2, root, ref):
         return False
     if path in WS2_GATE_TESTS:
         return any(m.__name__ != __name__ and m is not WS2 and m.allowed_path(path, root, ref) for m in cohorts())
     return WS2.allowed_path(path, root, ref)
 
 
+_WS2_SCOPE = []   # call-scope memo stack for the WS-2 exact check: see exact_blobs_ok()
+
+
+def _ws2_exact(WS2, root, ref):
+    """WS2.exact_blobs_ok(root, ref), evaluated once per outer exact_blobs_ok() call instead of once per changed path (the same
+    single-threaded call-scope memo as WF03.scoped(): dropped on exit, keeps no bytes, never shared between calls)."""
+    if not _WS2_SCOPE:
+        return WS2.exact_blobs_ok(root, ref)
+    key = (str(root), ref)
+    memo = _WS2_SCOPE[-1]
+    if key not in memo:
+        memo[key] = WS2.exact_blobs_ok(root, ref)
+    return memo[key]
+
+
 def exact_blobs_ok(repo=None, ref=None):
+    _WS2_SCOPE.append({})
+    try:
+        try:
+            from tests import wf03_lifecycle_scope as WF03
+        except ImportError:
+            return _exact_blobs_ok(repo, ref)
+        with WF03.scoped():        # the exact WF-03 check runs once per call, not once per changed path
+            return _exact_blobs_ok(repo, ref)
+    finally:
+        _WS2_SCOPE.pop()
+
+
+def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if set(pins) != OWNED_PATHS:

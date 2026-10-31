@@ -40,6 +40,24 @@ router = APIRouter()
 PAGE_SIZE = 20
 logger = logging.getLogger("finco.library.clone")
 
+
+@router.post("/library/projects/{code}/archive")
+async def archive_project(request: Request, code: str):
+    from app.services.project_lifecycle_service import handle_transition
+    return await handle_transition(request, code, "ARCHIVE")
+
+
+@router.post("/library/projects/{code}/unarchive")
+async def unarchive_project(request: Request, code: str):
+    from app.services.project_lifecycle_service import handle_transition
+    return await handle_transition(request, code, "UNARCHIVE")
+
+
+@router.get("/library/projects/{code}/lifecycle/status")
+async def project_lifecycle_status(request: Request, code: str, request_id: str = ""):
+    from app.services.project_lifecycle_service import handle_status
+    return handle_status(request, code, request_id)
+
 # ---------------------------------------------------------------------------
 # Workbook destination helper
 # ---------------------------------------------------------------------------

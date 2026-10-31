@@ -314,6 +314,9 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
     from tests.model_mutation_security_successor import TOKEN_MODULE, current_mutation_successor_valid
     if current_mutation_successor_valid():
         expected = expected | {TOKEN_MODULE}
+    from tests import wf03_lifecycle_scope as WF03
+    if WF03.valid():
+        expected = expected | {path for path in WF03.CSRF_PATHS if WF03.matches(path)}
     assert users == expected
     import ast
     tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))

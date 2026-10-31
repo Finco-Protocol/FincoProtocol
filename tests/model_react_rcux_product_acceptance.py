@@ -169,8 +169,21 @@ def test_rcux_product_create_new_path_is_a_disclosed_guided_setup(live_server, u
     page.reload()
     page.wait_for_selector("[data-path-card='new']")
     assert page.locator("[data-wizard-next='true']").is_disabled()                # nothing proceeds before a path is chosen
-    page.locator("[data-blank-project-constraint] summary").click()
-    assert "cannot currently be saved" in page.locator("[data-blank-project-constraint]").inner_text()
+    assert "non-runnable setup draft" in page.locator("[data-blank-project-constraint]").inner_text()
+    page.get_by_role("button", name="Blank setup draft", exact=True).click()
+    page.get_by_label("Technology", exact=True).select_option("solar")
+    page.get_by_role("button", name="Next", exact=True).click()
+    page.get_by_label("Setup name", exact=True).fill("Separate explicit setup")
+    page.get_by_label("Country / market", exact=True).select_option("DE")
+    page.get_by_role("button", name="Next", exact=True).click()
+    page.get_by_role("button", name="Save setup draft", exact=True).click()
+    page.get_by_text("Setup draft saved. No runnable project was created and the model was not run.", exact=True).wait_for()
+    assert page.get_by_role("button", name="Create runnable project — unavailable", exact=True).is_disabled()
+    assert page.locator("[data-wf-run], [data-save-all], [data-scenario-workspace]").count() == 0
+    assert _projects(context, live_server)["total"] == 0
+    page.get_by_role("button", name="My Projects", exact=True).click()
+    page.goto(f"{live_server}/v2/model-react/#new-project")
+    page.wait_for_selector("[data-path-card='new']")
     page.locator("[data-path-card='new']").click()
     page.wait_for_selector("[data-tech-card='solar']")
     assert "approved starting assumptions" in page.locator("[data-path-note='new']").inner_text()

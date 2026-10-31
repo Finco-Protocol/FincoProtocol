@@ -48,6 +48,8 @@ def _disposal_transaction(conn: sqlite3.Connection):
     except BaseException:
         conn.rollback()
         raise
+    finally:
+        conn.create_function("wf03_terminal_disposal", 0, lambda: 0)
 
 
 def _cutoff_iso(ttl_hours: int) -> str:
@@ -125,6 +127,10 @@ def _delete_owned_state(conn: sqlite3.Connection, user_ids: list[str], summary: 
     if not conn.in_transaction:
         raise DemoCleanupError("Demo disposal must be atomic")
     _validate_owned_state(conn, user_ids)
+    # Only this already-authorized, tenant-validated terminal disposal may
+    # remove archived financial state. Lifecycle receipts remain tombstones,
+    # with no cascading FK or automatic receipt deletion.
+    conn.create_function("wf03_terminal_disposal", 0, lambda: 1)
     marks = ",".join("?" for _ in user_ids)
     for table in _SUBLINE_TABLES:
         cur = conn.execute(

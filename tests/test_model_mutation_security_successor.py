@@ -195,6 +195,19 @@ def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_a
     assert skipped[path]!=source and S.violations(skipped)
 
 
+# Owner-approved WF-03 successor (PR #400, 2026-10-30): exactly these five WF-03 browser wrappers may precede the D-029/Overnight B additions, and only
+# while the browser file is the exact WF-03-pinned blob (tests/wf03_lifecycle_scope.py). Any other added, removed, renamed or reordered name still fails.
+WF03_BROWSER_LAYER=["test_wf03_https_visible_archive_restore_matrix","test_wf03_stale_library_refresh_cannot_overwrite_archived_view_browser",
+    "test_wf03_reload_after_lost_response_reads_authoritative_state_browser","test_wf03_blank_setup_durable_non_runnable_browser",
+    "test_wf03_lost_response_restore_original_replay_browser"]
+
+
+def _without_wf03_browser_layer(path,current,added):
+    from tests import wf03_lifecycle_scope as WF03
+    if added[:len(WF03_BROWSER_LAYER)]==WF03_BROWSER_LAYER and WF03.matches(path,current):return added[len(WF03_BROWSER_LAYER):]
+    return added
+
+
 def test_d029_browser_original_node_ids_are_preserved():
     path="tests/test_model_workspace_consolidation_browser.py"
     import re
@@ -203,7 +216,8 @@ def test_d029_browser_original_node_ids_are_preserved():
     names=lambda text:re.findall(r"^def (test_\w+)\(",text,flags=re.M)
     assert set(names(base))<=set(names(current))
     # additive only: the two D-029 wrappers, then the reviewed Overnight B (React MVP correction) wrappers — nothing else
-    assert [n for n in names(current) if n not in names(base)]==["test_d029_react_run_intent_acceptance","test_d029_legacy_run_intent_acceptance",
+    added=_without_wf03_browser_layer(path,current,[n for n in names(current) if n not in names(base)])
+    assert added==["test_d029_react_run_intent_acceptance","test_d029_legacy_run_intent_acceptance",
         "test_onb_statement_identity_is_the_authorized_project_in_every_vertical",
         "test_onb_hostile_or_stale_query_cannot_change_the_statement_identity",
         "test_onb_switching_projects_never_carries_the_previous_statement_identity",
@@ -227,3 +241,13 @@ def test_d029_browser_original_node_ids_are_preserved():
          '        assert page.locator("section[aria-label=\'Trust and integrity evidence\'] a[href*=\'/v2/workbook\']").count() == 0']}
     it=iter(current.splitlines())
     assert all(any(line==cur for cur in it) for line in (x for line in base.splitlines() for x in addendum_a.get(line,[line])))
+
+
+def test_the_wf03_browser_layer_is_exact_names_at_the_exact_blob_only():
+    """Negatives for the WF-03 browser-name successor: a sixth, missing, reordered or renamed WF-03 name, or any byte change of the file, is refused."""
+    path="tests/test_model_workspace_consolidation_browser.py";current=SOURCES[path];rest=["test_d029_react_run_intent_acceptance"]
+    assert _without_wf03_browser_layer(path,current,WF03_BROWSER_LAYER+rest)==rest
+    for label,names in (("extra",WF03_BROWSER_LAYER+["test_wf03_unreviewed_extra"]+rest),("missing",WF03_BROWSER_LAYER[1:]+rest),
+                        ("reordered",WF03_BROWSER_LAYER[::-1]+rest),("renamed",[WF03_BROWSER_LAYER[0]+"_v2"]+WF03_BROWSER_LAYER[1:]+rest)):
+        assert _without_wf03_browser_layer(path,current,names)!=rest,label
+    assert _without_wf03_browser_layer(path,current+"\n",WF03_BROWSER_LAYER+rest)==WF03_BROWSER_LAYER+rest   # not the WF-03 blob: no layer

@@ -102,8 +102,11 @@ def test_wsv2_wizard_three_steps_library_and_safe_exception(live_server,browser,
         page.locator('[data-new-project-cta]').click()
         page.wait_for_selector('[data-wizard-step="1"]')
         assert page.locator('.rcm-steps li').count()==3
-        page.locator('[data-blank-project-constraint] summary').click()
-        assert 'cannot currently be saved' in page.locator('[data-blank-project-constraint]').inner_text()
+        # WF-03 contract (replaces the old collapsible 'cannot currently be saved' note): the blank path is an explicit, NON-RUNNABLE setup draft,
+        # always disclosed and reached through a visible 'Blank setup draft' control; a runnable blank project is still not creatable here.
+        blank = page.locator('[data-blank-project-constraint]')
+        assert blank.is_visible() and 'non-runnable setup draft' in blank.inner_text()
+        assert blank.get_by_role('button', name='Blank setup draft', exact=True).is_visible()
         shot(page,'wizard-start')
         page.locator('[data-path-card="new"]').click()
         page.locator('[data-tech-card="solar"]').click()

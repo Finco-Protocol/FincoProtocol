@@ -30,6 +30,8 @@ interface Props {
   protectedReference: boolean;
   contracts: Record<string, unknown>;
   save: RevenueSave;
+  /** True while the project changed after this projection was read: its CAS identity is older than the project, so Save waits for the refresh. */
+  refreshing?: boolean;
   onSaved?: () => void;
 }
 
@@ -81,7 +83,7 @@ function cloneModel(model: ContractModel): ContractModel {
   return JSON.parse(JSON.stringify(model)) as ContractModel;
 }
 
-export function PPAEditorView({ project, protectedReference, contracts, save, onSaved }: Props) {
+export function PPAEditorView({ project, protectedReference, contracts, save, refreshing = false, onSaved }: Props) {
   const raw = typeof contracts.raw === "string" ? (contracts.raw as string) : "";
   const hasContract = contracts.active === true && raw.trim() !== "";
   const technology = String(contracts.technology ?? "");
@@ -164,7 +166,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
   const submit = (model: ContractModel, originalRaw: string) => singleFlight(() => runSubmit(model, originalRaw));
 
   const runSubmit = async (model: ContractModel, originalRaw: string) => {
-    if (lockedByUnknown) return;
+    if (lockedByUnknown || refreshing) return;      // never submit an identity older than the project; the typed draft stays untouched
     setShowErrors(true);
     // A NEW contract left without a source reference records that it was entered here (never an invented external citation).
     const filled = withSourceDefaults(model);
@@ -343,7 +345,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                   onClick={() => setDraft((prev) => prev ? { ...prev, streams: [...prev.streams, newPpaStream(prev.streams, operatingWindow)], preservedKeys: [...prev.preservedKeys, []] } : prev)}>
             Add PPA contract
           </button>
-          <button type="button" className="fm-btn fm-btn-primary" disabled={readOnly || (!isCreate && editCount === 0)}
+          <button type="button" className="fm-btn fm-btn-primary" disabled={readOnly || refreshing || (!isCreate && editCount === 0)}
                   data-ppa-save="true" onClick={() => void submit(model, baseRaw)}>
             Save contracts{editCount ? ` (${editCount} edit${editCount === 1 ? "" : "s"})` : ""}
           </button>
@@ -351,6 +353,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, on
                   onClick={() => { if (isCreate) { setCreating(false); setDraft(null); } else if (savedModel) setDraft(cloneModel(savedModel)); setShowErrors(false); setStatus(null); }}>
             Cancel edits
           </button>
+          {refreshing && <small role="status" data-ppa-refreshing="true">Refreshing the latest project data; Save is available as soon as it is current. Your entries are kept.</small>}
         </div>
         {removeIndex !== null && (
           <WorkflowDialog

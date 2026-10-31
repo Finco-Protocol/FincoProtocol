@@ -281,6 +281,8 @@ async def execute_save_run_route(
     project_record, workspace_state = deps.project_workspace_from_snapshot(
         user, snapshot
     )
+    from app.persistence.project_lifecycle_repository import admit
+    admit(project_record)
     project_code = project_record.project_code
     project_name = project_record.project_name
 
@@ -399,35 +401,39 @@ async def execute_save_run_route(
     # Behavior 13: save_run first, then save_project (ordering pinned)
     # Quirk 7: save_run before save_project
     try:
-        run_record = deps.save_run(
-            user_id=user_id,
-            project_type=effective_project_type,
-            scenario=scenario,
-            inputs=inputs,
-            kpis=kpis,
-            replay_metadata=deps.replay_metadata_for_project(
-                project_code,
-                export_type="saved_run_metadata",
-                runtime_timestamp=deps.utc_now_iso(),
-            ),
-        )
-        # Quirk 3: save_project.runtime_timestamp = run_record.created_at
-        # (NOT utc_now_iso) — locked to run timestamp
-        # Quirk 4: project_id explicitly None
-        deps.save_project(
-            user_id=user_id,
-            project_code=project_code,
-            project_name=project_name,
-            source_project_template=project_code,
-            governance_state=deps.governance_snapshot(project_code),
-            last_run_summary=kpis,
-            replay_metadata=deps.replay_metadata_for_project(
-                project_code,
-                project_id=None,
-                export_type="saved_run_project_state",
-                runtime_timestamp=run_record.created_at.isoformat(),
-            ),
-        )
+        from app.persistence.db import lifecycle_transaction
+        from app.persistence.project_lifecycle_repository import require_write_cursor
+        with lifecycle_transaction() as lifecycle_conn:
+            require_write_cursor(lifecycle_conn.cursor(), user_id, project_record.project_id)
+            run_record = deps.save_run(
+                user_id=user_id,
+                project_type=effective_project_type,
+                scenario=scenario,
+                inputs=inputs,
+                kpis=kpis,
+                replay_metadata=deps.replay_metadata_for_project(
+                    project_code,
+                    export_type="saved_run_metadata",
+                    runtime_timestamp=deps.utc_now_iso(),
+                ),
+            )
+            # Quirk 3: save_project.runtime_timestamp = run_record.created_at
+            # (NOT utc_now_iso) — locked to run timestamp
+            # Quirk 4: project_id explicitly None
+            deps.save_project(
+                user_id=user_id,
+                project_code=project_code,
+                project_name=project_name,
+                source_project_template=project_code,
+                governance_state=deps.governance_snapshot(project_code),
+                last_run_summary=kpis,
+                replay_metadata=deps.replay_metadata_for_project(
+                    project_code,
+                    project_id=None,
+                    export_type="saved_run_project_state",
+                    runtime_timestamp=run_record.created_at.isoformat(),
+                ),
+            )
         # ── 8. Success response ───────────────────────────────────
         return SaveRunRouteOutcome(
             context={
