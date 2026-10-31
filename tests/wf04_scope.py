@@ -199,12 +199,24 @@ def _wf06a(root, ref):
     return WF06A if WF06A.exact_blobs_ok(root, ref) else None
 
 
+def _int409(root, ref):
+    """The low-level PR #409 integration seal (imports no cohort), only while it is itself exact; absent, altered or invalid widens nothing."""
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError:
+        return None
+    return INT if INT.exact_blobs_ok(root, ref) else None
+
+
 def _downstream_allows(path, root, ref):
     WF03 = _wf03(root, ref)
     if WF03 is not None and WF03.allowed_path(path, root, ref):
         return True
     WF06A = _wf06a(root, ref)
-    return WF06A is not None and WF06A.allowed_path(path, root, ref)
+    if WF06A is not None and WF06A.allowed_path(path, root, ref):
+        return True
+    INT = _int409(root, ref)
+    return INT is not None and INT.allowed_path(path, root, ref)
 
 
 def _downstream_pin(path, value, root, ref):
@@ -213,7 +225,10 @@ def _downstream_pin(path, value, root, ref):
     if WF03 is not None and path in WF03.OWNED_PATHS and WF03.manifest(root, ref).get('source_blobs', {}).get(path) == value:
         return True
     WF06A = _wf06a(root, ref)
-    return WF06A is not None and path in WF06A.OWNED_PATHS and WF06A.manifest(root, ref).get('source_blobs', {}).get(path) == value
+    if WF06A is not None and path in WF06A.OWNED_PATHS and WF06A.manifest(root, ref).get('source_blobs', {}).get(path) == value:
+        return True
+    INT = _int409(root, ref)
+    return INT is not None and INT.admits_pin(path, value, root, ref)
 
 
 def _own_manifest_follows_only_wf03(root, ref):

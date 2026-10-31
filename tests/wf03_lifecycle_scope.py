@@ -254,11 +254,12 @@ def _b1_layer_ok(root, ref, pins, data):
         return False
     if seal.get('correction_b_history')!={B1_CORRECTION_B_BASE:previous['source_blobs']}:
         return False
-    if set(pins)!=set(old['source_blobs'])|B1_PATHS:
+    extra=set(pins)-set(old['source_blobs'])-B1_PATHS
+    if set(old['source_blobs'])-set(pins) or any(not _int409_admits(p,pins[p],root,ref) for p in extra):
+        return False        # only pins the PR #409 integration seal literally authorises may join the B1 pin set (ON-08 owned paths)
+    if any(pins[p]!=value and p not in B1_REPINS and not _int409_admits(p,pins[p],root,ref) for p,value in old['source_blobs'].items()):
         return False
-    if any(pins[p]!=value and p not in B1_REPINS for p,value in old['source_blobs'].items()):
-        return False
-    if any(pins[p]!=value and p not in B1_REPINS|B1_PATHS for p,value in previous['source_blobs'].items()):
+    if any(pins[p]!=value and p not in B1_REPINS|B1_PATHS and not _int409_admits(p,pins[p],root,ref) for p,value in previous['source_blobs'].items()):
         return False
     if any(data.get(k)!=v for k,v in old.items() if k not in ('source_blobs','path_ledger')):
         return False
@@ -269,8 +270,14 @@ def _b1_layer_ok(root, ref, pins, data):
     if (ledger[:len(previous_ledger)]!=previous_ledger or len(additions)!=len(delta)
             or {row.get('path') for row in additions}!=delta):
         return False
-    if any(row.get('before_blob')!=previous['source_blobs'].get(row['path'])
-           or row.get('after_blob')!=pins[row['path']] for row in additions):
+    INT=_int409(root,ref)
+    def _after_ok(row):
+        if row.get('after_blob')==pins[row['path']]: return True
+        # PR #409: a B1-repinned path may have moved in the composition. The historical B1 row is NOT rewritten; it must still record exactly the blob
+        # PR #407's reviewed head holds, and the live pin must be one the integration seal literally authorises.
+        return (bool(INT) and row.get('after_blob')==INT.source_blob('PR407',row['path'],root)
+                and _int409_admits(row['path'],pins[row['path']],root,ref))
+    if any(row.get('before_blob')!=previous['source_blobs'].get(row['path']) or not _after_ok(row) for row in additions):
         return False
     expected=(B1_PATHS-{B1_MANIFEST})|{'main_web.py','app/services/sensitivity_service.py'}
     reviewed=seal.get('source_blobs',{})
@@ -313,6 +320,25 @@ def _wf06a_repin(manifest_path,source,after,root,ref):
     return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
 
 
+def _int409(root,ref):
+    """The low-level PR #409 integration seal (imports no cohort), or None when it is absent."""
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError: return None
+    return INT
+
+
+def _int409_allows(path,root,ref):
+    INT=_int409(root,ref)
+    return bool(INT) and INT.owns(path,root,ref)
+
+
+def _int409_admits(path,value,root,ref):
+    """A WF-03 pin (new or moved) that the integration seal authorises literally, only while that seal is exact."""
+    INT=_int409(root,ref)
+    return bool(INT) and INT.admits_pin(path,value,root,ref)
+
+
 def _wf06a_allows(path,root,ref):
     try:
         from tests import fin_v2_wf06a_scope as WF06A
@@ -329,7 +355,15 @@ def scoped():
     instead of once per changed path. The memo lives only for that call: it is dropped on exit, never keeps bytes, and is never shared between calls."""
     _SCOPE.append({})
     try:
-        yield
+        try:
+            from tests import fin_v2_integration_409_scope as _INT
+        except ImportError:
+            _INT = None
+        if _INT is None:
+            yield
+        else:
+            with _INT.scoped():          # the low-level PR #409 seal is memoised for the same single call
+                yield
     finally:
         _SCOPE.pop()
 
@@ -367,10 +401,10 @@ def valid(repo=None,ref=None):
     if not exact_blobs_ok(root,ref): return False
     try:
         changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
-        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) for p in changed): return False
+        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in changed): return False
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
-            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) for p in untracked): return False
+            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in untracked): return False
         return True
     except (OSError,ValueError,subprocess.CalledProcessError): return False
 

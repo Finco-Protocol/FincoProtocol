@@ -185,6 +185,15 @@ def _successor_allows(path, root, ref):
     return wf04_scope.allowed_path(path, root, ref)
 
 
+def _int409_allows(path, root, ref):
+    """Bounded PR #409 hook: a path of the literal three-PR union / seal, only while the low-level integration seal is itself exact."""
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError:
+        return False
+    return INT.owns(path, root, ref)
+
+
 def _wf06a_allows(path, root, ref):
     """Bounded WF-06A hook (PR #406, Owner Correction B): a path owned by the closed WF-06A cohort (tests/fin_v2_wf06a_scope.py) is that cohort's
     exact-blob responsibility. The cohort check is low level (never calls this module); a missing, forged, newer or altered cohort widens nothing."""
@@ -275,12 +284,12 @@ def _exact_blobs_ok(repo=None, ref=None):
         if not _historical_manifests_ok(root, ref):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _ws2_allows(p, root, ref) and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) and not _int409_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
             if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _ws2_allows(p, root, ref)
-                   and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) for p in untracked):
+                   and not _successor_allows(p, root, ref) and not _wf06a_allows(p, root, ref) and not _int409_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError):

@@ -141,6 +141,10 @@ def _followed_ok(root, ref, pins, data):
         old = json.loads(_read(root, path, BASE))
         now = json.loads(_read(root, path, ref))
         before, after = old['source_blobs'], now['source_blobs']
+        if _integration_pins_manifest(path, root, ref):
+            # PR #409 integration seal: this followed manifest is composed with FIN-TRUTH-B1 / ON-08 pin moves. Admitted ONLY as the literal blob the
+            # low-level integration seal pins (and only while that seal is exact; it verifies main's identity keys, history maps and ledger prefix).
+            continue
         if set(before) != set(after):
             return False
         if any(now.get(k) != v for k, v in old.items() if k != 'source_blobs') or set(now) != set(old):
@@ -155,6 +159,22 @@ def _followed_ok(root, ref, pins, data):
     return True
 
 
+def _integration_pins_manifest(path, root, ref):
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError:
+        return False
+    return INT.admits_pin(path, _blob(_read(root, path, ref)), root, ref)
+
+
+def _integration_allows(path, root, ref):
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError:
+        return False
+    return INT.owns(path, root, ref)
+
+
 _SCOPE = []
 
 
@@ -163,7 +183,15 @@ def scoped():
     """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
     _SCOPE.append({})
     try:
-        yield
+        try:
+            from tests import fin_v2_integration_409_scope as _INT
+        except ImportError:
+            _INT = None
+        if _INT is None:
+            yield
+        else:
+            with _INT.scoped():          # the low-level PR #409 seal is memoised for the same single call
+                yield
     finally:
         _SCOPE.pop()
 
@@ -194,11 +222,11 @@ def _exact_blobs_ok(repo=None, ref=None):
         if not _followed_ok(root, ref, pins, data):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _integration_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

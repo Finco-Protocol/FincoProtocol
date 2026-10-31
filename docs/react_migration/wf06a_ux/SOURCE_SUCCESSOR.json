@@ -4,11 +4,11 @@
   "base_tree": "45e8efdd7e8b0fa8df6497c4e9510a7a27815f85",
   "authorization": {},
   "source_blobs": {
-    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "1eeefdeb7ce384629ef10dc9c2854fbb05703b74",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "2b7058d21f1338b2a286faf61bddd671a83dddd1",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "fb3a6ef428de42dbc813e80de95d294291509c66",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8b72f3ea683326fbbafe66c06f187ca425aef2b0",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "7775b8b9976fe8bbb63a849d41838c1a4d2a6566",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "d14ee1e2353fccaa9d2c233d77c21cfa936cae39",
     "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6f1c1451a4669bbcb1571275245c850e14fb003c",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "b9695cb441230ca84dbb06c60c6b65de72c111f3",
     "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
     "frontend/src/app/RunFailureNotice.tsx": "83adb17a55c518cf98225b9d29e3e020d3607248",
     "frontend/src/app/__tests__/wf06a.test.mjs": "39a5b7b779a2f4af7314113fae6a97c8f2bc2348",
@@ -17,16 +17,16 @@
     "frontend/src/styles/ws2-editing.css": "f8a58bf4871cd02e6b4c11095ae03765b28a17fa",
     "static/react/finco-react.css": "4634e51e1707a908dec5cd8ec4010487617a5fa0",
     "static/react/finco-react.js": "a8e42da398fdf71f2fe4c21cbcbd8e96ab25cd8e",
-    "tests/fin_v2_cohorts.py": "17c97498d0cf95b98f22a98c6fea3e6998b2c2a7",
-    "tests/fin_v2_wf06a_scope.py": "62939bf662475e32521ed0f22de7f715b96575d1",
+    "tests/fin_v2_cohorts.py": "e538a8d3bac912602aaae76eca4942f69b422c46",
+    "tests/fin_v2_wf06a_scope.py": "77429db8ac014aec2afaf7ebc11857ebc90efa92",
     "tests/model_react_wf06a_acceptance.py": "0ee620589964bd30f6a14ab7073258bd915c5a9d",
     "tests/test_fin_v2_wf06a_scope.py": "18e0c9603bcbe5facf59f7ad8f8f67490926e0a8",
     "tests/test_wf03_lifecycle_scope.py": "0c0f0efbc945bf37e977e95023cf84095c0939dc",
     "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
     "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
-    "tests/wf03_lifecycle_scope.py": "007d8b0166346e87e9212ca01a7d773c8b0baa6b",
-    "tests/wf04_scope.py": "4432d4ae2586d4d6c1f55fee27a1c5db6f3d836d",
-    "tests/wsv2_core_scope.py": "6ca3afa6771ac236fc9c518007a002fd5a17568e"
+    "tests/wf03_lifecycle_scope.py": "ac3a3770d0fdd8bc09d9406e94801d5defb8b491",
+    "tests/wf04_scope.py": "abdc1a4a1ed64e9a059ab731daabe2d258f79020",
+    "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
   },
   "predecessor_pins": {
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": {
