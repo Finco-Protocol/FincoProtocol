@@ -1,0 +1,10 @@
+# Owner decision register (minimum decisions to unblock; none taken here)
+| ID | Decision | Why needed | Options (recommendation first) |
+|---|---|---|---|
+| OD-1 | SHL index policy on reference-seeded projects after editing construction/horizon/tenor | L1 defect; silent wrong maturity when horizon is lengthened | (a) re-derive `shl_maturity_period_index`/`shl_principal_eligibility_start_period` from final inputs as `resolve_generic_shl_policy` does (path: `app/input_adapter.py`, template branch) **(recommended)**; (b) keep calibration but fail closed on any desynchronising edit; (c) leave as is, document. Owner-gated: touches SHL policy semantics. |
+| OD-2 | Accept the cost-line allocation rule for fixture CAPEX/OPEX | the CSV declares totals, the route only accepts lines | `PROPORTIONAL_RESCALE_OF_SEEDED_LINES` **(used; recommended as default)**; or fixture author supplies explicit line-level amounts per category (preferred for true parity, then re-run). Browser entry must use the same lines. |
+| OD-3 | WND-02 disposition | economically infeasible under the SHL repayability precondition (L2) | keep original as negative fixture + adopt WND-02-R **(recommended)**; or redesign the stress case (higher tariff/yield) so high executed leverage is reachable; or treat refusal as the expected acceptance outcome. |
+| OD-4 | P90/P99 contract | not independently settable on the user route (derived 0.9/0.8 x P50; seeded P90 1400 ignored) | accept derivation and mark fixture P90 as DERIVED **(used)**; or add a registry field (engine/UI scope). Fixtures only match because P90 = 0.9 x P50. |
+| OD-5 | Checklist scope | register has 44 rows (39 A-F + 5 G), README says 36 | confirm the authoritative count before acceptance reporting. |
+| OD-6 | Live acceptance prerequisites | #400 still Draft/moving | #400 merged **and** staging deployed at a recorded SHA; four test accounts; finmodels.io authorisation (separate). |
+| OD-7 | NPV/LLCR/PLCR | `NOT_CONFIGURED` (no valuation policy / coverage CFADS case) | supply owner valuation policy if these metrics are required for parity; otherwise mark NOT_APPLICABLE in the comparison. |

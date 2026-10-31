@@ -1,0 +1,12 @@
+{
+ "DIAGNOSTIC_ONLY": true,
+ "rederived": {
+  "maturity": 52,
+  "elig_start": 27
+ },
+ "status": "REFUSED_OR_ERROR",
+ "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_RESIDUAL_FAILS_CLOSED: closing balance 62452.999922726427 kEUR remains at maturity period_index=52",
+ "senior": null,
+ "min_dscr": null,
+ "sponsor_xirr": null
+}

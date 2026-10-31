@@ -1,0 +1,4 @@
+# Gap checklist audit (revised copy; original file unchanged, observations still EMPTY)
+Enumerated rows: {'A': 5, 'B': 7, 'C': 10, 'D': 6, 'E': 5, 'F': 6, 'G': 5}; A-F = 39; G negatives = 5; **total = 44**. The package README states "36 UX checks"; I found no natural rule in the file that yields 36 (A-F alone is 39). Treat 39 + 5 = 44 as the register count unless the owner defines the 36 (OD-5).
+Scope tags (from the earlier updated register; #400 heads move, so re-tag after merge): {'TESTABLE_WITHOUT_#400': 36, 'REVERIFY_AFTER_#400': 7, 'DEPENDS_ON_#400': 1}.
+Additions from Correction A: C-01/C-07 - cost totals are derived from lines, P90/P99 not enterable; D-04/D-05 - WND-02 expected typed refusal on both UIs; F-01 - WF-04 Debt Metrics merged. Full per-row table: `ON07_CHECKLIST_AUDIT.csv`. Row text: use `ON07_GAP_REGISTER_UPDATED.md` from the earlier bundle (copied here as `ON07_GAP_REGISTER_UPDATED_PRIOR.md`).

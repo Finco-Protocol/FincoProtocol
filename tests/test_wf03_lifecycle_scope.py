@@ -82,3 +82,12 @@ def test_trust_successor_preserves_the_actual_ws2_parent_byte_content():
     for text in (current+'\n# unreviewed',current.replace('data.backups','data.backups_removed',1),
                  current.replace('No TTL or cascading project deletion','Automatically deleted after 24 hours',1)):
         assert not F.trust_registry_successor(parent,text)
+
+
+def test_research_layer_is_closed_literal_and_never_a_wildcard():
+    assert F.RESEARCH_PATHS<=F.OWNED_PATHS and len(F.RESEARCH_PATHS)>=60
+    assert all(p.startswith(F.RESEARCH_DIRECTORIES) for p in F.RESEARCH_PATHS)
+    assert set(json.loads((F.ROOT/F.MANIFEST).read_text())['source_blobs'])>=F.RESEARCH_PATHS
+    for stranger in ('research/on07_correction_a/new_unreviewed.csv','research/on07_other/x.md','research/anything.py','docs/readiness/new.md'):
+        assert not F.allowed_path(stranger) and not F.matches(stranger)
+    assert not any(p.startswith(('financial_engine/','finco_core/','domain/','.github/')) for p in F.RESEARCH_PATHS)

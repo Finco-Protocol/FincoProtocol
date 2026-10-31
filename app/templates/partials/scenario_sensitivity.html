@@ -24,8 +24,9 @@
     {# ── Part A: run config banner ── #}
     <div class="scm-multi-banner" role="note">
       Canonical engine results. {{ rows|length }} scenarios across
-      {{ sensitivity_shock_types|length }} shock types at levels
-      {{ sensitivity_levels|join(', ') }}%.
+      {{ sensitivity_shock_types|length }} shock types.
+      Interest-rate levels are basis-point deltas (100 bps = 1 percentage point);
+      other levels are relative % changes. Financing is re-sized for each shock.
       Base: <strong>{{ sensitivity_scenario_name }}</strong>.
     </div>
 
@@ -145,7 +146,10 @@
               <tr class="sens-row {% if row['error'] %}sens-row--error{% endif %}">
                 <td class="sens-cell-shock">{{ row['shock_label'] }}</td>
                 <td class="sens-cell-level">
-                  {{ "{:+.0f}".format(row['level_pct']) }}%
+                  {{ "{:+g}".format(row['level_pct']) }} {{ sensitivity_result['shock_registry'][row['shock_type']][1] }}
+                  {% if row['evidence'] %}
+                    <span class="ps-history-meta">All-in rate: {{ "{:g}".format(row['evidence']['before_pct']) }}% → {{ "{:g}".format(row['evidence']['after_pct']) }}%</span>
+                  {% endif %}
                 </td>
                 {% if row['error'] %}
                   <td colspan="{{ kpi_defs|length }}" class="sens-cell-err">{{ row['error'] }}</td>

@@ -1,0 +1,1404 @@
+{
+ "fixture": "WND-02",
+ "route": "USER_CREATED_CORE_RUN",
+ "tag": "TRUE_ROUTE",
+ "project_code": "on07-wnd-02-parity-wind-stress-covenant",
+ "status": "REFUSED_OR_ERROR",
+ "overrides": {},
+ "before_run": {
+  "seed_snapshot": {
+   "active_project": "on07-wnd-02-parity-wind-stress-covenant",
+   "capacity_factor": "34.25",
+   "capacity_mw": "40",
+   "cod_date": "2031-09-01",
+   "construction_months": "20",
+   "country_market": "XB",
+   "gearing_pct": "",
+   "horizon_years": "27",
+   "interest_rate_pct": "5.5",
+   "operating_hours_p90_10y": 2700.0,
+   "operating_hours_p99_1y": null,
+   "opex_y1_keur": "458.333333333",
+   "p50_hours": "3000.0",
+   "ppa_term_years": "12",
+   "project_name": "ON07 WND-02 Parity Wind Stress Covenant",
+   "project_origin": "user_created",
+   "project_type": "Wind",
+   "rev_co2_enabled": false,
+   "rev_co2_price_eur_mwh": 0.0,
+   "scenario": "Base",
+   "target_dscr": "1.2",
+   "tariff_eur_mwh": "60.0",
+   "tax_template": "Generic Tax Template",
+   "template_source": "generic_wind_reference",
+   "tenor_years": "15",
+   "total_capex_keur": "35833.3333333"
+  },
+  "capex_lines": [
+   {
+    "sub_line_id": "12597840-a81c-429f-b922-760b707cebcc",
+    "code": "C.01.01",
+    "label": "Wind Turbines",
+    "amount_keur": 17500.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.409949+00:00"
+   },
+   {
+    "sub_line_id": "d77963ca-8285-43eb-baa8-fd8d8b68832c",
+    "code": "C.01.02",
+    "label": "Turbine Supply Agreement Optionals",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.410951+00:00"
+   },
+   {
+    "sub_line_id": "3d59f9d3-47a3-4df4-b1c7-f8883bcacb8d",
+    "code": "C.01.03",
+    "label": "Flow Parts",
+    "amount_keur": 2500.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.411377+00:00"
+   },
+   {
+    "sub_line_id": "b718048b-e9de-427f-b3b5-60f4b5ecba8b",
+    "code": "C.01.04",
+    "label": "Procurement Fees",
+    "amount_keur": 2000.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.411751+00:00"
+   },
+   {
+    "sub_line_id": "023f7776-01c1-4f6c-a660-3d282a664f1d",
+    "code": "C.01.05",
+    "label": "Logistics and Transport",
+    "amount_keur": 3000.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.412063+00:00"
+   },
+   {
+    "sub_line_id": "a5708907-0a87-4a44-a8f1-d96bc663780a",
+    "code": "C.02.01",
+    "label": "Engineering, Procurement and Construction",
+    "amount_keur": 3500.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.412438+00:00"
+   },
+   {
+    "sub_line_id": "cb6e3f49-4744-4713-a476-8a036dcbb12c",
+    "code": "C.02.02",
+    "label": "Site Civil Works",
+    "amount_keur": 1500.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.413089+00:00"
+   },
+   {
+    "sub_line_id": "eac78f3f-78b4-400b-aa19-61aadfb89589",
+    "code": "C.03.01",
+    "label": "Grid Connection Works",
+    "amount_keur": 1625.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.413630+00:00"
+   },
+   {
+    "sub_line_id": "31f76376-b812-4367-b040-13da50dc8f7a",
+    "code": "C.03.02",
+    "label": "Interconnection Studies and Testing",
+    "amount_keur": 875.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.414534+00:00"
+   },
+   {
+    "sub_line_id": "37bdb4c7-1ac2-4edc-88c7-d6a4bfdaf5eb",
+    "code": "C.04.01",
+    "label": "Operations Readiness",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.414914+00:00"
+   },
+   {
+    "sub_line_id": "1c5c9604-5945-483c-8632-0b49967868c5",
+    "code": "C.04.02",
+    "label": "Training and Handover",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.415334+00:00"
+   },
+   {
+    "sub_line_id": "041f80d5-7d2a-451d-86a7-293426fd5247",
+    "code": "C.05.01",
+    "label": "Balance of Plant",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.415680+00:00"
+   },
+   {
+    "sub_line_id": "f906d3b4-1563-4117-ac83-d15bbfc61210",
+    "code": "C.05.02",
+    "label": "Construction Logistics",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.416189+00:00"
+   },
+   {
+    "sub_line_id": "bc71bec3-0170-4312-9548-4ccb0e49be0a",
+    "code": "C.06.01",
+    "label": "Construction All-Risk Insurance",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.416686+00:00"
+   },
+   {
+    "sub_line_id": "5548f778-3155-4217-9e95-a4f13c8d518b",
+    "code": "C.06.02",
+    "label": "Liability and Commissioning Cover",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.417086+00:00"
+   },
+   {
+    "sub_line_id": "eea322bf-4ab9-4d9e-bc61-76b203807cd5",
+    "code": "C.07.01",
+    "label": "Land Access and Lease",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.417504+00:00"
+   },
+   {
+    "sub_line_id": "542b0362-4220-4b50-ba6f-9a95bf11f556",
+    "code": "C.07.02",
+    "label": "Construction Taxes and Permits",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.417914+00:00"
+   },
+   {
+    "sub_line_id": "726886a4-620b-4880-a124-e5b3df1c102b",
+    "code": "C.08.01",
+    "label": "Legal and Contract Advisory",
+    "amount_keur": 1666.6666666666667,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.418360+00:00"
+   },
+   {
+    "sub_line_id": "575dd2e3-5faf-4a93-aaea-2421b8d89d36",
+    "code": "C.08.02",
+    "label": "Audit and Reporting",
+    "amount_keur": 1666.6666666666667,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.419141+00:00"
+   },
+   {
+    "sub_line_id": "d61e74d2-9aa3-4932-a3e1-1f194c9c408d",
+    "code": "C.09.01",
+    "label": "Owner's Engineering",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.419759+00:00"
+   },
+   {
+    "sub_line_id": "e6c43c6c-c3bf-452d-8e7a-76b76e98dba1",
+    "code": "C.09.02",
+    "label": "Construction Supervision",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.420198+00:00"
+   },
+   {
+    "sub_line_id": "6e2ef990-2e5d-4c54-9695-8581d7666141",
+    "code": "C.10.01",
+    "label": "Commissioning Tests",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.420665+00:00"
+   },
+   {
+    "sub_line_id": "5043ea5c-ccfe-4720-809a-004394e22ad0",
+    "code": "C.10.02",
+    "label": "Acceptance and Handover",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.421091+00:00"
+   },
+   {
+    "sub_line_id": "a0b40f5e-0a4e-4092-b36c-571687632217",
+    "code": "C.12.01",
+    "label": "Project Controls",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.421543+00:00"
+   },
+   {
+    "sub_line_id": "3143f9a3-3fbe-4ad4-97c9-6342b1a9b7ec",
+    "code": "C.12.02",
+    "label": "Site Administration",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.422073+00:00"
+   },
+   {
+    "sub_line_id": "605b1e04-cdcd-46f7-9a72-28ff3de851ad",
+    "code": "C.13.01",
+    "label": "Construction Contingency",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.422602+00:00"
+   },
+   {
+    "sub_line_id": "73c27be2-2e2c-4d5b-a7c7-3ae0ba937e89",
+    "code": "C.14.01",
+    "label": "Indirect Taxes",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.423674+00:00"
+   },
+   {
+    "sub_line_id": "35c34862-7f6c-45a4-9a82-e6d8f30d2244",
+    "code": "C.14.02",
+    "label": "Statutory Charges",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.424261+00:00"
+   },
+   {
+    "sub_line_id": "529a57f6-689a-49bc-a4c0-417d91c07f3f",
+    "code": "C.15.01",
+    "label": "Development Rights",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.424755+00:00"
+   },
+   {
+    "sub_line_id": "9454ad90-a29d-4480-9da9-f32d97ca6834",
+    "code": "C.15.02",
+    "label": "Acquisition Advisory",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.425224+00:00"
+   },
+   {
+    "sub_line_id": "43dbf4ee-0d4d-486c-8f09-96937e6b4dd5",
+    "code": "C.16.01",
+    "label": "Project Rights",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.425718+00:00"
+   },
+   {
+    "sub_line_id": "187eccb2-f878-47b1-b3f7-bcfb6f27e27f",
+    "code": "C.16.02",
+    "label": "Connection Rights",
+    "amount_keur": 0.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.426170+00:00"
+   }
+  ],
+  "opex_lines": [
+   {
+    "sub_line_id": "c627d434-5177-44b5-917c-e740eb707979",
+    "code": "B.01.01",
+    "label": "Asset Management Contract",
+    "amount_keur": 41.66666666666667,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.426742+00:00"
+   },
+   {
+    "sub_line_id": "d23f866a-dd2f-4c1a-8f6c-09b0146a3ca1",
+    "code": "B.01.02",
+    "label": "Operation Management Contract",
+    "amount_keur": 33.333333333333336,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.427387+00:00"
+   },
+   {
+    "sub_line_id": "6abe11bb-40a5-41da-a691-56d0ebfae976",
+    "code": "B.01.03",
+    "label": "Performance Monitoring",
+    "amount_keur": 26.666666666666668,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.427762+00:00"
+   },
+   {
+    "sub_line_id": "5a77826b-01f7-4294-beaa-a18f126307a9",
+    "code": "B.01.04",
+    "label": "Technical Inspections",
+    "amount_keur": 23.333333333333336,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.428118+00:00"
+   },
+   {
+    "sub_line_id": "c66a55f6-b308-45ec-909f-fbd2478e611d",
+    "code": "B.01.05",
+    "label": "Meteorological / Weather Forecast Service",
+    "amount_keur": 16.666666666666668,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.428465+00:00"
+   },
+   {
+    "sub_line_id": "2091a345-c63d-4bfd-9a2c-0b89cc26cf09",
+    "code": "B.01.06",
+    "label": "SCADA / Monitoring Platform",
+    "amount_keur": 25.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.428811+00:00"
+   },
+   {
+    "sub_line_id": "a8a90ab9-2c16-4f32-a82d-edb37fcb9bee",
+    "code": "B.02.01",
+    "label": "Preventive and Corrective Maintenance",
+    "amount_keur": 26.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.430180+00:00"
+   },
+   {
+    "sub_line_id": "84038b38-f67e-4abb-b708-22819c8dce4f",
+    "code": "B.02.02",
+    "label": "Minor Maintenance",
+    "amount_keur": 10.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.430613+00:00"
+   },
+   {
+    "sub_line_id": "1eea99d9-0e6b-4d3f-88f6-64968da1c222",
+    "code": "B.02.03",
+    "label": "HV Substation / O&M Building Maintenance",
+    "amount_keur": 11.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.430961+00:00"
+   },
+   {
+    "sub_line_id": "1ed8ae01-7480-455a-a719-66a679578cc2",
+    "code": "B.02.04",
+    "label": "Regulatory Inspections",
+    "amount_keur": 9.000000000000002,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.431354+00:00"
+   },
+   {
+    "sub_line_id": "e7ff0bfa-87f4-4f84-82b3-1f0a9365965c",
+    "code": "B.02.05",
+    "label": "HSE Prevention Plan",
+    "amount_keur": 8.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.431745+00:00"
+   },
+   {
+    "sub_line_id": "f8c300bf-17bc-456e-9874-d4608042935b",
+    "code": "B.02.06",
+    "label": "Meteorological Station Maintenance",
+    "amount_keur": 7.000000000000001,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.432185+00:00"
+   },
+   {
+    "sub_line_id": "b757fece-dff7-4119-85ed-5677a8b36125",
+    "code": "B.02.07",
+    "label": "Special Equipment / Vehicle Maintenance",
+    "amount_keur": 8.0,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.432577+00:00"
+   },
+   {
+    "sub_line_id": "b21df835-200a-4712-b8a4-4cc39c5de52b",
+    "code": "B.02.08",
+    "label": "Blade Maintenance",
+    "amount_keur": 14.000000000000002,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.432983+00:00"
+   },
+   {
+    "sub_line_id": "cbf02ec4-e799-412c-9538-d4cd8f586a2d",
+    "code": "B.02.09",
+    "label": "Other Maintenance",
+    "amount_keur": 7.000000000000001,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.433358+00:00"
+   },
+   {
+    "sub_line_id": "1c6f119f-275a-4a14-a3cc-709193cfa2c7",
+    "code": "B.06.01",
+    "label": "Operational Insurance",
+    "amount_keur": 87.5,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.429149+00:00"
+   },
+   {
+    "sub_line_id": "e97aa9cd-8cc1-4af5-a1ad-4d1643dc038d",
+    "code": "B.06.02",
+    "label": "Insurance Administration",
+    "amount_keur": 37.5,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.429647+00:00"
+   },
+   {
+    "sub_line_id": "62d63024-ef63-4e40-992d-dbc935447282",
+    "code": "B.07.01",
+    "label": "Land Lease",
+    "amount_keur": 43.333333333333336,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.433781+00:00"
+   },
+   {
+    "sub_line_id": "10ae820e-af2b-4a1e-af11-c257ad5b78b0",
+    "code": "B.07.02",
+    "label": "Property Taxes and Local Charges",
+    "amount_keur": 23.333333333333336,
+    "inflation_pct": 2.0,
+    "source": "reference_seed",
+    "row_version": "2026-10-30T08:32:59.434303+00:00"
+   }
+  ],
+  "seed_capex_total": 35833.333333333336,
+  "seed_opex_y1_total": 458.33333333333337
+ },
+ "scalar_cells": {
+  "cod_date": {
+   "intended": "2031-07-01",
+   "field_id": "project_setup.technical.cod_date",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "construction_months": {
+   "intended": "18",
+   "field_id": "project_setup.technical.construction_months",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "horizon_years": {
+   "intended": "25",
+   "field_id": "project_setup.technical.horizon_years",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "p50_hours": {
+   "intended": "2800",
+   "field_id": "project_setup.technical.p50_hours",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_ppa_base_tariff": {
+   "intended": "58.00",
+   "field_id": "revenue.ppa.base_tariff",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_ppa_term_years": {
+   "intended": "7",
+   "field_id": "revenue.ppa.term_years",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_ppa_index": {
+   "intended": "2.00",
+   "field_id": "revenue.ppa.index",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_ppa_production_share": {
+   "intended": "55.0",
+   "field_id": "revenue.ppa.production_share",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_ppa_indexation_start_policy": {
+   "intended": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+   "field_id": "revenue.ppa.indexation_policy",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_merchant_price_curve_json": {
+   "intended": "[{\"year\": 2031, \"price_eur_mwh\": 45.00}, {\"year\": 2032, \"price_eur_mwh\": 45.90}, {\"year\": 2033, \"price_eur_mwh\": 46.82}, {\"year\": 2034, \"price_eur_mwh\": 47.75}, {\"year\": 2035, \"price_eur_mwh\": 48.71}, {\"year\": 2036, \"price_eur_mwh\": 49.68}, {\"year\": 2037, \"price_eur_mwh\": 50.68}, {\"year\": 2038, \"price_eur_mwh\": 51.69}, {\"year\": 2039, \"price_eur_mwh\": 52.72}, {\"year\": 2040, \"price_eur_mwh\": 53.78}, {\"year\": 2041, \"price_eur_mwh\": 54.85}, {\"year\": 2042, \"price_eur_mwh\": 55.95}, {\"year\": 2043, \"price_eur_mwh\": 57.07}, {\"year\": 2044, \"price_eur_mwh\": 58.21}, {\"year\": 2045, \"price_eur_mwh\": 59.38}, {\"year\": 2046, \"price_eur_mwh\": 60.56}, {\"year\": 2047, \"price_eur_mwh\": 61.78}, {\"year\": 2048, \"price_eur_mwh\": 63.01}, {\"year\": 2049, \"price_eur_mwh\": 64.27}, {\"year\": 2050, \"price_eur_mwh\": 65.56}, {\"year\": 2051, \"price_eur_mwh\": 66.87}, {\"year\": 2052, \"price_eur_mwh\": 68.20}, {\"year\": 2053, \"price_eur_mwh\": 69.57}, {\"year\": 2054, \"price_eur_mwh\": 70.96}, {\"year\": 2055, \"price_eur_mwh\": 72.38}, {\"year\": 2056, \"price_eur_mwh\": 73.83}]",
+   "field_id": "revenue.merchant.price_curve_json",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_merchant_balancing_pct": {
+   "intended": "4.00",
+   "field_id": "revenue.balancing.merchant_pct",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_balancing_cost_eur_per_mwh": {
+   "intended": "0.00",
+   "field_id": "revenue.balancing.cost_eur_per_mwh",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_co2_enabled": {
+   "intended": "false",
+   "field_id": "revenue.balancing.co2_enabled",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "rev_co2_price_eur_mwh": {
+   "intended": "0.00",
+   "field_id": "revenue.balancing.co2_price_eur_mwh",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "gearing_pct": {
+   "intended": "88.0",
+   "field_id": "debt.senior.gearing_pct",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "interest_rate_pct": {
+   "intended": "6.75",
+   "field_id": "debt.senior.interest_rate_pct",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "tenor_years": {
+   "intended": "12",
+   "field_id": "debt.senior.tenor_years",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  },
+  "target_dscr": {
+   "intended": "1.35",
+   "field_id": "debt.senior.target_dscr",
+   "registry": true,
+   "editable": true,
+   "outcome": "SAVED_VIA_SAVE_ALL",
+   "replayed": false
+  }
+ },
+ "cost_line_plan": {
+  "capex": {
+   "target": 52000.0,
+   "seed_total": 35833.333333333336,
+   "rounding_residual_on_largest": 1e-06,
+   "rule": "PROPORTIONAL_RESCALE_OF_SEEDED_LINES",
+   "lines": [
+    {
+     "code": "C.01.01",
+     "label": "Wind Turbines",
+     "seed": 17500.0,
+     "allocated": 25395.348838
+    },
+    {
+     "code": "C.01.02",
+     "label": "Turbine Supply Agreement Optionals",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.01.03",
+     "label": "Flow Parts",
+     "seed": 2500.0,
+     "allocated": 3627.906977
+    },
+    {
+     "code": "C.01.04",
+     "label": "Procurement Fees",
+     "seed": 2000.0,
+     "allocated": 2902.325581
+    },
+    {
+     "code": "C.01.05",
+     "label": "Logistics and Transport",
+     "seed": 3000.0,
+     "allocated": 4353.488372
+    },
+    {
+     "code": "C.02.01",
+     "label": "Engineering, Procurement and Construction",
+     "seed": 3500.0,
+     "allocated": 5079.069767
+    },
+    {
+     "code": "C.02.02",
+     "label": "Site Civil Works",
+     "seed": 1500.0,
+     "allocated": 2176.744186
+    },
+    {
+     "code": "C.03.01",
+     "label": "Grid Connection Works",
+     "seed": 1625.0,
+     "allocated": 2358.139535
+    },
+    {
+     "code": "C.03.02",
+     "label": "Interconnection Studies and Testing",
+     "seed": 875.0,
+     "allocated": 1269.767442
+    },
+    {
+     "code": "C.04.01",
+     "label": "Operations Readiness",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.04.02",
+     "label": "Training and Handover",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.05.01",
+     "label": "Balance of Plant",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.05.02",
+     "label": "Construction Logistics",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.06.01",
+     "label": "Construction All-Risk Insurance",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.06.02",
+     "label": "Liability and Commissioning Cover",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.07.01",
+     "label": "Land Access and Lease",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.07.02",
+     "label": "Construction Taxes and Permits",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.08.01",
+     "label": "Legal and Contract Advisory",
+     "seed": 1666.6666666666667,
+     "allocated": 2418.604651
+    },
+    {
+     "code": "C.08.02",
+     "label": "Audit and Reporting",
+     "seed": 1666.6666666666667,
+     "allocated": 2418.604651
+    },
+    {
+     "code": "C.09.01",
+     "label": "Owner's Engineering",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.09.02",
+     "label": "Construction Supervision",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.10.01",
+     "label": "Commissioning Tests",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.10.02",
+     "label": "Acceptance and Handover",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.12.01",
+     "label": "Project Controls",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.12.02",
+     "label": "Site Administration",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.13.01",
+     "label": "Construction Contingency",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.14.01",
+     "label": "Indirect Taxes",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.14.02",
+     "label": "Statutory Charges",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.15.01",
+     "label": "Development Rights",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.15.02",
+     "label": "Acquisition Advisory",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.16.01",
+     "label": "Project Rights",
+     "seed": 0.0,
+     "allocated": 0.0
+    },
+    {
+     "code": "C.16.02",
+     "label": "Connection Rights",
+     "seed": 0.0,
+     "allocated": 0.0
+    }
+   ]
+  },
+  "opex": {
+   "target": 1150.0,
+   "seed_total": 458.33333333333337,
+   "rounding_residual_on_largest": -2e-06,
+   "rule": "PROPORTIONAL_RESCALE_OF_SEEDED_LINES",
+   "lines": [
+    {
+     "code": "B.01.01",
+     "label": "Asset Management Contract",
+     "seed": 41.66666666666667,
+     "allocated": 104.545455
+    },
+    {
+     "code": "B.01.02",
+     "label": "Operation Management Contract",
+     "seed": 33.333333333333336,
+     "allocated": 83.636364
+    },
+    {
+     "code": "B.01.03",
+     "label": "Performance Monitoring",
+     "seed": 26.666666666666668,
+     "allocated": 66.909091
+    },
+    {
+     "code": "B.01.04",
+     "label": "Technical Inspections",
+     "seed": 23.333333333333336,
+     "allocated": 58.545455
+    },
+    {
+     "code": "B.01.05",
+     "label": "Meteorological / Weather Forecast Service",
+     "seed": 16.666666666666668,
+     "allocated": 41.818182
+    },
+    {
+     "code": "B.01.06",
+     "label": "SCADA / Monitoring Platform",
+     "seed": 25.0,
+     "allocated": 62.727273
+    },
+    {
+     "code": "B.02.01",
+     "label": "Preventive and Corrective Maintenance",
+     "seed": 26.0,
+     "allocated": 65.236364
+    },
+    {
+     "code": "B.02.02",
+     "label": "Minor Maintenance",
+     "seed": 10.0,
+     "allocated": 25.090909
+    },
+    {
+     "code": "B.02.03",
+     "label": "HV Substation / O&M Building Maintenance",
+     "seed": 11.0,
+     "allocated": 27.6
+    },
+    {
+     "code": "B.02.04",
+     "label": "Regulatory Inspections",
+     "seed": 9.000000000000002,
+     "allocated": 22.581818
+    },
+    {
+     "code": "B.02.05",
+     "label": "HSE Prevention Plan",
+     "seed": 8.0,
+     "allocated": 20.072727
+    },
+    {
+     "code": "B.02.06",
+     "label": "Meteorological Station Maintenance",
+     "seed": 7.000000000000001,
+     "allocated": 17.563636
+    },
+    {
+     "code": "B.02.07",
+     "label": "Special Equipment / Vehicle Maintenance",
+     "seed": 8.0,
+     "allocated": 20.072727
+    },
+    {
+     "code": "B.02.08",
+     "label": "Blade Maintenance",
+     "seed": 14.000000000000002,
+     "allocated": 35.127273
+    },
+    {
+     "code": "B.02.09",
+     "label": "Other Maintenance",
+     "seed": 7.000000000000001,
+     "allocated": 17.563636
+    },
+    {
+     "code": "B.06.01",
+     "label": "Operational Insurance",
+     "seed": 87.5,
+     "allocated": 219.545453
+    },
+    {
+     "code": "B.06.02",
+     "label": "Insurance Administration",
+     "seed": 37.5,
+     "allocated": 94.090909
+    },
+    {
+     "code": "B.07.01",
+     "label": "Land Lease",
+     "seed": 43.333333333333336,
+     "allocated": 108.727273
+    },
+    {
+     "code": "B.07.02",
+     "label": "Property Taxes and Local Charges",
+     "seed": 23.333333333333336,
+     "allocated": 58.545455
+    }
+   ]
+  }
+ },
+ "cost_line_edits_count": 29,
+ "cost_lines_outcome": "SAVED_VIA_SAVE_ALL",
+ "cost_lines_saved": {
+  "cells": 0,
+  "contracts": 0,
+  "cost_lines": 29
+ },
+ "after_save": {
+  "draft_snapshot": {
+   "active_project": "on07-wnd-02-parity-wind-stress-covenant",
+   "capacity_factor": "34.25",
+   "capacity_mw": "40",
+   "cod_date": "2031-07-01",
+   "construction_months": "18",
+   "country_market": "XB",
+   "gearing_pct": "88.0",
+   "horizon_years": "25",
+   "interest_rate_pct": "6.75",
+   "operating_hours_p90_10y": 2700.0,
+   "operating_hours_p99_1y": null,
+   "opex_y1_keur": "458.333333333",
+   "p50_hours": "2800.0",
+   "ppa_term_years": "12",
+   "project_name": "ON07 WND-02 Parity Wind Stress Covenant",
+   "project_origin": "user_created",
+   "project_type": "Wind",
+   "rev_balancing_cost_eur_per_mwh": "0.0",
+   "rev_co2_enabled": "false",
+   "rev_co2_price_eur_mwh": "0.0",
+   "rev_merchant_balancing_pct": "4.0",
+   "rev_merchant_price_curve_json": "[{\"year\": 2031, \"price_eur_mwh\": 45.00}, {\"year\": 2032, \"price_eur_mwh\": 45.90}, {\"year\": 2033, \"price_eur_mwh\": 46.82}, {\"year\": 2034, \"price_eur_mwh\": 47.75}, {\"year\": 2035, \"price_eur_mwh\": 48.71}, {\"year\": 2036, \"price_eur_mwh\": 49.68}, {\"year\": 2037, \"price_eur_mwh\": 50.68}, {\"year\": 2038, \"price_eur_mwh\": 51.69}, {\"year\": 2039, \"price_eur_mwh\": 52.72}, {\"year\": 2040, \"price_eur_mwh\": 53.78}, {\"year\": 2041, \"price_eur_mwh\": 54.85}, {\"year\": 2042, \"price_eur_mwh\": 55.95}, {\"year\": 2043, \"price_eur_mwh\": 57.07}, {\"year\": 2044, \"price_eur_mwh\": 58.21}, {\"year\": 2045, \"price_eur_mwh\": 59.38}, {\"year\": 2046, \"price_eur_mwh\": 60.56}, {\"year\": 2047, \"price_eur_mwh\": 61.78}, {\"year\": 2048, \"price_eur_mwh\": 63.01}, {\"year\": 2049, \"price_eur_mwh\": 64.27}, {\"year\": 2050, \"price_eur_mwh\": 65.56}, {\"year\": 2051, \"price_eur_mwh\": 66.87}, {\"year\": 2052, \"price_eur_mwh\": 68.20}, {\"year\": 2053, \"price_eur_mwh\": 69.57}, {\"year\": 2054, \"price_eur_mwh\": 70.96}, {\"year\": 2055, \"price_eur_mwh\": 72.38}, {\"year\": 2056, \"price_eur_mwh\": 73.83}]",
+   "rev_ppa_base_tariff": "58.0",
+   "rev_ppa_index": "2.0",
+   "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+   "rev_ppa_production_share": "55.0",
+   "rev_ppa_term_years": "7",
+   "scenario": "Base",
+   "target_dscr": "1.35",
+   "tariff_eur_mwh": "60.0",
+   "tax_template": "Generic Tax Template",
+   "template_source": "generic_wind_reference",
+   "tenor_years": "12",
+   "total_capex_keur": "35833.3333333"
+  },
+  "dirty": true,
+  "unknown_keys": [
+   "_finval_interest_rate_origin",
+   "_finval_interest_rate_unit",
+   "_reference_seed_profile",
+   "operating_hours_p90_10y",
+   "tax_template"
+  ],
+  "coercion_errors": []
+ },
+ "effective_before_folds": {
+  "capacity_mw": 40.0,
+  "p50_hours": 2800.0,
+  "operating_hours_p90_10y": 2520.0,
+  "operating_hours_p99_1y": 2240.0,
+  "pv_degradation": 0.0,
+  "cod_date": "2031-07-01",
+  "construction_months": 18,
+  "financial_close": "2030-01-01",
+  "horizon_years": 25,
+  "rev_ppa_base_tariff": 58.0,
+  "rev_ppa_term_years": 7,
+  "rev_ppa_index": 0.02,
+  "rev_ppa_production_share": 0.55,
+  "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+  "rev_balancing_cost_eur_per_mwh": 0.0,
+  "rev_co2_enabled": false,
+  "rev_co2_price_eur_mwh": 0.0,
+  "total_capex_keur": 37000.0,
+  "gearing_pct": 0.88,
+  "tenor_years": 12,
+  "target_dscr": 1.35,
+  "cit_rate_pct": 0.25,
+  "loss_carryforward_years": 5,
+  "opex_y1_keur": 458.333333333,
+  "interest_rate_pct": [
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675
+  ],
+  "rev_merchant_curve": [
+   45.0,
+   45.9,
+   46.82,
+   47.75,
+   48.71,
+   49.68,
+   50.68,
+   51.69,
+   52.72,
+   53.78,
+   54.85,
+   55.95,
+   57.07,
+   58.21,
+   59.38,
+   60.56,
+   61.78,
+   63.01,
+   64.27,
+   65.56,
+   66.87,
+   68.2,
+   69.57,
+   70.96,
+   72.38,
+   73.83
+  ],
+  "rev_merchant_balancing_pct": [
+   0.04,
+   8.0
+  ]
+ },
+ "effective_inputs": {
+  "capacity_mw": 40.0,
+  "p50_hours": 2800.0,
+  "operating_hours_p90_10y": 2520.0,
+  "operating_hours_p99_1y": 2240.0,
+  "pv_degradation": 0.0,
+  "cod_date": "2031-07-01",
+  "construction_months": 18,
+  "financial_close": "2030-01-01",
+  "horizon_years": 25,
+  "rev_ppa_base_tariff": 58.0,
+  "rev_ppa_term_years": 7,
+  "rev_ppa_index": 0.02,
+  "rev_ppa_production_share": 0.55,
+  "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+  "rev_balancing_cost_eur_per_mwh": 0.0,
+  "rev_co2_enabled": false,
+  "rev_co2_price_eur_mwh": 0.0,
+  "total_capex_keur": 52000.0,
+  "gearing_pct": 0.88,
+  "tenor_years": 12,
+  "target_dscr": 1.35,
+  "cit_rate_pct": 0.25,
+  "loss_carryforward_years": 5,
+  "opex_y1_keur": 1150.0,
+  "interest_rate_pct": [
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675,
+   0.0675
+  ],
+  "rev_merchant_curve": [
+   45.0,
+   45.9,
+   46.82,
+   47.75,
+   48.71,
+   49.68,
+   50.68,
+   51.69,
+   52.72,
+   53.78,
+   54.85,
+   55.95,
+   57.07,
+   58.21,
+   59.38,
+   60.56,
+   61.78,
+   63.01,
+   64.27,
+   65.56,
+   66.87,
+   68.2,
+   69.57,
+   70.96,
+   72.38,
+   73.83
+  ],
+  "rev_merchant_balancing_pct": [
+   0.04,
+   8.0
+  ]
+ },
+ "capex_items_after_fold": null,
+ "opex_items_after_fold": [
+  {
+   "name": "B.01.01",
+   "y1": 104.545455,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.01.02",
+   "y1": 83.636364,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.01.03",
+   "y1": 66.909091,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.01.04",
+   "y1": 58.545455,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.01.05",
+   "y1": 41.818182,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.01.06",
+   "y1": 62.727273,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.01",
+   "y1": 65.236364,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.02",
+   "y1": 25.090909,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.03",
+   "y1": 27.6,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.04",
+   "y1": 22.581818,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.05",
+   "y1": 20.072727,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.06",
+   "y1": 17.563636,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.07",
+   "y1": 20.072727,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.08",
+   "y1": 35.127273,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.02.09",
+   "y1": 17.563636,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.06.01",
+   "y1": 219.545453,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.06.02",
+   "y1": 94.090909,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.07.01",
+   "y1": 108.727273,
+   "infl": 0.02,
+   "pct": 0.0
+  },
+  {
+   "name": "B.07.02",
+   "y1": 58.545455,
+   "infl": 0.02,
+   "pct": 0.0
+  }
+ ],
+ "model_input_digest": "c95b6e898ff58db2ae07599717c9a27ed7c48b5a76416170ce32dc17834fe5d6",
+ "input_fingerprint": "c95b6e898ff58db2ae07599717c9a27ed7c48b5a76416170ce32dc17834fe5d6",
+ "intended_vs_effective": {
+  "cod_date": {
+   "verdict": "MATCH",
+   "detail": "effective=2031-07-01",
+   "intended": "2031-07-01"
+  },
+  "construction_months": {
+   "verdict": "MATCH",
+   "detail": "effective=18",
+   "intended": "18"
+  },
+  "horizon_years": {
+   "verdict": "MATCH",
+   "detail": "effective=25",
+   "intended": "25"
+  },
+  "capacity_mw": {
+   "verdict": "MATCH",
+   "detail": "effective=40.0",
+   "intended": "40.0"
+  },
+  "p50_hours": {
+   "verdict": "MATCH",
+   "detail": "effective=2800.0",
+   "intended": "2800"
+  },
+  "operating_hours_p90_10y": {
+   "verdict": "MATCH",
+   "detail": "effective=2520.0",
+   "intended": "2520"
+  },
+  "rev_ppa_base_tariff": {
+   "verdict": "MATCH",
+   "detail": "effective=58.0",
+   "intended": "58.00"
+  },
+  "rev_ppa_term_years": {
+   "verdict": "MATCH",
+   "detail": "effective=7",
+   "intended": "7"
+  },
+  "rev_ppa_index": {
+   "verdict": "MATCH",
+   "detail": "effective=0.02",
+   "intended": "2.00"
+  },
+  "rev_ppa_production_share": {
+   "verdict": "MATCH",
+   "detail": "effective=0.55",
+   "intended": "55.0"
+  },
+  "rev_ppa_indexation_start_policy": {
+   "verdict": "MATCH",
+   "detail": "effective=FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+   "intended": "FIRST_FULL_CALENDAR_YEAR_AS_BASE"
+  },
+  "rev_merchant_balancing_pct": {
+   "verdict": "MATCH",
+   "detail": "effective(pv_fraction, wind_eur_mwh)=[0.04, 8.0]; Solar reads balancing_cost_pv; Wind path unconfirmed",
+   "intended": "4.00"
+  },
+  "rev_balancing_cost_eur_per_mwh": {
+   "verdict": "MATCH",
+   "detail": "effective=0.0",
+   "intended": "0.00"
+  },
+  "rev_co2_enabled": {
+   "verdict": "MATCH",
+   "detail": "effective=False",
+   "intended": "false"
+  },
+  "rev_co2_price_eur_mwh": {
+   "verdict": "MATCH",
+   "detail": "effective=0.0",
+   "intended": "0.00"
+  },
+  "total_capex_keur": {
+   "verdict": "MATCH",
+   "detail": "effective=52000.0",
+   "intended": "52000"
+  },
+  "opex_y1_keur": {
+   "verdict": "MATCH",
+   "detail": "effective=1150.0",
+   "intended": "1150"
+  },
+  "gearing_pct": {
+   "verdict": "MATCH",
+   "detail": "effective=0.88",
+   "intended": "88.0"
+  },
+  "interest_rate_pct": {
+   "verdict": "MATCH",
+   "detail": "effective=[0.0675, 0.0675, 0.0675]",
+   "intended": "6.75"
+  },
+  "tenor_years": {
+   "verdict": "MATCH",
+   "detail": "effective=12",
+   "intended": "12"
+  },
+  "target_dscr": {
+   "verdict": "MATCH",
+   "detail": "effective=1.35",
+   "intended": "1.35"
+  },
+  "rev_merchant_price_curve_json": {
+   "verdict": "MATCH",
+   "intended": "26 pts",
+   "detail": "effective pts=26"
+  }
+ },
+ "error_type": "CleanProductionRunUnavailable",
+ "error": "PR8_CLEAN_ENGINE_FAIL_CLOSED: ValueError: SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED: maturity_period_index=57",
+ "environment": {
+  "main_sha": "db504f6408cb456c617c9342a1ffa202ee455283",
+  "tree": "9b96717bae39a4dbb496879c7e6c028e675492d3",
+  "python": "3.13.17",
+  "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+  "db": "none (in-process engine call, no persistence)",
+  "network": "none"
+ }
+}

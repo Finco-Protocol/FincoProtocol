@@ -1,0 +1,17 @@
+fixture_id,fixture_key,original,revised,reason
+WND-02-R,construction_months,18,20,"reference-consistent SHL maturity grid (reference Wind = 20 months / 27 y, stored SHL maturity index 57)"
+WND-02-R,financial_close,2030-01-01,derived: cod_date - 20 months = 2029-11-01,derived from the two changes above
+WND-02-R,horizon_years,25,27,same
+WND-02-R,total_capex_keur,52000,36000,"SHL repayability precondition: boundary ~38.4 MEUR (bisection); 36,000 chosen with margin"
+SOL-01,operating_hours_p90_10y,EXPLICIT (v1 schema field),DERIVED_NOT_SETTABLE on user route (= 0.9*P50),no registry field; p90_probe.json
+SOL-01,total_capex_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+SOL-01,opex_y1_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+SOL-02,operating_hours_p90_10y,EXPLICIT (v1 schema field),DERIVED_NOT_SETTABLE on user route (= 0.9*P50),no registry field; p90_probe.json
+SOL-02,total_capex_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+SOL-02,opex_y1_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+WND-01,operating_hours_p90_10y,EXPLICIT (v1 schema field),DERIVED_NOT_SETTABLE on user route (= 0.9*P50),no registry field; p90_probe.json
+WND-01,total_capex_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+WND-01,opex_y1_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+WND-02,operating_hours_p90_10y,EXPLICIT (v1 schema field),DERIVED_NOT_SETTABLE on user route (= 0.9*P50),no registry field; p90_probe.json
+WND-02,total_capex_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
+WND-02,opex_y1_keur,source_class=EXPLICIT (totals),EXPLICIT_VIA_COST_LINES (totals derived from lines),React inputs contract: capex_opex_editable=False
