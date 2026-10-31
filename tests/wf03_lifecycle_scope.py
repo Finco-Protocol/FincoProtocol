@@ -164,11 +164,32 @@ RESEARCH_PATHS=frozenset((
     'research/on07_correction_a/probes/wnd02_levers.json',
     'research/on07_correction_a/probes/wnd02_rederived.json',
 ))
+# FIN-TRUTH-B1: literal source/test/document layer; no additional financial authority.
+B1_BASE='ebf1f15113ec95d69d29e8aa4e4635686dd1f39a'
+B1_CORRECTION_B_BASE='861ff18f21764a05f2fc739de92bd1ac62538f34'
+B1_CORRECTION_B_TREE='42c9b4659cac9a739abd0cc248d67a1252ebb5c4'
+B1_MANIFEST='docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json'
+B1_PATHS=frozenset((
+    B1_MANIFEST,
+    'tests/fin_truth_b1/test_sensitivity_source.py',
+    'tests/fin_truth_b1/test_source_successor.py',
+    'docs/financial_validation/fin_truth_b1/README.md',
+    'tests/test_model_rc7_capex_binding_surfaces.py',
+))
+B1_REPINS=frozenset((
+    'main_web.py', 'app/services/sensitivity_service.py', 'tests/wf03_lifecycle_scope.py',
+    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json',
+))
+OWNED_PATHS=OWNED_PATHS|B1_PATHS
+
+
 RESEARCH_DIRECTORIES=('research/on07_baseline_post399/','research/on07_correction_a/')
 assert all(p.startswith(RESEARCH_DIRECTORIES) for p in RESEARCH_PATHS)
 OWNED_PATHS=OWNED_PATHS|RESEARCH_PATHS
 WF04_MANIFEST='docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'   # introduced after BASE: pinned by blob, no BASE-layer history
-PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p!=WF04_MANIFEST))
+PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p not in {WF04_MANIFEST,B1_MANIFEST}))
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
 # The ONLY workflow files this cohort may own: the Owner-directed 2x timeout successor (Correction E). Any other .github/ path stays unowned.
 CI_TIMEOUT_WORKFLOWS=frozenset({'.github/workflows/ci_public_job.yml','.github/workflows/ci_v3_required_job.yml','.github/workflows/public_safety_and_smoke.yml'})
@@ -211,6 +232,43 @@ def manifest(repo=None,ref=None):
                         and data.get('parent')==PARENT and data.get('parent_tree')==PARENT_TREE) else {}
     except (OSError,ValueError,subprocess.CalledProcessError):
         return {}
+
+
+def _b1_layer_ok(root, ref, pins, data):
+    """Preserve pre-B1 and reviewed B1 layers; admit the finite Correction B."""
+    old=json.loads(_baseline_bytes(root, MANIFEST, B1_BASE, _read, _git))
+    previous=json.loads(_baseline_bytes(root, MANIFEST, B1_CORRECTION_B_BASE, _read, _git))
+    _git(root,'merge-base','--is-ancestor',B1_CORRECTION_B_BASE,ref or 'HEAD')
+    if _git(root,'rev-parse',B1_CORRECTION_B_BASE+'^{tree}').decode().strip()!=B1_CORRECTION_B_TREE:
+        return False
+    seal=json.loads(_read(root, B1_MANIFEST, ref))
+    if seal.get('schema_version')!='FIN_TRUTH_B1_EXACT_SOURCE_V1' or seal.get('base')!=B1_BASE:
+        return False
+    if seal.get('historical_source_blobs')!={B1_BASE:old['source_blobs']}:
+        return False
+    if seal.get('correction_b_history')!={B1_CORRECTION_B_BASE:previous['source_blobs']}:
+        return False
+    if set(pins)!=set(old['source_blobs'])|B1_PATHS:
+        return False
+    if any(pins[p]!=value and p not in B1_REPINS for p,value in old['source_blobs'].items()):
+        return False
+    if any(pins[p]!=value and p not in B1_REPINS|B1_PATHS for p,value in previous['source_blobs'].items()):
+        return False
+    if any(data.get(k)!=v for k,v in old.items() if k not in ('source_blobs','path_ledger')):
+        return False
+    ledger=data.get('path_ledger',[])
+    previous_ledger=previous['path_ledger']
+    additions=ledger[len(previous_ledger):]
+    delta=B1_REPINS|B1_PATHS
+    if (ledger[:len(previous_ledger)]!=previous_ledger or len(additions)!=len(delta)
+            or {row.get('path') for row in additions}!=delta):
+        return False
+    if any(row.get('before_blob')!=previous['source_blobs'].get(row['path'])
+           or row.get('after_blob')!=pins[row['path']] for row in additions):
+        return False
+    expected=(B1_PATHS-{B1_MANIFEST})|{'main_web.py','app/services/sensitivity_service.py'}
+    reviewed=seal.get('source_blobs',{})
+    return set(reviewed)==expected and all(pins.get(p)==v for p,v in reviewed.items())
 
 
 def _historical_maps_ok(root,ref,pins,data):
@@ -271,7 +329,7 @@ def _exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',BASE,PARENT)
         if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
         if any(_blob(_read(root,p,ref))!=sha for p,sha in pins.items()): return False
-        return _historical_maps_ok(root,ref,pins,data)
+        return _historical_maps_ok(root,ref,pins,data) and _b1_layer_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
         return False
 

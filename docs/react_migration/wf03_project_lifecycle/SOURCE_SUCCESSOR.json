@@ -99,7 +99,7 @@
     "app/services/rate_shock.py": "dffd53601babebfc137db70848b919ee023c3ecd",
     "app/services/run_service.py": "405bc98e3667a64115a05142f59917fd7a83d424",
     "app/services/save_run_service.py": "ba270641b4ba71a0ad6def3b98af29db2044deda",
-    "app/services/sensitivity_service.py": "b0e15a0f8b9568ef16d9f06d35c640a583617b00",
+    "app/services/sensitivity_service.py": "c9e0204ee0bc46ae82fa9f1eaf392931e86551a5",
     "app/templates/partials/credit_summary.html": "3f8bf5711daf98de5a695a8ba3c73cd503dd31df",
     "app/templates/partials/scenario_sensitivity.html": "173805a0c06e64c056e058a2e5a01a6a1a983aa1",
     "app/trust_readiness/registry.py": "ff6e97a71a3abd244e9802bbb50d095b916aa0f0",
@@ -115,10 +115,10 @@
     "docs/ci_v3/incidents/pr400_performance/TIMING_LEDGER.md": "d211427eb3505242156395dca212f20c1df9848e",
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "0b264cdd00de3a4ad2144b5d48f1bbe7e803071c",
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
-    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "72df7f4166257e778da562cf826a8b33ba9dc812",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "46a3935141ad287cf8b025f720b41c3f33f9ed01",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "9794f49ca229926c35aa077e1cfb09e3f1d05b89",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "53d62e4a0f01991018610e5c84c2f08128db1748",
     "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "1ca7285faa38a5da724d891a36134abc61a3041f",
     "docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json": "70ba41995ee7744fca9f3e86a63f5921a3b5da66",
     "docs/readiness/02_data_handling.md": "cc6695cb145fd212fac48e83022c69ba79d991ad",
     "docs/readiness/06_retention_and_deletion.md": "ac4c6ca654cb2c429470f5626159d1354e6b51cf",
@@ -128,7 +128,7 @@
     "frontend/src/app/library/types.ts": "68c961b3d310f3906f8139a0409694a8ab4738e7",
     "frontend/src/app/newProject/NewProjectWizard.tsx": "2fb78750c5f03e951e593ab8ec199b102868c451",
     "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
-    "main_web.py": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
+    "main_web.py": "750700f59cea9c93662fe8b9a48566f989c93daf",
     "research/on07_baseline_post399/IMPLEMENTATION_GAP_SHORTLIST.md": "9f226f7e8ea3f225f78e451bdd51b7e0fa59ea5d",
     "research/on07_baseline_post399/POST400_LIVE_PARITY_RUNBOOK.md": "635ec8640b616ead24c2f3a00b29fb8125f7fad0",
     "research/on07_baseline_post399/README_FIRST.md": "6210188b641bb80c39d3a15d2964c2bf68d5ca16",
@@ -239,13 +239,18 @@
     "tests/test_wf07_revenue_workspace.py": "b5eaa7ebad9d4efe2a17488de2b6ad76ad8ce434",
     "tests/test_wsv2_core_scope.py": "493738c3ea0b23a491493b8109bb504f632eb1de",
     "tests/wf03_fixture_seams.py": "32421c20f12db599592c0b2f7998e5b10f8c90fa",
-    "tests/wf03_lifecycle_scope.py": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
+    "tests/wf03_lifecycle_scope.py": "92f9cb88b48e56da3e40142b38750c6f56940b70",
     "tests/wf04_scope.py": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
     "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
     "tools/ci_v3_container.py": "6dcbc562235503b005d571b1d5a9fb43dd4a219c",
     "tools/ci_v3_hosted_transport.py": "23d73334fc9a163e68d76404abf36f18065251d0",
     "tools/ci_v3_production.py": "741a23af65a910f0f3bead213cc60af5f6142a84",
-    "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee"
+    "tools/ci_v3_source_reference.py": "5b19bb8669b4bf89fd54c6ca9be3716fdef39cee",
+    "tests/fin_truth_b1/test_source_successor.py": "488eb62c3cba3c2c25cc67816d345ed97d1095d7",
+    "tests/fin_truth_b1/test_sensitivity_source.py": "ff03220a622d50a0be9ebca3b97075e407da71f9",
+    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "2462d6735af5a9f998012802e7f115877a29666f",
+    "docs/financial_validation/fin_truth_b1/README.md": "00d6c0cf620cabe4cfe9a2db6ceca8275d4478fb",
+    "tests/test_model_rc7_capex_binding_surfaces.py": "f69bfa99c101d7463c4c44ca797e46c6f538158c"
   },
   "predecessor_manifests": {
     "docs/financial_validation/fin_v2_3/SOURCE_SUCCESSOR.json": "c29cce15ffbc73d429627f65275da4ad243678fe",
@@ -2279,6 +2284,174 @@
       "negative_test": "tests/test_wf03_lifecycle_scope.py::test_every_owned_byte_and_missing_path_fail_closed",
       "rationale": "FINCO PR #400 owner-directed incident resolution 2026-10-30 (CI V3 artifact attempt integrity): run 41099667692 attempt 2 workers selected attempt 1 baseline-only plan 12999360429 over attempt 2 plan 12998263477; CI-only; independent review still required",
       "successor": "ci-artifact-attempt"
+    },
+    {
+      "path": "app/services/sensitivity_service.py",
+      "before_blob": "b0e15a0f8b9568ef16d9f06d35c640a583617b00",
+      "after_blob": "1b45d91cbfcb4d732daa5e7b272309ab186bdbe3",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/fin_truth_b1/README.md",
+      "before_blob": null,
+      "after_blob": "f120a635bae51c81209debbc45797a1cbd422251",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
+      "before_blob": null,
+      "after_blob": "0f109f3772fd515535ed1eed2f133e66d71d19fe",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "72df7f4166257e778da562cf826a8b33ba9dc812",
+      "after_blob": "d9bb5f2849afc781a0c5f3e3a3f7ba2f076c53a4",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "46a3935141ad287cf8b025f720b41c3f33f9ed01",
+      "after_blob": "d8cd3e8c77d65668b834abb1da8302315dfc6973",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
+      "after_blob": "ac233fb7c1222450f10f2add6a0f455db7c56a46",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "main_web.py",
+      "before_blob": "ba43119306e279a5a4e08a44f3a718ec5062b2f5",
+      "after_blob": "9b9066144306b501afd187237be106696e859132",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/fin_truth_b1/test_sensitivity_source.py",
+      "before_blob": null,
+      "after_blob": "24370aa7481c3262f363bea8bc8bf2043bd1cfcb",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/fin_truth_b1/test_source_successor.py",
+      "before_blob": null,
+      "after_blob": "447c947ae30d21d50464dba3e04ed70fdf9f4290",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
+      "after_blob": "383fc8ae8af17dc66bdfaec60e7a754e98e893bf",
+      "entry_points": [],
+      "invariant": "FIN-TRUTH-B1 finite source provenance/export/units successor; no engine or numerical policy change",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "app/services/sensitivity_service.py",
+      "before_blob": "1b45d91cbfcb4d732daa5e7b272309ab186bdbe3",
+      "after_blob": "c9e0204ee0bc46ae82fa9f1eaf392931e86551a5",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/fin_truth_b1/README.md",
+      "before_blob": "f120a635bae51c81209debbc45797a1cbd422251",
+      "after_blob": "00d6c0cf620cabe4cfe9a2db6ceca8275d4478fb",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
+      "before_blob": "0f109f3772fd515535ed1eed2f133e66d71d19fe",
+      "after_blob": "2462d6735af5a9f998012802e7f115877a29666f",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "before_blob": "d9bb5f2849afc781a0c5f3e3a3f7ba2f076c53a4",
+      "after_blob": "9794f49ca229926c35aa077e1cfb09e3f1d05b89",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "before_blob": "d8cd3e8c77d65668b834abb1da8302315dfc6973",
+      "after_blob": "53d62e4a0f01991018610e5c84c2f08128db1748",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "before_blob": "ac233fb7c1222450f10f2add6a0f455db7c56a46",
+      "after_blob": "1ca7285faa38a5da724d891a36134abc61a3041f",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "main_web.py",
+      "before_blob": "9b9066144306b501afd187237be106696e859132",
+      "after_blob": "750700f59cea9c93662fe8b9a48566f989c93daf",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/fin_truth_b1/test_sensitivity_source.py",
+      "before_blob": "24370aa7481c3262f363bea8bc8bf2043bd1cfcb",
+      "after_blob": "ff03220a622d50a0be9ebca3b97075e407da71f9",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/fin_truth_b1/test_source_successor.py",
+      "before_blob": "447c947ae30d21d50464dba3e04ed70fdf9f4290",
+      "after_blob": "488eb62c3cba3c2c25cc67816d345ed97d1095d7",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/test_model_rc7_capex_binding_surfaces.py",
+      "before_blob": null,
+      "after_blob": "f69bfa99c101d7463c4c44ca797e46c6f538158c",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
+    },
+    {
+      "path": "tests/wf03_lifecycle_scope.py",
+      "before_blob": "383fc8ae8af17dc66bdfaec60e7a754e98e893bf",
+      "after_blob": "92f9cb88b48e56da3e40142b38750c6f56940b70",
+      "entry_points": [],
+      "invariant": "Owner-authorized FIN-TRUTH-B1 Correction B: bind monthly profiles after sensitivity shocks; preserve reviewed B1 history and all rejection controls",
+      "negative_test": "tests/fin_truth_b1/test_source_successor.py::test_b1_undeclared_or_corrupt_layer_is_not_admitted"
     }
   ],
   "true_blank": {
