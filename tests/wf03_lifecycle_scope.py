@@ -72,6 +72,9 @@ OWNED_PATHS=frozenset((
     # Financial Owner approval 2026-10-30 (three finite exact-pin successors): the D-029 browser-identity and RC-M governance tests admit only the exact
     # WF-03 browser names / router blob; tests/test_rcux_governance.py (already owned) admits only the three exact WF-03 CI workflow pins.
     'tests/test_model_mutation_security_successor.py', 'tests/test_rcm_governance.py',
+    # Post-#400 performance layer (Financial Owner approval 2026-10-30, separate Draft PR): WS-2 exact check memoised once per outer call + its evidence docs.
+    'docs/ci_v3/incidents/pr400_performance/ROOT_CAUSE.md', 'docs/ci_v3/incidents/pr400_performance/TIMING_LEDGER.md',
+    'docs/ci_v3/incidents/pr400_performance/FIX_AND_VALIDATION.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',
