@@ -263,3 +263,23 @@ def test_preexisting_legacy_factory_selector_row_keeps_disclosed_alias_contract(
         assert response.status_code==200
         assert response.headers['x-finco-sensitivity-basis']=='EXPLICIT_FACTORY_ALIAS'
     assert dump(legacy)==before
+
+
+def test_archiving_the_active_scenario_during_calculation_discards_export(legacy,monkeypatch):
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import get_or_create_base_case_scenario, select_scenario, archive_scenario
+    record=legacy.create('solar')
+    ws=get_workspace_state(OWNER,record.project_id)
+    base=get_or_create_base_case_scenario(user_id=OWNER,project_id=record.project_id,
+        project_code=record.project_code,project_name=record.project_name,project_type=record.project_type,
+        source_project_template=record.template_source,base_input_set=dict(ws.draft_snapshot),governance_state={})
+    assert select_scenario(OWNER,record.project_id,base.scenario_id)
+    original=S.run_sensitivity
+    def concurrent_archive(*args,**kwargs):
+        result=original(*args,**kwargs)
+        assert archive_scenario(OWNER,base.scenario_id)
+        return result
+    monkeypatch.setattr(S,'run_sensitivity',concurrent_archive)
+    response=legacy.client.get(EXPORT,params=dict(project=record.project_code,
+        scenario_id=base.scenario_id,shocks='capex',levels='0'))
+    assert response.status_code==409 and response.json()['state']=='SENSITIVITY_SOURCE_CHANGED'

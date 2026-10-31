@@ -190,9 +190,10 @@ class SensitivitySource:
     def validate_current(self):
         if self.context is not None:
             from app.v2.post_run_context import PostRunContextChanged
+            from app.workbook.workbook_identity import WorkbookIdentityError
             try:
                 self.context.validate_current()
-            except (PostRunContextChanged, PermissionError, ValueError) as exc:
+            except (PostRunContextChanged, WorkbookIdentityError, PermissionError, ValueError) as exc:
                 raise SensitivitySourceError("SENSITIVITY_SOURCE_CHANGED") from exc
 
     @property

@@ -3,11 +3,11 @@
   "base": "ebf1f15113ec95d69d29e8aa4e4635686dd1f39a",
   "authorization": "Owner-submitted FIN-TRUTH-B1 implementation scope, 2026-10-31; source provenance/export/units only; no engine, SHL, balancing or deployment authority.",
   "source_blobs": {
-    "tests/fin_truth_b1/test_sensitivity_source.py": "217e6691e9beda8391b431ad598af7245e8ebf19",
+    "tests/fin_truth_b1/test_sensitivity_source.py": "24370aa7481c3262f363bea8bc8bf2043bd1cfcb",
     "tests/fin_truth_b1/test_source_successor.py": "447c947ae30d21d50464dba3e04ed70fdf9f4290",
     "docs/financial_validation/fin_truth_b1/README.md": "f120a635bae51c81209debbc45797a1cbd422251",
     "main_web.py": "9b9066144306b501afd187237be106696e859132",
-    "app/services/sensitivity_service.py": "a070133cf8e8c344e891e3a73afd64cb1d9bbb0b"
+    "app/services/sensitivity_service.py": "1b45d91cbfcb4d732daa5e7b272309ab186bdbe3"
   },
   "historical_source_blobs": {
     "ebf1f15113ec95d69d29e8aa4e4635686dd1f39a": {
