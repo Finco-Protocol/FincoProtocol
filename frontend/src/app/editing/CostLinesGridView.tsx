@@ -19,7 +19,7 @@ import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
 import { sumDecimals } from "./decimal";
-import { useDensity } from "./density";
+import { useDensity } from "../uiDensity";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";

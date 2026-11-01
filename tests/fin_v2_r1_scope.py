@@ -137,7 +137,7 @@ def matches(path, source=None, *, repo=None, ref=None):
     if source is None:
         return True
     raw = source.encode() if isinstance(source, str) else source
-    return _blob(raw) == pins[path]
+    return _blob(raw) == pins[path] or _wf06b_supersedes(path, _blob(raw), Path(repo) if repo is not None else ROOT, ref)
 
 
 def protected_blobs(repo=None, ref=None):

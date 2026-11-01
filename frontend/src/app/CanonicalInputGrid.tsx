@@ -6,7 +6,7 @@ import { plain } from "./productLanguage";
 import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
 import { useOptionalChanges } from "./editing/ChangesProvider";
 import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
-import { useDensity } from "./editing/density";
+import { useDensity } from "./uiDensity";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }

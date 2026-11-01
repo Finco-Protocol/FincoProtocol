@@ -238,8 +238,8 @@ def _wf06b_allows(path, root, ref):
 
 
 def _downstream_allows(path, root, ref):
-    if _wf06b_allows(path, root, ref):
-        return True
+    if _wf06b_allows(path, root, ref) and _int409(root, ref) is not None:
+        return True            # the WF-06B successor builds on the integrated PR #409 main: it is admitted only while that seal is exact
     WF03 = _wf03(root, ref)
     if WF03 is not None and WF03.allowed_path(path, root, ref):
         return True
@@ -254,6 +254,8 @@ def _downstream_allows(path, root, ref):
 
 def _downstream_pin(path, value, root, ref):
     """True when WF-03 (exact) owns ``path`` and pins exactly ``value``, or the closed WF-06A cohort (exact) pins exactly ``value`` for a path it owns."""
+    if _wf06b_supersedes(path, value, root, ref) and _int409(root, ref) is not None:
+        return True            # the closed WF-06B successor's exact pin, only while the integrated #409 seal is exact
     WF03 = _wf03(root, ref)
     if WF03 is not None and path in WF03.OWNED_PATHS and WF03.manifest(root, ref).get('source_blobs', {}).get(path) == value:
         return True

@@ -14,6 +14,9 @@ import pytest
 from tests import fin_v2_integration_409_scope as INT
 
 ROOT = INT.ROOT
+# The seal's historical identity (its union, ledger rows and pinned bytes) is asserted at the immutable integration commit it sealed (PR #409's merge),
+# not at whatever later reviewed successor (PR #410's closed WF-06B cohort) extends the tree; that successor is verified by tests/test_wf06b_scope.py.
+INTEGRATED = "b7bfc4ed0fd224618e42f80dcacb3e1076e772ff"
 
 
 def git(*args, cwd=ROOT):
@@ -59,7 +62,7 @@ def test_seal_is_exact_and_authenticates_main_and_the_three_literal_heads():
 
 def test_authorised_set_is_exactly_the_union_of_the_three_reviewed_diffs_plus_the_literal_seal():
     owners = INT._union(ROOT)
-    changed = set(git("diff", "--name-only", "--no-renames", INT.MAIN, "HEAD", "--").splitlines())
+    changed = set(git("diff", "--name-only", "--no-renames", INT.MAIN, INTEGRATED, "--").splitlines())
     assert changed == set(owners) | INT.SEAL_PATHS
     assert not any(p.startswith(INT._PROTECTED_PREFIXES) for p in changed)
     assert INT.PINNED_PATHS <= set(owners) | INT.SEAL_PATHS
@@ -71,7 +74,7 @@ def test_every_non_pinned_union_path_is_the_single_owner_pr_bytes():
         if path in INT.PINNED_PATHS or path in INT.SEAL_PATHS:
             continue
         assert len(who) == 1, path
-        assert git("rev-parse", f"HEAD:{path}") == git("rev-parse", f"{INT.SOURCES[who[0]][0]}:{path}"), path
+        assert git("rev-parse", f"{INTEGRATED}:{path}") == git("rev-parse", f"{INT.SOURCES[who[0]][0]}:{path}"), path
 
 
 def test_every_pinned_path_has_one_blob_and_a_ledger_row_matching_git():
@@ -79,7 +82,7 @@ def test_every_pinned_path_has_one_blob_and_a_ledger_row_matching_git():
     rows = {r["path"]: r for r in data["repin_ledger"]}
     assert set(rows) == INT.PINNED_PATHS and len(data["repin_ledger"]) == len(INT.PINNED_PATHS)
     for path, row in rows.items():
-        assert row["integrated_blob"] == data["source_blobs"][path] == git("rev-parse", f"HEAD:{path}")
+        assert row["integrated_blob"] == data["source_blobs"][path] == git("rev-parse", f"{INTEGRATED}:{path}")
         assert row["resolution"]
         for name, (sha, _t) in INT.SOURCES.items():
             try:
@@ -307,9 +310,12 @@ def test_correction_b_a_broken_wf06a_cohort_admits_none_of_its_paths_even_with_a
     from tests import wf04_scope as W
     monkeypatch.setattr(WF06A, "exact_blobs_ok", lambda *a, **k: False)
     assert INT.exact_blobs_ok() is True                                                    # the seal alone is still exact ...
-    assert W._downstream_allows(path, W.ROOT, None) is False                               # ... and may not rescue the WF-06A-owned path
+    from tests import wf06b_scope as WF06B
+    # ... and may not rescue the WF-06A-owned path. Only a path the exact, separately reviewed WF-06B successor ALSO owns (it extends WF-06A's reviewed
+    # presentation bytes) stays admitted - through that cohort alone, never through the seal or the broken cohort.
+    assert W._downstream_allows(path, W.ROOT, None) is (WF06B.allowed_path(path) and WF06B.exact_blobs_ok(W.ROOT, None)), path
     if path != "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json":                          # a manifest never pins itself
-        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is False
+        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is WF06B.supersedes(path, head_blob(path), W.ROOT, None), path
 
 
 def test_correction_b_a_broken_wf06a_cohort_does_not_block_integration_only_paths(monkeypatch):
