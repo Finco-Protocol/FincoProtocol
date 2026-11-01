@@ -23,6 +23,8 @@ interface CanonicalInputGridProps {
   onReconcile: () => Promise<InputsPayload | null>;
   /** Free-text filter from the Inputs search box (presentation only; staged edits always stay visible). */
   query?: string;
+  /** Reports the focused field to the details panel (presentation only). */
+  onFocusRow?: (info: { label: string; unit: string; saved: string; state: string; reason: string }) => void;
 }
 
 type Draft = Record<string, string>;
@@ -59,7 +61,7 @@ function rowState(row: GridRowPayload, gridEditable: boolean): RowState {
   return row.reason ? "unavailable" : "derived";
 }
 
-const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Derived", unavailable: "Not editable here" };
+const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Calculated", unavailable: "Not supported" };
 
 function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
   const counts: Record<RowState, number> = { editable: 0, derived: 0, unavailable: 0 };
@@ -71,7 +73,7 @@ function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
 function showsGroupRow(category: GridCategoryPayload): boolean {
   return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
 }
-export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query = "" }: CanonicalInputGridProps) {
+export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query = "", onFocusRow }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
   // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
@@ -332,7 +334,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
                               ref={(el) => {
                                 if (rowKey === activeCode) activeCellRef.current = el;
                               }}
-                              onFocus={() => setActiveCode(rowKey)}
+                              onFocus={() => { setActiveCode(rowKey); onFocusRow?.({ label: plain(row.label), unit: row.unit, saved: row.value ?? "", state: STATE_TEXT[state], reason: row.reason ?? "" }); }}
                               onChange={(e) => {
                                 stage(rowKey, e.target.value);
                               }}
@@ -343,9 +345,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
                         </td>
                         <td>{row.unit}</td>
                         <td className="rx-note rx-status-cell">
-                          {state === "editable"
-                            ? <span className="rx-state-editable-sr">{STATE_TEXT[state]}</span>
-                            : <span className={`rx-state rx-state-${state}`}>{STATE_TEXT[state]}</span>}
+                          <span className={`rx-state rx-state-${state}`}>{STATE_TEXT[state]}</span>
                           {row.reason
                             ? <span className="rx-state-reason"> {row.reason}</span>
                             : row.modified_since_run

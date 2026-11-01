@@ -44,11 +44,10 @@ function useStatements(project: string, reloadKey: number, snapshot: string | un
   return value;
 }
 
-export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery }: {
-  project: string; workspace: WorkspacePayload; reloadKey?: number; query: string; onQuery: (q: string) => void;
+export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery, railOpen, onRail }: {
+  project: string; workspace: WorkspacePayload; reloadKey?: number; query: string; onQuery: (q: string) => void; railOpen: boolean; onRail: () => void;
 }) {
   const capex = useCostGroups(project, "capex", reloadKey);
-  const opex = useCostGroups(project, "opex", reloadKey);
   const statements = useStatements(project, reloadKey, workspace.identity?.snapshot_id);
   const { total: staged } = useDirtyTotal();
 
@@ -65,9 +64,9 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
   const tiles = [
     result("project-irr", "Project IRR", pick("Project IRR")?.display, pick("Project IRR")?.available),
     result("sponsor-irr", "Total Sponsor IRR", pick("Total Sponsor IRR")?.display, pick("Total Sponsor IRR")?.available),
-    result("min-dscr", "Minimum DSCR", lenderPick("min_dscr")?.display ?? undefined, lenderPick("min_dscr")?.available),
-    result("min-llcr", "Minimum LLCR", lenderPick("min_llcr")?.display ?? undefined, lenderPick("min_llcr")?.available),
+    result("min-dscr", "Min DSCR", lenderPick("min_dscr")?.display ?? undefined, lenderPick("min_dscr")?.available),
   ];
+  const llcr = result("min-llcr", "LLCR", lenderPick("min_llcr")?.display ?? undefined, lenderPick("min_llcr")?.available);
 
   return (
     <section className="ci-overview" aria-label="Inputs overview" data-inputs-overview="true" data-run-state={state}>
@@ -79,16 +78,18 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
           </div>
         ))}
         <div className="ci-kpi">
-          <span className="ci-kpi-label">CAPEX, saved lines</span>
+          <span className="ci-kpi-label">Total CAPEX, saved lines</span>
           <strong className="ci-kpi-value" data-ci-capex={capex.saved ?? "unavailable"}>
             {capex.state === "loading" ? "…" : capex.saved === null ? "Unavailable" : `${KEUR(capex.saved)} kEUR`}
           </strong>
         </div>
+        <div className="ci-kpi ci-kpi-off" title="Not connected to the model yet">
+          <span className="ci-kpi-label">Senior debt</span>
+          <strong className="ci-kpi-value" data-ci-metric="senior-debt">—</strong>
+        </div>
         <div className="ci-kpi">
-          <span className="ci-kpi-label">OPEX, saved lines (year 1)</span>
-          <strong className="ci-kpi-value" data-ci-opex={opex.saved ?? "unavailable"}>
-            {opex.state === "loading" ? "…" : opex.saved === null ? "Unavailable" : `${KEUR(opex.saved)} kEUR`}
-          </strong>
+          <span className="ci-kpi-label">{llcr.label}</span>
+          <strong className="ci-kpi-value" data-ci-metric={llcr.id}>{llcr.text}</strong>
         </div>
       </div>
       <p className="ci-source" data-ci-source="true">
@@ -106,6 +107,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
       <div className="ci-find" role="search">
         <input type="search" className="fm-input ci-search" data-ci-search="true" value={query} placeholder="Find any input or cost line…"
                aria-label="Find any input or cost line" onChange={(e) => onQuery(e.target.value)} />
+        <button type="button" className="fm-btn ci-railtoggle" data-ci-rail-toggle="true" aria-pressed={railOpen} onClick={onRail}>{railOpen ? "Hide details" : "Show details"}</button>
       </div>
     </section>
   );
@@ -131,7 +133,7 @@ function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; she
               <td>
                 {g.mapping_status === "DERIVED" ? <span className="ws2-chip" data-mapping-status="DERIVED">Calculated by the model</span>
                   : g.mapping_status === "UNRESOLVED" ? <span className="ws2-chip" data-mapping-status="UNRESOLVED">To be confirmed</span>
-                  : <button type="button" className="ci-link" onClick={() => onOpen(sheet)}>View lines</button>}
+                  : <button type="button" className="ci-link" onClick={() => onOpen(sheet)}>Open</button>}
               </td>
             </tr>
           ))}
@@ -156,5 +158,37 @@ export function CostSummaries({ project, reloadKey = 0, onOpen }: { project: str
         <SummaryTable title="OPEX summary" sheet="opex" data={opex} onOpen={onOpen} unit="kEUR / yr" />
       </div>
     </details>
+  );
+}
+
+
+export interface FocusedField { label: string; unit: string; saved: string; state: string; reason: string }
+
+/** Right-hand "Details and checks" panel: what the focused field is, what is saved, and which cost groups still need confirming. Read-only. */
+export function InputsRail({ project, reloadKey = 0, focus }: { project: string; reloadKey?: number; focus: FocusedField | null }) {
+  const capex = useCostGroups(project, "capex", reloadKey);
+  const opex = useCostGroups(project, "opex", reloadKey);
+  const pending = [...capex.groups, ...opex.groups].filter((g) => g.mapping_status === "UNRESOLVED" && g.line_count > 0);
+  return (
+    <aside className="ci-rail" aria-label="Details and checks" data-ci-rail="true">
+      <h3>Details and checks</h3>
+      <p className="ci-rail-k">Focused field</p>
+      <p className="ci-rail-v" data-ci-rail-field="true">{focus ? focus.label : "Select a field to see its details."}</p>
+      {focus && (
+        <dl className="ci-rail-dl">
+          <div><dt>Saved value</dt><dd>{focus.saved || "—"}</dd></div>
+          <div><dt>Unit</dt><dd>{focus.unit || "—"}</dd></div>
+          <div><dt>Status</dt><dd>{focus.state}</dd></div>
+          {focus.reason && <div><dt>Note</dt><dd>{focus.reason}</dd></div>}
+        </dl>)}
+      <div className="ci-rail-box">
+        <strong>Validation</strong>
+        <p>The server checks every value when you save and refuses anything it cannot accept. Allowed ranges per field are not connected yet.</p>
+      </div>
+      <div className={`ci-rail-box${pending.length ? " ci-rail-warn" : ""}`} data-ci-rail-warnings="true">
+        <strong>{pending.length ? `${pending.length} group${pending.length === 1 ? "" : "s"} to confirm` : "Nothing to confirm"}</strong>
+        {pending.length > 0 && <ul>{pending.map((g) => <li key={g.code}>{g.label}</li>)}</ul>}
+      </div>
+    </aside>
   );
 }

@@ -141,7 +141,6 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         # six KPI tiles; saved-line tiles equal the server projection; no committed Run yet -> no invented figure
         assert ov.locator(".ci-kpi").count() == 6
         assert abs(float(ov.locator("[data-ci-capex]").get_attribute("data-ci-capex")) - cap["saved_total_keur"]) < 1e-6
-        assert abs(float(ov.locator("[data-ci-opex]").get_attribute("data-ci-opex")) - opx["saved_total_keur"]) < 1e-6
         assert ov.locator("[data-ci-norun]").count() == 1
         assert all(ov.locator(f"[data-ci-metric='{m}']").inner_text() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr"))
         assert "not model results" in ov.inner_text()
@@ -164,8 +163,15 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert sections.count() >= 2
         s0, s1 = sections.nth(0).bounding_box(), sections.nth(1).bounding_box()
         assert abs(s0["y"] - s1["y"]) < 4 and s1["x"] > s0["x"], (s0, s1)
-        assert page.locator(".rx-input-table .rx-state-editable").count() == 0
-        assert page.locator(".rx-input-table .rx-state-editable-sr").count() > 0
+        assert page.locator(".rx-input-table .rx-state-editable").count() > 0       # status chips as in the reviewed mockup
+        assert page.locator(".rx-input-table .rx-state-derived, .rx-input-table .rx-state-unavailable").count() > 0
+        # details panel on wide screens only; it can be hidden
+        assert page.locator("[data-ci-rail]").is_visible()
+        page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first.focus()
+        assert page.locator("[data-ci-rail-field]").inner_text().strip() not in ("", "Select a field to see its details.")
+        page.locator("[data-ci-rail-toggle]").click()
+        assert page.locator("[data-ci-rail]").count() == 0
+        page.locator("[data-ci-rail-toggle]").click()
         grid = page.locator("[data-input-grid='canonical']")
         assert grid.evaluate("el => getComputedStyle(el).fontSize") == "12.5px"     # compact by default
         cell = grid.locator("input.rx-grid-input").first
@@ -280,8 +286,23 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         assert grid.locator("[data-finco-code-col]").first.inner_text().startswith("C.01.")
         grid.locator("[data-cost-search]").fill("")
         # columns: Code | Line | Basis | Amount | Payment profile | Status; no spreadsheet provenance
-        heads = [t.strip() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
-        assert heads == ["CODE", "LINE", "BASIS", "AMOUNT (KEUR)", "PAYMENT PROFILE", "STATUS"] or [h.upper() for h in heads] == ["CODE", "LINE", "BASIS", "AMOUNT (KEUR)", "PAYMENT PROFILE", "STATUS"], heads
+        heads = [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
+        assert heads == ["CODE", "LINE", "BASIS", "QTY", "UNIT PRICE", "AMOUNT (KEUR)", "K€/MW", "PAYMENT PROFILE", "STATUS", ""], heads
+        # columns the model does not use yet are present but disabled, never silently editable
+        assert grid.locator("tr[data-line] select:not([disabled])").count() == 0 and grid.locator("tr[data-line] .ci-offinput:not([disabled])").count() == 0
+        assert grid.locator("tr[data-line] .ci-menu:not([disabled])").count() == 0
+        grid.locator("[data-cost-columns='extended']").click()
+        assert [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()][7:11] == ["CONT.", "VAT", "WHT", "DEP."]
+        grid.locator("[data-cost-columns='basic']").click()
+        # groups fold and unfold
+        first = grid.locator("[data-cost-twisty]").first
+        cat = first.get_attribute("data-cost-twisty")
+        n_before = grid.locator("tr[data-line]").count()
+        first.click()
+        assert grid.locator("tr[data-line]").count() < n_before
+        grid.locator("[data-cost-expand]").click() if grid.locator("[data-cost-expand]").inner_text() == "Expand all" else None
+        grid.locator("[data-cost-twisty='" + cat + "']").click() if grid.locator("tr[data-line]").count() < n_before else None
+        assert grid.locator("tr[data-line]").count() == n_before
         assert not PROVENANCE.search(grid.inner_text())
         grid.locator("[data-cost-addline]").click()
         assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")

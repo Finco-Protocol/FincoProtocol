@@ -21,7 +21,7 @@ import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { CostLinesGridView as CostLinesView } from "./editing/CostLinesGridView";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
-import { CostSummaries, InputsOverview } from "./InputsOverview";
+import { CostSummaries, InputsOverview, InputsRail, type FocusedField } from "./InputsOverview";
 import { InputStudios } from "./studios/InputStudios";
 import { FriendlyError, resultStatus, RESULT_STATUS_HELP } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
@@ -130,6 +130,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
   const [inputQuery, setInputQuery] = useState("");
+  const [railOpen, setRailOpen] = useState(true);
+  const [focusInfo, setFocusInfo] = useState<FocusedField | null>(null);
   const displayedInputs = useMemo(() => inputs ? financialInputOrder(inputs) : null, [inputs]);
   const [recovery, setRecovery] = useState<RecoveryPayload | null>(null);
   const [revenuePayload, setRevenuePayload] = useState<RevenueContractsPayload | null>(null);
@@ -517,18 +519,23 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
             : inputs && displayedInputs
             ? <>
-              <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} />
+              <div className="ci-layout" data-ci-layout={railOpen ? "rail" : "full"}>
+              <div className="ci-main">
+              <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)} />
               <InputsJumpNav onJump={jumpWithinInputs} />
               <SaveScopeGuide />
               <div id="wf-inputs-setup" tabIndex={-1}>
                 <SheetFieldsEditor project={project} sheet="project_setup" title="Project & Timeline" reloadKey={dataVersion} onSaved={afterMutation} />
               </div>
               <div id="wf-inputs-grid" tabIndex={-1}>
-                <CanonicalInputGrid payload={displayedInputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} />
+                <CanonicalInputGrid payload={displayedInputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} onFocusRow={setFocusInfo} />
                 <CostSummaries project={project} reloadKey={dataVersion} onOpen={(sheet) => jumpWithinInputs({ id: "wf-inputs-costs", label: sheet.toUpperCase(), kind: "cost-sheet", sheet })} />
               </div>
+              </div>
+              {railOpen && <InputsRail project={project} reloadKey={dataVersion} focus={focusInfo} />}
+              </div>
               <div id="wf-inputs-costs" tabIndex={-1}>
-                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation} query={inputQuery}
+                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"}
                   requestedSheet={costRequest.sheet} requestNonce={costRequest.nonce} />
               </div>
               <div id="wf-inputs-revenue" tabIndex={-1}>
