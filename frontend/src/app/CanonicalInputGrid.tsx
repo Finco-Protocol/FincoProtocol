@@ -21,6 +21,8 @@ interface CanonicalInputGridProps {
   onSave: (cells: Array<{ field_id: string; value: string }>) => Promise<GridSaveOutcome>;
   /** Re-reads the canonical Inputs projection WITHOUT leaving the page (drafts survive).  `null` = the read failed. */
   onReconcile: () => Promise<InputsPayload | null>;
+  /** Free-text filter from the Inputs search box (presentation only; staged edits always stay visible). */
+  query?: string;
 }
 
 type Draft = Record<string, string>;
@@ -69,7 +71,7 @@ function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
 function showsGroupRow(category: GridCategoryPayload): boolean {
   return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
 }
-export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: CanonicalInputGridProps) {
+export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query = "" }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
   // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
@@ -222,6 +224,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
     }
   }
 
+  const q = query.trim().toLowerCase();
+  const rowVisible = (row: GridRowPayload) => !q || plain(row.label).toLowerCase().includes(q)
+    || (drafts[row.field_id || row.code] !== undefined && drafts[row.field_id || row.code] !== row.value);
+  const visibleCategories = (section: GridSectionPayload) => section.categories
+    .map((category) => ({ ...category, rows: category.rows.filter(rowVisible) })).filter((category) => category.rows.length > 0);
   const editableCount = rows.filter((r) => r.editable && payload.grid.editable).length;
   const sections = payload.grid.sections.map((section) => ({ section, counts: sectionCounts(section, payload.grid.editable) }));
   // Sections with something to edit start open; purely derived ones start collapsed.  A read-only
@@ -260,9 +267,9 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
         <button type="button" className="rx-button rx-button-secondary" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
       </div>
       <div className="ci-sections" data-ci-sections="true">
-      {sections.map(({ section, counts }, sectionIndex) => (
+      {sections.map(({ section, counts }, sectionIndex) => q && visibleCategories(section).length === 0 ? null : (
         <details key={section.section_id} className="rx-input-section" data-grid-section={section.section_id}
-          open={isOpen(section.section_id, counts) || stagedIn(section) > 0}
+          open={Boolean(q) || isOpen(section.section_id, counts) || stagedIn(section) > 0}
           onToggle={(event) => {
             const open = (event.currentTarget as HTMLDetailsElement).open;
             if (!open && stagedIn(section) > 0) { (event.currentTarget as HTMLDetailsElement).open = true; return; }
@@ -290,7 +297,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
                   <th scope="col">Status</th>
                 </tr>
               </thead>
-              {section.categories.map((category) => (
+              {visibleCategories(section).map((category) => (
                 <tbody key={category.code} data-grid-category={category.code}>
                   {showsGroupRow(category) && (
                     <tr className="rx-cat-row">

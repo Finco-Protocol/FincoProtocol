@@ -62,3 +62,13 @@ def test_wf06b_axe_no_serious_or_critical(live_server, browser, rcm_react_flag):
         pytest.skip("set FINCO_AXE_CORE_PATH to a local axe-core build to run the accessibility audit")
     from tests.model_react_wf06b_acceptance import check_axe_has_no_serious_or_critical_violations
     check_axe_has_no_serious_or_critical_violations(browser, live_server, axe)
+
+
+def test_wf06b_top_bar_save_all_is_the_real_save(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_top_bar_save_all_is_the_real_save_and_never_runs
+    check_top_bar_save_all_is_the_real_save_and_never_runs(browser, live_server)
+
+
+def test_wf06b_search_and_cost_filters(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_search_and_cost_filters_narrow_what_is_shown
+    check_search_and_cost_filters_narrow_what_is_shown(browser, live_server)

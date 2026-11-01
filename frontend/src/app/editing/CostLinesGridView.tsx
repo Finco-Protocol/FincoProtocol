@@ -26,8 +26,8 @@ import { useGridKeys } from "./useGridKeys";
 
 type Sheet = "capex" | "opex";
 const MAPPING_NOTE: Record<string, string> = {
-  UNRESOLVED: "Taxonomy mapping is pending sign-off. Active saved lines here still feed the model through the existing calculation, unchanged.",
-  DERIVED: "Calculated when the model runs — not an editable cost line.",
+  UNRESOLVED: "This group is still to be confirmed. Active saved lines here are still used by the model exactly as before.",
+  DERIVED: "Calculated by the model when it runs — not an editable cost line.",
 };
 type Status = { tone: "ok" | "error" | "conflict"; text: string } | null;
 
@@ -39,12 +39,31 @@ const labelValidator: CellValidator = (text) => (text.trim() ? { ok: true, value
 const amountValidator = numberValidator({ allowNegative: false });
 const inflationValidator = numberValidator({ allowNegative: true });
 
-export function CostLinesGridView(props: { project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number }) {
+export function CostLinesGridView(props: { project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number; query?: string }) {
   return <EnsureChangesProvider identity={null}><CostLinesGrid {...props} /></EnsureChangesProvider>;
 }
 
-function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requestNonce = 0 }: {
-  project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number;
+function useNarrow(query = "(max-width: 900px)") {
+  const get = () => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(query).matches : false);
+  const [narrow, setNarrow] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined;
+    const mq = window.matchMedia(query);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    on();
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return narrow;
+}
+
+type LineFilter = "all" | "nonzero" | "changed" | "inactive";
+const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
+  { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Inactive / calculated" },
+];
+
+function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requestNonce = 0, query = "" }: {
+  project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number; query?: string;
 }) {
   const [sheet, setSheet] = useState<Sheet>("capex");
   const [data, setData] = useState<CostLinesPayload | null>(null);
@@ -52,6 +71,10 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [status, setStatus] = useState<Status>(null);
   const [inFlight, setInFlight] = useState(false);
   const [density, toggleDensity] = useDensity();
+  const narrow = useNarrow();
+  const [filter, setFilter] = useState<LineFilter>("all");
+  const [localQuery, setLocalQuery] = useState("");
+  const [profiles, setProfiles] = useState<{ custom: Set<string> } | null>(null);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -72,6 +95,20 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   useEffect(() => { setData(null); setStatus(null); setUnknownBatch(null); void load(); }, [load]);
   useEffect(() => { if (reloadKey > 0) void load(); }, [reloadKey, load]);
 
+  useEffect(() => {
+    setProfiles(null);
+    if (sheet !== "capex") return undefined;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const r = await fetch(`/v2/model-react/capex/profiles?project=${encodeURIComponent(project)}`, { credentials: "same-origin", cache: "no-store", signal: controller.signal, headers: { Accept: "application/json" } });
+        const body = await r.json() as { ok?: boolean; saved?: { rows?: Record<string, unknown> } };
+        if (!controller.signal.aborted && r.ok && body.ok) setProfiles({ custom: new Set(Object.keys(body.saved?.rows ?? {})) });
+      } catch { /* the column then shows a dash: it is optional context */ }
+    })();
+    return () => controller.abort();
+  }, [project, sheet, reloadKey]);
+
   const lastRequest = useRef(requestNonce);
   useEffect(() => {
     if (!requestedSheet || requestNonce === lastRequest.current) return;
@@ -88,7 +125,28 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   useReportPending(`cost-lines-${sheet}`, inFlight);
 
   const columns = sheet === "opex" ? COLUMNS_OPEX : COLUMNS_CAPEX;
-  const lines = data?.lines ?? [];
+  const baselineOf = (line: CostLinePayload, col: string) =>
+    col === "label" ? line.label : col === "amount" ? textOf(line.amount_keur) : textOf(line.inflation_pct);
+
+  const valueOf = (line: CostLinePayload, col: string) =>
+    changes.get(section, `${line.sub_line_id}#${col}`)?.value ?? baselineOf(line, col);
+
+  const allLines = data?.lines ?? [];
+  const projection = data?.projection ?? null;
+  const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
+  const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
+  const needle = (localQuery || query).trim().toLowerCase();
+  const isChanged = (line: CostLinePayload) => mine.some((e) => e.key.split("#")[0] === line.sub_line_id);
+  const lines = allLines.filter((line) => {
+    if (needle) {
+      const hay = `${lineInfo.get(line.sub_line_id)?.finco_display_code ?? ""} ${line.label} ${line.category}`.toLowerCase();
+      if (!hay.includes(needle) && !isChanged(line)) return false;
+    }
+    if (filter === "nonzero") return Number(valueOf(line, "amount")) !== 0;
+    if (filter === "changed") return isChanged(line);
+    if (filter === "inactive") return !line.active || lineInfo.get(line.sub_line_id)?.mapping_status === "UNRESOLVED";
+    return true;
+  });
   const readOnlyProject = data?.project.protected_reference ?? true;
   const locked = inFlight || unknownBatch !== null;
   const editableLine = (line: CostLinePayload) => line.active && !readOnlyProject && !locked;
@@ -100,12 +158,6 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   }), [lines, columns, readOnlyProject, locked]);
 
   const validators: Record<string, CellValidator> = { label: labelValidator, amount: amountValidator, inflation: inflationValidator };
-
-  const baselineOf = (line: CostLinePayload, col: string) =>
-    col === "label" ? line.label : col === "amount" ? textOf(line.amount_keur) : textOf(line.inflation_pct);
-
-  const valueOf = (line: CostLinePayload, col: string) =>
-    changes.get(section, `${line.sub_line_id}#${col}`)?.value ?? baselineOf(line, col);
 
   const stageInput = (line: CostLinePayload, col: string, typed: string): StageInput => {
     const verdict = validators[col](typed);
@@ -201,10 +253,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     ? <div className="fm-banner" role="alert"><span className="fm-demo-label">UNAVAILABLE</span><span className="fm-banner-copy">{loadError}</span><button type="button" className="fm-btn" onClick={() => void load()}>Retry</button></div>
     : <p className="fm-info-note" role="status">Loading…</p>;
 
-  const total = sumDecimals(lines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
-  const projection = data.projection ?? null;
-  const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
-  const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
+  const allSpan = narrow ? columns.length : 6;
+  const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
   const fmtKeur = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
 
@@ -226,10 +276,29 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
       {readOnlyProject && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
       {status && <div className="fm-info-note" role={status.tone === "ok" ? "status" : "alert"} data-tone={status.tone}>{status.text}</div>}
       {pasteNote && <div className="fm-info-note" role="status" data-paste-note="true">{pasteNote}</div>}
+      <div className="ci-linebar" data-ci-linebar="true">
+        <input type="search" className="fm-input ci-linesearch" data-cost-search="true" value={localQuery} placeholder="Search code, line or group…"
+               aria-label={`Search ${title} lines`} onChange={(e) => setLocalQuery(e.target.value)} />
+        <span className="ci-filters" role="group" aria-label="Show lines">
+          {FILTERS.map((f) => (
+            <button key={f.id} type="button" className="fm-btn ci-filter" aria-pressed={filter === f.id} data-cost-filter={f.id} onClick={() => setFilter(f.id)}>{f.label}</button>
+          ))}
+        </span>
+        <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject}
+                onClick={() => { const m = document.querySelector<HTMLElement>(`[data-cost-line-manager="${sheet}"]`); m?.scrollIntoView({ block: "center" }); m?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true }); }}>
+          + Add line
+        </button>
+        <span className="ci-shown" data-cost-shown="true" role="status">{lines.length} of {allLines.length} lines shown</span>
+      </div>
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table ws2-grid">
           <caption className="fm-sr-only">{title} line items. Amounts in kEUR.</caption>
-          <thead><tr><th scope="col">Line</th><th scope="col">Amount (kEUR)</th>{sheet === "opex" && <th scope="col">Inflation (%)</th>}</tr></thead>
+          <thead><tr>
+            {!narrow && <th scope="col" className="ci-col-code">Code</th>}<th scope="col" className="ci-col-line">Line</th>{!narrow && <th scope="col" className="ci-col-basis">Basis</th>}
+            <th scope="col" className="ci-col-amount">Amount (kEUR)</th>{sheet === "opex" && <th scope="col">Inflation (%)</th>}
+            {!narrow && sheet === "capex" && <th scope="col" className="ci-col-profile">Payment profile</th>}
+            {!narrow && <th scope="col" className="ci-col-status">Status</th>}
+          </tr></thead>
           <tbody>
             {lines.map((line, r) => {
               const rowEditable = editableLine(line);
@@ -239,7 +308,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                 <Fragment key={line.sub_line_id}>
                 {startsGroup && line.category && (
                   <tr className="ws2-group-row" data-group-row={line.category}>
-                    <th scope="colgroup" colSpan={columns.length}>
+                    <th scope="colgroup" colSpan={allSpan}>
                       <span className="ws2-group-name">{costGroupLabel(line.category, data.line_management?.eligible_groups ?? [])}</span>
                       {(() => {
                         const g = groupInfo.get(line.category);
@@ -247,7 +316,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                         return (
                           <span className="ws2-group-meta" data-group-meta={g.code}>
                             {g.saved_total_keur !== null && <span className="ws2-group-total" data-group-saved-total={g.code}>Saved {fmtKeur(g.saved_total_keur)} kEUR</span>}
-                            {g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Derived" : "Taxonomy pending"}</span>}
+                            {g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Calculated" : "To be confirmed"}</span>}
                           </span>
                         );
                       })()}
@@ -255,13 +324,14 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                   </tr>
                 )}
                 <tr data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
-                  {columns.map((col, c) => {
+                  {!narrow && <td className="ci-col-code"><span className="ws2-code" data-finco-code-col="true">{lineInfo.get(line.sub_line_id)?.finco_display_code}</span></td>}
+                  {columns.flatMap((col, c) => {
                     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
                     const value = valueOf(line, col);
                     const errorId = `${headingId}-${r}-${c}-err`;
                     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
-                    return (
-                      <td key={col}>
+                    const cell = (
+                      <td key={col} className={col === "label" ? "ci-col-line" : col === "amount" ? "ci-col-amount" : undefined}>
                         {(() => {
                           const code = col === "label" ? lineInfo.get(line.sub_line_id)?.finco_display_code : undefined;
                           const field = (
@@ -290,17 +360,38 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                         )}
                       </td>
                     );
+                    // Basis sits between the description and the amount; every stored line is a fixed kEUR amount.
+                    return col === "label" && !narrow
+                      ? [cell, <td key="basis" className="ci-col-basis" title="Entered as a fixed amount in kEUR">Fixed</td>]
+                      : [cell];
                   })}
+                  {!narrow && sheet === "capex" && (
+                    <td className="ci-col-profile" data-cost-profile={line.sub_line_id}>
+                      {profiles === null ? "—"
+                        : profiles.custom.has(lineInfo.get(line.sub_line_id)?.finco_display_code ?? "")
+                          ? <span className="ws2-chip" title="A custom spending profile is saved for this line. Edit it under Studios.">Custom</span>
+                          : <span className="ws2-chip" title="Spread evenly over the construction period.">Even</span>}
+                    </td>
+                  )}
+                  {!narrow && <td className="ci-col-status" data-cost-status={line.sub_line_id}>
+                    {(() => {
+                      const info = lineInfo.get(line.sub_line_id);
+                      if (!line.active) return <span className="ws2-chip">Inactive</span>;
+                      if (isChanged(line)) return <span className="ws2-chip ws2-chip-changed">Changed</span>;
+                      if (info?.mapping_status === "UNRESOLVED") return <span className="ws2-chip" data-mapping-status="UNRESOLVED" title={MAPPING_NOTE.UNRESOLVED}>To be confirmed</span>;
+                      return null;
+                    })()}
+                  </td>}
                 </tr>
                 </Fragment>
               );
             })}
-            {!lines.length && <tr><td colSpan={columns.length}><span role="status">No line items were projected for this sheet.</span></td></tr>}
+            {!lines.length && <tr><td colSpan={allSpan}><span role="status">{allLines.length ? "No lines match this search or filter." : "No line items were projected for this sheet."}</span></td></tr>}
           </tbody>
           {lines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row">Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" style={{ textAlign: "right" }}>{total}</td>{sheet === "opex" && <td />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row">Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" style={{ textAlign: "right" }}>{fmtKeur(projection.saved_total_keur)}</td>{sheet === "opex" && <td />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" colSpan={narrow ? 1 : 3}>Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" style={{ textAlign: "right" }}>{total}</td>{narrow ? (sheet === "opex" ? <td /> : null) : <td colSpan={2} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={narrow ? 1 : 3}>Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" style={{ textAlign: "right" }}>{fmtKeur(projection.saved_total_keur)}</td>{narrow ? (sheet === "opex" ? <td /> : null) : <td colSpan={2} />}</tr>}
             </tfoot>
           )}
         </table>
