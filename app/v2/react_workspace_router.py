@@ -820,6 +820,16 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                   "category": getattr(r, "parent_category_code", None) or getattr(r, "parent_group_code", "")}
                  for r in rows]
         eligible_groups = _eligible_cost_groups(sheet)
+        # WF-06B: additive, provenance-free ledger classification and group subtotals (Solar/Wind only; absent otherwise).
+        # Existing ``lines`` are unchanged; this block never alters an amount and fails closed to ``None``.
+        projection = None
+        technology = str(getattr(record, "project_type", "") or "").strip().lower()
+        if technology in ("solar", "wind"):
+            try:
+                from app.cost_line_ledger import project_cost_lines
+                projection = project_cost_lines(technology, sheet, lines, codes={r.sub_line_id: r.business_code for r in rows})
+            except Exception:  # noqa: BLE001 - classification is presentation metadata only
+                projection = None
     except Exception:  # noqa: BLE001 - fail closed, never fabricate line items
         return _json({"ok": False, "code": "COST_LINES_UNAVAILABLE",
                       "message": "Cost lines could not be projected. Reload to refresh."}, 503)
@@ -830,6 +840,7 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
         "lines": lines,
+        "projection": projection,
         "save": {"url": "/v2/workbook/grid/cost-lines/save",
                  "method": "form",
                  "csrf_token": mutation_token(request, project, "grid-cost-lines-save"),
