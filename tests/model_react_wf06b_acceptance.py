@@ -310,7 +310,7 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         assert grid.locator("tr[data-line]").count() == n_before
         assert not PROVENANCE.search(grid.inner_text())
         grid.locator("[data-cost-addline]").click()
-        assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")
+        page.wait_for_function("() => document.activeElement && document.activeElement.closest('[data-cost-line-manager]') !== null", timeout=10000)
         assert not errors, errors
     finally:
         context.close()
