@@ -64,7 +64,7 @@
     "tests/test_wf06b_costlines_route.py": "8cf2d6fccad181a8e163542f93a534e207ff575b",
     "tests/test_wf06b_no_source_provenance_ui.py": "bb58cba8a3c6cac18ad2a003511a35c1cca18240",
     "tests/test_wf06b_run_parity.py": "24d990f04e87beb7ff0917d7576b173d3c6647a6",
-    "tests/test_wf06b_scope.py": "d1e69e967f8f74bb55f580fe44a93ed234cf5af4",
+    "tests/test_wf06b_scope.py": "d8aa9d89496c10fd49ce8fc70f2eafe2ca261855",
     "tests/test_wsv2_core_scope.py": "368a9e745831bc4272537e80447c11717858dd93",
     "tests/wf03_lifecycle_scope.py": "6435be537fd510103954ca86218f97f40de6c2b6",
     "tests/wf04_scope.py": "9e7a9ef1e3fb91885ebc47fe7b9afa4e78acbb90",

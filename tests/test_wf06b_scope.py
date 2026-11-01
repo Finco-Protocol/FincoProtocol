@@ -220,7 +220,8 @@ def test_matches_accepts_exactly_the_successor_bytes_and_the_historical_pin(modn
         assert D.matches(path, raw.decode()) is True and D.matches(path, raw.decode() + ' ') is False
         historical = W._git(W.ROOT, 'show', f'{W.BASE}:{path}')
         assert D.matches(path, historical) is True, path                             # the historical reviewed pin is unchanged and still matches
-    for stranger in ('app/v2/router.py', 'financial_engine/native_v11/config.py', 'tests/conftest.py', 'unreviewed/new_authority.py'):
+    for stranger in ('financial_engine/native_v11/config.py', 'tests/conftest.py', 'unreviewed/new_authority.py', 'docs/react_migration/wf06b_a_plus/P00.md'):
+        assert stranger not in D.manifest()['source_blobs'] or stranger in W.SUPERSEDED
         assert D.matches(stranger, (W.ROOT / stranger).read_bytes() if (W.ROOT / stranger).exists() else b'x') is False
 
 
@@ -241,7 +242,7 @@ def test_matches_refuses_successor_bytes_when_the_successor_is_not_authenticated
     mpath.write_text(good)
     assert D.matches(path, raw, repo=wt) is True
     # one byte in the successor manifest, in any owned file the successor depends on, or a missing manifest
-    mpath.write_text(good + ' ')
+    mpath.write_text(good + '}')                                                   # one byte that breaks the manifest
     assert D.matches(path, raw, repo=wt) is False
     mpath.write_text(good)
     _flip(wt / 'tests/wf06b_scope.py')
