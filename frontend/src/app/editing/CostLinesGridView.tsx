@@ -28,7 +28,7 @@ type Density = "normal" | "compact";
 const DENSITY_KEY = "finco.ui.density";           // non-sensitive UI preference only; never holds any project value
 const readDensity = (): Density => { try { return window.localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "normal"; } catch { return "normal"; } };
 const MAPPING_NOTE: Record<string, string> = {
-  UNRESOLVED: "Mapping pending sign-off — shown as saved; not counted as verified.",
+  UNRESOLVED: "Taxonomy mapping is pending sign-off. Active saved lines here still feed the model through the existing calculation, unchanged.",
   DERIVED: "Calculated when the model runs — not an editable cost line.",
 };
 type Status = { tone: "ok" | "error" | "conflict"; text: string } | null;
@@ -254,7 +254,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                         return (
                           <span className="ws2-group-meta" data-group-meta={g.code}>
                             {g.saved_total_keur !== null && <span className="ws2-group-total" data-group-saved-total={g.code}>Saved {fmtKeur(g.saved_total_keur)} kEUR</span>}
-                            {g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Derived" : "Mapping pending"}</span>}
+                            {g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Derived" : "Taxonomy pending"}</span>}
                           </span>
                         );
                       })()}
@@ -269,16 +269,20 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
                     return (
                       <td key={col}>
-                        {col === "label" && lineInfo.get(line.sub_line_id)?.finco_display_code && (
-                          <span className="ws2-code" data-finco-code="true" aria-hidden="true">{lineInfo.get(line.sub_line_id)?.finco_display_code}</span>
-                        )}
-                        <input className={`fm-input ws2-cell ${col === "label" ? "ws2-cell-text" : ""}`} type="text"
-                               inputMode={col === "label" ? "text" : "decimal"} autoComplete="off" spellCheck={false}
-                               aria-label={label} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
-                               data-r={r} data-c={c} data-changed={edit ? "true" : undefined}
-                               value={value} disabled={!rowEditable}
-                               onFocus={keys.onFocus} onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
-                               onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
+                        {(() => {
+                          const code = col === "label" ? lineInfo.get(line.sub_line_id)?.finco_display_code : undefined;
+                          const field = (
+                            <input className={`fm-input ws2-cell ${col === "label" ? "ws2-cell-text" : ""}`} type="text"
+                              inputMode={col === "label" ? "text" : "decimal"} autoComplete="off" spellCheck={false}
+                              aria-label={label} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
+                              data-r={r} data-c={c} data-changed={edit ? "true" : undefined}
+                              value={value} disabled={!rowEditable}
+                              onFocus={keys.onFocus} onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
+                              onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
+                          );
+                          // The FINCO code sits beside the description (same row) so it adds no height.
+                          return code ? <div className="ws2-label-wrap"><span className="ws2-code" data-finco-code="true" aria-hidden="true">{code}</span>{field}</div> : field;
+                        })()}
                         {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
                         {col === "label" && (
                           <details className="ws2-row-notes">
@@ -303,7 +307,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
           {lines.length > 0 && total !== null && (
             <tfoot>
               <tr className="ws2-grid-total"><th scope="row">Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" style={{ textAlign: "right" }}>{total}</td>{sheet === "opex" && <td />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row">Saved on the server (kEUR, active lines; calculated lines excluded)</th><td data-saved-total="true" style={{ textAlign: "right" }}>{fmtKeur(projection.saved_total_keur)}</td>{sheet === "opex" && <td />}</tr>}
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row">Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" style={{ textAlign: "right" }}>{fmtKeur(projection.saved_total_keur)}</td>{sheet === "opex" && <td />}</tr>}
             </tfoot>
           )}
         </table>

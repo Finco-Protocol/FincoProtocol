@@ -62,7 +62,7 @@ class LedgerRow:
     row_kind: str
     canonical_field: Optional[str]  # CapexStructure field when proven, else None
     unit: str                       # kEUR
-    summable: bool                  # may contribute to a group/sheet subtotal
+    taxonomy_signed_off: bool       # taxonomy sign-off only. NOT 'does not affect the Run': see feeds_run_fold for that
     reason: str
 
 
@@ -80,10 +80,10 @@ def _build(technology: str) -> tuple[LedgerRow, ...]:
     rows: list[LedgerRow] = []
     order = 0
 
-    def add(sheet, code, label, parent, kind, field, summable, reason):
+    def add(sheet, code, label, parent, kind, field, taxonomy_signed_off, reason):
         nonlocal order
         order += 1
-        rows.append(LedgerRow(template_line_id(technology, code), code, order, label, sheet, parent, kind.value, field, "kEUR", summable, reason))
+        rows.append(LedgerRow(template_line_id(technology, code), code, order, label, sheet, parent, kind.value, field, "kEUR", taxonomy_signed_off, reason))
 
     for parent in sorted(_CAPEX_ROWS[technology]):
         field = _capex_field(parent)
@@ -92,7 +92,7 @@ def _build(technology: str) -> tuple[LedgerRow, ...]:
         for child in capex_children(technology, parent):
             if unresolved:
                 add("capex", child.code, child.label, parent, RowKind.UNRESOLVED_MAPPING, field, False,
-                    "Economic mapping not signed off for the v2 catalogue; existing saved lines keep their locked behaviour.")
+                    "Taxonomy mapping not signed off; active saved lines under this parent still feed the existing locked Run fold unchanged.")
             else:
                 add("capex", child.code, child.label, parent, RowKind.EDITABLE_RUN_BOUND, field, True,
                     "Folded into the canonical CAPEX field by the locked category mapping.")
@@ -106,7 +106,7 @@ def _build(technology: str) -> tuple[LedgerRow, ...]:
         for child in opex_children(parent, technology):
             if parent in UNRESOLVED_OPEX_PARENTS:
                 add("opex", child.code, child.label, parent, RowKind.UNRESOLVED_MAPPING, None, False,
-                    "OPEX contingency is rejected as a sub-line parent; taxonomy only.")
+                    "OPEX contingency is rejected as a sub-line parent by the existing route; taxonomy only, never folded.")
             else:
                 add("opex", child.code, child.label, parent, RowKind.EDITABLE_RUN_BOUND, None, True,
                     "Folded into the OPEX item for its group by the canonical OPEX fold.")
@@ -127,7 +127,7 @@ def ledger_sha256() -> str:
 
 
 #: Literal pin of the immutable catalogue. A change to the taxonomy is a new LEDGER_VERSION, never an edit in place.
-LEDGER_SHA256 = "1ffd989041307d158fc71bdf153151bdb37277b57c8a541e112526eed031f294"
+LEDGER_SHA256 = "b5406e61502edb48bfc29efbe396331f7f2c3bd9d46c38abd0e013e2906c6c6b"
 
 
 def verify_ledger() -> bool:
@@ -137,15 +137,25 @@ def verify_ledger() -> bool:
 _USER_CODE = re.compile(r"^[CB]\.\d{2}\.U\d{3}$")
 
 
+def feeds_run_fold(sheet: str, parent: str) -> bool:
+    """Whether ACTIVE saved lines under ``parent`` are consumed by the existing Run fold (independent of taxonomy sign-off)."""
+    if sheet == "capex":
+        from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+        return parent in CAPEX_CATEGORY_TO_FIELD
+    from app.persistence.opex_sub_lines import ALLOWED_PARENT_GROUPS
+    return parent in ALLOWED_PARENT_GROUPS
+
+
 def classify_persisted_line(technology: str, sheet: str, business_code: str, parent: str) -> dict[str, Any]:
     """Classify one persisted line. Unknown codes are user lines (identity = their own sub_line_id), never a guess."""
     rows = {r.finco_display_code: r for r in ledger_rows(technology) if r.sheet == sheet}
     row = rows.get(business_code)
     if row is not None:
-        return {"template_line_id": row.template_line_id, "row_kind": row.row_kind, "summable": row.summable, "lineage": "template",
+        return {"template_line_id": row.template_line_id, "row_kind": row.row_kind, "taxonomy_signed_off": row.taxonomy_signed_off, "lineage": "template",
+                "feeds_run_fold": feeds_run_fold(sheet, parent),
                 "mapping_status": "UNRESOLVED" if row.row_kind == RowKind.UNRESOLVED_MAPPING.value else "PROVEN"}
     if _USER_CODE.match(business_code or ""):
         unresolved = parent in (UNRESOLVED_CAPEX_PARENTS if sheet == "capex" else UNRESOLVED_OPEX_PARENTS)
         return {"template_line_id": None, "row_kind": RowKind.UNRESOLVED_MAPPING.value if unresolved else RowKind.EDITABLE_RUN_BOUND.value,
-                "summable": not unresolved, "lineage": "user", "mapping_status": "UNRESOLVED" if unresolved else "PROVEN"}
-    return {"template_line_id": None, "row_kind": RowKind.UNSUPPORTED.value, "summable": False, "lineage": "unknown", "mapping_status": "UNRESOLVED"}
+                "taxonomy_signed_off": not unresolved, "lineage": "user", "feeds_run_fold": feeds_run_fold(sheet, parent), "mapping_status": "UNRESOLVED" if unresolved else "PROVEN"}
+    return {"template_line_id": None, "row_kind": RowKind.UNSUPPORTED.value, "taxonomy_signed_off": False, "lineage": "unknown", "feeds_run_fold": False, "mapping_status": "UNRESOLVED"}

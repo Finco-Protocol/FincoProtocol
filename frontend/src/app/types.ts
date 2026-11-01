@@ -334,7 +334,9 @@ export interface CostLineProjectionLine {
   finco_display_code: string;
   template_line_id: string | null;
   row_kind: "editable_run_bound" | "derived_runtime" | "heading" | "blank_slot" | "unresolved_mapping" | "unsupported";
-  summable: boolean;
+  taxonomy_signed_off: boolean;
+  /** True when ACTIVE saved lines under this parent are consumed by the existing Run fold (independent of taxonomy sign-off). */
+  feeds_run_fold: boolean;
   lineage: "template" | "user" | "unknown";
   mapping_status: "PROVEN" | "UNRESOLVED";
 }
@@ -351,8 +353,15 @@ export interface CostLineProjectionGroup {
   counts_toward_sheet_total: boolean;
 }
 
+export interface CostLinesFoldField {
+  field: string; parents: string[]; active_line_count: number; saved_total_keur: number | null;
+  mode: "REPLACE_BASE_WITH_ACTIVE_LINES" | "BASE_RETAINED_NO_ACTIVE_LINES"; post_fold_authority: string | null;
+}
+
 export interface CostLinesProjection {
   ledger: { version: string; template: string };
+  /** Describes what the EXISTING Run fold does with these saved lines. Not a Run result. */
+  fold: { kind: string; fields: CostLinesFoldField[]; note: string };
   lines: CostLineProjectionLine[];
   groups: CostLineProjectionGroup[];
   saved_total_keur: number;

@@ -37,14 +37,14 @@ def test_row_kind_rules(tech):
     by = {(r.sheet, r.finco_display_code): r for r in rows}
     for code in ("C.17", "C.18"):                                   # derived financing/reserves are never spend
         r = by[("capex", code)]
-        assert r.row_kind == RowKind.DERIVED_RUNTIME.value and not r.summable and r.canonical_field is None
+        assert r.row_kind == RowKind.DERIVED_RUNTIME.value and not r.taxonomy_signed_off and r.canonical_field is None
     for r in rows:
         if r.row_kind == RowKind.HEADING.value:
-            assert not r.summable
+            assert not r.taxonomy_signed_off
         if r.row_kind == RowKind.UNRESOLVED_MAPPING.value:
-            assert not r.summable
+            assert not r.taxonomy_signed_off
         if r.row_kind == RowKind.EDITABLE_RUN_BOUND.value:
-            assert r.summable and r.unit == "kEUR"
+            assert r.taxonomy_signed_off and r.unit == "kEUR"
             if r.sheet == "capex":
                 assert r.canonical_field == CAPEX_CATEGORY_TO_FIELD[r.parent_group]
     unresolved = {r.parent_group for r in rows if r.row_kind == RowKind.UNRESOLVED_MAPPING.value}
@@ -55,9 +55,9 @@ def test_classify_persisted_line():
     t = classify_persisted_line("solar", "capex", "C.02.01", "C.02")
     assert t["lineage"] == "template" and t["row_kind"] == "editable_run_bound" and t["template_line_id"].endswith("C.02.01")
     u = classify_persisted_line("wind", "capex", "C.02.U001", "C.02")
-    assert u["lineage"] == "user" and u["template_line_id"] is None and u["summable"]
+    assert u["lineage"] == "user" and u["template_line_id"] is None and u["taxonomy_signed_off"]
     uu = classify_persisted_line("wind", "capex", "C.13.U001", "C.13")
-    assert uu["mapping_status"] == "UNRESOLVED" and not uu["summable"]
+    assert uu["mapping_status"] == "UNRESOLVED" and not uu["taxonomy_signed_off"]
     assert classify_persisted_line("solar", "opex", "weird", "B.01")["row_kind"] == "unsupported"
 
 

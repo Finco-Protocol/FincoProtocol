@@ -48,7 +48,10 @@
 .ws2-pct input { padding-right: 1.8em; }
 
 /* WF-06B: FINCO line code, group subtotal/status and the optional compact density (UI preference only). */
-.ws2-grid .ws2-code { display: block; font-size: .72rem; color: var(--muted, #5b6b78); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ws2-grid .ws2-label-wrap { display: flex; align-items: center; gap: 8px; }
+.ws2-grid .ws2-label-wrap { min-width: 0; }
+.ws2-grid .ws2-label-wrap .ws2-cell-text { flex: 1 1 0; width: 0; min-width: 0; }
+.ws2-grid .ws2-code { flex: 0 0 auto; min-width: 3.6em; font-size: .72rem; color: var(--muted, #5b6b78); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .ws2-grid .ws2-group-row th { display: table-cell; }
 .ws2-grid .ws2-group-meta { display: inline-flex; gap: 10px; margin-left: 12px; font-weight: 500; letter-spacing: 0; align-items: center; flex-wrap: wrap; }
 .ws2-grid .ws2-group-total { font-variant-numeric: tabular-nums; color: var(--text, #1d2b36); }
@@ -56,6 +59,7 @@
 .ws2-grid .ws2-chip[data-mapping-status="UNRESOLVED"] { border-color: var(--fo-amber-700, #b45309); color: var(--fo-amber-700, #92400e); }
 [data-cost-grid] { font-size: 14px; }
 [data-cost-grid] .ws2-grid .ws2-cell { min-height: 32px; }
-[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell { min-height: 27px; padding-top: 2px; padding-bottom: 2px; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell { height: 27px; min-height: 27px; padding-top: 0; padding-bottom: 0; line-height: 1.2; }
 [data-cost-grid][data-density="compact"] .ws2-grid td { padding-top: 1px; padding-bottom: 1px; }
 .ws2-grid .ws2-cell:focus-visible, [data-density-toggle]:focus-visible { outline: 2px solid var(--accent, #1f5f8b); outline-offset: 1px; }
+@media (max-width: 480px) { .ws2-grid .ws2-label-wrap { flex-direction: column; align-items: stretch; gap: 0; } .ws2-grid .ws2-label-wrap .ws2-cell-text { flex: none; width: 0; min-width: 100%; } .ws2-grid .ws2-code { min-width: 0; } }

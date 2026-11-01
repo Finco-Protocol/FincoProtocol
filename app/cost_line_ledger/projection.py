@@ -17,9 +17,10 @@ from app.reference_detail_catalog import OPEX_PARENT_NAMES
 
 PUBLIC_LINE_KEYS = frozenset({
     "sub_line_id", "label", "amount_keur", "row_version", "notes", "inflation_pct", "active", "category",
-    "finco_display_code", "template_line_id", "row_kind", "summable", "lineage", "mapping_status",
+    "finco_display_code", "template_line_id", "row_kind", "taxonomy_signed_off", "feeds_run_fold", "lineage", "mapping_status",
 })
 PUBLIC_GROUP_KEYS = frozenset({"code", "label", "row_kind", "mapping_status", "line_count", "active_line_count", "saved_total_keur", "counts_toward_sheet_total"})
+PUBLIC_FOLD_KEYS = frozenset({"field", "parents", "active_line_count", "saved_total_keur", "mode", "post_fold_authority"})
 
 _FORBIDDEN_KEY = re.compile(r"excel|workbook|worksheet|spreadsheet|cell_ref|source_ref|source_cell|formula_ref|sheet_name", re.I)
 _CELL_ADDRESS = re.compile(r"(?:'[^']+'|[A-Za-z_][A-Za-z0-9_ ]*)!\$?[A-Z]{1,3}\$?\d+")
@@ -54,6 +55,34 @@ def _num(value: Any) -> float:
     return v
 
 
+def _fold_description(sheet: str, out: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """What the EXISTING Run fold does with these saved lines. Descriptive only: nothing here feeds, replaces or recomputes the fold.
+
+    CAPEX (``apply_user_sub_lines_replacing_base``): for every canonical field that has at least one ACTIVE saved line the base is zeroed
+    and the field becomes the sum of its active lines; parents mapped to the same field (C.08 and C.11 -> audit_legal) add together.
+    The typed contingency percentage (C.13) is applied afterwards and may adjust that field. OPEX: active lines are appended as items and
+    reference-seeded rows replace their canonical base items. Neither is a Run result: committed Run economics are read from the Run.
+    """
+    if sheet == "opex":
+        return {"kind": "OPEX_APPEND_ACTIVE_LINES_SEEDED_REPLACE_BASE", "fields": [],
+                "note": "Active lines are appended at the Run boundary; reference-seeded lines replace their base items. Saved totals are not Run economics."}
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+    by_field: dict[str, list[str]] = {}
+    for parent, field in sorted(CAPEX_CATEGORY_TO_FIELD.items()):
+        by_field.setdefault(field, []).append(parent)
+    fields = []
+    for field, parents in by_field.items():
+        active = [r for r in out if r["category"] in parents and r["active"]]
+        fields.append({
+            "field": field, "parents": parents, "active_line_count": len(active),
+            "saved_total_keur": math.fsum(_num(r["amount_keur"]) for r in active) if active else None,
+            "mode": "REPLACE_BASE_WITH_ACTIVE_LINES" if active else "BASE_RETAINED_NO_ACTIVE_LINES",
+            "post_fold_authority": "TYPED_CONTINGENCY_PCT_MAY_ADJUST" if field == "contingencies" else None,
+        })
+    return {"kind": "CAPEX_REPLACE_BASE", "fields": fields,
+            "note": "Per canonical field the Run uses the sum of its active saved lines instead of the base amount. Saved totals are not Run economics."}
+
+
 def project_cost_lines(technology: str, sheet: str, lines: Iterable[Mapping[str, Any]], *, codes: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Annotate persisted ``lines`` (route dicts) and add per-group saved totals.
 
@@ -68,7 +97,7 @@ def project_cost_lines(technology: str, sheet: str, lines: Iterable[Mapping[str,
         cls = classify_persisted_line(technology, sheet, code, str(line.get("category") or ""))
         row = {k: line.get(k) for k in ("sub_line_id", "label", "amount_keur", "row_version", "notes", "inflation_pct", "active", "category")}
         row.update({"finco_display_code": code, "template_line_id": cls["template_line_id"], "row_kind": cls["row_kind"],
-                    "summable": cls["summable"], "lineage": cls["lineage"], "mapping_status": cls["mapping_status"]})
+                    "taxonomy_signed_off": cls["taxonomy_signed_off"], "feeds_run_fold": cls["feeds_run_fold"], "lineage": cls["lineage"], "mapping_status": cls["mapping_status"]})
         out.append(row)
 
     names = CAPEX_PARENT_NAMES if sheet == "capex" else OPEX_PARENT_NAMES
@@ -90,6 +119,7 @@ def project_cost_lines(technology: str, sheet: str, lines: Iterable[Mapping[str,
             "counts_toward_sheet_total": not derived,
         })
     result = {"ledger": {"version": LEDGER_VERSION, "template": TEMPLATE_VERSION}, "lines": out, "groups": groups,
+              "fold": _fold_description(sheet, out),
               "saved_total_keur": math.fsum(g["saved_total_keur"] for g in groups if g["counts_toward_sheet_total"])}
     assert_no_source_provenance(result)
     return result

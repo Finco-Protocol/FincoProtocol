@@ -17,6 +17,7 @@ import { clearRunIntent, createRunIntent, loadRunIntent, type RunIntent } from "
 import { RunFailureNotice } from "../RunFailureNotice";
 import type { ConfirmedRun } from "../workspaceExtensions";
 import type { RunsPayload } from "../types";
+import { SAVE_ALL_EXCLUDES } from "../InputsGuide";
 import { StatusNote, useCanonicalRead, useDirtyTotal, useReportPending, useUnresolvedLock, type StatusMessage } from "./workflowShared";
 
 interface Props {
@@ -71,6 +72,11 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
         : locked || resuming ? "The last Run outcome is not confirmed. Resume it, or reload to reconcile, before starting a new Run."
           : !contract ? "Run is unavailable until the run contract is loaded." : "";
 
+  // Last committed Run identity (newest by time). A STALE result is the prior Run, so its id and date are always shown with the label.
+  const runs = read.state === "ready" ? read.data.runs : [];
+  const lastRun = runs.length ? runs.reduce((a, b) => (Date.parse(b.ran_at) > Date.parse(a.ran_at) ? b : a)) : null;
+  const lastRunWhen = lastRun && !Number.isNaN(Date.parse(lastRun.ran_at)) ? new Date(lastRun.ran_at).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "";
+
   async function run(resume = false) {
     if (inFlight.current || !contract || protectedReference) return;
     if (resume ? pending === null : Boolean(blockedReason)) return;
@@ -124,6 +130,11 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
          data-dirty-keys={Object.keys(breakdown).join(",")} data-pending-keys={pendingKeys.join(",")}>
       <span className="rx-badge" data-run-state-label={freshness}><strong>{LABEL[freshness] ?? freshness}</strong></span>
       <span className="fm-info-note" style={{ margin: 0 }}>{MEANING[freshness] ?? ""}</span>
+      {lastRun && (
+        <span className="fm-info-note wf-lastrun" style={{ margin: 0 }} data-last-run-id={lastRun.history_id}>
+          Last Run <code>{lastRun.history_id.slice(0, 8)}</code>{lastRunWhen && ` · ${lastRunWhen}`}{lastRun.active_scenario_name ? ` · ${lastRun.active_scenario_name}` : " · Base"}
+        </span>
+      )}
       {total > 0 && <span className="wf-dirty" role="status" data-unsaved-indicator="true">{total} unsaved edit{total === 1 ? "" : "s"}</span>}
       <div className="wf-bar-actions">
         <button type="button" className="fm-btn" onClick={() => confirmIfDirty(onReload, { draftsOnly: true })} data-wf-reload="true">Reload</button>
@@ -138,6 +149,9 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
           </button>
         )}
       </div>
+      <p className="fm-info-note wf-save-scope" style={{ margin: 0, flexBasis: "100%" }} data-save-scope-note="true">
+        Save All writes staged assumptions, contracts and cost lines in one step. Not included — saved separately: {SAVE_ALL_EXCLUDES.toLowerCase()}.
+      </p>
       <p id="wf-run-hint" className="fm-info-note" style={{ margin: 0, flexBasis: "100%" }}>
         {blockedReason || "Run is a separate, deliberate action: Save, scenario selection and comparison never execute the model."}
         {resuming && " Resuming asks the server for that Run's original result; it does not calculate again."}
