@@ -251,3 +251,26 @@
 
 .ws2-grid th.ci-h-amount, .ws2-grid th.ci-h-perMw { text-transform: none; }   /* units keep their case: kEUR, EUR/MW */
 .ws2-grid .ci-col-menu { width: 3em; overflow: visible; padding-left: 0; padding-right: 2px; }
+
+/* Small screens (structural, thresholds untouched): code, description and notes share one line per cost row; KPI tiles in two rows of three;
+   keyboard hints and the large-row switch (touch has neither) are not shown; filter chips scroll in one line. */
+@media (max-width: 900px) {
+  .ci-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ci-kpi-label { font-size: 9.5px; letter-spacing: .02em; }
+  .ci-kpi-value { font-size: 13px; }
+  [data-cost-grid][data-density] .ws2-grid .ws2-label-wrap { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 6px; }
+  [data-cost-grid] .ws2-grid .ws2-label-wrap .ws2-code { display: inline; min-width: 0; }
+  [data-cost-grid][data-density] .ws2-grid .ws2-label-wrap .ws2-cell-text { flex: 1 1 6em; width: 0; min-width: 0; }
+  [data-cost-grid] .ws2-grid .ws2-row-notes { flex: 0 0 auto; margin: 0; }
+  [data-cost-grid] .ws2-grid .ws2-row-notes[open] { flex-basis: 100%; }
+  [data-cost-grid] .ws2-grid-keys, [data-cost-grid] [data-density-toggle], [data-cost-grid] [data-cost-back] { display: none; }
+  [data-cost-grid] .ci-filters { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+  [data-cost-grid] .ci-filters .fm-btn { white-space: nowrap; flex: 0 0 auto; }
+}
+@media (max-width: 900px) {
+  [data-cost-line-manager] .rx-lines-scroll-short { max-height: 168px; }
+  .ci-find .ci-unit { flex: 0 0 auto; }
+  .ci-find .ci-search { flex: 1 1 10em; }
+  [data-cost-grid] .ci-linebar { margin: 2px 0; }
+  [data-cost-grid] .ci-linebar .ci-linesearch { flex: 1 1 100%; }
+}
