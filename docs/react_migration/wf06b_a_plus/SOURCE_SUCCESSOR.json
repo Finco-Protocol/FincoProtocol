@@ -66,7 +66,7 @@
     "tests/fin_v2_rcux_scope.py": "3bc2754ff7889bb34477bd29c0a2f2d0cbbe97c7",
     "tests/fin_v2_wf06a_scope.py": "1f90a48fd88ddc2e084068c7959386c15612091b",
     "tests/fin_v2_wsv2_scope.py": "fa4146c2eb4089419e73523ef5c165353cab0584",
-    "tests/model_react_wf06b_acceptance.py": "27ca5c77885c4a4a842205b421a84e5c37952bf0",
+    "tests/model_react_wf06b_acceptance.py": "dcf424f0ed768d9231f1a84e8a1376c324ab1509",
     "tests/test_fin_v2_integration_409_scope.py": "6ced50aff39dedcc97bf289730f69d3fd5f0cae9",
     "tests/test_rcm_governance.py": "4688b4c849ba6cb0c1c9235d077184bb9ee53cd3",
     "tests/test_rcux_governance.py": "baf5e639627c51f609693cc27c22f39a985c2235",

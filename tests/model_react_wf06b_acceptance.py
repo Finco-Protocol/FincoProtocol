@@ -476,6 +476,7 @@ def check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, bas
         eligible = {g["code"] for g in _costlines(context, base, record.project_code, "capex")["line_management"]["eligible_groups"]}
         target = next(c for c in [t.get_attribute("data-cost-group-add") for t in grid.locator("[data-cost-group-add]").all()] if c in eligible)
         grid.locator(f"[data-cost-group-add='{target}']").click()
+        page.wait_for_function("(c) => document.querySelector(\"[data-cost-line-manager='capex'] select\").value === c", arg=target, timeout=10000)
         assert manager.locator("select").first.input_value() == target
         assert manager.get_by_label("Line label").input_value() == "typed before choosing a group"       # typed text is kept
         assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")
