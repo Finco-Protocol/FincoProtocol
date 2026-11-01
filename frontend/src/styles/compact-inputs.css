@@ -1,0 +1,29 @@
+/* WF-06B Compact Inputs: two columns on desktop, one on small screens; ~14px text; optional compact controls (shared density preference). */
+.ci-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; font-size: 14px; }
+.ci-overview .ci-h { margin: 0 0 6px; font-size: 1rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ci-overview .ci-id { margin: 0 0 6px; overflow-wrap: anywhere; }
+.ci-overview .ci-facts { margin: 0; display: grid; gap: 4px; }
+.ci-overview .ci-facts > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line, #dce3e9); padding: 3px 0; }
+.ci-overview .ci-facts dt { color: var(--muted, #526374); }
+.ci-overview .ci-facts dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.ci-overview .ci-note { margin: 6px 0 0; color: var(--muted, #526374); font-size: 12.5px; }
+.ci-overview .ci-stale { margin: 4px 0; padding: 2px 8px; border: 1px solid #a15c00; background: #fff7e8; color: #7a4600; font-weight: 600; }
+@media (max-width: 900px) { .ci-overview { grid-template-columns: minmax(0, 1fr); } }
+
+/* Inputs grid sections side by side on wide screens; a section's table keeps its own scroll box. */
+.ci-sections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; align-items: start; }
+@media (min-width: 1100px) { .ci-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ci-sections .rx-input-section { min-width: 0; }
+[data-input-grid] { font-size: 14px; }
+[data-input-grid] .rx-grid-input { min-height: 32px; }
+[data-input-grid][data-density="compact"] .rx-grid-input { height: 27px; min-height: 27px; padding-top: 0; padding-bottom: 0; line-height: 1.2; }
+[data-input-grid][data-density="compact"] .rx-input-table td, [data-input-grid][data-density="compact"] .rx-input-table th { padding-top: 1px; padding-bottom: 1px; }
+[data-input-grid] .rx-grid-input:focus-visible, [data-input-grid] [data-density-toggle]:focus-visible { outline: 2px solid var(--accent, #1f5f8b); outline-offset: 1px; }
+/* The default state needs no badge: only dirty / derived / locked / unsupported are shown; the word stays available to assistive technology. */
+.rx-input-table .rx-state-editable-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Half-width tables: give the unit column room so "months" never breaks into "month / s". */
+.ci-sections .rx-input-table .rx-col-field { width: 34%; }
+.ci-sections .rx-input-table .rx-col-value { width: 20%; }
+.ci-sections .rx-input-table .rx-col-unit { width: 16%; }
+.ci-sections .rx-input-table .rx-col-status { width: 30%; }
+.ci-sections .rx-card .rx-input-table td:nth-child(3), .ci-sections .rx-input-table td:nth-child(3) { overflow-wrap: normal; word-break: normal; }

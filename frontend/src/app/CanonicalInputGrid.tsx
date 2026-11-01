@@ -6,6 +6,7 @@ import { plain } from "./productLanguage";
 import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
 import { useOptionalChanges } from "./editing/ChangesProvider";
 import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
+import { useDensity } from "./editing/density";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -102,6 +103,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
   const [message, setMessage] = useState(
     () => (isUnresolved("input-grid") ? "A previous Save outcome is unresolved. Reload to reconcile before saving again." : ""));
   const [activeCode, setActiveCode] = useState<string>("");
+  const [density, toggleDensity] = useDensity();
   // The last submitted batch and the composite hash it was built on: the evidence a reconciliation needs.
   const attempt = useRef<{ cells: Array<{ field_id: string; value: string }>; baselineHash: string } | null>(null);
   // Focus anchor: the disabled submit button would blur focus to <body> while a
@@ -233,7 +235,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
     + category.rows.filter((row) => dirtyCodes.includes(row.field_id || row.code)).length, 0);
 
   return (
-    <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical">
+    <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical" data-density={density}>
       <h2 id="rx-grid-heading">Assumptions</h2>
       <p className="rx-save-scope" data-save-scope="grid">
         <strong>Saves:</strong> every edited cell below, together, with <em>Save staged cells</em>. All are saved or none.
@@ -255,7 +257,9 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section }) => [section.section_id, true])))}>Expand all sections</button>
         <button type="button" className="rx-button rx-button-secondary" data-grid-collapse-derived="true"
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section, counts }) => [section.section_id, defaultOpen(counts)])))}>Show editable sections only</button>
+        <button type="button" className="rx-button rx-button-secondary" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
       </div>
+      <div className="ci-sections" data-ci-sections="true">
       {sections.map(({ section, counts }, sectionIndex) => (
         <details key={section.section_id} className="rx-input-section" data-grid-section={section.section_id}
           open={isOpen(section.section_id, counts) || stagedIn(section) > 0}
@@ -332,7 +336,9 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
                         </td>
                         <td>{row.unit}</td>
                         <td className="rx-note rx-status-cell">
-                          <span className={`rx-state rx-state-${state}`}>{STATE_TEXT[state]}</span>
+                          {state === "editable"
+                            ? <span className="rx-state-editable-sr">{STATE_TEXT[state]}</span>
+                            : <span className={`rx-state rx-state-${state}`}>{STATE_TEXT[state]}</span>}
                           {row.reason
                             ? <span className="rx-state-reason"> {row.reason}</span>
                             : row.modified_since_run
@@ -350,6 +356,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
           </div>
         </details>
       ))}
+      </div>
       <div className="rx-field-row" style={{ marginTop: "0.75rem" }}>
         <button
           type="button"

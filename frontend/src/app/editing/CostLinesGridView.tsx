@@ -19,14 +19,12 @@ import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
 import { sumDecimals } from "./decimal";
+import { useDensity } from "./density";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
 
 type Sheet = "capex" | "opex";
-type Density = "normal" | "compact";
-const DENSITY_KEY = "finco.ui.density";           // non-sensitive UI preference only; never holds any project value
-const readDensity = (): Density => { try { return window.localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "normal"; } catch { return "normal"; } };
 const MAPPING_NOTE: Record<string, string> = {
   UNRESOLVED: "Taxonomy mapping is pending sign-off. Active saved lines here still feed the model through the existing calculation, unchanged.",
   DERIVED: "Calculated when the model runs — not an editable cost line.",
@@ -53,7 +51,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
   const [inFlight, setInFlight] = useState(false);
-  const [density, setDensity] = useState<Density>(readDensity);
+  const [density, toggleDensity] = useDensity();
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -208,11 +206,6 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
   const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
   const fmtKeur = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  const toggleDensity = () => setDensity((d) => {
-    const next: Density = d === "compact" ? "normal" : "compact";
-    try { window.localStorage.setItem(DENSITY_KEY, next); } catch { /* preference is optional */ }
-    return next;
-  });
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
 
   return (

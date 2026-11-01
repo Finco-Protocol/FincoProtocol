@@ -13,7 +13,7 @@ import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { FinancialOverview } from "./FinancialOverview";
 import { ReportPrecisionControl } from "./ReportPrecision";
 import { financialInputOrder } from "./inputLayout";
-import { workspaceRoute, INPUT_DESTINATIONS, type WorkspaceDestination } from "./workspaceNavigation";
+import { workspaceRoute, INPUT_DESTINATIONS, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
 import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type ConfirmedRun, type WorkspaceExtensions } from "./workspaceExtensions";
 import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
@@ -21,6 +21,7 @@ import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
 import { CostLinesGridView as CostLinesView } from "./editing/CostLinesGridView";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
+import { InputsOverview } from "./InputsOverview";
 import { InputStudios } from "./studios/InputStudios";
 import { FriendlyError, resultStatus, RESULT_STATUS_HELP } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
@@ -279,8 +280,16 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     confirmIfDirty(() => window.location.assign(anchor.href));
   };
 
+  // Jumps to a real Inputs group are history entries (#inputs/capex ...), so Back/Forward and deep links work and the mounted editors keep
+  // their staged text. Only anchors without a route (Studios) still scroll in place.
+  const JUMP_DESTINATION: Record<string, InputDestination> = { "wf-inputs-setup": "project", "wf-inputs-grid": "technical", "wf-inputs-revenue": "revenue" };
   const jumpWithinInputs = (jump: InputsJump) => {
     if (jump.kind === "section" && jump.section) { navigate(jump.section as Section); return; }
+    const dest: InputDestination | null = jump.kind === "cost-sheet" && jump.sheet ? jump.sheet : JUMP_DESTINATION[jump.id] ?? null;
+    if (dest && sectionRef.current === "inputs") {
+      const next = `inputs/${dest}` as WorkspaceDestination;
+      if (next !== destinationRef.current) { navigateTo(next); return; }
+    }
     if (jump.kind === "cost-sheet" && jump.sheet) setCostRequest((prev) => ({ sheet: jump.sheet!, nonce: prev.nonce + 1 }));
     const target = document.getElementById(jump.id);
     target?.scrollIntoView({ block: "start" });
@@ -504,6 +513,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
             : inputs && displayedInputs
             ? <>
+              <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} />
               <InputsJumpNav onJump={jumpWithinInputs} />
               <SaveScopeGuide />
               <div id="wf-inputs-setup" tabIndex={-1}>

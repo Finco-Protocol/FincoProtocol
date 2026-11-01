@@ -32,3 +32,33 @@ def test_wf06b_workflow_bar_scope_and_no_invented_last_run(live_server, browser,
 def test_wf06a_cost_grid_body_still_holds_at_every_width(live_server, browser, rcm_react_flag, kind):
     from tests.model_react_wf06a_acceptance import check_cost_lines_show_group_context_without_changing_keyboard_or_layout
     check_cost_lines_show_group_context_without_changing_keyboard_or_layout(browser, live_server, kind)
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+def test_wf06b_compact_inputs_overview_two_column(live_server, browser, rcm_react_flag, kind):
+    from tests.model_react_wf06b_acceptance import check_compact_inputs_overview_is_server_owned_and_two_column
+    check_compact_inputs_overview_is_server_owned_and_two_column(browser, live_server, kind)
+
+
+def test_wf06b_overview_committed_run_only_and_stale(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_overview_shows_only_the_committed_run_and_marks_stale
+    check_overview_shows_only_the_committed_run_and_marks_stale(browser, live_server)
+
+
+def test_wf06b_back_forward_keeps_staged_text(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_back_forward_keeps_staged_text_and_never_crosses_projects
+    check_back_forward_keeps_staged_text_and_never_crosses_projects(browser, live_server)
+
+
+def test_wf06b_keyboard_focus_and_live_status(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_keyboard_focus_and_live_status
+    check_keyboard_focus_and_live_status(browser, live_server)
+
+
+def test_wf06b_axe_no_serious_or_critical(live_server, browser, rcm_react_flag):
+    import os
+    axe = os.environ.get("FINCO_AXE_CORE_PATH")
+    if not axe:
+        pytest.skip("set FINCO_AXE_CORE_PATH to a local axe-core build to run the accessibility audit")
+    from tests.model_react_wf06b_acceptance import check_axe_has_no_serious_or_critical_violations
+    check_axe_has_no_serious_or_critical_violations(browser, live_server, axe)
