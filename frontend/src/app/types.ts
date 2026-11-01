@@ -328,11 +328,43 @@ export interface CostLinePayload {
   category: string;
 }
 
+/** WF-06B: server classification of a persisted line (FINCO identity only; never spreadsheet provenance). */
+export interface CostLineProjectionLine {
+  sub_line_id: string;
+  finco_display_code: string;
+  template_line_id: string | null;
+  row_kind: "editable_run_bound" | "derived_runtime" | "heading" | "blank_slot" | "unresolved_mapping" | "unsupported";
+  summable: boolean;
+  lineage: "template" | "user" | "unknown";
+  mapping_status: "PROVEN" | "UNRESOLVED";
+}
+
+export interface CostLineProjectionGroup {
+  code: string;
+  label: string;
+  row_kind: "heading" | "derived_runtime";
+  mapping_status: "PROVEN" | "UNRESOLVED" | "DERIVED";
+  line_count: number;
+  active_line_count: number;
+  /** Sum of ACTIVE saved line amounts (kEUR). `null` for runtime-derived groups. Not a model result. */
+  saved_total_keur: number | null;
+  counts_toward_sheet_total: boolean;
+}
+
+export interface CostLinesProjection {
+  ledger: { version: string; template: string };
+  lines: CostLineProjectionLine[];
+  groups: CostLineProjectionGroup[];
+  saved_total_keur: number;
+}
+
 export interface CostLinesPayload {
   ok: true;
   sheet: "capex" | "opex";
   project: { code: string; protected_reference: boolean };
   lines: CostLinePayload[];
+  /** WF-06B additive ledger classification and saved group subtotals; `null` when unavailable (never fabricated). */
+  projection?: CostLinesProjection | null;
   save: {
     url: string;
     method: string;

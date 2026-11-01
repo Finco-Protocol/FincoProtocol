@@ -24,6 +24,13 @@ import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
 
 type Sheet = "capex" | "opex";
+type Density = "normal" | "compact";
+const DENSITY_KEY = "finco.ui.density";           // non-sensitive UI preference only; never holds any project value
+const readDensity = (): Density => { try { return window.localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "normal"; } catch { return "normal"; } };
+const MAPPING_NOTE: Record<string, string> = {
+  UNRESOLVED: "Mapping pending sign-off — shown as saved; not counted as verified.",
+  DERIVED: "Calculated when the model runs — not an editable cost line.",
+};
 type Status = { tone: "ok" | "error" | "conflict"; text: string } | null;
 
 const COLUMNS_CAPEX = ["label", "amount"] as const;
@@ -46,6 +53,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
   const [inFlight, setInFlight] = useState(false);
+  const [density, setDensity] = useState<Density>(readDensity);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -196,15 +204,25 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     : <p className="fm-info-note" role="status">Loading…</p>;
 
   const total = sumDecimals(lines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
+  const projection = data.projection ?? null;
+  const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
+  const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
+  const fmtKeur = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const toggleDensity = () => setDensity((d) => {
+    const next: Density = d === "compact" ? "normal" : "compact";
+    try { window.localStorage.setItem(DENSITY_KEY, next); } catch { /* preference is optional */ }
+    return next;
+  });
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
 
   return (
-    <section className="fm-card fm-section" aria-label={`${title} line items`} data-cost-grid={sheet}>
+    <section className="fm-card fm-section" aria-label={`${title} line items`} data-cost-grid={sheet} data-density={density}>
       <div className="fm-card-title">
         <h2 id={headingId}>{sheet === "capex" ? "CAPEX construction plan" : "OPEX operating profile"}</h2>
         <span className="fm-toolbar">
           <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
           <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button>
+          <button type="button" className="fm-btn" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
         </span>
       </div>
       <p className="rx-save-scope" data-save-scope="cost-lines">
@@ -228,7 +246,19 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                 <Fragment key={line.sub_line_id}>
                 {startsGroup && line.category && (
                   <tr className="ws2-group-row" data-group-row={line.category}>
-                    <th scope="colgroup" colSpan={columns.length}>{costGroupLabel(line.category, data.line_management?.eligible_groups ?? [])}</th>
+                    <th scope="colgroup" colSpan={columns.length}>
+                      <span className="ws2-group-name">{costGroupLabel(line.category, data.line_management?.eligible_groups ?? [])}</span>
+                      {(() => {
+                        const g = groupInfo.get(line.category);
+                        if (!g) return null;
+                        return (
+                          <span className="ws2-group-meta" data-group-meta={g.code}>
+                            {g.saved_total_keur !== null && <span className="ws2-group-total" data-group-saved-total={g.code}>Saved {fmtKeur(g.saved_total_keur)} kEUR</span>}
+                            {g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Derived" : "Mapping pending"}</span>}
+                          </span>
+                        );
+                      })()}
+                    </th>
                   </tr>
                 )}
                 <tr data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
@@ -239,6 +269,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
                     return (
                       <td key={col}>
+                        {col === "label" && lineInfo.get(line.sub_line_id)?.finco_display_code && (
+                          <span className="ws2-code" data-finco-code="true" aria-hidden="true">{lineInfo.get(line.sub_line_id)?.finco_display_code}</span>
+                        )}
                         <input className={`fm-input ws2-cell ${col === "label" ? "ws2-cell-text" : ""}`} type="text"
                                inputMode={col === "label" ? "text" : "decimal"} autoComplete="off" spellCheck={false}
                                aria-label={label} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
@@ -268,7 +301,10 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
             {!lines.length && <tr><td colSpan={columns.length}><span role="status">No line items were projected for this sheet.</span></td></tr>}
           </tbody>
           {lines.length > 0 && total !== null && (
-            <tfoot><tr className="ws2-grid-total"><th scope="row">Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" style={{ textAlign: "right" }}>{total}</td>{sheet === "opex" && <td />}</tr></tfoot>
+            <tfoot>
+              <tr className="ws2-grid-total"><th scope="row">Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" style={{ textAlign: "right" }}>{total}</td>{sheet === "opex" && <td />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row">Saved on the server (kEUR, active lines; calculated lines excluded)</th><td data-saved-total="true" style={{ textAlign: "right" }}>{fmtKeur(projection.saved_total_keur)}</td>{sheet === "opex" && <td />}</tr>}
+            </tfoot>
           )}
         </table>
       </div>
