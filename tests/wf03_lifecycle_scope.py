@@ -79,6 +79,12 @@ OWNED_PATHS=frozenset((
     # Post-#400 performance layer (Financial Owner approval 2026-10-30, separate Draft PR): WS-2 exact check memoised once per outer call + its evidence docs.
     'docs/ci_v3/incidents/pr400_performance/ROOT_CAUSE.md', 'docs/ci_v3/incidents/pr400_performance/TIMING_LEDGER.md',
     'docs/ci_v3/incidents/pr400_performance/FIX_AND_VALIDATION.md',
+    # ON-08 Correction B (OD-1(A), Owner-approved): the two generic-SHL period indices follow the effective Run geometry on a proven factory-generic
+    # Solar/Wind Working Copy. One pure helper + one hook in the V2 Run route (already owned) + its HTTP/DB tests; financial formulas and engine unchanged.
+    'app/services/on08_shl_index_authority.py', 'tests/test_on08_shl_index_authority.py',
+    # ON-08 Correction E (Financial Owner approval 2026-10-31): the Project Setup horizon advisory follows the Run's index re-derivation, and the two historical
+    # tests that encoded the pre-fix refusal (native-shadow rejected seed, SC-34 refused-Run) state the correct outcomes. No engine/formula/CI change.
+    'app/v2/horizon_readiness.py', 'tests/test_native_shadow_http_route.py', 'tests/test_sc34_run_failure_explanation.py',
     'docs/ci_v3/incidents/pr400_artifact_attempt/ROOT_CAUSE.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/CHANGE_LEDGER.md',
     'docs/ci_v3/incidents/pr400_artifact_attempt/TEST_EVIDENCE.md',
@@ -164,11 +170,32 @@ RESEARCH_PATHS=frozenset((
     'research/on07_correction_a/probes/wnd02_levers.json',
     'research/on07_correction_a/probes/wnd02_rederived.json',
 ))
+# FIN-TRUTH-B1: literal source/test/document layer; no additional financial authority.
+B1_BASE='ebf1f15113ec95d69d29e8aa4e4635686dd1f39a'
+B1_CORRECTION_B_BASE='861ff18f21764a05f2fc739de92bd1ac62538f34'
+B1_CORRECTION_B_TREE='42c9b4659cac9a739abd0cc248d67a1252ebb5c4'
+B1_MANIFEST='docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json'
+B1_PATHS=frozenset((
+    B1_MANIFEST,
+    'tests/fin_truth_b1/test_sensitivity_source.py',
+    'tests/fin_truth_b1/test_source_successor.py',
+    'docs/financial_validation/fin_truth_b1/README.md',
+    'tests/test_model_rc7_capex_binding_surfaces.py',
+))
+B1_REPINS=frozenset((
+    'main_web.py', 'app/services/sensitivity_service.py', 'tests/wf03_lifecycle_scope.py',
+    'docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json',
+    'docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json',
+))
+OWNED_PATHS=OWNED_PATHS|B1_PATHS
+
+
 RESEARCH_DIRECTORIES=('research/on07_baseline_post399/','research/on07_correction_a/')
 assert all(p.startswith(RESEARCH_DIRECTORIES) for p in RESEARCH_PATHS)
 OWNED_PATHS=OWNED_PATHS|RESEARCH_PATHS
 WF04_MANIFEST='docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json'   # introduced after BASE: pinned by blob, no BASE-layer history
-PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p!=WF04_MANIFEST))
+PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE_SUCCESSOR.json') and p not in {WF04_MANIFEST,B1_MANIFEST}))
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
 # The ONLY workflow files this cohort may own: the Owner-directed 2x timeout successor (Correction E). Any other .github/ path stays unowned.
 CI_TIMEOUT_WORKFLOWS=frozenset({'.github/workflows/ci_public_job.yml','.github/workflows/ci_v3_required_job.yml','.github/workflows/public_safety_and_smoke.yml'})
@@ -213,6 +240,50 @@ def manifest(repo=None,ref=None):
         return {}
 
 
+def _b1_layer_ok(root, ref, pins, data):
+    """Preserve pre-B1 and reviewed B1 layers; admit the finite Correction B."""
+    old=json.loads(_baseline_bytes(root, MANIFEST, B1_BASE, _read, _git))
+    previous=json.loads(_baseline_bytes(root, MANIFEST, B1_CORRECTION_B_BASE, _read, _git))
+    _git(root,'merge-base','--is-ancestor',B1_CORRECTION_B_BASE,ref or 'HEAD')
+    if _git(root,'rev-parse',B1_CORRECTION_B_BASE+'^{tree}').decode().strip()!=B1_CORRECTION_B_TREE:
+        return False
+    seal=json.loads(_read(root, B1_MANIFEST, ref))
+    if seal.get('schema_version')!='FIN_TRUTH_B1_EXACT_SOURCE_V1' or seal.get('base')!=B1_BASE:
+        return False
+    if seal.get('historical_source_blobs')!={B1_BASE:old['source_blobs']}:
+        return False
+    if seal.get('correction_b_history')!={B1_CORRECTION_B_BASE:previous['source_blobs']}:
+        return False
+    extra=set(pins)-set(old['source_blobs'])-B1_PATHS
+    if set(old['source_blobs'])-set(pins) or any(not _int409_admits(p,pins[p],root,ref) for p in extra):
+        return False        # only pins the PR #409 integration seal literally authorises may join the B1 pin set (ON-08 owned paths)
+    if any(pins[p]!=value and p not in B1_REPINS and not _int409_admits(p,pins[p],root,ref) for p,value in old['source_blobs'].items()):
+        return False
+    if any(pins[p]!=value and p not in B1_REPINS|B1_PATHS and not _int409_admits(p,pins[p],root,ref) for p,value in previous['source_blobs'].items()):
+        return False
+    if any(data.get(k)!=v for k,v in old.items() if k not in ('source_blobs','path_ledger')):
+        return False
+    ledger=data.get('path_ledger',[])
+    previous_ledger=previous['path_ledger']
+    additions=ledger[len(previous_ledger):]
+    delta=B1_REPINS|B1_PATHS
+    if (ledger[:len(previous_ledger)]!=previous_ledger or len(additions)!=len(delta)
+            or {row.get('path') for row in additions}!=delta):
+        return False
+    INT=_int409(root,ref)
+    def _after_ok(row):
+        if row.get('after_blob')==pins[row['path']]: return True
+        # PR #409: a B1-repinned path may have moved in the composition. The historical B1 row is NOT rewritten; it must still record exactly the blob
+        # PR #407's reviewed head holds, and the live pin must be one the integration seal literally authorises.
+        return (bool(INT) and row.get('after_blob')==INT.source_blob('PR407',row['path'],root)
+                and _int409_admits(row['path'],pins[row['path']],root,ref))
+    if any(row.get('before_blob')!=previous['source_blobs'].get(row['path']) or not _after_ok(row) for row in additions):
+        return False
+    expected=(B1_PATHS-{B1_MANIFEST})|{'main_web.py','app/services/sensitivity_service.py'}
+    reviewed=seal.get('source_blobs',{})
+    return set(reviewed)==expected and all(pins.get(p)==v for p,v in reviewed.items())
+
+
 def _historical_maps_ok(root,ref,pins,data):
     expected=data.get('predecessor_manifests',{})
     if set(expected)!=set(PREDECESSOR_MANIFESTS): return False
@@ -234,8 +305,51 @@ def _historical_maps_ok(root,ref,pins,data):
         if any(current.get(k)!=v for k,v in old.items() if k not in ('source_blobs','historical_source_blobs')): return False
         if set(current)!=set(old)|{'historical_source_blobs'} and set(current)!=set(old): return False
         for source,value in before.items():
-            if after[source]!=value and (source not in OWNED_PATHS or after[source]!=pins[source]): return False
+            if after[source]!=value and not ((source in OWNED_PATHS and after[source]==pins[source])
+                                             or _wf06a_repin(path,source,after[source],root,ref)): return False
     return True
+
+
+def _wf06a_repin(manifest_path,source,after,root,ref):
+    """Bounded WF-06A delegation (PR #406, Owner Correction B): a predecessor pin outside this cohort's owner set may advance only for one literal
+    (manifest, path) pair of the closed WF-06A cohort, only to that cohort's exact pin, and only while that cohort (low level, never calls back here)
+    is itself exact. Any other pin, path or manifest still fails."""
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: return False
+    return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
+
+
+def _int409(root,ref):
+    """The low-level PR #409 integration seal (imports no cohort), or None when it is absent."""
+    try:
+        from tests import fin_v2_integration_409_scope as INT
+    except ImportError: return None
+    return INT
+
+
+def _int409_allows(path,root,ref):
+    INT=_int409(root,ref)
+    return bool(INT) and INT.owns(path,root,ref)
+
+
+def _int409_admits(path,value,root,ref):
+    """A WF-03 pin (new or moved) that the integration seal authorises literally, only while that seal is exact."""
+    INT=_int409(root,ref)
+    if not INT: return False
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: WF06A=None
+    if WF06A is not None and (path in WF06A.OWNED_PATHS or path==WF06A.MANIFEST):
+        return WF06A.pins_exactly(path,value,root,ref)       # PR #409 Correction B: WF-06A-owned pins only through the exact WF-06A cohort
+    return INT.admits_pin(path,value,root,ref)
+
+
+def _wf06a_allows(path,root,ref):
+    try:
+        from tests import fin_v2_wf06a_scope as WF06A
+    except ImportError: return False
+    return WF06A.allowed_path(path,root,ref) and WF06A.exact_blobs_ok(root,ref)
 
 
 _SCOPE=[]   # call-scope memo stack: see scoped()
@@ -247,7 +361,15 @@ def scoped():
     instead of once per changed path. The memo lives only for that call: it is dropped on exit, never keeps bytes, and is never shared between calls."""
     _SCOPE.append({})
     try:
-        yield
+        try:
+            from tests import fin_v2_integration_409_scope as _INT
+        except ImportError:
+            _INT = None
+        if _INT is None:
+            yield
+        else:
+            with _INT.scoped():          # the low-level PR #409 seal is memoised for the same single call
+                yield
     finally:
         _SCOPE.pop()
 
@@ -271,7 +393,7 @@ def _exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',BASE,PARENT)
         if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
         if any(_blob(_read(root,p,ref))!=sha for p,sha in pins.items()): return False
-        return _historical_maps_ok(root,ref,pins,data)
+        return _historical_maps_ok(root,ref,pins,data) and _b1_layer_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
         return False
 
@@ -285,10 +407,10 @@ def valid(repo=None,ref=None):
     if not exact_blobs_ok(root,ref): return False
     try:
         changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
-        if any(not allowed_path(p) for p in changed): return False
+        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in changed): return False
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
-            if any(not allowed_path(p) for p in untracked): return False
+            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in untracked): return False
         return True
     except (OSError,ValueError,subprocess.CalledProcessError): return False
 

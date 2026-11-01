@@ -64,7 +64,11 @@ def _seed(tmp_path_factory, name, template, capacity, factory_override=None):
 def seeds(tmp_path_factory):
     from tools import v9p2a_odr_acceptance as acc
     return {"feasible": _seed(tmp_path_factory, "reference-solar", "solar", 64.0),
-            "rejected": _seed(tmp_path_factory, "W25-factory-seed", "wind", 25.0, acc.cases()["W25"][0])}
+            # ON-08 (OD-1(A)): the default W25 Wind project (18 months / 25 years) used to be refused only because its stored SHL maturity was off the
+            # period grid. That is corrected, so W25 is now a genuine FEASIBLE case. The fail-closed arm uses a case that is still genuinely refused by
+            # the real economics (DSCR 9x sizes almost no senior debt, so the shareholder loan cannot be repaid at maturity).
+            "feasible_w25": _seed(tmp_path_factory, "W25-factory-seed", "wind", 25.0, acc.cases()["W25"][0]),
+            "rejected": _seed(tmp_path_factory, "W25-dscr9-infeasible-seed", "wind", 25.0, acc.cases()["W25-dscr9-infeasible"][0])}
 
 
 def _db_rows(path):
@@ -169,22 +173,24 @@ def _post(seed, shadow, tmp_path, monkeypatch):
             "history": len(history), "committed": committed, "shadow": records}
 
 
-@pytest.mark.parametrize("kind", ["feasible", "rejected"])
+@pytest.mark.parametrize("kind", ["feasible", "feasible_w25", "rejected"])
 def test_http_route_identical_with_shadow_off_and_on(seeds, kind, tmp_path, monkeypatch):
     runs = {mode: _post(seeds[kind], mode, tmp_path, monkeypatch) for mode in (None, "stage1", "stage2")}
     off = runs[None]
     assert off["status"] == 200 and off["bound"]["failed"] == 0
-    if kind == "feasible":
+    if kind.startswith("feasible"):
         assert off["committed"] and off["history"] == 1 and off["bound"]["verified"] > 0
     else:
         assert off["outcome_header"] == "FAILED" and not off["committed"] and off["history"] == 0
+        assert "SHL_MATURITY_RESIDUAL_FAILS_CLOSED" in off["body"], "a typed, genuine economic refusal (not an off-grid index artefact)"
+        assert "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED" not in off["body"]
     for mode in ("stage1", "stage2"):
         run = runs[mode]
         for field in ("status", "outcome_header", "body", "db", "masks", "bound", "history", "committed"):
             assert run[field] == off[field], (mode, field)
         (record,) = run["shadow"]
         assert record["outcome"] == "MATCH", record
-        assert record["canonical"]["kind"] == ("return" if kind == "feasible" else "raise")
-        if kind == "feasible":
+        assert record["canonical"]["kind"] == ("return" if kind.startswith("feasible") else "raise")
+        if kind.startswith("feasible"):
             assert record["native"]["native_solves"] > 0
             assert (record["native"]["stage2_native_calls"] > 0) == (mode == "stage2")

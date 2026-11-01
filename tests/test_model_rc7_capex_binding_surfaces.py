@@ -2,6 +2,7 @@
 run default (semester) timing next to a Working Copy that carries a profile."""
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -70,8 +71,37 @@ def test_the_legacy_entry_points_use_the_guarded_builder():
     main_web = (ROOT / "main_web.py").read_text(encoding="utf-8")
     assert "_guard_capex_profile_surface(" in main_web
     assert "from app.input_adapter import build_projectinputs_from_snapshot" not in main_web          # no unguarded local re-import
-    sens = (ROOT / "app/services/sensitivity_service.py").read_text(encoding="utf-8")
-    assert "guard_snapshot_builder(_build," in sens
+    # B1 deliberately replaced the old snapshot-builder seam. Verify its
+    # actual call graph; real signed HTML/CSV/XLSX, monthly cash vectors and
+    # canonical HTTP-Run equivalence are executed in the B1 profile tests.
+    def function(path, name):
+        tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+        return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+    def calls(node, name):
+        return sorted(n.lineno for n in ast.walk(node) if isinstance(n, ast.Call)
+                      and isinstance(n.func, ast.Name) and n.func.id == name)
+    service = "app/services/sensitivity_service.py"
+    resolve = function(service, "resolve_sensitivity_source")
+    assert calls(resolve, "pre_financing_inputs")[0] < calls(resolve, "materialise_financing")[0]
+    assert not calls(resolve, "build_projectinputs_from_snapshot")
+    delegate = function(service, "_resolve_sensitivity_project")
+    assert calls(delegate, "resolve_sensitivity_source")
+    bind = function("app/services/sensitivity_matrix.py", "materialise_financing")
+    assert calls(bind, "apply_state")[0] < calls(bind, "apply_snapshot_profiles")[0]
+    returned = next(n.value for n in ast.walk(bind) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.Call) and returned.func.id == "apply_snapshot_profiles"
+    kw = {k.arg: k.value for k in returned.keywords}
+    assert ast.unparse(kw["project_id"]) == "basis.project_id"
+    assert ast.unparse(kw["scenario_overrides"]) == "basis.scenario_overrides"
+    request = function("main_web.py", "_sensitivity_request")
+    assert calls(request, "resolve_sensitivity_source")
+    for endpoint in ("scenario_sensitivity_endpoint", "scenario_sensitivity_export_endpoint"):
+        route = function("main_web.py", endpoint)
+        assert calls(route, "_sensitivity_request")[0] < calls(route, "_run_model_thread")[0]
+        assert any(isinstance(n, ast.Attribute) and n.attr == "profile_basis" for n in ast.walk(route))
+    grid = function(service, "run_sensitivity")
+    point = next(n for n in ast.walk(grid) if isinstance(n, ast.For) and isinstance(n.target, ast.Name) and n.target.id == "level")
+    assert calls(point, "_apply_shock")[0] < calls(point, "materialise_financing")[0] < calls(point, "_run_once")[0]
 
 
 def test_default_projects_are_untouched_by_every_binder_entry_point():

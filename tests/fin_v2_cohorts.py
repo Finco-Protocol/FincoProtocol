@@ -6,13 +6,14 @@ The composite is valid only while EVERY registered cohort has its exact blobs an
 at least one registered cohort. An unregistered, missing or altered cohort never widens the scope.
 """
 from pathlib import Path
+import contextlib
 import importlib
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 COHORT_MODULES = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope',
                   'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',
-                  'tests.wf03_lifecycle_scope')
+                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
 # The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).
 PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'
 
@@ -38,8 +39,12 @@ def valid(repo=None, ref=None):
     if not mods:
         return False
     try:
-        if not all(m.exact_blobs_ok(root, ref) for m in mods):
-            return False
+        with contextlib.ExitStack() as scopes:
+            for m in mods:                      # one outer call: each cohort that offers a call-scope memo computes its exact check once
+                if callable(getattr(m, 'scoped', None)):
+                    scopes.enter_context(m.scoped())
+            if not all(m.exact_blobs_ok(root, ref) for m in mods):
+                return False
         _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
         changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
         if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
