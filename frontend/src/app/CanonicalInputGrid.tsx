@@ -24,7 +24,7 @@ interface CanonicalInputGridProps {
   /** Free-text filter from the Inputs search box (presentation only; staged edits always stay visible). */
   query?: string;
   /** Reports the focused field to the details panel (presentation only). */
-  onFocusRow?: (info: { label: string; unit: string; saved: string; state: string; reason: string }) => void;
+  onFocusRow?: (info: { label: string; unit: string; saved: string; state: string; reason: string; min: number | null; max: number | null }) => void;
 }
 
 type Draft = Record<string, string>;
@@ -334,7 +334,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
                               ref={(el) => {
                                 if (rowKey === activeCode) activeCellRef.current = el;
                               }}
-                              onFocus={() => { setActiveCode(rowKey); onFocusRow?.({ label: plain(row.label), unit: row.unit, saved: row.value ?? "", state: STATE_TEXT[state], reason: row.reason ?? "" }); }}
+                              onFocus={() => { setActiveCode(rowKey); onFocusRow?.({ label: plain(row.label), unit: row.unit, saved: row.value ?? "", state: STATE_TEXT[state], reason: row.reason ?? "", min: row.min_value ?? null, max: row.max_value ?? null }); }}
                               onChange={(e) => {
                                 stage(rowKey, e.target.value);
                               }}

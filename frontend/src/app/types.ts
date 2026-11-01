@@ -149,6 +149,8 @@ export interface ResultsPayload {
   metrics: Array<{ label: string; display: string; available: boolean; source: string }>;
   /** Lender / valuation metrics the committed Run did or did not publish (absent on older payloads). */
   lender_metrics?: Array<{ key: string; label: string; unit: string; available: boolean; display: string | null; reason: string }>;
+  /** The Senior debt amount (kEUR) the committed Run itself persisted; absent/unavailable means "not in this Run" (never sized or defaulted here). */
+  senior_debt?: { available: boolean; value_keur: number | null; reason: string } | null;
   distributions: CanonicalTable | null;
   sponsor_table: CanonicalTable | null;
   sponsor_source: string | null;
@@ -341,6 +343,20 @@ export interface CostLineProjectionLine {
   feeds_run_fold: boolean;
   lineage: "template" | "user" | "unverified";
   mapping_status: "PROVEN" | "UNRESOLVED";
+  /** Read-only: saved amount / saved installed capacity (kEUR per MW as plain decimal text); `null` when the capacity basis is unavailable. */
+  per_mw_keur?: string | null;
+}
+
+/** The explicit per-MW basis the server used (or why it could not). OPEX figures are per year. */
+export interface CostLinesCapacityBasis {
+  available: boolean;
+  mw: string | null;
+  basis: string;
+  source_field: string;
+  technology: string;
+  reason: "MISSING" | "INVALID" | "AMBIGUOUS" | "UNSUPPORTED" | null;
+  note: string | null;
+  time_basis: "per year" | null;
 }
 
 export interface CostLineProjectionGroup {
@@ -367,6 +383,7 @@ export interface CostLinesProjection {
   lines: CostLineProjectionLine[];
   groups: CostLineProjectionGroup[];
   saved_total_keur: number;
+  capacity?: CostLinesCapacityBasis;
 }
 
 export interface CostLinesPayload {

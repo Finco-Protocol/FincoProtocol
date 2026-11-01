@@ -9,11 +9,14 @@
 //     transaction needs the gated endpoint (see saveAll.ts).  The model is never run.
 // Row notes stay available behind a disclosure; derived/committed status text is gone.
 
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "../../styles/ws2-editing.css";
 import { fetchCostLines, saveCostLinesBatch } from "../api";
 import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLineEditWire } from "../costLinePayload";
 import { friendlyMessage } from "../productLanguage";
+import { divideDecimalText, perMwLabel, showKeur } from "../costAmounts";
+import { CostUnitSelect, useCostUnit } from "../CostUnit";
+import { useReportPrecision } from "../ReportPrecision";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
@@ -29,6 +32,23 @@ const MAPPING_NOTE: Record<string, string> = {
   UNRESOLVED: "This group is still to be confirmed. Active saved lines here are still used by the model exactly as before.",
   DERIVED: "Calculated by the model when it runs — not an editable cost line.",
 };
+/** What the CAPEX spending-profile document (the existing Studio's saved data) says for each item; absent item = no profile saved for it. */
+type ProfileView = { rows: Record<string, { shape?: string; milestone?: string }>; broken: boolean };
+const SHAPE_TEXT: Record<string, string> = { UNIFORM: "Even", FRONT_LOADED: "Front-loaded", BACK_LOADED: "Back-loaded", EXPLICIT: "Monthly % entered" };
+function profileText(view: ProfileView, code: string): string {
+  if (view.broken) return "Profile error";
+  const row = view.rows[code];
+  if (!row) return "Model default";
+  if (row.shape === "MILESTONE") return row.milestone ? `One payment, month ${row.milestone}` : "One payment";
+  return SHAPE_TEXT[row.shape ?? ""] ?? "Saved profile";
+}
+const openCapexStudio = () => {
+  const tab = document.querySelector<HTMLElement>("[data-studio-tab='capex-profile']");
+  if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
+  (document.getElementById("wf-inputs-studios") ?? tab)?.scrollIntoView({ block: "start" });
+  window.setTimeout(() => document.querySelector<HTMLElement>("[data-studio-tab='capex-profile']")?.focus({ preventScroll: true }), 0);
+};
+
 type Status = { tone: "ok" | "error" | "conflict"; text: string } | null;
 
 const COLUMNS_CAPEX = ["label", "amount"] as const;
@@ -57,7 +77,7 @@ function useNarrow(query = "(max-width: 900px)") {
   return narrow;
 }
 
-type ColId = "code" | "line" | "basis" | "qty" | "unit" | "amount" | "perMw" | "cont" | "vat" | "wht" | "dep" | "infl" | "year" | "profile" | "status" | "menu";
+type ColId = "code" | "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu";
 type LineFilter = "all" | "nonzero" | "changed" | "inactive";
 const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
@@ -73,29 +93,37 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [inFlight, setInFlight] = useState(false);
   const [density, toggleDensity] = useDensity();
   const narrow = useNarrow();
-  const [extended, setExtended] = useState(false);
+  const [loadedKey, setLoadedKey] = useState(-1);
+  const [groupPreset, setGroupPreset] = useState<{ code: string; nonce: number } | null>(null);
+  const [rowAction, setRowAction] = useState<{ lineId: string; active: boolean; nonce: number } | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [unit] = useCostUnit();
+  const { precision } = useReportPrecision();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<LineFilter>("all");
   const [localQuery, setLocalQuery] = useState("");
-  const [profiles, setProfiles] = useState<{ custom: Set<string> } | null>(null);
+  const [profiles, setProfiles] = useState<ProfileView | null>(null);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
   const singleFlight = useSingleFlight();
   const live = useRef(0);
 
+  const wantedKey = useRef(reloadKey);
+  wantedKey.current = reloadKey;
   const load = useCallback(async () => {
     const mine = ++live.current;
+    const asked = wantedKey.current;
     const result = await fetchCostLines(project, sheet);
     if (mine !== live.current) return;
     if (!result || (result as { ok?: unknown }).ok !== true) {
       setLoadError(friendlyMessage((result as { code?: string })?.code, (result as { message?: string })?.message, "This could not be loaded right now. Nothing was changed."));
       return;
     }
-    setLoadError(""); setData(result as CostLinesPayload);
+    setLoadError(""); setData(result as CostLinesPayload); setLoadedKey(asked);
   }, [project, sheet]);
 
-  useEffect(() => { setData(null); setStatus(null); setUnknownBatch(null); void load(); }, [load]);
+  useEffect(() => { setData(null); setLoadedKey(-1); setStatus(null); setUnknownBatch(null); void load(); }, [load]);
   useEffect(() => { if (reloadKey > 0) void load(); }, [reloadKey, load]);
 
   useEffect(() => {
@@ -105,8 +133,11 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     void (async () => {
       try {
         const r = await fetch(`/v2/model-react/capex/profiles?project=${encodeURIComponent(project)}`, { credentials: "same-origin", cache: "no-store", signal: controller.signal, headers: { Accept: "application/json" } });
-        const body = await r.json() as { ok?: boolean; saved?: { rows?: Record<string, unknown> } };
-        if (!controller.signal.aborted && r.ok && body.ok) setProfiles({ custom: new Set(Object.keys(body.saved?.rows ?? {})) });
+        const body = await r.json() as { ok?: boolean; saved?: { rows?: Record<string, { shape?: string; milestone?: string }>; error?: string | null; binding?: { saved?: boolean; bound?: boolean } } };
+        if (!controller.signal.aborted && r.ok && body.ok) {
+          const binding = body.saved?.binding;
+          setProfiles({ rows: body.saved?.rows ?? {}, broken: Boolean(body.saved?.error) || Boolean(binding?.saved && !binding.bound) });
+        }
       } catch { /* the column then shows a dash: it is optional context */ }
     })();
     return () => controller.abort();
@@ -152,6 +183,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   });
   const lines = filtered.filter((l) => !collapsed.has(l.category));
   const readOnlyProject = data?.project.protected_reference ?? true;
+  // The grid is "refreshing" from the moment the workspace announces newer saved data until the read for it has landed: the composite
+  // identity held in `data` belongs to the older state, so no line command may use it (a stale token would only be refused).
+  const refreshing = loadedKey !== reloadKey;
   const locked = inFlight || unknownBatch !== null;
   const editableLine = (line: CostLinePayload) => line.active && !readOnlyProject && !locked;
 
@@ -223,8 +257,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
       setStatus({ tone: "conflict", text: result.message });
     } else if (result.ok) {
       setStatus({ tone: "ok", text: `${result.savedCount} line(s) saved atomically. The model was not run; results are outdated until the next Run.` });
+      await load();                                                  // read the saved lines first: the cells then change straight from the typed text to the saved text
       for (const edit of mine) changes.revert(edit.id);
-      await load(); onMutated?.();
+      onMutated?.();
     } else setStatus({ tone: "error", text: result.message });
     setInFlight(false);
   });
@@ -257,17 +292,27 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     ? <div className="fm-banner" role="alert"><span className="fm-demo-label">UNAVAILABLE</span><span className="fm-banner-copy">{loadError}</span><button type="button" className="fm-btn" onClick={() => void load()}>Retry</button></div>
     : <p className="fm-info-note" role="status">Loading…</p>;
 
+  const capacity = projection?.capacity ?? null;
+  const perYear = sheet === "opex";
   const cols: ColId[] = narrow
     ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
     : sheet === "capex"
-      ? ["code", "line", "basis", "qty", "unit", "amount", "perMw", ...(extended ? (["cont", "vat", "wht", "dep"] as ColId[]) : []), "profile", "status", "menu"]
-      : ["code", "line", "amount", "basis", "infl", "year", "status", ...(extended ? (["wht"] as ColId[]) : []), "menu"];
+      ? ["code", "line", "amount", "perMw", "profile", "status", "menu"]
+      : ["code", "line", "amount", "perMw", "infl", "status", "menu"];
   const amountAt = cols.indexOf("amount");
   const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
-  const fmtKeur = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const fmtKeur = (n: number | string | null) => showKeur(n, unit, precision);
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
   const groupOrder = Array.from(new Set(filtered.map((l) => l.category)));
-  const NOT_CONNECTED = "Not connected to the model yet";
+  const focusManager = () => {
+    const m = document.querySelector<HTMLElement>(`[data-cost-line-manager="${sheet}"]`);
+    m?.scrollIntoView({ block: "center" });
+    window.setTimeout(() => m?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true }), 0);
+  };
+  const editedAmount = (line: CostLinePayload) => {
+    const edit = changes.get(section, `${line.sub_line_id}#amount`);
+    return edit ? (edit.canonical ?? (edit.error ? null : edit.value)) : undefined;
+  };
 
   const inputTd = (line: CostLinePayload, col: "label" | "amount" | "inflation", r: number, c: number) => {
     const rowEditable = editableLine(line);
@@ -310,20 +355,23 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     const info = lineInfo.get(line.sub_line_id);
     switch (id) {
       case "code": return <td key={id} className="ci-col-code"><span className="ws2-code" data-finco-code-col="true">{info?.finco_display_code}</span></td>;
-      case "basis": return <td key={id} className="ci-col-basis ci-off" title={`Every line is a fixed amount in kEUR today. ${NOT_CONNECTED}.`}>
-        <select disabled aria-label={`Basis for ${line.label} (not connected yet)`} className="ci-offselect"><option>fixed</option><option>per MW</option></select></td>;
-      case "qty": case "unit": return <td key={id} className="ci-off ci-num" title={NOT_CONNECTED}>
-        <input disabled className="ci-offinput" placeholder="—" aria-label={`${id === "qty" ? "Quantity" : "Unit price"} for ${line.label} (not connected yet)`} /></td>;
-      case "perMw": return <td key={id} className="ci-off ci-num" title={NOT_CONNECTED}>—</td>;
-      case "cont": case "vat": case "wht": case "dep": return <td key={id} className="ci-off ci-num" title={NOT_CONNECTED}>—</td>;
-      case "year": return <td key={id} className="ci-off" title="The same amount applies every year, inflated as shown. A different amount per year is not connected yet.">
-        <span className="ci-yearbar" role="img" aria-label="Same amount every year" /></td>;
+      case "perMw": {
+        const preview = editedAmount(line);
+        const saved = info?.per_mw_keur ?? null;
+        const text = preview !== undefined ? (preview && capacity?.available ? divideDecimalText(preview, capacity.mw) : null) : saved;
+        const live = line.active && capacity?.available && text !== null;
+        return (
+          <td key={id} className="ci-num ci-col-permw" data-per-mw={line.sub_line_id} data-per-mw-state={!live ? "unavailable" : preview !== undefined ? "preview" : "saved"}
+              title={!live ? (capacity?.note ?? "Per-MW is shown for active lines when the installed capacity is known.") : preview !== undefined ? "Unsaved preview — not saved" : undefined}>
+            {live ? <>{fmtKeur(text)}{preview !== undefined && <small className="ci-preview"> unsaved preview</small>}</> : "—"}
+          </td>);
+      }
       case "profile": return (
         <td key={id} className="ci-col-profile" data-cost-profile={line.sub_line_id}>
           {profiles === null ? "—" : (
-            <button type="button" className="ci-link ci-profile" title="Open the spending profile (Studios)"
-                    onClick={() => document.getElementById("wf-inputs-studios")?.scrollIntoView({ block: "start" })}>
-              {profiles.custom.has(info?.finco_display_code ?? "") ? "Custom profile" : "Even over construction"} ▸
+            <button type="button" className="ci-link ci-profile" title="Shown from the saved spending profile. Edit it in the CAPEX spending profile studio." data-profile-link={line.sub_line_id}
+                    onClick={openCapexStudio}>
+              {profileText(profiles, info?.finco_display_code ?? "")} ▸
             </button>)}
         </td>);
       case "status": return (
@@ -333,13 +381,17 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
             : info?.mapping_status === "UNRESOLVED" ? <span className="ws2-chip" data-mapping-status="UNRESOLVED" title={MAPPING_NOTE.UNRESOLVED}>To be confirmed</span>
             : editableLine(line) ? <span className="ws2-chip ws2-chip-ok">Editable</span> : <span className="ws2-chip">Locked</span>}
         </td>);
-      case "menu": return <td key={id} className="ci-col-menu"><button type="button" className="ci-menu" disabled aria-label={`Actions for ${line.label} (not connected yet)`} title={NOT_CONNECTED}>…</button></td>;
+      case "menu": return (
+        <td key={id} className="ci-col-menu">
+          <RowMenu line={line} open={menuFor === line.sub_line_id} disabled={readOnlyProject || refreshing || locked}
+                   onToggle={() => setMenuFor(menuFor === line.sub_line_id ? null : line.sub_line_id)}
+                   onAction={(active) => { setMenuFor(null); setRowAction({ lineId: line.sub_line_id, active, nonce: Date.now() }); }} />
+        </td>);
       default: return <td key={id} />;
     }
   };
 
-  const HEAD: Record<ColId, string> = { code: "Code", line: "Line", basis: "Basis", qty: "Qty", unit: "Unit price", amount: "Amount (kEUR)", perMw: "K€/MW", cont: "Cont.", vat: "VAT", wht: "WHT", dep: "Dep.", infl: "Inflation (%)", year: "Year profile", profile: "Payment profile", status: "Status", menu: "" };
-  const OFF: ReadonlySet<ColId> = new Set<ColId>(["basis", "qty", "unit", "perMw", "cont", "vat", "wht", "dep", "year", "menu"]);
+  const HEAD: Record<ColId, string> = { code: "Code", line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "" };
   let rowIndex = 0;
 
   return (
@@ -358,7 +410,17 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         <strong>Saves:</strong> every edited {title} line below, together — all are saved or none. Saving does not run the model.
         {" "}Edits stay staged while you move between sections and are listed under <em>Changes</em>.
       </p>
-      <p className="ws2-grid-keys rx-note">Enter or ↓ next row · ↑ previous · Tab next cell · Esc cancels the cell · paste a block from Excel · Ctrl+Z / Ctrl+Y undo / redo. Greyed-out columns are not connected to the model yet.</p>
+      <p className="ws2-grid-keys rx-note">Enter or ↓ next row · ↑ previous · Tab next cell · Esc cancels the cell · paste a block from Excel · Ctrl+Z / Ctrl+Y undo / redo.</p>
+      {sheet === "capex" || sheet === "opex" ? (
+        <p className="rx-note" data-permw-note={capacity ? (capacity.available ? "available" : "unavailable") : "none"}>
+          {capacity?.available
+            ? <>One saved amount per line, in kEUR. {perMwLabel(unit, perYear)} = amount ÷ {capacity.mw} MW {capacity.basis}{perYear ? ", per year" : ""} — read-only, never saved.</>
+            : <>One saved amount per line, in kEUR. {capacity?.note ?? "Per-MW figures are not available for this project."}</>}
+        </p>) : null}
+      {refreshing && (
+        <div className="fm-info-note" role="status" data-cost-refreshing="true">
+          {loadError ? <>{loadError} <button type="button" className="fm-btn" onClick={() => void load()}>Retry</button></> : "Updating to the latest saved state… adding or retiring lines is available again in a moment."}
+        </div>)}
       {readOnlyProject && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
       {status && <div className="fm-info-note" role={status.tone === "ok" ? "status" : "alert"} data-tone={status.tone}>{status.text}</div>}
       {pasteNote && <div className="fm-info-note" role="status" data-paste-note="true">{pasteNote}</div>}
@@ -370,12 +432,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
             <button key={f.id} type="button" className="fm-btn ci-filter" aria-pressed={filter === f.id} data-cost-filter={f.id} onClick={() => setFilter(f.id)}>{f.label}</button>
           ))}
         </span>
-        <span className="ci-filters" role="group" aria-label="Columns">
-          <button type="button" className="fm-btn ci-filter" aria-pressed={!extended} data-cost-columns="basic" onClick={() => setExtended(false)}>Basic</button>
-          <button type="button" className="fm-btn ci-filter" aria-pressed={extended} data-cost-columns="extended" onClick={() => setExtended(true)}>{sheet === "capex" ? "+ Cont./VAT/WHT/Dep." : "+ WHT"}</button>
-        </span>
-        <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject}
-                onClick={() => { const m = document.querySelector<HTMLElement>(`[data-cost-line-manager="${sheet}"]`); m?.scrollIntoView({ block: "center" }); m?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true }); }}>
+        <CostUnitSelect />
+        <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing}
+                onClick={() => focusManager()}>
           + Add line
         </button>
         <button type="button" className="fm-btn" data-cost-expand="true" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(groupOrder))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
@@ -385,8 +444,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         <table className="fm-table ws2-grid">
           <caption className="fm-sr-only">{title} line items. Amounts in kEUR.</caption>
           <thead><tr>{cols.map((id) => (
-            <th key={id} scope="col" className={`ci-h-${id}${OFF.has(id) ? " ci-off" : ""}${id === "amount" || id === "perMw" || id === "qty" || id === "unit" ? " ci-num" : ""}`}
-                title={OFF.has(id) && HEAD[id] ? NOT_CONNECTED : undefined}>{HEAD[id]}</th>))}</tr></thead>
+            <th key={id} scope="col" className={`ci-h-${id}${id === "amount" || id === "perMw" ? " ci-num" : ""}`}
+                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : HEAD[id]}</th>))}</tr></thead>
           <tbody>
             {groupOrder.map((cat) => {
               const g = groupInfo.get(cat);
@@ -407,8 +466,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                     <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? fmtKeur(g.saved_total_keur) : ""}</td>
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
-                        <button type="button" className="ci-link" disabled={readOnlyProject} data-cost-group-add={cat}
-                                onClick={() => { const m = document.querySelector<HTMLElement>(`[data-cost-line-manager="${sheet}"]`); m?.scrollIntoView({ block: "center" }); m?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true }); }}>+ line</button>
+                        <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
+                                onClick={() => { setGroupPreset({ code: cat, nonce: Date.now() }); focusManager(); }}>+ line</button>
                       </td>)}
                   </tr>
                   {!isCollapsed && members.map((line) => {
@@ -429,8 +488,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
           </tbody>
           {allLines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" className="ci-num">{total}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" className="ci-num">{fmtKeur(projection.saved_total_keur)}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
             </tfoot>
           )}
         </table>
@@ -445,7 +504,43 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         {unknownBatch !== null && <button type="button" className="fm-btn" disabled={inFlight} data-cost-reconcile="true" onClick={() => void reconcile()}>Check saved state</button>}
       </div>
       <p className="fm-info-note">If someone else changed one of these lines in the meantime, nothing is saved and you are asked to reload before saving again. Saving never runs the model.</p>
-      <CostLineManager key={sheet} project={project} data={data} onChanged={() => { void load(); onMutated?.(); }} />
+      <CostLineManager key={sheet} project={project} data={data} refreshing={refreshing} presetGroup={groupPreset} rowAction={rowAction}
+                       onChanged={() => { void load(); onMutated?.(); }} />
     </section>
+  );
+}
+
+/** The only row actions with a real canonical command: retire (soft deactivation) and reactivate. Duplicate / reorder / delete are not offered.
+ *  The list is positioned against the viewport so the table's scroll container never clips it. */
+function RowMenu({ line, open, disabled, onToggle, onAction }: { line: CostLinePayload; open: boolean; disabled: boolean; onToggle: () => void; onAction: (active: boolean) => void }) {
+  const id = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  const [at, setAt] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
+  useEffect(() => { if (open && at) first.current?.focus({ preventScroll: true }); }, [open, at]);
+  useLayoutEffect(() => {
+    if (!open) { setAt(null); return undefined; }
+    const place = () => { const rect = button.current?.getBoundingClientRect(); if (rect) setAt({ ...(rect.bottom + 48 > window.innerHeight ? { bottom: window.innerHeight - rect.top + 2 } : { top: rect.bottom + 2 }), right: Math.max(4, window.innerWidth - rect.right) }); };
+    place();
+    const away = (event: Event) => { if (!(event.target instanceof Node) || !(button.current?.parentElement?.contains(event.target))) onToggle(); };
+    document.addEventListener("mousedown", away);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => { document.removeEventListener("mousedown", away); window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  return (
+    <span className="ci-menuwrap">
+      <button ref={button} type="button" className="ci-menu" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} disabled={disabled}
+              aria-label={`Actions for ${line.label}`} data-row-menu={line.sub_line_id}
+              onClick={onToggle} onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); onToggle(); } }}>…</button>
+      {open && at && (
+        <span id={id} role="menu" className="ci-menulist" aria-label={`Actions for ${line.label}`} style={{ top: at.top, bottom: at.bottom, right: at.right }}>
+          <button ref={first} type="button" role="menuitem" className="ci-menuitem" data-row-action={line.active ? "retire" : "reactivate"}
+                  onClick={() => onAction(!line.active)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onToggle(); button.current?.focus(); } }}>
+            {line.active ? "Deactivate line" : "Reactivate line"}
+          </button>
+        </span>)}
+    </span>
   );
 }

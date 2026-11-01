@@ -72,3 +72,29 @@ def test_wf06b_top_bar_save_all_is_the_real_save(live_server, browser, rcm_react
 def test_wf06b_search_and_cost_filters(live_server, browser, rcm_react_flag):
     from tests.model_react_wf06b_acceptance import check_search_and_cost_filters_narrow_what_is_shown
     check_search_and_cost_filters_narrow_what_is_shown(browser, live_server)
+
+
+@pytest.mark.parametrize("kind", ["solar", "wind"])
+def test_wf06b_one_amount_per_mw_unit_precision_preview(live_server, browser, rcm_react_flag, kind):
+    from tests.model_react_wf06b_acceptance import check_amount_only_per_mw_unit_precision_preview_and_full_precision_save
+    check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(browser, live_server, kind)
+
+
+def test_wf06b_per_mw_unavailable_when_capacity_is_zero(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_per_mw_is_unavailable_with_a_reason_when_the_capacity_is_zero
+    check_per_mw_is_unavailable_with_a_reason_when_the_capacity_is_zero(browser, live_server)
+
+
+def test_wf06b_group_plus_line_preselects_group(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_group_plus_line_preselects_the_group_and_keeps_typed_text
+    check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, live_server)
+
+
+def test_wf06b_row_menu_retire_reactivate_real_routes(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_row_menu_retires_and_reactivates_through_the_real_routes_without_a_run
+    check_row_menu_retires_and_reactivates_through_the_real_routes_without_a_run(browser, live_server)
+
+
+def test_wf06b_add_line_waits_for_the_fresh_identity(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_stale_token
+    check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_stale_token(browser, live_server)

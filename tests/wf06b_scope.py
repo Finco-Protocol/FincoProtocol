@@ -30,13 +30,17 @@ SCHEMA = 'WF06B_A_PLUS_EXACT_SOURCE_V1'
 
 PRESENTATION_PATHS = frozenset((
     'frontend/src/app/CanonicalInputGrid.tsx',
+    'frontend/src/app/CostUnit.tsx',
     'frontend/src/app/InputsOverview.tsx',
     'frontend/src/app/WorkspaceView.tsx',
+    'frontend/src/app/costAmounts.ts',
     'frontend/src/app/editing/ChangesDrawer.tsx',
     'frontend/src/app/editing/CostLinesGridView.tsx',
     'frontend/src/app/saveAllBridge.ts',
+    'frontend/src/app/timing/ConstructionTiming.tsx',
     'frontend/src/app/types.ts',
     'frontend/src/app/uiDensity.ts',
+    'frontend/src/app/workflow/CostLineManager.tsx',
     'frontend/src/app/workflow/WorkflowBar.tsx',
     'frontend/src/styles/compact-inputs.css',
     'frontend/src/styles/ws2-editing.css',
@@ -45,6 +49,7 @@ PRESENTATION_PATHS = frozenset((
 ))
 SOURCE_PATHS = frozenset((
     'app/cost_line_ledger/__init__.py',
+    'app/cost_line_ledger/capacity.py',
     'app/cost_line_ledger/ledger.py',
     'app/cost_line_ledger/projection.py',
     'app/v2/react_workspace_router.py',
@@ -53,6 +58,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md',
     'docs/react_migration/wf06b_a_plus/P00.md',
     'tests/model_react_wf06b_acceptance.py',
+    'tests/test_wf06b_capacity.py',
     'tests/test_wf06b_cost_line_ledger.py',
     'tests/test_wf06b_costlines_route.py',
     'tests/test_wf06b_no_source_provenance_ui.py',
@@ -87,7 +93,9 @@ SUPERSEDED = frozenset((
     'frontend/src/app/WorkspaceView.tsx',
     'frontend/src/app/editing/ChangesDrawer.tsx',
     'frontend/src/app/editing/CostLinesGridView.tsx',
+    'frontend/src/app/timing/ConstructionTiming.tsx',
     'frontend/src/app/types.ts',
+    'frontend/src/app/workflow/CostLineManager.tsx',
     'frontend/src/app/workflow/WorkflowBar.tsx',
     'frontend/src/styles/ws2-editing.css',
     'static/react/finco-react.css',

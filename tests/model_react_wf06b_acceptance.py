@@ -55,9 +55,10 @@ def check_cost_workbench_matches_the_server_projection_and_hides_provenance(brow
                 if g["saved_total_keur"] is None or not g["line_count"]:
                     continue
                 shown = re.search(r"-?[\d,]*\.?\d+", (cell.text_content() or "").replace("Saved", "")).group(0).replace(",", "")
-                assert abs(float(shown) - g["saved_total_keur"]) <= 0.0051, (g["code"], shown, g["saved_total_keur"])
+                assert abs(float(shown) - g["saved_total_keur"]) <= 0.5, (g["code"], shown, g["saved_total_keur"])    # default display: kEUR, 0 decimals
             total = (grid.locator("[data-saved-total]").text_content() or "").replace(",", "")
-            assert abs(float(total) - proj["saved_total_keur"]) <= 0.0051
+            assert abs(float(total) - proj["saved_total_keur"]) <= 0.5
+            assert abs(float(grid.locator("[data-saved-total]").get_attribute("data-exact")) - proj["saved_total_keur"]) < 1e-6      # the exact value stays behind the rounded text
             # FINCO codes (never a cell address) are shown for template lines
             codes = [c.strip() for c in grid.locator("[data-finco-code-col]").all_inner_texts() if c.strip()]
             assert codes and all(re.fullmatch(r"[CB]\.\d{2}\.(\d{2}|U\d{3})", c) for c in codes), codes[:5]
@@ -142,7 +143,7 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert ov.locator(".ci-kpi").count() == 6
         assert abs(float(ov.locator("[data-ci-capex]").get_attribute("data-ci-capex")) - cap["saved_total_keur"]) < 1e-6
         assert ov.locator("[data-ci-norun]").count() == 1
-        assert all(ov.locator(f"[data-ci-metric='{m}']").inner_text() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr"))
+        assert all(ov.locator(f"[data-ci-metric='{m}']").inner_text() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr", "senior-debt"))
         assert "not model results" in ov.inner_text()
         # search + group chips
         assert ov.locator("[data-ci-search]").count() == 1
@@ -152,7 +153,7 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
             summary = page.locator(f"[data-ci-summary='{sheet}']")
             summary.wait_for()
             page.wait_for_function("(s) => document.querySelector(`[data-ci-summary-total='${s}']`)", arg=sheet, timeout=30000)
-            assert abs(float(summary.locator(f"[data-ci-summary-total='{sheet}']").inner_text().replace(",", "")) - proj["saved_total_keur"]) <= 0.0051
+            assert abs(float(summary.locator(f"[data-ci-summary-total='{sheet}']").inner_text().replace(",", "")) - proj["saved_total_keur"]) <= 0.5
             shown = {r.get_attribute("data-ci-summary-row") for r in summary.locator("[data-ci-summary-row]").all()}
             assert shown == {g["code"] for g in proj["groups"] if g["counts_toward_sheet_total"] or g["row_kind"] == "derived_runtime"}
         # two columns on desktop: the summaries and the Inputs sections sit side by side
@@ -212,6 +213,12 @@ def check_overview_shows_only_the_committed_run_and_marks_stale(browser, base):
         assert ov.locator("[data-ci-metric='project-irr']").inner_text() == server["Project IRR"]["display"]
         assert ov.locator("[data-ci-metric='sponsor-irr']").inner_text() == server["Total Sponsor IRR"]["display"]
         assert ov.locator("[data-ci-metric='min-dscr']").inner_text() == dscr["display"]          # the server's own text, never recomputed
+        senior = stm["results"]["senior_debt"]                                                      # Senior debt: only what the committed Run persisted
+        shown_sd = ov.locator("[data-ci-metric='senior-debt']").inner_text()
+        if senior["available"]:
+            assert shown_sd == f"{round(senior['value_keur']):,} kEUR" or abs(float(shown_sd.replace(",", "").replace(" kEUR", "")) - senior["value_keur"]) <= 0.5, shown_sd
+        else:
+            assert shown_sd == "Not in this Run"
         assert "Pure Equity" not in ov.inner_text()                                                # demoted from the headline
         run_id = ov.locator("[data-ci-run-id]").get_attribute("data-ci-run-id")
         assert run_id == stm["status"]["runId"]
@@ -285,15 +292,13 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         assert shown().startswith("1 of 32")
         assert grid.locator("[data-finco-code-col]").first.inner_text().startswith("C.01.")
         grid.locator("[data-cost-search]").fill("")
-        # columns: Code | Line | Basis | Amount | Payment profile | Status; no spreadsheet provenance
+        # columns: Code | Line | Amount | per MW | Payment profile | Status | row actions. Basis / Qty / Unit price were cancelled: ONE stored amount per line.
         heads = [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
-        assert heads == ["CODE", "LINE", "BASIS", "QTY", "UNIT PRICE", "AMOUNT (KEUR)", "K€/MW", "PAYMENT PROFILE", "STATUS", ""], heads
-        # columns the model does not use yet are present but disabled, never silently editable
-        assert grid.locator("tr[data-line] select:not([disabled])").count() == 0 and grid.locator("tr[data-line] .ci-offinput:not([disabled])").count() == 0
-        assert grid.locator("tr[data-line] .ci-menu:not([disabled])").count() == 0
-        grid.locator("[data-cost-columns='extended']").click()
-        assert [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()][7:11] == ["CONT.", "VAT", "WHT", "DEP."]
-        grid.locator("[data-cost-columns='basic']").click()
+        assert heads == ["CODE", "LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "STATUS", "ROW ACTIONS"], heads
+        assert not re.search(r"not connected|coming soon|placeholder", page.locator("body").inner_text(), re.I)
+        assert grid.locator("tr[data-line] select").count() == 0, "no dead selects (Basis) in the line rows"
+        assert grid.locator("[aria-label*='Quantity'], [aria-label*='Unit price'], [aria-label*='Basis']").count() == 0
+        assert grid.locator("[data-cost-columns]").count() == 0, "the Cont./VAT/WHT/Dep. toggle is gone"
         # groups fold and unfold
         first = grid.locator("[data-cost-twisty]").first
         cat = first.get_attribute("data-cost-twisty")
@@ -376,5 +381,188 @@ def check_axe_has_no_serious_or_critical_violations(browser, base, axe_path):
             out = page.evaluate("async () => (await axe.run(document, {runOnly: ['wcag2a', 'wcag2aa']})).violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length}))")
             results[name] = [v for v in out if v["impact"] in ("serious", "critical")]
         assert not any(results.values()), results
+    finally:
+        context.close()
+
+
+# ── Correction E / PR-1 / PR-2: one stored amount, read-only per MW, unit + precision, Senior debt, ranges, group "+ line", row menu ───
+
+def _capex_lines(context, base, code, sheet="capex"):
+    return _costlines(context, base, code, sheet)
+
+
+def _select_precision(page, n):
+    page.locator("select[aria-label='Report precision']").select_option(str(n))
+
+
+def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(browser, base, kind):
+    context, page, record, errors = vertical_session(browser, base, f"wf06b-amt-{kind}", kind)
+    try:
+        grid = _open_sheet(page, base, record.project_code, "capex")
+        proj = _costlines(context, base, record.project_code, "capex")["projection"]
+        cap = proj["capacity"]
+        assert cap["available"] is True and cap["time_basis"] is None
+        mw = float(cap["mw"])
+        line = next(l for l in proj["lines"] if l["active"] and l["per_mw_keur"] is not None and float(l["amount_keur"] or 0) > 0 and l["row_kind"] == "editable_run_bound")
+        row = grid.locator(f"tr[data-line='{line['sub_line_id']}']")
+        cell = row.locator("[data-per-mw]")
+        fmt = lambda v, d=0: f"{v:,.{d}f}"
+        # default display: kEUR, 0 decimals; the server's per-MW text, re-expressed only
+        assert (grid.locator("th.ci-h-perMw").text_content() or "").strip() == "kEUR/MW"
+        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"])) and cell.get_attribute("data-per-mw-state") == "saved"
+        assert abs(float(line["per_mw_keur"]) - float(line["amount_keur"]) / mw) < 1e-5
+        note = page.locator("[data-permw-note]").inner_text()
+        assert cap["mw"] in note and "never saved" in note and "kEUR/MW" in note
+        # unit conversion is a power-of-ten shift of the same value (EUR/MW = kEUR/MW x 1000); 3 decimals shows more digits
+        page.locator("[data-ci-unit]").first.select_option("EUR")
+        assert (grid.locator("th.ci-h-perMw").text_content() or "").strip() == "EUR/MW"
+        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]) * 1000), cell.inner_text()
+        page.locator("[data-ci-unit]").first.select_option("kEUR")
+        _select_precision(page, 3)
+        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]), 3), cell.inner_text()
+        _select_precision(page, 0)
+        # the stored amount text is never rounded by the display: edit shows and stages the full decimal text
+        amount = row.locator("input[data-c='1']")
+        assert amount.input_value() == str(line["amount_keur"]).rstrip("0").rstrip(".") or float(amount.input_value()) == float(line["amount_keur"])
+        amount.fill("1234.56789")
+        assert amount.input_value() == "1234.56789"
+        assert cell.get_attribute("data-per-mw-state") == "preview" and "unsaved preview" in cell.inner_text()
+        expected = 1234.56789 / mw
+        assert cell.inner_text().replace("unsaved preview", "").strip() == fmt(expected)
+        assert _costlines(context, base, record.project_code, "capex")["projection"]["lines"][0]["amount_keur"] == proj["lines"][0]["amount_keur"]    # nothing saved
+        page.locator("[data-cost-save]").click()
+        page.wait_for_function("(id) => { const t = document.querySelector(`tr[data-line='${id}']`); return t && t.querySelector('[data-per-mw]').dataset.perMwState === 'saved' && t.querySelector(\"input[data-c='1']\").value === '1234.56789'; }", arg=line["sub_line_id"], timeout=30000)
+        saved = next(l for l in _costlines(context, base, record.project_code, "capex")["projection"]["lines"] if l["sub_line_id"] == line["sub_line_id"])
+        assert float(saved["amount_keur"]) == 1234.56789                      # 0-decimal display never truncated what was saved
+        assert abs(float(saved["per_mw_keur"]) - expected) < 5e-7
+        shown_after = row.locator("input[data-c='1']").input_value()
+        assert shown_after == "1234.56789", shown_after
+        # OPEX: per MW per year, and no dead controls
+        opex = _open_sheet(page, base, record.project_code, "opex")
+        assert (opex.locator("th.ci-h-perMw").text_content() or "").strip() == "kEUR/MW/yr"
+        assert "per year" in page.locator("[data-permw-note]").inner_text()
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_per_mw_is_unavailable_with_a_reason_when_the_capacity_is_zero(browser, base):
+    context, page, record, errors = vertical_session(browser, base, "wf06b-cap0", "wind")
+    try:
+        def zero_capacity(route):
+            response = route.fetch()
+            body = response.json()
+            body["projection"]["capacity"].update({"available": False, "mw": None, "reason": "INVALID", "note": "The installed capacity is not a positive number, so per-MW figures are not shown."})
+            for l in body["projection"]["lines"]:
+                l["per_mw_keur"] = None
+            route.fulfill(response=response, json=body)
+        page.route("**/v2/model-react/costlines*", zero_capacity)
+        grid = _open_sheet(page, base, record.project_code, "capex")
+        assert grid.locator("[data-per-mw-state='unavailable']").count() == grid.locator("tr[data-line]").count() > 0
+        assert all(t.strip() == "—" for t in grid.locator("[data-per-mw]").all_inner_texts())
+        assert "not a positive number" in page.locator("[data-permw-note]").inner_text()
+        assert page.locator("[data-permw-note]").get_attribute("data-permw-note") == "unavailable"
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, base):
+    context, page, record, errors = vertical_session(browser, base, "wf06b-grp", "solar")
+    try:
+        grid = _open_sheet(page, base, record.project_code, "capex")
+        manager = page.locator("[data-cost-line-manager='capex']")
+        manager.get_by_label("Line label").fill("typed before choosing a group")
+        eligible = {g["code"] for g in _costlines(context, base, record.project_code, "capex")["line_management"]["eligible_groups"]}
+        target = next(c for c in [t.get_attribute("data-cost-group-add") for t in grid.locator("[data-cost-group-add]").all()] if c in eligible)
+        grid.locator(f"[data-cost-group-add='{target}']").click()
+        assert manager.locator("select").first.input_value() == target
+        assert manager.get_by_label("Line label").input_value() == "typed before choosing a group"       # typed text is kept
+        assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")
+        before = len(_costlines(context, base, record.project_code, "capex")["lines"])
+        assert len(_costlines(context, base, record.project_code, "capex")["lines"]) == before                  # choosing a group writes nothing
+        derived = [t for t in grid.locator("[data-cost-group-add]").all() if t.get_attribute("data-cost-group-add") not in eligible]
+        assert all(t.is_disabled() for t in derived), "calculated groups cannot receive new lines"
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_row_menu_retires_and_reactivates_through_the_real_routes_without_a_run(browser, base):
+    context, page, record, errors = vertical_session(browser, base, "wf06b-menu", "wind")
+    try:
+        grid = _open_sheet(page, base, record.project_code, "capex")
+        manager = page.locator("[data-cost-line-manager='capex']")
+        posts = []
+        page.on("request", lambda r: posts.append((r.method, r.url.split("?")[0].replace(base, ""))) if r.method == "POST" else None)
+        manager.get_by_label("Line label").fill("WF06B menu probe")
+        manager.get_by_label("Amount").fill("10")
+        manager.locator("select").first.select_option(index=1)
+        manager.locator("[data-cost-add='capex']").click()
+        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
+        line = next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["label"] == "WF06B menu probe")
+        row = grid.locator(f"tr[data-line='{line['sub_line_id']}']")
+        page.wait_for_selector(f"tr[data-line='{line['sub_line_id']}']", timeout=30000)
+        runs_before = context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"]
+        # the only offered action is the real one; Escape closes the menu
+        row.locator("[data-row-menu]").click()
+        items = row.locator("[role='menuitem']")
+        assert items.count() == 1 and items.first.inner_text().strip() == "Deactivate line"
+        page.keyboard.press("Escape")
+        assert row.locator("[role='menuitem']").count() == 0
+        row.locator("[data-row-menu]").click()
+        items.first.click()
+        page.get_by_role("button", name="Deactivate line").last.click()                      # the existing confirmation dialog
+        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('deactivated and verified')", timeout=30000)
+        assert next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["sub_line_id"] == line["sub_line_id"])["active"] is False
+        row.locator("[data-row-menu]").click()
+        assert row.locator("[role='menuitem']").first.inner_text().strip() == "Reactivate line"
+        row.locator("[role='menuitem']").first.click()
+        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('reactivated and verified')", timeout=30000)
+        assert next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["sub_line_id"] == line["sub_line_id"])["active"] is True
+        routes = [p for _, p in posts]
+        assert routes.count("/v2/capex/line/add") == 1 and routes.count("/v2/capex/line/deactivate") == 1 and routes.count("/v2/capex/line/reactivate") == 1, routes
+        assert not any("/run" in p for p in routes)
+        assert context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"] == runs_before     # no Run
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_stale_token(browser, base):
+    """Regression for the CI 409: a canonical save bumps the workbook identity; the cost grid still holds the old one until its read returns."""
+    context, page, record, errors = vertical_session(browser, base, "wf06b-fresh", "solar")
+    try:
+        grid = _open_sheet(page, base, record.project_code, "capex")
+        manager = page.locator("[data-cost-line-manager='capex']")
+        adds = []
+        page.on("response", lambda r: adds.append(r.status) if r.url.endswith("/v2/capex/line/add") else None)
+        release = {"go": False}
+
+        def slow(route):
+            for _ in range(60):
+                if release["go"]:
+                    break
+                page.wait_for_timeout(100)
+            route.continue_()
+        # a save from the page: edit one canonical input and Save (identity changes), while the cost read is held back
+        cell = page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first
+        original = cell.input_value()
+        cell.fill(str(int(float(original)) + 1) if original.replace(".", "", 1).isdigit() else "1")
+        page.route("**/v2/model-react/costlines*", slow)
+        page.locator("[data-bar-save-all]").click()
+        page.wait_for_selector("[data-cost-refreshing='true']", timeout=30000)
+        assert manager.locator("[data-cost-add='capex']").is_disabled() and grid.locator("[data-cost-addline]").is_disabled()
+        manager.get_by_label("Line label").fill("fresh identity probe")                      # typing stays possible; only the command waits
+        assert manager.locator("[data-cost-add='capex']").is_disabled()
+        assert adds == [], "no add request may leave the page while the identity is stale"
+        release["go"] = True
+        page.wait_for_selector("[data-cost-refreshing='true']", state="detached", timeout=30000)
+        manager.get_by_label("Amount").fill("5")
+        manager.locator("select").first.select_option(index=1)
+        manager.locator("[data-cost-add='capex']").click()
+        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
+        assert adds == [303] or all(a < 400 for a in adds), adds
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()

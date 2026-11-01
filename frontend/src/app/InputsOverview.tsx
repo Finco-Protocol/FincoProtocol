@@ -6,6 +6,9 @@
 import { useEffect, useState } from "react";
 import "../styles/compact-inputs.css";
 import { fetchCostLines, fetchStatements } from "./api";
+import { showKeur } from "./costAmounts";
+import { CostUnitSelect, useCostUnit } from "./CostUnit";
+import { useReportPrecision } from "./ReportPrecision";
 import { RunIdentityLabel } from "./runIdentity";
 import type { CostLineProjectionGroup, CostLinesPayload, StatementsPayload, WorkspacePayload } from "./types";
 import { useDirtyTotal } from "./workflow/workflowShared";
@@ -13,7 +16,12 @@ import { useDirtyTotal } from "./workflow/workflowShared";
 type Sheet = "capex" | "opex";
 type Groups = { saved: number | null; groups: CostLineProjectionGroup[]; state: "loading" | "ready" | "unavailable" };
 
-const KEUR = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+/** Read-only cost figures follow the chosen unit and the report precision (default kEUR, 0 decimals); stored amounts are untouched. */
+function useShown() {
+  const [unit] = useCostUnit();
+  const { precision } = useReportPrecision();
+  return { unit, KEUR: (n: number | string | null) => showKeur(n, unit, precision) };
+}
 
 function useCostGroups(project: string, sheet: Sheet, reloadKey: number): Groups {
   const [value, setValue] = useState<Groups>({ saved: null, groups: [], state: "loading" });
@@ -50,6 +58,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
   const capex = useCostGroups(project, "capex", reloadKey);
   const statements = useStatements(project, reloadKey, workspace.identity?.snapshot_id);
   const { total: staged } = useDirtyTotal();
+  const { unit, KEUR } = useShown();
 
   const identity = workspace.identity;
   const state = workspace.freshness.state;
@@ -66,6 +75,8 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
     result("sponsor-irr", "Total Sponsor IRR", pick("Total Sponsor IRR")?.display, pick("Total Sponsor IRR")?.available),
     result("min-dscr", "Min DSCR", lenderPick("min_dscr")?.display ?? undefined, lenderPick("min_dscr")?.available),
   ];
+  const senior = statements?.results?.senior_debt ?? null;
+  const seniorText = !identity ? "—" : !committed ? "…" : senior?.available && senior.value_keur !== null ? `${KEUR(senior.value_keur)} ${unit}` : "Not in this Run";
   const llcr = result("min-llcr", "LLCR", lenderPick("min_llcr")?.display ?? undefined, lenderPick("min_llcr")?.available);
 
   return (
@@ -80,12 +91,12 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
         <div className="ci-kpi">
           <span className="ci-kpi-label">Total CAPEX, saved lines</span>
           <strong className="ci-kpi-value" data-ci-capex={capex.saved ?? "unavailable"}>
-            {capex.state === "loading" ? "…" : capex.saved === null ? "Unavailable" : `${KEUR(capex.saved)} kEUR`}
+            {capex.state === "loading" ? "…" : capex.saved === null ? "Unavailable" : `${KEUR(capex.saved)} ${unit}`}
           </strong>
         </div>
-        <div className="ci-kpi ci-kpi-off" title="Not connected to the model yet">
+        <div className="ci-kpi" data-ci-senior-debt={senior?.available ? "run" : "none"}>
           <span className="ci-kpi-label">Senior debt</span>
-          <strong className="ci-kpi-value" data-ci-metric="senior-debt">—</strong>
+          <strong className="ci-kpi-value" data-ci-metric="senior-debt">{seniorText}</strong>
         </div>
         <div className="ci-kpi">
           <span className="ci-kpi-label">{llcr.label}</span>
@@ -107,6 +118,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
       <div className="ci-find" role="search">
         <input type="search" className="fm-input ci-search" data-ci-search="true" value={query} placeholder="Find any input or cost line…"
                aria-label="Find any input or cost line" onChange={(e) => onQuery(e.target.value)} />
+        <CostUnitSelect />
         <button type="button" className="fm-btn ci-railtoggle" data-ci-rail-toggle="true" aria-pressed={railOpen} onClick={onRail}>{railOpen ? "Hide details" : "Show details"}</button>
       </div>
     </section>
@@ -114,6 +126,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
 }
 
 function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; sheet: Sheet; data: Groups; onOpen: (sheet: Sheet) => void; unit: string }) {
+  const { KEUR } = useShown();
   const rows = data.groups.filter((g) => g.counts_toward_sheet_total || g.row_kind === "derived_runtime");
   return (
     <div className="ci-summary" data-ci-summary={sheet}>
@@ -138,7 +151,7 @@ function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; she
             </tr>
           ))}
         </tbody>
-        {data.saved !== null && <tfoot><tr><th scope="row">Total, saved lines</th><td className="ci-num" data-ci-summary-total={sheet}>{KEUR(data.saved)}</td><td /><td /></tr></tfoot>}
+        {data.saved !== null && <tfoot><tr><th scope="row">Total, saved lines</th><td className="ci-num" data-ci-summary-total={sheet} data-exact={String(data.saved)}>{KEUR(data.saved)}</td><td /><td /></tr></tfoot>}
       </table>
       </div>
     </div>
@@ -148,21 +161,30 @@ function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; she
 export function CostSummaries({ project, reloadKey = 0, onOpen }: { project: string; reloadKey?: number; onOpen: (sheet: Sheet) => void }) {
   const capex = useCostGroups(project, "capex", reloadKey);
   const opex = useCostGroups(project, "opex", reloadKey);
+  const { unit } = useShown();
   // Open on desktop; folded on small screens so the page stays short (one tap shows it).
   const [open, setOpen] = useState(() => !(typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches));
   return (
     <details className="ci-summaries" aria-label="CAPEX and OPEX summary" data-ci-summaries="true" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="ci-summaries-title">CAPEX and OPEX summary</summary>
       <div className="ci-summaries-grid">
-        <SummaryTable title="CAPEX summary" sheet="capex" data={capex} onOpen={onOpen} unit="kEUR" />
-        <SummaryTable title="OPEX summary" sheet="opex" data={opex} onOpen={onOpen} unit="kEUR / yr" />
+        <SummaryTable title="CAPEX summary" sheet="capex" data={capex} onOpen={onOpen} unit={unit} />
+        <SummaryTable title="OPEX summary" sheet="opex" data={opex} onOpen={onOpen} unit={`${unit} / yr`} />
       </div>
     </details>
   );
 }
 
 
-export interface FocusedField { label: string; unit: string; saved: string; state: string; reason: string }
+export interface FocusedField { label: string; unit: string; saved: string; state: string; reason: string; min: number | null; max: number | null }
+
+/** The range the server itself enforces for this field (registry min/max); null when the field has none. Never invented. */
+export function allowedRange(f: Pick<FocusedField, "min" | "max" | "unit">): string | null {
+  if (f.min === null && f.max === null) return null;
+  const u = f.unit ? ` ${f.unit}` : "";
+  if (f.min !== null && f.max !== null) return `${f.min} to ${f.max}${u}`;
+  return f.min !== null ? `at least ${f.min}${u}` : `at most ${f.max}${u}`;
+}
 
 /** Right-hand "Details and checks" panel: what the focused field is, what is saved, and which cost groups still need confirming. Read-only. */
 export function InputsRail({ project, reloadKey = 0, focus }: { project: string; reloadKey?: number; focus: FocusedField | null }) {
@@ -179,11 +201,12 @@ export function InputsRail({ project, reloadKey = 0, focus }: { project: string;
           <div><dt>Saved value</dt><dd>{focus.saved || "—"}</dd></div>
           <div><dt>Unit</dt><dd>{focus.unit || "—"}</dd></div>
           <div><dt>Status</dt><dd>{focus.state}</dd></div>
+          <div data-ci-rail-range={allowedRange(focus) ? "known" : "none"}><dt>Allowed range</dt><dd>{allowedRange(focus) ?? "No range is set for this field."}</dd></div>
           {focus.reason && <div><dt>Note</dt><dd>{focus.reason}</dd></div>}
         </dl>)}
       <div className="ci-rail-box">
         <strong>Validation</strong>
-        <p>The server checks every value when you save and refuses anything it cannot accept. Allowed ranges per field are not connected yet.</p>
+        <p>The server checks every value when you save and refuses anything it cannot accept.</p>
       </div>
       <div className={`ci-rail-box${pending.length ? " ci-rail-warn" : ""}`} data-ci-rail-warnings="true">
         <strong>{pending.length ? `${pending.length} group${pending.length === 1 ? "" : "s"} to confirm` : "Nothing to confirm"}</strong>

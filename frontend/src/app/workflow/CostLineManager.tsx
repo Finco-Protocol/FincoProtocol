@@ -7,7 +7,7 @@
 // change).  An ambiguous outcome is reconciled against a fresh projection and
 // never retried: a blind retry of Add could create a duplicate line.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchCostLines } from "../api";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { addCostLine, setCostLineActive } from "./workflowApi";
@@ -19,6 +19,12 @@ interface Props {
   data: CostLinesPayload;
   /** Re-read the canonical projection after a verified change. */
   onChanged: () => void;
+  /** True from the moment newer saved data is announced until its read has landed: `data` then carries an older composite identity, so no command may use it. */
+  refreshing?: boolean;
+  /** A group the user chose in the grid ("+ line" on a group row): preselected in the existing form, typed text is kept. */
+  presetGroup?: { code: string; nonce: number } | null;
+  /** A row action chosen in the grid menu: routed through the same confirmed, CAS-guarded command as the buttons below. */
+  rowAction?: { lineId: string; active: boolean; nonce: number } | null;
 }
 
 const EMPTY: NewCostLineDraft = { group: "", label: "", amount_keur: "0", inflation_pct: "0", notes: "" };
@@ -31,7 +37,7 @@ export function costGroupLabel(code: string, eligible: ReadonlyArray<{ code: str
   return eligible.find((g) => g.code === code)?.label ?? CALCULATED_GROUP_LABELS[code] ?? code;
 }
 
-export function CostLineManager({ project, data, onChanged }: Props) {
+export function CostLineManager({ project, data, onChanged, refreshing = false, presetGroup = null, rowAction = null }: Props) {
   const { sheet, line_management: mgmt } = data;
   const readOnlyProject = data.project.protected_reference;
   const [draft, setDraft] = useState<NewCostLineDraft>(EMPTY);
@@ -49,7 +55,19 @@ export function CostLineManager({ project, data, onChanged }: Props) {
   const singleFlight = useSingleFlight();
 
   const cas = { project, workbookVersion: data.save.workbook_version, contentHash: data.save.content_hash };
-  const disabled = readOnlyProject || inFlight || locked;
+  const fieldsDisabled = readOnlyProject || inFlight || locked;      // typing stays possible while a newer saved state is being read
+  const disabled = fieldsDisabled || refreshing;                       // commands wait: their composite identity would be the older one
+
+  // Requests made in the grid before this form mounted are history, not new requests.
+  const seenPreset = useRef(presetGroup?.nonce ?? 0);
+  const seenAction = useRef(rowAction?.nonce ?? 0);
+  useEffect(() => {
+    if (!presetGroup || presetGroup.nonce === seenPreset.current) return;
+    seenPreset.current = presetGroup.nonce;
+    if (readOnlyProject || !mgmt.eligible_groups.some((g) => g.code === presetGroup.code)) return;
+    setDraft((d) => ({ ...d, group: presetGroup.code }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetGroup?.nonce]);
 
   const add = () => (disabled ? Promise.resolve() : singleFlight(runAdd));
 
@@ -113,6 +131,16 @@ export function CostLineManager({ project, data, onChanged }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!rowAction || rowAction.nonce === seenAction.current) return;
+    seenAction.current = rowAction.nonce;
+    const line = data.lines.find((l) => l.sub_line_id === rowAction.lineId);
+    if (!line || disabled || line.active === rowAction.active) return;
+    if (rowAction.active) void setActive(line, true);
+    else setRetire(line);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowAction?.nonce]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, CostLinePayload[]>();
     for (const line of data.lines) map.set(line.category, [...(map.get(line.category) ?? []), line]);
@@ -129,25 +157,25 @@ export function CostLineManager({ project, data, onChanged }: Props) {
       <div className="wf-inline-form">
         <Field id={`${idp}-group`} label="Group" error={showErrors ? errors.group : undefined}>
           {(p) => (
-            <select {...p} className="fm-input" value={draft.group} disabled={disabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
+            <select {...p} className="fm-input" value={draft.group} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
               <option value="">Select a group…</option>
               {mgmt.eligible_groups.map((g) => <option key={g.code} value={g.code}>{g.label}</option>)}
             </select>
           )}
         </Field>
         <Field id={`${idp}-label`} label="Line label" error={showErrors ? errors.label : undefined}>
-          {(p) => <input {...p} className="fm-input" value={draft.label} disabled={disabled} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />}
+          {(p) => <input {...p} className="fm-input" value={draft.label} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />}
         </Field>
         <Field id={`${idp}-amount`} label="Amount" unit="k€" error={showErrors ? errors.amount_keur : undefined}>
-          {(p) => <input {...p} className="fm-input" inputMode="decimal" value={draft.amount_keur} disabled={disabled} onChange={(e) => setDraft({ ...draft, amount_keur: e.target.value })} />}
+          {(p) => <input {...p} className="fm-input" inputMode="decimal" value={draft.amount_keur} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, amount_keur: e.target.value })} />}
         </Field>
         {sheet === "opex" && (
           <Field id={`${idp}-infl`} label="Inflation" unit="% per year" error={showErrors ? errors.inflation_pct : undefined}>
-            {(p) => <input {...p} className="fm-input" inputMode="decimal" value={draft.inflation_pct} disabled={disabled} onChange={(e) => setDraft({ ...draft, inflation_pct: e.target.value })} />}
+            {(p) => <input {...p} className="fm-input" inputMode="decimal" value={draft.inflation_pct} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, inflation_pct: e.target.value })} />}
           </Field>
         )}
         <Field id={`${idp}-notes`} label="Notes">
-          {(p) => <input {...p} className="fm-input" value={draft.notes} disabled={disabled} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />}
+          {(p) => <input {...p} className="fm-input" value={draft.notes} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />}
         </Field>
         <div className="fm-toolbar">
           <button type="button" className="fm-btn fm-btn-primary" disabled={disabled} data-cost-add={sheet} onClick={() => void add()}>

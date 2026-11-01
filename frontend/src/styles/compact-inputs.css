@@ -74,19 +74,18 @@
 .ci-link { background: none; border: 0; padding: 0; color: var(--accent, #1f5f8b); text-decoration: underline; cursor: pointer; font: inherit; }
 @media (max-width: 900px) { .ci-summaries { grid-template-columns: minmax(0, 1fr); } }
 
-/* cost table: Code | Line | Basis | Amount | (Inflation) | Payment profile | Status */
+/* cost table: Code | Line | Amount | per MW | (Inflation) | Payment profile | Status | Row actions */
 .ci-linebar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 8px 0; }
 .ci-filters { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .ci-filters .ci-filter[aria-pressed="true"] { background: var(--brand, #17375e); color: #fff; border-color: var(--brand, #17375e); }
 .ci-shown { margin-left: auto; font-size: 12.5px; color: var(--muted, #526374); }
 .ws2-grid .ws2-chip-changed { border-color: var(--accent, #1f5f8b); color: var(--accent, #1f5f8b); }
 .ws2-grid .ci-col-code { white-space: nowrap; width: 5.5em; }
-.ws2-grid .ci-col-basis { white-space: nowrap; color: var(--muted, #526374); width: 5em; }
 .ws2-grid .ci-col-profile { white-space: nowrap; width: 9em; }
 .ws2-grid .ci-col-status { white-space: nowrap; width: 9em; }
 .ws2-grid .ci-col-code .ws2-code { display: inline; }
 /* narrow screens keep Line + Amount (+ Inflation): the code moves back beside the description */
-@media (max-width: 900px) { .ws2-grid .ci-col-code, .ws2-grid .ci-col-basis, .ws2-grid .ci-col-profile, .ws2-grid .ci-col-status { display: none; } }
+@media (max-width: 900px) { .ws2-grid .ci-col-code, .ws2-grid .ci-col-profile, .ws2-grid .ci-col-status { display: none; } }
 @media (min-width: 901px) { .ws2-grid .ws2-label-wrap .ws2-code { display: none; } }
 @media (min-width: 901px) {
   .ws2-grid .ci-col-line { width: 44%; }
@@ -163,12 +162,7 @@
 [data-input-grid][data-density="compact"] .rx-input-section > summary { padding: 4px 8px; }
 
 /* ───────── mockup parity: not-yet-connected controls, group rows, status chips ───────── */
-.ws2-grid .ci-off, .ws2-grid th.ci-off { color: var(--muted, #6b7a8a); }
-.ws2-grid .ci-offselect, .ws2-grid .ci-offinput { width: 100%; min-width: 4.5em; height: 22px; font-size: 12px; border: 1px solid transparent; background: transparent; color: var(--muted, #6b7a8a); padding: 0 2px; -webkit-appearance: none; appearance: none; }
-.ws2-grid .ci-offinput::placeholder { color: var(--muted, #9aa7b5); }
 .ws2-grid .ci-num, .ws2-grid th.ci-num { text-align: right; font-variant-numeric: tabular-nums; }
-.ws2-grid .ci-yearbar { display: block; height: 10px; min-width: 120px; background: repeating-linear-gradient(90deg, #cfd9e6 0 4px, transparent 4px 6px); border-radius: 1px; opacity: .8; }
-.ws2-grid .ci-menu { border: 0; background: transparent; color: var(--muted, #9aa7b5); font-size: 14px; line-height: 1; cursor: not-allowed; padding: 0 4px; }
 .ws2-grid .ci-profile { font-size: 12px; white-space: nowrap; }
 .ws2-grid .ws2-chip-ok { background: #e8f5ec; border-color: #b7dcc2; color: #166534; }
 .ws2-grid .ci-col-menu { width: 2em; text-align: center; }
@@ -207,7 +201,6 @@
 .ci-rail-warn { border-color: #efd08a; background: #fff8e6; }
 .ci-railtoggle { margin-left: auto; min-height: 26px; padding: 1px 10px; font-size: 12px; }
 @media (max-width: 1279px) { .ci-railtoggle { display: none; } }
-.ci-kpi-off .ci-kpi-label, .ci-kpi-off .ci-kpi-value { color: var(--muted, #8a97a6); }
 .ci-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .rx-input-table .rx-state-editable { background: #e8f5ec; color: #166534; border: 1px solid #b7dcc2; }
 .rx-input-table .rx-state-derived { background: #e7eff8; color: #1e4f8a; border: 1px solid #b9cde6; }
@@ -216,10 +209,9 @@
 /* column widths (fixed table layout): everything but the description has a set width, so the description gets the rest */
 @media (min-width: 901px) {
   .ws2-grid { table-layout: fixed; width: 100%; }
-  .ws2-grid th.ci-h-code { width: 5.2em; } .ws2-grid th.ci-h-basis { width: 6em; } .ws2-grid th.ci-h-qty { width: 4.6em; }
-  .ws2-grid th.ci-h-unit { width: 6em; } .ws2-grid th.ci-h-amount { width: 8.4em; } .ws2-grid th.ci-h-perMw { width: 5em; }
-  .ws2-grid th.ci-h-cont, .ws2-grid th.ci-h-vat, .ws2-grid th.ci-h-wht, .ws2-grid th.ci-h-dep { width: 3.6em; }
-  .ws2-grid th.ci-h-infl { width: 6.6em; } .ws2-grid th.ci-h-year { width: 8em; } .ws2-grid th.ci-h-profile { width: 11.5em; }
+  .ws2-grid th.ci-h-code { width: 5.2em; } .ws2-grid
+  .ws2-grid th.ci-h-amount { width: 8.4em; } .ws2-grid th.ci-h-perMw { width: 7em; }
+  .ws2-grid th.ci-h-infl { width: 6.6em; } .ws2-grid th.ci-h-profile { width: 11.5em; }
   .ws2-grid th.ci-h-status { width: 8.2em; } .ws2-grid th.ci-h-menu { width: 2.2em; } .ws2-grid th.ci-h-line { width: auto; }
   .ws2-grid .ci-col-line, .ws2-grid .ci-col-amount { width: auto; }
   .ws2-grid td.ci-col-amount .ws2-cell { max-width: none; width: 100%; }
@@ -231,9 +223,8 @@
 
 /* polish from the first mockup comparison */
 @media (min-width: 901px) {
-  .ws2-grid th.ci-h-code { width: 6.4em; } .ws2-grid th.ci-h-amount { width: 9.6em; } .ws2-grid th.ci-h-perMw { width: 5.8em; }
-  .ws2-grid th.ci-h-cont, .ws2-grid th.ci-h-vat, .ws2-grid th.ci-h-wht, .ws2-grid th.ci-h-dep { width: 4.4em; }
-  .ws2-grid th.ci-h-infl { width: 8em; } .ws2-grid th.ci-h-profile { width: 14em; } .ws2-grid th.ci-h-status { width: 9.6em; } .ws2-grid th.ci-h-year { width: 8.6em; }
+  .ws2-grid th.ci-h-code { width: 6.4em; } .ws2-grid th.ci-h-amount { width: 9.6em; } .ws2-grid th.ci-h-perMw { width: 7.4em; }
+  .ws2-grid th.ci-h-infl { width: 8em; } .ws2-grid th.ci-h-profile { width: 14em; } .ws2-grid th.ci-h-status { width: 9.6em; }
 }
 @media (min-width: 901px) { .ws2-grid thead th { white-space: nowrap; } }
 .ws2-grid .ws2-cell { text-overflow: ellipsis; }
@@ -244,3 +235,16 @@
 .ci-summary-table tbody th, .ci-summary-table tfoot th { text-align: left !important; font-weight: 400; }
 .ci-summary-table tfoot th { font-weight: 600; }
 .ci-summary-table td:last-child { white-space: nowrap; }
+
+/* Cost amounts: one stored amount, read-only per-MW, a unit choice, and the real row menu. */
+.ci-unit { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted, #526374); }
+.ci-unit .fm-input { min-height: 26px; padding: 1px 6px; font-size: 12px; width: auto; }
+.ws2-grid .ci-col-permw { white-space: nowrap; color: var(--ink, #1c2b3a); }
+.ws2-grid .ci-preview { color: var(--muted, #526374); font-style: italic; margin-left: 4px; }
+.ws2-grid .ci-menuwrap { position: relative; display: inline-block; }
+.ws2-grid .ci-menu { border: 1px solid transparent; background: transparent; color: var(--ink, #1c2b3a); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 6px; min-height: 22px; border-radius: 3px; }
+.ws2-grid .ci-menu:hover:not(:disabled), .ws2-grid .ci-menu[aria-expanded="true"] { border-color: var(--line, #dce3e9); background: var(--surface, #fff); }
+.ws2-grid .ci-menu:disabled { color: var(--muted, #8a97a6); cursor: not-allowed; }
+.ci-menulist { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 10em; background: var(--surface, #fff); border: 1px solid var(--line, #dce3e9); box-shadow: 0 4px 12px rgba(20, 40, 60, .15); }
+.ci-menuitem { text-align: left; border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; cursor: pointer; color: var(--ink, #1c2b3a); }
+.ci-menuitem:hover, .ci-menuitem:focus-visible { background: var(--accent-soft, #e7f0f8); }
