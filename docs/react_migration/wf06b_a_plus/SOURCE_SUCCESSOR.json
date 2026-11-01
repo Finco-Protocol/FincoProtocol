@@ -40,7 +40,7 @@
     "app/cost_line_ledger/projection.py": "1f64869df6b3d4c0e18a9eeb6af898e8a7e78e80",
     "app/v2/react_workspace_router.py": "b9b0adc2dc4afce35b4a279bdda0bca9e1ff1ca0",
     "docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md": "98d6c9fbde749ae1a7ccf8fdc589959752edf901",
-    "docs/react_migration/wf06b_a_plus/P00.md": "865b2508ff059057607ddea5796919c78bd0e927",
+    "docs/react_migration/wf06b_a_plus/P00.md": "00993817353d7853f651b658ee71ae6870e59566",
     "frontend/src/app/CanonicalInputGrid.tsx": "3c92f198a9586aaf7abd7033c3bd07cb43339953",
     "frontend/src/app/CostUnit.tsx": "d1352732ffbe656b394fe3a572536f7d0bd7d492",
     "frontend/src/app/InputsOverview.tsx": "ec0b8b3419c55947e902626a6921036b54e75d68",
@@ -73,6 +73,7 @@
     "tests/test_wf06b_capacity.py": "a61d306f5f332e1c882002772a1bd7633de78d51",
     "tests/test_wf06b_cost_line_ledger.py": "9e5d586ce810299df3986f6c3077d12cc8aa0038",
     "tests/test_wf06b_costlines_route.py": "8cf2d6fccad181a8e163542f93a534e207ff575b",
+    "tests/test_wf06b_line_commands.py": "3fd71f729624ecd164350ccc42ce5cd666b8f4be",
     "tests/test_wf06b_no_source_provenance_ui.py": "bb58cba8a3c6cac18ad2a003511a35c1cca18240",
     "tests/test_wf06b_run_parity.py": "24d990f04e87beb7ff0917d7576b173d3c6647a6",
     "tests/test_wf06b_scope.py": "d8aa9d89496c10fd49ce8fc70f2eafe2ca261855",
@@ -80,7 +81,7 @@
     "tests/wf03_lifecycle_scope.py": "6435be537fd510103954ca86218f97f40de6c2b6",
     "tests/wf04_scope.py": "9e7a9ef1e3fb91885ebc47fe7b9afa4e78acbb90",
     "tests/wf06b_browser_role.py": "1d8de3312464c406ae44518c2704356be63c8968",
-    "tests/wf06b_scope.py": "c99986b82c3c7e4a50ec575524c7ff333657c224",
+    "tests/wf06b_scope.py": "2e72ba6c4617b49124537f815106a7cda3c42cf5",
     "tests/wsv2_core_scope.py": "8a72b3293f810d304ded42a2ac1428b7c23b5038"
   },
   "validation": "See tests/test_wf06b_scope.py (tamper negatives) and the exact-head CI of PR #410; this manifest is a seal, not a PASS claim."

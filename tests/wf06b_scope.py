@@ -61,6 +61,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_wf06b_capacity.py',
     'tests/test_wf06b_cost_line_ledger.py',
     'tests/test_wf06b_costlines_route.py',
+    'tests/test_wf06b_line_commands.py',
     'tests/test_wf06b_no_source_provenance_ui.py',
     'tests/test_wf06b_run_parity.py',
     'tests/test_wf06b_scope.py',
