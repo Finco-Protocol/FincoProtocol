@@ -6,8 +6,9 @@ export type Density = "normal" | "compact";
 const KEY = "finco.ui.density";
 const EVENT = "finco-density-change";
 
+// Compact is the default (the reviewed workbench density); a stored "normal" choice is respected.
 export const readDensity = (): Density => {
-  try { return window.localStorage.getItem(KEY) === "compact" ? "compact" : "normal"; } catch { return "normal"; }
+  try { return window.localStorage.getItem(KEY) === "normal" ? "normal" : "compact"; } catch { return "compact"; }
 };
 
 export function useDensity(): [Density, () => void] {

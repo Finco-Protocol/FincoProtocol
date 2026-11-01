@@ -111,3 +111,53 @@
 .ci-summary-table { font-size: 12.5px; line-height: 1.25; }
 .ci-summary-table th, .ci-summary-table td { padding: 1px 6px; }
 .ci-summary { padding: 6px 8px; } .ci-summary h3 { margin-bottom: 3px; font-size: 13px; }
+
+/* ───────── Compact workbench (the default density; measures from the reviewed prototype: 26px rows, 12.5px text, 6px padding) ───────── */
+.wsv2-content .wf-bar.ci-bar { padding: 3px 10px; gap: 4px 10px; font-size: 12.5px; min-height: 40px; margin-bottom: 6px; }
+.ci-bar .ci-bar-id { font-size: 13.5px; }
+.ci-bar .fm-btn { min-height: 28px; padding: 2px 12px; font-size: 12.5px; }
+.ci-bar .ci-bar-scenario select { min-height: 24px; font-size: 12px; padding: 0 4px; }
+.ci-bar .ci-state, .ci-bar .ci-run-badge { font-size: 11.5px; padding: 1px 8px; }
+.ci-bar .ci-lastrun { font-size: 12px; }
+.ci-bar .ci-help { flex-basis: auto; position: relative; font-size: 12px; }
+.ci-bar .ci-help[open] > p { position: absolute; right: 0; top: 100%; z-index: 30; width: min(380px, 80vw); margin: 4px 0 0; padding: 8px 10px; background: var(--surface, #fff); border: 1px solid var(--line, #dce3e9); box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.ci-bar .ci-help[open] > p + p { top: calc(100% + 6px); display: none; }
+.ws2-changes { margin: 0 0 6px; }
+.ws2-changes .ws2-changes-toggle { min-height: 26px; padding: 1px 10px; font-size: 12px; }
+.ci-kpis { gap: 6px; margin-bottom: 4px; }
+.ci-kpi { padding: 3px 8px; }
+.ci-kpi-label { font-size: 10.5px; letter-spacing: .04em; }
+.ci-kpi-value { font-size: 14px; font-weight: 650; }
+.ci-source { font-size: 11.5px; margin: 2px 0 6px; }
+.ci-find { padding: 4px 6px; gap: 4px 10px; }
+.ci-search, .ci-linesearch { min-height: 26px; font-size: 12px; padding: 0 8px; }
+.wsv2-content .wf-jump { margin: 0 0 6px; gap: 4px; }
+.wsv2-content .wf-jump a { padding: 1px 10px; font-size: 12px; }
+.ci-summary { padding: 4px 6px; }
+.ci-linebar { margin: 4px 0; gap: 4px 8px; }
+.ci-linebar .fm-btn { min-height: 26px; padding: 1px 10px; font-size: 12px; }
+.ci-shown { font-size: 11.5px; }
+
+[data-cost-grid][data-density="compact"], [data-input-grid][data-density="compact"] { font-size: 12.5px; }
+[data-cost-grid][data-density="compact"] .ws2-grid th, [data-cost-grid][data-density="compact"] .ws2-grid td { padding: 0 6px; height: 26px; }
+[data-cost-grid][data-density="compact"] .ws2-grid thead th { font-size: 10.5px; letter-spacing: .04em; padding: 3px 6px; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell { height: 22px; min-height: 22px; padding: 0 5px; font-size: 12.5px; line-height: 1.2; background: #fbfdff; border-color: transparent; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell:hover { border-color: var(--line, #c9d2dc); }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell:focus { background: #fff; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-cell[data-changed="true"] { border-color: #efd08a; background: #fffaf0; }
+[data-cost-grid][data-density="compact"] .ws2-grid td.ci-col-amount .ws2-cell { max-width: 9.5em; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-group-row th { padding: 2px 6px; font-size: 12px; height: auto; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-label-wrap { flex-wrap: wrap; row-gap: 0; }
+[data-cost-grid][data-density="compact"] .ws2-grid .ws2-label-wrap .ws2-cell-text { flex: 1 1 8em; }
+[data-cost-grid][data-density="compact"] .ws2-row-notes { font-size: 11px; margin: 0; }
+[data-cost-grid][data-density="compact"] .ws2-row-notes summary { white-space: nowrap; color: var(--muted, #526374); padding: 0 4px; }
+[data-cost-grid][data-density="compact"] .ws2-row-notes[open] { flex-basis: 100%; }
+[data-cost-grid][data-density="compact"] .ws2-chip { font-size: 11px; padding: 0 6px; }
+[data-cost-grid][data-density="compact"] .ws2-grid-total th, [data-cost-grid][data-density="compact"] .ws2-grid-total td { height: 24px; font-size: 12px; }
+
+[data-input-grid][data-density="compact"] .rx-input-table th, [data-input-grid][data-density="compact"] .rx-input-table td { padding: 0 6px; height: 24px; }
+[data-input-grid][data-density="compact"] .rx-card .rx-input-table th, [data-input-grid][data-density="compact"] .rx-card .rx-input-table td { padding-top: 0; padding-bottom: 0; }
+[data-input-grid][data-density="compact"] .rx-grid-input { height: 22px; min-height: 22px; padding: 0 5px; font-size: 12.5px; line-height: 1.2; }
+[data-input-grid][data-density="compact"] .rx-input-table thead th { font-size: 10.5px; letter-spacing: .04em; }
+[data-input-grid][data-density="compact"] .rx-state, [data-input-grid][data-density="compact"] .rx-state-reason { font-size: 11px; }
+[data-input-grid][data-density="compact"] .rx-input-section > summary { padding: 4px 8px; }

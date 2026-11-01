@@ -74,14 +74,17 @@ def check_density_toggle_and_viewports(browser, base, kind):
     try:
         grid = _open_sheet(page, base, record.project_code, "capex")
         cell = grid.locator("input[data-r='1'][data-c='1']")
-        normal = cell.evaluate("el => el.getBoundingClientRect().height")
-        assert normal >= 30, normal                                         # readable default row (>=30px control)
-        grid.locator("[data-density-toggle]").click()
-        assert grid.get_attribute("data-density") == "compact"
+        assert grid.get_attribute("data-density") == "compact"                      # the reviewed compact density is the default
         compact = cell.evaluate("el => el.getBoundingClientRect().height")
-        assert compact <= 28.5 and compact < normal, (normal, compact)       # optional compact rows
-        # amount accuracy is untouched by density: the value is still the stored text
-        assert cell.input_value() == grid.locator("input[data-r='1'][data-c='1']").input_value()
+        row = grid.locator("tr[data-line]").first.evaluate("el => el.getBoundingClientRect().height")
+        assert compact <= 24 and row <= 28, (compact, row)                           # ~26px rows
+        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "12.5px"
+        value = cell.input_value()
+        grid.locator("[data-density-toggle]").click()                                 # optional larger rows
+        assert grid.get_attribute("data-density") == "normal"
+        normal = cell.evaluate("el => el.getBoundingClientRect().height")
+        assert normal >= 31.5 and normal > compact, (normal, compact)
+        assert cell.input_value() == value                                            # density never changes a value
         grid.locator("[data-density-toggle]").click()
         for width, height in VIEWPORTS:
             page.set_viewport_size({"width": width, "height": height})
@@ -164,11 +167,12 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert page.locator(".rx-input-table .rx-state-editable").count() == 0
         assert page.locator(".rx-input-table .rx-state-editable-sr").count() > 0
         grid = page.locator("[data-input-grid='canonical']")
-        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "14px"
+        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "12.5px"     # compact by default
         cell = grid.locator("input.rx-grid-input").first
-        assert cell.evaluate("el => el.getBoundingClientRect().height") >= 31.5
+        assert cell.evaluate("el => el.getBoundingClientRect().height") <= 24
         grid.locator("[data-density-toggle]").click()
-        assert cell.evaluate("el => el.getBoundingClientRect().height") <= 28.5
+        assert cell.evaluate("el => el.getBoundingClientRect().height") >= 31.5      # optional larger rows
+        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "14px"
         grid.locator("[data-density-toggle]").click()
         for width, height in VIEWPORTS + ((320, 700),):
             page.set_viewport_size({"width": width, "height": height})

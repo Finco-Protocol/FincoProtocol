@@ -344,10 +344,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                               onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
                           );
                           // The FINCO code sits beside the description (same row) so it adds no height.
-                          return code ? <div className="ws2-label-wrap"><span className="ws2-code" data-finco-code="true" aria-hidden="true">{code}</span>{field}</div> : field;
-                        })()}
-                        {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
-                        {col === "label" && (
+                          const notesBlock = col === "label" ? (
                           <details className="ws2-row-notes">
                             <summary>{line.active ? "Notes" : "Notes · inactive line"}</summary>
                             <input className="fm-input" aria-label={`Notes for ${line.label}`} disabled={!rowEditable}
@@ -356,8 +353,11 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                                      section, key: `${line.sub_line_id}#notes`, label: `${line.label} — notes`, unit: "", baseline: line.notes ?? "",
                                      value: event.target.value, rowVersion: line.row_version, meta: { label: line.label, amount_keur: textOf(line.amount_keur) },
                                    }, { coalesce: true })} />
-                          </details>
-                        )}
+                            </details>
+                          ) : null;
+                          return col === "label" ? <div className="ws2-label-wrap">{code && <span className="ws2-code" data-finco-code="true" aria-hidden="true">{code}</span>}{field}{notesBlock}</div> : field;
+                        })()}
+                        {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
                       </td>
                     );
                     // Basis sits between the description and the amount; every stored line is a fixed kEUR amount.
