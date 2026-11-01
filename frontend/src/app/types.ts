@@ -335,9 +335,11 @@ export interface CostLineProjectionLine {
   template_line_id: string | null;
   row_kind: "editable_run_bound" | "derived_runtime" | "heading" | "blank_slot" | "unresolved_mapping" | "unsupported";
   taxonomy_signed_off: boolean;
-  /** True when ACTIVE saved lines under this parent are consumed by the existing Run fold (independent of taxonomy sign-off). */
+  /** Parent-level: the existing Run fold ever consumes lines under this parent (independent of taxonomy sign-off and of this line being active). */
+  eligible_for_run_fold: boolean;
+  /** This line is ACTIVE and its parent is eligible, i.e. the existing Run fold consumes it. */
   feeds_run_fold: boolean;
-  lineage: "template" | "user" | "unknown";
+  lineage: "template" | "user" | "unverified";
   mapping_status: "PROVEN" | "UNRESOLVED";
 }
 

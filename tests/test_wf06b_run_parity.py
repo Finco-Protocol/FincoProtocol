@@ -107,4 +107,4 @@ def test_explicit_zero_stays_zero_in_projection_and_run_identity(env, kind):
     again = costlines(env, record, "opex")
     row = next(l for l in again["projection"]["lines"] if l["sub_line_id"] == line["sub_line_id"])
     assert row["amount_keur"] == 0 and row["amount_keur"] is not None
-    assert row["feeds_run_fold"] is True
+    assert row["feeds_run_fold"] is True and row["eligible_for_run_fold"] is True

@@ -17,7 +17,7 @@ from app.reference_detail_catalog import OPEX_PARENT_NAMES
 
 PUBLIC_LINE_KEYS = frozenset({
     "sub_line_id", "label", "amount_keur", "row_version", "notes", "inflation_pct", "active", "category",
-    "finco_display_code", "template_line_id", "row_kind", "taxonomy_signed_off", "feeds_run_fold", "lineage", "mapping_status",
+    "finco_display_code", "template_line_id", "row_kind", "taxonomy_signed_off", "eligible_for_run_fold", "feeds_run_fold", "lineage", "mapping_status",
 })
 PUBLIC_GROUP_KEYS = frozenset({"code", "label", "row_kind", "mapping_status", "line_count", "active_line_count", "saved_total_keur", "counts_toward_sheet_total"})
 PUBLIC_FOLD_KEYS = frozenset({"field", "parents", "active_line_count", "saved_total_keur", "mode", "post_fold_authority"})
@@ -97,7 +97,8 @@ def project_cost_lines(technology: str, sheet: str, lines: Iterable[Mapping[str,
         cls = classify_persisted_line(technology, sheet, code, str(line.get("category") or ""))
         row = {k: line.get(k) for k in ("sub_line_id", "label", "amount_keur", "row_version", "notes", "inflation_pct", "active", "category")}
         row.update({"finco_display_code": code, "template_line_id": cls["template_line_id"], "row_kind": cls["row_kind"],
-                    "taxonomy_signed_off": cls["taxonomy_signed_off"], "feeds_run_fold": cls["feeds_run_fold"], "lineage": cls["lineage"], "mapping_status": cls["mapping_status"]})
+                    "taxonomy_signed_off": cls["taxonomy_signed_off"], "eligible_for_run_fold": cls["eligible_for_run_fold"],
+                    "feeds_run_fold": bool(line.get("active")) and cls["eligible_for_run_fold"], "lineage": cls["lineage"], "mapping_status": cls["mapping_status"]})
         out.append(row)
 
     names = CAPEX_PARENT_NAMES if sheet == "capex" else OPEX_PARENT_NAMES

@@ -137,8 +137,9 @@ def verify_ledger() -> bool:
 _USER_CODE = re.compile(r"^[CB]\.\d{2}\.U\d{3}$")
 
 
-def feeds_run_fold(sheet: str, parent: str) -> bool:
-    """Whether ACTIVE saved lines under ``parent`` are consumed by the existing Run fold (independent of taxonomy sign-off)."""
+def eligible_for_run_fold(sheet: str, parent: str) -> bool:
+    """Parent-level eligibility only: whether the existing Run fold ever consumes lines under ``parent`` (independent of taxonomy sign-off and of
+    whether a particular line is active). ``feeds_run_fold`` on a projected line additionally requires the line to be active."""
     if sheet == "capex":
         from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
         return parent in CAPEX_CATEGORY_TO_FIELD
@@ -147,15 +148,20 @@ def feeds_run_fold(sheet: str, parent: str) -> bool:
 
 
 def classify_persisted_line(technology: str, sheet: str, business_code: str, parent: str) -> dict[str, Any]:
-    """Classify one persisted line. Unknown codes are user lines (identity = their own sub_line_id), never a guess."""
-    rows = {r.finco_display_code: r for r in ledger_rows(technology) if r.sheet == sheet}
-    row = rows.get(business_code)
-    if row is not None:
+    """Classify one persisted line. A line is a verified *template* row only when technology, sheet, business code AND parent all agree with the
+    ledger; a user line only when its code agrees with its persisted parent. Anything else is ``unverified`` and is never presented as verified."""
+    code = business_code or ""
+    row = {r.finco_display_code: r for r in ledger_rows(technology) if r.sheet == sheet}.get(code)
+    eligible = eligible_for_run_fold(sheet, parent)
+    if (row is not None and row.parent_group == parent
+            and row.row_kind in (RowKind.EDITABLE_RUN_BOUND.value, RowKind.UNRESOLVED_MAPPING.value)):
         return {"template_line_id": row.template_line_id, "row_kind": row.row_kind, "taxonomy_signed_off": row.taxonomy_signed_off, "lineage": "template",
-                "feeds_run_fold": feeds_run_fold(sheet, parent),
+                "eligible_for_run_fold": eligible,
                 "mapping_status": "UNRESOLVED" if row.row_kind == RowKind.UNRESOLVED_MAPPING.value else "PROVEN"}
-    if _USER_CODE.match(business_code or ""):
+    if _USER_CODE.match(code) and code.rsplit(".", 1)[0] == parent:
         unresolved = parent in (UNRESOLVED_CAPEX_PARENTS if sheet == "capex" else UNRESOLVED_OPEX_PARENTS)
         return {"template_line_id": None, "row_kind": RowKind.UNRESOLVED_MAPPING.value if unresolved else RowKind.EDITABLE_RUN_BOUND.value,
-                "taxonomy_signed_off": not unresolved, "lineage": "user", "feeds_run_fold": feeds_run_fold(sheet, parent), "mapping_status": "UNRESOLVED" if unresolved else "PROVEN"}
-    return {"template_line_id": None, "row_kind": RowKind.UNSUPPORTED.value, "taxonomy_signed_off": False, "lineage": "unknown", "feeds_run_fold": False, "mapping_status": "UNRESOLVED"}
+                "taxonomy_signed_off": not unresolved, "lineage": "user", "eligible_for_run_fold": eligible,
+                "mapping_status": "UNRESOLVED" if unresolved else "PROVEN"}
+    return {"template_line_id": None, "row_kind": RowKind.UNSUPPORTED.value, "taxonomy_signed_off": False, "lineage": "unverified",
+            "eligible_for_run_fold": eligible, "mapping_status": "UNRESOLVED"}

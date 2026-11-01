@@ -113,3 +113,48 @@ def test_provenance_guard_allows_owner_text_and_normal_keys():
     assert_no_source_provenance({"sheet": "capex", "lines": [{"label": "see budget.xlsx Sheet1!A1", "notes": "Capex!B2"}], "code": "C.01.02"})
     res = project_cost_lines("solar", "opex", [dict(_line("z", "B.01", 1.0), label="from plan.xlsx")], codes={"z": "B.01.U001"})
     assert res["lines"][0]["label"] == "from plan.xlsx"
+
+
+# ── Correction C: authenticated template classification and honest fold flags ─────────────────────────────────
+
+def test_template_lineage_requires_code_parent_sheet_and_technology_to_agree():
+    ok = classify_persisted_line("solar", "capex", "C.02.01", "C.02")
+    assert ok["lineage"] == "template" and ok["template_line_id"] == "solar:PUBLIC_GENERIC_DETAIL_V1:C.02.01"
+    mismatch = classify_persisted_line("solar", "capex", "C.02.01", "C.05")      # right code, wrong persisted parent
+    assert mismatch["lineage"] == "unverified" and mismatch["template_line_id"] is None and mismatch["row_kind"] == "unsupported"
+    assert not mismatch["taxonomy_signed_off"] and mismatch["mapping_status"] == "UNRESOLVED"
+    assert classify_persisted_line("solar", "opex", "C.02.01", "C.02")["lineage"] == "unverified"          # wrong sheet
+    assert classify_persisted_line("solar", "capex", "C.02.99", "C.02")["lineage"] == "unverified"         # code not in the ledger
+    assert classify_persisted_line("wind", "capex", "C.01.02", "C.01")["lineage"] == "template"           # Wind-only child ...
+    assert classify_persisted_line("solar", "capex", "C.01.05", "C.01")["lineage"] == "unverified"        # ... does not exist for Solar
+    # headings / derived codes are never persisted template rows
+    assert classify_persisted_line("solar", "capex", "C.17", "C.17")["lineage"] == "unverified"
+    assert classify_persisted_line("solar", "capex", "C.02", "C.02")["lineage"] == "unverified"
+    # a user code must agree with its own persisted parent
+    assert classify_persisted_line("wind", "capex", "C.02.U001", "C.02")["lineage"] == "user"
+    assert classify_persisted_line("wind", "capex", "C.02.U001", "C.03")["lineage"] == "unverified"
+
+
+def _pl(i, cat, amount, active):
+    return {"sub_line_id": i, "label": i, "amount_keur": amount, "row_version": "v", "notes": None, "inflation_pct": None, "active": active, "category": cat}
+
+
+def test_feeds_run_fold_is_true_only_for_active_lines_of_eligible_parents():
+    lines = [_pl("act", "C.02", 1.0, True), _pl("off", "C.02", 2.0, False), _pl("unres", "C.13", 3.0, True), _pl("der", "C.17", 4.0, True),
+             _pl("unk", "C.02", 5.0, True), _pl("opx13", "B.13", 6.0, True)]
+    cap = {l["sub_line_id"]: l for l in project_cost_lines("solar", "capex", lines[:5], codes={"act": "C.02.01", "off": "C.02.02", "unres": "C.13.U001",
+                                                                                               "der": "C.17", "unk": "weird"})["lines"]}
+    assert cap["act"]["feeds_run_fold"] is True and cap["act"]["eligible_for_run_fold"] is True
+    assert cap["off"]["feeds_run_fold"] is False and cap["off"]["eligible_for_run_fold"] is True      # inactive: eligible, not consumed
+    assert cap["unres"]["feeds_run_fold"] is True and cap["unres"]["taxonomy_signed_off"] is False   # D1: unresolved parent still folds
+    assert cap["der"]["feeds_run_fold"] is False and cap["der"]["eligible_for_run_fold"] is False    # derived never consumed as spend
+    assert cap["unk"]["lineage"] == "unverified" and cap["unk"]["feeds_run_fold"] is True            # the fold uses the parent, not the code
+    opx = project_cost_lines("solar", "opex", lines[5:], codes={"opx13": "B.13.U001"})["lines"][0]
+    assert opx["eligible_for_run_fold"] is False and opx["feeds_run_fold"] is False                  # B.13 is rejected by the existing OPEX route
+
+
+def test_zero_is_not_missing_and_totals_do_not_claim_run_equality():
+    zero = project_cost_lines("solar", "capex", [_pl("z", "C.02", 0, True), _pl("n", "C.02", None, True)], codes={"z": "C.02.01", "n": "C.02.02"})
+    by = {l["sub_line_id"]: l for l in zero["lines"]}
+    assert by["z"]["amount_keur"] == 0 and by["z"]["amount_keur"] is not None and by["n"]["amount_keur"] is None
+    assert "not Run economics" in zero["fold"]["note"] or "Saved totals are not Run economics" in zero["fold"]["note"]
