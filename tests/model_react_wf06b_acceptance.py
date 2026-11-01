@@ -1,4 +1,4 @@
-"""WF-06B real-Chromium acceptance bodies (cost workbench). Not collected by pytest: ``tests/test_wf06b_browser.py`` supplies the fixtures.
+"""WF-06B real-Chromium acceptance bodies (cost workbench). Not collected by pytest: ``tests/wf06b_browser_role.py`` supplies the fixtures.
 
 Real server, synthetic users. The only edit is a staged probe that is discarded and never saved. Screenshots: ``WF06B_SCREENSHOT_DIR``.
 """

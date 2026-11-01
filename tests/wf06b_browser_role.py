@@ -1,4 +1,10 @@
-"""WF-06B real-Chromium role (supplies fixtures to the acceptance bodies; also re-runs the WF-06A cost-grid body unchanged)."""
+"""WF-06B real-Chromium runner (supplies fixtures to the acceptance bodies; also re-runs the WF-06A cost-grid body unchanged).
+
+Deliberately NOT named ``test_*.py``: importing the shared browser fixtures skips the whole module when Playwright is absent, which would add a
+collection skip to the accepted-source skip inventory in the Public Safety plan (``collection skip change``). Run it explicitly where Chromium
+exists:  ``FINCO_TEST_CHROMIUM_PATH=<chrome> pytest tests/wf06b_browser_role.py``.  Wiring it into the mandatory browser role means editing
+``tools/ci_browser_job.py`` / the consolidation module, which this PR does not own (ON-09B / owner decision).
+"""
 import pytest
 
 from tests.model_react_rcm_support import rcm_react_flag  # noqa: F401
