@@ -288,7 +288,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     const dest: InputDestination | null = jump.kind === "cost-sheet" && jump.sheet ? jump.sheet : JUMP_DESTINATION[jump.id] ?? null;
     if (dest && sectionRef.current === "inputs") {
       const next = `inputs/${dest}` as WorkspaceDestination;
-      if (next !== destinationRef.current) { navigateTo(next); return; }
+      if (next !== destinationRef.current) navigateTo(next);   // history entry first; the scroll/focus below stays synchronous as before
     }
     if (jump.kind === "cost-sheet" && jump.sheet) setCostRequest((prev) => ({ sheet: jump.sheet!, nonce: prev.nonce + 1 }));
     const target = document.getElementById(jump.id);

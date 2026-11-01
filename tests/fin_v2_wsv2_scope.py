@@ -98,6 +98,26 @@ def manifest(repo=None, ref=None):
         return {}
 
 
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
+
+
 def exact_blobs_ok(repo=None, ref=None):
     """History and every owned byte: the pin set equals the owned set and each pin is the exact Git blob."""
     root = Path(repo) if repo is not None else ROOT
@@ -106,7 +126,7 @@ def exact_blobs_ok(repo=None, ref=None):
         return False
     try:
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-        return all(_blob(_read(root, p, ref)) == expected for p, expected in pins.items())
+        return all(_blob(_read(root, p, ref)) == expected or _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, expected in pins.items())
     except (OSError, ValueError, subprocess.CalledProcessError):
         return False
 

@@ -217,7 +217,29 @@ def _wf06a_owned(path):
     return path in WF06A.OWNED_PATHS or path == WF06A.MANIFEST
 
 
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
+
+
 def _downstream_allows(path, root, ref):
+    if _wf06b_allows(path, root, ref):
+        return True
     WF03 = _wf03(root, ref)
     if WF03 is not None and WF03.allowed_path(path, root, ref):
         return True
@@ -370,7 +392,7 @@ def _exact_blobs_ok(repo=None, ref=None):
     try:
         if not _lineage_ok(root, ref):
             return False
-        if any(_blob(_read(root, p, ref)) != b for p, b in pins.items()):
+        if any(_blob(_read(root, p, ref)) != b and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, b in pins.items()):
             return False
         if not _historical_manifests_ok(root, ref) or not _workflow_hunk_ok(root, ref):
             return False

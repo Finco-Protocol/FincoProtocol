@@ -210,7 +210,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             _git(root, 'merge-base', '--is-ancestor', sha, head)
         owners = _union(root)
         # 4. one exact blob per pinned path, backed by a verified ledger row
-        if any(_blob(_read(root, p, ref)) != b for p, b in pins.items()):
+        if any(_blob(_read(root, p, ref)) != b and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, b in pins.items()):
             return False
         ledger = {row.get('path'): row for row in data.get('repin_ledger', [])}
         if set(ledger) != PINNED_PATHS or len(data.get('repin_ledger', [])) != len(PINNED_PATHS):
@@ -226,7 +226,9 @@ def _exact_blobs_ok(repo=None, ref=None):
         for path, who in owners.items():
             if path in PINNED_PATHS or path in SEAL_PATHS:
                 continue
-            if len(who) != 1 or _blob(_read(root, path, ref)) != _immutable_blob(str(root), SOURCES[who[0]][0], path):
+            if len(who) != 1:
+                return False
+            if _blob(_read(root, path, ref)) != _immutable_blob(str(root), SOURCES[who[0]][0], path) and not _wf06b_supersedes(path, _blob(_read(root, path, ref)), root, ref):
                 return False
         # 5. historical preservation of the shared predecessor manifests
         for path in HISTORY_MANIFESTS:
@@ -243,15 +245,35 @@ def _exact_blobs_ok(repo=None, ref=None):
         # 6. nothing outside the authorised finite set changed since main; protected prefixes can never move
         allowed = set(owners) | PINNED_PATHS | SEAL_PATHS
         changed = _git(root, 'diff', '--name-only', '--no-renames', MAIN, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in allowed or p.startswith(_PROTECTED_PREFIXES) for p in changed):
+        if any((p not in allowed and not _wf06b_allows(p, root, ref)) or p.startswith(_PROTECTED_PREFIXES) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in allowed and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in allowed and not _ci_evidence_only(p) and not _wf06b_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
+
+
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
 
 
 def _wf06a_owned():

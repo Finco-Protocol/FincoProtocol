@@ -158,6 +158,26 @@ def _followed_ok(root, ref, pins, data):
     return True
 
 
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
+
+
 def _integration_admits(path, value, root, ref):
     """A FOREIGN pin (never a WF-06A-owned path) that the low-level PR #409 seal literally authorises, only while that seal is exact."""
     try:
@@ -225,16 +245,16 @@ def _exact_blobs_ok(repo=None, ref=None):
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
-        if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+        if any(_blob(_read(root, p, ref)) != sha and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
             return False
         if not _followed_ok(root, ref, pins, data):
             return False
         changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) for p in changed):
+        if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) and not _wf06b_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _integration_allows(p, root, ref) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _integration_allows(p, root, ref) and not _wf06b_allows(p, root, ref) for p in untracked):
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

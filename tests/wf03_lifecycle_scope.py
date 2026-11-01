@@ -345,6 +345,26 @@ def _int409_admits(path,value,root,ref):
     return INT.admits_pin(path,value,root,ref)
 
 
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
+
+
 def _wf06a_allows(path,root,ref):
     try:
         from tests import fin_v2_wf06a_scope as WF06A
@@ -392,7 +412,7 @@ def _exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',PARENT,ref or 'HEAD')
         _git(root,'merge-base','--is-ancestor',BASE,PARENT)
         if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
-        if any(_blob(_read(root,p,ref))!=sha for p,sha in pins.items()): return False
+        if any(_blob(_read(root,p,ref))!=sha and not _wf06b_supersedes(p,_blob(_read(root,p,ref)),root,ref) for p,sha in pins.items()): return False
         return _historical_maps_ok(root,ref,pins,data) and _b1_layer_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
         return False
@@ -407,10 +427,10 @@ def valid(repo=None,ref=None):
     if not exact_blobs_ok(root,ref): return False
     try:
         changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
-        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in changed): return False
+        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in changed): return False
         if ref is None:
             untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
-            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) for p in untracked): return False
+            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in untracked): return False
         return True
     except (OSError,ValueError,subprocess.CalledProcessError): return False
 
