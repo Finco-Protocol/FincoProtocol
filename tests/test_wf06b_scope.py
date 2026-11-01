@@ -199,3 +199,83 @@ def test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_forei
     assert not W.exact_blobs_ok(wt, W.BASE)                                    # BASE has no WF-06B manifest
     _git(wt, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '-qm', 'noop')
     assert W.exact_blobs_ok(wt, 'HEAD')
+
+
+# ── Correction D: D01 / FIN-V2-3 ``matches()`` recognise exactly the authenticated WF-06B successor bytes ─────────────────────────────────────────
+
+def _pinned_and_superseded(cohort):
+    return sorted(set(cohort.manifest().get('source_blobs', {})) & W.SUPERSEDED)
+
+
+@pytest.mark.parametrize('modname', ['fin_v2_d01_scope', 'fin_v2_3_scope'])
+def test_matches_accepts_exactly_the_successor_bytes_and_the_historical_pin(modname):
+    import importlib
+    D = importlib.import_module(f'tests.{modname}')
+    paths = _pinned_and_superseded(D)
+    assert 'tests/test_rcm_governance.py' in paths and f'tests/{modname}.py' in paths
+    for path in paths:
+        raw = (W.ROOT / path).read_bytes()
+        assert D.matches(path, raw) is True, path                                   # current, authenticated successor bytes
+        assert D.matches(path, raw + b'\n') is False, path                          # one byte more is nobody's reviewed state
+        assert D.matches(path, raw.decode()) is True and D.matches(path, raw.decode() + ' ') is False
+        historical = W._git(W.ROOT, 'show', f'{W.BASE}:{path}')
+        assert D.matches(path, historical) is True, path                             # the historical reviewed pin is unchanged and still matches
+    for stranger in ('app/v2/router.py', 'financial_engine/native_v11/config.py', 'tests/conftest.py', 'unreviewed/new_authority.py'):
+        assert D.matches(stranger, (W.ROOT / stranger).read_bytes() if (W.ROOT / stranger).exists() else b'x') is False
+
+
+@pytest.mark.parametrize('modname', ['fin_v2_d01_scope', 'fin_v2_3_scope'])
+def test_matches_refuses_successor_bytes_when_the_successor_is_not_authenticated(modname, wt, monkeypatch):
+    import importlib
+    D = importlib.import_module(f'tests.{modname}')
+    path = 'tests/test_rcm_governance.py'
+    raw = (wt / path).read_bytes()
+    assert D.matches(path, raw, repo=wt) is True
+    # a forged / mismatched WF-06B pin
+    mpath = wt / W.MANIFEST
+    good = mpath.read_text()
+    d = json.loads(good)
+    d['source_blobs'][path] = '2' * 40
+    mpath.write_text(json.dumps(d, indent=2, sort_keys=True) + '\n')
+    assert D.matches(path, raw, repo=wt) is False
+    mpath.write_text(good)
+    assert D.matches(path, raw, repo=wt) is True
+    # one byte in the successor manifest, in any owned file the successor depends on, or a missing manifest
+    mpath.write_text(good + ' ')
+    assert D.matches(path, raw, repo=wt) is False
+    mpath.write_text(good)
+    _flip(wt / 'tests/wf06b_scope.py')
+    assert D.matches(path, raw, repo=wt) is False                                   # the successor's own bytes are pinned
+    _git(wt, 'checkout', '--', 'tests/wf06b_scope.py')
+    mpath.unlink()
+    assert D.matches(path, raw, repo=wt) is False
+    _git(wt, 'checkout', '--', W.MANIFEST)
+    # altered base identity and a forged predecessor
+    monkeypatch.setattr(W, 'BASE_TREE', '0' * 40)
+    assert D.matches(path, raw, repo=wt) is False
+    monkeypatch.undo()
+    d = json.loads(good)
+    d['base_blobs'][path] = '3' * 40
+    mpath.write_text(json.dumps(d, indent=2, sort_keys=True) + '\n')
+    assert D.matches(path, raw, repo=wt) is False
+    mpath.write_text(good)
+    # an untracked executable anywhere
+    exe = wt / 'app/sneaky.sh'
+    exe.write_text('#!/bin/sh\n')
+    exe.chmod(0o755)
+    assert D.matches(path, raw, repo=wt) is False
+    exe.unlink()
+    assert D.matches(path, raw, repo=wt) is True
+    # deleting the owned source fails the whole composition
+    (wt / path).unlink()
+    assert D.matches(path, raw, repo=wt) is False
+
+
+def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
+    import importlib
+    for modname in ('fin_v2_d01_scope', 'fin_v2_3_scope', 'fin_v2_r1_scope', 'fin_v2_rcux_scope', 'fin_v2_wsv2_scope'):
+        D = importlib.import_module(f'tests.{modname}')
+        for path in set(D.manifest().get('source_blobs', {})) - W.SUPERSEDED:
+            raw = (W.ROOT / path).read_bytes()
+            assert D.matches(path, raw + b'\n') is False, (modname, path)
+            assert not W.supersedes(path, W._blob(raw + b'\n')), (modname, path)
