@@ -11,6 +11,7 @@ import pytest
 from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
 from tests import wf03_lifecycle_scope as WF03
+from tests import u1_scope as U1               # PR #413 Correction G: the closed U1 cohort (low level, never calls this module) vouches for its later states
 from tests import wf06b_scope as WF06B       # PR #410: the closed WF-06B cohort extends the reviewed states of two WF-03 paths (router, WorkspaceView)
 
 # Financial Owner approval 2026-10-30 (RC-M successor, router + reviewed WorkspaceView extension): the only WF-03 states admitted here.
@@ -39,6 +40,11 @@ RCM_BASE = "1f25903e7ed0bb8142f4e9f40d7eade58a746bf5"       # main immediately b
 RCM_HEAD = "6aaaaa586d42a3354b653661f5813e6819cb990c"       # the last reviewed RC-M head (merged into main as f79e2519)
 
 
+def _u1_state(path, source):
+    """Exactly the reviewed U1 state of a path U1 supersedes, only while the whole U1 cohort is exact (nonrecursive: U1 reads git and its manifest only)."""
+    return path in U1.SUPERSEDED and U1.supersedes(path, U1._blob(source.encode()))
+
+
 def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted():
     assert set(LAYER) == EXPECTED
     assert len(S.BLOBS) == 112 and S.SOURCE_HEAD == "1800bf6092af650f18aa6ae70e9df221797090fd"
@@ -59,7 +65,8 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
         # after the unchanged ownership check; archived interstitial/restore UI and current-projection PPA Save); any other path or byte still fails.
         assert (S.git_blob(SOURCES[path]) == expected_current or WF04.presentation_successor(path, SOURCES[path])
                 or (path in WF03_RCM_PATHS and WF03.matches(path, SOURCES[path]))
-                or WF06B.matches(path, SOURCES[path])), path        # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
+                or WF06B.matches(path, SOURCES[path])
+                or _u1_state(path, SOURCES[path])), path        # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -247,11 +254,12 @@ def test_the_wf03_rcm_successor_is_two_paths_at_their_exact_blobs():
     """Negatives for the WF-03 RC-M successor: only the two WF03_RCM_PATHS, only at their exact WF-03 blobs; never any other layer path."""
     assert WF03_RCM_PATHS <= set(LAYER) and len(WF03_RCM_PATHS) == 2
     for path in sorted(WF03_RCM_PATHS):
-        assert WF03.matches(path, SOURCES[path]) or WF06B.matches(path, SOURCES[path])
+        assert WF03.matches(path, SOURCES[path]) or WF06B.matches(path, SOURCES[path]) or _u1_state(path, SOURCES[path])
+        assert not _u1_state(path, SOURCES[path] + "\n")
         assert not WF03.matches(path, SOURCES[path] + "\n") and not WF06B.matches(path, SOURCES[path] + "\n")
         assert not WF03.matches(path, SOURCES[path].replace("PROJECT_ARCHIVED", "PROJECT_ARCHIVED_X", 1)), path
     view = "frontend/src/app/WorkspaceView.tsx"
-    assert S.git_blob(SOURCES[view]) == "66b20d2d89b854cf0ffca71035404a7c8c2d1d62" or WF06B.matches(view, SOURCES[view])   # the exact Owner-reviewed blob, or its exact WF-06B successor
+    assert S.git_blob(SOURCES[view]) == "66b20d2d89b854cf0ffca71035404a7c8c2d1d62" or WF06B.matches(view, SOURCES[view]) or _u1_state(view, SOURCES[view])   # the exact Owner-reviewed blob, or its exact WF-06B successor
     stale_save = SOURCES[view].replace("refreshing={revenueVersion !== dataVersion}", "refreshing={false}", 1)
     unordered = SOURCES[view].replace("if (ticket !== revenueTicket.current) return;", "", 1)
     for label, changed in (("PPA Save may use a stale projection", stale_save), ("an older answer may replace a newer one", unordered)):

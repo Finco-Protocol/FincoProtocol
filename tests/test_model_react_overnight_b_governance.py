@@ -130,12 +130,26 @@ def test_the_correction_changes_no_protected_financial_path_since_the_baseline()
 def test_the_ws2_editing_state_is_admitted_only_by_its_exact_registered_blob(monkeypatch):
     path = "frontend/src/app/workflow/workflowShared.tsx"
     assert path in LAYER and path in S.WSV2_EDITING_SUCCESSORS
-    assert S.git_blob(SOURCES[path]) == S.WSV2_EDITING_SUCCESSORS[path]
+    historical = S.WSV2_EDITING_SUCCESSORS[path]                       # the immutable WS-2 pin: never replaced by a later state
+    current = S.git_blob(SOURCES[path])
+    # The current bytes are EITHER exactly the historical WS-2 state OR (PR-U1 Correction G) exactly the later reviewed U1 successor of this path,
+    # authenticated by the closed U1 cohort (low level: it never calls this module or the registry, so there is no recursion).
+    from tests import u1_scope as U1
+    assert current == historical or (path in U1.SUPERSEDED and U1.supersedes(path, current)), current
     changed = dict(SOURCES)
-    changed[path] += "\n"                                              # one byte of drift in the WS-2 source
+    changed[path] += "\n"                                              # one byte of drift in whichever state is current
     assert S.violations(changed)
-    monkeypatch.setitem(S.WSV2_EDITING_SUCCESSORS, path, "0" * 40)      # an altered entry no longer admits the current bytes
-    assert S.violations(SOURCES)
+    assert not U1.supersedes(path, S.git_blob(changed[path]))
+    # the historical WS-2 bytes stay admitted by the immutable dictionary entry ONLY; an altered entry no longer admits them
+    old_sources = dict(SOURCES)
+    old_sources[path] = _blob_source(historical)
+    monkeypatch.setitem(S.WSV2_EDITING_SUCCESSORS, path, "0" * 40)
+    assert S.violations(old_sources)
+    # a U1 state that its cohort no longer vouches for is refused as well (cohort closed over this path, or the path no longer superseded)
+    monkeypatch.setattr(U1, "SUPERSEDED", frozenset(U1.SUPERSEDED - {path}))
+    assert not U1.supersedes(path, current) or current == historical
+    if current != historical:
+        assert S.violations(SOURCES)
 
 
 def test_an_unregistered_path_is_never_admitted_by_the_ws2_dictionary(monkeypatch):
