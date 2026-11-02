@@ -165,7 +165,14 @@ def state_key(root, ref, reader):
     untracked = hashlib.sha256()
     for name in sorted(n for n in names if n):
         try:
-            data = (Path(root) / os.fsdecode(name)).read_bytes()
+            path = Path(root) / os.fsdecode(name)
+            fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0))
+            with os.fdopen(fd, 'rb') as handle:
+                # Git enumerates untracked symlinks, including links to pipes.
+                # Preserve regular-target links; never wait for a stream writer.
+                if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                    raise OSError('untracked target is not a regular readable file')
+                data = handle.read()
         except OSError:
             # Preserve the predecessor's outside-source evidence policy.
             # Covered sources were already read and authenticated above.

@@ -386,3 +386,26 @@ def test_nested_leaf_proof_changes_invalidate_warm_outer_approvals(wt, monkeypat
                 assert gate(wt), label
     finally:
         reset(wt)
+
+
+@pytest.mark.parametrize('relative,expected', [
+    ('app/on09c_fifo.py', False),
+    ('evidence/on09c_fifo.json', True),
+])
+def test_untracked_fifo_symlink_never_blocks_or_changes_evidence_policy(wt, relative, expected):
+    reset(wt)
+    target, pipe = wt/relative, wt/'on09c-fifo-target'
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.mkfifo(pipe)
+        target.symlink_to(os.path.relpath(pipe, target.parent))
+        assert relative in git(wt, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
+        import sys
+        code = 'from tests import fin_v2_integration_409_scope as I; print(I.exact_blobs_ok())'
+        result = subprocess.check_output([sys.executable, '-c', code], cwd=wt, timeout=30,
+                                         env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
+        assert result.strip() == str(expected).encode()
+    finally:
+        target.unlink(missing_ok=True)
+        pipe.unlink(missing_ok=True)
+        reset(wt)
