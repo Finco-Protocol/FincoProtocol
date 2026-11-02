@@ -14,6 +14,7 @@
     "frontend/src/app/projection/OpexProjection.tsx": "1c6ccea818f5616e83ea11d5b126cff314cc062a",
     "frontend/src/app/types.ts": "75d6c78c45128a93228029ccf21128c4aef4f90a",
     "frontend/src/app/workflow/CostLineManager.tsx": "25549f2c981afef41ea645da3dd913c6990bea17",
+    "frontend/src/app/workflow/workflowShared.tsx": "3f63606c7afce806a10bbd3617e91718d2975d27",
     "frontend/src/app/workspaceExtensions.ts": "0b3d1f4e3283c909cf95ff2b5ba806de7ea72c52",
     "frontend/src/app/workspaceNavigation.ts": "b9d69c45d0ff14b1ef765923ac74147fb9fcfee7",
     "frontend/src/styles/compact-inputs.css": "a710f02fc9bdf76ca6aabe32500a8b4fefaea027",
@@ -54,6 +55,7 @@
     "frontend/src/app/projection/OpexProjection.tsx": "7e5bb213cd17f45b39a59471ca994e171e2e49be",
     "frontend/src/app/types.ts": "534067e05500edffcc006fad053243340026a811",
     "frontend/src/app/workflow/CostLineManager.tsx": "916dabc1c8835bd5ad440ba24e809df36c38fb60",
+    "frontend/src/app/workflow/workflowShared.tsx": "c9b5833f473c2eac0d0b1d08cd3a6db2b8959cbd",
     "frontend/src/app/workspaceExtensions.ts": "0433856945e7c3931df4ef6fc4ba2bc9eaf49cb3",
     "frontend/src/app/workspaceNavigation.ts": "bb8306f8f323a6f5fc33484d5371d3baef789920",
     "frontend/src/styles/compact-inputs.css": "7e43b683704870f162811ce989510cc8c9563a07",
@@ -77,7 +79,7 @@
     "tests/test_u1_static_guards.py": "5e5f2cfd29e9bbdca90a2c30bbc790a4039a1be0",
     "tests/test_wf06b_scope.py": "0def93ec97c6336a40b1dc0c170c8b8ac20dcdf9",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
-    "tests/u1_scope.py": "71678e24d880ca15b13291531d33b0da607ff5cb",
+    "tests/u1_scope.py": "f008a8be9f9fbe6ae7301282d5d3643652f598e1",
     "tests/wf06b_scope.py": "dc7047e91b0c1a816a1cee13b5f6834ad7a4be68"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."
