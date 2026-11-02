@@ -188,7 +188,11 @@ def test_no_result_outlives_the_call_scope_and_a_mutation_is_never_masked(wt):
     with W.scoped():
         assert W.exact_blobs_ok(wt)
         _flip(wt / 'app/cost_line_ledger/ledger.py')
-        assert W.exact_blobs_ok(wt)                                            # memoised for this ONE call only (documented)
+        assert not W.exact_blobs_ok(wt)                                        # ON-09C: a changed source invalidates even the open scope
+        _git(wt, 'restore', '--source=HEAD', '--staged', '--worktree', '--', 'app/cost_line_ledger/ledger.py')
+        assert W.exact_blobs_ok(wt)                                            # restoration is positive in the same scope
+        _flip(wt / 'app/cost_line_ledger/ledger.py')
+        assert not W.exact_blobs_ok(wt)                                        # a second mutation cannot reuse restoration
     assert not W.exact_blobs_ok(wt)                                            # the scope is gone: fresh evaluation sees the byte
     assert not W._SCOPE
 

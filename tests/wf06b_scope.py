@@ -18,6 +18,7 @@ registry, so there is no recursive self-approval. No result cache outlives one o
 """
 from pathlib import Path
 from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import json
 import subprocess
@@ -86,7 +87,19 @@ GOVERNANCE_PATHS = frozenset((
     'tests/wf06b_scope.py',
     'tests/wsv2_core_scope.py',
 ))
-OWNED_PATHS = PRESENTATION_PATHS | SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
+ON09C_ADDED = frozenset((
+    'tests/on09c_source_state.py',
+    'tests/test_on09c_source_state.py',
+    'docs/ci_v3/on09c/SOURCE_STATE.md',
+))
+ON09C_CHANGED = ON09C_ADDED | frozenset((
+    'tests/fin_v2_integration_409_scope.py',
+    'tests/fin_v2_wf06a_scope.py',
+    'tests/wf03_lifecycle_scope.py',
+    'tests/wf06b_scope.py',
+    'tests/test_wf06b_scope.py',
+))
+OWNED_PATHS = PRESENTATION_PATHS | SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS | ON09C_ADDED
 # Owned paths that exist at BASE. Older cohorts pin these at their BASE blob; the BASE blob of each is recorded in the manifest and re-verified.
 SUPERSEDED = frozenset((
     'app/v2/react_workspace_router.py',
@@ -145,7 +158,7 @@ _SCOPE = []
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    """Call memo only; every request still reconstructs fresh source identity."""
     _SCOPE.append({})
     try:
         yield
@@ -154,22 +167,82 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        from tests import on09c_source_state as S
+        state = S.state_key(root, ref, _git)
+        if state is None:
+            return False
+        key = (str(root), ref, state, _read, _git)
+    except (ImportError, OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
+        return False
     if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
-    key = (str(repo if repo is not None else ROOT), ref)
+        result = _exact_blobs_ok(repo, ref)
+        try:
+            return result and key == (str(root), ref, S.state_key(root, ref, _git), _read, _git)
+        except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
+            return False
     memo = _SCOPE[-1]
     if key not in memo:
-        memo[key] = _exact_blobs_ok(repo, ref)
+        result = _exact_blobs_ok(repo, ref)
+        try:
+            if key != (str(root), ref, S.state_key(root, ref, _git), _read, _git):
+                return False
+        except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
+            return False
+        memo[key] = result
     return memo[key]
+
+
+@lru_cache(maxsize=16)
+def _accepted_manifest_bytes(root, reader):
+    from tests import on09c_source_state as S
+    return reader(root, 'show', S.ACCEPTED + ':' + MANIFEST)
+
+
+def _on09c_paths(root, ref, data):
+    """One finite successor of the accepted #410 manifest; no older pin changes."""
+    from tests import on09c_source_state as S
+    if _git(root, 'rev-parse', S.ACCEPTED + '^{tree}').decode().strip() != S.ACCEPTED_TREE:
+        return None
+    _git(root, 'merge-base', '--is-ancestor', S.ACCEPTED, ref or 'HEAD')
+    old = json.loads(_accepted_manifest_bytes(str(root), _git))
+    if ref is not None and _git(root, 'rev-parse', ref + '^{commit}').decode().strip() == S.ACCEPTED:
+        return OWNED_PATHS - ON09C_ADDED if data == old else None
+    extras = {'on09c_history', 'on09c_path_ledger'}
+    if set(data) != set(old) | extras or data.get('on09c_history') != {S.ACCEPTED: old}:
+        return None
+    if any(data.get(k) != v for k, v in old.items() if k != 'source_blobs'):
+        return None
+    pins = data.get('source_blobs', {})
+    if set(pins) != set(old['source_blobs']) | ON09C_ADDED:
+        return None
+    if any(pins[p] != b and p not in ON09C_CHANGED for p, b in old['source_blobs'].items()):
+        return None
+    ledger = data.get('on09c_path_ledger', [])
+    if (not isinstance(ledger, list) or len(ledger) != len(ON09C_CHANGED)
+            or {row.get('path') for row in ledger} != ON09C_CHANGED):
+        return None
+    for row in ledger:
+        path = row['path']
+        if (set(row) != {'path', 'before_blob', 'after_blob', 'mode'}
+                or row['before_blob'] != old['source_blobs'].get(path)
+                or row['after_blob'] != pins[path] or row['mode'] != '100644'):
+            return None
+    return OWNED_PATHS
 
 
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
-    data = manifest(root, ref)
-    pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
-    if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
-        return False
     try:
+        from tests import on09c_source_state as S
+        if not S.authenticated_state_ok(root, ref, _git):
+            return False
+        data = manifest(root, ref)
+        paths_owned = _on09c_paths(root, ref, data)
+        pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
+        if not data or paths_owned is None or not _owned_ok() or set(pins) != paths_owned - {MANIFEST} or set(base_blobs) != SUPERSEDED:
+            return False
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
@@ -193,23 +266,23 @@ def _exact_blobs_ok(repo=None, ref=None):
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        if any((p not in paths_owned and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
-            for p in OWNED_PATHS | {MANIFEST}:
+            for p in paths_owned | {MANIFEST}:
                 f = root / p
                 if f.is_symlink() or (f.exists() and f.stat().st_mode & 0o111):
                     return False
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in paths_owned and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
                 return False
         else:
-            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
+            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(paths_owned | {MANIFEST})).decode().splitlines()
             if any(not line.startswith('100644 ') for line in modes):
                 return False
         return True
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
+    except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
 
 

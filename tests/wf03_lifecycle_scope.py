@@ -396,10 +396,24 @@ def scoped():
 
 def exact_blobs_ok(repo=None,ref=None):
     if not _SCOPE: return _exact_blobs_ok(repo,ref)
-    key=(str(repo if repo is not None else ROOT),ref)
+    root=Path(repo) if repo is not None else ROOT
+    INT=_int409(root,ref)
+    if INT is None: return False
+    try:
+        state=INT._state_key(root,ref)
+    except (ImportError,OSError,ValueError,TypeError,subprocess.CalledProcessError): return False
+    if state is None: return False
+    key=(str(root),ref,state,_read,_git)
     memo=_SCOPE[-1]
-    if key not in memo: memo[key]=_exact_blobs_ok(repo,ref)
+    if key not in memo:
+        result=_exact_blobs_ok(repo,ref)
+        try:
+            after=(str(root),ref,INT._state_key(root,ref),_read,_git)
+            if after!=key: return False
+        except (ImportError,OSError,ValueError,TypeError,subprocess.CalledProcessError): return False
+        memo[key]=result
     return memo[key]
+
 
 
 def _exact_blobs_ok(repo=None,ref=None):
