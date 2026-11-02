@@ -284,7 +284,10 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
                 or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid
         original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
         current = F._read(F.ROOT, path, None).decode()
-        assert S.git_blob(current) == pins[path]
+        from tests import u1_scope as U1
+        # the cohort pin, or (PR #413) the exact later U1 state of a path U1 supersedes while the cohort pin still equals the BASE blob U1 recorded
+        assert (S.git_blob(current) == pins[path]
+                or (path in U1.SUPERSEDED and U1.supersedes(path, S.git_blob(current)) and U1.base_blob(path) == pins[path])), path
         def tests(text):
             return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])
                     for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]

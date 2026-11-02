@@ -72,6 +72,8 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_u1_opex_bases.py',
     'tests/test_u1_scope.py',
     'tests/test_u1_static_guards.py',
+    'tests/test_wsv2_core_scope.py',
+    'tests/test_fin_v2_wf06a_scope.py',
     'tests/test_rcm_governance.py',
     'tests/test_model_react_overnight_b_governance.py',
     'tests/model_mutation_security_successor.py',
@@ -119,6 +121,8 @@ SUPERSEDED = frozenset((
     'tests/model_mutation_security_successor.py',
     'tests/test_model_react_overnight_b_governance.py',
     'tests/test_rcm_governance.py',
+    'tests/test_fin_v2_wf06a_scope.py',
+    'tests/test_wsv2_core_scope.py',
     'tests/test_wf06b_scope.py',
     'tests/wf06b_scope.py',
 ))
