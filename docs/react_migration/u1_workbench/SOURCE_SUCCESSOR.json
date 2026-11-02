@@ -93,8 +93,8 @@
     "tests/test_wf06b_scope.py": "0def93ec97c6336a40b1dc0c170c8b8ac20dcdf9",
     "tests/test_wsv2_core_scope.py": "1014bd0402db9a8ea60c446f8329f859e15ad5d6",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
-    "tests/u1_scope.py": "4aaa41c19afa7a25ff61d0ed9c6c10d1610bd819",
-    "tests/wf06b_scope.py": "b6cbcacfe4caf29f317659182e3c2aff671217b0"
+    "tests/u1_scope.py": "0b413f09a091957886e933e3cd9bc99cb4e93add",
+    "tests/wf06b_scope.py": "59e532fb784a3c869700d1527cdd34717513e1ff"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."
 }

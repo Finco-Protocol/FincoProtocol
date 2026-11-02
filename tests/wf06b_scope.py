@@ -194,6 +194,19 @@ def exact_blobs_ok(repo=None, ref=None):
     return memo[key]
 
 
+_BASE_FACTS = {}
+
+
+def _base_facts(root, paths):
+    key = (str(root), BASE, tuple(paths))
+    hit = _BASE_FACTS.get(key)
+    if hit is None:
+        tree = _git(root, 'rev-parse', BASE + '^{tree}').decode().strip()
+        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
+        hit = _BASE_FACTS[key] = (tree, at_base)
+    return hit
+
+
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
@@ -204,11 +217,14 @@ def _exact_blobs_ok(repo=None, ref=None):
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
-        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+        # The BASE tree and the BASE blobs are immutable git facts of an object that is named by its hash: they are read once per repository for this
+        # process (only a successful read is kept) instead of on every one of the thousands of governance evaluations. The comparison with the
+        # manifest below is repeated every time.
+        paths = sorted(base_blobs)
+        tree, at_base = _base_facts(root, paths)
+        if tree != BASE_TREE:
             return False
         # 2. the BASE blob recorded for every superseded path is what git holds at BASE (history is not rewritten here)
-        paths = sorted(base_blobs)
-        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
         if at_base != [base_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path
