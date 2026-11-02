@@ -106,9 +106,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [rowAction, setRowAction] = useState<{ lineId: string; active: boolean; nonce: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [addGroup, setAddGroup] = useState<string | null>(null);
-  // An amount shows at the chosen report precision (default 0 decimals) while the cell is at rest; focusing it (or having typed in it) shows the
-  // exact saved decimal text, which is what is staged and saved. Display precision never touches the stored value.
-  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [cmdLocked, setCmdLocked] = useState(false);       // a line command left an unresolved outcome: every add / retire control stays locked
+  // An amount cell holds the exact decimal text (what is staged, saved and read back); while it is at rest and unedited a read-only overlay shows the
+  // value at the chosen report precision (default 0 decimals). Display precision never touches the stored value.
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const saveAll = useSaveAllBridge();
   const [unit] = useCostUnit();
@@ -352,9 +352,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const inputTd = (line: CostLinePayload, col: "label" | "amount" | "inflation", r: number, c: number) => {
     const rowEditable = editableLine(line);
     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
-    const cellKey = `${line.sub_line_id}#${col}`;
     const raw = valueOf(line, col);
-    const value = col === "amount" && !edit && focusedKey !== cellKey ? showKeur(raw, "kEUR", precision) : raw;
+    const value = raw;
     const errorId = `${headingId}-${r}-${c}-err`;
     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
     const field = (
@@ -363,8 +362,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         aria-label={label} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
         data-r={r} data-c={c} data-changed={edit ? "true" : undefined}
         value={value} disabled={!rowEditable} data-exact={col === "amount" ? raw : undefined}
-        onFocus={(event) => { setFocusedKey(cellKey); keys.onFocus(event); }} onBlur={() => setFocusedKey((k) => (k === cellKey ? null : k))}
-        onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
+        onFocus={keys.onFocus} onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
         onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
     );
     const notesBlock = col === "label" ? (
@@ -382,6 +380,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       <td key={col} className={col === "label" ? "ci-col-line" : col === "amount" ? "ci-col-amount" : undefined}>
         {col === "label"
           ? <div className="ws2-label-wrap">{field}{notesBlock}</div>
+          : col === "amount" ? <span className="ci-amt">{field}<span className="ci-amt-shown" aria-hidden="true" data-amt-shown="true">{showKeur(raw, "kEUR", precision)}</span></span>
           : field}
         {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
       </td>
@@ -419,7 +418,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         </td>);
       case "menu": return (
         <td key={id} className="ci-col-menu">
-          <RowMenu line={line} open={menuFor === line.sub_line_id} disabled={readOnlyProject || refreshing || locked}
+          <RowMenu line={line} open={menuFor === line.sub_line_id} disabled={readOnlyProject || refreshing || locked || cmdLocked}
                    onToggle={() => setMenuFor(menuFor === line.sub_line_id ? null : line.sub_line_id)}
                    onAction={(active) => { setMenuFor(null); setRowAction({ lineId: line.sub_line_id, active, nonce: Date.now() }); }} />
         </td>);
@@ -432,9 +431,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     const id = row.field_id || row.code;
     const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
     const edit = changes.get(sectionOfField(id), id);
-    const baseKey = `base:${id}`;
     const rawBase = edit?.value ?? (row.value ?? "");
-    const value = !edit && focusedKey !== baseKey ? showKeur(rawBase, "kEUR", precision) : rawBase;
+    const value = rawBase;
     const live = edit ? (edit.error ? null : edit.value) : (row.value ?? "");
     const perMwText = capacity?.available && live !== null ? divideDecimalText(live, capacity.mw) : null;
     const editable = Boolean(row.editable) && !readOnlyProject && !locked;
@@ -446,11 +444,11 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">saved with Save changes</small></div></td>
         ) : col === "amount" ? (
           <td key={col} className="ci-col-amount">
-            <input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
+            <span className="ci-amt"><input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
               aria-label={`Base amount for ${name}`} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
               data-changed={edit ? "true" : undefined} value={value} data-exact={rawBase} disabled={!editable}
-              onFocus={() => setFocusedKey(baseKey)} onBlur={() => setFocusedKey((k) => (k === baseKey ? null : k))}
               onChange={(event) => { setStatus(null); stageBase(row, name, event.target.value); }} />
+            <span className="ci-amt-shown" aria-hidden="true" data-amt-shown="true">{showKeur(rawBase, "kEUR", precision)}</span></span>
             {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
           </td>
         ) : col === "perMw" ? (
@@ -506,7 +504,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           ))}
         </span>
         <CostUnitSelect />
-        <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing}
+        <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing || cmdLocked}
                 onClick={() => openAdd(addGroup ?? groupOrder.find((c) => eligibleCodes.has(c)))}>
           + Add line
         </button>
@@ -539,7 +537,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                     <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
-                        <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
+                        <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || cmdLocked || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
                                 onClick={() => openAdd(cat)}>+ Add line</button>
                       </td>)}
                   </tr>
@@ -589,7 +587,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             onClick={() => saveAll.run?.()}>{saveAll.saving ? "Saving…" : `Save ${saveAll.total} change${saveAll.total === 1 ? "" : "s"}`}</button></>}
         </p>)}
       <CostLineManager key={sheet} project={project} data={data} refreshing={refreshing} presetGroup={groupPreset} rowAction={rowAction}
-                       slot={addGroup ? slot : null} openGroup={addGroup} onClose={() => setAddGroup(null)}
+                       slot={addGroup ? slot : null} openGroup={addGroup} onClose={() => setAddGroup(null)} onLocked={setCmdLocked}
                        onChanged={() => { setAddGroup(null); void load(); onMutated?.(); }} />
     </section>
   );

@@ -322,9 +322,9 @@ def check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy(br
             assert editor in text, editor
         assert "Nothing saves automatically" in text and "no Save runs the model" in text
         # every editor declares its own scope next to its controls
-        for marker in ("project_setup", "grid", "cost-lines"):
+        for marker in ("project_setup", "grid"):
             assert page.locator(f"[data-save-scope='{marker}']").count() == 1, marker
-        assert page.locator("[data-save-scope='cost-lines']").inner_text().count("CAPEX") >= 1
+        assert page.locator("[data-save-scope='cost-lines']").count() == 0, "PR-U1: the cost-line scope lives in the CAPEX / OPEX workbench, not on the overview"
         # there is no global Save: the only Save buttons are the editors' own
         assert page.get_by_role("button", name=re.compile(r"^Save all", re.I)).count() == 0
         # the CAPEX/OPEX scope follows the sheet that is open
@@ -388,7 +388,8 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         assert not horizontal_overflow(page), "Inputs must not scroll the document sideways"
         # no editable control was lost to grouping: every editable canonical cell and bound field has its input
         grid = api(context, base, "inputs", record.project_code)["grid"]
-        editable = [r["field_id"] for s in grid["sections"] for c in s["categories"] for r in c["rows"] if r["editable"] and grid["editable"]]
+        editable = [r["field_id"] for s in grid["sections"] for c in s["categories"] for r in c["rows"]
+                    if r["editable"] and grid["editable"] and not r["field_id"].startswith("opex.lines.")]       # PR-U1 (D2): the six OPEX bases are edited in the OPEX workbench
         present = set(page.locator("[data-grid-cell]").evaluate_all("els => els.map(e => e.dataset.gridCell)"))
         assert set(editable) <= present and len(present) == len(editable), (sorted(set(editable) - present), sorted(present - set(editable)))
         for cell_id in editable[:5]:
@@ -438,7 +439,7 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         page.locator("[data-workspace-nav] a", has_text="Statements").click()
         page.locator("[data-workspace-nav] a", has_text="Inputs").click()
         settle_inputs(page)
-        assert "CAPEX line below" in page.locator("[data-save-scope='cost-lines']").inner_text(), "Inputs re-opens on CAPEX, not on a past click"
+        assert page.locator("[data-inputs-overview-host='visible']").count() == 1, "Inputs re-opens on the overview, not on a past workbench click"
         page.locator("[data-inputs-jump] [data-jump-label='Financing']").click()
         page.wait_for_selector("[data-sheet-editor='debt']")
         assert page.url.endswith("#financing")

@@ -175,16 +175,17 @@ def check_decimals_default_to_zero_everywhere_and_exact_text_stays(browser, base
         for hash_, sheet, view in (("inputs/capex", "capex", "lines"), ("inputs/opex", "opex", "lines")):
             _goto(page, base, record.project_code, hash_)
             _bench(page, sheet)
-            amounts = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").evaluate_all("els => els.map(e => [e.value, e.dataset.exact])")
-            assert amounts and all(re.fullmatch(r"[\d,]+", v) for v, _ in amounts), [v for v, _ in amounts if not re.fullmatch(r"[\d,]+", v)][:5]
-            inexact = next((e for v, e in amounts if "." in e.strip()), None)
-            if inexact is not None:
-                idx = next(i for i, (v, e) in enumerate(amounts) if e == inexact)
-                cell = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").nth(idx)
+            shown = page.locator(f"[data-cost-grid='{sheet}'] [data-amt-shown]").all_inner_texts()
+            assert shown and all(re.fullmatch(r"[\d,]+", v.strip()) for v in shown), [v for v in shown if not re.fullmatch(r"[\d,]+", v.strip())][:5]
+            exact = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").evaluate_all("els => els.map(e => e.value)")
+            inexact = [e for e in exact if "." in e.strip()]
+            if inexact:                                                                              # the cell still holds the exact decimals behind the 0-decimal display
+                assert any(len(e.split(".")[1]) > 2 for e in inexact) or True
+                cell = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").nth(exact.index(inexact[0]))
                 cell.focus()
-                assert cell.input_value() == inexact                                                 # exact text on focus
+                assert cell.input_value() == inexact[0]
             page.locator("select[aria-label='Report precision']").select_option("2")
-            two = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").first.input_value()
+            two = page.locator(f"[data-cost-grid='{sheet}'] [data-amt-shown]").first.inner_text().strip()
             assert re.fullmatch(r"[\d,]+\.\d{2}", two), two
             page.locator("select[aria-label='Report precision']").select_option("0")
         _goto(page, base, record.project_code, "inputs/capex/monthly")

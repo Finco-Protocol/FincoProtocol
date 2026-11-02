@@ -148,43 +148,41 @@ def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explic
         assert history_count(context, base, record) == 0, "a Save never executes a Run"
 
         # ── CAPEX: add, deactivate (confirm dialog), reactivate ──
-        costs = page.locator("[data-cost-line-manager='capex']")
-        costs.scroll_into_view_if_needed()
-        group_select = costs.locator("select")
-        group_select.select_option(index=1)
+        from tests.model_react_u1_helpers import line_row, open_inline_add, row_action
+        costs = open_inline_add(page, "capex")                       # PR-U1: workbench + inline row under a group
         costs.get_by_label("Line label").fill("WF2 acceptance CAPEX line")
         costs.get_by_label("Amount").fill("42")
         costs.locator("[data-cost-add='capex']").click()
-        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-manager='capex']")
-        added = costs.locator("tr", has_text="WF2 acceptance CAPEX line")
+        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-commands='capex']")
+        added = line_row(page, "capex", "WF2 acceptance CAPEX line")
         added.wait_for(timeout=20000)
-        assert added.count() == 1 and added.get_attribute("data-line-state") == "active"
-        added.get_by_role("button", name="Deactivate WF2 acceptance CAPEX line").click()
+        assert added.count() == 1 and added.get_attribute("data-inactive") is None
+        row_action(page, added, "Deactivate line")
         dialog = page.get_by_role("dialog")
         dialog.wait_for()
         assert dialog.get_attribute("aria-modal") == "true"
         assert page.evaluate("document.activeElement && document.activeElement.closest('[role=dialog]') !== null")
         page.keyboard.press("Escape")
         dialog.wait_for(state="detached")
-        assert costs.locator("tr", has_text="WF2 acceptance CAPEX line").get_attribute("data-line-state") == "active"
-        added.get_by_role("button", name="Deactivate WF2 acceptance CAPEX line").click()
+        assert line_row(page, "capex", "WF2 acceptance CAPEX line").get_attribute("data-inactive") is None
+        row_action(page, added, "Deactivate line")
         page.get_by_role("dialog").get_by_role("button", name="Deactivate line").click()
-        page.wait_for_function("""() => document.querySelector("[data-cost-line-manager='capex'] tr[data-line-state='inactive']")""")
-        costs.locator("tr[data-line-state='inactive']").get_by_role("button", name="Reactivate WF2 acceptance CAPEX line").click()
-        page.wait_for_function("""() => !document.querySelector("[data-cost-line-manager='capex'] tr[data-line-state='inactive']")""")
+        page.wait_for_function("""() => document.querySelector("[data-cost-grid='capex'] tr[data-line][data-inactive]")""")
+        row_action(page, line_row(page, "capex", "WF2 acceptance CAPEX line"), "Reactivate line")
+        page.wait_for_function("""() => !document.querySelector("[data-cost-grid='capex'] tr[data-line][data-inactive]")""")
         assert history_count(context, base, record) == 0
 
         # ── OPEX line ──
-        page.locator("button[aria-pressed]", has_text="OPEX").first.click()
-        opex = page.locator("[data-cost-line-manager='opex']")
-        opex.wait_for()
-        opex.locator("select").select_option(index=1)
+        page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
+        opex = open_inline_add(page, "opex")
         opex.get_by_label("Line label").fill("WF2 acceptance OPEX line")
         opex.get_by_label("Amount").fill("7")
         opex.locator("[data-cost-add='opex']").click()
-        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-manager='opex']")
+        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-commands='opex']")
 
         # ── PPA: guided editor, no JSON textarea; invalid input is field-specific ──
+        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()          # PR-U1: back to the Inputs overview, Revenue / PPA
+        page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()
         kind = ppa.first.get_attribute("data-ppa-editor")
@@ -499,14 +497,14 @@ def check_unknown_outcomes_are_reconciled_never_retried(browser, react_enabled, 
             assert "UNKNOWN" in text and "retry" not in text.lower().replace("never", "")
             assert field.is_disabled(), "the editor locks until the user reconciles"
         elif scenario == "cost-add":
-            costs = page.locator("[data-cost-line-manager='capex']")
-            costs.scroll_into_view_if_needed()
-            costs.locator("select").select_option(index=1)
+            from tests.model_react_u1_helpers import open_inline_add
+            costs = open_inline_add(page, "capex")
             costs.get_by_label("Line label").fill("unknown outcome line")
             costs.locator("[data-cost-add='capex']").click()
-            text = wait_status(page, "conflict", None, "[data-cost-line-manager='capex']")
+            text = wait_status(page, "conflict", None, "[data-cost-line-commands='capex']")
             assert "UNKNOWN" in text and "duplicate" in text
             assert costs.locator("[data-cost-add='capex']").is_disabled()
+            assert page.locator("[data-cost-grid='capex'] [data-cost-addline]").is_disabled()           # the grid's own add control locks too
         else:
             page.locator("[data-wf-run='true']").click()
             text = wait_status(page, "conflict", None, "[data-workflow-bar='true']")
@@ -535,9 +533,10 @@ def check_protected_reference_workspace_is_read_only_in_every_editor(browser, re
         assert page.locator("[data-sheet-editor='project_setup'] input.fm-input, [data-sheet-editor='project_setup'] select").count() == 0
         assert page.locator("[data-wf-run='true']").is_disabled()
         assert "Templates cannot be run" in page.locator("#wf-run-hint").inner_text()
-        costs = page.locator("[data-cost-line-manager='capex']")
-        costs.scroll_into_view_if_needed()
-        assert costs.locator("[data-cost-add='capex']").is_disabled()
+        from tests.model_react_u1_helpers import open_workbench
+        grid = open_workbench(page, "capex")                         # PR-U1: the protected template is read-only in the CAPEX workbench
+        assert grid.locator("[data-cost-addline]").is_disabled() and grid.locator("input[data-c='1']:not([disabled])").count() == 0
+        page.locator("[data-inputs-jump] [data-jump-label='Project setup']").click()
         assert page.locator("[data-ppa-editor]").first.get_attribute("data-ppa-editor") in ("empty", "guided")
         assert page.locator("[data-ppa-editor] [data-ppa-save='true']").count() == 0 or \
             page.locator("[data-ppa-editor] [data-ppa-save='true']").first.is_disabled()

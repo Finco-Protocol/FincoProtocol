@@ -435,10 +435,11 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         _select_precision(page, 0)
         # the stored amount text is never rounded by the display: edit shows and stages the full decimal text
         amount = row.locator("input[data-c='1']")
-        assert amount.input_value() == fmt(float(line["amount_keur"])), amount.input_value()       # at rest: report precision (default 0 decimals)
-        assert float(amount.get_attribute("data-exact")) == float(line["amount_keur"])               # the exact saved text stays behind it
+        shown_at_rest = row.locator("[data-amt-shown]").first
+        assert shown_at_rest.inner_text().strip() == fmt(float(line["amount_keur"])), shown_at_rest.inner_text()       # at rest: report precision (default 0 decimals)
+        assert float(amount.get_attribute("data-exact")) == float(line["amount_keur"]) == float(amount.input_value())   # the input itself holds the exact saved text
         amount.focus()
-        assert float(amount.input_value().replace(",", "")) == float(line["amount_keur"])            # focused: the exact saved decimals
+        assert float(amount.input_value().replace(",", "")) == float(line["amount_keur"])            # focused: the exact saved decimals stay
         amount.fill("1234.56789")
         assert amount.input_value() == "1234.56789"
         assert cell.get_attribute("data-per-mw-state") == "preview" and "unsaved preview" in cell.inner_text()
@@ -450,9 +451,8 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         saved = next(l for l in _costlines(context, base, record.project_code, "capex")["projection"]["lines"] if l["sub_line_id"] == line["sub_line_id"])
         assert float(saved["amount_keur"]) == 1234.56789                      # 0-decimal display never truncated what was saved
         assert abs(float(saved["per_mw_keur"]) - expected) < 5e-7
-        shown_after = row.locator("input[data-c='1']").input_value()
+        shown_after = row.locator("[data-amt-shown]").first.inner_text().strip()
         assert shown_after == "1,235", shown_after                                                    # 0 decimals at rest; 1234.56789 is what was saved
-        row.locator("input[data-c='1']").focus()
         assert row.locator("input[data-c='1']").input_value() == "1234.56789"
         # OPEX: per MW per year, and no dead controls
         opex = _open_sheet(page, base, record.project_code, "opex")

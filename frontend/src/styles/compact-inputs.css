@@ -304,3 +304,11 @@ tr[data-base-row] td { background: var(--accent-soft, #f7fafd); }
 .ci-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .ci-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 [hidden] { display: none !important; }
+
+/* Amount cells: the input always holds the exact decimal text; at rest (not focused, not edited) an overlay shows it at the report precision. */
+.ci-amt { position: relative; display: block; }
+.ci-amt-shown { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; font: inherit; font-variant-numeric: tabular-nums; pointer-events: none; background: transparent; }
+.ci-amt:not(:focus-within) .ci-amt-input-hidden, .ci-amt:not(:focus-within) .ws2-cell:not([data-changed]) { color: transparent; text-shadow: none; }
+.ci-amt:focus-within .ci-amt-shown, .ws2-cell[data-changed="true"] + .ci-amt-shown { display: none; }
+.ci-amt .ws2-cell:disabled:not([data-changed]) { -webkit-text-fill-color: transparent; }
+.ci-amt:not(:focus-within) .ws2-cell:not([data-changed]) { -webkit-text-fill-color: transparent; }

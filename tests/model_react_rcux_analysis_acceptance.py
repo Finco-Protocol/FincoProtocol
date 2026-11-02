@@ -190,7 +190,7 @@ def test_rcux_opex_projection_studio_shows_the_server_projection_and_nothing_els
     assert api["ok"]
     _open_opex_projection(page, live_server, record.project_code)
     assert page.locator("[data-opex-row]").count() == len(api["rows"]) + 2                    # 13 groups + contingency + total
-    assert page.locator("[data-opex-projection-table] thead th").count() == len(api["years"]) + 2
+    assert page.locator("[data-opex-projection-table] thead th").count() == len(api["years"]) + 1                  # PR-U1: names only, no code column
     for row in api["rows"][:4]:
         for year, value in list(zip(api["years"], row["values"]))[:3]:
             shown = page.locator(f"[data-opex-cell='{row['code']}:{year}']").inner_text().strip()

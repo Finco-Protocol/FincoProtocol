@@ -334,25 +334,26 @@ def check_every_editor_reports_unsaved_work_and_guards_navigation(browser, react
         _expect_guard_and_clear(page, "Financing", lambda: page.locator("[data-discard='true']").click())
 
         # CAPEX batch edit, then the sheet switch asks too
-        costs = page.locator("[data-cost-line-manager='capex']")
-        costs.scroll_into_view_if_needed()
+        from tests.model_react_u1_helpers import open_inline_add, open_workbench
+        open_workbench(page, "capex")
         amount = page.locator("input[aria-label^='Amount for ']").first
         amount.fill("12345")
         wait_unsaved(page, 1)
-        page.locator("button[aria-pressed]", has_text="OPEX").first.click()
+        page.locator("[data-cost-grid='capex'] button[aria-pressed]", has_text="OPEX").first.click()    # the sheet switch (a route change) asks too
         dialog(page).get_by_role("button", name=STAY).click()
-        assert amount.input_value() == "12345"
+        assert amount.input_value() == "12345", (amount.input_value(), page.url, amount.get_attribute("data-exact"))
         page.get_by_role("button", name="Discard staged edits").first.click()
         wait_unsaved(page, 0)
 
         # OPEX add form draft
-        page.locator("button[aria-pressed]", has_text="OPEX").first.click()
-        opex = page.locator("[data-cost-line-manager='opex']")
-        opex.wait_for()
+        page.locator("[data-cost-grid='capex'] button[aria-pressed]", has_text="OPEX").first.click()
+        opex = open_inline_add(page, "opex")
         opex.get_by_label("Line label").fill("unsaved opex line")
         _expect_guard_and_clear(page, "Financing", lambda: opex.get_by_role("button", name="Clear").click())
 
         # PPA: defining a contract is unsaved work
+        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()                  # PR-U1: back to the Inputs overview
+        page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()
         ppa.get_by_role("button", name="Define a PPA contract").click()
@@ -549,9 +550,9 @@ def seed_capex_line(context, base, record, label):
 
 
 def open_capex_deactivate_confirm(page, label):
-    costs = page.locator("[data-cost-line-manager='capex']")
-    costs.scroll_into_view_if_needed()
-    costs.get_by_role("button", name=f"Deactivate {label}").click()
+    from tests.model_react_u1_helpers import line_row, open_workbench, row_action
+    open_workbench(page, "capex")                                    # PR-U1: lines live in the CAPEX workbench; retire is the row menu
+    row_action(page, line_row(page, "capex", label), "Deactivate line")
     page.get_by_role("dialog").get_by_role("button", name="Deactivate line").click()
 
 
@@ -563,7 +564,8 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
     try:
         seed_capex_line(context, base, record, "pending line")
         open_workspace(page, base, record, "inputs")
-        page.wait_for_selector("[data-cost-line-manager='capex']")
+        from tests.model_react_u1_helpers import open_workbench
+        open_workbench(page, "capex")
         held = {}
         context.route("**/v2/capex/line/deactivate", lambda route: held.setdefault("route", route))
         open_capex_deactivate_confirm(page, "pending line")
@@ -573,10 +575,10 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
         d = dialog(page)
         assert "unresolved" in d.inner_text().lower() or "in progress" in d.inner_text().lower()
         d.get_by_role("button", name=STAY).click()
-        assert page.url.endswith("#inputs")
+        assert page.url.endswith("#inputs/capex")
         held["route"].continue_()
         context.unroute("**/v2/capex/line/deactivate")
-        page.wait_for_selector("[data-cost-line-manager='capex'] tr[data-line-state='inactive']", timeout=20000)
+        page.wait_for_selector("[data-cost-grid='capex'] tr[data-line][data-inactive]", timeout=20000)
         page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys === ''")
         assert history_count(context, base, record) == 0
     finally:
@@ -587,11 +589,12 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
     try:
         seed_capex_line(context, base, record, "unknown line")
         open_workspace(page, base, record, "inputs")
-        page.wait_for_selector("[data-cost-line-manager='capex']")
+        from tests.model_react_u1_helpers import open_workbench
+        open_workbench(page, "capex")
         posts = watch_posts(page, "/v2/capex/line/deactivate")
         context.route("**/v2/capex/line/deactivate", lambda route: route.abort())
         open_capex_deactivate_confirm(page, "unknown line")
-        wait_status(page, "conflict", None, "[data-cost-line-manager='capex']")
+        wait_status(page, "conflict", None, "[data-cost-line-commands='capex']")
         context.unroute("**/v2/capex/line/deactivate")
         assert unsaved(page) == 0 and "cost-add-capex" in pending_keys(page)
         tab(page, "Financing").click()
@@ -599,10 +602,9 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
         wait_navigation_complete(page, "financing", "Financing")
         assert "cost-add-capex" in pending_keys(page) and run_button(page).is_disabled(), "the unresolved outcome still blocks Run"
         tab(page, "Inputs").click()
-        costs = page.locator("[data-cost-line-manager='capex']")
-        costs.wait_for()
-        assert costs.locator("[data-cost-add='capex']").is_disabled(), "a remounted editor starts locked"
-        assert costs.get_by_role("button", name="Deactivate unknown line").is_disabled()
+        grid = open_workbench(page, "capex")
+        assert grid.locator("[data-cost-addline]").is_disabled(), "a remounted editor starts locked"
+        assert grid.locator("[data-row-menu]").first.is_disabled() and grid.locator("[data-cost-group-add]:not([disabled])").count() == 0
         page.wait_for_timeout(1000)
         assert len(posts) == 1, f"no duplicate mutation after navigating away and back: {posts}"
         # reload is the reconciliation: no draft, so no prompt, and the editor is usable again

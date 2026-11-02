@@ -31,6 +31,8 @@ interface Props {
   slot?: HTMLElement | null;
   openGroup?: string | null;
   onClose?: () => void;
+  /** Tells the grid whether a line command left an unresolved outcome, so the grid's own add / retire controls lock with it. */
+  onLocked?: (locked: boolean) => void;
 }
 
 const EMPTY: NewCostLineDraft = { group: "", label: "", amount_keur: "0", inflation_pct: "0", notes: "" };
@@ -40,7 +42,7 @@ export function costGroupLabel(code: string, eligible: ReadonlyArray<{ code: str
   return groupDisplayName(code, eligible.find((g) => g.code === code)?.label);
 }
 
-export function CostLineManager({ project, data, onChanged, refreshing = false, presetGroup = null, rowAction = null, slot = null, openGroup = null, onClose }: Props) {
+export function CostLineManager({ project, data, onChanged, refreshing = false, presetGroup = null, rowAction = null, slot = null, openGroup = null, onClose, onLocked }: Props) {
   const { sheet, line_management: mgmt } = data;
   const readOnlyProject = data.project.protected_reference;
   const [draft, setDraft] = useState<NewCostLineDraft>(EMPTY);
@@ -50,6 +52,7 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
   const [locked, setLocked] = useUnresolvedLock(`cost-add-${sheet}`);
   const [retire, setRetire] = useState<CostLinePayload | null>(null);
 
+  useEffect(() => { onLocked?.(locked); }, [locked, onLocked]);
   const eligible = useMemo(() => mgmt.eligible_groups.map((g) => g.code), [mgmt.eligible_groups]);
   const errors = validateNewCostLine(draft, sheet, eligible);
   const dirty = draft.label.trim() !== "" || draft.group !== "" ? 1 : 0;
