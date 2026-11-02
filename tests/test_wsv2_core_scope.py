@@ -9,6 +9,7 @@ from tests import fin_v2_cohorts as C
 from tests import model_mutation_security_successor as S
 from tests import wsv2_core_scope as F
 from tests import wf04_scope as WF04
+from tests import wf06b_scope as WF06B
 
 PRESENTATION = frozenset((
     'frontend/src/app/FinancialResults.tsx', 'frontend/src/app/WorkspaceView.tsx',
@@ -183,7 +184,8 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
         # WF-04 successor lineage: for the presentation paths only, the exact later state pinned by tests/wf04_scope.py is also the current state.
         assert (S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
                 or WF04.presentation_successor(path, sources[path])
-                or _wf03().matches(path, sources[path]))       # WF-03 successor lineage: the exact later state its cohort pins while it is valid
+                or _wf03().matches(path, sources[path])        # WF-03 successor lineage: the exact later state its cohort pins while it is valid
+                or WF06B.matches(path, sources[path]))         # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)

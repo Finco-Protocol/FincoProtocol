@@ -11,6 +11,7 @@ import { WorkflowDialog } from "../workflow/workflowShared";
 import { useChanges } from "./ChangesProvider";
 import { EDIT_SECTIONS, SECTION_LABEL, type EditSection, type PendingEdit } from "./pendingEdits";
 import { saveAllAvailability, type SaveAllCapability } from "./saveAll";
+import { publishSaveAll } from "../saveAllBridge";
 
 const shortHash = (hash: string | undefined) => (hash ? hash.slice(0, 12) : "unknown");
 
@@ -66,6 +67,11 @@ export function ChangesDrawer({ capability, onSaveAll, saving = false }: Changes
 
   const saveDisabled = availability.state === "blocked" || changes.blocking !== null || saving || !onSaveAll;
   const saveReason = availability.state === "blocked" ? availability.reason : changes.blocking;
+  // Mirror the one Save All action into the top bar (same handler, same availability); removed again when this panel unmounts.
+  useEffect(() => {
+    publishSaveAll({ total: changes.total, disabled: saveDisabled, reason: saveReason ?? "", saving, run: onSaveAll ?? null });
+  }, [changes.total, saveDisabled, saveReason, saving, onSaveAll]);
+  useEffect(() => () => publishSaveAll(null), []);
 
   return (
     <div className="ws2-changes" data-changes-drawer={open ? "open" : "closed"}>

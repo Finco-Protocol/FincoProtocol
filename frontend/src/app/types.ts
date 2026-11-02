@@ -149,6 +149,8 @@ export interface ResultsPayload {
   metrics: Array<{ label: string; display: string; available: boolean; source: string }>;
   /** Lender / valuation metrics the committed Run did or did not publish (absent on older payloads). */
   lender_metrics?: Array<{ key: string; label: string; unit: string; available: boolean; display: string | null; reason: string }>;
+  /** The Senior debt amount (kEUR) the committed Run itself persisted; absent/unavailable means "not in this Run" (never sized or defaulted here). */
+  senior_debt?: { available: boolean; value_keur: number | null; reason: string } | null;
   distributions: CanonicalTable | null;
   sponsor_table: CanonicalTable | null;
   sponsor_source: string | null;
@@ -328,11 +330,69 @@ export interface CostLinePayload {
   category: string;
 }
 
+/** WF-06B: server classification of a persisted line (FINCO identity only; never spreadsheet provenance). */
+export interface CostLineProjectionLine {
+  sub_line_id: string;
+  finco_display_code: string;
+  template_line_id: string | null;
+  row_kind: "editable_run_bound" | "derived_runtime" | "heading" | "blank_slot" | "unresolved_mapping" | "unsupported";
+  taxonomy_signed_off: boolean;
+  /** Parent-level: the existing Run fold ever consumes lines under this parent (independent of taxonomy sign-off and of this line being active). */
+  eligible_for_run_fold: boolean;
+  /** This line is ACTIVE and its parent is eligible, i.e. the existing Run fold consumes it. */
+  feeds_run_fold: boolean;
+  lineage: "template" | "user" | "unverified";
+  mapping_status: "PROVEN" | "UNRESOLVED";
+  /** Read-only: saved amount / saved installed capacity (kEUR per MW as plain decimal text); `null` when the capacity basis is unavailable. */
+  per_mw_keur?: string | null;
+}
+
+/** The explicit per-MW basis the server used (or why it could not). OPEX figures are per year. */
+export interface CostLinesCapacityBasis {
+  available: boolean;
+  mw: string | null;
+  basis: string;
+  source_field: string;
+  technology: string;
+  reason: "MISSING" | "INVALID" | "AMBIGUOUS" | "UNSUPPORTED" | null;
+  note: string | null;
+  time_basis: "per year" | null;
+}
+
+export interface CostLineProjectionGroup {
+  code: string;
+  label: string;
+  row_kind: "heading" | "derived_runtime";
+  mapping_status: "PROVEN" | "UNRESOLVED" | "DERIVED";
+  line_count: number;
+  active_line_count: number;
+  /** Sum of ACTIVE saved line amounts (kEUR). `null` for runtime-derived groups. Not a model result. */
+  saved_total_keur: number | null;
+  counts_toward_sheet_total: boolean;
+}
+
+export interface CostLinesFoldField {
+  field: string; parents: string[]; active_line_count: number; saved_total_keur: number | null;
+  mode: "REPLACE_BASE_WITH_ACTIVE_LINES" | "BASE_RETAINED_NO_ACTIVE_LINES"; post_fold_authority: string | null;
+}
+
+export interface CostLinesProjection {
+  ledger: { version: string; template: string };
+  /** Describes what the EXISTING Run fold does with these saved lines. Not a Run result. */
+  fold: { kind: string; fields: CostLinesFoldField[]; note: string };
+  lines: CostLineProjectionLine[];
+  groups: CostLineProjectionGroup[];
+  saved_total_keur: number;
+  capacity?: CostLinesCapacityBasis;
+}
+
 export interface CostLinesPayload {
   ok: true;
   sheet: "capex" | "opex";
   project: { code: string; protected_reference: boolean };
   lines: CostLinePayload[];
+  /** WF-06B additive ledger classification and saved group subtotals; `null` when unavailable (never fabricated). */
+  projection?: CostLinesProjection | null;
   save: {
     url: string;
     method: string;

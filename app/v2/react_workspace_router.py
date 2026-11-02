@@ -210,6 +210,23 @@ def _lender_metrics(runtime_result) -> list[dict[str, Any]]:
     return rows
 
 
+def _senior_debt_metric(runtime_result) -> dict[str, Any]:
+    """The Senior debt amount the committed Run itself persisted (kEUR), or an explicit absence.
+
+    Read through the same persisted-KPI view as the lender metrics; nothing is sized, derived or defaulted here. The Inputs overview shows it
+    only when the Run is the last committed Run of this project/scenario (the caller already passes that Run's identity), else a dash.
+    """
+    absent = {"available": False, "value_keur": None, "reason": "This Run did not persist a Senior debt amount."}
+    try:
+        from app.v2.output_metric_projection import _safe_float
+        from app.v2.run_history_projection import _enriched_kpis
+
+        raw = _safe_float(_enriched_kpis(runtime_result).get("senior_debt_keur"))
+        return absent if raw is None else {"available": True, "value_keur": raw, "reason": ""}
+    except Exception:  # noqa: BLE001 - presentation adapter fails closed, never fabricates
+        return {**absent, "reason": "The Senior debt amount could not be read from the committed Run."}
+
+
 # ───────────────────────────── workspace shell ─────────────────────────────
 
 @router.get("/model-react/workspace")
@@ -508,6 +525,8 @@ async def react_workspace_statements(request: Request, project: str):
                         "metrics": returns.get("metrics") or [],
                         "lender_metrics": (_lender_metrics(context.runtime_result)
                                            if context.runtime_result is not None and state != "NOT_RUN" else []),
+                        "senior_debt": (_senior_debt_metric(context.runtime_result)
+                                        if context.runtime_result is not None and state != "NOT_RUN" else None),
                         "distributions": distributions,
                         "sponsor_table": returns.get("sponsor"),
                         "sponsor_source": returns.get("sponsor_source"),
@@ -820,6 +839,33 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                   "category": getattr(r, "parent_category_code", None) or getattr(r, "parent_group_code", "")}
                  for r in rows]
         eligible_groups = _eligible_cost_groups(sheet)
+        # WF-06B: additive, provenance-free ledger classification and group subtotals (Solar/Wind only; absent otherwise).
+        # Existing ``lines`` are unchanged; this block never alters an amount and fails closed to ``None``.
+        projection = None
+        technology = str(getattr(record, "project_type", "") or "").strip().lower()
+        if technology in ("solar", "wind"):
+            try:
+                from app.cost_line_ledger import project_cost_lines
+                projection = project_cost_lines(technology, sheet, lines, codes={r.sub_line_id: r.business_code for r in rows})
+            except Exception:  # noqa: BLE001 - classification is presentation metadata only
+                projection = None
+        if projection is not None:
+            # Read-only "per MW" figures: stored amount / the project's saved installed capacity. Never stored, never fed to the Run.
+            try:
+                from app.cost_line_ledger.capacity import CAPACITY_FIELD_ID, attach_per_mw, capacity_basis
+                from app.cost_line_ledger import assert_no_source_provenance
+                from app.persistence.workspace_repository import get_workspace_state
+                from app.workbook.service import WorkbookService
+
+                ws = get_workspace_state(owner, record.project_id)
+                raw_capacity = WorkbookService.build_draft_input_set_from_workspace(ws).get(CAPACITY_FIELD_ID) if ws is not None else None
+                attach_per_mw(projection, sheet, capacity_basis(technology, raw_capacity))
+                assert_no_source_provenance(projection)
+            except Exception:  # noqa: BLE001 - fail closed: no per-MW figure rather than a guessed one
+                from app.cost_line_ledger.capacity import capacity_basis as _basis
+                projection["capacity"] = {**_basis(technology, None), "available": False, "reason": "MISSING", "time_basis": "per year" if sheet == "opex" else None}
+                for row in projection.get("lines", []):
+                    row["per_mw_keur"] = None
     except Exception:  # noqa: BLE001 - fail closed, never fabricate line items
         return _json({"ok": False, "code": "COST_LINES_UNAVAILABLE",
                       "message": "Cost lines could not be projected. Reload to refresh."}, 503)
@@ -830,6 +876,7 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
         "lines": lines,
+        "projection": projection,
         "save": {"url": "/v2/workbook/grid/cost-lines/save",
                  "method": "form",
                  "csrf_token": mutation_token(request, project, "grid-cost-lines-save"),

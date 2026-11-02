@@ -38,7 +38,8 @@ export function ConstructionTiming({ project, protectedReference, reloadKey, onS
   const [duration, setDuration] = useState("");
   const [unit, setUnit] = useState<"years" | "months">("years");
   const [end, setEnd] = useState("");
-  const [plan, setPlan] = useState<Plan | null>(null);
+  // A plan answers exactly one set of inputs: it is stored with the inputs it was asked for and shown only while they are still the inputs on screen.
+  const [planned, setPlanned] = useState<{ key: string; plan: Plan | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const seq = useRef(0);
@@ -53,18 +54,28 @@ export function ConstructionTiming({ project, protectedReference, reloadKey, onS
     return () => { live = false; };
   }, [project, reloadKey]);
 
-  // The plan is asked of the server whenever the inputs change; a stale answer never replaces a newer one.
+  const months = mode === "duration" && duration.trim() !== "" && /^\d+(\.\d+)?$/.test(duration.trim()) ? String(Number(duration) * (unit === "years" ? 12 : 1)) : "";
+  // The saved timing is part of the key: once a Save has been read back, an answer given against the old saved state is no longer shown.
+  const savedStamp = base ? [base.saved.cod_date, base.saved.construction_months, base.saved.derived_start] : null;
+  const planKey = JSON.stringify([project, savedStamp, ...(mode === "duration" ? ["duration", start, months, duration.trim()] : ["end", start, end])]);
+  const plan: Plan | null = planned !== null && planned.key === planKey ? planned.plan : null;
+  const planPending = Boolean(base) && Boolean(start) && (mode === "duration" || Boolean(end)) && planned?.key !== planKey;
+
+  // The plan is asked of the server whenever the inputs change; an answer for earlier inputs is never shown and never replaces a newer one.
   useEffect(() => {
-    if (!base || !start) { setPlan(null); return; }
-    const months = mode === "duration" && duration.trim() !== "" && /^\d+(\.\d+)?$/.test(duration.trim()) ? String(Number(duration) * (unit === "years" ? 12 : 1)) : "";
-    if (mode === "duration" && !months) { setPlan({ ok: false, message: "Enter a positive duration that is a whole number of months (for example 15 years or 18 months)." }); return; }
-    if (mode === "end" && !end) { setPlan(null); return; }
+    if (!base || !start) { ++seq.current; setPlanned(null); return; }
+    if (mode === "duration" && !months) { ++seq.current; setPlanned({ key: planKey, plan: { ok: false, message: "Enter a positive duration that is a whole number of months (for example 15 years or 18 months)." } }); return; }
+    if (mode === "end" && !end) { ++seq.current; setPlanned(null); return; }
     const mine = ++seq.current;
     const timer = window.setTimeout(() => {
-      void load(project, mode === "duration" ? { start, months } : { start, end }).then((r) => { if (mine === seq.current && "plan" in r) setPlan(r.plan); });
+      void load(project, mode === "duration" ? { start, months } : { start, end }).then((r) => {
+        if (mine !== seq.current) return;
+        setPlanned({ key: planKey, plan: "plan" in r ? r.plan : { ok: false, message: "The plan could not be read right now. Nothing was changed; change a value or try again." } });
+      });
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [base, project, mode, start, duration, unit, end]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, project, planKey]);
 
   if (failure) return <FriendlyError code={failure.code} message={failure.message} />;
   if (!base) return <p className="rx-boot-loading" role="status" data-timing="loading">Loading construction timing…</p>;
@@ -124,6 +135,7 @@ export function ConstructionTiming({ project, protectedReference, reloadKey, onS
               {plan.suggestions && plan.suggestions.length > 0 && <> Nearest dates that work: {plan.suggestions.map((s) => <button key={s} type="button" className="rx-button rx-button-secondary" data-timing-suggestion={s} onClick={() => { setMode("end"); setEnd(s); }}>Use {s}</button>)}</>}
             </p>
           )}
+          {planPending && <p className="rx-note" role="status" data-timing-plan="pending">Planning with the server…</p>}
           {plan?.ok && (
             <p className="rx-note" role="status" data-timing-plan="valid">
               COD {plan.cod_date} · {plan.duration} · construction starts {plan.derived_start}{plan.month_end_adjusted ? " (month-end adjusted)" : ""}.{plan.changed ? "" : " This is already saved."}

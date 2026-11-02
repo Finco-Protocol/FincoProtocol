@@ -47,6 +47,26 @@ def _blob(data):
     return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
 
 
+def _wf06b_supersedes(path, value, root, ref):
+    """Bounded WF-06B hook (PR #410, Owner decision WF06B-D3): a different current blob is accepted for ``path`` only while the closed WF-06B cohort
+    (tests/wf06b_scope.py) is itself exact and pins exactly this value. The cohort check is low level (never calls this module); a missing, forged or
+    altered cohort admits nothing, and the pin held here still describes the reviewed state it always did."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.supersedes(path, value, root, ref)
+
+
+def _wf06b_allows(path, root, ref):
+    """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
+    try:
+        from tests import wf06b_scope as W
+    except ImportError:
+        return False
+    return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
+
+
 def exact_blobs_ok(repo=None,ref=None):
     """History, the integrated #390 dependency and every owned byte: the pin set equals the owned set and each pin is the exact Git blob."""
     root=Path(repo) if repo is not None else ROOT
@@ -56,7 +76,7 @@ def exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',BASE,ref or 'HEAD')
         _git(root,'merge-base','--is-ancestor',INTEGRATION_MAIN,ref or 'HEAD')
         if any(_blob(_read(root,p,ref))!=expected for p,expected in INTEGRATED_DEPENDENCIES.items()):return False
-        if any(_blob(_read(root,p,ref))!=expected for p,expected in pins.items()):return False
+        if any(_blob(_read(root,p,ref))!=expected and not _wf06b_supersedes(p,_blob(_read(root,p,ref)),root,ref) for p,expected in pins.items()):return False
         # No extra native/source activation surface can be hidden in this cohort.
         return not any(p.startswith(('financial_engine/native_v10/','financial_engine/native_v11/')) for p in pins)
     except (OSError,ValueError,subprocess.CalledProcessError):return False
@@ -98,7 +118,8 @@ def matches(path,source=None,*,repo=None,ref=None):
     if path not in pins or not valid(repo,ref):return False
     if source is None:return True
     raw=source.encode() if isinstance(source,str) else source
-    return _blob(raw)==pins[path]
+    got=_blob(raw)
+    return got==pins[path] or _wf06b_supersedes(path,got,Path(repo) if repo is not None else ROOT,ref)
 
 
 def protected_blobs(repo=None,ref=None):

@@ -6,6 +6,7 @@ import { plain } from "./productLanguage";
 import { classifyAttempt, type ReconcileVerdict } from "./gridReconcile";
 import { useOptionalChanges } from "./editing/ChangesProvider";
 import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
+import { useDensity } from "./uiDensity";
 
 export type GridSaveOutcome =
   | { kind: "saved"; contentHash: string; runState: string }
@@ -20,6 +21,10 @@ interface CanonicalInputGridProps {
   onSave: (cells: Array<{ field_id: string; value: string }>) => Promise<GridSaveOutcome>;
   /** Re-reads the canonical Inputs projection WITHOUT leaving the page (drafts survive).  `null` = the read failed. */
   onReconcile: () => Promise<InputsPayload | null>;
+  /** Free-text filter from the Inputs search box (presentation only; staged edits always stay visible). */
+  query?: string;
+  /** Reports the focused field to the details panel (presentation only). */
+  onFocusRow?: (info: { label: string; unit: string; saved: string; state: string; reason: string; min: number | null; max: number | null }) => void;
 }
 
 type Draft = Record<string, string>;
@@ -56,7 +61,7 @@ function rowState(row: GridRowPayload, gridEditable: boolean): RowState {
   return row.reason ? "unavailable" : "derived";
 }
 
-const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Derived", unavailable: "Not editable here" };
+const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Calculated", unavailable: "Not supported" };
 
 function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
   const counts: Record<RowState, number> = { editable: 0, derived: 0, unavailable: 0 };
@@ -68,7 +73,7 @@ function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
 function showsGroupRow(category: GridCategoryPayload): boolean {
   return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
 }
-export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: CanonicalInputGridProps) {
+export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query = "", onFocusRow }: CanonicalInputGridProps) {
   const rows = useMemo(() => flattenRows(payload), [payload]);
   // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
   // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
@@ -102,6 +107,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
   const [message, setMessage] = useState(
     () => (isUnresolved("input-grid") ? "A previous Save outcome is unresolved. Reload to reconcile before saving again." : ""));
   const [activeCode, setActiveCode] = useState<string>("");
+  const [density, toggleDensity] = useDensity();
   // The last submitted batch and the composite hash it was built on: the evidence a reconciliation needs.
   const attempt = useRef<{ cells: Array<{ field_id: string; value: string }>; baselineHash: string } | null>(null);
   // Focus anchor: the disabled submit button would blur focus to <body> while a
@@ -220,6 +226,11 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
     }
   }
 
+  const q = query.trim().toLowerCase();
+  const rowVisible = (row: GridRowPayload) => !q || plain(row.label).toLowerCase().includes(q)
+    || (drafts[row.field_id || row.code] !== undefined && drafts[row.field_id || row.code] !== row.value);
+  const visibleCategories = (section: GridSectionPayload) => section.categories
+    .map((category) => ({ ...category, rows: category.rows.filter(rowVisible) })).filter((category) => category.rows.length > 0);
   const editableCount = rows.filter((r) => r.editable && payload.grid.editable).length;
   const sections = payload.grid.sections.map((section) => ({ section, counts: sectionCounts(section, payload.grid.editable) }));
   // Sections with something to edit start open; purely derived ones start collapsed.  A read-only
@@ -233,7 +244,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
     + category.rows.filter((row) => dirtyCodes.includes(row.field_id || row.code)).length, 0);
 
   return (
-    <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical">
+    <section className="rx-card" aria-labelledby="rx-grid-heading" data-input-grid="canonical" data-density={density}>
       <h2 id="rx-grid-heading">Assumptions</h2>
       <p className="rx-save-scope" data-save-scope="grid">
         <strong>Saves:</strong> every edited cell below, together, with <em>Save staged cells</em>. All are saved or none.
@@ -255,10 +266,12 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section }) => [section.section_id, true])))}>Expand all sections</button>
         <button type="button" className="rx-button rx-button-secondary" data-grid-collapse-derived="true"
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section, counts }) => [section.section_id, defaultOpen(counts)])))}>Show editable sections only</button>
+        <button type="button" className="rx-button rx-button-secondary" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
       </div>
-      {sections.map(({ section, counts }, sectionIndex) => (
+      <div className="ci-sections" data-ci-sections="true">
+      {sections.map(({ section, counts }, sectionIndex) => q && visibleCategories(section).length === 0 ? null : (
         <details key={section.section_id} className="rx-input-section" data-grid-section={section.section_id}
-          open={isOpen(section.section_id, counts) || stagedIn(section) > 0}
+          open={Boolean(q) || isOpen(section.section_id, counts) || stagedIn(section) > 0}
           onToggle={(event) => {
             const open = (event.currentTarget as HTMLDetailsElement).open;
             if (!open && stagedIn(section) > 0) { (event.currentTarget as HTMLDetailsElement).open = true; return; }
@@ -286,7 +299,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
                   <th scope="col">Status</th>
                 </tr>
               </thead>
-              {section.categories.map((category) => (
+              {visibleCategories(section).map((category) => (
                 <tbody key={category.code} data-grid-category={category.code}>
                   {showsGroupRow(category) && (
                     <tr className="rx-cat-row">
@@ -321,7 +334,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
                               ref={(el) => {
                                 if (rowKey === activeCode) activeCellRef.current = el;
                               }}
-                              onFocus={() => setActiveCode(rowKey)}
+                              onFocus={() => { setActiveCode(rowKey); onFocusRow?.({ label: plain(row.label), unit: row.unit, saved: row.value ?? "", state: STATE_TEXT[state], reason: row.reason ?? "", min: row.min_value ?? null, max: row.max_value ?? null }); }}
                               onChange={(e) => {
                                 stage(rowKey, e.target.value);
                               }}
@@ -350,6 +363,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile }: Canon
           </div>
         </details>
       ))}
+      </div>
       <div className="rx-field-row" style={{ marginTop: "0.75rem" }}>
         <button
           type="button"
