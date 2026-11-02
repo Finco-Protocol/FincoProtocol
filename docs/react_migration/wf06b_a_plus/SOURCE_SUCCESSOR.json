@@ -153,7 +153,7 @@
       "path": "tests/test_on09c_source_state.py"
     },
     {
-      "after_blob": "594f79544f1855f8a5aabd42da1ac97a8dfe5e09",
+      "after_blob": "4a8425ed850d24cf9495b8b08ee3ee47a2eda971",
       "before_blob": "d8aa9d89496c10fd49ce8fc70f2eafe2ca261855",
       "mode": "100644",
       "path": "tests/test_wf06b_scope.py"
@@ -219,7 +219,7 @@
     "tests/test_wf06b_line_commands.py": "86514fb4507f6f509ba8a280b1c4441f62a2b3a9",
     "tests/test_wf06b_no_source_provenance_ui.py": "bb58cba8a3c6cac18ad2a003511a35c1cca18240",
     "tests/test_wf06b_run_parity.py": "24d990f04e87beb7ff0917d7576b173d3c6647a6",
-    "tests/test_wf06b_scope.py": "594f79544f1855f8a5aabd42da1ac97a8dfe5e09",
+    "tests/test_wf06b_scope.py": "4a8425ed850d24cf9495b8b08ee3ee47a2eda971",
     "tests/test_wsv2_core_scope.py": "368a9e745831bc4272537e80447c11717858dd93",
     "tests/wf03_lifecycle_scope.py": "819110fda512d9cc9e95f38ce7593e051e8e6014",
     "tests/wf04_scope.py": "9e7a9ef1e3fb91885ebc47fe7b9afa4e78acbb90",

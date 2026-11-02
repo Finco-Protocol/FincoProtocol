@@ -83,7 +83,7 @@ def test_one_altered_byte_in_any_owned_file_fails_closed(path, wt):
     assert not C.valid(wt)
 
 
-@pytest.mark.parametrize('path', sorted(W.OWNED_PATHS - {W.MANIFEST})[:6])
+@pytest.mark.parametrize('path', sorted(W.OWNED_PATHS - {W.MANIFEST}))
 def test_missing_owned_path_fails_closed(path, wt):
     (wt / path).unlink()
     assert not W.exact_blobs_ok(wt) and not C.valid(wt)
