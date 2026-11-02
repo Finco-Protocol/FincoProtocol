@@ -388,7 +388,7 @@ export interface CostLinesProjection {
   bases?: CostLineGroupBase[];
 }
 
-export interface CostLineGroupBase { group: string; field_id: string; value: string; editable: boolean; note: string | null }
+export interface CostLineGroupBase { group: string; field_id: string; value: string; editable: boolean; used_by_run: boolean; note: string | null }
 
 export interface CostLinesPayload {
   ok: true;

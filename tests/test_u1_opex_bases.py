@@ -45,3 +45,11 @@ def test_data_center_power_expenses_base_is_not_offered_as_editable():
     notes = opex_group_authority_notes("any-project", "generic_data_center_reference")
     out = {b["group"]: b for b in opex_bases(lambda f: None, notes, protected=False)}
     assert out["B.08"]["editable"] is False and "technology drivers" in out["B.08"]["note"]
+
+
+def test_used_by_run_is_false_only_for_an_authority_note_not_for_a_read_only_project():
+    notes = {"B.11": "Sum of line items — edit on the OPEX sheet"}
+    free = {b["group"]: b for b in opex_bases(lambda f: None, notes, protected=False)}
+    assert free["B.11"]["used_by_run"] is False and free["B.04"]["used_by_run"] is True
+    locked = opex_bases(lambda f: None, {}, protected=True)
+    assert all(b["editable"] is False and b["used_by_run"] is True for b in locked)          # read-only, but the Run still adds them

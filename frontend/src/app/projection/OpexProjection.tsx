@@ -52,9 +52,9 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
       <p className="rx-note">Operating cost of the saved project by group and year, in {unit}. {data.basis}</p>
       <p className="rx-note" data-opex-years-scope="true">These are the project's line items by year. The six group base amounts (first row of their group on the Lines view) are added by the model when it runs and are not part of this projection.</p>
       <dl className="rcm-facts">
-        <div><dt>Year 1 OPEX incl. contingency</dt><dd data-opex-y1="true">{cell(data.kpis.year1_total_keur)} {unit}</dd></div>
-        <div><dt>Year {last} OPEX</dt><dd>{cell(data.kpis.final_year_total_keur)} {unit}</dd></div>
-        <div><dt>OPEX per MW (Y1)</dt><dd>{cell(data.kpis.per_mw_year1_keur)} {unit}/MW</dd></div>
+        <div><dt>Year 1 line items incl. contingency</dt><dd data-opex-y1="true">{cell(data.kpis.year1_total_keur)} {unit}</dd></div>
+        <div><dt>Year {last} line items</dt><dd>{cell(data.kpis.final_year_total_keur)} {unit}</dd></div>
+        <div><dt>Line items per MW (Y1)</dt><dd>{cell(data.kpis.per_mw_year1_keur)} {unit}/MW</dd></div>
         <div><dt>Escalation</dt><dd>{data.escalation.value ?? "—"}{data.escalation.label ? ` · ${data.escalation.label}` : ""}</dd></div>
       </dl>
       <div className="rcm-scroll" tabIndex={0} role="region" aria-label="OPEX by group and year">
@@ -68,7 +68,7 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
               </tr>
             ))}
             <tr data-opex-row="contingency"><th scope="row">Applied contingency ({data.contingency.rate_pct.toFixed(1)}%)</th>{data.contingency.by_year.map((v, i) => <td key={i} className="fm-num">{cell(v)}</td>)}</tr>
-            <tr data-opex-row="total"><th scope="row">Total OPEX</th>{data.totals.including_contingency.map((v, i) => <td key={i} className="fm-num" data-opex-total={data.years[i]}><strong>{cell(v)}</strong></td>)}</tr>
+            <tr data-opex-row="total"><th scope="row">Total of line items</th>{data.totals.including_contingency.map((v, i) => <td key={i} className="fm-num" data-opex-total={data.years[i]}><strong>{cell(v)}</strong></td>)}</tr>
           </tbody>
         </table>
       </div>

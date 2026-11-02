@@ -337,6 +337,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     const baseline = row.value;
     const equal = sameDecimalText(typed.trim(), baseline);
     changes.stage({ section: sectionOfField(id), key: id, label: `${name} — base amount`, unit: "kEUR/yr", baseline, value: equal ? baseline : typed,
+                    canonical: verdict.ok && !equal ? verdict.value : undefined,
                     error: verdict.ok || equal ? undefined : verdict.message }, { coalesce: true });
   };
   const editedAmount = (line: CostLinePayload) => {
@@ -430,13 +431,13 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     const value = rawBase;
     const live = edit ? (edit.error ? null : edit.value) : row.value;
     const perMwText = capacity?.available && live !== null ? divideDecimalText(live, capacity.mw) : null;
-    const editable = row.editable && !readOnlyProject && !locked;
+    const editable = row.editable && !readOnlyProject && !locked && !saveAll.saving;
     const errorId = `${headingId}-base-${id}`;
     return (
       <tr key={`base-${id}`} data-base-row={id} data-line-kind="base">
         {cols.map((col) => col === "line" ? (
           <td key={col} className="ci-col-line"><div className="ws2-label-wrap"><span className="ws2-base-label">Group base amount</span>
-            <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">{row.editable || !row.note ? "saved with Save changes" : `not used by the Run — ${row.note.replace(/ — edit on the OPEX sheet$/, "")}`}</small></div></td>
+            <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">{!row.used_by_run && row.note ? `not used by the Run — ${row.note.replace(/ — edit on the OPEX sheet$/, "")}` : readOnlyProject ? "read-only project" : "saved with Save changes"}</small></div></td>
         ) : col === "amount" ? (
           <td key={col} className="ci-col-amount">
             <span className="ci-amt"><input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
@@ -488,6 +489,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           {loadError ? <>{loadError} <button type="button" className="fm-btn" onClick={() => void load()}>Retry</button></> : "Updating to the latest saved state… adding or retiring lines is available again in a moment."}
         </div>)}
       {readOnlyProject && <div className="fm-banner" role="note"><span className="fm-demo-label">READ-ONLY TEMPLATE</span><span className="fm-banner-copy">Read-only. Line items of a reference are immutable.</span></div>}
+      {sheet === "opex" && data?.projection && !data.projection.bases && (
+        <div className="fm-info-note" role="status" data-opex-bases-unavailable="true">The six group base amounts could not be loaded, so they are not listed here. Reload to try again; saved base amounts are not changed.</div>)}
       {status && <div className="fm-info-note" role={status.tone === "ok" ? "status" : "alert"} data-tone={status.tone}>{status.text}</div>}
       {pasteNote && <div className="fm-info-note" role="status" data-paste-note="true">{pasteNote}</div>}
       <div className="ci-linebar" data-ci-linebar="true">

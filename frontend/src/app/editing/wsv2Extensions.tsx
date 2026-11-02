@@ -33,7 +33,9 @@ const sectionsOfDirtyKey = (key: string): EditSection[] =>
   key === "input-grid" || key.startsWith("sheet-project_setup") || key.startsWith("sheet-debt") ? ["inputs", "financing"]
     : key === "revenue-ppa" ? ["ppa"]
       : key === "cost-lines-capex" ? ["capex"]
-        : key === "cost-lines-opex" ? ["opex"] : [];
+        : key === "cost-lines-opex" ? ["opex"]
+          : key === "opex-base" ? ["inputs"]          // the six OPEX base amounts are canonical cells staged in the "inputs" section
+            : [];
 
 function DirtyBridge() {
   const changes = useChanges();

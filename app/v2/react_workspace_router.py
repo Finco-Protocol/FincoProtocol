@@ -849,6 +849,22 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                 projection = project_cost_lines(technology, sheet, lines, codes={r.sub_line_id: r.business_code for r in rows})
             except Exception:  # noqa: BLE001 - classification is presentation metadata only
                 projection = None
+        if projection is not None and sheet == "opex":
+            # The six scalar group bases (same field ids and writer as the canonical cells), with whether each can change the Run. Independent of the
+            # per-MW block: a capacity problem must never hide an editable base. Absent (never guessed) when it cannot be read; the page then says so.
+            try:
+                from app.cost_line_ledger.opex_bases import opex_bases
+                from app.persistence.workspace_repository import get_workspace_state as _gws
+                from app.v2.opex_authority import opex_group_authority_notes
+                from app.workbook.service import WorkbookService as _WS
+
+                _ws = _gws(owner, record.project_id)
+                _pis = _WS.build_draft_input_set_from_workspace(_ws) if _ws is not None else None
+                if _pis is not None:
+                    projection["bases"] = opex_bases(_pis.get, opex_group_authority_notes(record.project_id, getattr(record, "template_source", "") or ""),
+                                                     protected=_is_protected(record))
+            except Exception:  # noqa: BLE001 - fail closed: no base list rather than a guessed one
+                projection.pop("bases", None)
         if projection is not None:
             # Read-only "per MW" figures: stored amount / the project's saved installed capacity. Never stored, never fed to the Run.
             try:
@@ -861,12 +877,6 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                 pis = WorkbookService.build_draft_input_set_from_workspace(ws) if ws is not None else None
                 raw_capacity = pis.get(CAPACITY_FIELD_ID) if pis is not None else None
                 attach_per_mw(projection, sheet, capacity_basis(technology, raw_capacity))
-                if sheet == "opex" and pis is not None:
-                    # The six scalar group bases (same field ids and writer as the canonical cells), with whether each can change the Run.
-                    from app.cost_line_ledger.opex_bases import opex_bases
-                    from app.v2.opex_authority import opex_group_authority_notes
-                    projection["bases"] = opex_bases(pis.get, opex_group_authority_notes(record.project_id, getattr(record, "template_source", "") or ""),
-                                                     protected=_is_protected(record))
                 assert_no_source_provenance(projection)
             except Exception:  # noqa: BLE001 - fail closed: no per-MW figure rather than a guessed one
                 from app.cost_line_ledger.capacity import capacity_basis as _basis

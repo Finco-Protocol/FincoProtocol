@@ -120,11 +120,11 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
         </ul>
         <p className="ci-card-sub" data-ci-opex-bases={bases === null ? "unknown" : "known"}>
           {bases === null ? "Group base amounts: not available."
-            : bases.some((b) => b.value !== "" && Number(b.value) !== 0)
-              ? <>Group base amounts saved (not in the figure above): {bases.filter((b) => b.value !== "" && Number(b.value) !== 0).map((b) => `${groupDisplayName(b.group, "")} ${shown(b.value)}`).join(" · ")} {unit}/yr</>
+            : bases.some((b) => b.used_by_run && b.value !== "" && Number(b.value) !== 0)
+              ? <>Group base amounts saved (not in the figure above): {bases.filter((b) => b.used_by_run && b.value !== "" && Number(b.value) !== 0).map((b) => `${groupDisplayName(b.group, "")} ${shown(b.value)}`).join(" · ")} {unit}/yr</>
               : "No group base amounts saved."}
         </p>
-        <p className="ci-card-note">Year 1 of the saved line items with each line's own inflation. The six group base amounts are edited in the OPEX workbench and are added by the model when it runs; an all-in OPEX figure that includes them is not available yet. Saved inputs, not a Run result. {runNote}.</p>
+        <p className="ci-card-note">Year 1 of the saved line items with each line's own inflation. The six group base amounts are edited in the OPEX workbench and are added by the model when it runs, except a base the workbench marks as not used; an all-in OPEX figure that includes them is not available yet. Saved inputs, not a Run result. {runNote}.</p>
         <button type="button" className="fm-btn fm-btn-primary" data-open-workbench="opex" onClick={() => onOpen("opex")}>View / edit OPEX →</button>
       </article>
     </section>

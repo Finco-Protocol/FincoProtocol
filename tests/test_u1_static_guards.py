@@ -62,3 +62,12 @@ def test_ui_change_leaves_run_fold_authority_untouched():
     assert "audit_legal" in projection
     bases = (ROOT / "app/cost_line_ledger/opex_bases.py").read_text(encoding="utf-8")
     assert "def " in bases and "financial_engine" not in bases
+
+
+def test_unsaved_opex_base_edits_are_known_to_the_leave_guard_and_discard():
+    """The 'opex-base' dirty key has a human name and a discard mapping, so 'Discard changes and continue' clears the staged base amounts."""
+    ext = (SRC / "editing" / "wsv2Extensions.tsx").read_text(encoding="utf-8")
+    shared = (SRC / "workflow" / "workflowShared.tsx").read_text(encoding="utf-8")
+    view = (SRC / "WorkspaceView.tsx").read_text(encoding="utf-8")
+    assert 'key === "opex-base" ? ["inputs"]' in ext and 'key === "opex-base"' in shared
+    assert 'key !== "capex-profile"' in view and 'key !== "opex-base" && key !== "capex-profile"' in view   # leaving the Monthly view asks first

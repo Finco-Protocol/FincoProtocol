@@ -32,10 +32,13 @@ def _text(value: Any) -> str:
 
 
 def opex_bases(get_value: Callable[[str], Any], authority_notes: Mapping[str, str], *, protected: bool) -> list[dict[str, Any]]:
-    """``[{group, field_id, value, editable, note}]`` for the six groups, in group order."""
+    """``[{group, field_id, value, editable, used_by_run, note}]`` for the six groups, in group order.
+
+``used_by_run`` is False only when an authority note says the Run ignores the saved base (replaced by a seeded line, or derived from drivers); a
+read-only (protected) project still uses its bases, it just cannot edit them."""
     out: list[dict[str, Any]] = []
     for group, field_id in OPEX_BASE_FIELD_BY_GROUP.items():
         note = authority_notes.get(group)
         out.append({"group": group, "field_id": field_id, "value": _text(get_value(field_id)),
-                    "editable": (not protected) and not note, "note": note or ("Read-only project" if protected else None)})
+                    "editable": (not protected) and not note, "used_by_run": not note, "note": note or ("Read-only project" if protected else None)})
     return out

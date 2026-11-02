@@ -247,7 +247,16 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       if (allowNextHash.current) { allowNextHash.current = false; adopt(); return; }
       if (route.destination === destinationRef.current) return;
       // Moving between groups leaves the same editors mounted, so their drafts survive.
-      if (route.section === sectionRef.current) { adopt(); return; }
+      if (route.section === sectionRef.current) {
+        // Leaving the Monthly view unmounts its editor, so an unsaved spending-profile draft is asked about first (Back / typed URL included).
+        if (workspaceRoute(destinationRef.current).view === "monthly" && route.view !== "monthly") {
+          confirmIfDirty(adopt, {
+            ignore: (key) => key !== "capex-profile",
+            onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
+          });
+        } else adopt();
+        return;
+      }
       confirmIfDirty(adopt, {
         ignore: (key) => key === "run",
         onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
@@ -547,15 +556,18 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
               const protectedReference = Boolean(workspace.project.protected_reference);
               // CAPEX / OPEX are edited ONLY in their workbenches (one editable authority per cost): the derived CAPEX / OPEX sections of the
               // assumptions grid are not rendered (the registry fields and every calculation are unchanged).
-              const gridPayload: InputsPayload = { ...displayedInputs, grid: { ...displayedInputs.grid,
-                sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } };
+              // Only Solar and Wind have the cost-line ledger (and its group base rows). Any other technology keeps its CAPEX / OPEX amounts in the
+              // Assumptions grid, which stays their one editor, so no base amount ever loses its editor.
+              const ledgerTechnology = ["solar", "wind"].includes((workspace.project.project_type ?? "").trim().toLowerCase());
+              const gridPayload: InputsPayload = ledgerTechnology ? { ...displayedInputs, grid: { ...displayedInputs.grid,
+                sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } } : displayedInputs;
               return <>
                 <InputsJumpNav onJump={jumpWithinInputs} />
                 {bench && (
                   <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
                     <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} protectedReference={protectedReference}
                       reloadKey={dataVersion} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"} onMutated={afterMutation}
-                      onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" })} />
+                      onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile" })} />
                   </div>)}
                 <div hidden={onBench} data-inputs-overview-host={onBench ? "hidden" : "visible"}>
                   <>
