@@ -409,3 +409,34 @@ def test_untracked_fifo_symlink_never_blocks_or_changes_evidence_policy(wt, rela
         target.unlink(missing_ok=True)
         pipe.unlink(missing_ok=True)
         reset(wt)
+
+
+@pytest.mark.parametrize('relative', [
+    'financial_engine/on09c_index_only_extra.py',
+    '.github/on09c_index_only_extra.yml',
+])
+def test_new_protected_index_entry_cannot_hide_when_working_file_is_absent(wt, relative):
+    reset(wt)
+    try:
+        with ExitStack() as scopes:
+            for cohort in C.cohorts():
+                if callable(getattr(cohort, 'scoped', None)):
+                    scopes.enter_context(cohort.scoped())
+            for label, gate in GATES:
+                assert gate(wt), label
+            target = wt/relative
+            target.write_text('# unapproved index-only source\n')
+            git(wt, 'add', relative)
+            target.unlink()
+            assert git(wt, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--') == b''
+            assert git(wt, 'diff', '--cached', 'HEAD', '--no-ext-diff', '--binary', '--')
+            assert not S.authenticated_state_ok(wt, None, I._git)
+            for label, gate in GATES:
+                assert not gate(wt), (relative, label)
+            assert not W.exact_blobs_ok(wt)
+            reset(wt)
+            for label, gate in GATES:
+                assert gate(wt), label
+            assert W.exact_blobs_ok(wt)
+    finally:
+        reset(wt)

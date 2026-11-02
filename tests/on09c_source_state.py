@@ -131,6 +131,10 @@ def _current_snapshot(root, reader):
     modes = dict(canonical_modes(str(root), reader))
     raw_index = reader(root, 'ls-files', '--stage', '-v', '-z')
     index = _index(raw_index)
+    # A new protected staged entry can disappear from HEAD-to-worktree diff
+    # when its working file is removed. It has no approved canonical entry.
+    if any(path.startswith(PROTECTED) and path not in modes for path in index):
+        return None
     sources = hashlib.sha256()
     for path, mode in sorted(modes.items()):
         entries = index.get(path, [])
