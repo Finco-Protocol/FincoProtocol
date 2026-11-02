@@ -207,6 +207,49 @@ def _base_facts(root, paths):
     return hit
 
 
+_ANCESTRY_OK = set()
+
+
+def _head_sha(root):
+    """The commit HEAD points to, read straight from the git directory (no subprocess). ``None`` whenever anything is not plain."""
+    try:
+        g = Path(root) / '.git'
+        if g.is_file():
+            text = g.read_text().strip()
+            if not text.startswith('gitdir:'):
+                return None
+            gd = Path(text[len('gitdir:'):].strip())
+            gd = gd if gd.is_absolute() else Path(root) / gd
+        else:
+            gd = g
+        head = (gd / 'HEAD').read_text().strip()
+        if len(head) == 40 and all(c in '0123456789abcdef' for c in head):
+            return head
+        if head.startswith('ref: '):
+            common = gd
+            if (gd / 'commondir').is_file():
+                common = (gd / (gd / 'commondir').read_text().strip()).resolve()
+            ref_file = common / head[5:]
+            if ref_file.is_file():
+                sha = ref_file.read_text().strip()
+                if len(sha) == 40 and all(c in '0123456789abcdef' for c in sha):
+                    return sha
+        return None
+    except OSError:
+        return None
+
+
+def _base_is_ancestor(root, ref):
+    """``git merge-base --is-ancestor BASE <head>``; a positive answer is remembered per exact HEAD commit (history cannot change under a commit hash)."""
+    sha = _head_sha(root) if ref is None else None
+    key = (str(root), BASE, sha)
+    if sha is not None and key in _ANCESTRY_OK:
+        return
+    _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
+    if sha is not None:
+        _ANCESTRY_OK.add(key)
+
+
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
@@ -216,7 +259,7 @@ def _exact_blobs_ok(repo=None, ref=None):
     try:
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
-        _git(root, 'merge-base', '--is-ancestor', BASE, head)
+        _base_is_ancestor(root, ref)
         # The BASE tree and the BASE blobs are immutable git facts of an object that is named by its hash: they are read once per repository for this
         # process (only a successful read is kept) instead of on every one of the thousands of governance evaluations. The comparison with the
         # manifest below is repeated every time.
