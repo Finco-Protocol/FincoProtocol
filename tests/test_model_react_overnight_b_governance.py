@@ -146,9 +146,9 @@ def test_the_ws2_editing_state_is_admitted_only_by_its_exact_registered_blob(mon
     monkeypatch.setitem(S.WSV2_EDITING_SUCCESSORS, path, "0" * 40)
     assert S.violations(old_sources)
     # a U1 state that its cohort no longer vouches for is refused as well (cohort closed over this path, or the path no longer superseded)
-    monkeypatch.setattr(U1, "SUPERSEDED", frozenset(U1.SUPERSEDED - {path}))
-    assert not U1.supersedes(path, current) or current == historical
-    if current != historical:
+    if current != historical:                                           # the U1 state: a cohort that no longer supersedes this path refuses it
+        monkeypatch.setattr(U1, "SUPERSEDED", frozenset(U1.SUPERSEDED - {path}))
+        assert not U1.supersedes(path, current)
         assert S.violations(SOURCES)
 
 
