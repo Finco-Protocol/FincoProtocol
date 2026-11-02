@@ -30,6 +30,7 @@
     "tests/model_react_wf06b_acceptance.py": "d67151046fd9bead2c790e6c566173c0b31c83e2",
     "tests/model_react_wf2_browser_acceptance.py": "b56aa7cd7db41a5cc21bd9487355cff047e4bb84",
     "tests/model_react_wf2_lifecycle_acceptance.py": "2b0d6b6ddac375a1c776b9339a368d3a1192a7d8",
+    "tests/test_wf06b_scope.py": "d8aa9d89496c10fd49ce8fc70f2eafe2ca261855",
     "tests/wf06b_scope.py": "2e72ba6c4617b49124537f815106a7cda3c42cf5"
   },
   "base_tree": "12cd2bfb89eac3e628da1bba80efd01b0c47af2f",
@@ -38,7 +39,7 @@
   "source_blobs": {
     "app/cost_line_ledger/opex_bases.py": "473989ba287d64319696e80b8e8e53cf0951fd4a",
     "app/v2/react_workspace_router.py": "046ae4677f172a3de747c6833780a9526b9c54b7",
-    "docs/react_migration/u1_workbench/P00.md": "25cb52f26626a82b9b2d906f998237f0fc73e767",
+    "docs/react_migration/u1_workbench/P00.md": "bf6e76debffbe00d8236f04ce8a0e4ea26bd4fad",
     "frontend/src/app/CostWorkbench.tsx": "05aaeb3837a4f1e8283a0b7c796b03d52057158c",
     "frontend/src/app/InputsCostCards.tsx": "ad287829487e1e6be894929a8d62251877dbd57b",
     "frontend/src/app/InputsGuide.tsx": "3948ce98be9fef5fa9a20de93e01bc2bd8e3dc65",
@@ -74,8 +75,9 @@
     "tests/test_u1_opex_bases.py": "a65c2f7697f01682fea614d9a6a4bf06b1886282",
     "tests/test_u1_scope.py": "9959839e61d883a1defc6642e4ab6cfcdd27cbee",
     "tests/test_u1_static_guards.py": "4986b0c7c0699311bf2116bde320d296954116a8",
+    "tests/test_wf06b_scope.py": "0def93ec97c6336a40b1dc0c170c8b8ac20dcdf9",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
-    "tests/u1_scope.py": "215833951bec0467b5c96b5e4e914e8c74d5d042",
+    "tests/u1_scope.py": "71678e24d880ca15b13291531d33b0da607ff5cb",
     "tests/wf06b_scope.py": "dc7047e91b0c1a816a1cee13b5f6834ad7a4be68"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."

@@ -71,6 +71,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_u1_opex_bases.py',
     'tests/test_u1_scope.py',
     'tests/test_u1_static_guards.py',
+    'tests/test_wf06b_scope.py',
     'tests/u1_browser_role.py',
 ))
 # Reviewed, bounded hooks in the WF-06B scope module and the registry (each pinned below). This cohort's own module is owned too.
@@ -110,6 +111,7 @@ SUPERSEDED = frozenset((
     'tests/model_react_wf06b_acceptance.py',
     'tests/model_react_wf2_browser_acceptance.py',
     'tests/model_react_wf2_lifecycle_acceptance.py',
+    'tests/test_wf06b_scope.py',
     'tests/wf06b_scope.py',
 ))
 # No owned path may ever sit under a protected prefix; this is checked on the literal set and on every changed path.
