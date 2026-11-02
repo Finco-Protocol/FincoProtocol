@@ -264,10 +264,12 @@ def valid(repo=None, ref=None):
 
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
-    if path not in pins or not valid(repo, ref):
-        return False
     raw = source.encode() if isinstance(source, str) else source
-    return source is None or _blob(raw) == pins[path]
+    if path in pins and valid(repo, ref) and (source is None or _blob(raw) == pins[path]):
+        return True
+    # PR #413 Correction H: the exact later state of a path the closed PR-U1 cohort supersedes (its pin, while U1 is exact and the composite is valid).
+    U = _u1()
+    return bool(U is not None and source is not None and path in U.SUPERSEDED and U.supersedes(path, _blob(raw), repo, ref) and valid(repo, ref))
 
 
 def protected_blobs(repo=None, ref=None):

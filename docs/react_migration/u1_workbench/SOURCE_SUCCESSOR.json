@@ -86,7 +86,7 @@
     "tests/test_wf06b_scope.py": "0def93ec97c6336a40b1dc0c170c8b8ac20dcdf9",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
     "tests/u1_scope.py": "f0dbfa8960811a6e8253a8618a527d47d0ca520b",
-    "tests/wf06b_scope.py": "dc7047e91b0c1a816a1cee13b5f6834ad7a4be68"
+    "tests/wf06b_scope.py": "b6cbcacfe4caf29f317659182e3c2aff671217b0"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."
 }
