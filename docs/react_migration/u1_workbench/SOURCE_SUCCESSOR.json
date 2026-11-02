@@ -35,6 +35,8 @@
     "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
     "tests/test_model_react_overnight_b_governance.py": "735a92318431b7efa92c9aca02b0fed938aea28d",
     "tests/test_rcm_governance.py": "4688b4c849ba6cb0c1c9235d077184bb9ee53cd3",
+    "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
+    "tests/test_wf06b_no_source_provenance_ui.py": "bb58cba8a3c6cac18ad2a003511a35c1cca18240",
     "tests/test_wf06b_scope.py": "d8aa9d89496c10fd49ce8fc70f2eafe2ca261855",
     "tests/test_wsv2_core_scope.py": "368a9e745831bc4272537e80447c11717858dd93",
     "tests/wf06b_scope.py": "2e72ba6c4617b49124537f815106a7cda3c42cf5"
@@ -86,10 +88,12 @@
     "tests/test_u1_opex_bases.py": "4c6116099c4251f25fc9c5caf0f01533fdd2fc52",
     "tests/test_u1_scope.py": "9959839e61d883a1defc6642e4ab6cfcdd27cbee",
     "tests/test_u1_static_guards.py": "5e5f2cfd29e9bbdca90a2c30bbc790a4039a1be0",
+    "tests/test_wf04_scope.py": "9727e85b0268e7f1ccdec8688027825fb94b0002",
+    "tests/test_wf06b_no_source_provenance_ui.py": "d1b93837d9701de5951d310b07fd8347ce3fe8a9",
     "tests/test_wf06b_scope.py": "0def93ec97c6336a40b1dc0c170c8b8ac20dcdf9",
     "tests/test_wsv2_core_scope.py": "1014bd0402db9a8ea60c446f8329f859e15ad5d6",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
-    "tests/u1_scope.py": "1dc76a2f56a3b9260180e3a6d7866e659cfe4fab",
+    "tests/u1_scope.py": "4aaa41c19afa7a25ff61d0ed9c6c10d1610bd819",
     "tests/wf06b_scope.py": "b6cbcacfe4caf29f317659182e3c2aff671217b0"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."
