@@ -182,6 +182,10 @@ def scoped():
 
 def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
+        U = _u1()
+        if U is not None and not U._SCOPE:         # one PR-U1 evaluation per call here, not one per pin / changed path (dropped on exit)
+            with U.scoped():
+                return _exact_blobs_ok(repo, ref)
         return _exact_blobs_ok(repo, ref)
     key = (str(repo if repo is not None else ROOT), ref)
     memo = _SCOPE[-1]
