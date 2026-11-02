@@ -13,16 +13,18 @@ import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { FinancialOverview } from "./FinancialOverview";
 import { ReportPrecisionControl } from "./ReportPrecision";
 import { financialInputOrder } from "./inputLayout";
-import { workspaceRoute, INPUT_DESTINATIONS, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
+import { workspaceRoute, canonicalHash, isCostWorkbench, INPUT_DESTINATIONS, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
 import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type ConfirmedRun, type WorkspaceExtensions } from "./workspaceExtensions";
 import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
-import { CostLinesGridView as CostLinesView } from "./editing/CostLinesGridView";
+import { CostWorkbench } from "./CostWorkbench";
+import { InputsCostCards } from "./InputsCostCards";
 import { FinancialInsights } from "./insights";
 import { InputsJumpNav, SaveScopeGuide, type InputsJump } from "./InputsGuide";
-import { CostSummaries, InputsOverview, InputsRail, type FocusedField } from "./InputsOverview";
-import { InputStudios } from "./studios/InputStudios";
+import { InputsOverview, InputsRail, type FocusedField } from "./InputsOverview";
+import { ImportWorkspace } from "./importer/ImportWorkspace";
+import { ConstructionTiming } from "./timing/ConstructionTiming";
 import { FriendlyError, resultStatus, RESULT_STATUS_HELP } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
 import { VerticalScopeBanner } from "./VerticalScope";
@@ -40,7 +42,15 @@ import type { LifecycleCapability } from "./library/types";
 
 type Section = WorkspaceSection;
 
+/** A short link (#capex, #opex/years ...) is rewritten to its canonical hash once, so Back/Forward and refresh keep working. */
+function normalizeAliasHash() {
+  const raw = window.location.hash.replace(/^#/, "");
+  const canonical = canonicalHash(raw);
+  if (raw && canonical !== raw) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${canonical}`);
+}
+
 function sectionFromHash(): Section {
+  normalizeAliasHash();
   return workspaceRoute(window.location.hash).section;
 }
 
@@ -143,8 +153,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
   // unsaved drafts in other editors are reconciled, never silently rebased.
   const [dataVersion, setDataVersion] = useState(0);
-  // Which line-item sheet the CAPEX / OPEX jump links ask for (the editor itself guards unsaved edits).
-  const [costRequest, setCostRequest] = useState<{ sheet: "capex" | "opex"; nonce: number }>({ sheet: "capex", nonce: 0 });
+  const [importOpen, setImportOpen] = useState(false);
+  const [timingOpen, setTimingOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     setError(null);
@@ -219,6 +229,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   // already moved, so "stay" restores the hash of the section that is still shown.
   useEffect(() => {
     const onHash = () => {
+      normalizeAliasHash();
       const route = workspaceRoute(window.location.hash);
       const raw = window.location.hash.replace(/^#/, "");
       // Native anchors (including Skip to main content) are not section routes.
@@ -256,14 +267,11 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   useEffect(() => {
     const route = workspaceRoute(destination);
     if (!route.input || section !== "inputs" || !inputs) return;
-    if (route.input === "capex" || route.input === "opex") {
-      const sheet = route.input;
-      setCostRequest((prev) => ({ sheet, nonce: prev.nonce + 1 }));
-    }
-    const target = route.input === "technical"
-      ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]')
-        ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
-      : document.getElementById(INPUT_DESTINATIONS[route.input].target);
+    const target = isCostWorkbench(route)
+      ? document.getElementById("wf-inputs-costs")
+      : route.input === "technical"
+        ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]') ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
+        : document.getElementById(INPUT_DESTINATIONS[route.input].target);
     target?.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
   }, [destination, section, inputs]);
@@ -293,7 +301,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       const next = `inputs/${dest}` as WorkspaceDestination;
       if (next !== destinationRef.current) navigateTo(next);   // history entry first; the scroll/focus below stays synchronous as before
     }
-    if (jump.kind === "cost-sheet" && jump.sheet) setCostRequest((prev) => ({ sheet: jump.sheet!, nonce: prev.nonce + 1 }));
+    if (jump.id === "wf-inputs-import") { setImportOpen(true); if (workspaceRoute(destinationRef.current).input !== null) navigateTo("inputs"); }
     const target = document.getElementById(jump.id);
     target?.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
@@ -518,43 +526,62 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           recovery
             ? <RecoveryPanel project={project} payload={recovery} onRepaired={refreshAll} />
             : inputs && displayedInputs
-            ? <>
-              <div className="ci-layout" data-ci-layout={railOpen ? "rail" : "full"}>
-              <div className="ci-main">
-              <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)} />
-              <InputsJumpNav onJump={jumpWithinInputs} />
-              <SaveScopeGuide />
-              <div id="wf-inputs-setup" tabIndex={-1}>
-                <SheetFieldsEditor project={project} sheet="project_setup" title="Project & Timeline" reloadKey={dataVersion} onSaved={afterMutation} />
-              </div>
-              <div id="wf-inputs-grid" tabIndex={-1}>
-                <CanonicalInputGrid payload={displayedInputs} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} onFocusRow={setFocusInfo} />
-                <CostSummaries project={project} reloadKey={dataVersion} onOpen={(sheet) => jumpWithinInputs({ id: "wf-inputs-costs", label: sheet.toUpperCase(), kind: "cost-sheet", sheet })} />
-              </div>
-              </div>
-              {railOpen && <InputsRail project={project} reloadKey={dataVersion} focus={focusInfo} />}
-              </div>
-              <div id="wf-inputs-costs" tabIndex={-1}>
-                <CostLinesView project={project} reloadKey={dataVersion} onMutated={afterMutation} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"}
-                  requestedSheet={costRequest.sheet} requestNonce={costRequest.nonce} />
-              </div>
-              <div id="wf-inputs-revenue" tabIndex={-1}>
-                {revenuePayload && (
-                  <PPAEditorView
-                    project={project}
-                    protectedReference={Boolean(workspace.project.protected_reference)}
-                    contracts={revenuePayload.contracts}
-                    save={revenuePayload.save}
-                    refreshing={revenueVersion !== dataVersion}
-                    onSaved={afterMutation}
-                  />
-                )}
-              </div>
-              <div id="wf-inputs-studios" tabIndex={-1}>
-                <InputStudios project={project} protectedReference={Boolean(workspace.project.protected_reference)}
-                  reloadKey={dataVersion} onSaved={afterMutation} onSaveCells={saveCells} />
-              </div>
-            </>
+            ? (() => {
+              const route = workspaceRoute(destination);
+              const protectedReference = Boolean(workspace.project.protected_reference);
+              // CAPEX / OPEX are edited ONLY in their workbenches (one editable authority per cost): the derived CAPEX / OPEX sections of the
+              // assumptions grid are not rendered (the registry fields and every calculation are unchanged).
+              const gridPayload: InputsPayload = { ...displayedInputs, grid: { ...displayedInputs.grid,
+                sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } };
+              return <>
+                <InputsJumpNav onJump={jumpWithinInputs} />
+                {isCostWorkbench(route)
+                  ? <CostWorkbench project={project} sheet={route.input} view={route.view} inputs={displayedInputs} protectedReference={protectedReference}
+                      reloadKey={dataVersion} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"} onMutated={afterMutation}
+                      onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" })} />
+                  : <>
+                    <div className="ci-layout" data-ci-layout={railOpen ? "rail" : "full"}>
+                    <div className="ci-main">
+                    <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)} />
+                    <InputsCostCards project={project} workspace={workspace} reloadKey={dataVersion} onOpen={(sheet) => navigateTo(`inputs/${sheet}` as WorkspaceDestination)} />
+                    <SaveScopeGuide />
+                    <div id="wf-inputs-setup" tabIndex={-1}>
+                      <SheetFieldsEditor project={project} sheet="project_setup" title="Project & Timeline" reloadKey={dataVersion} onSaved={afterMutation} />
+                      <details className="rx-card" id="wf-inputs-timing" data-timing-section="true" open={timingOpen}
+                               onToggle={(event) => setTimingOpen((event.currentTarget as HTMLDetailsElement).open)}>
+                        <summary>Plan construction timing</summary>
+                        {timingOpen && <ConstructionTiming project={project} protectedReference={protectedReference} reloadKey={dataVersion} onSaveCells={saveCells} onSaved={afterMutation} />}
+                      </details>
+                    </div>
+                    <div id="wf-inputs-grid" tabIndex={-1}>
+                      <CanonicalInputGrid payload={gridPayload} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} onFocusRow={setFocusInfo} />
+                    </div>
+                    </div>
+                    {railOpen && <InputsRail project={project} reloadKey={dataVersion} focus={focusInfo} />}
+                    </div>
+                    <div id="wf-inputs-revenue" tabIndex={-1}>
+                      <div data-revenue-assumptions="true">
+                        <SheetFieldsEditor project={project} sheet="revenue" title="Revenue assumptions" reloadKey={dataVersion} onSaved={afterMutation} />
+                      </div>
+                      {revenuePayload && (
+                        <PPAEditorView
+                          project={project}
+                          protectedReference={protectedReference}
+                          contracts={revenuePayload.contracts}
+                          save={revenuePayload.save}
+                          refreshing={revenueVersion !== dataVersion}
+                          onSaved={afterMutation}
+                        />
+                      )}
+                    </div>
+                    <details className="rx-card" id="wf-inputs-import" tabIndex={-1} data-inputs-import="true" open={importOpen}
+                             onToggle={(event) => setImportOpen((event.currentTarget as HTMLDetailsElement).open)}>
+                      <summary>Import from Excel / CSV</summary>
+                      {importOpen && <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={afterMutation} />}
+                    </details>
+                  </>}
+              </>;
+            })()
             : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>
         )}
         {section === "financing" && (

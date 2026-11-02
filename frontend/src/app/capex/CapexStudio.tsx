@@ -5,6 +5,7 @@ import { useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, W
 import { encodeSpec, fetchCapexPreview, fetchCapexProfiles, saveCapexProfile } from "./api";
 import type { CapexPlan, CapexProfiles, Draft, DraftRow } from "./types";
 import { friendlyMessage } from "../productLanguage";
+import { groupDisplayName } from "../costGroupDisplay";
 
 const SHAPE_LABEL: Record<string, string> = {
   UNIFORM: "Uniform", FRONT_LOADED: "Front-loaded", BACK_LOADED: "Back-loaded", EXPLICIT: "Explicit % per month", MILESTONE: "Milestone (one month)",
@@ -158,12 +159,12 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
               const changed = JSON.stringify(row) !== JSON.stringify(saved[item.item_key] ?? EMPTY);
               return (
                 <tr key={item.item_key} data-capex-item={item.item_key} data-capex-changed={changed || undefined}>
-                  <th scope="row" className="rcm-sticky">{item.item_key} {item.label}<span className="rcm-delta">{item.category_code}</span></th>
+                  <th scope="row" className="rcm-sticky">{item.label}<span className="rcm-delta">{groupDisplayName(item.category_code, "")}</span></th>
                   <td>{item.amount_display}</td>
                   <td className="rcm-left">
                     <select value={row.shape} disabled={readOnly} data-capex-shape={item.item_key} aria-label={`Shape for ${item.label}`}
                       onChange={(e) => change(item.item_key, { shape: e.target.value })}>
-                      <option value="">— none (existing timing) —</option>
+                      <option value="">Model default — paid at the end of each construction period</option>
                       {data.shapes.map((s) => <option key={s} value={s}>{SHAPE_LABEL[s] ?? s}</option>)}
                     </select>
                   </td>
@@ -192,7 +193,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       </div>
       {data.excluded.length > 0 && (
         <details><summary>Derived / financing items (not eligible for a spending profile): {data.excluded.length}</summary>
-          <ul>{data.excluded.map((e) => <li key={e.item_key}><code>{e.item_key}</code> {e.label} — {e.amount_display} kEUR</li>)}</ul></details>
+          <ul>{data.excluded.map((e) => <li key={e.item_key}>{e.label} — {e.amount_display} kEUR</li>)}</ul></details>
       )}
 
       <div className="rcm-controls-actions" style={{ marginTop: 12 }}>
@@ -226,7 +227,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
               <thead><tr><th scope="col" className="rcm-sticky">Item</th><th scope="col" className="rcm-left">Shape</th><th scope="col">Amount (kEUR)</th><th scope="col" className="rcm-left">Status</th><th scope="col">Unallocated (kEUR)</th></tr></thead>
               <tbody>{plan.plan.rows.map((r) => (
                 <tr key={r.item_key} data-capex-row={r.item_key} data-status={r.status}>
-                  <th scope="row" className="rcm-sticky">{r.item_key} {r.label}</th><td className="rcm-left">{SHAPE_LABEL[r.shape] ?? r.shape}</td><td>{r.amount_display}</td>
+                  <th scope="row" className="rcm-sticky">{r.label}</th><td className="rcm-left">{SHAPE_LABEL[r.shape] ?? r.shape}</td><td>{r.amount_display}</td>
                   <td className="rcm-left">{r.status === "valid" ? <span className="rcm-chip ok">valid</span> : <span className="rcm-tag rcm-tag-bad" title={r.error_detail ?? ""}>{r.error_code}</span>}</td>
                   <td>{r.unallocated_display}</td></tr>))}</tbody>
             </table>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { FriendlyError } from "../productLanguage";
+import { groupDisplayName } from "../costGroupDisplay";
 
 /** Inputs > Studios > OPEX projection (Y1 … Yn): the saved project's operating cost by group and year, exactly as the server projects it
  *  (line amounts, each line's escalation, applied contingency).  The browser only lays the numbers out; a year the server has no value for is shown as
@@ -51,11 +52,11 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
       </dl>
       <div className="rcm-scroll" tabIndex={0} role="region" aria-label="OPEX by group and year">
         <table className="fm-table rcux-opex-proj" data-opex-projection-table="true">
-          <thead><tr><th scope="col">Code</th><th scope="col">Group</th>{data.years.map((y) => <th key={y} scope="col" className="fm-num">Y{y}</th>)}</tr></thead>
+          <thead><tr><th scope="col">Group</th>{data.years.map((y) => <th key={y} scope="col" className="fm-num">Y{y}</th>)}</tr></thead>
           <tbody>
             {data.rows.map((r) => (
               <tr key={r.code} data-opex-row={r.code} data-opex-has-data={r.has_data ? "true" : "false"}>
-                <td>{r.code}</td><th scope="row">{r.name}{r.derived ? " (derived)" : ""}</th>
+                <th scope="row">{groupDisplayName(r.code, r.name)}{r.derived ? " (calculated)" : ""}</th>
                 {r.values.map((v, i) => <td key={i} className="fm-num" data-opex-cell={`${r.code}:${data.years[i]}`}>{cell(v)}</td>)}
               </tr>
             ))}

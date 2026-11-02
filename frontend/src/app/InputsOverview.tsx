@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import "../styles/compact-inputs.css";
 import { fetchCostLines, fetchStatements } from "./api";
 import { showKeur } from "./costAmounts";
+import { groupDisplayName } from "./costGroupDisplay";
 import { CostUnitSelect, useCostUnit } from "./CostUnit";
 import { useReportPrecision } from "./ReportPrecision";
 import { RunIdentityLabel } from "./runIdentity";
@@ -140,7 +141,7 @@ function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; she
           {data.state === "unavailable" && <tr><td colSpan={4}>The summary is not available right now.</td></tr>}
           {rows.map((g) => (
             <tr key={g.code} data-ci-summary-row={g.code}>
-              <th scope="row">{g.label}</th>
+              <th scope="row">{groupDisplayName(g.code, g.label)}</th>
               <td className="ci-num">{g.saved_total_keur === null ? "—" : KEUR(g.saved_total_keur)}</td>
               <td className="ci-num">{g.active_line_count}</td>
               <td>
@@ -210,7 +211,7 @@ export function InputsRail({ project, reloadKey = 0, focus }: { project: string;
       </div>
       <div className={`ci-rail-box${pending.length ? " ci-rail-warn" : ""}`} data-ci-rail-warnings="true">
         <strong>{pending.length ? `${pending.length} group${pending.length === 1 ? "" : "s"} to confirm` : "Nothing to confirm"}</strong>
-        {pending.length > 0 && <ul>{pending.map((g) => <li key={g.code}>{g.label}</li>)}</ul>}
+        {pending.length > 0 && <ul>{pending.map((g) => <li key={g.code}>{groupDisplayName(g.code, g.label)}</li>)}</ul>}
       </div>
     </aside>
   );

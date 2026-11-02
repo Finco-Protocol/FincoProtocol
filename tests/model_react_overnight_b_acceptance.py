@@ -38,7 +38,7 @@ def settle_inputs(page):
     page.wait_for_selector("[data-react-workspace-version]")
     page.wait_for_function("""() => !/Loading/.test(document.body.innerText)
         && document.querySelector("[data-sheet-editor='project_setup']") && document.querySelector("[data-input-grid]")
-        && document.querySelector("[aria-label$='line items']") && document.querySelector("[data-ppa-editor]")""", timeout=30000)
+        && document.querySelector("[data-ci-cost-cards]") && document.querySelector("[data-ppa-editor]")""", timeout=30000)     # PR-U1: cost cards replace the inline grids
 
 
 def project_identity(context, base, record):

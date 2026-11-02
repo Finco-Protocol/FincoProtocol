@@ -15,9 +15,12 @@ import { fetchCostLines, saveCostLinesBatch } from "../api";
 import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLineEditWire } from "../costLinePayload";
 import { friendlyMessage } from "../productLanguage";
 import { divideDecimalText, perMwLabel, showKeur } from "../costAmounts";
+import { OPEX_BASE_FIELD_BY_GROUP } from "../costGroupDisplay";
+import { sectionOfField } from "./fieldSection";
+import { useSaveAllBridge } from "../saveAllBridge";
 import { CostUnitSelect, useCostUnit } from "../CostUnit";
 import { useReportPrecision } from "../ReportPrecision";
-import type { CostLinePayload, CostLinesPayload } from "../types";
+import type { CostLinePayload, CostLinesPayload, GridRowPayload } from "../types";
 import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
@@ -38,7 +41,7 @@ const SHAPE_TEXT: Record<string, string> = { UNIFORM: "Even", FRONT_LOADED: "Fro
 function profileText(view: ProfileView, code: string): string {
   if (view.broken) return "Profile error";
   const row = view.rows[code];
-  if (!row) return "Model default";
+  if (!row) return "Model default — end of construction period";
   if (row.shape === "MILESTONE") return row.milestone ? `One payment, month ${row.milestone}` : "One payment";
   return SHAPE_TEXT[row.shape ?? ""] ?? "Saved profile";
 }
@@ -59,7 +62,15 @@ const labelValidator: CellValidator = (text) => (text.trim() ? { ok: true, value
 const amountValidator = numberValidator({ allowNegative: false });
 const inflationValidator = numberValidator({ allowNegative: true });
 
-export function CostLinesGridView(props: { project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number; query?: string; scenarioName?: string }) {
+export interface CostLinesGridProps {
+  project: string; sheet: Sheet; reloadKey?: number; onMutated?: () => void; query?: string; scenarioName?: string;
+  /** Switching CAPEX / OPEX is a route change owned by the workbench (it asks before leaving unsaved cost edits). */
+  onSheet?: (next: Sheet) => void;
+  /** OPEX only: the saved scalar base fields (same field ids and writer as the canonical cells) shown as the first row of their group. */
+  baseRows?: ReadonlyArray<GridRowPayload>;
+  /** Where the inline add-line form of the clicked group is drawn (a table cell this grid owns). */
+}
+export function CostLinesGridView(props: CostLinesGridProps) {
   return <EnsureChangesProvider identity={null}><CostLinesGrid {...props} /></EnsureChangesProvider>;
 }
 
@@ -77,16 +88,13 @@ function useNarrow(query = "(max-width: 900px)") {
   return narrow;
 }
 
-type ColId = "code" | "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu";
+type ColId = "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu";
 type LineFilter = "all" | "nonzero" | "changed" | "inactive";
 const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
 ];
 
-function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requestNonce = 0, query = "", scenarioName = "Base Case" }: {
-  project: string; reloadKey?: number; onMutated?: () => void; requestedSheet?: Sheet; requestNonce?: number; query?: string; scenarioName?: string;
-}) {
-  const [sheet, setSheet] = useState<Sheet>("capex");
+function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet, baseRows = [] }: CostLinesGridProps) {
   const [data, setData] = useState<CostLinesPayload | null>(null);
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
@@ -97,6 +105,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const [groupPreset, setGroupPreset] = useState<{ code: string; nonce: number } | null>(null);
   const [rowAction, setRowAction] = useState<{ lineId: string; active: boolean; nonce: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [addGroup, setAddGroup] = useState<string | null>(null);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const saveAll = useSaveAllBridge();
   const [unit] = useCostUnit();
   const { precision } = useReportPrecision();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -143,20 +154,16 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     return () => controller.abort();
   }, [project, sheet, reloadKey]);
 
-  const lastRequest = useRef(requestNonce);
-  useEffect(() => {
-    if (!requestedSheet || requestNonce === lastRequest.current) return;
-    lastRequest.current = requestNonce;
-    if (requestedSheet !== sheet) confirmIfDirty(() => setSheet(requestedSheet), { ignore: (key) => !key.startsWith("cost-") });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedSheet, requestNonce]);
-
   const section: EditSection = sheet;
   const mine = changes.edits.filter((e) => e.section === section);
   // One dirty count per staged LINE so the shell's leave guard reads the same number the old editor reported.
   const stagedLines = new Set(mine.map((e) => e.key.split("#")[0])).size;
   useReportDirty(`cost-lines-${sheet}`, stagedLines);
   useReportPending(`cost-lines-${sheet}`, inFlight);
+  // OPEX base amounts are canonical cells (same field ids and writer as the Assumptions grid) staged in the same store.
+  const baseIds = new Set(sheet === "opex" ? baseRows.map((r) => r.field_id || r.code) : []);
+  const baseStaged = changes.edits.filter((e) => baseIds.has(e.key) && e.section === sectionOfField(e.key));
+  useReportDirty("opex-base", baseStaged.length);
 
   const columns = sheet === "opex" ? COLUMNS_OPEX : COLUMNS_CAPEX;
   const baselineOf = (line: CostLinePayload, col: string) =>
@@ -173,7 +180,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const isChanged = (line: CostLinePayload) => mine.some((e) => e.key.split("#")[0] === line.sub_line_id);
   const filtered = allLines.filter((line) => {
     if (needle) {
-      const hay = `${lineInfo.get(line.sub_line_id)?.finco_display_code ?? ""} ${line.label} ${line.category}`.toLowerCase();
+      const hay = `${line.label} ${costGroupLabel(line.category, data?.line_management?.eligible_groups ?? [])}`.toLowerCase();
       if (!hay.includes(needle) && !isChanged(line)) return false;
     }
     if (filter === "nonzero") return Number(valueOf(line, "amount")) !== 0;
@@ -285,7 +292,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     setInFlight(false);
   };
 
-  const switchSheet = (next: Sheet) => { if (next !== sheet) confirmIfDirty(() => setSheet(next), { ignore: (key) => !key.startsWith("cost-") }); };
+  const switchSheet = (next: Sheet) => { if (next !== sheet) confirmIfDirty(() => onSheet?.(next), { ignore: (key) => !key.startsWith("cost-") }); };
   const headingId = useId();
 
   if (!data) return loadError
@@ -297,19 +304,42 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const cols: ColId[] = narrow
     ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
     : sheet === "capex"
-      ? ["code", "line", "amount", "perMw", "profile", "status", "menu"]
-      : ["code", "line", "amount", "perMw", "infl", "status", "menu"];
+      ? ["line", "amount", "perMw", "profile", "status", "menu"]
+      : ["line", "amount", "perMw", "infl", "status", "menu"];
   const amountAt = cols.indexOf("amount");
   const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
   const fmtKeur = (n: number | string | null) => showKeur(n, unit, precision);
   // Totals follow the chosen unit; the amount inputs are always kEUR. Whenever the unit is not kEUR the totals say which unit they are in.
   const unitTag = unit === "kEUR" ? null : <small className="ci-preview"> {unit}</small>;
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
-  const groupOrder = Array.from(new Set(filtered.map((l) => l.category)));
-  const focusManager = () => {
-    const m = document.querySelector<HTMLElement>(`[data-cost-line-manager="${sheet}"]`);
-    m?.scrollIntoView({ block: "center" });
-    window.setTimeout(() => m?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true }), 0);
+  // Every canonical group is shown (an empty group offers "+ Add line"); calculated groups are explained, never editable.
+  const eligibleCodes = new Set((data.line_management?.eligible_groups ?? []).map((g) => g.code));
+  const showEmpty = filter === "all" && !needle;
+  const groupOrder = (() => {
+    const fromLines = Array.from(new Set(filtered.map((l) => l.category)));
+    if (!projection) return fromLines;
+    const withLines = new Set(fromLines);
+    const out = projection.groups.map((g) => g.code).filter((c) => withLines.has(c) || (showEmpty && (eligibleCodes.has(c) || groupInfo.get(c)?.mapping_status === "DERIVED")));
+    for (const c of fromLines) if (!out.includes(c)) out.push(c);
+    return out;
+  })();
+  const openAdd = (cat: string | undefined) => {
+    if (!cat) return;
+    setCollapsed((prev) => { if (!prev.has(cat)) return prev; const next = new Set(prev); next.delete(cat); return next; });
+    setAddGroup(cat);
+    setGroupPreset({ code: cat, nonce: Date.now() });
+  };
+  const baseRowFor = (cat: string) => {
+    const id = sheet === "opex" ? OPEX_BASE_FIELD_BY_GROUP[cat] : undefined;
+    return id ? baseRows.find((r) => (r.field_id || r.code) === id) : undefined;
+  };
+  const stageBase = (row: GridRowPayload, name: string, typed: string) => {
+    const id = row.field_id || row.code;
+    const verdict = amountValidator(typed);
+    const baseline = row.value ?? "";
+    const equal = sameDecimalText(typed.trim(), baseline);
+    changes.stage({ section: sectionOfField(id), key: id, label: `${name} — base amount`, unit: row.unit, baseline, value: equal ? baseline : typed,
+                    error: verdict.ok || equal ? undefined : verdict.message }, { coalesce: true });
   };
   const editedAmount = (line: CostLinePayload) => {
     const edit = changes.get(section, `${line.sub_line_id}#amount`);
@@ -322,7 +352,6 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     const value = valueOf(line, col);
     const errorId = `${headingId}-${r}-${c}-err`;
     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
-    const code = col === "label" ? lineInfo.get(line.sub_line_id)?.finco_display_code : undefined;
     const field = (
       <input className={`fm-input ws2-cell ${col === "label" ? "ws2-cell-text" : ""}`} type="text"
         inputMode={col === "label" ? "text" : "decimal"} autoComplete="off" spellCheck={false}
@@ -346,7 +375,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     return (
       <td key={col} className={col === "label" ? "ci-col-line" : col === "amount" ? "ci-col-amount" : undefined}>
         {col === "label"
-          ? <div className="ws2-label-wrap">{code && <span className="ws2-code" data-finco-code="true" aria-hidden="true">{code}</span>}{field}{notesBlock}</div>
+          ? <div className="ws2-label-wrap">{field}{notesBlock}</div>
           : field}
         {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
       </td>
@@ -356,7 +385,6 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const staticTd = (id: ColId, line: CostLinePayload) => {
     const info = lineInfo.get(line.sub_line_id);
     switch (id) {
-      case "code": return <td key={id} className="ci-col-code"><span className="ws2-code" data-finco-code-col="true">{info?.finco_display_code}</span></td>;
       case "perMw": {
         const preview = editedAmount(line);
         const saved = info?.per_mw_keur ?? null;
@@ -393,7 +421,42 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
     }
   };
 
-  const HEAD: Record<ColId, string> = { code: "Code", line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "" };
+  const HEAD: Record<ColId, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "" };
+  const baseTr = (cat: string, row: GridRowPayload) => {
+    const id = row.field_id || row.code;
+    const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
+    const edit = changes.get(sectionOfField(id), id);
+    const value = edit?.value ?? (row.value ?? "");
+    const live = edit ? (edit.error ? null : edit.value) : (row.value ?? "");
+    const perMwText = capacity?.available && live !== null ? divideDecimalText(live, capacity.mw) : null;
+    const editable = Boolean(row.editable) && !readOnlyProject && !locked;
+    const errorId = `${headingId}-base-${id}`;
+    return (
+      <tr key={`base-${id}`} data-base-row={id} data-line-kind="base">
+        {cols.map((col) => col === "line" ? (
+          <td key={col} className="ci-col-line"><div className="ws2-label-wrap"><span className="ws2-base-label">Group base amount</span>
+            <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">saved with Save changes</small></div></td>
+        ) : col === "amount" ? (
+          <td key={col} className="ci-col-amount">
+            <input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
+              aria-label={`Base amount for ${name}`} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
+              data-changed={edit ? "true" : undefined} value={value} disabled={!editable}
+              onChange={(event) => { setStatus(null); stageBase(row, name, event.target.value); }} />
+            {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
+          </td>
+        ) : col === "perMw" ? (
+          <td key={col} className="ci-num ci-col-permw" data-per-mw-state={perMwText === null ? "unavailable" : edit ? "preview" : "saved"}
+              title={perMwText === null ? (capacity?.note ?? "Per-MW is shown when the installed capacity is known.") : edit ? "Unsaved preview — not saved" : undefined}>
+            {perMwText === null ? "—" : <>{fmtKeur(perMwText)}{edit && <small className="ci-preview"> unsaved preview</small>}</>}
+          </td>
+        ) : col === "status" ? (
+          <td key={col} className="ci-col-status">{edit ? <span className="ws2-chip ws2-chip-changed">Changed</span> : editable ? <span className="ws2-chip ws2-chip-ok">Editable</span> : <span className="ws2-chip">Locked</span>}</td>
+        ) : col === "infl" ? (
+          <td key={col} className="ci-num" title="The base amount follows the project's OPEX escalation.">—</td>
+        ) : <td key={col} />)}
+      </tr>
+    );
+  };
   let rowIndex = 0;
 
   return (
@@ -402,8 +465,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         <h2 id={headingId}>{title} — all lines</h2>
         <span className="ci-detail-sub" data-cost-subtitle="true">{allLines.length} lines · scenario {scenarioName}</span>
         <span className="fm-toolbar">
-          <button type="button" className="fm-btn" data-cost-back="true" onClick={() => document.querySelector("[data-ci-summaries]")?.scrollIntoView({ block: "start" })}>← Back to {title} summary</button>
-          <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
+                    <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
           <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button>
           <button type="button" className="fm-btn" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
         </span>
@@ -427,7 +489,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
       {status && <div className="fm-info-note" role={status.tone === "ok" ? "status" : "alert"} data-tone={status.tone}>{status.text}</div>}
       {pasteNote && <div className="fm-info-note" role="status" data-paste-note="true">{pasteNote}</div>}
       <div className="ci-linebar" data-ci-linebar="true">
-        <input type="search" className="fm-input ci-linesearch" data-cost-search="true" value={localQuery} placeholder="Search code, line or group…"
+        <input type="search" className="fm-input ci-linesearch" data-cost-search="true" value={localQuery} placeholder="Search line or group…"
                aria-label={`Search ${title} lines`} onChange={(e) => setLocalQuery(e.target.value)} />
         <span className="ci-filters" role="group" aria-label="Show lines">
           {FILTERS.map((f) => (
@@ -436,7 +498,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         </span>
         <CostUnitSelect />
         <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing}
-                onClick={() => focusManager()}>
+                onClick={() => openAdd(addGroup ?? groupOrder.find((c) => eligibleCodes.has(c)))}>
           + Add line
         </button>
         <button type="button" className="fm-btn" data-cost-expand="true" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(groupOrder))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
@@ -457,7 +519,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                 <Fragment key={cat}>
                   <tr className="ws2-group-row" data-group-row={cat}>
                     <th scope="colgroup" colSpan={Math.max(amountAt, 1)}>
-                      <button type="button" className="ci-twisty" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${cat}`} data-cost-twisty={cat}
+                      <button type="button" className="ci-twisty" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}`} data-cost-twisty={cat}
                               onClick={() => { const next = new Set(collapsed); if (isCollapsed) next.delete(cat); else next.add(cat); setCollapsed(next); }} />
                       <span className="ws2-group-name">{costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}</span>
                       <span className="ws2-group-meta" data-group-meta={cat}>
@@ -469,9 +531,10 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
                         <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
-                                onClick={() => { setGroupPreset({ code: cat, nonce: Date.now() }); focusManager(); }}>+ line</button>
+                                onClick={() => openAdd(cat)}>+ Add line</button>
                       </td>)}
                   </tr>
+                  {!isCollapsed && (() => { const b = baseRowFor(cat); return b ? baseTr(cat, b) : null; })()}
                   {!isCollapsed && members.map((line) => {
                     const r = rowIndex++;
                     return (
@@ -483,6 +546,9 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                       </tr>
                     );
                   })}
+                  {addGroup === cat && <tr data-add-row={cat}><td colSpan={cols.length}><div ref={setSlot} className="ci-addslot" /></td></tr>}
+                  {!isCollapsed && !members.length && !baseRowFor(cat) && g?.mapping_status !== "DERIVED" && addGroup !== cat && (
+                    <tr data-empty-group={cat}><td colSpan={cols.length} className="ci-empty-group">No lines in this group yet.</td></tr>)}
                 </Fragment>
               );
             })}
@@ -490,8 +556,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
           </tbody>
           {allLines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>Sum of line amounts ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved lines — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>{sheet === "opex" ? "Sum of added line amounts" : "Sum of line amounts"} ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved {sheet === "opex" ? "added lines — excludes the group base amounts" : "lines"} — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
             </tfoot>
           )}
         </table>
@@ -506,8 +572,16 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
         {unknownBatch !== null && <button type="button" className="fm-btn" disabled={inFlight} data-cost-reconcile="true" onClick={() => void reconcile()}>Check saved state</button>}
       </div>
       <p className="fm-info-note">If someone else changed one of these lines in the meantime, nothing is saved and you are asked to reload before saving again. Saving never runs the model.</p>
+      {sheet === "opex" && baseIds.size > 0 && (
+        <p className="rx-note" data-base-save-note="true">
+          Group base amounts are saved with the other cells, together with cost lines, by <strong>Save changes</strong> (top bar or here).
+          {" "}<em>Save staged lines</em> above saves the added lines only.
+          {baseStaged.length > 0 && <>{" "}<button type="button" className="fm-btn fm-btn-primary" data-opex-save-all="true" disabled={saveAll.disabled || saveAll.run === null} title={saveAll.reason || undefined}
+            onClick={() => saveAll.run?.()}>{saveAll.saving ? "Saving…" : `Save ${saveAll.total} change${saveAll.total === 1 ? "" : "s"}`}</button></>}
+        </p>)}
       <CostLineManager key={sheet} project={project} data={data} refreshing={refreshing} presetGroup={groupPreset} rowAction={rowAction}
-                       onChanged={() => { void load(); onMutated?.(); }} />
+                       slot={addGroup ? slot : null} openGroup={addGroup} onClose={() => setAddGroup(null)}
+                       onChanged={() => { setAddGroup(null); void load(); onMutated?.(); }} />
     </section>
   );
 }

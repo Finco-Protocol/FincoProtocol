@@ -37,6 +37,7 @@ export function WorkspaceSidebar({ active, onNavigate }: {
     <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" className={open ? "is-open" : ""} onKeyDown={keys}>
       {link("overview", "Overview")}
       <details open><summary>Inputs</summary>
+        {link("inputs", "Inputs overview")}
         {Object.entries(INPUT_DESTINATIONS).map(([key, item]) => link(`inputs/${key}` as WorkspaceDestination, item.label))}
         {link("financing", "Financing / Equity")}
       </details>

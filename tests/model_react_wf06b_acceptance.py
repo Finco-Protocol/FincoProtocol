@@ -59,9 +59,9 @@ def check_cost_workbench_matches_the_server_projection_and_hides_provenance(brow
             total = (grid.locator("[data-saved-total]").text_content() or "").replace(",", "")
             assert abs(float(total) - proj["saved_total_keur"]) <= 0.5
             assert abs(float(grid.locator("[data-saved-total]").get_attribute("data-exact")) - proj["saved_total_keur"]) < 1e-6      # the exact value stays behind the rounded text
-            # FINCO codes (never a cell address) are shown for template lines
-            codes = [c.strip() for c in grid.locator("[data-finco-code-col]").all_inner_texts() if c.strip()]
-            assert codes and all(re.fullmatch(r"[CB]\.\d{2}\.(\d{2}|U\d{3})", c) for c in codes), codes[:5]
+            # PR-U1 (D1): no internal code is visible (group or line); names only
+            assert grid.locator("[data-finco-code-col], [data-finco-code]").count() == 0
+            assert not re.search(r"\b[CB]\.\d{2}(\.\d{2}|\.U\d{3})?\b", grid.inner_text()), "no C./B. code is visible"
             # unresolved / derived parents are labelled, not hidden
             if sheet == "capex":
                 assert grid.locator("[data-mapping-status='UNRESOLVED']").count() >= 1
@@ -290,11 +290,10 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         grid.locator("[data-cost-filter='all']").click()
         grid.locator("[data-cost-search]").fill("wind turbines")
         assert shown().startswith("1 of 32")
-        assert grid.locator("[data-finco-code-col]").first.inner_text().startswith("C.01.")
         grid.locator("[data-cost-search]").fill("")
         # columns: Code | Line | Amount | per MW | Payment profile | Status | row actions. Basis / Qty / Unit price were cancelled: ONE stored amount per line.
         heads = [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
-        assert heads == ["CODE", "LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "STATUS", "ROW ACTIONS"], heads
+        assert heads == ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "STATUS", "ROW ACTIONS"], heads
         assert not re.search(r"not connected|coming soon|placeholder", page.locator("body").inner_text(), re.I)
         assert grid.locator("tr[data-line] select").count() == 0, "no dead selects (Basis) in the line rows"
         assert grid.locator("[aria-label*='Quantity'], [aria-label*='Unit price'], [aria-label*='Basis']").count() == 0
