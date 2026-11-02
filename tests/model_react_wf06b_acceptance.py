@@ -558,7 +558,10 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
         cell = page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first
         original = cell.input_value()
         cell.fill(str(int(float(original)) + 1) if original.replace(".", "", 1).isdigit() else "1")
-        grid = _open_sheet(page, base, record.project_code, "capex")
+        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()                          # (no reload: the staged input must survive)
+        grid = page.locator("[data-cost-grid='capex']")
+        grid.wait_for()
+        page.wait_for_selector("[data-cost-grid='capex'] [data-group-saved-total]", timeout=60000)
         manager = _open_add(page, "capex")
         adds = []
         page.on("response", lambda r: adds.append(r.status) if r.url.endswith("/v2/capex/line/add") else None)
@@ -595,7 +598,7 @@ def check_timing_plan_never_sticks_on_pending_or_shows_an_older_answer(browser, 
     try:
         open_section(page, base, record.project_code, "inputs")
         settle_inputs(page)
-        page.locator("[data-studio-tab='construction-timing']").click()
+        page.locator("[data-timing-section] > summary").click()                                       # PR-U1: the planner lives in Project & Timeline
         page.wait_for_selector("[data-timing='ready']", timeout=60000)
         def slow_plan(route):
             if "months=" in route.request.url:

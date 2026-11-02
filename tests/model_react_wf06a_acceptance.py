@@ -91,11 +91,11 @@ def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(brow
             # staged edit survives, is flagged, and is discarded again (never saved)
             amount = grid.locator("input[data-r='1'][data-c='1']")
             if amount.is_enabled():
-                original = amount.input_value()
+                original = amount.get_attribute("data-exact")                 # PR-U1: at rest an amount shows at report precision; the exact text is behind it
                 amount.fill("123.45")
                 assert amount.get_attribute("data-changed") == "true"
                 grid.get_by_role("button", name="Discard staged edits").click()
-                assert grid.locator("input[data-r='1'][data-c='1']").input_value() == original
+                assert grid.locator("input[data-r='1'][data-c='1']").get_attribute("data-exact") == original
             for width in WIDTHS:
                 page.set_viewport_size({"width": width, "height": 1000})
                 assert not horizontal_overflow(page), f"{kind} {sheet} page overflows at {width}"

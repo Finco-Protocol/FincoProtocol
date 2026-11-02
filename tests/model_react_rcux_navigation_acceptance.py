@@ -353,7 +353,7 @@ def test_rcux_nav_gated_and_unavailable_screens_are_react_native(live_server, an
     page.goto(f"{live_server}/v2/model-react/{template.project_code}#inputs")
     page.reload()
     _settle(page)
-    page.locator("[data-studio-tab='import']").click()
+    page.locator("[data-inputs-import] > summary").click()                 # PR-U1: Import is a section of Inputs
     page.wait_for_selector("[data-import-state='read-only']", timeout=60000)
     audit(page, "template / import")
     assert_stayed_in_react(log, "gated screens")

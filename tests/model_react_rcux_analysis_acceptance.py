@@ -179,9 +179,8 @@ def test_rcux_diagnostics_heatmap_fits_every_viewport(live_server, an_session, w
 
 
 def _open_opex_projection(page, base, code):
-    page.goto(f"{base}/v2/model-react/{code}#inputs")
+    page.goto(f"{base}/v2/model-react/{code}#inputs/opex/years")          # PR-U1: the projection is the OPEX workbench's Years view
     page.reload()
-    page.locator("[data-studio-tab='opex-projection']").click()
     page.wait_for_selector("[data-opex-projection='ready']", timeout=60000)
 
 
@@ -329,7 +328,7 @@ def test_rcux_statements_year_zero_toggle_hides_exactly_the_first_model_period_a
 def _open_timing(page, base, code):
     page.goto(f"{base}/v2/model-react/{code}#inputs")
     page.reload()
-    page.locator("[data-studio-tab='construction-timing']").click()
+    page.locator("[data-timing-section] > summary").click()       # PR-U1: the planner lives in Project & Timeline
     page.wait_for_selector("[data-timing='ready']", timeout=60000)
 
 
@@ -395,7 +394,7 @@ def test_rcux_construction_timing_templates_are_read_only(live_server, an_sessio
     ref = get_reference_by_template_source("generic_solar_reference")
     page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs")
     page.reload()
-    page.locator("[data-studio-tab='construction-timing']").click()
+    page.locator("[data-timing-section] > summary").click()       # PR-U1: the planner lives in Project & Timeline
     page.wait_for_selector("[data-timing-readonly='true']", timeout=60000)
     assert page.locator("[data-timing-start]").count() == 0 and page.locator("[data-timing-save]").count() == 0
     assert errors == []
@@ -530,8 +529,6 @@ def test_rcux_revenue_studio_edits_the_escalation_base_year_policy_and_indexatio
     run_canonical(context, live_server, record.project_code)
     history = context.request.get(f"{live_server}/v2/model-react/runs?project={record.project_code}").json()["runs"]
     page.goto(f"{live_server}/v2/model-react/{record.project_code}#inputs")
-    page.wait_for_selector("[data-input-studios='true']", timeout=60000)
-    page.locator("[data-studio-tab='revenue-assumptions']").click()
     page.wait_for_selector("[data-revenue-assumptions='true'] [data-sheet-editor='revenue']", timeout=60000)
     editor = page.locator("[data-revenue-assumptions='true']")
     policy = editor.get_by_label("Escalation Base Year Policy")
