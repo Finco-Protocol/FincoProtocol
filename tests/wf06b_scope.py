@@ -14,7 +14,16 @@ accepts a different current blob for such a path only through ``supersedes(path,
 exactly that blob. It never admits a value for a path outside ``SUPERSEDED``.
 
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort
-registry, so there is no recursive self-approval. No result cache outlives one outer governance call (``scoped``).
+registry, so there is no recursive self-approval.
+
+Amortisation (post-#410 CI correction): every older cohort's per-path hook re-asks ``exact_blobs_ok`` once per moved pin, so one outer governance
+call re-ran this whole validation >1000 times (measured: 8,617 git spawns for one WF-03 exact check on the merged #410 tree). Two bounded memo
+layers fix that without weakening any negative: (1) the call-scope memo (``scoped``), as before, now shared by nested enters within ONE outer call;
+and (2) a process-lifetime verdict cache keyed by a FULL-STATE key (``_state_key``: HEAD + a digest of every tracked byte difference, staged or not,
+including mode changes and deletions, + the name and bytes of every untracked file + this module's governance identity constants) — the exact
+construction the PR #409 integration seal already ships (commit cddd5e0c). One flipped byte anywhere yields a new key and a fresh full evaluation;
+a cached verdict is therefore never reused for different bytes, every tamper negative still fails closed, and no cache is keyed only by repo path
+or HEAD.
 """
 from pathlib import Path
 from contextlib import contextmanager
@@ -55,6 +64,10 @@ SOURCE_PATHS = frozenset((
     'app/v2/react_workspace_router.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/GPT6_REVIEW_PACKET.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/ROOT_CAUSE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/SECURITY_EQUIVALENCE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/TIMING_LEDGER.md',
     'docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md',
     'docs/react_migration/wf06b_a_plus/P00.md',
     'tests/model_react_wf06b_acceptance.py',
@@ -145,7 +158,14 @@ _SCOPE = []
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes.
+
+    A nested ``scoped()`` enter (the composite registry and the older guards' outer calls enter the downstream scopes they delegate to) SHARES the
+    outermost memo instead of pushing a fresh one, so one outer operation computes each verdict at most once however deep the delegation; the memo
+    still never outlives the outermost exit and is never shared between separate outer calls."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
         yield
@@ -153,14 +173,69 @@ def scoped():
         _SCOPE.pop()
 
 
+_RESULTS = {}
+
+
+def _rev(root, spec):
+    try:
+        return subprocess.check_output(['git', 'rev-parse', spec], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _state_key(root, ref):
+    """A key that changes whenever ANY byte of the evaluated state changes, plus this module's governance identity constants.
+
+    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,
+    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new
+    key and the exact check runs again. The identity constants (``BASE``, ``BASE_TREE``, ``SCHEMA``, ``MANIFEST`` and the size of both literal path
+    sets) are read at call time so a patched-constant negative can never reuse an earlier verdict. A cached verdict is therefore never reused for
+    different bytes."""
+    identity = (BASE, BASE_TREE, SCHEMA, MANIFEST, len(OWNED_PATHS), len(SUPERSEDED))
+    if ref is not None:
+        sha = _rev(root, ref + '^{commit}')
+        return None if sha is None else ('ref', str(root), sha) + identity
+    try:
+        head = _rev(root, 'HEAD')
+        digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()
+        names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0')
+        untracked = hashlib.sha1()
+        for name in sorted(n for n in names if n):
+            untracked.update(name + b'\0')
+            try:
+                untracked.update((Path(root) / name.decode()).read_bytes())
+            except OSError:
+                untracked.update(b'<unreadable>')
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return ('wt', str(root), head, digest, untracked.hexdigest()) + identity
+
+
 def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
-    key = (str(repo if repo is not None else ROOT), ref)
-    memo = _SCOPE[-1]
-    if key not in memo:
-        memo[key] = _exact_blobs_ok(repo, ref)
-    return memo[key]
+    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
+        memo = _SCOPE[-1]
+        skey = (str(repo if repo is not None else ROOT), ref)
+        if skey not in memo:
+            memo[skey] = _cached_exact(repo, ref)
+        return memo[skey]
+    return _cached_exact(repo, ref)
+
+
+def _cached_exact(repo, ref):
+    """Amortised evaluation: identical to the PR #409 seal's ``_cached_exact``. The state key covers every mutable byte, so a cached True is only
+    ever returned for byte-identical states (e.g. a test that restores exactly what it mutated), and any real tamper re-validates from scratch."""
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        key = _state_key(root, ref)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    if key is None:
+        return False
+    if key not in _RESULTS:
+        if len(_RESULTS) > 64:
+            _RESULTS.clear()
+        _RESULTS[key] = _exact_blobs_ok(repo, ref)
+    return _RESULTS[key]
 
 
 def _exact_blobs_ok(repo=None, ref=None):

@@ -208,7 +208,13 @@ _SCOPE = []
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes.
+
+    A nested ``scoped()`` enter (the composite registry and the older guards' outer calls) SHARES the outermost memo instead of pushing a fresh
+    one, so one outer operation computes each verdict at most once however deep the delegation; the memo still never outlives the outermost exit."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
         try:

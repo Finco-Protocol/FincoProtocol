@@ -280,3 +280,92 @@ def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
             raw = (W.ROOT / path).read_bytes()
             assert D.matches(path, raw + b'\n') is False, (modname, path)
             assert not W.supersedes(path, W._blob(raw + b'\n')), (modname, path)
+
+
+# ── post-#410 CI correction: the amortised verdict cache must never mask a mutation ─────────────────────────────────────────────────────────
+# The per-path delegation hooks of the older cohorts re-ask this cohort's exact check once per moved pin, so the verdict is now amortised behind
+# a full-state key (the construction the PR #409 seal already ships). These negatives prove the two invariants that make that safe: a cached
+# verdict is only ever reused for byte-identical states, and the key carries this module's governance identity.
+
+def test_state_cache_never_reuses_a_verdict_across_different_bytes(wt):
+    """Same process, warm cache: mutate after a success, restore, then a DIFFERENT mutation. Every distinct byte state re-validates from scratch."""
+    assert W.exact_blobs_ok(wt)                      # cold: full evaluation, verdict cached under the exact state key
+    assert W.exact_blobs_ok(wt)                      # warm: byte-identical state, legitimately the same verdict
+    _flip(wt / 'tests/wf06b_scope.py')
+    assert not W.exact_blobs_ok(wt)                  # one flipped byte: new key, fresh evaluation, fails closed
+    _git(wt, 'checkout', '--', 'tests/wf06b_scope.py')
+    assert W.exact_blobs_ok(wt)                      # restored byte-exactly: the original state legitimately validates again
+    (wt / 'app/cost_line_ledger/ledger.py').write_text('x = 1\n')       # a different file, a different mutation
+    assert not W.exact_blobs_ok(wt)                  # still fails closed after two warm True verdicts
+    _git(wt, 'checkout', '--', 'app/cost_line_ledger/ledger.py')
+    assert W.exact_blobs_ok(wt)
+
+
+def test_state_cache_keys_the_staged_index_and_untracked_bytes(wt):
+    assert W.exact_blobs_ok(wt)
+    _flip(wt / 'tests/wf06b_scope.py')
+    _git(wt, 'add', 'tests/wf06b_scope.py')          # staged, not only in the working tree
+    assert not W.exact_blobs_ok(wt)                  # staged index bytes are part of the state key
+    _git(wt, 'reset', '-q')
+    _git(wt, 'checkout', '--', 'tests/wf06b_scope.py')
+    evidence = wt / 'evidence'                       # generated CI evidence does not exist until CI creates it
+    evidence.mkdir()
+    (evidence / 'probe.json').write_text('{}\n')     # untracked generated CI evidence stays admitted
+    assert W.exact_blobs_ok(wt)
+    (evidence / 'probe.json').write_text('{"runs": 2}\n')
+    assert W.exact_blobs_ok(wt)                      # evidence bytes change the key but never the verdict
+    (wt / 'app/sneaky.py').write_text('x = 1\n')
+    assert not W.exact_blobs_ok(wt)                  # an untracked source file is still refused after warm verdicts
+    (wt / 'app/sneaky.py').unlink()
+    (evidence / 'probe.json').unlink()
+    evidence.rmdir()
+    assert W.exact_blobs_ok(wt)
+
+
+def test_patched_identity_constants_never_reuse_a_warm_verdict(wt, monkeypatch):
+    """The state key carries this module's governance identity, so a forged constant cannot ride on a cached verdict."""
+    assert W.exact_blobs_ok(wt)                      # warm cache under the honest identity
+    monkeypatch.setattr(W, 'BASE_TREE', '0' * 40)
+    assert not W.exact_blobs_ok(wt)                  # new key: fresh evaluation with the forged constant fails closed
+    monkeypatch.undo()
+    assert W.exact_blobs_ok(wt)
+
+
+def test_cache_is_per_root_and_a_mutated_worktree_never_inherits_a_verdict(wt):
+    """Multi-repo / temp-root separation: each evaluated root has its own state key and its own verdict."""
+    assert W.exact_blobs_ok() and W.exact_blobs_ok(wt)       # both roots warm
+    _flip(wt / 'static/react/finco-react.js')
+    assert not W.exact_blobs_ok(wt)                  # the mutated worktree fails closed...
+    assert W.exact_blobs_ok()                        # ...while the real tree keeps its own, separate verdict
+    assert not W.exact_blobs_ok(wt)
+
+
+def test_the_call_scope_memo_still_drops_and_a_mutation_is_never_masked(wt):
+    """The documented one-outer-call memo semantics are unchanged by the amortisation: mid-scope the memo holds, after it the real bytes decide."""
+    assert W.exact_blobs_ok(wt)
+    with W.scoped():
+        with W.scoped():                             # a nested enter shares this one outer memo
+            assert W.exact_blobs_ok(wt)
+            _flip(wt / 'app/cost_line_ledger/ledger.py')
+            assert W.exact_blobs_ok(wt)              # memoised for this ONE call only (documented)
+        assert W.exact_blobs_ok(wt)                  # still the same outer memo
+    assert not W.exact_blobs_ok(wt)                  # the scope is gone: fresh evaluation sees the byte
+    assert not W._SCOPE
+    _git(wt, 'checkout', '--', 'app/cost_line_ledger/ledger.py')
+    assert W.exact_blobs_ok(wt)
+
+
+def test_a_shared_outer_scope_amortises_the_delegation_hooks_without_masking_restores(wt):
+    """The exact pattern the older cohorts now run: several supersedes-style asks inside ONE outer call, each answered from the same memo, with a
+    real mutation between outer calls still failing closed."""
+    data = W.manifest()
+    path = 'static/react/finco-react.js'
+    with W.scoped():
+        assert W.supersedes(path, data['source_blobs'][path])
+        assert W.supersedes(path, data['source_blobs'][path])       # second ask inside the same outer call
+        assert not W.supersedes(path, '0' * 40)
+    assert W.supersedes(path, data['source_blobs'][path])           # a new outer call re-evaluates
+    _flip(wt / path)
+    assert not W.supersedes(path, data['source_blobs'][path], repo=wt)               # the mutated tree admits nothing
+    _git(wt, 'checkout', '--', path)
+    assert W.supersedes(path, data['source_blobs'][path], repo=wt)
