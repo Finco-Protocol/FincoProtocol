@@ -45,10 +45,12 @@ def valid(repo=None, ref=None):
                     scopes.enter_context(m.scoped())
             if not all(m.exact_blobs_ok(root, ref) for m in mods):
                 return False
-        _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
-        changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
-        if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
-            return False
+            _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
+            changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
+            # Still inside the call scope: a cohort that delegates ``allowed_path`` to another cohort's exact check (PR-U1 via WF-06B) is
+            # evaluated once for this call instead of once per changed path (CI V3: F01 job 25 min cap). Same answers, no cache outlives the call.
+            if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
+                return False
         if ref is None:
             owned = set().union(*(set(m.manifest(root, ref).get('source_blobs', {})) for m in mods))
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard', '--',
