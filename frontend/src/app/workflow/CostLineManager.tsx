@@ -69,11 +69,13 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
   const seenAction = useRef(rowAction?.nonce ?? 0);
   useEffect(() => {
     if (!presetGroup || presetGroup.nonce === seenPreset.current) return;
+    if (readOnlyProject) { seenPreset.current = presetGroup.nonce; return; }
+    // The request is consumed only once the eligible groups are known: on a slow load the preset must not be lost (the form would have no group).
+    if (!mgmt.eligible_groups.some((g) => g.code === presetGroup.code)) return;
     seenPreset.current = presetGroup.nonce;
-    if (readOnlyProject || !mgmt.eligible_groups.some((g) => g.code === presetGroup.code)) return;
     setDraft((d) => ({ ...d, group: presetGroup.code }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetGroup?.nonce]);
+  }, [presetGroup?.nonce, mgmt.eligible_groups.length, readOnlyProject]);
 
   // The inline form opens under the chosen group: focus its description so typing can start at once.
   useEffect(() => {
