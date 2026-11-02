@@ -166,6 +166,13 @@ def scoped():
         _SCOPE.pop()
 
 
+def proof_identity():
+    """Leaf dependencies only; observing them cannot approve source or recurse."""
+    return (_read, _git, BASE, BASE_TREE, SCHEMA, OWNED_PATHS, SUPERSEDED,
+            FORBIDDEN_PREFIXES, FORBIDDEN_PATHS, ON09C_ADDED, ON09C_CHANGED,
+            manifest, _owned_ok, _on09c_paths, _exact_blobs_ok)
+
+
 def exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -173,20 +180,20 @@ def exact_blobs_ok(repo=None, ref=None):
         state = S.state_key(root, ref, _git)
         if state is None:
             return False
-        key = (str(root), ref, state, _read, _git)
+        key = (str(root), ref, state, proof_identity())
     except (ImportError, OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
         return False
     if not _SCOPE:
         result = _exact_blobs_ok(repo, ref)
         try:
-            return result and key == (str(root), ref, S.state_key(root, ref, _git), _read, _git)
+            return result and key == (str(root), ref, S.state_key(root, ref, _git), proof_identity())
         except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
             return False
     memo = _SCOPE[-1]
     if key not in memo:
         result = _exact_blobs_ok(repo, ref)
         try:
-            if key != (str(root), ref, S.state_key(root, ref, _git), _read, _git):
+            if key != (str(root), ref, S.state_key(root, ref, _git), proof_identity()):
                 return False
         except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
             return False

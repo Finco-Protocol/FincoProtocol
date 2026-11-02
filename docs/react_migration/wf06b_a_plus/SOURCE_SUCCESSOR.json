@@ -129,7 +129,7 @@
       "path": "docs/ci_v3/on09c/SOURCE_STATE.md"
     },
     {
-      "after_blob": "2f5a19bb7643cd0a97ce9aa71ade6c9d0d8b530f",
+      "after_blob": "75d32e5a4925e35f81c657a01f3360425435b5d0",
       "before_blob": "66ce1a84ee9256ef7d3bb410b803a9169dac5183",
       "mode": "100644",
       "path": "tests/fin_v2_integration_409_scope.py"
@@ -147,7 +147,7 @@
       "path": "tests/on09c_source_state.py"
     },
     {
-      "after_blob": "723ccef8a80c1a4ff2e3f60632ca8ad9f8b656f1",
+      "after_blob": "b1fbdec5fada4a5e39a85179b4f0a33f4aa323fd",
       "before_blob": null,
       "mode": "100644",
       "path": "tests/test_on09c_source_state.py"
@@ -165,7 +165,7 @@
       "path": "tests/wf03_lifecycle_scope.py"
     },
     {
-      "after_blob": "d5b207a537aee1a53db285937375027a0a377530",
+      "after_blob": "958d544e95f1647da6426943f48c66c77ddb563d",
       "before_blob": "2e72ba6c4617b49124537f815106a7cda3c42cf5",
       "mode": "100644",
       "path": "tests/wf06b_scope.py"
@@ -202,7 +202,7 @@
     "tests/fin_v2_3_scope.py": "c8009fc39c8a527444890b66689f9cfcd86764de",
     "tests/fin_v2_cohorts.py": "50e12f246127096309bb5bced6d2015fda24e781",
     "tests/fin_v2_d01_scope.py": "1ccd61699f5f48d99fba2071fd13f973af61b669",
-    "tests/fin_v2_integration_409_scope.py": "2f5a19bb7643cd0a97ce9aa71ade6c9d0d8b530f",
+    "tests/fin_v2_integration_409_scope.py": "75d32e5a4925e35f81c657a01f3360425435b5d0",
     "tests/fin_v2_r1_scope.py": "9d4b13ba29ac70c1ad00ec0c1173ce535dbfa5bd",
     "tests/fin_v2_rcux_scope.py": "3bc2754ff7889bb34477bd29c0a2f2d0cbbe97c7",
     "tests/fin_v2_wf06a_scope.py": "96f357defe482fd7679a46ea14dce8030be3209b",
@@ -210,7 +210,7 @@
     "tests/model_react_wf06b_acceptance.py": "d67151046fd9bead2c790e6c566173c0b31c83e2",
     "tests/on09c_source_state.py": "917d46d46b9fd49a6bbc7fbb9457d2465ad86209",
     "tests/test_fin_v2_integration_409_scope.py": "6ced50aff39dedcc97bf289730f69d3fd5f0cae9",
-    "tests/test_on09c_source_state.py": "723ccef8a80c1a4ff2e3f60632ca8ad9f8b656f1",
+    "tests/test_on09c_source_state.py": "b1fbdec5fada4a5e39a85179b4f0a33f4aa323fd",
     "tests/test_rcm_governance.py": "4688b4c849ba6cb0c1c9235d077184bb9ee53cd3",
     "tests/test_rcux_governance.py": "baf5e639627c51f609693cc27c22f39a985c2235",
     "tests/test_wf06b_capacity.py": "2fa98efd6aa925e5634a05f46afb58ca558c419a",
@@ -224,7 +224,7 @@
     "tests/wf03_lifecycle_scope.py": "819110fda512d9cc9e95f38ce7593e051e8e6014",
     "tests/wf04_scope.py": "9e7a9ef1e3fb91885ebc47fe7b9afa4e78acbb90",
     "tests/wf06b_browser_role.py": "1018c11d47fae1a26fcc291c39ef6ab0f4d140ed",
-    "tests/wf06b_scope.py": "d5b207a537aee1a53db285937375027a0a377530",
+    "tests/wf06b_scope.py": "958d544e95f1647da6426943f48c66c77ddb563d",
     "tests/wsv2_core_scope.py": "8a72b3293f810d304ded42a2ac1428b7c23b5038"
   },
   "validation": "See tests/test_wf06b_scope.py (tamper negatives) and the exact-head CI of PR #410; this manifest is a seal, not a PASS claim."

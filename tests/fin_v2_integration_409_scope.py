@@ -136,7 +136,10 @@ def _state_key(root, ref):
     """Fresh byte/index/mode identity, also across successive calls inside scoped()."""
     from tests import on09c_source_state as source_state
     state = source_state.state_key(root, ref, _git)
-    return None if state is None else (_git, _read, state)
+    if state is None:
+        return None
+    from tests import wf06b_scope as W
+    return (_git, _read, W.proof_identity(), W.exact_blobs_ok, state)
 
 
 

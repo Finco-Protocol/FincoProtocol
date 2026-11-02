@@ -95,6 +95,8 @@ def test_full_real_source_state_matrix(wt):
     ('WF06A', W6.exact_blobs_ok, W6.scoped),
     ('WF03', W3.valid, W3.scoped),
     ('WF06B', W.exact_blobs_ok, W.scoped),
+    ('WSV2', WS.exact_blobs_ok, nullcontext),
+    ('composite', C.valid, nullcontext),
 ])
 def test_mutations_between_calls_inside_the_same_outer_scope(wt, label, gate, scope):
     reset(wt)
@@ -353,3 +355,34 @@ def test_canonical_closure_covers_all_accepted_registered_cohorts(wt):
         assert set(data['source_blobs']) | {path} <= modes.keys()
     assert set(S.ADDED_MODES) == W.ON09C_ADDED
     assert not any(p.startswith(W.FORBIDDEN_PREFIXES) for p in W.ON09C_CHANGED)
+
+
+@pytest.mark.parametrize('dependency', ['reader', 'base_tree'])
+def test_nested_leaf_proof_changes_invalidate_warm_outer_approvals(wt, monkeypatch, dependency):
+    reset(wt)
+    try:
+        with ExitStack() as scopes:
+            for cohort in C.cohorts():
+                if callable(getattr(cohort, 'scoped', None)):
+                    scopes.enter_context(cohort.scoped())
+            for label, gate in GATES:
+                assert gate(wt), label
+            if dependency == 'reader':
+                reader = W._read
+                def forged(root, path, ref):
+                    raw = reader(root, path, ref)
+                    if path == W.MANIFEST and ref is None:
+                        data = json.loads(raw)
+                        data['base_tree'] = '0'*40
+                        return json.dumps(data).encode()
+                    return raw
+                monkeypatch.setattr(W, '_read', forged)
+            else:
+                monkeypatch.setattr(W, 'BASE_TREE', '0'*40)
+            for label, gate in GATES:
+                assert not gate(wt), (dependency, label)
+            monkeypatch.undo()
+            for label, gate in GATES:
+                assert gate(wt), label
+    finally:
+        reset(wt)
