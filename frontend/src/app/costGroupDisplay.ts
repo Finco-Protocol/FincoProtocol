@@ -58,13 +58,3 @@ export function groupDisplayName(code: string, serverLabel?: string | null): str
 export function withoutCode(label: string): string {
   return label.replace(LEADING_CODE, "").trim() || label;
 }
-
-/** OPEX group code -> its scalar base field (`opex.lines.<suffix>`), for the six groups whose base amount is an editable canonical field. */
-export const OPEX_BASE_FIELD_BY_GROUP: Readonly<Record<string, string>> = {
-  "B.04": "opex.lines.cleaning_materials",
-  "B.05": "opex.lines.security",
-  "B.08": "opex.lines.power_expenses",
-  "B.10": "opex.lines.audit_accounting_legal",
-  "B.11": "opex.lines.bank_fees",
-  "B.12": "opex.lines.environmental_social",
-};

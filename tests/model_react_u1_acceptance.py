@@ -121,7 +121,10 @@ def check_A02_totals_agree_with_the_server_and_opex_includes_the_bases(browser, 
 
 
 def check_A14_opex_base_plus_line_is_one_group_one_save_and_reconciles(browser, base, kind):
-    """A14 / D2: base 20 + added line 10 in one group, saved by ONE Save changes; the server projection and the Run agree; deactivate restores."""
+    """A14 / D2: a group base amount and an added line sit in ONE group and save through ONE Save changes; the Run folds the base exactly once
+    (linear and additive); the saved totals do not claim an all-in OPEX the server projection cannot back (gap G-10)."""
+    from app.persistence.run_history_repository import get_latest_history_entry
+
     context, page, record, errors = vertical_session(browser, base, f"u1-a14-{kind}", kind)
     try:
         open_section(page, base, record.project_code, "inputs")
@@ -129,10 +132,21 @@ def check_A14_opex_base_plus_line_is_one_group_one_save_and_reconciles(browser, 
         _goto(page, base, record.project_code, "inputs/opex")
         _bench(page, "opex")
         group = "B.05"
-        base_input = page.locator("[data-base-input='opex.lines.security']")
-        before = next(r for r in _opex_projection(context, base, record.project_code)["rows"] if r["code"] == group)["values"][0]
-        base_input.focus()
-        base_input.fill("20")
+
+        def total_opex():
+            run_canonical(context, base, record.project_code)
+            return get_latest_history_entry(record.user_id, record.project_id).to_dict()["runtime_summary"]["total_opex_keur"]
+
+        def save_base(text):
+            page.locator("[data-base-input='opex.lines.security']").fill(text)
+            page.locator("[data-bar-save-all]").click()                                              # the ONE save (waits while the identity is re-read)
+            page.wait_for_function("() => document.querySelector('[data-bar-save-all]')?.disabled", timeout=30000)
+            page.wait_for_function("(v) => (document.querySelector(\"[data-base-input='opex.lines.security']\")?.dataset.exact || '') === v", arg=text, timeout=30000)
+            saved = next(b for b in _costlines(context, base, record.project_code, "opex")["projection"]["bases"] if b["group"] == group)
+            assert saved["value"] == text and saved["field_id"] == "opex.lines.security"
+
+        # base staged first, then a line added in the same group; both are still unsaved/saved by the one Save changes
+        page.locator("[data-base-input='opex.lines.security']").fill("20")
         assert page.locator("[data-bar-save-all]").is_enabled() and page.locator("[data-unsaved-indicator]").count() == 1
         grid = page.locator("[data-cost-grid='opex']")
         grid.locator(f"[data-cost-group-add='{group}']").click()
@@ -145,19 +159,33 @@ def check_A14_opex_base_plus_line_is_one_group_one_save_and_reconciles(browser, 
         form.locator("[data-cost-add='opex']").click()
         page.wait_for_selector("[data-cost-line-commands='opex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
         line = next(l for l in _costlines(context, base, record.project_code, "opex")["lines"] if l["label"] == "U1 synthetic security line")
-        assert str(line["amount_keur"]) in ("10", "10.0") and float(line["inflation_pct"]) == 2.5     # the user's exact value is saved
+        assert float(line["amount_keur"]) == 10.0 and float(line["inflation_pct"]) == 2.5          # the user's exact values are saved
         runs_before = context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"]
-        page.locator("[data-bar-save-all]").click()                                                  # the ONE save: base cell (+ any staged lines)
+        page.locator("[data-bar-save-all]").click()
         page.wait_for_function("() => document.querySelector('[data-bar-save-all]')?.disabled", timeout=30000)
-        after = next(r for r in _opex_projection(context, base, record.project_code)["rows"] if r["code"] == group)["values"][0]
-        assert abs(after - 30.0) < 1e-6, (before, after)                                            # Y1 = base 20 + line 10 (inflation starts in year 2)
-        row_texts = page.locator(f"tr[data-group-row='{group}'] ~ tr").all_inner_texts()[:2]
-        assert "Group base amount" in row_texts[0] and "U1 synthetic security line" in " ".join(row_texts), row_texts
-        assert context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"] == runs_before     # no Run
-        # the Run folds it exactly once: the committed Run's OPEX security Y1 equals the projection
-        run_canonical(context, base, record.project_code)
-        ident = context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"]
-        assert len(ident) == len(runs_before) + 1
+        page.wait_for_function("() => (document.querySelector(\"[data-base-input='opex.lines.security']\")?.dataset.exact || '') === '20'", timeout=30000)
+        assert context.request.get(f"{base}/v2/model-react/runs?project={record.project_code}").json()["runs"] == runs_before        # saving never runs the model
+        page.wait_for_function("() => document.querySelector(\"tr[data-base-row='opex.lines.security'] [data-amt-shown]\")?.innerText.trim() === '20'", timeout=30000)
+        order = page.evaluate("""(g) => { const out = []; let tr = document.querySelector(`tr[data-group-row='${g}']`).nextElementSibling;
+            while (tr && !tr.dataset.groupRow) { out.push(tr.dataset.baseRow ? 'base' : (tr.querySelector('input[aria-label^="Label for "]')?.getAttribute('aria-label') || tr.className)); tr = tr.nextElementSibling; } return out; }""", group)
+        assert order[0] == "base" and "Label for U1 synthetic security line" in order, order                 # one group: the base first, then the line
+        # the server projection is the line items only: it says so, and so does the card (no all-in claim)
+        proj = next(r for r in _opex_projection(context, base, record.project_code)["rows"] if r["code"] == group)["values"][0]
+        assert abs(proj - 10.0) < 1e-6, proj
+        _goto(page, base, record.project_code, "inputs")
+        settle_inputs(page); _wait_cards(page)
+        assert "not in the figure above" in page.locator("[data-ci-opex-bases]").inner_text() and "20" in page.locator("[data-ci-opex-bases]").inner_text()
+        _goto(page, base, record.project_code, "inputs/opex/years")
+        page.wait_for_selector("[data-opex-projection='ready']", timeout=60000)
+        assert "not part of this projection" in page.locator("[data-opex-years-scope]").inner_text()
+        # the Run folds the saved base exactly once: total OPEX is linear in the base (0 -> 20 -> 40 adds the same amount twice)
+        _goto(page, base, record.project_code, "inputs/opex"); _bench(page, "opex")
+        at_20 = total_opex()
+        save_base("40")
+        at_40 = total_opex()
+        save_base("0")
+        at_0 = total_opex()
+        assert at_20 > at_0 and abs((at_20 - at_0) - (at_40 - at_20)) < 1e-6 * max(1.0, abs(at_40)), (at_0, at_20, at_40)
         assert not errors, errors
     finally:
         context.close()
@@ -176,7 +204,7 @@ def check_decimals_default_to_zero_everywhere_and_exact_text_stays(browser, base
             _goto(page, base, record.project_code, hash_)
             _bench(page, sheet)
             shown = page.locator(f"[data-cost-grid='{sheet}'] [data-amt-shown]").all_inner_texts()
-            assert shown and all(re.fullmatch(r"[\d,]+", v.strip()) for v in shown), [v for v in shown if not re.fullmatch(r"[\d,]+", v.strip())][:5]
+            assert shown and all(re.fullmatch(r"[\d,]+|—", v.strip()) for v in shown), [v for v in shown if not re.fullmatch(r"[\d,]+|—", v.strip())][:5]     # "—" = no amount saved (never 0)
             exact = page.locator(f"[data-cost-grid='{sheet}'] input[data-c='1']").evaluate_all("els => els.map(e => e.value)")
             inexact = [e for e in exact if "." in e.strip()]
             if inexact:                                                                              # the cell still holds the exact decimals behind the 0-decimal display
@@ -185,17 +213,17 @@ def check_decimals_default_to_zero_everywhere_and_exact_text_stays(browser, base
                 cell.focus()
                 assert cell.input_value() == inexact[0]
             page.locator("select[aria-label='Report precision']").select_option("2")
-            two = page.locator(f"[data-cost-grid='{sheet}'] [data-amt-shown]").first.inner_text().strip()
+            two = page.locator(f"[data-cost-grid='{sheet}'] [data-amt-shown]").filter(has_text=re.compile(r"\d")).first.inner_text().strip()
             assert re.fullmatch(r"[\d,]+\.\d{2}", two), two
             page.locator("select[aria-label='Report precision']").select_option("0")
         _goto(page, base, record.project_code, "inputs/capex/monthly")
         page.wait_for_selector("[data-capex-studio='ready']", timeout=60000)
         amount_cells = page.locator("[data-capex-items] tbody tr td:nth-child(2)").all_inner_texts()
-        assert amount_cells and all(re.fullmatch(r"[\d,]+|—", t.strip()) for t in amount_cells), amount_cells[:5]
+        assert amount_cells and all(re.fullmatch(r"[\d,]+|—", t.strip()) for t in amount_cells), [repr(t) for t in amount_cells if not re.fullmatch(r"[\d,]+|—", t.strip())][:5]
         _goto(page, base, record.project_code, "inputs/opex/years")
         page.wait_for_selector("[data-opex-projection='ready']", timeout=60000)
         year_cells = page.locator("[data-opex-projection-table] tbody td.fm-num").all_inner_texts()
-        assert year_cells and all(re.fullmatch(r"[\d,]+|—", t.strip()) for t in year_cells), year_cells[:5]
+        assert year_cells and all(re.fullmatch(r"[\d,]+|—", t.strip()) for t in year_cells), [t for t in year_cells if not re.fullmatch(r"[\d,]+|—", t.strip())][:5]
         assert not errors, errors
     finally:
         context.close()

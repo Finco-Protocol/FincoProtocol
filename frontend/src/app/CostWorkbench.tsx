@@ -9,15 +9,9 @@ import { CostLinesGridView } from "./editing/CostLinesGridView";
 import { ImportWorkspace } from "./importer/ImportWorkspace";
 import { OpexProjection } from "./projection/OpexProjection";
 import { COST_VIEWS, type CostSheetId, type CostView, type WorkspaceDestination } from "./workspaceNavigation";
-import type { InputsPayload } from "./types";
 
-function baseRowsOf(inputs: InputsPayload | null): InputsPayload["grid"]["sections"][number]["categories"][number]["rows"] {
-  if (!inputs) return [];
-  return inputs.grid.sections.flatMap((s) => s.categories.flatMap((c) => c.rows)).filter((r) => (r.field_id || r.code).startsWith("opex.lines."));
-}
-
-export function CostWorkbench({ project, sheet, view, inputs, protectedReference, reloadKey, query, scenarioName, onMutated, onNavigate }: {
-  project: string; sheet: CostSheetId; view: CostView; inputs: InputsPayload | null; protectedReference: boolean; reloadKey: number;
+export function CostWorkbench({ project, sheet, view, protectedReference, reloadKey, query, scenarioName, onMutated, onNavigate }: {
+  project: string; sheet: CostSheetId; view: CostView; protectedReference: boolean; reloadKey: number;
   query: string; scenarioName: string; onMutated: () => void; onNavigate: (destination: WorkspaceDestination) => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
@@ -43,7 +37,7 @@ export function CostWorkbench({ project, sheet, view, inputs, protectedReference
         </div>)}
       {view === "lines" && (
         <CostLinesGridView key={sheet} project={project} sheet={sheet} reloadKey={reloadKey} onMutated={onMutated} query={query} scenarioName={scenarioName}
-          baseRows={sheet === "opex" ? baseRowsOf(inputs) : []} onSheet={(next) => onNavigate(`inputs/${next}` as WorkspaceDestination)} />
+          onSheet={(next) => onNavigate(`inputs/${next}` as WorkspaceDestination)} />
       )}
       {view === "monthly" && (
         <div data-capex-monthly="true">

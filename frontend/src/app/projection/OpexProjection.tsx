@@ -50,6 +50,7 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
     <section className="rx-card rcm-analysis" data-opex-projection="ready" aria-label="OPEX projection">
       <h3>OPEX projection (Y1–Y{last})</h3>
       <p className="rx-note">Operating cost of the saved project by group and year, in {unit}. {data.basis}</p>
+      <p className="rx-note" data-opex-years-scope="true">These are the project's line items by year. The six group base amounts (first row of their group on the Lines view) are added by the model when it runs and are not part of this projection.</p>
       <dl className="rcm-facts">
         <div><dt>Year 1 OPEX incl. contingency</dt><dd data-opex-y1="true">{cell(data.kpis.year1_total_keur)} {unit}</dd></div>
         <div><dt>Year {last} OPEX</dt><dd>{cell(data.kpis.final_year_total_keur)} {unit}</dd></div>

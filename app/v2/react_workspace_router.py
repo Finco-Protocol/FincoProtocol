@@ -858,8 +858,15 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
                 from app.workbook.service import WorkbookService
 
                 ws = get_workspace_state(owner, record.project_id)
-                raw_capacity = WorkbookService.build_draft_input_set_from_workspace(ws).get(CAPACITY_FIELD_ID) if ws is not None else None
+                pis = WorkbookService.build_draft_input_set_from_workspace(ws) if ws is not None else None
+                raw_capacity = pis.get(CAPACITY_FIELD_ID) if pis is not None else None
                 attach_per_mw(projection, sheet, capacity_basis(technology, raw_capacity))
+                if sheet == "opex" and pis is not None:
+                    # The six scalar group bases (same field ids and writer as the canonical cells), with whether each can change the Run.
+                    from app.cost_line_ledger.opex_bases import opex_bases
+                    from app.v2.opex_authority import opex_group_authority_notes
+                    projection["bases"] = opex_bases(pis.get, opex_group_authority_notes(record.project_id, getattr(record, "template_source", "") or ""),
+                                                     protected=_is_protected(record))
                 assert_no_source_provenance(projection)
             except Exception:  # noqa: BLE001 - fail closed: no per-MW figure rather than a guessed one
                 from app.cost_line_ledger.capacity import capacity_basis as _basis

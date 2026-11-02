@@ -73,7 +73,7 @@ function Ws2Drawer({ context }: { context: WorkspaceExtensionContext }) {
 
   const save = useCallback(async () => {
     const availability = saveAllAvailability(capability);
-    if (availability.state !== "available" || inFlight.current || !changes.identity) return;
+    if (availability.state !== "available" || inFlight.current || !changes.identity || context.refreshing) return;
     const built = buildSaveAllRequest(changes.state, changes.identity, availability.csrfToken, "pending");
     if (!built.ok) { setMessage({ tone: "error", text: built.reason }); return; }
     const request = session.current.next(built.request, () => `sa-${crypto.randomUUID()}`);
@@ -101,7 +101,7 @@ function Ws2Drawer({ context }: { context: WorkspaceExtensionContext }) {
 
   return (
     <>
-      <ChangesDrawer capability={capability} onSaveAll={() => void save()} saving={saving} />
+      <ChangesDrawer capability={capability} onSaveAll={() => void save()} saving={saving} waiting={context.refreshing === true} />
       {message && <p className="rx-note" role={message.tone === "ok" ? "status" : "alert"} data-save-all-message={message.tone}>{message.text}</p>}
     </>
   );

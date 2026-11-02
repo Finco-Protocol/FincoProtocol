@@ -44,9 +44,11 @@ export interface ChangesDrawerProps {
   /** Called with the activation of an AVAILABLE Save All.  The shell owns the request and its reconciliation. */
   onSaveAll?: () => void;
   saving?: boolean;
+  /** The saved version is being re-read after a change: Save All would carry the older identity, so it waits (the staged edits are kept). */
+  waiting?: boolean;
 }
 
-export function ChangesDrawer({ capability, onSaveAll, saving = false }: ChangesDrawerProps) {
+export function ChangesDrawer({ capability, onSaveAll, saving = false, waiting = false }: ChangesDrawerProps) {
   const changes = useChanges();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -65,8 +67,9 @@ export function ChangesDrawer({ capability, onSaveAll, saving = false }: Changes
     return () => window.removeEventListener("keydown", onKey);
   }, [open, confirm]);
 
-  const saveDisabled = availability.state === "blocked" || changes.blocking !== null || saving || !onSaveAll;
-  const saveReason = availability.state === "blocked" ? availability.reason : changes.blocking;
+  const saveDisabled = availability.state === "blocked" || changes.blocking !== null || saving || waiting || !onSaveAll;
+  const saveReason = waiting ? "Updating to the latest saved version… Save changes is available again in a moment; your edits are kept."
+    : availability.state === "blocked" ? availability.reason : changes.blocking;
   // Mirror the one Save All action into the top bar (same handler, same availability); removed again when this panel unmounts.
   useEffect(() => {
     publishSaveAll({ total: changes.total, disabled: saveDisabled, reason: saveReason ?? "", saving, run: onSaveAll ?? null });

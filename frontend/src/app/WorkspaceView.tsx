@@ -158,13 +158,20 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   const [importOpen, setImportOpen] = useState(false);
   const [timingOpen, setTimingOpen] = useState(false);
 
+  // Reads of the workspace identity in flight: while any is running the identity the editors hold is the older one.
+  const [identityReads, setIdentityReads] = useState(0);
   const loadWorkspace = useCallback(async () => {
     setError(null);
     const epoch = readEpoch.current;
-    const result = await fetchWorkspace(project);
-    if (epoch !== readEpoch.current) return;
-    if ("ok" in result && result.ok === true) setWorkspace(result);
-    else setError(result as { code: string; message?: string });
+    setIdentityReads((n) => n + 1);
+    try {
+      const result = await fetchWorkspace(project);
+      if (epoch !== readEpoch.current) return;
+      if ("ok" in result && result.ok === true) setWorkspace(result);
+      else setError(result as { code: string; message?: string });
+    } finally {
+      setIdentityReads((n) => Math.max(0, n - 1));
+    }
   }, [project]);
 
   const loadStatements = useCallback(async () => {
@@ -477,7 +484,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     activeScenario: workspace.workbook.scenario_id, activeScenarioName: workspace.workbook.scenario_name,
     lastRunSnapshotId: workspace.identity?.snapshot_id ?? null,
     pendingChanges: extensions?.pendingChanges ?? [], validation: extensions?.validation ?? [],
-    draftState: extensions?.draftState ?? "clean", onCommitted: afterMutation, onRefetch: loadWorkspace,
+    draftState: extensions?.draftState ?? "clean", onCommitted: afterMutation, onRefetch: loadWorkspace, refreshing: identityReads > 0,
   };
 
   return (
@@ -546,7 +553,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                 <InputsJumpNav onJump={jumpWithinInputs} />
                 {bench && (
                   <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
-                    <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} inputs={displayedInputs} protectedReference={protectedReference}
+                    <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} protectedReference={protectedReference}
                       reloadKey={dataVersion} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"} onMutated={afterMutation}
                       onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" })} />
                   </div>)}

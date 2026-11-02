@@ -2,8 +2,10 @@
 // Every figure is server-owned and labelled by what it is:
 //   * CAPEX: the sum of ACTIVE saved lines of the groups that take lines (`projection.saved_total_keur`) — calculated groups (contingency,
 //     financing costs, reserves) are NOT in it and the card says so; it is not an all-in CAPEX and not a Run result;
-//   * OPEX: the saved project's Year-1 operating cost exactly as the server projects it (group base amounts + added lines, per-line
-//     escalation), with and without the applied contingency — never a lines-only total.
+//   * OPEX: the saved project's Year-1 LINE ITEMS exactly as the server projects them (per-line escalation), with and without the applied
+//     contingency. The six group base amounts are canonical cells that the Run adds on top; the existing projection does not contain them
+//     (measured: saving a base changes the Run's OPEX and not this projection), so the card says so and lists them separately instead of
+//     calling anything an all-in total. A server-owned all-in figure is a U2b dependency.
 // Nothing here sums for authority and nothing here is a committed-Run figure; the Run state is only shown next to them.
 import { useEffect, useState } from "react";
 import "../styles/compact-inputs.css";
@@ -12,7 +14,7 @@ import { divideDecimalText, showKeur } from "./costAmounts";
 import { groupDisplayName } from "./costGroupDisplay";
 import { useCostUnit } from "./CostUnit";
 import { useReportPrecision } from "./ReportPrecision";
-import type { CostLinesPayload, WorkspacePayload } from "./types";
+import type { CostLineGroupBase, CostLinesPayload, WorkspacePayload } from "./types";
 
 interface OpexProjection {
   ok: true;
@@ -22,6 +24,20 @@ interface OpexProjection {
 }
 
 type Card<T> = { state: "loading" | "ready" | "unavailable"; data: T | null };
+
+/** The six saved group base amounts (read-only copy of the canonical cells; the OPEX workbench edits them). */
+function useOpexBases(project: string, reloadKey: number): CostLineGroupBase[] | null {
+  const [bases, setBases] = useState<CostLineGroupBase[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const r = await fetchCostLines(project, "opex") as unknown as CostLinesPayload | null;
+      if (live) setBases(r && r.ok === true ? (r.projection?.bases ?? null) : null);
+    })();
+    return () => { live = false; };
+  }, [project, reloadKey]);
+  return bases;
+}
 
 function useCapexCard(project: string, reloadKey: number): Card<NonNullable<CostLinesPayload["projection"]>> {
   const [value, setValue] = useState<Card<NonNullable<CostLinesPayload["projection"]>>>({ state: "loading", data: null });
@@ -59,6 +75,7 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
 }) {
   const capex = useCapexCard(project, reloadKey);
   const opex = useOpexCard(project, reloadKey);
+  const bases = useOpexBases(project, reloadKey);
   const [unit] = useCostUnit();
   const { precision } = useReportPrecision();
   const shown = (n: number | string | null | undefined) => showKeur(n === undefined ? null : n, unit, precision);
@@ -93,15 +110,21 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
       <article className="ci-card" data-ci-card="opex" aria-labelledby="ci-card-opex">
         <h3 id="ci-card-opex">OPEX</h3>
         <p className="ci-card-total" data-ci-card-total="opex">
-          {opex.state === "loading" ? "…" : ox && y1Excl !== null ? <>{shown(y1Excl)} <small>{unit} / year 1</small></> : "Unavailable"}
+          {opex.state === "loading" ? "…" : ox && y1Excl !== null ? <>{shown(y1Excl)} <small>{unit} / year 1 · line items</small></> : "Unavailable"}
         </p>
         <p className="ci-card-sub">
-          Year 1, before contingency{y1Incl !== null && <> · {shown(y1Incl)} {unit} with the applied contingency{ox?.kpis.per_mw_year1_keur != null && <> ({shown(ox.kpis.per_mw_year1_keur)} {unit}/MW/yr)</>}</>}
+          Line items, year 1, before contingency{y1Incl !== null && <> · {shown(y1Incl)} {unit} with the applied contingency{ox?.kpis.per_mw_year1_keur != null && <> ({shown(ox.kpis.per_mw_year1_keur)} {unit}/MW/yr)</>}</>}
         </p>
         <ul className="ci-card-groups" aria-label="Largest OPEX groups">
           {opexGroups.map((r) => <li key={r.code}><span>{groupDisplayName(r.code, r.name)}</span><span className="ci-num">{shown(r.values[0])}</span></li>)}
         </ul>
-        <p className="ci-card-note">The saved project's yearly operating cost: each group's base amount plus its added lines, with each line's own inflation. Saved inputs, not a Run result. {runNote}.</p>
+        <p className="ci-card-sub" data-ci-opex-bases={bases === null ? "unknown" : "known"}>
+          {bases === null ? "Group base amounts: not available."
+            : bases.some((b) => b.value !== "" && Number(b.value) !== 0)
+              ? <>Group base amounts saved (not in the figure above): {bases.filter((b) => b.value !== "" && Number(b.value) !== 0).map((b) => `${groupDisplayName(b.group, "")} ${shown(b.value)}`).join(" · ")} {unit}/yr</>
+              : "No group base amounts saved."}
+        </p>
+        <p className="ci-card-note">Year 1 of the saved line items with each line's own inflation. The six group base amounts are edited in the OPEX workbench and are added by the model when it runs; an all-in OPEX figure that includes them is not available yet. Saved inputs, not a Run result. {runNote}.</p>
         <button type="button" className="fm-btn fm-btn-primary" data-open-workbench="opex" onClick={() => onOpen("opex")}>View / edit OPEX →</button>
       </article>
     </section>

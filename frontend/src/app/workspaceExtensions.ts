@@ -30,6 +30,8 @@ export interface WorkspaceExtensionContext extends WorkspaceEditIdentity {
   draftState: "clean" | "dirty" | "conflict" | "unknown";
   onCommitted: () => void;
   onRefetch: () => Promise<void>;
+  /** True from the moment a committed change is announced until the workspace identity for it has been read again: a request built now would carry the older token. */
+  refreshing?: boolean;
 }
 
 export interface WorkspaceExtensions {

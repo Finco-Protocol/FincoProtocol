@@ -15,12 +15,11 @@ import { fetchCostLines, saveCostLinesBatch } from "../api";
 import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLineEditWire } from "../costLinePayload";
 import { friendlyMessage } from "../productLanguage";
 import { divideDecimalText, perMwLabel, showKeur } from "../costAmounts";
-import { OPEX_BASE_FIELD_BY_GROUP } from "../costGroupDisplay";
 import { sectionOfField } from "./fieldSection";
 import { useSaveAllBridge } from "../saveAllBridge";
 import { CostUnitSelect, useCostUnit } from "../CostUnit";
 import { useReportPrecision } from "../ReportPrecision";
-import type { CostLinePayload, CostLinesPayload, GridRowPayload } from "../types";
+import type { CostLineGroupBase, CostLinePayload, CostLinesPayload } from "../types";
 import { CostLineManager, costGroupLabel } from "../workflow/CostLineManager";
 import { useLeaveGuard, useReportDirty, useReportPending, useSingleFlight } from "../workflow/workflowShared";
 import { EnsureChangesProvider, useChanges } from "./ChangesProvider";
@@ -66,8 +65,6 @@ export interface CostLinesGridProps {
   project: string; sheet: Sheet; reloadKey?: number; onMutated?: () => void; query?: string; scenarioName?: string;
   /** Switching CAPEX / OPEX is a route change owned by the workbench (it asks before leaving unsaved cost edits). */
   onSheet?: (next: Sheet) => void;
-  /** OPEX only: the saved scalar base fields (same field ids and writer as the canonical cells) shown as the first row of their group. */
-  baseRows?: ReadonlyArray<GridRowPayload>;
   /** Where the inline add-line form of the clicked group is drawn (a table cell this grid owns). */
 }
 export function CostLinesGridView(props: CostLinesGridProps) {
@@ -94,7 +91,7 @@ const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
 ];
 
-function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet, baseRows = [] }: CostLinesGridProps) {
+function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet }: CostLinesGridProps) {
   const [data, setData] = useState<CostLinesPayload | null>(null);
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
@@ -164,7 +161,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   useReportDirty(`cost-lines-${sheet}`, stagedLines);
   useReportPending(`cost-lines-${sheet}`, inFlight);
   // OPEX base amounts are canonical cells (same field ids and writer as the Assumptions grid) staged in the same store.
-  const baseIds = new Set(sheet === "opex" ? baseRows.map((r) => r.field_id || r.code) : []);
+  const bases: ReadonlyArray<CostLineGroupBase> = sheet === "opex" ? (data?.projection?.bases ?? []) : [];
+  const baseIds = new Set(bases.map((b) => b.field_id));
   const baseStaged = changes.edits.filter((e) => baseIds.has(e.key) && e.section === sectionOfField(e.key));
   useReportDirty("opex-base", baseStaged.length);
 
@@ -332,16 +330,13 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     setAddGroup(cat);
     setGroupPreset({ code: cat, nonce: Date.now() });
   };
-  const baseRowFor = (cat: string) => {
-    const id = sheet === "opex" ? OPEX_BASE_FIELD_BY_GROUP[cat] : undefined;
-    return id ? baseRows.find((r) => (r.field_id || r.code) === id) : undefined;
-  };
-  const stageBase = (row: GridRowPayload, name: string, typed: string) => {
-    const id = row.field_id || row.code;
+  const baseRowFor = (cat: string) => bases.find((b) => b.group === cat);
+  const stageBase = (row: CostLineGroupBase, name: string, typed: string) => {
+    const id = row.field_id;
     const verdict = amountValidator(typed);
-    const baseline = row.value ?? "";
+    const baseline = row.value;
     const equal = sameDecimalText(typed.trim(), baseline);
-    changes.stage({ section: sectionOfField(id), key: id, label: `${name} — base amount`, unit: row.unit, baseline, value: equal ? baseline : typed,
+    changes.stage({ section: sectionOfField(id), key: id, label: `${name} — base amount`, unit: "kEUR/yr", baseline, value: equal ? baseline : typed,
                     error: verdict.ok || equal ? undefined : verdict.message }, { coalesce: true });
   };
   const editedAmount = (line: CostLinePayload) => {
@@ -427,21 +422,21 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   };
 
   const HEAD: Record<ColId, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "" };
-  const baseTr = (cat: string, row: GridRowPayload) => {
-    const id = row.field_id || row.code;
+  const baseTr = (cat: string, row: CostLineGroupBase) => {
+    const id = row.field_id;
     const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
     const edit = changes.get(sectionOfField(id), id);
-    const rawBase = edit?.value ?? (row.value ?? "");
+    const rawBase = edit?.value ?? row.value;
     const value = rawBase;
-    const live = edit ? (edit.error ? null : edit.value) : (row.value ?? "");
+    const live = edit ? (edit.error ? null : edit.value) : row.value;
     const perMwText = capacity?.available && live !== null ? divideDecimalText(live, capacity.mw) : null;
-    const editable = Boolean(row.editable) && !readOnlyProject && !locked;
+    const editable = row.editable && !readOnlyProject && !locked;
     const errorId = `${headingId}-base-${id}`;
     return (
       <tr key={`base-${id}`} data-base-row={id} data-line-kind="base">
         {cols.map((col) => col === "line" ? (
           <td key={col} className="ci-col-line"><div className="ws2-label-wrap"><span className="ws2-base-label">Group base amount</span>
-            <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">saved with Save changes</small></div></td>
+            <small className="ci-preview" title="The saved yearly base amount of this group. It is saved with the other cells (Save changes) and adds to the lines below.">{row.editable || !row.note ? "saved with Save changes" : `not used by the Run — ${row.note.replace(/ — edit on the OPEX sheet$/, "")}`}</small></div></td>
         ) : col === "amount" ? (
           <td key={col} className="ci-col-amount">
             <span className="ci-amt"><input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
