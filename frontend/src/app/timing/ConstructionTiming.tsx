@@ -55,18 +55,23 @@ export function ConstructionTiming({ project, protectedReference, reloadKey, onS
   }, [project, reloadKey]);
 
   const months = mode === "duration" && duration.trim() !== "" && /^\d+(\.\d+)?$/.test(duration.trim()) ? String(Number(duration) * (unit === "years" ? 12 : 1)) : "";
-  const planKey = JSON.stringify(mode === "duration" ? ["duration", start, months, duration.trim()] : ["end", start, end]);
+  // The saved timing is part of the key: once a Save has been read back, an answer given against the old saved state is no longer shown.
+  const savedStamp = base ? [base.saved.cod_date, base.saved.construction_months, base.saved.derived_start] : null;
+  const planKey = JSON.stringify([project, savedStamp, ...(mode === "duration" ? ["duration", start, months, duration.trim()] : ["end", start, end])]);
   const plan: Plan | null = planned !== null && planned.key === planKey ? planned.plan : null;
   const planPending = Boolean(base) && Boolean(start) && (mode === "duration" || Boolean(end)) && planned?.key !== planKey;
 
   // The plan is asked of the server whenever the inputs change; an answer for earlier inputs is never shown and never replaces a newer one.
   useEffect(() => {
-    if (!base || !start) { setPlanned(null); return; }
-    if (mode === "duration" && !months) { setPlanned({ key: planKey, plan: { ok: false, message: "Enter a positive duration that is a whole number of months (for example 15 years or 18 months)." } }); return; }
-    if (mode === "end" && !end) { setPlanned(null); return; }
+    if (!base || !start) { ++seq.current; setPlanned(null); return; }
+    if (mode === "duration" && !months) { ++seq.current; setPlanned({ key: planKey, plan: { ok: false, message: "Enter a positive duration that is a whole number of months (for example 15 years or 18 months)." } }); return; }
+    if (mode === "end" && !end) { ++seq.current; setPlanned(null); return; }
     const mine = ++seq.current;
     const timer = window.setTimeout(() => {
-      void load(project, mode === "duration" ? { start, months } : { start, end }).then((r) => { if (mine === seq.current && "plan" in r) setPlanned({ key: planKey, plan: r.plan }); });
+      void load(project, mode === "duration" ? { start, months } : { start, end }).then((r) => {
+        if (mine !== seq.current) return;
+        setPlanned({ key: planKey, plan: "plan" in r ? r.plan : { ok: false, message: "The plan could not be read right now. Nothing was changed; change a value or try again." } });
+      });
     }, 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -9,6 +9,8 @@ import pytest
 from tests.model_mutation_csrf import post_valid_mutation
 from tests.test_model_react_wf2_projections_v1 import env, costlines, cas  # noqa: F401  (shared real-app fixture)
 
+# 303 is also the success status of these routes, so a status alone never proves a refusal: every refusal below is proven by the unchanged
+# composite identity AND unchanged rows (ids, active flag, amount, row version) read back afterwards.
 REFUSED = {303, 400, 401, 403, 404, 409, 422}
 
 

@@ -107,7 +107,11 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     }
   }
 
-  const setActive = (line: CostLinePayload, active: boolean) => (disabled ? Promise.resolve() : singleFlight(() => runSetActive(line, active)));
+  const NOT_NOW = "That action is not available right now (an update is still running or a change is waiting to be reconciled). Nothing was changed; try again in a moment.";
+  const setActive = (line: CostLinePayload, active: boolean) => {
+    if (disabled) { setStatus({ tone: "error", text: NOT_NOW }); return Promise.resolve(); }
+    return singleFlight(() => runSetActive(line, active));
+  };
 
   async function runSetActive(line: CostLinePayload, active: boolean) {
     setInFlight(true);
@@ -135,7 +139,8 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     if (!rowAction || rowAction.nonce === seenAction.current) return;
     seenAction.current = rowAction.nonce;
     const line = data.lines.find((l) => l.sub_line_id === rowAction.lineId);
-    if (!line || disabled || line.active === rowAction.active) return;
+    if (!line || line.active === rowAction.active) return;
+    if (disabled) { setStatus({ tone: "error", text: NOT_NOW }); return; }
     if (rowAction.active) void setActive(line, true);
     else setRetire(line);
     // eslint-disable-next-line react-hooks/exhaustive-deps

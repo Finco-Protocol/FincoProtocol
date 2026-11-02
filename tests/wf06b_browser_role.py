@@ -98,3 +98,8 @@ def test_wf06b_row_menu_retire_reactivate_real_routes(live_server, browser, rcm_
 def test_wf06b_add_line_waits_for_the_fresh_identity(live_server, browser, rcm_react_flag):
     from tests.model_react_wf06b_acceptance import check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_stale_token
     check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_stale_token(browser, live_server)
+
+
+def test_wf06b_timing_plan_never_sticks_or_shows_an_older_answer(live_server, browser, rcm_react_flag):
+    from tests.model_react_wf06b_acceptance import check_timing_plan_never_sticks_on_pending_or_shows_an_older_answer
+    check_timing_plan_never_sticks_on_pending_or_shows_an_older_answer(browser, live_server)

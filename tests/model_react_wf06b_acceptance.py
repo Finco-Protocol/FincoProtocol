@@ -417,6 +417,8 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         page.locator("[data-ci-unit]").first.select_option("EUR")
         assert (grid.locator("th.ci-h-perMw").text_content() or "").strip() == "EUR/MW"
         assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]) * 1000), cell.inner_text()
+        assert "(EUR," in grid.locator("[data-saved-total-row] th").inner_text() and "EUR" in grid.locator("[data-saved-total]").inner_text()      # totals say which unit they are in
+        assert float(grid.locator("[data-saved-total]").get_attribute("data-exact")) == proj["saved_total_keur"]                                        # the exact value is untouched
         page.locator("[data-ci-unit]").first.select_option("kEUR")
         _select_precision(page, 3)
         assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]), 3), cell.inner_text()
@@ -472,6 +474,8 @@ def check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, bas
     try:
         grid = _open_sheet(page, base, record.project_code, "capex")
         manager = page.locator("[data-cost-line-manager='capex']")
+        posts = []
+        page.on("request", lambda r: posts.append(r.url) if r.method != "GET" else None)
         manager.get_by_label("Line label").fill("typed before choosing a group")
         eligible = {g["code"] for g in _costlines(context, base, record.project_code, "capex")["line_management"]["eligible_groups"]}
         target = next(c for c in [t.get_attribute("data-cost-group-add") for t in grid.locator("[data-cost-group-add]").all()] if c in eligible)
@@ -480,8 +484,7 @@ def check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, bas
         assert manager.locator("select").first.input_value() == target
         assert manager.get_by_label("Line label").input_value() == "typed before choosing a group"       # typed text is kept
         assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")
-        before = len(_costlines(context, base, record.project_code, "capex")["lines"])
-        assert len(_costlines(context, base, record.project_code, "capex")["lines"]) == before                  # choosing a group writes nothing
+        assert not posts, f"choosing a group must not send any write: {posts}"
         derived = [t for t in grid.locator("[data-cost-group-add]").all() if t.get_attribute("data-cost-group-add") not in eligible]
         assert all(t.is_disabled() for t in derived), "calculated groups cannot receive new lines"
         assert not errors, errors
@@ -564,6 +567,31 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
         manager.locator("[data-cost-add='capex']").click()
         page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
         assert adds == [303] or all(a < 400 for a in adds), adds
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
+    finally:
+        context.close()
+
+
+def check_timing_plan_never_sticks_on_pending_or_shows_an_older_answer(browser, base):
+    """Review finding: clearing the duration while a plan request is in flight must show the message, not 'Planning...' forever."""
+    context, page, record, errors = vertical_session(browser, base, "wf06b-timing", "solar")
+    try:
+        open_section(page, base, record.project_code, "inputs")
+        settle_inputs(page)
+        page.locator("[data-studio-tab='construction-timing']").click()
+        page.wait_for_selector("[data-timing='ready']", timeout=60000)
+        def slow_plan(route):
+            if "months=" in route.request.url:
+                page.wait_for_timeout(1500)
+            route.continue_()
+        page.route("**/v2/model-react/construction-timing*", slow_plan)
+        page.fill("[data-timing-months]", "15")
+        page.wait_for_timeout(400)                                            # the request for 15 years is now in flight
+        page.fill("[data-timing-months]", "")
+        page.wait_for_selector("[data-timing-plan='invalid']", timeout=10000)
+        page.wait_for_timeout(2500)                                           # the old answer arrives late: it must not replace the message
+        assert page.locator("[data-timing-plan='pending']").count() == 0
+        assert page.locator("[data-timing-plan='invalid']").count() == 1 and page.locator("[data-timing-save]").is_disabled()
         assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()

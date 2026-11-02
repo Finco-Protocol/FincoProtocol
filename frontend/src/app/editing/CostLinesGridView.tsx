@@ -302,6 +302,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
   const amountAt = cols.indexOf("amount");
   const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
   const fmtKeur = (n: number | string | null) => showKeur(n, unit, precision);
+  // Totals follow the chosen unit; the amount inputs are always kEUR. Whenever the unit is not kEUR the totals say which unit they are in.
+  const unitTag = unit === "kEUR" ? null : <small className="ci-preview"> {unit}</small>;
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
   const groupOrder = Array.from(new Set(filtered.map((l) => l.category)));
   const focusManager = () => {
@@ -442,7 +444,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
       </div>
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table ws2-grid">
-          <caption className="fm-sr-only">{title} line items. Amounts in kEUR.</caption>
+          <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
             <th key={id} scope="col" className={`ci-h-${id}${id === "amount" || id === "perMw" ? " ci-num" : ""}`}
                 title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : HEAD[id]}</th>))}</tr></thead>
@@ -463,7 +465,7 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
                         {g && g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Calculated" : "To be confirmed"}</span>}
                       </span>
                     </th>
-                    <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? fmtKeur(g.saved_total_keur) : ""}</td>
+                    <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
                         <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
@@ -488,8 +490,8 @@ function CostLinesGrid({ project, reloadKey = 0, onMutated, requestedSheet, requ
           </tbody>
           {allLines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>Sum of line amounts (kEUR, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server (kEUR, sum of active saved lines — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>Sum of line amounts ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved lines — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
             </tfoot>
           )}
         </table>

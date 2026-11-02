@@ -139,7 +139,6 @@ def test_real_committed_run_publishes_senior_debt_exactly_as_persisted_and_no_ru
 
     persisted = get_latest_history_entry(record.user_id, record.project_id).to_dict()["runtime_summary"].get("senior_debt_keur")
     after = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()["results"]["senior_debt"]
-    if isinstance(persisted, (int, float)) and not isinstance(persisted, bool):
-        assert after["available"] is True and after["value_keur"] == float(persisted)
-    else:
-        assert after["available"] is False and after["value_keur"] is None
+    # the positive path is proven, not assumed: the real Run persists a Senior debt amount for both technologies and the page reads exactly that
+    assert isinstance(persisted, (int, float)) and not isinstance(persisted, bool) and persisted > 0, persisted
+    assert after["available"] is True and after["value_keur"] == float(persisted)
