@@ -299,3 +299,8 @@
 .ci-empty-group { color: var(--muted, #526374); font-size: 12px; padding-left: 24px; }
 .ws2-base-label { font-weight: 600; font-size: 12.5px; }
 tr[data-base-row] td { background: var(--accent-soft, #f7fafd); }
+
+/* PR-U1: five result tiles (the CAPEX total now lives on the CAPEX card). */
+.ci-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .ci-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+[hidden] { display: none !important; }

@@ -13,7 +13,7 @@ import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { FinancialOverview } from "./FinancialOverview";
 import { ReportPrecisionControl } from "./ReportPrecision";
 import { financialInputOrder } from "./inputLayout";
-import { workspaceRoute, canonicalHash, isCostWorkbench, INPUT_DESTINATIONS, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
+import { workspaceRoute, canonicalHash, isCostWorkbench, INPUT_DESTINATIONS, type CostView, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
 import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type ConfirmedRun, type WorkspaceExtensions } from "./workspaceExtensions";
 import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
@@ -153,6 +153,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
   // unsaved drafts in other editors are reconciled, never silently rebased.
   const [dataVersion, setDataVersion] = useState(0);
+  // The last cost workbench stays mounted (hidden) while another Inputs view is shown, so its staged edits keep being reported as unsaved work.
+  const [lastBench, setLastBench] = useState<{ sheet: "capex" | "opex"; view: CostView } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [timingOpen, setTimingOpen] = useState(false);
 
@@ -263,6 +265,11 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   function navigate(sectionId: Section) { navigateTo(sectionId); }
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [section]);
+
+  useEffect(() => {
+    const route = workspaceRoute(destination);
+    if (isCostWorkbench(route)) setLastBench((prev) => (prev && prev.sheet === route.input && prev.view === route.view ? prev : { sheet: route.input, view: route.view }));
+  }, [destination]);
 
   useEffect(() => {
     const route = workspaceRoute(destination);
@@ -528,6 +535,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             : inputs && displayedInputs
             ? (() => {
               const route = workspaceRoute(destination);
+              const onBench = isCostWorkbench(route);
+              const bench = isCostWorkbench(route) ? { sheet: route.input, view: route.view } : lastBench;
               const protectedReference = Boolean(workspace.project.protected_reference);
               // CAPEX / OPEX are edited ONLY in their workbenches (one editable authority per cost): the derived CAPEX / OPEX sections of the
               // assumptions grid are not rendered (the registry fields and every calculation are unchanged).
@@ -535,11 +544,14 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                 sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } };
               return <>
                 <InputsJumpNav onJump={jumpWithinInputs} />
-                {isCostWorkbench(route)
-                  ? <CostWorkbench project={project} sheet={route.input} view={route.view} inputs={displayedInputs} protectedReference={protectedReference}
+                {bench && (
+                  <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
+                    <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} inputs={displayedInputs} protectedReference={protectedReference}
                       reloadKey={dataVersion} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"} onMutated={afterMutation}
                       onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" })} />
-                  : <>
+                  </div>)}
+                <div hidden={onBench} data-inputs-overview-host={onBench ? "hidden" : "visible"}>
+                  <>
                     <div className="ci-layout" data-ci-layout={railOpen ? "rail" : "full"}>
                     <div className="ci-main">
                     <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)} />
@@ -579,7 +591,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                       <summary>Import from Excel / CSV</summary>
                       {importOpen && <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={afterMutation} />}
                     </details>
-                  </>}
+                  </>
+                </div>
               </>;
             })()
             : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>

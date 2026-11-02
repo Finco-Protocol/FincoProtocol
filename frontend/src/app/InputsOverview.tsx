@@ -56,7 +56,6 @@ function useStatements(project: string, reloadKey: number, snapshot: string | un
 export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery, railOpen, onRail }: {
   project: string; workspace: WorkspacePayload; reloadKey?: number; query: string; onQuery: (q: string) => void; railOpen: boolean; onRail: () => void;
 }) {
-  const capex = useCostGroups(project, "capex", reloadKey);
   const statements = useStatements(project, reloadKey, workspace.identity?.snapshot_id);
   const { total: staged } = useDirtyTotal();
   const { unit, KEUR } = useShown();
@@ -89,12 +88,6 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
             <strong className="ci-kpi-value" data-ci-metric={t.id}>{t.text}</strong>
           </div>
         ))}
-        <div className="ci-kpi">
-          <span className="ci-kpi-label">Total CAPEX, saved lines</span>
-          <strong className="ci-kpi-value" data-ci-capex={capex.saved ?? "unavailable"}>
-            {capex.state === "loading" ? "…" : capex.saved === null ? "Unavailable" : `${KEUR(capex.saved)} ${unit}`}
-          </strong>
-        </div>
         <div className="ci-kpi" data-ci-senior-debt={senior?.available ? "run" : "none"}>
           <span className="ci-kpi-label">Senior debt</span>
           <strong className="ci-kpi-value" data-ci-metric="senior-debt">{seniorText}</strong>
@@ -113,7 +106,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
             {state === "STALE" && <strong className="ci-stale" role="status" data-ci-stale="true"> Inputs changed after this Run — run the model again to update.</strong>}
           </>}
         <br />
-        <span className="ci-sourcenote">Saved-line figures add up the active saved lines; they are not model results.</span>
+        <span className="ci-sourcenote">The CAPEX and OPEX cards show saved inputs; they are not model results.</span>
         {" "}<span data-ci-staged={staged}>{staged === 0 ? "No unsaved edits." : `${staged} unsaved edit${staged === 1 ? "" : "s"} — not included in any figure above.`}</span>
       </p>
       <div className="ci-find" role="search">

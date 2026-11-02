@@ -106,6 +106,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [rowAction, setRowAction] = useState<{ lineId: string; active: boolean; nonce: number } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [addGroup, setAddGroup] = useState<string | null>(null);
+  // An amount shows at the chosen report precision (default 0 decimals) while the cell is at rest; focusing it (or having typed in it) shows the
+  // exact saved decimal text, which is what is staged and saved. Display precision never touches the stored value.
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const saveAll = useSaveAllBridge();
   const [unit] = useCostUnit();
@@ -349,7 +352,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const inputTd = (line: CostLinePayload, col: "label" | "amount" | "inflation", r: number, c: number) => {
     const rowEditable = editableLine(line);
     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
-    const value = valueOf(line, col);
+    const cellKey = `${line.sub_line_id}#${col}`;
+    const raw = valueOf(line, col);
+    const value = col === "amount" && !edit && focusedKey !== cellKey ? showKeur(raw, "kEUR", precision) : raw;
     const errorId = `${headingId}-${r}-${c}-err`;
     const label = `${col === "label" ? "Label" : col === "amount" ? "Amount" : "Inflation"} for ${line.label}`;   // the original editor's accessible names
     const field = (
@@ -357,8 +362,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         inputMode={col === "label" ? "text" : "decimal"} autoComplete="off" spellCheck={false}
         aria-label={label} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
         data-r={r} data-c={c} data-changed={edit ? "true" : undefined}
-        value={value} disabled={!rowEditable}
-        onFocus={keys.onFocus} onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
+        value={value} disabled={!rowEditable} data-exact={col === "amount" ? raw : undefined}
+        onFocus={(event) => { setFocusedKey(cellKey); keys.onFocus(event); }} onBlur={() => setFocusedKey((k) => (k === cellKey ? null : k))}
+        onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
         onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
     );
     const notesBlock = col === "label" ? (
@@ -426,7 +432,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     const id = row.field_id || row.code;
     const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
     const edit = changes.get(sectionOfField(id), id);
-    const value = edit?.value ?? (row.value ?? "");
+    const baseKey = `base:${id}`;
+    const rawBase = edit?.value ?? (row.value ?? "");
+    const value = !edit && focusedKey !== baseKey ? showKeur(rawBase, "kEUR", precision) : rawBase;
     const live = edit ? (edit.error ? null : edit.value) : (row.value ?? "");
     const perMwText = capacity?.available && live !== null ? divideDecimalText(live, capacity.mw) : null;
     const editable = Boolean(row.editable) && !readOnlyProject && !locked;
@@ -440,7 +448,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           <td key={col} className="ci-col-amount">
             <input className="fm-input ws2-cell" type="text" inputMode="decimal" autoComplete="off" spellCheck={false} data-base-input={id}
               aria-label={`Base amount for ${name}`} aria-invalid={edit?.error ? true : undefined} aria-describedby={edit?.error ? errorId : undefined}
-              data-changed={edit ? "true" : undefined} value={value} disabled={!editable}
+              data-changed={edit ? "true" : undefined} value={value} data-exact={rawBase} disabled={!editable}
+              onFocus={() => setFocusedKey(baseKey)} onBlur={() => setFocusedKey((k) => (k === baseKey ? null : k))}
               onChange={(event) => { setStatus(null); stageBase(row, name, event.target.value); }} />
             {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
           </td>

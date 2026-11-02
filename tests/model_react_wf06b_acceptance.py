@@ -129,7 +129,7 @@ def _inputs(page, base, code):
     open_section(page, base, code, "inputs")
     settle_inputs(page)
     page.wait_for_selector("[data-inputs-overview='true']", timeout=30000)
-    page.wait_for_function("() => document.querySelector('[data-ci-capex]') && document.querySelector('[data-ci-capex]').dataset.ciCapex !== 'unavailable'", timeout=30000)
+    page.wait_for_function("() => { const c = document.querySelector(\"[data-ci-card-total='capex']\"); const o = document.querySelector(\"[data-ci-card-total='opex']\"); return c && c.dataset.exact && o && !/…/.test(o.innerText); }", timeout=30000)
 
 
 def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, kind):
@@ -139,27 +139,29 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         cap = _costlines(context, base, record.project_code, "capex")["projection"]
         opx = _costlines(context, base, record.project_code, "opex")["projection"]
         ov = page.locator("[data-inputs-overview='true']")
-        # six KPI tiles; saved-line tiles equal the server projection; no committed Run yet -> no invented figure
-        assert ov.locator(".ci-kpi").count() == 6
-        assert abs(float(ov.locator("[data-ci-capex]").get_attribute("data-ci-capex")) - cap["saved_total_keur"]) < 1e-6
+        # PR-U1: five result tiles; the CAPEX / OPEX cards equal the server projections; no committed Run yet -> no invented figure
+        assert ov.locator(".ci-kpi").count() == 5 and ov.locator("[data-ci-capex]").count() == 0
+        cards = page.locator("[data-ci-cost-cards]")
+        assert abs(float(cards.locator("[data-ci-card-total='capex']").get_attribute("data-exact")) - cap["saved_total_keur"]) < 1e-6
+        assert "Contingency, financing costs and reserves are calculated" in cards.locator("[data-ci-card='capex']").inner_text()
+        opx_api = context.request.get(f"{base}/v2/model-react/opex-projection?project={record.project_code}").json()
+        y1 = opx_api["totals"]["excluding_contingency"][0]
+        assert abs(float(cards.locator("[data-ci-card-total='opex']").inner_text().split()[0].replace(",", "")) - y1) <= 0.5      # base amounts + lines, server projection
+        assert cards.locator("[data-open-workbench='capex']").is_visible() and cards.locator("[data-open-workbench='opex']").is_visible()
         assert ov.locator("[data-ci-norun]").count() == 1
         assert all(ov.locator(f"[data-ci-metric='{m}']").inner_text() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr", "senior-debt"))
         assert "not model results" in ov.inner_text()
         # search + group chips
         assert ov.locator("[data-ci-search]").count() == 1
         assert page.locator("[data-inputs-jump] a").count() >= 6
-        # CAPEX / OPEX summaries equal the server groups
-        for sheet, proj in (("capex", cap), ("opex", opx)):
-            summary = page.locator(f"[data-ci-summary='{sheet}']")
-            summary.wait_for()
-            page.wait_for_function("(s) => document.querySelector(`[data-ci-summary-total='${s}']`)", arg=sheet, timeout=30000)
-            assert abs(float(summary.locator(f"[data-ci-summary-total='{sheet}']").inner_text().replace(",", "")) - proj["saved_total_keur"]) <= 0.5
-            shown = {r.get_attribute("data-ci-summary-row") for r in summary.locator("[data-ci-summary-row]").all()}
-            assert shown == {g["code"] for g in proj["groups"] if g["counts_toward_sheet_total"] or g["row_kind"] == "derived_runtime"}
-        # two columns on desktop: the summaries and the Inputs sections sit side by side
-        sums = page.locator("[data-ci-summary]")
-        a, b = sums.nth(0).bounding_box(), sums.nth(1).bounding_box()
-        assert abs(a["y"] - b["y"]) < 4 and b["x"] > a["x"] + a["width"] - 2, (a, b)
+        # the old inline duplicates are gone: one editable authority per cost (the workbench)
+        assert page.locator("[data-cost-grid]").count() == 0 and page.locator("[data-ci-summaries]").count() == 0
+        assert page.locator("[data-grid-section='opex'], [data-grid-section='capex']").count() == 0
+        # the cards sit side by side on desktop
+        c0, c1 = cards.locator("[data-ci-card]").nth(0).bounding_box(), cards.locator("[data-ci-card]").nth(1).bounding_box()
+        assert abs(c0["y"] - c1["y"]) < 4 and c1["x"] > c0["x"], (c0, c1)
+        # two columns on desktop: the Inputs sections sit side by side
+        sums = cards.locator("[data-ci-card]")
         sections = page.locator("[data-ci-sections] > details")
         assert sections.count() >= 2
         s0, s1 = sections.nth(0).bounding_box(), sections.nth(1).bounding_box()
@@ -185,10 +187,8 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
             page.set_viewport_size({"width": width, "height": height})
             assert not horizontal_overflow(page), f"{kind} inputs overflow at {width}"
             if width <= 900:
-                if page.locator("details[data-ci-summaries]").get_attribute("open") is None:
-                    page.locator("details[data-ci-summaries] > summary").click()                  # folded on small screens by design
                 a, b = sums.nth(0).bounding_box(), sums.nth(1).bounding_box()
-                assert b["y"] > a["y"] + a["height"] - 2, f"summaries must stack at {width}"
+                assert b["y"] > a["y"] + a["height"] - 2, f"cards must stack at {width}"
             if width < 1100:
                 s0, s1 = sections.nth(0).bounding_box(), sections.nth(1).bounding_box()
                 assert s1["y"] > s0["y"], f"sections must stack at {width}"
@@ -280,6 +280,7 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         page.locator("[data-ci-search]").fill("")
         page.wait_for_timeout(200)
         assert page.locator("[data-ci-sections] tr[data-grid-row]").count() == total_rows
+        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()                          # PR-U1: the cost lines live in the CAPEX workbench
         grid = page.locator("[data-cost-grid='capex']")
         grid.wait_for()
         page.wait_for_selector("[data-cost-grid='capex'] [data-group-saved-total]", timeout=30000)
@@ -310,6 +311,7 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         assert not PROVENANCE.search(grid.inner_text())
         grid.locator("[data-cost-addline]").click()
         page.wait_for_function("() => document.activeElement && document.activeElement.closest('[data-cost-line-manager]') !== null", timeout=10000)
+        assert page.locator("tr[data-add-row] [data-cost-line-manager='capex']").count() == 1          # inline, under a group
         assert not errors, errors
     finally:
         context.close()
@@ -394,6 +396,15 @@ def _select_precision(page, n):
     page.locator("select[aria-label='Report precision']").select_option(str(n))
 
 
+def _open_add(page, sheet="capex", group=None):
+    """PR-U1: the add-line form is inline under a group of the workbench (toolbar button -> first group, or the group's own button)."""
+    grid = page.locator(f"[data-cost-grid='{sheet}']")
+    (grid.locator(f"[data-cost-group-add='{group}']") if group else grid.locator("[data-cost-addline]")).click()
+    form = page.locator(f"[data-cost-line-manager='{sheet}']")
+    form.wait_for()
+    return form
+
+
 def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(browser, base, kind):
     context, page, record, errors = vertical_session(browser, base, f"wf06b-amt-{kind}", kind)
     try:
@@ -424,7 +435,10 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         _select_precision(page, 0)
         # the stored amount text is never rounded by the display: edit shows and stages the full decimal text
         amount = row.locator("input[data-c='1']")
-        assert amount.input_value() == str(line["amount_keur"]).rstrip("0").rstrip(".") or float(amount.input_value()) == float(line["amount_keur"])
+        assert amount.input_value() == fmt(float(line["amount_keur"])), amount.input_value()       # at rest: report precision (default 0 decimals)
+        assert float(amount.get_attribute("data-exact")) == float(line["amount_keur"])               # the exact saved text stays behind it
+        amount.focus()
+        assert float(amount.input_value().replace(",", "")) == float(line["amount_keur"])            # focused: the exact saved decimals
         amount.fill("1234.56789")
         assert amount.input_value() == "1234.56789"
         assert cell.get_attribute("data-per-mw-state") == "preview" and "unsaved preview" in cell.inner_text()
@@ -432,12 +446,14 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         assert cell.inner_text().replace("unsaved preview", "").strip() == fmt(expected)
         assert _costlines(context, base, record.project_code, "capex")["projection"]["lines"][0]["amount_keur"] == proj["lines"][0]["amount_keur"]    # nothing saved
         page.locator("[data-cost-save]").click()
-        page.wait_for_function("(id) => { const t = document.querySelector(`tr[data-line='${id}']`); return t && t.querySelector('[data-per-mw]').dataset.perMwState === 'saved' && t.querySelector(\"input[data-c='1']\").value === '1234.56789'; }", arg=line["sub_line_id"], timeout=30000)
+        page.wait_for_function("(id) => { const t = document.querySelector(`tr[data-line='${id}']`); return t && t.querySelector('[data-per-mw]').dataset.perMwState === 'saved' && t.querySelector(\"input[data-c='1']\").dataset.exact === '1234.56789'; }", arg=line["sub_line_id"], timeout=30000)
         saved = next(l for l in _costlines(context, base, record.project_code, "capex")["projection"]["lines"] if l["sub_line_id"] == line["sub_line_id"])
         assert float(saved["amount_keur"]) == 1234.56789                      # 0-decimal display never truncated what was saved
         assert abs(float(saved["per_mw_keur"]) - expected) < 5e-7
         shown_after = row.locator("input[data-c='1']").input_value()
-        assert shown_after == "1234.56789", shown_after
+        assert shown_after == "1,235", shown_after                                                    # 0 decimals at rest; 1234.56789 is what was saved
+        row.locator("input[data-c='1']").focus()
+        assert row.locator("input[data-c='1']").input_value() == "1234.56789"
         # OPEX: per MW per year, and no dead controls
         opex = _open_sheet(page, base, record.project_code, "opex")
         assert (opex.locator("th.ci-h-perMw").text_content() or "").strip() == "kEUR/MW/yr"
@@ -472,15 +488,17 @@ def check_group_plus_line_preselects_the_group_and_keeps_typed_text(browser, bas
     context, page, record, errors = vertical_session(browser, base, "wf06b-grp", "solar")
     try:
         grid = _open_sheet(page, base, record.project_code, "capex")
-        manager = page.locator("[data-cost-line-manager='capex']")
         posts = []
         page.on("request", lambda r: posts.append(r.url) if r.method != "GET" else None)
+        manager = _open_add(page, "capex")                                                            # inline form under the first group
         manager.get_by_label("Line label").fill("typed before choosing a group")
         eligible = {g["code"] for g in _costlines(context, base, record.project_code, "capex")["line_management"]["eligible_groups"]}
-        target = next(c for c in [t.get_attribute("data-cost-group-add") for t in grid.locator("[data-cost-group-add]").all()] if c in eligible)
+        first_open = manager.evaluate("el => el.dataset.addGroup")
+        target = next(c for c in [t.get_attribute("data-cost-group-add") for t in grid.locator("[data-cost-group-add]").all()] if c in eligible and c != first_open)
         grid.locator(f"[data-cost-group-add='{target}']").click()
         page.wait_for_function("(c) => document.querySelector(\"[data-cost-line-manager='capex'] select\").value === c", arg=target, timeout=10000)
         assert manager.locator("select").first.input_value() == target
+        assert page.locator(f"tr[data-add-row='{target}'] [data-cost-line-manager='capex']").count() == 1    # the inline row moved under the chosen group
         assert manager.get_by_label("Line label").input_value() == "typed before choosing a group"       # typed text is kept
         assert page.evaluate("document.activeElement.closest('[data-cost-line-manager]') !== null")
         assert not posts, f"choosing a group must not send any write: {posts}"
@@ -495,14 +513,13 @@ def check_row_menu_retires_and_reactivates_through_the_real_routes_without_a_run
     context, page, record, errors = vertical_session(browser, base, "wf06b-menu", "wind")
     try:
         grid = _open_sheet(page, base, record.project_code, "capex")
-        manager = page.locator("[data-cost-line-manager='capex']")
         posts = []
         page.on("request", lambda r: posts.append((r.method, r.url.split("?")[0].replace(base, ""))) if r.method == "POST" else None)
+        manager = _open_add(page, "capex")
         manager.get_by_label("Line label").fill("WF06B menu probe")
         manager.get_by_label("Amount").fill("10")
-        manager.locator("select").first.select_option(index=1)
         manager.locator("[data-cost-add='capex']").click()
-        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
+        page.wait_for_selector("[data-cost-line-commands='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
         line = next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["label"] == "WF06B menu probe")
         row = grid.locator(f"tr[data-line='{line['sub_line_id']}']")
         page.wait_for_selector(f"tr[data-line='{line['sub_line_id']}']", timeout=30000)
@@ -516,12 +533,12 @@ def check_row_menu_retires_and_reactivates_through_the_real_routes_without_a_run
         row.locator("[data-row-menu]").click()
         items.first.click()
         page.get_by_role("button", name="Deactivate line").last.click()                      # the existing confirmation dialog
-        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('deactivated and verified')", timeout=30000)
+        page.wait_for_selector("[data-cost-line-commands='capex'] [role='status']:has-text('deactivated and verified')", timeout=30000)
         assert next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["sub_line_id"] == line["sub_line_id"])["active"] is False
         row.locator("[data-row-menu]").click()
         assert row.locator("[role='menuitem']").first.inner_text().strip() == "Reactivate line"
         row.locator("[role='menuitem']").first.click()
-        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('reactivated and verified')", timeout=30000)
+        page.wait_for_selector("[data-cost-line-commands='capex'] [role='status']:has-text('reactivated and verified')", timeout=30000)
         assert next(l for l in _costlines(context, base, record.project_code, "capex")["lines"] if l["sub_line_id"] == line["sub_line_id"])["active"] is True
         routes = [p for _, p in posts]
         assert routes.count("/v2/capex/line/add") == 1 and routes.count("/v2/capex/line/deactivate") == 1 and routes.count("/v2/capex/line/reactivate") == 1, routes
@@ -536,8 +553,13 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
     """Regression for the CI 409: a canonical save bumps the workbook identity; the cost grid still holds the old one until its read returns."""
     context, page, record, errors = vertical_session(browser, base, "wf06b-fresh", "solar")
     try:
+        _inputs(page, base, record.project_code)
+        # a canonical input is staged on the Inputs overview (it stays staged, and reported as unsaved, while the CAPEX workbench is open)
+        cell = page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first
+        original = cell.input_value()
+        cell.fill(str(int(float(original)) + 1) if original.replace(".", "", 1).isdigit() else "1")
         grid = _open_sheet(page, base, record.project_code, "capex")
-        manager = page.locator("[data-cost-line-manager='capex']")
+        manager = _open_add(page, "capex")
         adds = []
         page.on("response", lambda r: adds.append(r.status) if r.url.endswith("/v2/capex/line/add") else None)
         release = {"go": False}
@@ -548,10 +570,7 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
                     break
                 page.wait_for_timeout(100)
             route.continue_()
-        # a save from the page: edit one canonical input and Save (identity changes), while the cost read is held back
-        cell = page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first
-        original = cell.input_value()
-        cell.fill(str(int(float(original)) + 1) if original.replace(".", "", 1).isdigit() else "1")
+        # Save changes writes the staged input (the identity changes) while the cost read is held back
         page.route("**/v2/model-react/costlines*", slow)
         page.locator("[data-bar-save-all]").click()
         page.wait_for_selector("[data-cost-refreshing='true']", timeout=30000)
@@ -562,9 +581,8 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
         release["go"] = True
         page.wait_for_selector("[data-cost-refreshing='true']", state="detached", timeout=30000)
         manager.get_by_label("Amount").fill("5")
-        manager.locator("select").first.select_option(index=1)
         manager.locator("[data-cost-add='capex']").click()
-        page.wait_for_selector("[data-cost-line-manager='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
+        page.wait_for_selector("[data-cost-line-commands='capex'] [role='status']:has-text('verified in the fresh projection')", timeout=30000)
         assert adds == [303] or all(a < 400 for a in adds), adds
         assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
