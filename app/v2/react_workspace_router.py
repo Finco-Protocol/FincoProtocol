@@ -1442,3 +1442,8 @@ router.include_router(_investors_router)
 from app.v2.react_rcux import router as _rcux_router  # noqa: E402
 
 router.include_router(_rcux_router)
+
+# ───────────────────────────── PR-U2b: OPEX year projection per saved line (read-only) ─────────────────────────────
+from app.v2.react_opex_lines import router as _u2_opex_lines_router  # noqa: E402
+
+router.include_router(_u2_opex_lines_router)
