@@ -112,7 +112,13 @@ def test_rcux_nav_every_section_and_subtab_has_only_react_targets(live_server, a
         _section(page, live_server, record.project_code, section)
         audit(page, section, seen)
         visited[section] = _click_every_tab(page, section, seen)
-    assert visited["financing"] >= 6 and visited["analysis"] >= 5 and visited["inputs"] >= 3, visited      # financing, analysis tools, input studios
+    assert visited["financing"] >= 6 and visited["analysis"] >= 5, visited      # financing and analysis tools (PR-U1: the Studios tabs are gone)
+    for destination in ("inputs/capex", "inputs/capex/monthly", "inputs/opex", "inputs/opex/years"):        # the two workbenches and their views only link inside React
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}#{destination}")
+        page.reload()
+        _settle(page)
+        page.wait_for_selector("[data-cost-workbench]", timeout=60000)
+        audit(page, destination, seen)
     for tool in ("overview", "sensitivity", "goal-seek", "whatif", "runs"):
         page.goto(f"{live_server}/v2/model-react/{record.project_code}?analysis={tool}#analysis")
         page.reload()
@@ -353,7 +359,7 @@ def test_rcux_nav_gated_and_unavailable_screens_are_react_native(live_server, an
     page.goto(f"{live_server}/v2/model-react/{template.project_code}#inputs")
     page.reload()
     _settle(page)
-    page.locator("[data-studio-tab='import']").click()
+    page.locator("[data-inputs-import] > summary").click()                 # PR-U1: Import is a section of Inputs
     page.wait_for_selector("[data-import-state='read-only']", timeout=60000)
     audit(page, "template / import")
     assert_stayed_in_react(log, "gated screens")

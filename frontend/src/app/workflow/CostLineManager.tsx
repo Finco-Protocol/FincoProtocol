@@ -8,9 +8,11 @@
 // never retried: a blind retry of Add could create a duplicate line.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { fetchCostLines } from "../api";
 import type { CostLinePayload, CostLinesPayload } from "../types";
 import { addCostLine, setCostLineActive } from "./workflowApi";
+import { groupDisplayName } from "../costGroupDisplay";
 import { validateNewCostLine, type NewCostLineDraft } from "./ModelWorkflowValidation";
 import { Field, StatusNote, WorkflowDialog, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "./workflowShared";
 
@@ -25,19 +27,22 @@ interface Props {
   presetGroup?: { code: string; nonce: number } | null;
   /** A row action chosen in the grid menu: routed through the same confirmed, CAS-guarded command as the buttons below. */
   rowAction?: { lineId: string; active: boolean; nonce: number } | null;
+  /** PR-U1: where the inline add-line form is drawn (a cell under the group the user chose); `null` while no group is open. */
+  slot?: HTMLElement | null;
+  openGroup?: string | null;
+  onClose?: () => void;
+  /** Tells the grid whether a line command left an unresolved outcome, so the grid's own add / retire controls lock with it. */
+  onLocked?: (locked: boolean) => void;
 }
 
 const EMPTY: NewCostLineDraft = { group: "", label: "", amount_keur: "0", inflation_pct: "0", notes: "" };
 
-/** Groups the server computes itself are not offered for new lines, so they are absent from `eligible_groups`.  Their lines still carry the
- *  canonical code; this names those two catalogue groups (same names as `react_workspace_router.py`) instead of showing a bare code.  Any other
- *  unknown code is shown as received: nothing is invented and no classification code is changed. */
-const CALCULATED_GROUP_LABELS: Readonly<Record<string, string>> = { "C.13": "C.13 Contingency", "B.13": "B.13 Contingencies" };
+/** The name shown for a group code (D1, presentation only): never a bare code. The code stays the row/Save identity. */
 export function costGroupLabel(code: string, eligible: ReadonlyArray<{ code: string; label: string }>): string {
-  return eligible.find((g) => g.code === code)?.label ?? CALCULATED_GROUP_LABELS[code] ?? code;
+  return groupDisplayName(code, eligible.find((g) => g.code === code)?.label);
 }
 
-export function CostLineManager({ project, data, onChanged, refreshing = false, presetGroup = null, rowAction = null }: Props) {
+export function CostLineManager({ project, data, onChanged, refreshing = false, presetGroup = null, rowAction = null, slot = null, openGroup = null, onClose, onLocked }: Props) {
   const { sheet, line_management: mgmt } = data;
   const readOnlyProject = data.project.protected_reference;
   const [draft, setDraft] = useState<NewCostLineDraft>(EMPTY);
@@ -47,8 +52,11 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
   const [locked, setLocked] = useUnresolvedLock(`cost-add-${sheet}`);
   const [retire, setRetire] = useState<CostLinePayload | null>(null);
 
+  useEffect(() => { onLocked?.(locked); }, [locked, onLocked]);
   const eligible = useMemo(() => mgmt.eligible_groups.map((g) => g.code), [mgmt.eligible_groups]);
-  const errors = validateNewCostLine(draft, sheet, eligible);
+  // The group the form is opened under is the default when no group was chosen yet, so a slow load can never leave the form without a group.
+  const effective: NewCostLineDraft = draft.group ? draft : { ...draft, group: openGroup ?? "" };
+  const errors = validateNewCostLine(effective, sheet, eligible);
   const dirty = draft.label.trim() !== "" || draft.group !== "" ? 1 : 0;
   useReportDirty(`cost-add-${sheet}`, dirty);
   useReportPending(`cost-add-${sheet}`, inFlight || locked);
@@ -63,11 +71,18 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
   const seenAction = useRef(rowAction?.nonce ?? 0);
   useEffect(() => {
     if (!presetGroup || presetGroup.nonce === seenPreset.current) return;
+    if (readOnlyProject) { seenPreset.current = presetGroup.nonce; return; }
+    // The request is consumed only once the eligible groups are known: on a slow load the preset must not be lost (the form would have no group).
+    if (!mgmt.eligible_groups.some((g) => g.code === presetGroup.code)) return;
     seenPreset.current = presetGroup.nonce;
-    if (readOnlyProject || !mgmt.eligible_groups.some((g) => g.code === presetGroup.code)) return;
     setDraft((d) => ({ ...d, group: presetGroup.code }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetGroup?.nonce]);
+  }, [presetGroup?.nonce, mgmt.eligible_groups.length, readOnlyProject]);
+
+  // The inline form opens under the chosen group: focus its description so typing can start at once.
+  useEffect(() => {
+    if (slot && openGroup) window.setTimeout(() => slot.querySelector<HTMLElement>("input")?.focus({ preventScroll: false }), 0);
+  }, [slot, openGroup]);
 
   const add = () => (disabled ? Promise.resolve() : singleFlight(runAdd));
 
@@ -79,8 +94,8 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     }
     setInFlight(true);
     setStatus(null);
-    const beforeInGroup = data.lines.filter((l) => l.category === draft.group && l.label === draft.label.trim()).length;
-    const result = await addCostLine(data, cas, draft);
+    const beforeInGroup = data.lines.filter((l) => l.category === effective.group && l.label === draft.label.trim()).length;
+    const result = await addCostLine(data, cas, effective);
     if (result.outcome === "refused") {
       setStatus({ tone: "error", text: result.message });
       setInFlight(false);
@@ -94,7 +109,7 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     }
     const fresh = await fetchCostLines(project, sheet);
     const afterInGroup = fresh.ok === true
-      ? fresh.lines.filter((l) => l.category === draft.group && l.label === draft.label.trim()).length : -1;
+      ? fresh.lines.filter((l) => l.category === effective.group && l.label === draft.label.trim()).length : -1;
     setInFlight(false);
     if (afterInGroup === beforeInGroup + 1) {
       setStatus({ tone: "ok", text: `Line "${draft.label.trim()}" added and verified in the fresh projection. The model was not run.` });
@@ -146,32 +161,23 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowAction?.nonce]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, CostLinePayload[]>();
-    for (const line of data.lines) map.set(line.category, [...(map.get(line.category) ?? []), line]);
-    return Array.from(map.entries());
-  }, [data.lines]);
   const labelOf = (code: string) => costGroupLabel(code, mgmt.eligible_groups);
   const idp = `wf-add-${sheet}`;
-
-  return (
-    <div className="wf-section" data-cost-line-manager={sheet}>
-      <p className="wf-group-head">Add or retire {sheet === "capex" ? "CAPEX" : "OPEX"} lines</p>
-      <StatusNote status={status} />
-      {locked && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last change outcome is unknown. Reload the workspace before changing lines again.</span></div>}
+  const form = (
+    <div className="wf-section ci-inline-add" data-cost-line-manager={sheet} data-add-group={openGroup ?? undefined}>
       <div className="wf-inline-form">
         <Field id={`${idp}-group`} label="Group" error={showErrors ? errors.group : undefined}>
           {(p) => (
-            <select {...p} className="fm-input" value={draft.group} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
+            <select {...p} className="fm-input" value={effective.group} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
               <option value="">Select a group…</option>
-              {mgmt.eligible_groups.map((g) => <option key={g.code} value={g.code}>{g.label}</option>)}
+              {mgmt.eligible_groups.map((g) => <option key={g.code} value={g.code}>{labelOf(g.code)}</option>)}
             </select>
           )}
         </Field>
         <Field id={`${idp}-label`} label="Line label" error={showErrors ? errors.label : undefined}>
           {(p) => <input {...p} className="fm-input" value={draft.label} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />}
         </Field>
-        <Field id={`${idp}-amount`} label="Amount" unit="k€" error={showErrors ? errors.amount_keur : undefined}>
+        <Field id={`${idp}-amount`} label="Amount" unit={sheet === "opex" ? "k€ per year" : "k€"} error={showErrors ? errors.amount_keur : undefined}>
           {(p) => <input {...p} className="fm-input" inputMode="decimal" value={draft.amount_keur} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, amount_keur: e.target.value })} />}
         </Field>
         {sheet === "opex" && (
@@ -188,33 +194,23 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
           </button>
           <button type="button" className="fm-btn" disabled={inFlight || dirty === 0}
                   onClick={() => { setDraft(EMPTY); setShowErrors(false); setStatus(null); }}>Clear</button>
+          <button type="button" className="fm-btn" disabled={inFlight} data-cost-add-close="true" onClick={() => onClose?.()}>Close</button>
         </div>
       </div>
+      {sheet === "opex" && (
+        <p className="rx-note" data-inflation-default="fallback">
+          A new line starts at 0 % inflation: no project-wide OPEX escalation is saved, so none is assumed. Enter this line's own yearly inflation; existing lines are not changed.
+        </p>
+      )}
+    </div>
+  );
 
-      <div className="wf-table-wrap rx-lines-scroll rx-lines-scroll-short" role="region" tabIndex={0}
-           aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} lines by group, scrollable`} data-lines-manager-scroll={sheet}>
-        <table className="fm-table" aria-label={`${sheet === "capex" ? "CAPEX" : "OPEX"} lines by group`}>
-          <thead><tr><th scope="col">Group</th><th scope="col">Line</th><th scope="col">Amount (k€)</th><th scope="col">State</th><th scope="col"><span className="fm-sr-only">Actions</span></th></tr></thead>
-          <tbody>
-            {grouped.flatMap(([code, lines]) => lines.map((line) => (
-              <tr key={line.sub_line_id} className={line.active ? undefined : "wf-inactive"} data-line-state={line.active ? "active" : "inactive"}>
-                <td>{labelOf(code)}</td>
-                <td>{line.label}</td>
-                <td className="fm-mono">{String(line.amount_keur ?? "—")}</td>
-                <td>{line.active ? "active" : "deactivated"}</td>
-                <td>
-                  {line.active
-                    ? <button type="button" className="fm-btn" disabled={disabled} aria-label={`Deactivate ${line.label}`} onClick={() => setRetire(line)}>Deactivate</button>
-                    : <button type="button" className="fm-btn" disabled={disabled} aria-label={`Reactivate ${line.label}`} onClick={() => void setActive(line, true)}>Reactivate</button>}
-                </td>
-              </tr>
-            )))}
-            {!data.lines.length && <tr><td colSpan={5}><span role="status">No lines are projected for this sheet.</span></td></tr>}
-          </tbody>
-        </table>
-      </div>
+  return (
+    <div className="wf-section" data-cost-line-commands={sheet}>
+      <StatusNote status={status} />
+      {locked && <div className="fm-banner" role="alert"><span className="fm-demo-label">RECONCILE</span><span className="fm-banner-copy">The last change outcome is unknown. Reload the workspace before changing lines again.</span></div>}
+      {slot && createPortal(form, slot)}
       <p className="fm-info-note">Deactivating a line keeps it for the record and can be undone with Reactivate; lines are never deleted. Calculated groups cannot be changed here. Adding, deactivating and reactivating a line each save immediately and never run the model.</p>
-      <details className="rx-tech"><summary>Technical note</summary><p className="wf-hint">{mgmt.csrf_note}</p></details>
       {retire && (
         <WorkflowDialog
           title={`Deactivate "${retire.label}"?`}

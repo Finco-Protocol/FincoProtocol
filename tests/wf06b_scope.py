@@ -13,6 +13,11 @@ Supersession (``SUPERSEDED``): the subset of owned paths that already exist at B
 accepts a different current blob for such a path only through ``supersedes(path, blob)``, which is true only while THIS cohort is exact and pins
 exactly that blob. It never admits a value for a path outside ``SUPERSEDED``.
 
+PR-U1 successor (2026-11-02): the closed PR-U1 cohort (tests/u1_scope.py, base = the merge of PR #410) extends this cohort through three bounded hooks:
+a path of this cohort may carry U1's exact blob (``_pin_ok``: only while U1 is exact, only U1's exact pin, and only when this manifest still holds the
+historical blob that U1 re-verified against git at its BASE), a path owned by U1 is allowed only while U1 is exact (``_u1_owns``), and
+``supersedes`` / ``allowed_path`` forward to U1 for the older cohorts. U1 never calls this module, so there is no recursion.
+
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort
 registry, so there is no recursive self-approval.
 
@@ -138,6 +143,28 @@ def _ci_evidence_only(path):
     return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
 
 
+def _u1():
+    try:
+        from tests import u1_scope as U
+    except ImportError:
+        return None
+    return U
+
+
+def _u1_owns(path, repo, ref):
+    """A path of the closed PR-U1 cohort, only while that cohort is itself exact (its check is low level and never calls this module)."""
+    U = _u1()
+    return U is not None and U.allowed_path(path, repo, ref) and U.exact_blobs_ok(repo, ref)
+
+
+def _pin_ok(path, blob, pin, repo, ref):
+    """``blob`` is this cohort's pin, or the exact PR-U1 pin of a path U1 supersedes while this manifest still holds the historical blob U1 recorded."""
+    if blob == pin:
+        return True
+    U = _u1()
+    return U is not None and U.supersedes(path, blob, repo, ref) and pin in U.historical_blobs(path, repo, ref)
+
+
 def manifest(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -184,7 +211,13 @@ def exact_blobs_ok(repo=None, ref=None):
         if skey not in memo:
             memo[skey] = _exact_blobs_ok(repo, ref)
         return memo[skey]
+    U = _u1()
+    if U is not None and not U._SCOPE:     # PR-U1: one U1 verdict per outer call here (dropped on exit), never a process-lifetime cache
+        with U.scoped():
+            return _exact_blobs_ok(repo, ref)
     return _exact_blobs_ok(repo, ref)
+
+
 
 
 def _exact_blobs_ok(repo=None, ref=None):
@@ -199,25 +232,26 @@ def _exact_blobs_ok(repo=None, ref=None):
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
-        # 2. the BASE blob recorded for every superseded path is what git holds at BASE (history is not rewritten here)
         paths = sorted(base_blobs)
+        # 2. the BASE blob recorded for every superseded path is what git holds at BASE (history is not rewritten here)
         at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
         if at_base != [base_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(not _pin_ok(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(not _pin_ok(p, listed[p], pins[p], root, ref) for p in pins):
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _u1_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+               for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -226,7 +260,7 @@ def _exact_blobs_ok(repo=None, ref=None):
                 if f.is_symlink() or (f.exists() and f.stat().st_mode & 0o111):
                     return False
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _u1_owns(p, root, ref) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
@@ -238,12 +272,15 @@ def _exact_blobs_ok(repo=None, ref=None):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    return path in OWNED_PATHS or path == MANIFEST or _u1_owns(path, repo, ref)
 
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value:
+        return True
+    U = _u1()
+    return U is not None and U.supersedes(path, value, repo, ref)
 
 
 def valid(repo=None, ref=None):
@@ -253,10 +290,12 @@ def valid(repo=None, ref=None):
 
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
-    if path not in pins or not valid(repo, ref):
-        return False
     raw = source.encode() if isinstance(source, str) else source
-    return source is None or _blob(raw) == pins[path]
+    if path in pins and valid(repo, ref) and (source is None or _blob(raw) == pins[path]):
+        return True
+    # PR #413 Correction H: the exact later state of a path the closed PR-U1 cohort supersedes (its pin, while U1 is exact and the composite is valid).
+    U = _u1()
+    return bool(U is not None and source is not None and path in U.SUPERSEDED and U.supersedes(path, _blob(raw), repo, ref) and valid(repo, ref))
 
 
 def protected_blobs(repo=None, ref=None):

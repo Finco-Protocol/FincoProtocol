@@ -451,10 +451,9 @@ def current_mutation_successor_valid(*,repo=None):
         def read_git(*args):
             return subprocess.check_output(["git",*args],cwd=root,stderr=subprocess.PIPE).decode("utf-8").strip()
         for path,(source,parent,blob) in _browser_layers().items():
-            # provenance is verified while the layer's blob OR a later admitted successor of the path is current
-            from tests import wf03_lifecycle_scope as WF03
-            if (git_blob(sources[path]) not in {blob,REACT_MVP_CORRECTION_SUCCESSORS.get(path),RC_UX_SUCCESSORS.get(path),WSV2_EDITING_SUCCESSORS.get(path)}
-                    and not WF03.matches(path,sources[path],repo=root)):continue
+            # The layer's immutable provenance (source commit, its single parent, the one-path delta, the recorded blobs and ancestry) is verified
+            # UNCONDITIONALLY: it is history, independent of which later reviewed state of the path is current (PR #413: a later U1 successor of the
+            # path must not let a forged historical constant go unnoticed). The current bytes are authenticated separately in ``violations``.
             if read_git("rev-parse",source+"^:"+path)!=BLOBS[path]:return False
             if read_git("rev-list","--parents","-n","1",source).split()!=[source,parent]:return False
             if read_git("rev-parse",source+":"+path)!=blob:return False

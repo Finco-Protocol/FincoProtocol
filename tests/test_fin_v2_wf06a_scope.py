@@ -179,7 +179,7 @@ def test_unregistered_or_broken_cohort_widens_nothing(monkeypatch, tmp_path):
 def test_older_guards_refuse_when_the_wf06a_cohort_is_missing_or_forged(monkeypatch):
     from tests import wf03_lifecycle_scope as W3, wf04_scope as W4, wsv2_core_scope as W2
     assert W3.exact_blobs_ok() and W4.exact_blobs_ok() and W2.exact_blobs_ok()
-    path = 'frontend/src/app/InputsGuide.tsx'
+    path = 'frontend/src/app/RunFailureNotice.tsx'       # a WF-06A path no later cohort owns (PR-U1 owns InputsGuide.tsx and may legitimately allow it)
     for guard in (lambda: W2._wf06a_allows(path, W2.ROOT, None), lambda: W3._wf06a_allows(path, W3.ROOT, None),
                   lambda: W4._downstream_allows(path, W4.ROOT, None)):
         assert guard()

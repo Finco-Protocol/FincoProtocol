@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import "../../styles/rcm-analysis.css";
 import { FriendlyError } from "../productLanguage";
+import { groupDisplayName } from "../costGroupDisplay";
+import { showKeur } from "../costAmounts";
+import { useCostUnit } from "../CostUnit";
+import { useReportPrecision } from "../ReportPrecision";
 
 /** Inputs > Studios > OPEX projection (Y1 … Yn): the saved project's operating cost by group and year, exactly as the server projects it
  *  (line amounts, each line's escalation, applied contingency).  The browser only lays the numbers out; a year the server has no value for is shown as
@@ -15,7 +19,6 @@ interface Projection {
 }
 type Failure = { code: string; message?: string };
 
-const cell = (v: number | null | undefined) => (v === null || v === undefined || Number.isNaN(v) ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: 0 }));
 
 async function load(project: string): Promise<Projection | Failure> {
   try {
@@ -29,6 +32,10 @@ async function load(project: string): Promise<Projection | Failure> {
 }
 
 export function OpexProjection({ project, reloadKey }: { project: string; reloadKey: number }) {
+  const [unit] = useCostUnit();
+  const { precision } = useReportPrecision();
+  // Amounts follow the chosen unit and report precision (default kEUR, 0 decimals); the server numbers are only re-expressed.
+  const cell = (v: number | null | undefined) => (v === null || v === undefined || Number.isNaN(v) ? "—" : showKeur(v, unit, precision));
   const [data, setData] = useState<Projection | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   useEffect(() => {
@@ -42,25 +49,26 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
   return (
     <section className="rx-card rcm-analysis" data-opex-projection="ready" aria-label="OPEX projection">
       <h3>OPEX projection (Y1–Y{last})</h3>
-      <p className="rx-note">Operating cost of the saved project by group and year, in {data.unit}. {data.basis}</p>
+      <p className="rx-note">Operating cost of the saved project by group and year, in {unit}. {data.basis}</p>
+      <p className="rx-note" data-opex-years-scope="true">These are the project's line items by year. The six group base amounts (first row of their group on the Lines view) are added by the model when it runs and are not part of this projection.</p>
       <dl className="rcm-facts">
-        <div><dt>Year 1 OPEX incl. contingency</dt><dd data-opex-y1="true">{cell(data.kpis.year1_total_keur)} {data.unit}</dd></div>
-        <div><dt>Year {last} OPEX</dt><dd>{cell(data.kpis.final_year_total_keur)} {data.unit}</dd></div>
-        <div><dt>OPEX per MW (Y1)</dt><dd>{data.kpis.per_mw_year1_keur === null ? "—" : data.kpis.per_mw_year1_keur.toFixed(2)} kEUR/MW</dd></div>
+        <div><dt>Year 1 line items incl. contingency</dt><dd data-opex-y1="true">{cell(data.kpis.year1_total_keur)} {unit}</dd></div>
+        <div><dt>Year {last} line items</dt><dd>{cell(data.kpis.final_year_total_keur)} {unit}</dd></div>
+        <div><dt>Line items per MW (Y1)</dt><dd>{cell(data.kpis.per_mw_year1_keur)} {unit}/MW</dd></div>
         <div><dt>Escalation</dt><dd>{data.escalation.value ?? "—"}{data.escalation.label ? ` · ${data.escalation.label}` : ""}</dd></div>
       </dl>
       <div className="rcm-scroll" tabIndex={0} role="region" aria-label="OPEX by group and year">
         <table className="fm-table rcux-opex-proj" data-opex-projection-table="true">
-          <thead><tr><th scope="col">Code</th><th scope="col">Group</th>{data.years.map((y) => <th key={y} scope="col" className="fm-num">Y{y}</th>)}</tr></thead>
+          <thead><tr><th scope="col">Group</th>{data.years.map((y) => <th key={y} scope="col" className="fm-num">Y{y}</th>)}</tr></thead>
           <tbody>
             {data.rows.map((r) => (
               <tr key={r.code} data-opex-row={r.code} data-opex-has-data={r.has_data ? "true" : "false"}>
-                <td>{r.code}</td><th scope="row">{r.name}{r.derived ? " (derived)" : ""}</th>
+                <th scope="row">{groupDisplayName(r.code, r.name)}{r.derived ? " (calculated)" : ""}</th>
                 {r.values.map((v, i) => <td key={i} className="fm-num" data-opex-cell={`${r.code}:${data.years[i]}`}>{cell(v)}</td>)}
               </tr>
             ))}
-            <tr data-opex-row="contingency"><td></td><th scope="row">Applied contingency ({data.contingency.rate_pct.toFixed(1)}%)</th>{data.contingency.by_year.map((v, i) => <td key={i} className="fm-num">{cell(v)}</td>)}</tr>
-            <tr data-opex-row="total"><td></td><th scope="row">Total OPEX</th>{data.totals.including_contingency.map((v, i) => <td key={i} className="fm-num" data-opex-total={data.years[i]}><strong>{cell(v)}</strong></td>)}</tr>
+            <tr data-opex-row="contingency"><th scope="row">Applied contingency ({data.contingency.rate_pct.toFixed(1)}%)</th>{data.contingency.by_year.map((v, i) => <td key={i} className="fm-num">{cell(v)}</td>)}</tr>
+            <tr data-opex-row="total"><th scope="row">Total of line items</th>{data.totals.including_contingency.map((v, i) => <td key={i} className="fm-num" data-opex-total={data.years[i]}><strong>{cell(v)}</strong></td>)}</tr>
           </tbody>
         </table>
       </div>

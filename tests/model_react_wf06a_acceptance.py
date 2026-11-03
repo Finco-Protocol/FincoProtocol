@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from tests.model_react_mvp_acceptance import session as vertical_session
 from tests.model_react_overnight_b_acceptance import horizontal_overflow, settle_inputs
@@ -67,15 +68,16 @@ def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(brow
             grid.wait_for()
             # the sheet switch briefly keeps the previous sheet's lines: wait for the sheet's own columns and its first group heading
             page.wait_for_function("""(sheet) => { const g = document.querySelector(`[data-cost-grid='${sheet}']`); const first = g && g.querySelector('tr.ws2-group-row th');
-                return first && first.textContent.startsWith(sheet === 'capex' ? 'C.' : 'B.') && (sheet === 'capex' || /Inflation/.test(g.textContent)); }""", arg=sheet.lower())
+                return first && first.textContent.trim().startsWith(sheet === 'capex' ? 'Production Units' : 'Technical Management') && (sheet === 'capex' || /Inflation/.test(g.textContent)); }""", arg=sheet.lower())
             groups = grid.locator("tr.ws2-group-row")
             assert groups.count() >= 3, (kind, sheet, groups.count(), grid.locator("tr").count())
             first_group = groups.first.inner_text()
-            assert first_group.startswith("C.01" if sheet == "CAPEX" else "B.01"), first_group
+            assert first_group.strip().startswith("Production Units" if sheet == "CAPEX" else "Technical Management"), first_group      # PR-U1 (D1): names, never codes
             assert "undefined" not in grid.inner_text() and "null" not in grid.inner_text()
-            # no bare calculated-group code is shown anywhere in the sheet
+            # no group code (bare or leading) is shown anywhere in the sheet
             for row in grid.locator("tr.ws2-group-row th").all_inner_texts():
-                assert " " in row.strip(), f"bare group code: {row!r}"
+                assert " " in row.strip() and not re.match(r"^\s*[CB]\.\d", row), f"visible group code: {row!r}"
+            assert not re.search(r"\b[CB]\.\d{2}(\.\d{2})?\b", grid.inner_text()), "no C./B. code is visible in the sheet"
             # first data row follows its group heading and keeps its accessible name and units
             inputs = grid.locator("input[data-r][data-c]")
             first_input = inputs.first
@@ -89,11 +91,11 @@ def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(brow
             # staged edit survives, is flagged, and is discarded again (never saved)
             amount = grid.locator("input[data-r='1'][data-c='1']")
             if amount.is_enabled():
-                original = amount.input_value()
+                original = amount.get_attribute("data-exact")                 # PR-U1: at rest an amount shows at report precision; the exact text is behind it
                 amount.fill("123.45")
                 assert amount.get_attribute("data-changed") == "true"
                 grid.get_by_role("button", name="Discard staged edits").click()
-                assert grid.locator("input[data-r='1'][data-c='1']").input_value() == original
+                assert grid.locator("input[data-r='1'][data-c='1']").get_attribute("data-exact") == original
             for width in WIDTHS:
                 page.set_viewport_size({"width": width, "height": 1000})
                 assert not horizontal_overflow(page), f"{kind} {sheet} page overflows at {width}"

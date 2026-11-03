@@ -484,15 +484,16 @@ def test_a_wrong_old_blob_pin_for_the_workflow_fails_closed(monkeypatch):
 
 # ── WF-06A (PR #406, Owner Correction B): additive controls for the bounded downstream hook ───────────────────────────────────────────────
 def test_wf06a_downstream_hook_follows_only_the_exact_closed_cohort(monkeypatch):
+    # PR #413: a WF-06A path no later cohort owns (PR-U1 owns InputsGuide.tsx and may legitimately allow it through its own exact cohort)
     from tests import fin_v2_wf06a_scope as WF06A
-    pin = WF06A.manifest()['source_blobs']['frontend/src/app/InputsGuide.tsx']
-    assert W._downstream_allows('frontend/src/app/InputsGuide.tsx', W.ROOT, None)
-    assert W._downstream_pin('frontend/src/app/InputsGuide.tsx', pin, W.ROOT, None)
-    assert not W._downstream_pin('frontend/src/app/InputsGuide.tsx', '0' * 40, W.ROOT, None)           # forged pin
+    pin = WF06A.manifest()['source_blobs']['frontend/src/app/RunFailureNotice.tsx']
+    assert W._downstream_allows('frontend/src/app/RunFailureNotice.tsx', W.ROOT, None)
+    assert W._downstream_pin('frontend/src/app/RunFailureNotice.tsx', pin, W.ROOT, None)
+    assert not W._downstream_pin('frontend/src/app/RunFailureNotice.tsx', '0' * 40, W.ROOT, None)           # forged pin
     for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'financial_engine/x.py', 'tests/test_new_unreviewed.py'):
         assert not W._downstream_allows(stranger, W.ROOT, None)
         assert not W._downstream_pin(stranger, pin, W.ROOT, None)
     monkeypatch.setattr(WF06A, 'exact_blobs_ok', lambda *a, **k: False)
-    assert not W._downstream_allows('frontend/src/app/InputsGuide.tsx', W.ROOT, None)
-    assert not W._downstream_pin('frontend/src/app/InputsGuide.tsx', pin, W.ROOT, None)
+    assert not W._downstream_allows('frontend/src/app/RunFailureNotice.tsx', W.ROOT, None)
+    assert not W._downstream_pin('frontend/src/app/RunFailureNotice.tsx', pin, W.ROOT, None)
     assert not W.exact_blobs_ok()                                                                    # a missing/forged cohort cannot admit its paths

@@ -67,7 +67,7 @@ def test_base_is_the_integrated_409_main_and_history_is_recorded_not_rewritten()
         assert data['source_blobs'][path] != data['base_blobs'][path] or path in W.GOVERNANCE_PATHS or path
     # the older manifests were not edited: they are byte-identical to BASE
     changed = set(_git(W.ROOT, 'diff', '--name-only', W.BASE, '--').split())
-    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != W.MANIFEST for p in changed)
+    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p not in (W.MANIFEST, 'docs/react_migration/u1_workbench/SOURCE_SUCCESSOR.json') for p in changed)   # PR-U1's own seal is the only later manifest
 
 
 def test_older_cohorts_and_the_409_seal_are_still_exact_on_the_real_tree():

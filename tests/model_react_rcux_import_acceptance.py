@@ -37,7 +37,7 @@ def _csv(*rows):
 def _open(page, base, code):
     page.goto(f"{base}/v2/model-react/{code}#inputs")
     page.reload()                                                       # a same-URL goto is a hash navigation; reload re-reads every projection
-    page.locator("[data-studio-tab='import']").click()
+    page.locator("[data-inputs-import] > summary").click()                 # PR-U1: Import is a section of Inputs
     page.wait_for_selector("[data-import-workspace='true']", timeout=60000)
 
 
@@ -133,7 +133,7 @@ def test_rcux_import_a_lost_apply_response_locks_the_step_and_a_reload_shows_the
     assert page.locator("[data-import-apply='true']").is_disabled()                         # never retried blindly
     page.unroute("**/model-react/import/apply**")
     page.reload()
-    page.locator("[data-studio-tab='import']").click()
+    page.locator("[data-inputs-import] > summary").click()                 # PR-U1: Import is a section of Inputs
     page.wait_for_selector("[data-import-workspace='true']", timeout=60000)
     assert page.locator("[data-import-workspace]").get_attribute("data-import-step") == "upload"
     assert errors == [e for e in errors if "502" in e or "status of 502" in e]
@@ -147,7 +147,7 @@ def test_rcux_import_templates_are_read_only(live_server, an_session):
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
     page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs")
-    page.locator("[data-studio-tab='import']").click()
+    page.locator("[data-inputs-import] > summary").click()                 # PR-U1: Import is a section of Inputs
     page.wait_for_selector("[data-import-state='read-only']", timeout=60000)
     assert page.locator("[data-import-file]").count() == 0
     assert errors == [], errors

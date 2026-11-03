@@ -39,7 +39,8 @@ def test_no_excel_source_in_user_facing_frontend_source():
 
 def test_cost_line_ui_declares_only_finco_identity():
     src = (ROOT / "frontend/src/app/editing/CostLinesGridView.tsx").read_text()
-    assert "finco_display_code" in src and "data-finco-code" in src
+    # PR-U1 (owner decision D1): the internal group/line code is an identity only (profile lookup, keys) and is never a visible column or marker.
+    assert "finco_display_code" in src and "data-finco-code" not in src and "ws2-code" not in src
     types = (ROOT / "frontend/src/app/types.ts").read_text()
     block = types[types.index("export interface CostLineProjectionLine"):types.index("export interface CostLinesPayload")]
     assert not re.search(r"excel|workbook|sheet_(name|ref)|source_cell|cell_ref", block, re.I)

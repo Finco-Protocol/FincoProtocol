@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import "../styles/compact-inputs.css";
 import { fetchCostLines, fetchStatements } from "./api";
 import { showKeur } from "./costAmounts";
+import { groupDisplayName } from "./costGroupDisplay";
 import { CostUnitSelect, useCostUnit } from "./CostUnit";
 import { useReportPrecision } from "./ReportPrecision";
 import { RunIdentityLabel } from "./runIdentity";
@@ -55,7 +56,6 @@ function useStatements(project: string, reloadKey: number, snapshot: string | un
 export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery, railOpen, onRail }: {
   project: string; workspace: WorkspacePayload; reloadKey?: number; query: string; onQuery: (q: string) => void; railOpen: boolean; onRail: () => void;
 }) {
-  const capex = useCostGroups(project, "capex", reloadKey);
   const statements = useStatements(project, reloadKey, workspace.identity?.snapshot_id);
   const { total: staged } = useDirtyTotal();
   const { unit, KEUR } = useShown();
@@ -88,12 +88,6 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
             <strong className="ci-kpi-value" data-ci-metric={t.id}>{t.text}</strong>
           </div>
         ))}
-        <div className="ci-kpi">
-          <span className="ci-kpi-label">Total CAPEX, saved lines</span>
-          <strong className="ci-kpi-value" data-ci-capex={capex.saved ?? "unavailable"}>
-            {capex.state === "loading" ? "…" : capex.saved === null ? "Unavailable" : `${KEUR(capex.saved)} ${unit}`}
-          </strong>
-        </div>
         <div className="ci-kpi" data-ci-senior-debt={senior?.available ? "run" : "none"}>
           <span className="ci-kpi-label">Senior debt</span>
           <strong className="ci-kpi-value" data-ci-metric="senior-debt">{seniorText}</strong>
@@ -112,7 +106,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
             {state === "STALE" && <strong className="ci-stale" role="status" data-ci-stale="true"> Inputs changed after this Run — run the model again to update.</strong>}
           </>}
         <br />
-        <span className="ci-sourcenote">Saved-line figures add up the active saved lines; they are not model results.</span>
+        <span className="ci-sourcenote">The CAPEX and OPEX cards show saved inputs; they are not model results.</span>
         {" "}<span data-ci-staged={staged}>{staged === 0 ? "No unsaved edits." : `${staged} unsaved edit${staged === 1 ? "" : "s"} — not included in any figure above.`}</span>
       </p>
       <div className="ci-find" role="search">
@@ -140,7 +134,7 @@ function SummaryTable({ title, sheet, data, onOpen, unit }: { title: string; she
           {data.state === "unavailable" && <tr><td colSpan={4}>The summary is not available right now.</td></tr>}
           {rows.map((g) => (
             <tr key={g.code} data-ci-summary-row={g.code}>
-              <th scope="row">{g.label}</th>
+              <th scope="row">{groupDisplayName(g.code, g.label)}</th>
               <td className="ci-num">{g.saved_total_keur === null ? "—" : KEUR(g.saved_total_keur)}</td>
               <td className="ci-num">{g.active_line_count}</td>
               <td>
@@ -210,7 +204,7 @@ export function InputsRail({ project, reloadKey = 0, focus }: { project: string;
       </div>
       <div className={`ci-rail-box${pending.length ? " ci-rail-warn" : ""}`} data-ci-rail-warnings="true">
         <strong>{pending.length ? `${pending.length} group${pending.length === 1 ? "" : "s"} to confirm` : "Nothing to confirm"}</strong>
-        {pending.length > 0 && <ul>{pending.map((g) => <li key={g.code}>{g.label}</li>)}</ul>}
+        {pending.length > 0 && <ul>{pending.map((g) => <li key={g.code}>{groupDisplayName(g.code, g.label)}</li>)}</ul>}
       </div>
     </aside>
   );

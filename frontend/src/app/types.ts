@@ -384,7 +384,11 @@ export interface CostLinesProjection {
   groups: CostLineProjectionGroup[];
   saved_total_keur: number;
   capacity?: CostLinesCapacityBasis;
+  /** OPEX only: the six saved group base amounts (canonical scalar cells) and whether each can change the Run. */
+  bases?: CostLineGroupBase[];
 }
+
+export interface CostLineGroupBase { group: string; field_id: string; value: string; editable: boolean; used_by_run: boolean; note: string | null }
 
 export interface CostLinesPayload {
   ok: true;

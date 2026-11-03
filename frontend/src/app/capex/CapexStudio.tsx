@@ -5,6 +5,9 @@ import { useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, W
 import { encodeSpec, fetchCapexPreview, fetchCapexProfiles, saveCapexProfile } from "./api";
 import type { CapexPlan, CapexProfiles, Draft, DraftRow } from "./types";
 import { friendlyMessage } from "../productLanguage";
+import { groupDisplayName } from "../costGroupDisplay";
+import { formatMoneyText } from "../units";
+import { useReportPrecision } from "../ReportPrecision";
 
 const SHAPE_LABEL: Record<string, string> = {
   UNIFORM: "Uniform", FRONT_LOADED: "Front-loaded", BACK_LOADED: "Back-loaded", EXPLICIT: "Explicit % per month", MILESTONE: "Milestone (one month)",
@@ -28,6 +31,9 @@ function draftFromSaved(data: CapexProfiles): Draft {
  *  The preview is the canonical allocation of a DRAFT — never a Run result.  Save writes the Working Copy through the existing
  *  canonical route (CSRF + composite CAS) and never runs the model; IDC and Sources & Uses change only at the next Run. */
 export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: string; reloadKey?: number; onSaved: () => void }) {
+  const { precision } = useReportPrecision();
+  // Amounts follow the report precision (default 0 decimals); exports and the saved document keep the exact server text.
+  const fmt = (text: string | null | undefined) => (text === null || text === undefined || text === "—" || text === "" ? "—" : formatMoneyText(text.replace(/,/g, ""), "kEUR", "kEUR", precision));
   const [data, setData] = useState<CapexProfiles | null>(null);
   const [loadError, setLoadError] = useState("");
   const [draft, setDraft] = useState<Draft>({});
@@ -158,12 +164,12 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
               const changed = JSON.stringify(row) !== JSON.stringify(saved[item.item_key] ?? EMPTY);
               return (
                 <tr key={item.item_key} data-capex-item={item.item_key} data-capex-changed={changed || undefined}>
-                  <th scope="row" className="rcm-sticky">{item.item_key} {item.label}<span className="rcm-delta">{item.category_code}</span></th>
-                  <td>{item.amount_display}</td>
+                  <th scope="row" className="rcm-sticky">{item.label}<span className="rcm-delta">{groupDisplayName(item.category_code, "")}</span></th>
+                  <td data-exact={item.amount_keur}>{fmt(item.amount_display)}</td>
                   <td className="rcm-left">
                     <select value={row.shape} disabled={readOnly} data-capex-shape={item.item_key} aria-label={`Shape for ${item.label}`}
                       onChange={(e) => change(item.item_key, { shape: e.target.value })}>
-                      <option value="">— none (existing timing) —</option>
+                      <option value="">Model default — paid at the end of each construction period</option>
                       {data.shapes.map((s) => <option key={s} value={s}>{SHAPE_LABEL[s] ?? s}</option>)}
                     </select>
                   </td>
@@ -192,7 +198,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
       </div>
       {data.excluded.length > 0 && (
         <details><summary>Derived / financing items (not eligible for a spending profile): {data.excluded.length}</summary>
-          <ul>{data.excluded.map((e) => <li key={e.item_key}><code>{e.item_key}</code> {e.label} — {e.amount_display} kEUR</li>)}</ul></details>
+          <ul>{data.excluded.map((e) => <li key={e.item_key}>{e.label} — {fmt(e.amount_display)} kEUR</li>)}</ul></details>
       )}
 
       <div className="rcm-controls-actions" style={{ marginTop: 12 }}>
@@ -218,7 +224,7 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
             <span className={`rcm-chip ${plan.plan.totals.reconciles ? "ok" : "warn"}`} data-capex-reconciles={String(plan.plan.totals.reconciles)}>
               {plan.plan.totals.reconciles ? "Profiled amounts reconcile exactly" : "Unallocated or invalid rows present"}
             </span>
-            <span>Planned <strong data-capex-planned="true">{plan.plan.totals.planned}</strong> · profiled <strong data-capex-profiled="true">{plan.plan.totals.profiled}</strong> · unallocated <strong data-capex-unallocated="true">{plan.plan.totals.unallocated}</strong> kEUR</span>
+            <span>Planned <strong data-capex-planned="true">{fmt(plan.plan.totals.planned)}</strong> · profiled <strong data-capex-profiled="true">{fmt(plan.plan.totals.profiled)}</strong> · unallocated <strong data-capex-unallocated="true">{fmt(plan.plan.totals.unallocated)}</strong> kEUR</span>
           </p>
           {plan.plan.global_errors.map((e) => <p key={e} className="rx-status rx-status-error" role="alert" data-capex-global-error="true">{e}</p>)}
           <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Per-item allocation status (scrolls)">
@@ -226,9 +232,9 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
               <thead><tr><th scope="col" className="rcm-sticky">Item</th><th scope="col" className="rcm-left">Shape</th><th scope="col">Amount (kEUR)</th><th scope="col" className="rcm-left">Status</th><th scope="col">Unallocated (kEUR)</th></tr></thead>
               <tbody>{plan.plan.rows.map((r) => (
                 <tr key={r.item_key} data-capex-row={r.item_key} data-status={r.status}>
-                  <th scope="row" className="rcm-sticky">{r.item_key} {r.label}</th><td className="rcm-left">{SHAPE_LABEL[r.shape] ?? r.shape}</td><td>{r.amount_display}</td>
+                  <th scope="row" className="rcm-sticky">{r.label}</th><td className="rcm-left">{SHAPE_LABEL[r.shape] ?? r.shape}</td><td>{fmt(r.amount_display)}</td>
                   <td className="rcm-left">{r.status === "valid" ? <span className="rcm-chip ok">valid</span> : <span className="rcm-tag rcm-tag-bad" title={r.error_detail ?? ""}>{r.error_code}</span>}</td>
-                  <td>{r.unallocated_display}</td></tr>))}</tbody>
+                  <td>{fmt(r.unallocated_display)}</td></tr>))}</tbody>
             </table>
           </div>
           {plan.plan.item_order.length > 0 && (<>
@@ -242,13 +248,13 @@ export function CapexStudio({ project, reloadKey = 0, onSaved }: { project: stri
                   {plan.plan.item_order.map((k) => <th scope="col" key={k}>{k}</th>)}<th scope="col">Total</th><th scope="col">Cumulative</th><th scope="col">Remaining</th></tr></thead>
                 <tbody>{plan.plan.months.map((m) => (
                   <tr key={m.month} data-capex-month={m.month}><th scope="row" className="rcm-sticky">{m.month}</th><td className="rcm-left">{m.start ?? "—"}</td><td>{m.period === null ? "—" : `P${m.period}`}</td>
-                    {plan.plan.item_order.map((k) => <td key={k}>{m.items[k] ?? "—"}</td>)}<td>{m.total}</td><td>{m.cumulative}</td><td>{m.remaining}</td></tr>))}</tbody>
+                    {plan.plan.item_order.map((k) => <td key={k}>{fmt(m.items[k])}</td>)}<td>{fmt(m.total)}</td><td>{fmt(m.cumulative)}</td><td>{fmt(m.remaining)}</td></tr>))}</tbody>
               </table>
             </div>
           </>)}
           {plan.plan.period_equivalent_total.length > 0 && (
             <p className="rx-note" data-capex-period-equivalent="true">Equivalent on the existing construction periods (end-of-period payment convention; intra-period timing is not represented there):{" "}
-              {plan.plan.period_equivalent_total.map((v, i) => `P${i} ${data.timeline.period_starts[i] ?? ""}–${data.timeline.period_ends[i] ?? ""}: ${v}`).join(" · ")} kEUR.</p>
+              {plan.plan.period_equivalent_total.map((v, i) => `P${i} ${data.timeline.period_starts[i] ?? ""}–${data.timeline.period_ends[i] ?? ""}: ${fmt(v)}`).join(" · ")} kEUR.</p>
           )}
         </div>
       )}

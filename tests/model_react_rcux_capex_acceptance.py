@@ -37,9 +37,8 @@ def _profiles(context, base, code):
 
 
 def _open(page, base, code):
-    page.goto(f"{base}/v2/model-react/{code}#inputs")
+    page.goto(f"{base}/v2/model-react/{code}#inputs/capex/monthly")     # PR-U1: the profile editor is the CAPEX workbench's Monthly schedule
     page.reload()                                                       # a same-URL goto is a hash navigation; reload re-reads every projection
-    page.locator("[data-studio-tab='capex-profile']").click()           # studios stay closed until chosen (compact Inputs)
     page.wait_for_selector("[data-capex-studio='ready']", timeout=60000)
 
 
@@ -60,11 +59,13 @@ def test_rcux_capex_studio_lists_the_canonical_items_and_previews_without_writin
     page.wait_for_selector("[data-capex-plan='current']", timeout=30000)
     assert page.locator("[data-capex-month]").count() == api["months"]
     assert page.locator("[data-capex-reconciles]").get_attribute("data-capex-reconciles") == "true"
-    assert page.locator("[data-capex-unallocated]").inner_text() == "0.000"
+    assert page.locator("[data-capex-unallocated]").inner_text() == "0"                          # PR-U1: report precision (default 0 decimals)
     assert page.locator("[data-canonical='false']").count() == 1 and "PREVIEW ONLY" in page.locator("[data-capex-plan]").inner_text()
     server = context.request.get(f"{live_server}/v2/model-react/capex/preview", headers={"X-Finco-React-Request": "1"},
                                  params={"project": record.project_code, "spec": f'[["{first}","FRONT_LOADED","",""]]'}).json()["plan"]
-    assert [page.locator(f"[data-capex-month='{m['month']}'] td").last.inner_text() for m in server["months"]] == [m["remaining"] for m in server["months"]]
+    from decimal import ROUND_HALF_UP, Decimal
+    at_zero = lambda text: f"{Decimal(text.replace(',', '')).quantize(Decimal('1'), rounding=ROUND_HALF_UP):,}"       # PR-U1: report precision, default 0 decimals
+    assert [page.locator(f"[data-capex-month='{m['month']}'] td").last.inner_text() for m in server["months"]] == [at_zero(m["remaining"]) for m in server["months"]]
     assert "not estimated" in page.locator("[data-capex-studio]").inner_text()                # IDC / S&U are not estimated pre-Run
     assert _profiles(context, live_server, record.project_code)["saved"]["rows"] == {}        # nothing saved
     page.select_option(f"[data-capex-shape='{first}']", "UNIFORM")
@@ -188,8 +189,7 @@ def test_rcux_capex_reference_models_are_read_only(live_server, an_session):
     context, page, record, errors = an_session("rcux-capex-ref")
     ensure_reference_models()
     ref = get_reference_by_template_source("generic_solar_reference")
-    page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs")
-    page.locator("[data-studio-tab='capex-profile']").click()
+    page.goto(f"{live_server}/v2/model-react/{ref.project_code}#inputs/capex/monthly")
     page.wait_for_selector("[data-capex-unavailable='true']", timeout=60000)
     assert page.locator("[data-capex-studio]").count() == 0
     assert context.request.get(f"{live_server}/v2/model-react/capex/profiles?project={ref.project_code}").status in (200, 409)

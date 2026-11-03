@@ -192,15 +192,16 @@ def check_internal_mvp_path_with_financial_intelligence(browser, react_enabled, 
         assert float(grid_value(context, base, record)) == float(draft)
 
         # 5. CAPEX line
-        costs = page.locator("[data-cost-line-manager='capex']")
-        costs.scroll_into_view_if_needed()
-        costs.locator("select").select_option(index=1)
+        from tests.model_react_u1_helpers import open_inline_add
+        costs = open_inline_add(page, "capex")                       # PR-U1: the CAPEX workbench, inline row under the first group
         costs.get_by_label("Line label").fill("MVP acceptance CAPEX line")
         costs.get_by_label("Amount").fill("25")
         costs.locator("[data-cost-add='capex']").click()
-        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-manager='capex']")
+        wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-commands='capex']")
 
         # 6. PPA: an explicit, fully specified contract book
+        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()                  # PR-U1: back to the Inputs overview
+        page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()
         if ppa.first.get_attribute("data-ppa-editor") == "empty":

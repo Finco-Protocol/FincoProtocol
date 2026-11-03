@@ -274,3 +274,41 @@
   [data-cost-grid] .ci-linebar { margin: 2px 0; }
   [data-cost-grid] .ci-linebar .ci-linesearch { flex: 1 1 100%; }
 }
+
+/* PR-U1: cost cards on Inputs and the dedicated CAPEX / OPEX workbench. */
+.ci-cost-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 8px 0; }
+.ci-card { border: 1px solid var(--line, #dce3e9); background: var(--surface, #fff); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ci-card h3 { margin: 0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted, #526374); }
+.ci-card-total { margin: 0; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ci-card-total small { font-size: 12px; font-weight: 400; color: var(--muted, #526374); }
+.ci-card-sub { margin: 0; font-size: 12.5px; color: var(--muted, #526374); }
+.ci-card-groups { list-style: none; margin: 4px 0; padding: 0; font-size: 12.5px; }
+.ci-card-groups li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; border-bottom: 1px dotted var(--line, #dce3e9); }
+.ci-card-note { margin: 0; font-size: 11.5px; color: var(--muted, #526374); }
+.ci-card .fm-btn { align-self: flex-start; margin-top: 4px; }
+@media (max-width: 900px) { .ci-cost-cards { grid-template-columns: 1fr; } .ci-card-groups { display: none; } }
+.cw { margin-top: 6px; }
+.cw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 4px 0 8px; }
+.cw-tabs { display: inline-flex; gap: 4px; }
+.cw-tabs a { padding: 3px 12px; border: 1px solid var(--line, #dce3e9); text-decoration: none; font-size: 13px; color: var(--ink, #1c2b3a); background: var(--surface, #fff); }
+.cw-tabs a.active { background: var(--brand, #17375e); color: #fff; border-color: var(--brand, #17375e); }
+.cw-head [data-cw-import] { margin-left: auto; }
+.cw-import { border: 1px solid var(--line, #dce3e9); padding: 8px; margin-bottom: 8px; }
+.ci-addslot { padding: 6px 4px; background: var(--accent-soft, #f1f6fb); }
+.ci-addslot .wf-inline-form { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: flex-end; }
+.ci-empty-group { color: var(--muted, #526374); font-size: 12px; padding-left: 24px; }
+.ws2-base-label { font-weight: 600; font-size: 12.5px; }
+tr[data-base-row] td { background: var(--accent-soft, #f7fafd); }
+
+/* PR-U1: five result tiles (the CAPEX total now lives on the CAPEX card). */
+.ci-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .ci-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+[hidden] { display: none !important; }
+
+/* Amount cells: the input always holds the exact decimal text; at rest (not focused, not edited) an overlay shows it at the report precision. */
+.ci-amt { position: relative; display: block; }
+.ci-amt-shown { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; font: inherit; font-variant-numeric: tabular-nums; pointer-events: none; background: transparent; }
+.ci-amt:not(:focus-within) .ci-amt-input-hidden, .ci-amt:not(:focus-within) .ws2-cell:not([data-changed]) { color: transparent; text-shadow: none; }
+.ci-amt:focus-within .ci-amt-shown, .ws2-cell[data-changed="true"] + .ci-amt-shown { display: none; }
+.ci-amt .ws2-cell:disabled:not([data-changed]) { -webkit-text-fill-color: transparent; }
+.ci-amt:not(:focus-within) .ws2-cell:not([data-changed]) { -webkit-text-fill-color: transparent; }

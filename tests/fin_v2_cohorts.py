@@ -13,7 +13,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 COHORT_MODULES = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope',
                   'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',
-                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope')
+                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope')
 # The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).
 PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'
 
@@ -45,10 +45,12 @@ def valid(repo=None, ref=None):
                     scopes.enter_context(m.scoped())
             if not all(m.exact_blobs_ok(root, ref) for m in mods):
                 return False
-        _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
-        changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
-        if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
-            return False
+            _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
+            changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
+            # Still inside the call scope: a cohort that delegates ``allowed_path`` to another cohort's exact check (PR-U1 via WF-06B) is
+            # evaluated once for this call instead of once per changed path (CI V3: F01 job 25 min cap). Same answers, no cache outlives the call.
+            if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
+                return False
         if ref is None:
             owned = set().union(*(set(m.manifest(root, ref).get('source_blobs', {})) for m in mods))
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard', '--',
