@@ -246,6 +246,7 @@
 .ws2-grid .ci-menu:hover:not(:disabled), .ws2-grid .ci-menu[aria-expanded="true"] { border-color: var(--line, #dce3e9); background: var(--surface, #fff); }
 .ws2-grid .ci-menu:disabled { color: var(--muted, #8a97a6); cursor: not-allowed; }
 .ci-menulist { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 10em; background: var(--surface, #fff); border: 1px solid var(--line, #dce3e9); box-shadow: 0 4px 12px rgba(20, 40, 60, .15); }
+.ci-menunote { display: block; max-width: 22em; padding: 6px 10px; font-size: 11px; color: var(--muted, #526374); border-top: 1px solid var(--line, #dce3e9); white-space: normal; }
 .ci-menuitem { text-align: left; border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; cursor: pointer; color: var(--ink, #1c2b3a); }
 .ci-menuitem:hover, .ci-menuitem:focus-visible { background: var(--accent-soft, #e7f0f8); }
 
@@ -312,3 +313,12 @@ tr[data-base-row] td { background: var(--accent-soft, #f7fafd); }
 .ci-amt:focus-within .ci-amt-shown, .ws2-cell[data-changed="true"] + .ci-amt-shown { display: none; }
 .ci-amt .ws2-cell:disabled:not([data-changed]) { -webkit-text-fill-color: transparent; }
 .ci-amt:not(:focus-within) .ws2-cell:not([data-changed]) { -webkit-text-fill-color: transparent; }
+/* PR-U2a: CAPEX monthly profile — focused item, month-by-month entry, import review */
+.rcm-row-focus > th, .rcm-row-focus > td { box-shadow: inset 0 0 0 2px var(--navy, #183e63); }
+.rcm-month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px; margin: 6px 0; }
+.rcm-month-cell { display: flex; flex-direction: column; gap: 2px; font-size: 11px; border: 1px solid var(--line, #dce3e9); padding: 3px 5px; border-radius: 3px; }
+.rcm-month-cell input { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+.rcm-month-cell input[aria-invalid="true"] { border-color: var(--red, #a3221b); }
+.rcm-month-cell.rcm-warn { background: var(--amber-soft, #f6f0e4); }
+.rcm-month-cell.rcm-bad { background: #fdecea; }
+.rcm-status-line.rcm-warn { color: var(--red, #a3221b); }

@@ -37,7 +37,8 @@ export function CostWorkbench({ project, sheet, view, protectedReference, reload
         </div>)}
       {view === "lines" && (
         <CostLinesGridView key={sheet} project={project} sheet={sheet} reloadKey={reloadKey} onMutated={onMutated} query={query} scenarioName={scenarioName}
-          onSheet={(next) => onNavigate(`inputs/${next}` as WorkspaceDestination)} />
+          onSheet={(next) => onNavigate(`inputs/${next}` as WorkspaceDestination)}
+          onOpenProfile={sheet === "capex" ? () => onNavigate("inputs/capex/monthly") : undefined} />
       )}
       {view === "monthly" && (
         <div data-capex-monthly="true">
