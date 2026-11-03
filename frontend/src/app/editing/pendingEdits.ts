@@ -54,6 +54,12 @@ export interface PendingEdit {
   order: number;
 }
 
+/** The canonical identity a section document was authored against.  A whole-document payload (PPA) is only ever valid for it. */
+export interface DocumentSource { projectId: string; activeScenario: string | null; contentHash: string }
+
+export const sameSource = (a: DocumentSource | undefined, b: DocumentSource | null | undefined): boolean =>
+  !!a && !!b && a.projectId === b.projectId && a.activeScenario === b.activeScenario && a.contentHash === b.contentHash;
+
 export interface PendingState {
   identity: EditIdentity | null;
   edits: Record<string, PendingEdit>;
@@ -65,12 +71,14 @@ export interface PendingState {
   lastKey: string | null;
   /** Whole-document payload an editor serialises for its section (PPA: the canonical contracts JSON). */
   documents: Partial<Record<EditSection, string>>;
+  /** Identity each document was serialised against (bound at serialisation; a rebase never moves it). */
+  documentSources: Partial<Record<EditSection, DocumentSource>>;
 }
 
 export const HISTORY_LIMIT = 100;
 
 export const initialState = (identity: EditIdentity | null = null): PendingState =>
-  ({ identity, edits: {}, past: [], future: [], counter: 0, lastKey: null, documents: {} });
+  ({ identity, edits: {}, past: [], future: [], counter: 0, lastKey: null, documents: {}, documentSources: {} });
 
 export const editId = (section: EditSection, key: string) => `${section}:${key}`;
 
@@ -95,19 +103,19 @@ export type PendingAction =
   | { type: "rebase"; identity: EditIdentity; baselines: Record<string, { value: string; rowVersion?: string }> }
   | { type: "markRejected"; conflicts: Record<string, EditConflict> }
   /** An editor publishes (or clears, with `null`) the serialised document of its section. */
-  | { type: "document"; section: EditSection; json: string | null }
+  | { type: "document"; section: EditSection; json: string | null; source?: DocumentSource }
   /** A committed Save: drop exactly the edits that were saved. */
   | { type: "committed"; ids: string[]; identity: EditIdentity };
 
 /** A section document only lives while that section still has edits. */
-function pruneDocuments(documents: PendingState["documents"], edits: Record<string, PendingEdit>): PendingState["documents"] {
+function pruneDocuments<T>(documents: Partial<Record<EditSection, T>>, edits: Record<string, PendingEdit>): Partial<Record<EditSection, T>> {
   return Object.fromEntries(Object.entries(documents).filter(([section]) =>
-    Object.values(edits).some((e) => e.section === section))) as PendingState["documents"];
+    Object.values(edits).some((e) => e.section === section))) as Partial<Record<EditSection, T>>;
 }
 
 function push(state: PendingState, next: Record<string, PendingEdit>, lastKey: string | null, counter = state.counter): PendingState {
   return {
-    ...state, edits: next, counter, lastKey, documents: pruneDocuments(state.documents, next),
+    ...state, edits: next, counter, lastKey, documents: pruneDocuments(state.documents, next), documentSources: pruneDocuments(state.documentSources, next),
     past: [...state.past.slice(-(HISTORY_LIMIT - 1)), state.edits], future: [],
   };
 }
@@ -148,12 +156,13 @@ export function pendingReducer(state: PendingState, action: PendingAction): Pend
       for (const input of action.edits) ({ edits, counter } = applyStage(edits, input, counter));
       // Same edit set as before (value, error, canonical): nothing to record.
       const same = (a: PendingEdit | undefined, b: PendingEdit | undefined) =>
-        !!a && !!b && a.value === b.value && a.baseline === b.baseline && a.canonical === b.canonical && a.error === b.error;
+        !!a && !!b && a.value === b.value && a.baseline === b.baseline && a.canonical === b.canonical && a.error === b.error
+        && a.conflict?.code === b.conflict?.code;      // re-staging clears a stale conflict, so that is a real change
       const before = Object.values(state.edits).filter((e) => e.section === action.section);
       const after = Object.values(edits).filter((e) => e.section === action.section);
       if (before.length === after.length && after.every((e) => same(state.edits[e.id], e))) return state;
       const marker = `section:${action.section}`;
-      if (state.lastKey === marker && state.past.length > 0) return { ...state, edits, counter, future: [], lastKey: marker, documents: pruneDocuments(state.documents, edits) };
+      if (state.lastKey === marker && state.past.length > 0) return { ...state, edits, counter, future: [], lastKey: marker, documents: pruneDocuments(state.documents, edits), documentSources: pruneDocuments(state.documentSources, edits) };
       return push(state, edits, marker, counter);
     }
     case "revert": {
@@ -193,6 +202,9 @@ export function pendingReducer(state: PendingState, action: PendingAction): Pend
           conflict = { code: "CHANGED_ELSEWHERE", message: "This value changed after you started editing.", serverValue: fresh.value };
         } else if (fresh && edit.rowVersion !== undefined && fresh.rowVersion !== undefined && fresh.rowVersion !== edit.rowVersion) {
           conflict = { code: "ROW_VERSION_STALE", message: "This line was changed after you started editing.", serverValue: fresh.value };
+        } else if (state.documents[edit.section] !== undefined && !sameSource(state.documentSources[edit.section], action.identity)) {
+          // A whole-section document serialised from an older version must never be replayed under the new one.
+          conflict = { code: "CHANGED_ELSEWHERE", message: "The saved version of this section changed after you started editing. Review the saved contract, then re-enter your changes." };
         } else if (conflict && conflict.code !== "SCOPE_CHANGED" && conflict.code !== "SERVER_REJECTED") {
           conflict = undefined;
         }
@@ -207,14 +219,21 @@ export function pendingReducer(state: PendingState, action: PendingAction): Pend
     }
     case "document": {
       const documents = { ...state.documents };
-      if (action.json === null) delete documents[action.section]; else documents[action.section] = action.json;
-      return { ...state, documents };
+      const documentSources = { ...state.documentSources };
+      if (action.json === null) { delete documents[action.section]; delete documentSources[action.section]; }
+      else {
+        documents[action.section] = action.json;
+        const source = action.source ?? (state.identity
+          ? { projectId: state.identity.projectId, activeScenario: state.identity.activeScenario, contentHash: state.identity.contentHash } : undefined);
+        if (source) documentSources[action.section] = source; else delete documentSources[action.section];
+      }
+      return { ...state, documents, documentSources };
     }
     case "committed": {
       const drop = new Set(action.ids);
       const edits = Object.fromEntries(Object.entries(state.edits).filter(([id]) => !drop.has(id)));
       // A commit moves the baseline of everything: history of dropped edits would resurrect saved values.
-      return { ...state, identity: action.identity, edits, documents: pruneDocuments(state.documents, edits), past: [], future: [], lastKey: null };
+      return { ...state, identity: action.identity, edits, documents: pruneDocuments(state.documents, edits), documentSources: pruneDocuments(state.documentSources, edits), past: [], future: [], lastKey: null };
     }
   }
 }

@@ -15,7 +15,7 @@ import {
 } from "react";
 import {
   conflicted, countBySection, editId, initialState, invalid, orderedEdits, pendingReducer, totalCount,
-  blockingReason, type EditConflict, type EditIdentity, type EditSection, type PendingAction, type PendingEdit,
+  blockingReason, type DocumentSource, type EditConflict, type EditIdentity, type EditSection, type PendingAction, type PendingEdit,
   type PendingState, type StageInput,
 } from "./pendingEdits";
 
@@ -44,7 +44,8 @@ export interface ChangesApi {
   redo: () => void;
   rebase: (identity: EditIdentity, baselines: Record<string, { value: string; rowVersion?: string }>) => void;
   markRejected: (conflicts: Record<string, EditConflict>) => void;
-  setDocument: (section: EditSection, json: string | null) => void;
+  /** `source` = the identity the document was serialised against (defaults to the store's current identity). */
+  setDocument: (section: EditSection, json: string | null, source?: DocumentSource) => void;
   committed: (ids: string[], identity: EditIdentity) => void;
 }
 
@@ -96,7 +97,7 @@ export function ChangesProvider({ identity, children, shell = false }: { identit
     redo: () => send({ type: "redo" }),
     rebase: (next, baselines) => send({ type: "rebase", identity: next, baselines }),
     markRejected: (conflicts) => send({ type: "markRejected", conflicts }),
-    setDocument: (section, json) => send({ type: "document", section, json }),
+    setDocument: (section, json, source) => send({ type: "document", section, json, source }),
     committed: (ids, next) => send({ type: "committed", ids, identity: next }),
   }), [state, total, send, shell]);
 

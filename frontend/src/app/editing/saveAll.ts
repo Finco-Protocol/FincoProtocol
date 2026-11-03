@@ -5,7 +5,7 @@
 // per-section writers: it builds a single typed request for a single endpoint and, while
 // that endpoint is not released, reports the feature as BLOCKED instead of pretending.
 
-import { F3_LIMIT_MESSAGE, orderedEdits, submitValue, unsupported, type EditIdentity, type PendingState } from "./pendingEdits";
+import { F3_LIMIT_MESSAGE, orderedEdits, sameSource, submitValue, unsupported, type EditIdentity, type PendingState } from "./pendingEdits";
 
 /** Server capability descriptor.  Absent or `available: false` means Save All is gated. */
 export interface SaveAllCapability {
@@ -93,6 +93,10 @@ export function buildSaveAllRequest(
   for (const line of lines.values()) if (line.amount_keur === "") return { ok: false, reason: "A cost line has no amount." };
   const contracts = state.documents.ppa ?? null;
   if (ppaEdits > 0 && contracts === null) return { ok: false, reason: "The PPA changes were not serialised; reopen the PPA section." };
+  // The whole PPA document replaces the stored contracts, so it is only valid for the exact version it was serialised from.
+  if (ppaEdits > 0 && !sameSource(state.documentSources.ppa, identity)) {
+    return { ok: false, reason: "The Revenue & PPA changes were prepared against an older saved contract and cannot be saved over the current one. Reload the saved contract in the PPA section and re-enter them." };
+  }
 
   return {
     ok: true,
