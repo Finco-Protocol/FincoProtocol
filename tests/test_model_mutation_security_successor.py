@@ -176,7 +176,7 @@ def test_d029_register_is_an_additive_layer_in_the_validator_not_a_rewrite_of_hi
 def test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused():
     import re
     path="tests/test_model_workspace_consolidation_browser.py"
-    source=SOURCES[path]
+    source=_without_r1_browser_layer(path,SOURCES[path])      # R1: exactly one more wrapper, proven removable to the reviewed #413 blob
     from tests import wf04_scope as WF04  # WF-04 successor lineage: the WS1 role state, or exactly the WF-04 pinned later state (whole cohort valid)
     assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path] or WF04.presentation_successor(path, source)  # exact owner-approved later role; no historical repin
     assert S.RC_UX_SUCCESSORS[path] != S.WSV2_BROWSER_SUCCESSORS[path]  # the prior role's pin remains immutable                       # strict: exactly the latest reviewed state of the role file
@@ -208,11 +208,33 @@ def _without_wf03_browser_layer(path,current,added):
     return added
 
 
+R1_BROWSER_WRAPPER = (
+    "def test_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_enabled):\n"
+    "    from tests.model_react_r1_ppa_two_tab_acceptance import check_r1_stale_ppa_document_is_never_replayed_by_a_second_tab\n"
+    "    check_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_enabled)\n\n\n")
+
+
+def names_of(text):
+    import re
+    return re.findall(r"^def (test_\w+)\(",text,flags=re.M)
+
+
+def _without_r1_browser_layer(path, current):
+    """Post-#413 R1 layer: the role file may carry EXACTLY ONE additional wrapper (the two-tab PPA acceptance). It is admitted only while the closed R1
+    cohort pins this exact blob, and only if removing that one wrapper reproduces the reviewed BASE (#413 main) blob recorded and git-verified by the cohort."""
+    from tests import post413_r1_scope as R1
+    if current.count(R1_BROWSER_WRAPPER) != 1 or not R1.matches(path, current):
+        return current
+    pre = current.replace(R1_BROWSER_WRAPPER, "", 1)
+    return pre if S.git_blob(pre) == R1.base_blob(path) else current
+
+
 def test_d029_browser_original_node_ids_are_preserved():
     path="tests/test_model_workspace_consolidation_browser.py"
     import re
     base=subprocess.check_output(["git","show","36edeeb5d9a14749fdfafcd3b60a0d384cac73ba:"+path],cwd=S.ROOT).decode("utf-8")
-    current=SOURCES[path]
+    current=_without_r1_browser_layer(path,SOURCES[path])
+    assert set(names_of(SOURCES[path]))>=set(names_of(current))
     names=lambda text:re.findall(r"^def (test_\w+)\(",text,flags=re.M)
     assert set(names(base))<=set(names(current))
     # additive only: the two D-029 wrappers, then the reviewed Overnight B (React MVP correction) wrappers — nothing else
@@ -245,9 +267,28 @@ def test_d029_browser_original_node_ids_are_preserved():
 
 def test_the_wf03_browser_layer_is_exact_names_at_the_exact_blob_only():
     """Negatives for the WF-03 browser-name successor: a sixth, missing, reordered or renamed WF-03 name, or any byte change of the file, is refused."""
-    path="tests/test_model_workspace_consolidation_browser.py";current=SOURCES[path];rest=["test_d029_react_run_intent_acceptance"]
+    path="tests/test_model_workspace_consolidation_browser.py";current=_without_r1_browser_layer(path,SOURCES[path]);rest=["test_d029_react_run_intent_acceptance"]
     assert _without_wf03_browser_layer(path,current,WF03_BROWSER_LAYER+rest)==rest
     for label,names in (("extra",WF03_BROWSER_LAYER+["test_wf03_unreviewed_extra"]+rest),("missing",WF03_BROWSER_LAYER[1:]+rest),
                         ("reordered",WF03_BROWSER_LAYER[::-1]+rest),("renamed",[WF03_BROWSER_LAYER[0]+"_v2"]+WF03_BROWSER_LAYER[1:]+rest)):
         assert _without_wf03_browser_layer(path,current,names)!=rest,label
     assert _without_wf03_browser_layer(path,current+"\n",WF03_BROWSER_LAYER+rest)==WF03_BROWSER_LAYER+rest   # not the WF-03 blob: no layer
+
+
+def test_the_r1_browser_layer_is_exactly_one_wrapper_at_the_exact_blob_only():
+    """Negatives for the post-#413 R1 browser layer: the layer is recognised only for the exact pinned role blob whose single wrapper removal reproduces the
+    reviewed #413 blob; any byte change, renamed, extra, moved or duplicated wrapper leaves the role unrecognised (so the historical gates then refuse it)."""
+    from tests import post413_r1_scope as R1
+    path="tests/test_model_workspace_consolidation_browser.py";current=SOURCES[path]
+    pre=_without_r1_browser_layer(path,current)
+    assert pre!=current and S.git_blob(pre)==R1.base_blob(path) and current.count(R1_BROWSER_WRAPPER)==1
+    name="test_r1_stale_ppa_document_is_never_replayed_by_a_second_tab"
+    mutants={"one byte":current+"\n","renamed":current.replace(name,name+"_v2",1),
+             "extra unreviewed wrapper":current+"\n\ndef test_r1_unreviewed_extra():\n    pass\n",
+             "moved to the end":current.replace(R1_BROWSER_WRAPPER,"",1)+"\n\n"+R1_BROWSER_WRAPPER,
+             "duplicated":current+"\n\n"+R1_BROWSER_WRAPPER,
+             "skipped":current.replace("def "+name,"@pytest.mark.skip\ndef "+name,1)}
+    for label,mutant in mutants.items():
+        assert mutant!=current,label
+        assert _without_r1_browser_layer(path,mutant)==mutant,label          # not recognised: the historical gates see the unreviewed state
+    assert S.violations({**SOURCES,path:mutants["extra unreviewed wrapper"]})
