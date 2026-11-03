@@ -60,7 +60,10 @@ def test_base_is_the_merged_410_main_and_history_is_recorded_not_rewritten():
     for path, blob in data['base_blobs'].items():
         assert _git(U.ROOT, 'rev-parse', f'{U.BASE}:{path}').strip() == blob
     changed = set(_git(U.ROOT, 'diff', '--name-only', U.BASE, '--').split())
-    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST for p in changed)    # no older manifest was edited
+    moved_by_414 = set(_git(U.ROOT, 'diff', '--name-only', U.BASE, U.INTEGRATION, '--').split())     # the reviewed #414 amortisation moved the WF-06B seal
+    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST and p not in moved_by_414 for p in changed)   # no older manifest was edited by U1
+    since_414 = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
+    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST for p in since_414)    # and none at all since main at #414
     assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)                       # UI only
 
 
