@@ -33,6 +33,7 @@ SOURCE_PATHS = frozenset((
     'app/services/reference_seed_service.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'tests/test_u1_scope.py',
     'docs/react_migration/post413_r18/P00.md',
     'tests/test_post413_r18_scope.py',
     'tests/test_r18_atomic_reference_clone.py',
@@ -46,6 +47,7 @@ GOVERNANCE_PATHS = frozenset((
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE. Older cohorts pin these at their BASE blob; the BASE blob of each is recorded in the manifest and re-verified.
 SUPERSEDED = frozenset((
+    'tests/test_u1_scope.py',
     'app/services/reference_seed_service.py',
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
