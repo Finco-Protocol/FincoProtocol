@@ -150,3 +150,22 @@ def test_the_legacy_projects_create_route_is_atomic(world, monkeypatch, template
         assert _state(p) in ("CREATING", "COMPLETE")
         if _state(p) == "CREATING":
             assert not _writable(p) and _counts(p.project_id)[::2] == (0, 0)
+
+
+# ── full canonical engine Run on a completely seeded control Working Copy: the unkeyed (atomic) path equals the keyed path ──
+from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: E402,F401  (fixtures of the canonical Run harness)
+
+
+@pytest.mark.parametrize("template", VERTICALS)
+def test_a_full_canonical_run_on_the_unkeyed_atomic_clone_equals_the_keyed_clone(env, template):
+    from tests.test_model_financing_f2 import run
+    a = seed.create_reference_seeded_project(user_id="decision-user", requested_name="Parity unkeyed", template_source=template, capacity_mw=16)
+    b, outcome = seed.create_reference_seeded_project_once(user_id="decision-user", requested_name="Parity keyed", template_source=template,
+                                                           capacity_mw=16, create_request_id="p" * 32, purpose="r18-parity")
+    assert outcome == "created"
+    _, ra = run(env, a)
+    _, rb = run(env, b)
+    numbers = lambda result: {k: v for k, v in dict(result.runtime_summary).items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    na, nb = numbers(ra), numbers(rb)
+    assert na and na == nb, {k: (na.get(k), nb.get(k)) for k in set(na) | set(nb) if na.get(k) != nb.get(k)}      # exact: same inputs, same deterministic engine
+    assert {"total_capex_keur", "total_opex_keur", "total_revenue_keur"} <= set(na)

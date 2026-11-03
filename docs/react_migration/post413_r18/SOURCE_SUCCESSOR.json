@@ -13,7 +13,7 @@
     "tests/fin_v2_cohorts.py": "cb1a7e463b7c29c4b91a7b1ec3faeb835a18a50b",
     "tests/post413_r18_scope.py": "b2c889fab9ca1e8f72f69364fe178485c4a4d1fe",
     "tests/test_post413_r18_scope.py": "b66e9a0638341eb4a6e0c754e51f0efb2aee7a3a",
-    "tests/test_r18_atomic_reference_clone.py": "c6d2844e30639e2271a2bd8a118baf8c5d6059a3",
+    "tests/test_r18_atomic_reference_clone.py": "2032c03eb05d0b121195f3f6cde2939685eb39be",
     "tests/u1_scope.py": "733df45fb4143882666dfc999904ecbb72dd1a08"
   }
 }
