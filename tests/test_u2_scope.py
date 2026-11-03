@@ -153,7 +153,7 @@ def test_extra_tracked_extra_untracked_r1_and_executable_paths_fail_closed(wt):
 def test_protected_r1_and_unowned_code_modified_after_signing_fails_closed(path, wt):
     assert U2.exact_blobs_ok(wt)
     _flip(wt / path)
-    _git(wt, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', 'commit', '-qam', 'tamper', '--no-verify')
+    _git(wt, '-c', 'user.name=T', '-c', 'user.email=ci-test-identity', 'commit', '-qam', 'tamper', '--no-verify')
     assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
     assert not U2.allowed_path(path)
     _git(wt, 'reset', '--hard', '-q', 'HEAD~1')

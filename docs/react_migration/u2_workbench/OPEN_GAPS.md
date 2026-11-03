@@ -11,4 +11,4 @@
 | G-3 | Unused `InputStudios.tsx` / `CostSummaries` kept | open | own successor for deletion |
 | G-8 | COD / duration still editable in the Assumptions grid and the timing planner | kept | follow-up; Project & Timeline stays canonical |
 | G-9 | Excel numeric parity and live (staging) app acceptance | `NOT_VERIFIED` | separate gates; U2 has local real-Chromium acceptance only |
-| T-1 | The `.mjs` unit suite and the client/server oracle run only where `frontend/node_modules` exists. CI V3 Python workers do not run `npm ci`, so in CI these tests skip | `LOCAL_PASS` | CI workflow change is out of scope (no workflow edits) |
+| T-1 | The `.mjs` unit suite and the client/server oracle run only where `frontend/node_modules` exists. CI V3 Python workers do not run `npm ci`, so in CI these tests skip | `LOCAL_PASS` | CI workflow change is out of scope (no workflow edits); `frontend/package.json` has no `test` script |

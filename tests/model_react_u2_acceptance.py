@@ -2,7 +2,7 @@
 
 U2a: Import % from a pasted Excel row, the ambiguity prompt for a lone comma, the exact 100 % check gating Save (Preview still allowed), a saved
 EXPLICIT profile equal to the typed digits. U2b: OPEX Years per saved line — every listed line is a saved line of the ledger, base amounts are listed
-apart with Year 1 only, no business code on the surface, no horizontal page overflow at phone width. Screenshots: ``$U2_SCREENSHOT_DIR``.
+apart with Year 1 only, no business code on the surface, no horizontal page overflow at 390 or 320 px. Screenshots: ``$U2_SCREENSHOT_DIR``.
 """
 from __future__ import annotations
 
@@ -86,8 +86,26 @@ def check_opex_lines_by_year(browser, base, kind):
         assert not CODE.search(page.locator("[data-cost-workbench]").inner_text())
         page.locator("[data-opex-lines]").scroll_into_view_if_needed()
         shot(page, f"{kind}-opex-lines")
-        page.set_viewport_size({"width": 390, "height": 844})
-        assert not horizontal_overflow(page)
+        for width in (390, 320):
+            page.set_viewport_size({"width": width, "height": 844})
+            assert not horizontal_overflow(page), width
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_lines_profile_link_focuses_the_item(browser, base, kind):
+    """CAPEX · Lines → the saved-profile link opens Monthly schedule with that line focused (U2a; replaces the inert Studios link)."""
+    context, page, record, errors = vertical_session(browser, base, f"u2-focus-{kind}", kind)
+    try:
+        _goto(page, base, record.project_code, "inputs/capex")
+        page.wait_for_selector("[data-cost-grid='capex'] [data-saved-total]", timeout=60000)
+        link = page.locator("[data-profile-link]").first
+        link.click()
+        page.wait_for_selector("[data-cost-workbench='capex'][data-cost-view='monthly']", timeout=60000)
+        page.wait_for_selector("[data-capex-studio='ready']", timeout=60000)
+        focused = page.locator("[data-capex-focused]")
+        assert focused.count() == 1, focused.count()
         assert not errors, errors
     finally:
         context.close()

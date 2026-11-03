@@ -85,6 +85,7 @@ export function OpexLineYears({ project, reloadKey }: { project: string; reloadK
       {bases.length > 0 && (
         <div data-opex-lines-bases="true">
           <h4>Group base amounts (Year 1, not in the rows above)</h4>
+          <div className="rcm-scroll" tabIndex={0} role="region" aria-label="OPEX group base amounts">
           <table className="fm-table">
             <thead><tr><th scope="col">Group</th><th scope="col" className="fm-num">Year 1</th><th scope="col">Used by the Run</th></tr></thead>
             <tbody>
@@ -99,6 +100,7 @@ export function OpexLineYears({ project, reloadKey }: { project: string; reloadK
               })}
             </tbody>
           </table>
+          </div>
         </div>)}
     </section>
   );
