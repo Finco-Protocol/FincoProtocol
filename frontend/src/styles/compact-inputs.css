@@ -322,3 +322,6 @@ tr[data-base-row] td { background: var(--accent-soft, #f7fafd); }
 .rcm-month-cell.rcm-warn { background: var(--amber-soft, #f6f0e4); }
 .rcm-month-cell.rcm-bad { background: #fdecea; }
 .rcm-status-line.rcm-warn { color: var(--red, #a3221b); }
+/* PR-U2b — OPEX lines by year */
+.u2-opex-group > th, .u2-opex-group > td { background: var(--surface-2, #f3f6f8); }
+.u2-opex-line { padding-left: 18px; font-weight: normal; }
