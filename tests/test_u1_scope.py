@@ -90,7 +90,8 @@ def test_missing_owned_path_fails_closed(path, wt):
 
 
 @pytest.mark.parametrize('kind', ['extra-path', 'missing-pin', 'wrong-base', 'wrong-tree', 'wrong-blob', 'swapped-pins', 'drop-base-blobs',
-                                  'wrong-base-blob', 'swapped-schema', 'alias-pin'])
+                                  'wrong-base-blob', 'swapped-schema', 'alias-pin', 'wrong-integration', 'wrong-integration-tree',
+                                  'drop-integration-blobs', 'wrong-integration-blob', 'swapped-integration-blobs'])
 def test_manifest_forgery_is_refused(kind, wt):
     mpath = wt / U.MANIFEST
     d = json.loads(mpath.read_text())
@@ -115,6 +116,17 @@ def test_manifest_forgery_is_refused(kind, wt):
         d['schema_version'] = 'WF06B_A_PLUS_EXACT_SOURCE_V1'
     elif kind == 'alias-pin':
         d['source_blobs']['static/react/finco-react.JS'] = d['source_blobs']['static/react/finco-react.js']
+    elif kind == 'wrong-integration':
+        d['integration'] = '0' * 40
+    elif kind == 'wrong-integration-tree':
+        d['integration_tree'] = '0' * 40
+    elif kind == 'drop-integration-blobs':
+        d['integration_blobs'].pop('tests/wf06b_scope.py')
+    elif kind == 'wrong-integration-blob':
+        d['integration_blobs']['tests/wf06b_scope.py'] = '0' * 40
+    elif kind == 'swapped-integration-blobs':
+        a, b = 'tests/wf06b_scope.py', 'tests/test_wf06b_scope.py'
+        d['integration_blobs'][a], d['integration_blobs'][b] = d['integration_blobs'][b], d['integration_blobs'][a]
     mpath.write_text(json.dumps(d, indent=2, sort_keys=True) + '\n')
     assert not U.exact_blobs_ok(wt) and not C.valid(wt) and not W.exact_blobs_ok(wt)
 
@@ -205,3 +217,21 @@ def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
     for path in U.OWNED_PATHS - U.SUPERSEDED - {U.MANIFEST}:
         raw = (U.ROOT / path).read_bytes()
         assert not U.supersedes(path, U._blob(raw)) and not W.supersedes(path, U._blob(raw + b'\n')), path
+
+
+def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():
+    assert _git(U.ROOT, 'rev-parse', U.INTEGRATION + '^{tree}').strip() == U.INTEGRATION_TREE
+    subprocess.check_call(['git', 'merge-base', '--is-ancestor', U.BASE, U.INTEGRATION], cwd=U.ROOT)
+    subprocess.check_call(['git', 'merge-base', '--is-ancestor', U.INTEGRATION, 'HEAD'], cwd=U.ROOT)
+    data = U.manifest()
+    for path, blob in data['integration_blobs'].items():
+        assert _git(U.ROOT, 'rev-parse', f'{U.INTEGRATION}:{path}').strip() == blob
+    changed = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
+    assert changed <= U.OWNED_PATHS | {U.MANIFEST}                          # nothing else moved away from main at #414
+    assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)
+
+
+def test_an_unowned_path_that_moved_away_from_main_after_414_fails_closed(wt):
+    assert U.exact_blobs_ok(wt)
+    _flip(wt / 'app/cost_line_ledger/ledger.py')                            # not owned by U1: it must equal main at the integration commit
+    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
