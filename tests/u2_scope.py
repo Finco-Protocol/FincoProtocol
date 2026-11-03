@@ -70,8 +70,8 @@ GOVERNANCE_PATHS = frozenset((
 ))
 OWNED_PATHS = PRESENTATION_PATHS | SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE (the U1 cohort pins every one of them at exactly the BASE blob recorded in the manifest).
-# ``app/v2/react_workspace_router.py``: the U2 include sits in the router body, before the RC-UX tail, so the protected RC-UX tail check
-# (exactly ``['_rcux_router']``) is unchanged; the body change is admitted only through this cohort's exact pin.
+# ``app/v2/react_workspace_router.py``: the U2 include sits in its own marked section BEFORE the historical RC-M block, so the RC-M
+# (exactly its five includes) and RC-UX (exactly ``['_rcux_router']``) sentinel checks are unchanged; admitted only through this cohort's exact pin.
 SUPERSEDED = frozenset((
     'app/v2/react_workspace_router.py',
     'frontend/src/app/CostWorkbench.tsx',

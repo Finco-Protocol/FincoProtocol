@@ -1421,6 +1421,13 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
     })
 
 
+# ───────────────────────────── PR-U2b: OPEX lines by year (read-only, own module) ─────────────────────────────
+# A read-only GET over the same OPEX view model as the group projection. Its own section, outside the historical RC-M and RC-UX blocks.
+from app.v2.react_opex_lines import router as _u2_opex_lines_router  # noqa: E402
+
+router.include_router(_u2_opex_lines_router)
+
+
 # ───────────────────────────── RC-M: React adapters (own modules) ─────────────────────────────
 # New Project wizard, Sensitivity, Goal Seek, Financing Studio and Investors: authenticated JSON adapters over the canonical creation, sensitivity-matrix,
 # goal-seek and Debt-sheet authorities (no new authority).  Each lives in its own module, so this pinned file changes by exactly these includes.
@@ -1435,11 +1442,6 @@ router.include_router(_analysis_router)
 router.include_router(_goal_seek_router)
 router.include_router(_financing_router)
 router.include_router(_investors_router)
-
-# PR-U2b: OPEX year projection per saved line (read-only GET; mounted in the body, before the RC-UX tail, which keeps its single include).
-from app.v2.react_opex_lines import router as _u2_opex_lines_router  # noqa: E402
-
-router.include_router(_u2_opex_lines_router)
 
 
 # ───────────────────────────── RC-UX: React adapters (single aggregator) ─────────────────────────────

@@ -161,6 +161,9 @@ def test_protected_r1_and_unowned_code_modified_after_signing_fails_closed(path,
 
 _RCUX_TAIL = "# ───────────────────────────── RC-UX: React adapters"
 _ROUTER = 'app/v2/react_workspace_router.py'
+_RCM_MARK = "# ───────────────────────────── RC-M: React adapters"
+_U2_MARK = "# ───────────────────────────── PR-U2b: OPEX lines by year"
+_RCM_INCLUDES = ['_new_project_router', '_analysis_router', '_goal_seek_router', '_financing_router', '_investors_router']
 
 
 def _tail_includes(text):
@@ -170,29 +173,45 @@ def _tail_includes(text):
 
 def test_the_u2_mount_is_in_the_body_and_the_rcux_tail_keeps_exactly_its_one_include():
     import re
+    inc = r"^router\.include_router\((\w+)\)$"
     text = (U2.ROOT / _ROUTER).read_text(encoding='utf-8')
-    assert _tail_includes(text) == ['_rcux_router']                                               # protected RC-UX tail check, unchanged
-    body = text[:text.index(_RCUX_TAIL)]
-    base_body = _git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}')
-    base_body = base_body[:base_body.index(_RCUX_TAIL)]
-    added = sorted(set(re.findall(r"^router\.include_router\((\w+)\)$", body, flags=re.M)) - set(re.findall(r"^router\.include_router\((\w+)\)$", base_body, flags=re.M)))
-    assert added == ['_u2_opex_lines_router']                                                     # exactly the one reviewed read-only include
-    assert text[text.index(_RCUX_TAIL):] == _git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}')[_git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}').index(_RCUX_TAIL):]
+    base = _git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}')
+    # (a) the U2 include appears exactly once in the whole file
+    assert re.findall(inc, text, flags=re.M).count('_u2_opex_lines_router') == 1
+    # (b) it lives in its own marked U2 section, before (outside) both historical sentinel intervals
+    u2_at, rcm_at, rcux_at = text.index(_U2_MARK), text.index(_RCM_MARK), text.index(_RCUX_TAIL)
+    assert u2_at < rcm_at < rcux_at and text.index('router.include_router(_u2_opex_lines_router)') < rcm_at
+    assert re.findall(inc, text[u2_at:rcm_at], flags=re.M) == ['_u2_opex_lines_router']
+    # (c) RC-M keeps exactly its five includes in order, RC-UX exactly its one; everything from RC-M on is byte-identical to BASE
+    assert re.findall(inc, text[rcm_at:rcux_at], flags=re.M) == _RCM_INCLUDES
+    assert _tail_includes(text) == ['_rcux_router']
+    assert text[rcm_at:] == base[base.index(_RCM_MARK):]
+    # the only change against BASE is the U2 section inserted right before the RC-M marker
+    assert text[:u2_at] == base[:base.index(_RCM_MARK)]
+    added = sorted(set(re.findall(inc, text, flags=re.M)) - set(re.findall(inc, base, flags=re.M)))
+    assert added == ['_u2_opex_lines_router']
 
 
-@pytest.mark.parametrize('where', ['tail', 'body'])
+@pytest.mark.parametrize('where', ['tail', 'body', 'u2-section'])
 def test_an_unreviewed_second_include_router_fails_closed(where, wt):
     path = wt / _ROUTER
     text = path.read_text(encoding='utf-8')
     extra = "from app.v2.react_unreviewed import router as _unreviewed_router  # noqa: E402\n\nrouter.include_router(_unreviewed_router)\n"
     if where == 'tail':
         text = text.rstrip('\n') + '\n\n' + extra
+    elif where == 'body':
+        i = text.index(_RCUX_TAIL)                                                                 # inside the historical RC-M interval
+        text = text[:i] + extra + '\n' + text[i:]
     else:
-        i = text.index(_RCUX_TAIL)
+        i = text.index(_RCM_MARK)                                                                  # a second include in the U2 section
         text = text[:i] + extra + '\n' + text[i:]
     path.write_text(text, encoding='utf-8')
     if where == 'tail':
         assert _tail_includes(text) != ['_rcux_router']                                           # the protected RC-UX check refuses it
+    if where == 'body':
+        import re
+        rcm = text[text.index(_RCM_MARK):text.index(_RCUX_TAIL)]
+        assert re.findall(r"^router\.include_router\((\w+)\)$", rcm, flags=re.M) != _RCM_INCLUDES   # the protected RC-M check refuses it
     assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt) and not C.valid(wt)
     assert not U1.supersedes(_ROUTER, U2._blob(text.encode()), repo=wt)
 
