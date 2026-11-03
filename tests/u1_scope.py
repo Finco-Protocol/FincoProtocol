@@ -158,6 +158,32 @@ def _ci_evidence_only(path):
     return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
 
 
+# Post-#413 closed successors (each pinned by its own manifest and registered in tests/fin_v2_cohorts.py). They are consulted through LOW LEVEL
+# checks only (``allowed_path`` / ``supersedes`` / ``exact_blobs_ok`` of the later module, which never call this module or the registry), so the
+# call stack stays acyclic. A later cohort never widens THIS cohort's own pins: it only supplies the exact later state of a path of its own.
+LATER_COHORTS = ('tests.post413_r1_scope',)
+
+
+def _later_modules():
+    import importlib
+    loaded = []
+    for name in LATER_COHORTS:
+        try:
+            loaded.append(importlib.import_module(name))
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+    return loaded
+
+
+def _later_owns(path, repo, ref):
+    return any(m.allowed_path(path, repo, ref) and m.exact_blobs_ok(repo, ref) for m in _later_modules())
+
+
+def _later_supersedes(path, value, repo, ref):
+    return any(m.supersedes(path, value, repo, ref) for m in _later_modules())
+
+
 def manifest(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -231,14 +257,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha and not _later_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != sha and not _later_supersedes(p, listed[p], root, ref) for p, sha in pins.items()):
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -246,7 +272,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
         changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -255,7 +281,7 @@ def _exact_blobs_ok(repo=None, ref=None):
                 if f.is_symlink() or (f.exists() and f.stat().st_mode & 0o111):
                     return False
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _later_owns(p, root, ref) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
@@ -267,7 +293,7 @@ def _exact_blobs_ok(repo=None, ref=None):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    return path in OWNED_PATHS or path == MANIFEST or _later_owns(path, repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -283,7 +309,9 @@ def historical_blobs(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value:
+        return True
+    return _later_supersedes(path, value, repo, ref)
 
 
 def valid(repo=None, ref=None):
