@@ -11,6 +11,7 @@ import pytest
 from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
 from tests import wf06b_scope as WF06B
+from tests import post413_r1_scope as R1
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
@@ -37,7 +38,8 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
         assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
                 or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path])
-                or WF06B.matches(path, SOURCES[path]))                 # PR #410: the exact WF-06B successor state of a superseded path
+                or WF06B.matches(path, SOURCES[path])                  # PR #410: the exact WF-06B successor state of a superseded path
+                or R1.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
