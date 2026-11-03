@@ -161,7 +161,7 @@ def _ci_evidence_only(path):
 # Post-#413 closed successors (each pinned by its own manifest and registered in tests/fin_v2_cohorts.py). They are consulted through LOW LEVEL
 # checks only (``allowed_path`` / ``supersedes`` / ``exact_blobs_ok`` of the later module, which never call this module or the registry), so the
 # call stack stays acyclic. A later cohort never widens THIS cohort's own pins: it only supplies the exact later state of a path of its own.
-LATER_COHORTS = ('tests.post413_r17_scope',)
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope')
 
 
 def _later_modules():

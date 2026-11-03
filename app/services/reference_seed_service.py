@@ -351,13 +351,15 @@ def _create_reference_seeded_project(
     pi = _reference_inputs(template_source)
     reference_capacity = float(pi.technical.capacity_mw)
     ratio = float(capacity_mw) / reference_capacity
-    if create_request is None:      # the unkeyed path calls the public service exactly as before
-        record, outcome = _pls.create_working_copy(
-            user_id=user_id, source_reference_id=reference.project_id,
-            requested_name=requested_name.strip()), "created"
-    else:
-        record, outcome = _pls._create_working_copy(
-            user_id, reference.project_id, requested_name.strip(), create_request)
+    if create_request is None:
+        # An unkeyed caller (library clone, legacy /projects/create) still gets the atomic lifecycle: a server-generated request
+        # identity makes the project CREATING until its seed lines and the COMPLETE flag commit together, so an interrupted seed
+        # can never leave a live, partially seeded working copy.  A fresh id per call is NOT cross-request idempotency: an
+        # ambiguous HTTP retry of an unkeyed form can still create a second (complete) project.
+        import uuid
+
+        create_request = {"request_id": "server-" + uuid.uuid4().hex, "params_digest": "", "purpose": "unkeyed-server-generated"}
+    record, outcome = _pls._create_working_copy(user_id, reference.project_id, requested_name.strip(), create_request)
     if outcome != "created":
         return record, outcome
     ws = get_workspace_state(user_id, record.project_id)

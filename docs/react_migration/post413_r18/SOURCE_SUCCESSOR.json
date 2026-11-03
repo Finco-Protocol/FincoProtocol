@@ -1,0 +1,19 @@
+{
+  "schema_version": "POST413_R18_EXACT_SOURCE_V1",
+  "base": "2c63750929477c618444e9d056030e054cc3a41c",
+  "base_tree": "e7869fc8f4775b5ae62a5c75be60f2efef2cfd79",
+  "base_blobs": {
+    "app/services/reference_seed_service.py": "e7f9f3afae5fc22d6dda4e75bf371c8efac0380f",
+    "tests/fin_v2_cohorts.py": "38aeac3b870e3f18e0ad583c07a763353b3d616a",
+    "tests/u1_scope.py": "f7ecb65f91bae3429a781984cab72b66ddda2263"
+  },
+  "source_blobs": {
+    "app/services/reference_seed_service.py": "c0afacbbf024904415821015333f6b2d30adc1d8",
+    "docs/react_migration/post413_r18/P00.md": "9b35338d0838ff8080809f5472b8b29f40372b50",
+    "tests/fin_v2_cohorts.py": "cb1a7e463b7c29c4b91a7b1ec3faeb835a18a50b",
+    "tests/post413_r18_scope.py": "b2c889fab9ca1e8f72f69364fe178485c4a4d1fe",
+    "tests/test_post413_r18_scope.py": "b66e9a0638341eb4a6e0c754e51f0efb2aee7a3a",
+    "tests/test_r18_atomic_reference_clone.py": "c6d2844e30639e2271a2bd8a118baf8c5d6059a3",
+    "tests/u1_scope.py": "733df45fb4143882666dfc999904ecbb72dd1a08"
+  }
+}
