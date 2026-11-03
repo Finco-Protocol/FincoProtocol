@@ -45,6 +45,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/model_react_r1_ppa_two_tab_acceptance.py',
     'tests/test_model_workspace_consolidation_browser.py',
     'tests/test_post413_r1_scope.py',
+    'tests/test_u1_scope.py',
     'tests/test_r1_ppa_stale_document_replay.py',
 ))
 # Reviewed, bounded hooks in the PR-U1 scope module and the registry (each pinned below). This cohort's own module is owned too.
@@ -61,6 +62,7 @@ SUPERSEDED = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/model_mutation_security_successor.py',
     'tests/test_model_workspace_consolidation_browser.py',
+    'tests/test_u1_scope.py',
     'tests/u1_scope.py',
 ))
 # No owned path may ever sit under a protected prefix; this is checked on the literal set.
