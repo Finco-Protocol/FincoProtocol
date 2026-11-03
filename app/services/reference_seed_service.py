@@ -359,6 +359,9 @@ def _create_reference_seeded_project(
         import uuid
 
         create_request = {"request_id": "server-" + uuid.uuid4().hex, "params_digest": "", "purpose": "unkeyed-server-generated"}
+        server_generated = True
+    else:
+        server_generated = False
     record, outcome = _pls._create_working_copy(user_id, reference.project_id, requested_name.strip(), create_request)
     if outcome != "created":
         return record, outcome
@@ -496,17 +499,23 @@ def _create_reference_seeded_project(
                     },
                 )
         if create_request is not None:
+            # A caller-keyed request stays on the row as COMPLETE (its id is the replay key). A server-generated request (unkeyed callers) has no
+            # replay meaning: the same statement that commits the seed lines removes the whole marker, so a finished unkeyed project is
+            # byte-for-byte what the legacy unkeyed path produced (no create_request metadata), while an interrupted one stays CREATING (hidden).
+            finish = ("json_remove(replay_metadata_json, '$.create_request')" if server_generated
+                      else "json_set(replay_metadata_json, '$.create_request.state', 'COMPLETE')")
             cur.execute(
-                "UPDATE projects SET replay_metadata_json=json_set(replay_metadata_json, '$.create_request.state', 'COMPLETE') "
+                f"UPDATE projects SET replay_metadata_json={finish} "
                 "WHERE project_id=? AND json_extract(replay_metadata_json, '$.create_request.state')='CREATING'",
                 (record.project_id,))
             if cur.rowcount != 1:       # abandoned meanwhile: roll the seed lines back rather than complete an archived project
                 raise RuntimeError("The create request is no longer in progress; the seed was rolled back.")
             cur.execute("COMMIT")
     if create_request is not None:
-        from app.persistence.projects_repository import find_project_by_create_request
+        from app.persistence.projects_repository import find_project_by_create_request, get_project_by_id
 
-        record = find_project_by_create_request(user_id, create_request["request_id"]) or record
+        record = ((get_project_by_id(record.project_id) if server_generated
+                   else find_project_by_create_request(user_id, create_request["request_id"])) or record)
     return record, "created"
 
 
