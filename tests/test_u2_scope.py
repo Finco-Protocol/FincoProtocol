@@ -37,6 +37,30 @@ def _flip(path):
     path.write_bytes(path.read_bytes() + b'\n')
 
 
+# ── Integrated four-cohort contract (R17 / R18 / R1 / U2 registered together on the integration branch) ──────────────────────────────────────
+FOUR = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope')
+
+
+def _later(names=None):
+    """The registered later-cohort modules (read through U1's own closed list), optionally restricted to ``names``."""
+    return [m for m in U1._later_modules() if names is None or m.__name__ in names]
+
+
+def _signed(modules):
+    """Finite closed union of the owned paths plus the manifest of each given cohort module."""
+    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in modules)) if modules else set()
+
+
+def _unexplained(changed, registered_exact):
+    """Changed paths neither owned by U2 nor by a REGISTERED and EXACT sibling cohort; any historical SOURCE_SUCCESSOR.json that is not a registered
+    sibling's own manifest is always unexplained, and so is every forbidden path."""
+    owned = U2.OWNED_PATHS | {U2.MANIFEST} | _signed(registered_exact)
+    return sorted(p for p in changed
+                  if p not in owned or p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS)
+
+
+
+
 def test_positive_cohort_is_exact_registered_and_closed():
     assert U2.exact_blobs_ok() and U2.valid() and C.valid() and U1.exact_blobs_ok() and W.exact_blobs_ok()
     assert U2.__name__ in C.COHORT_MODULES and U2 in C.cohorts() and U2.protected_blobs() == {}
@@ -44,9 +68,14 @@ def test_positive_cohort_is_exact_registered_and_closed():
     assert set(data['source_blobs']) == U2.OWNED_PATHS and set(data['base_blobs']) == U2.SUPERSEDED
     assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in U2.OWNED_PATHS)
     assert not (U2.OWNED_PATHS & U2.R1_PATHS)                                                    # addendum: no R1-owned file
-    for stranger in ('app/v2/router.py', 'app/v2/save_all_commands.py', 'frontend/src/app/editing/saveAll.ts', 'tests/test_something_new.py',
+    for stranger in ('app/v2/router.py', 'app/v2/save_all_commands.py', 'tests/test_something_new.py',
                      'financial_engine/x.py', '.github/workflows/ci.yml'):
         assert not U2.allowed_path(stranger) and not U1.allowed_path(stranger) and not W.allowed_path(stranger)
+    # An R1 path is never U2's. It is admitted by U1 / WF-06B ONLY through the exact, registered R1 cohort that owns it (integration branch).
+    r1 = {m.__name__: m for m in _later()}['tests.post413_r1_scope']
+    for r1_path in ('frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'):
+        assert not U2.allowed_path(r1_path) and r1_path not in U2.OWNED_PATHS and r1.allowed_path(r1_path)
+        assert 'tests.post413_r1_scope' in C.COHORT_MODULES and r1.exact_blobs_ok() and U1.allowed_path(r1_path) and W.allowed_path(r1_path)
     for owned in ('app/v2/react_opex_lines.py', 'frontend/src/app/capex/profileImport.ts', 'tests/u2_scope.py'):
         assert U2.matches(owned) and U2.allowed_path(owned) and U1.allowed_path(owned) and W.allowed_path(owned)
     path = 'static/react/finco-react.js'
@@ -63,9 +92,33 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
         assert _git(U2.ROOT, 'rev-parse', f'{U2.BASE}:{path}').strip() == blob
         assert u1_pins.get(path) == blob, path                                                    # U2 supersedes exactly what U1 signed
     changed = set(_git(U2.ROOT, 'diff', '--name-only', U2.BASE, '--').split())
-    assert not any(p.endswith('SOURCE_SUCCESSOR.json') for p in changed)                         # no older manifest edited
-    assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS or p in U2.R1_PATHS for p in changed)
-    assert changed <= U2.OWNED_PATHS | {U2.MANIFEST}
+    registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    own_manifests = {m.MANIFEST for m in registered_exact}
+    # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
+    assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)
+    assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in changed)
+    # an R1 file may be in the diff only because the exact registered R1 cohort owns it (never U2)
+    r1_owned = _signed([m for m in registered_exact if m.__name__ == 'tests.post413_r1_scope'])
+    assert all(p in r1_owned for p in changed & U2.R1_PATHS)
+    assert _unexplained(changed, registered_exact) == []                                          # U2's own paths + exact registered siblings only
+
+
+def test_unexplained_changed_paths_are_refused_for_the_four_cohort_contract():
+    """Negatives of the F2 contract on synthetic change sets: every path outside U2 and the exact registered siblings stays unexplained."""
+    registered = _later(FOUR)
+    r1 = [m for m in registered if m.__name__ == 'tests.post413_r1_scope']
+    base = {'app/v2/react_opex_lines.py', U2.MANIFEST}
+    assert _unexplained(base, registered) == []
+    assert _unexplained(base | {'frontend/src/app/editing/saveAll.ts'}, registered) == []                       # exact registered R1 owns it
+    assert _unexplained(base | {'frontend/src/app/editing/saveAll.ts'}, [m for m in registered if m not in r1]) == ['frontend/src/app/editing/saveAll.ts']
+    assert _unexplained({'app/v2/router.py'}, registered) == ['app/v2/router.py']                                # foreign changed byte
+    assert _unexplained({'tests/test_something_new.py'}, registered) == ['tests/test_something_new.py']          # unregistered new path
+    old_manifest = 'docs/react_migration/u1_workbench/SOURCE_SUCCESSOR.json'
+    assert _unexplained({old_manifest}, registered) == [old_manifest]                                            # altered historical manifest
+    assert _unexplained({'docs/react_migration/post413_rX/SOURCE_SUCCESSOR.json'}, registered) == ['docs/react_migration/post413_rX/SOURCE_SUCCESSOR.json']   # unowned manifest
+    for forbidden in ('financial_engine/x.py', 'finco_core/x.py', 'domain/x.py', '.github/workflows/x.yml', 'tools/x.py', 'main_web.py'):
+        assert _unexplained({forbidden}, registered) == [forbidden]
 
 
 def test_older_cohorts_still_exact_through_the_bounded_hooks():
@@ -233,9 +286,41 @@ def _u1_test_later_owned(repo, modules):
 
 
 def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkeypatch):
-    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == U2.OWNED_PATHS | {U2.MANIFEST}           # finite, closed, signed
-    assert _u1_test_later_owned(wt, tuple(m for m in C.COHORT_MODULES if m != U2.__name__)) == set()   # unregistered -> nothing admitted
+    four = {m.__name__: m for m in _later(FOUR)}
+    assert set(four) == set(FOUR) and set(FOUR) <= set(C.COHORT_MODULES)                            # all four are registered on the integration branch
+    siblings = [m for n, m in four.items() if n != U2.__name__]
+    union_all, union_siblings, union_u2 = _signed(list(four.values())), _signed(siblings), U2.OWNED_PATHS | {U2.MANIFEST}
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all                                   # the exact union of the four signed, finite sets
+    shared = (union_u2 & union_siblings) - {'tests/fin_v2_cohorts.py', 'tests/u1_scope.py', 'tests/test_u1_scope.py', 'static/react/finco-react.js'}
+    assert union_u2 <= union_all and shared == set(), shared                                         # U2 and siblings share only the reviewed governance/bundle paths
+    # U2 unregistered: its U2-only permissions disappear, the sibling cohorts' stay (they are independently registered and exact)
+    without_u2 = _u1_test_later_owned(wt, tuple(m for m in C.COHORT_MODULES if m != U2.__name__))
+    assert without_u2 == union_siblings and 'app/v2/react_opex_lines.py' not in without_u2
+    # each sibling unregistered independently removes only its own permissions
+    for name, module in four.items():
+        rest = _signed([m for n, m in four.items() if n != name])
+        assert _u1_test_later_owned(wt, tuple(n for n in C.COHORT_MODULES if n != name)) == rest, name
+    # U2 source drifted: U2 stops being exact -> only the siblings remain
     _flip(wt / 'app/v2/react_opex_lines.py')
-    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()                                     # drifted -> nothing admitted
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_siblings
+    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')
+    # each sibling drifted independently: that sibling stops being exact AND U2 stops being exact (a changed path of a drifted sibling is no longer
+    # explained for U2); the other two siblings are unaffected
+    drift = {'tests.post413_r17_scope': 'tests/test_r17_base_case_scope.py', 'tests.post413_r18_scope': 'tests/test_r18_atomic_reference_clone.py',
+             'tests.post413_r1_scope': 'tests/test_r1_ppa_stale_document_replay.py'}
+    for name, path in drift.items():
+        _flip(wt / path)
+        got = _u1_test_later_owned(wt, C.COHORT_MODULES)
+        _git(wt, 'checkout', '--', path)
+        assert got == _signed([m for n, m in four.items() if n not in (name, U2.__name__)]), name
+    # a forged manifest of one sibling is refused independently
+    mpath = wt / four['tests.post413_r1_scope'].MANIFEST
+    d = json.loads(mpath.read_text())
+    d['source_blobs']['static/react/finco-react.js'] = '0' * 40
+    mpath.write_text(json.dumps(d, indent=2) + '\n')
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == _signed([m for n, m in four.items() if n not in ('tests.post413_r1_scope', U2.__name__)])
+    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))
+    # no later cohort at all: nothing is admitted and the hooks fail closed (no recursion, no residual state)
     monkeypatch.setattr(U1, 'LATER_COHORTS', ())
-    assert U1._later_modules() == [] and not U1.allowed_path('app/v2/react_opex_lines.py')
+    assert U1._later_modules() == [] and not U1.allowed_path('app/v2/react_opex_lines.py') and not U1.allowed_path('frontend/src/app/editing/saveAll.ts')
+    assert not W.allowed_path('frontend/src/app/editing/saveAll.ts')
