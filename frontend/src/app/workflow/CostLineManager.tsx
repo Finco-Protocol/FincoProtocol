@@ -54,7 +54,9 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
 
   useEffect(() => { onLocked?.(locked); }, [locked, onLocked]);
   const eligible = useMemo(() => mgmt.eligible_groups.map((g) => g.code), [mgmt.eligible_groups]);
-  const errors = validateNewCostLine(draft, sheet, eligible);
+  // The group the form is opened under is the default when no group was chosen yet, so a slow load can never leave the form without a group.
+  const effective: NewCostLineDraft = draft.group ? draft : { ...draft, group: openGroup ?? "" };
+  const errors = validateNewCostLine(effective, sheet, eligible);
   const dirty = draft.label.trim() !== "" || draft.group !== "" ? 1 : 0;
   useReportDirty(`cost-add-${sheet}`, dirty);
   useReportPending(`cost-add-${sheet}`, inFlight || locked);
@@ -92,8 +94,8 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     }
     setInFlight(true);
     setStatus(null);
-    const beforeInGroup = data.lines.filter((l) => l.category === draft.group && l.label === draft.label.trim()).length;
-    const result = await addCostLine(data, cas, draft);
+    const beforeInGroup = data.lines.filter((l) => l.category === effective.group && l.label === draft.label.trim()).length;
+    const result = await addCostLine(data, cas, effective);
     if (result.outcome === "refused") {
       setStatus({ tone: "error", text: result.message });
       setInFlight(false);
@@ -107,7 +109,7 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
     }
     const fresh = await fetchCostLines(project, sheet);
     const afterInGroup = fresh.ok === true
-      ? fresh.lines.filter((l) => l.category === draft.group && l.label === draft.label.trim()).length : -1;
+      ? fresh.lines.filter((l) => l.category === effective.group && l.label === draft.label.trim()).length : -1;
     setInFlight(false);
     if (afterInGroup === beforeInGroup + 1) {
       setStatus({ tone: "ok", text: `Line "${draft.label.trim()}" added and verified in the fresh projection. The model was not run.` });
@@ -166,7 +168,7 @@ export function CostLineManager({ project, data, onChanged, refreshing = false, 
       <div className="wf-inline-form">
         <Field id={`${idp}-group`} label="Group" error={showErrors ? errors.group : undefined}>
           {(p) => (
-            <select {...p} className="fm-input" value={draft.group} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
+            <select {...p} className="fm-input" value={effective.group} disabled={fieldsDisabled} onChange={(e) => setDraft({ ...draft, group: e.target.value })}>
               <option value="">Select a group…</option>
               {mgmt.eligible_groups.map((g) => <option key={g.code} value={g.code}>{labelOf(g.code)}</option>)}
             </select>
