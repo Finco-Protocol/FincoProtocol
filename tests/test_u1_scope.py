@@ -232,7 +232,8 @@ def test_integration_reference_is_main_after_414_and_everything_unowned_equals_i
     for path, blob in data['integration_blobs'].items():
         assert _git(U.ROOT, 'rev-parse', f'{U.INTEGRATION}:{path}').strip() == blob
     changed = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
-    later_owned = set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U._later_modules()))     # finite, closed, each pinned by its own manifest
+    # Post-#413 successors: only the finite, closed path set of a later cohort that is REGISTERED and EXACT (each pinned by its own manifest).
+    later_owned = set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U._later_modules() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()))
     assert changed <= U.OWNED_PATHS | {U.MANIFEST} | later_owned          # nothing else moved away from main at #414
     assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)
 

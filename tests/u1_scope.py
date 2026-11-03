@@ -16,9 +16,14 @@ exactly that blob. It never admits a value for a path outside ``SUPERSEDED``.
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort registry
 (the composite ``valid`` imports the registry lazily and is never called from a low level check), so there is no recursive self-approval. No result
 cache outlives one outer governance call (``scoped``).
+
+Post-#413 successors (``LATER_COHORTS``; PR-U2 2026-11-03): each closed later cohort, pinned by its own manifest and registered in the registry,
+extends this cohort through bounded hooks (``_later_supersedes`` for an owned pin, ``_later_owns`` for a path it adds). U1 follows a later cohort
+only while it is exact, only for a path it supersedes, only for its exact pin, and only where its recorded BASE blob equals this cohort's own pin.
+Later cohorts are low level: they never import this module or the registry, so the call graph stays acyclic.
 """
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import subprocess
@@ -158,32 +163,6 @@ def _ci_evidence_only(path):
     return path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
 
 
-# Post-#413 closed successors (each pinned by its own manifest and registered in tests/fin_v2_cohorts.py). They are consulted through LOW LEVEL
-# checks only (``allowed_path`` / ``supersedes`` / ``exact_blobs_ok`` of the later module, which never call this module or the registry), so the
-# call stack stays acyclic. A later cohort never widens THIS cohort's own pins: it only supplies the exact later state of a path of its own.
-LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope')
-
-
-def _later_modules():
-    import importlib
-    loaded = []
-    for name in LATER_COHORTS:
-        try:
-            loaded.append(importlib.import_module(name))
-        except ModuleNotFoundError as exc:
-            if exc.name != name:
-                raise
-    return loaded
-
-
-def _later_owns(path, repo, ref):
-    return any(m.allowed_path(path, repo, ref) and m.exact_blobs_ok(repo, ref) for m in _later_modules())
-
-
-def _later_supersedes(path, value, repo, ref):
-    return any(m.supersedes(path, value, repo, ref) for m in _later_modules())
-
-
 def manifest(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -204,17 +183,49 @@ def _owned_ok():
 _SCOPE = []
 
 
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope')
+
+
+def _later_modules():
+    import importlib
+    loaded = []
+    for name in LATER_COHORTS:
+        try:
+            loaded.append(importlib.import_module(name))
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+    return loaded
+
+
+def _later_follows(path, blob, pin, root, ref):
+    """A U1 pin is followed by a later exact state only where that later cohort supersedes the path at exactly this U1 pin."""
+    return any(path in m.SUPERSEDED and m.base_blob(path, root, ref) == pin and m.supersedes(path, blob, root, ref) for m in _later_modules())
+
+
+def _later_owns(path, repo, ref):
+    return any(m.allowed_path(path, repo, ref) and m.exact_blobs_ok(repo, ref) for m in _later_modules())
+
+
+def _later_supersedes(path, value, repo, ref):
+    """A registered, exact later cohort pins ``value`` for a path of ITS superseded set that THIS cohort does not own (an older guard, WF-06B, owns it)."""
+    return any(m.supersedes(path, value, repo, ref) for m in _later_modules())
+
+
 @contextmanager
 def scoped():
     """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
     if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    with ExitStack() as later:       # each later cohort's verdict is shared for the same outer call only (PR #414 call scope)
+        for m in _later_modules():
+            later.enter_context(m.scoped())
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
@@ -230,6 +241,13 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
+    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)
+        for m in _later_modules():
+            later.enter_context(m.scoped())
+        return _exact_blobs_ok_inner(repo, ref)
+
+
+def _exact_blobs_ok_inner(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
@@ -257,22 +275,24 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha and not _later_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
-                return False
+            current = {p: _blob(_read(root, p, ref)) for p in pins}
         else:
-            listed = {}
+            current = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
-                listed[name] = meta.split()[2]
-            if set(listed) != set(pins) or any(listed[p] != sha and not _later_supersedes(p, listed[p], root, ref) for p, sha in pins.items()):
+                current[name] = meta.split()[2]
+            if set(current) != set(pins):
                 return False
+        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
+            return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
         if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed_since_base):
             return False
         # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
         changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+               for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -317,9 +337,12 @@ def historical_blobs(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value:
-        return True
-    return _later_supersedes(path, value, repo, ref)
+    if path in SUPERSEDED:
+        if not exact_blobs_ok(repo, ref):
+            return False
+        pin = manifest(repo, ref).get('source_blobs', {}).get(path)
+        return pin == value or (pin is not None and _later_follows(path, value, pin, repo, ref))
+    return _later_supersedes(path, value, repo, ref)      # a path an older guard owns (e.g. WF-06B / tests/test_rcux_governance.py): the later cohort's exact pin only
 
 
 def valid(repo=None, ref=None):

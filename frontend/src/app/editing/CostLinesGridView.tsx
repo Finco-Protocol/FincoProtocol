@@ -28,6 +28,7 @@ import { useDensity } from "../uiDensity";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
+import { isUserLineKey, requestProfileFocus } from "../capex/profileFocus";
 
 type Sheet = "capex" | "opex";
 const MAPPING_NOTE: Record<string, string> = {
@@ -44,11 +45,11 @@ function profileText(view: ProfileView, code: string): string {
   if (row.shape === "MILESTONE") return row.milestone ? `One payment, month ${row.milestone}` : "One payment";
   return SHAPE_TEXT[row.shape ?? ""] ?? "Saved profile";
 }
-const openCapexStudio = () => {
-  const tab = document.querySelector<HTMLElement>("[data-studio-tab='capex-profile']");
-  if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
-  (document.getElementById("wf-inputs-studios") ?? tab)?.scrollIntoView({ block: "start" });
-  window.setTimeout(() => document.querySelector<HTMLElement>("[data-studio-tab='capex-profile']")?.focus({ preventScroll: true }), 0);
+/** PR-U2a: the profile cell opens the ONE profile editor (CAPEX · Monthly schedule) focused on this item. The old Studios tab it used to look
+ *  for is no longer rendered (PR-U1), so the previous handler did nothing. */
+const openProfileEditor = (itemKey: string, onOpenProfile?: (key: string) => void) => {
+  requestProfileFocus(itemKey);
+  onOpenProfile?.(itemKey);
 };
 
 type Status = { tone: "ok" | "error" | "conflict"; text: string } | null;
@@ -65,6 +66,8 @@ export interface CostLinesGridProps {
   project: string; sheet: Sheet; reloadKey?: number; onMutated?: () => void; query?: string; scenarioName?: string;
   /** Switching CAPEX / OPEX is a route change owned by the workbench (it asks before leaving unsaved cost edits). */
   onSheet?: (next: Sheet) => void;
+  /** PR-U2a: open CAPEX · Monthly schedule (owned by the workbench); the item to focus is handed over in memory. */
+  onOpenProfile?: (itemKey: string) => void;
   /** Where the inline add-line form of the clicked group is drawn (a table cell this grid owns). */
 }
 export function CostLinesGridView(props: CostLinesGridProps) {
@@ -91,7 +94,7 @@ const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
 ];
 
-function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet }: CostLinesGridProps) {
+function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet, onOpenProfile }: CostLinesGridProps) {
   const [data, setData] = useState<CostLinesPayload | null>(null);
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
@@ -399,9 +402,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       }
       case "profile": return (
         <td key={id} className="ci-col-profile" data-cost-profile={line.sub_line_id}>
-          {profiles === null ? "—" : (
-            <button type="button" className="ci-link ci-profile" title="Shown from the saved spending profile. Edit it in the CAPEX spending profile studio." data-profile-link={line.sub_line_id}
-                    onClick={openCapexStudio}>
+          {profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
+            <span className="rx-note" data-profile-user-line={line.sub_line_id} title="The saved profile document does not accept lines you added yet; this line keeps the model default timing.">
+              Model default (added line)</span>
+          ) : (
+            <button type="button" className="ci-link ci-profile" title="The saved spending profile of this line. Opens CAPEX · Monthly schedule on this line." data-profile-link={line.sub_line_id}
+                    onClick={() => openProfileEditor(info?.finco_display_code ?? "", onOpenProfile)}>
               {profileText(profiles, info?.finco_display_code ?? "")} ▸
             </button>)}
         </td>);
@@ -415,6 +421,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       case "menu": return (
         <td key={id} className="ci-col-menu">
           <RowMenu line={line} open={menuFor === line.sub_line_id} disabled={readOnlyProject || refreshing || locked || cmdLocked}
+                   profileNote={sheet === "capex" && line.active && profiles?.rows[info?.finco_display_code ?? ""]
+                     ? "This line has a saved monthly profile. Deactivating keeps it, but the next Run is refused until you reactivate the line or remove its profile in Monthly schedule." : undefined}
                    onToggle={() => setMenuFor(menuFor === line.sub_line_id ? null : line.sub_line_id)}
                    onAction={(active) => { setMenuFor(null); setRowAction({ lineId: line.sub_line_id, active, nonce: Date.now() }); }} />
         </td>);
@@ -593,7 +601,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
 
 /** The only row actions with a real canonical command: retire (soft deactivation) and reactivate. Duplicate / reorder / delete are not offered.
  *  The list is positioned against the viewport so the table's scroll container never clips it. */
-function RowMenu({ line, open, disabled, onToggle, onAction }: { line: CostLinePayload; open: boolean; disabled: boolean; onToggle: () => void; onAction: (active: boolean) => void }) {
+function RowMenu({ line, open, disabled, onToggle, onAction, profileNote }: { line: CostLinePayload; open: boolean; disabled: boolean; onToggle: () => void; onAction: (active: boolean) => void; profileNote?: string }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const first = useRef<HTMLButtonElement>(null);
@@ -621,6 +629,7 @@ function RowMenu({ line, open, disabled, onToggle, onAction }: { line: CostLineP
                   onClick={() => onAction(!line.active)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onToggle(); button.current?.focus(); } }}>
             {line.active ? "Deactivate line" : "Reactivate line"}
           </button>
+          {profileNote && <span className="ci-menunote" role="note" data-row-profile-note={line.sub_line_id}>{profileNote}</span>}
         </span>)}
     </span>
   );
