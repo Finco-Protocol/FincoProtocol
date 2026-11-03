@@ -83,8 +83,30 @@ def test_one_altered_byte_in_any_owned_file_fails_closed(path, wt):
     assert not C.valid(wt)
 
 
-@pytest.mark.parametrize('path', sorted(W.OWNED_PATHS - {W.MANIFEST})[:6])
+# The historical missing-path negative set, pinned literally. It is exactly the first six sorted owned paths
+# of the #410 baseline collection (authenticated reference of the CI V3 plan), preserved node-for-node across
+# the post-#410 correction; the owned set may grow, but this parametrization must never depend on sorting or
+# slicing again.
+HISTORICAL_MISSING_PATHS = (
+    'app/cost_line_ledger/__init__.py',
+    'app/cost_line_ledger/capacity.py',
+    'app/cost_line_ledger/ledger.py',
+    'app/cost_line_ledger/projection.py',
+    'app/v2/react_workspace_router.py',
+    'docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md',
+)
+
+
+@pytest.mark.parametrize('path', HISTORICAL_MISSING_PATHS)
 def test_missing_owned_path_fails_closed(path, wt):
+    (wt / path).unlink()
+    assert not W.exact_blobs_ok(wt) and not C.valid(wt)
+
+
+# Separately named deletion negatives for the evidence documents this correction adds to the owned set;
+# genuinely additional nodes (the historical six above are unchanged).
+@pytest.mark.parametrize('path', sorted(p for p in W.OWNED_PATHS - {W.MANIFEST} if p.startswith('docs/ci_v3/incidents/')))
+def test_missing_owned_incident_document_fails_closed(path, wt):
     (wt / path).unlink()
     assert not W.exact_blobs_ok(wt) and not C.valid(wt)
 
@@ -282,66 +304,122 @@ def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
             assert not W.supersedes(path, W._blob(raw + b'\n')), (modname, path)
 
 
-# ── post-#410 CI correction: the amortised verdict cache must never mask a mutation ─────────────────────────────────────────────────────────
-# The per-path delegation hooks of the older cohorts re-ask this cohort's exact check once per moved pin, so the verdict is now amortised behind
-# a full-state key (the construction the PR #409 seal already ships). These negatives prove the two invariants that make that safe: a cached
-# verdict is only ever reused for byte-identical states, and the key carries this module's governance identity.
+# ── post-#410 CI correction (Correction A): fresh-evaluation negatives for the bounded one-outer-call memo ──────────────────────────────────
+# The per-path delegation hooks re-ask this cohort's exact check once per moved pin. The correction amortises
+# that with the one-outer-call scope memo (shared nested scoped() enters) and deliberately ships NO
+# process-lifetime verdict cache: a derived state key cannot prove it covers every input the exact check
+# reads, and ordinary git configurations hide real working-tree changes from `git diff` (demonstrated on the
+# pre-correction head). Every negative below runs the REAL evaluation; nothing clears or inspects any cache.
 
-def test_state_cache_never_reuses_a_verdict_across_different_bytes(wt):
-    """Same process, warm cache: mutate after a success, restore, then a DIFFERENT mutation. Every distinct byte state re-validates from scratch."""
-    assert W.exact_blobs_ok(wt)                      # cold: full evaluation, verdict cached under the exact state key
-    assert W.exact_blobs_ok(wt)                      # warm: byte-identical state, legitimately the same verdict
+def test_mutation_after_a_successful_check_restoration_and_a_different_mutation(wt):
+    """Success, real mutation, restore, then a DIFFERENT mutation: every evaluation reads the real bytes."""
+    assert W.exact_blobs_ok(wt)
+    assert W.exact_blobs_ok(wt)
     _flip(wt / 'tests/wf06b_scope.py')
-    assert not W.exact_blobs_ok(wt)                  # one flipped byte: new key, fresh evaluation, fails closed
+    assert not W.exact_blobs_ok(wt)                  # one flipped byte fails closed
     _git(wt, 'checkout', '--', 'tests/wf06b_scope.py')
-    assert W.exact_blobs_ok(wt)                      # restored byte-exactly: the original state legitimately validates again
+    assert W.exact_blobs_ok(wt)                      # restored byte-exactly
     (wt / 'app/cost_line_ledger/ledger.py').write_text('x = 1\n')       # a different file, a different mutation
-    assert not W.exact_blobs_ok(wt)                  # still fails closed after two warm True verdicts
+    assert not W.exact_blobs_ok(wt)                  # still fails closed
     _git(wt, 'checkout', '--', 'app/cost_line_ledger/ledger.py')
     assert W.exact_blobs_ok(wt)
 
 
-def test_state_cache_keys_the_staged_index_and_untracked_bytes(wt):
+def test_staged_index_and_untracked_bytes_are_judged_fresh(wt):
+    """Staged tamper, generated untracked CI evidence and an untracked source file are each judged from the
+    real evaluation, never from a remembered verdict."""
     assert W.exact_blobs_ok(wt)
     _flip(wt / 'tests/wf06b_scope.py')
     _git(wt, 'add', 'tests/wf06b_scope.py')          # staged, not only in the working tree
-    assert not W.exact_blobs_ok(wt)                  # staged index bytes are part of the state key
+    assert not W.exact_blobs_ok(wt)                  # the staged bytes do not fool the real byte read
     _git(wt, 'reset', '-q')
     _git(wt, 'checkout', '--', 'tests/wf06b_scope.py')
     evidence = wt / 'evidence'                       # generated CI evidence does not exist until CI creates it
     evidence.mkdir()
-    (evidence / 'probe.json').write_text('{}\n')     # untracked generated CI evidence stays admitted
+    (evidence / 'probe.json').write_text('{}\n')    # untracked generated CI evidence stays admitted
     assert W.exact_blobs_ok(wt)
     (evidence / 'probe.json').write_text('{"runs": 2}\n')
-    assert W.exact_blobs_ok(wt)                      # evidence bytes change the key but never the verdict
+    assert W.exact_blobs_ok(wt)                      # evidence bytes never change the verdict
     (wt / 'app/sneaky.py').write_text('x = 1\n')
-    assert not W.exact_blobs_ok(wt)                  # an untracked source file is still refused after warm verdicts
+    assert not W.exact_blobs_ok(wt)                  # an untracked source file is still refused
     (wt / 'app/sneaky.py').unlink()
     (evidence / 'probe.json').unlink()
     evidence.rmdir()
     assert W.exact_blobs_ok(wt)
 
 
-def test_patched_identity_constants_never_reuse_a_warm_verdict(wt, monkeypatch):
-    """The state key carries this module's governance identity, so a forged constant cannot ride on a cached verdict."""
-    assert W.exact_blobs_ok(wt)                      # warm cache under the honest identity
+def test_a_patched_identity_constant_is_used_by_every_evaluation(wt, monkeypatch):
+    """A forged governance identity constant is consulted by the real evaluation each time."""
+    assert W.exact_blobs_ok(wt)
     monkeypatch.setattr(W, 'BASE_TREE', '0' * 40)
-    assert not W.exact_blobs_ok(wt)                  # new key: fresh evaluation with the forged constant fails closed
+    assert not W.exact_blobs_ok(wt)
     monkeypatch.undo()
     assert W.exact_blobs_ok(wt)
 
 
-def test_cache_is_per_root_and_a_mutated_worktree_never_inherits_a_verdict(wt):
-    """Multi-repo / temp-root separation: each evaluated root has its own state key and its own verdict."""
-    assert W.exact_blobs_ok() and W.exact_blobs_ok(wt)       # both roots warm
+def test_same_cardinality_guard_identity_changes_cannot_reuse_a_prior_verdict(wt, monkeypatch):
+    """Same-size swaps of the guard's literal identity (owned set / superseded set) must be seen by a fresh
+    evaluation; a prior True must never survive a guard-identity change."""
+    assert W.exact_blobs_ok(wt)
+    forged_owned = frozenset((W.OWNED_PATHS - {'app/cost_line_ledger/capacity.py'}) | {'app/v2/router.py'})
+    assert len(forged_owned) == len(W.OWNED_PATHS)
+    monkeypatch.setattr(W, 'OWNED_PATHS', forged_owned)
+    assert not W.exact_blobs_ok(wt)                  # the manifest no longer matches the forged owned set
+    monkeypatch.undo()
+    assert W.exact_blobs_ok(wt)
+    forged_superseded = frozenset((W.SUPERSEDED - {'static/react/finco-react.css'}) | {'app/cost_line_ledger/capacity.py'})
+    assert len(forged_superseded) == len(W.SUPERSEDED)
+    monkeypatch.setattr(W, 'SUPERSEDED', forged_superseded)
+    data = W.manifest()
+    assert not W.supersedes('static/react/finco-react.css', data['source_blobs']['static/react/finco-react.css'], repo=wt)
+    assert not W.supersedes('app/cost_line_ledger/capacity.py', '0' * 40, repo=wt)
+    monkeypatch.undo()
+    assert W.supersedes('static/react/finco-react.css', data['source_blobs']['static/react/finco-react.css'], repo=wt)
+
+
+def test_a_mutated_worktree_is_judged_independently_of_the_real_tree(wt):
+    """Multi-repo / temp-root separation: each evaluated root gets its own real evaluation."""
+    assert W.exact_blobs_ok() and W.exact_blobs_ok(wt)
     _flip(wt / 'static/react/finco-react.js')
     assert not W.exact_blobs_ok(wt)                  # the mutated worktree fails closed...
-    assert W.exact_blobs_ok()                        # ...while the real tree keeps its own, separate verdict
+    assert W.exact_blobs_ok()                        # ...while the real tree still validates
     assert not W.exact_blobs_ok(wt)
 
 
+def test_bytes_hidden_from_git_diff_by_assume_unchanged_are_rejected(wt):
+    """Correction A counterexample 2: `update-index --assume-unchanged` hides a real byte mutation from
+    `git diff`; the exact check reads the real file bytes, so the tamper must still fail closed."""
+    assert W.exact_blobs_ok(wt)
+    victim = 'tests/wf06b_scope.py'
+    _git(wt, 'update-index', '--assume-unchanged', victim)
+    (wt / victim).write_bytes((wt / victim).read_bytes() + b'\n# TAMPER\n')
+    assert subprocess.check_output(['git', '-C', str(wt), 'diff', 'HEAD', '--no-ext-diff', '--binary', '--']) == b''
+    assert not W.exact_blobs_ok(wt) and not C.valid(wt)      # the real bytes are read directly
+    _git(wt, 'update-index', '--no-assume-unchanged', victim)
+    _git(wt, 'checkout', '--', victim)
+    assert W.exact_blobs_ok(wt)
+
+
+def test_executable_mode_change_hidden_from_git_diff_is_rejected(wt):
+    """Correction A counterexample 1 (POSIX): with `core.filemode false` git hides a real mode change from
+    `git diff`; the exact check stats the file itself, so the executable bit must fail closed. On Windows/NTFS
+    a chmod cannot represent the POSIX executable bit — the same environmental limitation as
+    test_extra_tracked_extra_untracked_and_executable_paths_fail_closed above — so the full sequence can only
+    be exercised on a POSIX host (the CI runners)."""
+    assert W.exact_blobs_ok(wt)
+    _git(wt, 'config', 'core.filemode', 'false')
+    victim = wt / 'app/cost_line_ledger/ledger.py'
+    victim.chmod(0o755)
+    if victim.stat().st_mode & 0o111 == 0:
+        pytest.skip('POSIX-only: this host cannot represent the POSIX executable bit (NTFS)')
+    assert subprocess.check_output(['git', '-C', str(wt), 'diff', 'HEAD', '--no-ext-diff', '--binary', '--']) == b''
+    assert not W.exact_blobs_ok(wt) and not C.valid(wt)
+    victim.chmod(0o644)
+    assert W.exact_blobs_ok(wt)
+
+
 def test_the_call_scope_memo_still_drops_and_a_mutation_is_never_masked(wt):
-    """The documented one-outer-call memo semantics are unchanged by the amortisation: mid-scope the memo holds, after it the real bytes decide."""
+    """The documented one-outer-call memo semantics: mid-scope the memo holds, after it the real bytes decide."""
     assert W.exact_blobs_ok(wt)
     with W.scoped():
         with W.scoped():                             # a nested enter shares this one outer memo

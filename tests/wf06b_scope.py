@@ -17,13 +17,13 @@ Termination: every check is low level. It reads git objects and this cohort's ma
 registry, so there is no recursive self-approval.
 
 Amortisation (post-#410 CI correction): every older cohort's per-path hook re-asks ``exact_blobs_ok`` once per moved pin, so one outer governance
-call re-ran this whole validation >1000 times (measured: 8,617 git spawns for one WF-03 exact check on the merged #410 tree). Two bounded memo
-layers fix that without weakening any negative: (1) the call-scope memo (``scoped``), as before, now shared by nested enters within ONE outer call;
-and (2) a process-lifetime verdict cache keyed by a FULL-STATE key (``_state_key``: HEAD + a digest of every tracked byte difference, staged or not,
-including mode changes and deletions, + the name and bytes of every untracked file + this module's governance identity constants) — the exact
-construction the PR #409 integration seal already ships (commit cddd5e0c). One flipped byte anywhere yields a new key and a fresh full evaluation;
-a cached verdict is therefore never reused for different bytes, every tamper negative still fails closed, and no cache is keyed only by repo path
-or HEAD.
+call re-ran this whole validation >1000 times (measured: 8,617 git spawns for one WF-03 exact check on the merged #410 tree). The fix is the
+call-scope memo (``scoped``), now shared by nested enters within ONE outer call, plus one-outer-call scope entry in the upstream cohorts
+(``tests/wf03_lifecycle_scope.py``). There is deliberately NO process-lifetime verdict cache here: a derived state key cannot prove it covers every
+input the exact check reads, and two ordinary-git configurations hide real working-tree changes from ``git diff`` (``core.filemode false`` with a
+mode change on a POSIX host; ``update-index --assume-unchanged`` with a byte change — both reproduced against the pre-correction head, where a
+cached True masked the tamper). One memoised verdict per outer call is safe because the memo's lifetime is exactly one single-threaded outer
+governance call in which no file is written; after the outermost exit every evaluation reads the real bytes, modes and git state again.
 """
 from pathlib import Path
 from contextlib import contextmanager
@@ -162,7 +162,11 @@ def scoped():
 
     A nested ``scoped()`` enter (the composite registry and the older guards' outer calls enter the downstream scopes they delegate to) SHARES the
     outermost memo instead of pushing a fresh one, so one outer operation computes each verdict at most once however deep the delegation; the memo
-    still never outlives the outermost exit and is never shared between separate outer calls."""
+    still never outlives the outermost exit and is never shared between separate outer calls. There is deliberately NO process-lifetime verdict
+    cache at this layer: a persistent cache keyed by a derived state key cannot prove it covers every input the exact check reads (git can be
+    configured to hide real working-tree changes from ``git diff`` — ``core.filemode false`` with a mode change, or ``update-index --assume-unchanged``
+    with a byte change — both demonstrated on the pre-correction head), so the only safe memo is one whose lifetime is a single outer governance
+    call in which no file is written."""
     if _SCOPE:
         yield
         return
@@ -173,69 +177,14 @@ def scoped():
         _SCOPE.pop()
 
 
-_RESULTS = {}
-
-
-def _rev(root, spec):
-    try:
-        return subprocess.check_output(['git', 'rev-parse', spec], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
-    except subprocess.CalledProcessError:
-        return None
-
-
-def _state_key(root, ref):
-    """A key that changes whenever ANY byte of the evaluated state changes, plus this module's governance identity constants.
-
-    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,
-    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new
-    key and the exact check runs again. The identity constants (``BASE``, ``BASE_TREE``, ``SCHEMA``, ``MANIFEST`` and the size of both literal path
-    sets) are read at call time so a patched-constant negative can never reuse an earlier verdict. A cached verdict is therefore never reused for
-    different bytes."""
-    identity = (BASE, BASE_TREE, SCHEMA, MANIFEST, len(OWNED_PATHS), len(SUPERSEDED))
-    if ref is not None:
-        sha = _rev(root, ref + '^{commit}')
-        return None if sha is None else ('ref', str(root), sha) + identity
-    try:
-        head = _rev(root, 'HEAD')
-        digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()
-        names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0')
-        untracked = hashlib.sha1()
-        for name in sorted(n for n in names if n):
-            untracked.update(name + b'\0')
-            try:
-                untracked.update((Path(root) / name.decode()).read_bytes())
-            except OSError:
-                untracked.update(b'<unreadable>')
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return ('wt', str(root), head, digest, untracked.hexdigest()) + identity
-
-
 def exact_blobs_ok(repo=None, ref=None):
     if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
         memo = _SCOPE[-1]
         skey = (str(repo if repo is not None else ROOT), ref)
         if skey not in memo:
-            memo[skey] = _cached_exact(repo, ref)
+            memo[skey] = _exact_blobs_ok(repo, ref)
         return memo[skey]
-    return _cached_exact(repo, ref)
-
-
-def _cached_exact(repo, ref):
-    """Amortised evaluation: identical to the PR #409 seal's ``_cached_exact``. The state key covers every mutable byte, so a cached True is only
-    ever returned for byte-identical states (e.g. a test that restores exactly what it mutated), and any real tamper re-validates from scratch."""
-    root = Path(repo) if repo is not None else ROOT
-    try:
-        key = _state_key(root, ref)
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    if key is None:
-        return False
-    if key not in _RESULTS:
-        if len(_RESULTS) > 64:
-            _RESULTS.clear()
-        _RESULTS[key] = _exact_blobs_ok(repo, ref)
-    return _RESULTS[key]
+    return _exact_blobs_ok(repo, ref)
 
 
 def _exact_blobs_ok(repo=None, ref=None):

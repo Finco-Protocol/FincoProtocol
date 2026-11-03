@@ -22,20 +22,21 @@ Per-node cost of `test_every_owned_byte_and_missing_path_fail_closed[*]` (from t
 ## B. Local single-call profile (one Windows 10 x64 machine, Python 3.12.10, git 2.54; read-only
 instrumentation of `subprocess.check_output`; identical LF checkout of merged #410 tree; verdict True in all rows)
 
-| Measurement | Before (main 3e00acab) | After (this branch) | Spawn reduction |
+| Measurement | Before (main 3e00acab) | After (Correction A, scope-only) | Spawn reduction |
 |---|---|---|---|
-| `F.exact_blobs_ok()` cold | 896.05 s / 8,617 spawns | 19.27 s / 127 spawns | 68× |
-| `F.exact_blobs_ok()` warm INT state | 677.27 s / 8,266 spawns | 2.85 s / 21 spawns | 394× |
-| `F.valid()` | ~800 s / ~8,600 spawns (est. from cold profile) | 3.08 s / 23 spawns | ~370× |
-| `W.exact_blobs_ok()` standalone (warm cache) | ~0.9 s / ~7 spawns | 0.39 s / 3 spawns (state-key only) | 2.3× |
-| `INT.exact_blobs_ok()` cold, standalone | ~2.3 s / 17 spawns (short-circuit tree) / full-cascade on merged tree included above | 24.6 s / 179 spawns | n/a (full validation once) |
-| `WF06A.exact_blobs_ok()` cold, standalone | ~110 s / ~700+ spawns (est. from #1 profile shares) | 38.9 s / 275 spawns | ~2.5× |
-| Composite `fin_v2_cohorts.valid()` | (previously ~1000+ spawns) | 10.09 s / 69 spawns | — |
+| `F.exact_blobs_ok()` cold | 896.05 s / 8,617 spawns | 26.09 s / 124 spawns | 69× |
+| `F.exact_blobs_ok()` warm | 677.27 s / 8,266 spawns | 4.43 s / 23 spawns | 359× |
+| `F.valid()` | ~800 s / ~8,600 spawns (est. from cold profile) | 4.92 s / 25 spawns | ~340× |
+| `W.exact_blobs_ok()` standalone | ~0.9 s / ~7 spawns (pre-#410-shape) | 1.01 s / 5 spawns (full fresh evaluation) | n/a (no persistent cache by design) |
+| `WF06A.exact_blobs_ok()` cold, standalone | ~110 s / ~700+ spawns (est. from #1 profile shares) | 78.8 s / 391 spawns | ~1.8× |
+| `INT.exact_blobs_ok()` cold, standalone | ~2.3 s / 17 spawns (short-circuit tree) / full-cascade on merged tree included above | 60.5 s / 299 spawns | n/a (full validation once) |
+| Composite `fin_v2_cohorts.valid()` | (previously ~1000+ spawns) | 16.7 s / 71 spawns | — |
 
-Note: the "After" WF-06A/INT standalone rows include their full first-time validations (which the WF-03 outer
-path enters once per outer call instead of >1,000 times). The rows are not comparable to the "Before" column
-for those two entries without the WF-03 outer call context; the governing comparison is the `F.*` rows and the
-hosted module wall.
+An intermediate revision of this PR (never pushed) measured 19.3 s/127 cold and 2.85 s/21 warm with a
+process-lifetime state-keyed verdict cache; that cache was REMOVED in Correction A (security first — see
+SECURITY_EQUIVALENCE.md §0), so the rows above are the shipped design. The WF-06A/INT standalone rows include
+their full first-time validations, which the WF-03 outer path enters once per outer call instead of >1,000
+times; the governing comparison is the `F.*` rows and the hosted module wall.
 
 ## C. Local suite walls (same machine, same checkout protocol, `-p no:pytest_ethereum` only)
 
@@ -47,7 +48,20 @@ hosted module wall.
 | tests/test_fin_v2_wf06a_scope.py | (measured) | (measured) | — |
 | tests/test_ci_v3_outcome_reconciliation.py | (measured) | (measured) | — |
 
-## D. Hosted CI V3 on the correction head (PREDICTED before the run; measured section to be appended after)
+## D. Hosted CI V3 on the correction head
+
+- Run 41543769701 (first revision of this PR, head dffe439): FAILED at `safety-and-smoke / plan` (job 125614860267,
+  step "Full collection") — `tools.ci_v3_schema.ContractError: original nodes removed; reviewed reconciliation
+  authority required: ['tests/test_wf06b_scope.py::test_missing_owned_path_fails_closed[docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md]']`.
+  Cause: adding four document paths to `wf06b_scope.OWNED_PATHS` shifted the `sorted(...)[:6]` slice of the
+  missing-path negative, dropping one original baseline node from collection. Workers never launched; no
+  throughput conclusion can be drawn from that run. Correction A pins the historical node set literally
+  (zero removed IDs, verified by full-suite `--collect-only` diff) before re-running.
+- Correction A head (this revision): PREDICTED per outer governance call on Linux ≈ 20.7 s → 0.1–0.7 s
+  (spawn count 8,617 → 23–124 at ≈2.4 ms/spawn); PREDICTED wf03 module wall low single-digit minutes (≥30×);
+  slowest worker bounded by the pre-regression regular-suite floor (~40–53 min, cf. #400 = 52.9 min).
+  MEASURED: (to be appended from the exact-head run of this revision — worker job walls + wf03/wf06b JUnit
+  module walls).
 
 - PREDICTED per outer governance call on Linux: 20.7 s → 0.1–0.7 s (spawn count 8,617 → 21–127 at ≈2.4 ms/spawn).
 - PREDICTED wf03 module wall: 10,145 s → low single-digit minutes (≥30×; ≥5× required).

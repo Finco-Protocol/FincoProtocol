@@ -84,12 +84,18 @@ together. The fix applies exactly those two primitives; see SECURITY_EQUIVALENCE
 
 ## 5. Fix and measured effect (same machine, same tree state, same harness)
 
-| Measurement (identical hardware/tree) | Before | After |
+| Measurement (identical hardware/tree) | Before | After (Correction A, scope-only) |
 |---|---|---|
-| `F.exact_blobs_ok()` cold | 896.1 s / 8,617 spawns | **19.3 s / 127 spawns** |
-| `F.exact_blobs_ok()` warm | 677.3 s / 8,266 spawns | **2.85 s / 21 spawns** |
-| `F.valid()` | ~800 s / ~8,600 spawns | **3.08 s / 23 spawns** |
+| `F.exact_blobs_ok()` cold | 896.1 s / 8,617 spawns | **26.1 s / 124 spawns** |
+| `F.exact_blobs_ok()` warm | 677.3 s / 8,266 spawns | **4.4 s / 23 spawns** |
+| `F.valid()` | ~800 s / ~8,600 spawns | **4.9 s / 25 spawns** |
 | Verdict on merged-#410 tree | True | **True (unchanged)** |
+
+(An intermediate revision of this PR used a process-lifetime state-keyed verdict cache and measured
+19.3 s/127 cold; it was REMOVED in Correction A because two ordinary-git configurations
+(`core.filemode false` + chmod on POSIX; `update-index --assume-unchanged` + byte mutation — both
+reproduced) hid real working-tree changes from the derived state key and let a cached True mask a tamper.
+The retained speed-up comes from the one-outer-call scope memo alone.)
 
 Predicted CI effect (to be confirmed by the one exact-head hosted run on the final PR head):
 per outer call ≈ 20.7 s → ~0.1–0.7 s; wf03 module 10,145 s → low single-digit minutes (≈30–100×);
@@ -98,6 +104,7 @@ slowest worker bounded by the pre-regression regular-suite floor (~40–53 min, 
 ## 6. What this is not
 
 - No test was skipped, excluded (`-k`), weakened, or had its expected outcome changed; the node inventory
-  and every negative of PR #410 are retained (plus new cache-invalidation negatives).
+  and every negative of PR #410 are retained node-for-node (the historical `test_missing_owned_path_fails_closed`
+  set is pinned literally; Correction A's negatives are genuinely additional).
 - No timeout was extended; worker count unchanged; no governance authority moved into CI flags.
 - No `financial_engine/`, `finco_core/`, `domain/`, workflow, engine or formula file is touched.
