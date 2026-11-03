@@ -14,7 +14,16 @@ accepts a different current blob for such a path only through ``supersedes(path,
 exactly that blob. It never admits a value for a path outside ``SUPERSEDED``.
 
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort
-registry, so there is no recursive self-approval. No result cache outlives one outer governance call (``scoped``).
+registry, so there is no recursive self-approval.
+
+Amortisation (post-#410 CI correction): every older cohort's per-path hook re-asks ``exact_blobs_ok`` once per moved pin, so one outer governance
+call re-ran this whole validation >1000 times (measured: 8,617 git spawns for one WF-03 exact check on the merged #410 tree). The fix is the
+call-scope memo (``scoped``), now shared by nested enters within ONE outer call, plus one-outer-call scope entry in the upstream cohorts
+(``tests/wf03_lifecycle_scope.py``). There is deliberately NO process-lifetime verdict cache here: a derived state key cannot prove it covers every
+input the exact check reads, and two ordinary-git configurations hide real working-tree changes from ``git diff`` (``core.filemode false`` with a
+mode change on a POSIX host; ``update-index --assume-unchanged`` with a byte change — both reproduced against the pre-correction head, where a
+cached True masked the tamper). One memoised verdict per outer call is safe because the memo's lifetime is exactly one single-threaded outer
+governance call in which no file is written; after the outermost exit every evaluation reads the real bytes, modes and git state again.
 """
 from pathlib import Path
 from contextlib import contextmanager
@@ -55,6 +64,10 @@ SOURCE_PATHS = frozenset((
     'app/v2/react_workspace_router.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/GPT6_REVIEW_PACKET.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/ROOT_CAUSE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/SECURITY_EQUIVALENCE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/TIMING_LEDGER.md',
     'docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md',
     'docs/react_migration/wf06b_a_plus/P00.md',
     'tests/model_react_wf06b_acceptance.py',
@@ -145,7 +158,18 @@ _SCOPE = []
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes.
+
+    A nested ``scoped()`` enter (the composite registry and the older guards' outer calls enter the downstream scopes they delegate to) SHARES the
+    outermost memo instead of pushing a fresh one, so one outer operation computes each verdict at most once however deep the delegation; the memo
+    still never outlives the outermost exit and is never shared between separate outer calls. There is deliberately NO process-lifetime verdict
+    cache at this layer: a persistent cache keyed by a derived state key cannot prove it covers every input the exact check reads (git can be
+    configured to hide real working-tree changes from ``git diff`` — ``core.filemode false`` with a mode change, or ``update-index --assume-unchanged``
+    with a byte change — both demonstrated on the pre-correction head), so the only safe memo is one whose lifetime is a single outer governance
+    call in which no file is written."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
         yield
@@ -154,13 +178,13 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
-    key = (str(repo if repo is not None else ROOT), ref)
-    memo = _SCOPE[-1]
-    if key not in memo:
-        memo[key] = _exact_blobs_ok(repo, ref)
-    return memo[key]
+    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
+        memo = _SCOPE[-1]
+        skey = (str(repo if repo is not None else ROOT), ref)
+        if skey not in memo:
+            memo[skey] = _exact_blobs_ok(repo, ref)
+        return memo[skey]
+    return _exact_blobs_ok(repo, ref)
 
 
 def _exact_blobs_ok(repo=None, ref=None):
