@@ -63,7 +63,8 @@ def test_base_is_the_merged_410_main_and_history_is_recorded_not_rewritten():
     moved_by_414 = set(_git(U.ROOT, 'diff', '--name-only', U.BASE, U.INTEGRATION, '--').split())     # the reviewed #414 amortisation moved the WF-06B seal
     assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST and p not in moved_by_414 for p in changed)   # no older manifest was edited by U1
     since_414 = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
-    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST for p in since_414)    # and none at all since main at #414
+    later_manifests = {m.MANIFEST for m in U._later_modules()}                      # closed post-#413 cohorts register their OWN new manifest; none is an older one
+    assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST and p not in later_manifests for p in since_414)    # and none at all since main at #414
     assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)                       # UI only
 
 
@@ -173,7 +174,7 @@ def test_the_410_manifest_and_unlisted_predecessor_files_cannot_be_bypassed(path
 
 
 def test_wf06b_follows_u1_only_for_the_exact_pin_and_only_the_recorded_historical_blob(wt):
-    path = 'static/react/finco-react.js'
+    path = 'frontend/src/app/workflow/CostLineManager.tsx'          # superseded by U1 and by no later cohort (a later cohort's pin is the later cohort's own)
     assert W.exact_blobs_ok(wt)
     # forge the WF-06B pin: it no longer equals the historical blob U1 re-verified against git at its BASE -> WF-06B must NOT follow U1
     mpath = wt / W.MANIFEST
@@ -217,7 +218,8 @@ def test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_forei
 
 
 def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
-    for path in U.OWNED_PATHS - U.SUPERSEDED - {U.MANIFEST}:
+    later_superseded = set().union(*(set(m.SUPERSEDED) for m in U._later_modules()))
+    for path in U.OWNED_PATHS - U.SUPERSEDED - {U.MANIFEST} - later_superseded:
         raw = (U.ROOT / path).read_bytes()
         assert not U.supersedes(path, U._blob(raw)) and not W.supersedes(path, U._blob(raw + b'\n')), path
 
@@ -230,7 +232,8 @@ def test_integration_reference_is_main_after_414_and_everything_unowned_equals_i
     for path, blob in data['integration_blobs'].items():
         assert _git(U.ROOT, 'rev-parse', f'{U.INTEGRATION}:{path}').strip() == blob
     changed = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
-    assert changed <= U.OWNED_PATHS | {U.MANIFEST}                          # nothing else moved away from main at #414
+    later_owned = set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U._later_modules()))     # finite, closed, each pinned by its own manifest
+    assert changed <= U.OWNED_PATHS | {U.MANIFEST} | later_owned          # nothing else moved away from main at #414
     assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)
 
 

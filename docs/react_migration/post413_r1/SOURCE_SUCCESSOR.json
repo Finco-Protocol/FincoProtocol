@@ -1,0 +1,32 @@
+{
+  "schema_version": "POST413_R1_STALE_PPA_EXACT_SOURCE_V1",
+  "base": "2c63750929477c618444e9d056030e054cc3a41c",
+  "base_tree": "e7869fc8f4775b5ae62a5c75be60f2efef2cfd79",
+  "base_blobs": {
+    "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
+    "static/react/finco-react.js": "74e7b2d500956a940bfc1b6a88097f301e756495",
+    "tests/fin_v2_cohorts.py": "38aeac3b870e3f18e0ad583c07a763353b3d616a",
+    "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
+    "tests/test_model_workspace_consolidation_browser.py": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
+    "tests/test_u1_scope.py": "0ce769d64ce082658ca8364f1888da4ea9529727",
+    "tests/u1_scope.py": "f7ecb65f91bae3429a781984cab72b66ddda2263"
+  },
+  "source_blobs": {
+    "docs/react_migration/post413_r1/P00.md": "10be28bd4ff9912209886a0bf252a9100c095f03",
+    "frontend/src/app/editing/ChangesProvider.tsx": "6d0eb942c46c275a3b05ef799e7e322aec607154",
+    "frontend/src/app/editing/__tests__/editing.test.mjs": "03b5c509cab05d973da3e8014af926b99ae11969",
+    "frontend/src/app/editing/pendingEdits.ts": "22fc37281ddbc4c3612f8ddf9e6486d5b70dd89c",
+    "frontend/src/app/editing/saveAll.ts": "d02bd7d7e0bf7a17c968d08467c946cbd219ac32",
+    "frontend/src/app/workflow/PPAEditorView.tsx": "c98a12419e3db642af7dd4e902939f73f02d6487",
+    "static/react/finco-react.js": "447ad53cf07b109ff5d55d501cf8b69acb296ddd",
+    "tests/fin_v2_cohorts.py": "e53def4567dac31c8da6159fecdd55c303c73df9",
+    "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
+    "tests/model_react_r1_ppa_two_tab_acceptance.py": "f9270bd0e43396f4ba8ff81f9cd6e819229937e3",
+    "tests/post413_r1_scope.py": "adcf0c55aaa8a6629f7f70a1fb499f835ca2fae2",
+    "tests/test_model_workspace_consolidation_browser.py": "2d0b5c1abc6c64a47ec925244f0b098cca67fb39",
+    "tests/test_post413_r1_scope.py": "6fa7caa7499933df3147979d6fe32ec0bdda5eea",
+    "tests/test_r1_ppa_stale_document_replay.py": "3902b9306028b2f1cd44407308bf557471c17790",
+    "tests/test_u1_scope.py": "3636af1de59099117ad1cf76c2981de357ba2959",
+    "tests/u1_scope.py": "853829b2766eb6199c99c038912c51ca2ab622f5"
+  }
+}
