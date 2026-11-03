@@ -16,9 +16,13 @@ exactly that blob. It never admits a value for a path outside ``SUPERSEDED``.
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort registry
 (the composite ``valid`` imports the registry lazily and is never called from a low level check), so there is no recursive self-approval. No result
 cache outlives one outer governance call (``scoped``).
+
+PR-U2 successor (2026-11-03): the closed PR-U2 cohort (``tests/u2_scope.py``, base = main after PR #413) extends this cohort through bounded hooks
+(``_u2_follows`` for an owned pin, ``_u2_owns`` for a path U2 adds). U1 follows U2 only while U2 is exact, only for a path U2 supersedes, only for
+U2's exact pin, and only where U2's recorded BASE blob equals this cohort's own pin. U2 is low level: it never imports this module.
 """
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import subprocess
@@ -178,17 +182,40 @@ def _owned_ok():
 _SCOPE = []
 
 
+def _u2():
+    try:
+        from tests import u2_scope
+    except ModuleNotFoundError as exc:
+        if exc.name != 'tests.u2_scope':
+            raise
+        return None
+    return u2_scope
+
+
+def _u2_follows(path, blob, pin, root, ref):
+    """PR-U2: a U1 pin is followed by the exact U2 state only where U2 supersedes the path at exactly this U1 pin."""
+    U2 = _u2()
+    return (U2 is not None and path in U2.SUPERSEDED and U2.base_blob(path, root, ref) == pin and U2.supersedes(path, blob, root, ref))
+
+
+def _u2_owns(path, root, ref):
+    U2 = _u2()
+    return U2 is not None and U2.allowed_path(path, root, ref) and U2.exact_blobs_ok(root, ref)
+
+
 @contextmanager
 def scoped():
     """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
     if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    U2 = _u2()
+    with (U2.scoped() if U2 is not None else nullcontext()):    # PR-U2: its verdict is shared for the same outer call only
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
@@ -204,6 +231,14 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
+    U2 = _u2()
+    if U2 is not None and not U2._SCOPE:     # PR-U2: one U2 verdict per U1 check (dropped on exit)
+        with U2.scoped():
+            return _exact_blobs_ok_inner(repo, ref)
+    return _exact_blobs_ok_inner(repo, ref)
+
+
+def _exact_blobs_ok_inner(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
@@ -231,22 +266,24 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
-                return False
+            current = {p: _blob(_read(root, p, ref)) for p in pins}
         else:
-            listed = {}
+            current = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
-                listed[name] = meta.split()[2]
-            if listed != pins:
+                current[name] = meta.split()[2]
+            if set(current) != set(pins):
                 return False
+        if any(current[p] != sha and not _u2_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
+            return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
         if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed_since_base):
             return False
         # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
         changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _u2_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+               for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -255,7 +292,7 @@ def _exact_blobs_ok(repo=None, ref=None):
                 if f.is_symlink() or (f.exists() and f.stat().st_mode & 0o111):
                     return False
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _u2_owns(p, root, ref) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
@@ -267,7 +304,7 @@ def _exact_blobs_ok(repo=None, ref=None):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    return path in OWNED_PATHS or path == MANIFEST or _u2_owns(path, repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -283,7 +320,10 @@ def historical_blobs(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if not (path in SUPERSEDED and exact_blobs_ok(repo, ref)):
+        return False
+    pin = manifest(repo, ref).get('source_blobs', {}).get(path)
+    return pin == value or (pin is not None and _u2_follows(path, value, pin, repo, ref))
 
 
 def valid(repo=None, ref=None):
