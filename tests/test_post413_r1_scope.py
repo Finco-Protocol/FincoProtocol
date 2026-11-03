@@ -157,3 +157,21 @@ def test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call():
         assert R.exact_blobs_ok()
         assert len(R._SCOPE) == 1 and len(R._SCOPE[0]) == 1
     assert R._SCOPE == [] and U._SCOPE == []
+
+
+def test_u1_historical_blobs_include_a_later_cohorts_base_blob_only_for_its_superseded_paths_and_only_while_exact(wt):
+    """WF-06B accepts a later blob of a path it owns only if U1 supersedes it AND the WF-06B pin is a historical blob U1 knows. A later cohort's
+    git-verified BASE blob is such a historical blob, bounded to the paths that cohort supersedes."""
+    rcux = 'tests/test_rcux_governance.py'
+    base = R.manifest()['base_blobs'][rcux]
+    assert base in U.historical_blobs(rcux) and base not in U.historical_blobs('app/v2/router.py')
+    assert not U.historical_blobs('tests/test_post413_r1_scope.py') - {R.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py')}
+    # forged later manifest -> the later cohort is not exact -> contributes nothing
+    manifest = wt / R.MANIFEST
+    data = json.loads(manifest.read_text())
+    data['source_blobs'][rcux] = '0' * 40
+    manifest.write_text(json.dumps(data, indent=2) + '\n')
+    assert base not in U.historical_blobs(rcux, wt)
+    _git(wt, 'checkout', '--', R.MANIFEST)
+    _flip(wt / rcux)                                  # one byte in the superseded test: the cohort pin no longer matches
+    assert base not in U.historical_blobs(rcux, wt)
