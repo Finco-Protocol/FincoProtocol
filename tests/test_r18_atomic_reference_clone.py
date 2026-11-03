@@ -113,7 +113,9 @@ def test_the_unkeyed_success_path_is_complete_and_equals_the_keyed_economics(wor
     b, outcome = seed.create_reference_seeded_project_once(user_id=U, template_source=template, requested_name="Keyed",
                                                            capacity_mw=20.0, create_request_id="k" * 32, purpose="r18")
     assert outcome == "created"
-    assert _state(a) == "COMPLETE" and _state(b) == "COMPLETE" and _writable(a) and _writable(b)
+    # a finished UNKEYED create carries no create_request marker (byte-for-byte the legacy shape: no replay key to collide on a row copy);
+    # a finished KEYED create keeps its COMPLETE marker
+    assert "create_request" not in (a.replay_metadata or {}) and _state(b) == "COMPLETE" and _writable(a) and _writable(b)
     assert _counts(a.project_id) == _counts(b.project_id) and _counts(a.project_id)[0] > 0 and _counts(a.project_id)[2] > 0
     assert (a.baseline_snapshot or {}).get("opex_y1_keur") == (b.baseline_snapshot or {}).get("opex_y1_keur")
     assert (a.baseline_snapshot or {}).get("total_capex_keur") == (b.baseline_snapshot or {}).get("total_capex_keur")
@@ -147,7 +149,7 @@ def test_the_legacy_projects_create_route_is_atomic(world, monkeypatch, template
         "template_source": template, "capacity_mw": "20"}, follow_redirects=False)
     assert r.status_code >= 400 or not [p for p in _mine() if _state(p) == "COMPLETE"], r.status_code
     for p in _mine():
-        assert _state(p) in ("CREATING", "COMPLETE")
+        assert _state(p) in ("CREATING", None)
         if _state(p) == "CREATING":
             assert not _writable(p) and _counts(p.project_id)[::2] == (0, 0)
 
