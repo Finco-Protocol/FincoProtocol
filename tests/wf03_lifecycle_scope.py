@@ -376,30 +376,48 @@ _SCOPE=[]   # call-scope memo stack: see scoped()
 
 
 @contextmanager
+def _downstream_scopes():
+    """Enter every downstream cohort's one-outer-call memo for the duration of THIS outer evaluation (the same primitive the composite registry
+    already uses, ``tests/fin_v2_cohorts.py::valid``). Nested enters share the outermost memo, so one outer operation computes each downstream
+    verdict at most once however deep the delegation cascades; nothing outlives the outermost exit. Absent cohorts enter nothing."""
+    import contextlib
+    import importlib
+    with contextlib.ExitStack() as stack:
+        for name in ('tests.fin_v2_integration_409_scope', 'tests.fin_v2_wf06a_scope', 'tests.wf06b_scope'):
+            try:
+                module=importlib.import_module(name)
+            except ImportError:
+                continue
+            if callable(getattr(module, 'scoped', None)):
+                stack.enter_context(module.scoped())
+        yield
+
+
+@contextmanager
 def scoped():
     """Within ONE outer governance call (single-threaded, no file is written meanwhile) the result of ``exact_blobs_ok(root, ref)`` is computed once
-    instead of once per changed path. The memo lives only for that call: it is dropped on exit, never keeps bytes, and is never shared between calls."""
+    instead of once per changed path. The memo lives only for that call: it is dropped on exit, never keeps bytes, and is never shared between
+    separate outer calls. A nested ``scoped()`` enter shares the outermost memo (the composite registry enters every cohort once), and the
+    downstream cohorts' one-call memos are entered here so their per-path delegation loops amortise inside this single outer call."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
-        try:
-            from tests import fin_v2_integration_409_scope as _INT
-        except ImportError:
-            _INT = None
-        if _INT is None:
+        with _downstream_scopes():
             yield
-        else:
-            with _INT.scoped():          # the low-level PR #409 seal is memoised for the same single call
-                yield
     finally:
         _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None,ref=None):
-    if not _SCOPE: return _exact_blobs_ok(repo,ref)
-    key=(str(repo if repo is not None else ROOT),ref)
-    memo=_SCOPE[-1]
-    if key not in memo: memo[key]=_exact_blobs_ok(repo,ref)
-    return memo[key]
+    if _SCOPE:
+        key=(str(repo if repo is not None else ROOT),ref)
+        memo=_SCOPE[-1]
+        if key not in memo:
+            with _downstream_scopes(): memo[key]=_exact_blobs_ok(repo,ref)
+        return memo[key]
+    with _downstream_scopes(): return _exact_blobs_ok(repo,ref)
 
 
 def _exact_blobs_ok(repo=None,ref=None):
@@ -424,14 +442,15 @@ def allowed_path(path,repo=None,ref=None):
 
 def valid(repo=None,ref=None):
     root=Path(repo) if repo is not None else ROOT
-    if not exact_blobs_ok(root,ref): return False
     try:
-        changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
-        if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in changed): return False
-        if ref is None:
-            untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
-            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in untracked): return False
-        return True
+        with _downstream_scopes():          # one outer call: the exact check and every per-path delegation hook share the downstream memos
+            if not exact_blobs_ok(root,ref): return False
+            changed=_git(root,'diff','--name-only',PARENT,*([ref] if ref else []),'--').decode().splitlines()
+            if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in changed): return False
+            if ref is None:
+                untracked=_git(root,'ls-files','--others','--exclude-standard').decode().splitlines()
+                if any(not allowed_path(p) and not _wf06a_allows(p,root,ref) and not _int409_allows(p,root,ref) and not _wf06b_allows(p,root,ref) for p in untracked): return False
+            return True
     except (OSError,ValueError,subprocess.CalledProcessError): return False
 
 

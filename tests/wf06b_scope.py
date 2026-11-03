@@ -19,7 +19,16 @@ historical blob that U1 re-verified against git at its BASE), a path owned by U1
 ``supersedes`` / ``allowed_path`` forward to U1 for the older cohorts. U1 never calls this module, so there is no recursion.
 
 Termination: every check is low level. It reads git objects and this cohort's manifest only; it never calls an older cohort or the cohort
-registry, so there is no recursive self-approval. No result cache outlives one outer governance call (``scoped``).
+registry, so there is no recursive self-approval.
+
+Amortisation (post-#410 CI correction): every older cohort's per-path hook re-asks ``exact_blobs_ok`` once per moved pin, so one outer governance
+call re-ran this whole validation >1000 times (measured: 8,617 git spawns for one WF-03 exact check on the merged #410 tree). The fix is the
+call-scope memo (``scoped``), now shared by nested enters within ONE outer call, plus one-outer-call scope entry in the upstream cohorts
+(``tests/wf03_lifecycle_scope.py``). There is deliberately NO process-lifetime verdict cache here: a derived state key cannot prove it covers every
+input the exact check reads, and two ordinary-git configurations hide real working-tree changes from ``git diff`` (``core.filemode false`` with a
+mode change on a POSIX host; ``update-index --assume-unchanged`` with a byte change — both reproduced against the pre-correction head, where a
+cached True masked the tamper). One memoised verdict per outer call is safe because the memo's lifetime is exactly one single-threaded outer
+governance call in which no file is written; after the outermost exit every evaluation reads the real bytes, modes and git state again.
 """
 from pathlib import Path
 from contextlib import contextmanager
@@ -60,6 +69,10 @@ SOURCE_PATHS = frozenset((
     'app/v2/react_workspace_router.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/GPT6_REVIEW_PACKET.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/ROOT_CAUSE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/SECURITY_EQUIVALENCE.md',
+    'docs/ci_v3/incidents/ci_v3_governance_amortization/TIMING_LEDGER.md',
     'docs/react_migration/wf06b_a_plus/GOVERNANCE_SUCCESSOR_PLAN.md',
     'docs/react_migration/wf06b_a_plus/P00.md',
     'tests/model_react_wf06b_acceptance.py',
@@ -149,7 +162,7 @@ def _pin_ok(path, blob, pin, repo, ref):
     if blob == pin:
         return True
     U = _u1()
-    return U is not None and U.supersedes(path, blob, repo, ref) and U.base_blob(path, repo, ref) == pin
+    return U is not None and U.supersedes(path, blob, repo, ref) and pin in U.historical_blobs(path, repo, ref)
 
 
 def manifest(repo=None, ref=None):
@@ -172,7 +185,18 @@ _SCOPE = []
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes.
+
+    A nested ``scoped()`` enter (the composite registry and the older guards' outer calls enter the downstream scopes they delegate to) SHARES the
+    outermost memo instead of pushing a fresh one, so one outer operation computes each verdict at most once however deep the delegation; the memo
+    still never outlives the outermost exit and is never shared between separate outer calls. There is deliberately NO process-lifetime verdict
+    cache at this layer: a persistent cache keyed by a derived state key cannot prove it covers every input the exact check reads (git can be
+    configured to hide real working-tree changes from ``git diff`` — ``core.filemode false`` with a mode change, or ``update-index --assume-unchanged``
+    with a byte change — both demonstrated on the pre-correction head), so the only safe memo is one whose lifetime is a single outer governance
+    call in which no file is written."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
         yield
@@ -181,73 +205,19 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        U = _u1()
-        if U is not None and not U._SCOPE:         # one PR-U1 evaluation per call here, not one per pin / changed path (dropped on exit)
-            with U.scoped():
-                return _exact_blobs_ok(repo, ref)
-        return _exact_blobs_ok(repo, ref)
-    key = (str(repo if repo is not None else ROOT), ref)
-    memo = _SCOPE[-1]
-    if key not in memo:
-        memo[key] = _exact_blobs_ok(repo, ref)
-    return memo[key]
+    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
+        memo = _SCOPE[-1]
+        skey = (str(repo if repo is not None else ROOT), ref)
+        if skey not in memo:
+            memo[skey] = _exact_blobs_ok(repo, ref)
+        return memo[skey]
+    U = _u1()
+    if U is not None and not U._SCOPE:     # PR-U1: one U1 verdict per outer call here (dropped on exit), never a process-lifetime cache
+        with U.scoped():
+            return _exact_blobs_ok(repo, ref)
+    return _exact_blobs_ok(repo, ref)
 
 
-_BASE_FACTS = {}
-
-
-def _base_facts(root, paths):
-    key = (str(root), BASE, tuple(paths))
-    hit = _BASE_FACTS.get(key)
-    if hit is None:
-        tree = _git(root, 'rev-parse', BASE + '^{tree}').decode().strip()
-        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
-        hit = _BASE_FACTS[key] = (tree, at_base)
-    return hit
-
-
-_ANCESTRY_OK = set()
-
-
-def _head_sha(root):
-    """The commit HEAD points to, read straight from the git directory (no subprocess). ``None`` whenever anything is not plain."""
-    try:
-        g = Path(root) / '.git'
-        if g.is_file():
-            text = g.read_text().strip()
-            if not text.startswith('gitdir:'):
-                return None
-            gd = Path(text[len('gitdir:'):].strip())
-            gd = gd if gd.is_absolute() else Path(root) / gd
-        else:
-            gd = g
-        head = (gd / 'HEAD').read_text().strip()
-        if len(head) == 40 and all(c in '0123456789abcdef' for c in head):
-            return head
-        if head.startswith('ref: '):
-            common = gd
-            if (gd / 'commondir').is_file():
-                common = (gd / (gd / 'commondir').read_text().strip()).resolve()
-            ref_file = common / head[5:]
-            if ref_file.is_file():
-                sha = ref_file.read_text().strip()
-                if len(sha) == 40 and all(c in '0123456789abcdef' for c in sha):
-                    return sha
-        return None
-    except OSError:
-        return None
-
-
-def _base_is_ancestor(root, ref):
-    """``git merge-base --is-ancestor BASE <head>``; a positive answer is remembered per exact HEAD commit (history cannot change under a commit hash)."""
-    sha = _head_sha(root) if ref is None else None
-    key = (str(root), BASE, sha)
-    if sha is not None and key in _ANCESTRY_OK:
-        return
-    _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-    if sha is not None:
-        _ANCESTRY_OK.add(key)
 
 
 def _exact_blobs_ok(repo=None, ref=None):
@@ -259,15 +229,12 @@ def _exact_blobs_ok(repo=None, ref=None):
     try:
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
-        _base_is_ancestor(root, ref)
-        # The BASE tree and the BASE blobs are immutable git facts of an object that is named by its hash: they are read once per repository for this
-        # process (only a successful read is kept) instead of on every one of the thousands of governance evaluations. The comparison with the
-        # manifest below is repeated every time.
-        paths = sorted(base_blobs)
-        tree, at_base = _base_facts(root, paths)
-        if tree != BASE_TREE:
+        _git(root, 'merge-base', '--is-ancestor', BASE, head)
+        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
+        paths = sorted(base_blobs)
         # 2. the BASE blob recorded for every superseded path is what git holds at BASE (history is not rewritten here)
+        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
         if at_base != [base_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path

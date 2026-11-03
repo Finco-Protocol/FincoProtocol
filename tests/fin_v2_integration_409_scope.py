@@ -184,7 +184,12 @@ def _cached_exact(root, repo, ref):
 
 @contextmanager
 def scoped():
-    """Within ONE outer governance call the verdict is computed once. Dropped on exit; never keeps bytes; never shared between calls."""
+    """Within ONE outer governance call the verdict is computed once. Dropped on exit; never keeps bytes; never shared between separate outer
+    calls. A nested ``scoped()`` enter (the composite registry and the older guards' outer calls) SHARES the outermost memo instead of pushing a
+    fresh one, so one outer operation computes each verdict at most once however deep the delegation."""
+    if _SCOPE:
+        yield
+        return
     _SCOPE.append({})
     try:
         yield

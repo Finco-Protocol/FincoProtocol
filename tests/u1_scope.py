@@ -26,6 +26,11 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 BASE = '3e00acab71ea4c2bd9e7396e5bee609225212623'
 BASE_TREE = '12cd2bfb89eac3e628da1bba80efd01b0c47af2f'
+# Integration point (PR #413 Correction I): main after PR #414 (the CI V3 governance amortisation). ``BASE`` stays the literal #410 merge: nothing historical is
+# rewritten. ``INTEGRATION`` is a second, immutable reference: everything this cohort does not own must equal main at this commit, and the older cohorts'
+# pins of the superseded paths describe either BASE (before #414) or INTEGRATION (after #414).
+INTEGRATION = '8b311c00fea6ca2683974f5a1a963346614730ad'
+INTEGRATION_TREE = 'aa8430e2c450511da78a0c080918b5f4c3111bb7'
 MANIFEST = 'docs/react_migration/u1_workbench/SOURCE_SUCCESSOR.json'
 SCHEMA = 'U1_SINGLE_WORKBENCH_EXACT_SOURCE_V1'
 
@@ -158,7 +163,9 @@ def manifest(repo=None, ref=None):
     try:
         data = json.loads(_read(root, MANIFEST, ref))
         return data if (isinstance(data, dict) and isinstance(data.get('source_blobs'), dict) and isinstance(data.get('base_blobs'), dict)
-                        and data.get('schema_version') == SCHEMA and data.get('base') == BASE and data.get('base_tree') == BASE_TREE) else {}
+                        and isinstance(data.get('integration_blobs'), dict)
+                        and data.get('schema_version') == SCHEMA and data.get('base') == BASE and data.get('base_tree') == BASE_TREE
+                        and data.get('integration') == INTEGRATION and data.get('integration_tree') == INTEGRATION_TREE) else {}
     except (OSError, ValueError, subprocess.CalledProcessError):
         return {}
 
@@ -174,6 +181,9 @@ _SCOPE = []
 @contextmanager
 def scoped():
     """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
+    if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)
+        yield
+        return
     _SCOPE.append({})
     try:
         yield
@@ -191,81 +201,33 @@ def exact_blobs_ok(repo=None, ref=None):
     return memo[key]
 
 
-_BASE_FACTS = {}
-
-
-def _base_facts(root, paths):
-    key = (str(root), BASE, tuple(paths))
-    hit = _BASE_FACTS.get(key)
-    if hit is None:
-        tree = _git(root, 'rev-parse', BASE + '^{tree}').decode().strip()
-        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
-        hit = _BASE_FACTS[key] = (tree, at_base)
-    return hit
-
-
-_ANCESTRY_OK = set()
-
-
-def _head_sha(root):
-    """The commit HEAD points to, read straight from the git directory (no subprocess). ``None`` whenever anything is not plain."""
-    try:
-        g = Path(root) / '.git'
-        if g.is_file():
-            text = g.read_text().strip()
-            if not text.startswith('gitdir:'):
-                return None
-            gd = Path(text[len('gitdir:'):].strip())
-            gd = gd if gd.is_absolute() else Path(root) / gd
-        else:
-            gd = g
-        head = (gd / 'HEAD').read_text().strip()
-        if len(head) == 40 and all(c in '0123456789abcdef' for c in head):
-            return head
-        if head.startswith('ref: '):
-            common = gd
-            if (gd / 'commondir').is_file():
-                common = (gd / (gd / 'commondir').read_text().strip()).resolve()
-            ref_file = common / head[5:]
-            if ref_file.is_file():
-                sha = ref_file.read_text().strip()
-                if len(sha) == 40 and all(c in '0123456789abcdef' for c in sha):
-                    return sha
-        return None
-    except OSError:
-        return None
-
-
-def _base_is_ancestor(root, ref):
-    """``git merge-base --is-ancestor BASE <head>``; a positive answer is remembered per exact HEAD commit (history cannot change under a commit hash)."""
-    sha = _head_sha(root) if ref is None else None
-    key = (str(root), BASE, sha)
-    if sha is not None and key in _ANCESTRY_OK:
-        return
-    _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-    if sha is not None:
-        _ANCESTRY_OK.add(key)
 
 
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
-    if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
+    integration_blobs = data.get('integration_blobs', {})
+    if (not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED
+            or set(integration_blobs) != SUPERSEDED):
         return False
     try:
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
-        _base_is_ancestor(root, ref)
-        # The BASE tree and the BASE blobs are immutable git facts of an object that is named by its hash: they are read once per repository for this
-        # process (only a successful read is kept) instead of on every one of the thousands of governance evaluations. The comparison with the
-        # manifest below is repeated every time.
-        paths = sorted(base_blobs)
-        tree, at_base = _base_facts(root, paths)
-        if tree != BASE_TREE:
+        _git(root, 'merge-base', '--is-ancestor', BASE, head)
+        _git(root, 'merge-base', '--is-ancestor', INTEGRATION, head)
+        _git(root, 'merge-base', '--is-ancestor', BASE, INTEGRATION)
+        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
-        # 2. the BASE blob recorded for every superseded path is what git holds at BASE (history is not rewritten here)
+        if _git(root, 'rev-parse', INTEGRATION + '^{tree}').decode().strip() != INTEGRATION_TREE:
+            return False
+        paths = sorted(base_blobs)
+        # 2. the blob recorded for every superseded path is what git holds at BASE (#410) and at INTEGRATION (#414); history is not rewritten here
+        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
         if at_base != [base_blobs[p] for p in paths]:
+            return False
+        at_integration = _git(root, 'rev-parse', *[INTEGRATION + ':' + p for p in paths]).decode().split()
+        if at_integration != [integration_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path
         if ref is None:
@@ -279,7 +241,11 @@ def _exact_blobs_ok(repo=None, ref=None):
             if listed != pins:
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
-        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed_since_base):
+            return False
+        # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
+        changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
         if any((p not in OWNED_PATHS and p != MANIFEST) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
@@ -307,6 +273,12 @@ def allowed_path(path, repo=None, ref=None):
 def base_blob(path, repo=None, ref=None):
     """The recorded BASE blob of a superseded path (re-verified against git inside ``exact_blobs_ok``), or ``None``."""
     return manifest(repo, ref).get('base_blobs', {}).get(path)
+
+
+def historical_blobs(path, repo=None, ref=None):
+    """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
+    data = manifest(repo, ref)
+    return {b for b in (data.get('base_blobs', {}).get(path), data.get('integration_blobs', {}).get(path)) if b}
 
 
 def supersedes(path, value, repo=None, ref=None):
