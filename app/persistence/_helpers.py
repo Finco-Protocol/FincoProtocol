@@ -136,6 +136,7 @@ def _strip_empty_fields(snapshot: dict[str, Any]) -> dict[str, Any]:
 def _get_least_created_scenario_for_project(user_id: str, project_id: str) -> Optional["ScenarioRecord"]:
     """Return the oldest (earliest created_at) non-archived scenario for a project,
     used as the default base case when backfilling for legacy projects."""
+    from app.persistence.records import ScenarioRecord
     with get_cursor() as cur:
         cur.execute(
             """
