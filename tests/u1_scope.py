@@ -304,7 +304,15 @@ def base_blob(path, repo=None, ref=None):
 def historical_blobs(path, repo=None, ref=None):
     """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
     data = manifest(repo, ref)
-    return {b for b in (data.get('base_blobs', {}).get(path), data.get('integration_blobs', {}).get(path)) if b}
+    found = {b for b in (data.get('base_blobs', {}).get(path), data.get('integration_blobs', {}).get(path)) if b}
+    # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob and re-verified it against git inside its own exact check; that
+    # BASE blob is the reviewed state an older guard (WF-06B) may still hold. Only while that later cohort is exact, only for a path it supersedes.
+    for later in _later_modules():
+        if path in later.SUPERSEDED and later.exact_blobs_ok(repo, ref):
+            blob = later.base_blob(path, repo, ref)
+            if blob:
+                found.add(blob)
+    return found
 
 
 def supersedes(path, value, repo=None, ref=None):
