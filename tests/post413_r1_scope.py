@@ -46,6 +46,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_model_mutation_security_successor.py',
     'tests/test_model_workspace_consolidation_browser.py',
     'tests/test_post413_r1_scope.py',
+    'tests/test_rcux_governance.py',
     'tests/test_u1_scope.py',
     'tests/test_r1_ppa_stale_document_replay.py',
 ))
@@ -58,6 +59,7 @@ GOVERNANCE_PATHS = frozenset((
 OWNED_PATHS = PRESENTATION_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE. Older cohorts pin these at their BASE blob; the BASE blob of each is recorded in the manifest and re-verified.
 SUPERSEDED = frozenset((
+    'tests/test_rcux_governance.py',
     'frontend/src/app/workflow/PPAEditorView.tsx',
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
