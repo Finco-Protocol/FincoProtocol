@@ -10,13 +10,14 @@
     "static/react/finco-react.css": "f6fd36f014676bcf7c8cc076c963b587540f0bd9",
     "static/react/finco-react.js": "74e7b2d500956a940bfc1b6a88097f301e756495",
     "tests/fin_v2_cohorts.py": "38aeac3b870e3f18e0ad583c07a763353b3d616a",
+    "tests/test_u1_scope.py": "0ce769d64ce082658ca8364f1888da4ea9529727",
     "tests/u1_scope.py": "f7ecb65f91bae3429a781984cab72b66ddda2263"
   },
   "base_tree": "e7869fc8f4775b5ae62a5c75be60f2efef2cfd79",
   "schema_version": "U2_COST_COMPLETION_EXACT_SOURCE_V1",
   "source_blobs": {
     "app/v2/react_opex_lines.py": "4e264a364e0ebee210b72172ddc718e1f1d5e1f2",
-    "app/v2/react_workspace_router.py": "d888b5031e2242962a325a272fc65a26ffbc9de3",
+    "app/v2/react_workspace_router.py": "5d240053e6fea4128535c0247cead91f9165a9f1",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_CONTRACT.md": "91f1b06dfd7501c9070f277ca1e531e40feb57a1",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_PROOF.md": "665d9ae5f2ae0240d111df1c1f89223dd563c3b9",
     "docs/react_migration/u2_workbench/D7_ATOMICITY_DECISION_PACKET.md": "f12010a90f357656893688c10041a050331482e8",
@@ -39,13 +40,14 @@
     "static/react/finco-react.js": "c5fdb4ca8a280a2ae4d06b8358a12f7f2869efe3",
     "tests/fin_v2_cohorts.py": "4b0ef75a5b56182a9552fd571d1dbf5981ffe21f",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
+    "tests/test_u1_scope.py": "ead029f8f80ddb7dc73d8b60a6f6cb30a81c055b",
     "tests/test_u2_d13_profile_lifecycle.py": "e4df8bebb5bbf1fbbb909d31034ebb140c174229",
-    "tests/test_u2_opex_lines.py": "0b3784d816bdfdc042845c7e577190063b599588",
+    "tests/test_u2_opex_lines.py": "274dbe6f1721536decbf850086156cc2e4576e0e",
     "tests/test_u2_profile_import.py": "a4c7e9df6a611a9b10b5f9908d575b108a7abe02",
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
-    "tests/test_u2_scope.py": "700ef3c49d263e0e5392a64413837dc64313c604",
-    "tests/u1_scope.py": "f3a062bff0a7451b52eb90609861874b73fbbfec",
+    "tests/test_u2_scope.py": "5d9cf9b09dbabdd064afc878dce0a52c3cb1e789",
+    "tests/u1_scope.py": "640cfb8a1211f5fd1d5f2cd6f17603fd39331947",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "20d0695a9f2d5a316ecdaf8c62bce7d711a3a800"
+    "tests/u2_scope.py": "a247393b6fa49ad8a4209106ecd417d3c091a6c8"
   }
 }

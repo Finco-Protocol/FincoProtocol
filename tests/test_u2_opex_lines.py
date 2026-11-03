@@ -106,3 +106,32 @@ def test_owner_scoping_and_flag(env, monkeypatch):
     assert env.stranger.get("/v2/model-react/opex-projection/lines", params={"project": record.project_code}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert _lines(env, record).status_code == 404
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_authenticated_read_only_no_provenance_and_no_all_in_figure(env, kind):
+    """The route needs a session, accepts GET only, carries no source provenance, and never states an all-in OPEX total."""
+    from fastapi.testclient import TestClient
+
+    from app.cost_line_ledger.projection import assert_no_source_provenance
+
+    record = _create(env, kind)
+    anon = TestClient(env.client.app).get("/v2/model-react/opex-projection/lines", params={"project": record.project_code})
+    assert anon.status_code == 401 and anon.json()["code"] == "AUTH_REQUIRED"
+    for method in ("post", "put", "patch", "delete"):
+        assert getattr(env.client, method)("/v2/model-react/opex-projection/lines", params={"project": record.project_code}).status_code == 405, method
+    payload = _lines(env, record).json()
+    assert_no_source_provenance(payload)                                                       # raises on any source / workbook provenance key
+    keys = set()
+
+    def walk(o):
+        if isinstance(o, dict):
+            keys.update(o)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(payload)
+    assert not {k for k in keys if "all_in" in k or "including_bases" in k}, keys                # no all-in OPEX aggregate
+    assert set(payload["totals"]) == {"excluding_contingency", "including_contingency"}         # the existing line-item totals only

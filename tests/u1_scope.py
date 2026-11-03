@@ -17,12 +17,13 @@ Termination: every check is low level. It reads git objects and this cohort's ma
 (the composite ``valid`` imports the registry lazily and is never called from a low level check), so there is no recursive self-approval. No result
 cache outlives one outer governance call (``scoped``).
 
-PR-U2 successor (2026-11-03): the closed PR-U2 cohort (``tests/u2_scope.py``, base = main after PR #413) extends this cohort through bounded hooks
-(``_u2_follows`` for an owned pin, ``_u2_owns`` for a path U2 adds). U1 follows U2 only while U2 is exact, only for a path U2 supersedes, only for
-U2's exact pin, and only where U2's recorded BASE blob equals this cohort's own pin. U2 is low level: it never imports this module.
+Post-#413 successors (``LATER_COHORTS``; PR-U2 2026-11-03): each closed later cohort, pinned by its own manifest and registered in the registry,
+extends this cohort through bounded hooks (``_later_supersedes`` for an owned pin, ``_later_owns`` for a path it adds). U1 follows a later cohort
+only while it is exact, only for a path it supersedes, only for its exact pin, and only where its recorded BASE blob equals this cohort's own pin.
+Later cohorts are low level: they never import this module or the registry, so the call graph stays acyclic.
 """
 from pathlib import Path
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import subprocess
@@ -182,25 +183,28 @@ def _owned_ok():
 _SCOPE = []
 
 
-def _u2():
-    try:
-        from tests import u2_scope
-    except ModuleNotFoundError as exc:
-        if exc.name != 'tests.u2_scope':
-            raise
-        return None
-    return u2_scope
+LATER_COHORTS = ('tests.u2_scope',)
 
 
-def _u2_follows(path, blob, pin, root, ref):
-    """PR-U2: a U1 pin is followed by the exact U2 state only where U2 supersedes the path at exactly this U1 pin."""
-    U2 = _u2()
-    return (U2 is not None and path in U2.SUPERSEDED and U2.base_blob(path, root, ref) == pin and U2.supersedes(path, blob, root, ref))
+def _later_modules():
+    import importlib
+    loaded = []
+    for name in LATER_COHORTS:
+        try:
+            loaded.append(importlib.import_module(name))
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+    return loaded
 
 
-def _u2_owns(path, root, ref):
-    U2 = _u2()
-    return U2 is not None and U2.allowed_path(path, root, ref) and U2.exact_blobs_ok(root, ref)
+def _later_follows(path, blob, pin, root, ref):
+    """A U1 pin is followed by a later exact state only where that later cohort supersedes the path at exactly this U1 pin."""
+    return any(path in m.SUPERSEDED and m.base_blob(path, root, ref) == pin and m.supersedes(path, blob, root, ref) for m in _later_modules())
+
+
+def _later_owns(path, repo, ref):
+    return any(m.allowed_path(path, repo, ref) and m.exact_blobs_ok(repo, ref) for m in _later_modules())
 
 
 @contextmanager
@@ -209,8 +213,9 @@ def scoped():
     if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)
         yield
         return
-    U2 = _u2()
-    with (U2.scoped() if U2 is not None else nullcontext()):    # PR-U2: its verdict is shared for the same outer call only
+    with ExitStack() as later:       # each later cohort's verdict is shared for the same outer call only (PR #414 call scope)
+        for m in _later_modules():
+            later.enter_context(m.scoped())
         _SCOPE.append({})
         try:
             yield
@@ -231,11 +236,10 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
-    U2 = _u2()
-    if U2 is not None and not U2._SCOPE:     # PR-U2: one U2 verdict per U1 check (dropped on exit)
-        with U2.scoped():
-            return _exact_blobs_ok_inner(repo, ref)
-    return _exact_blobs_ok_inner(repo, ref)
+    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)
+        for m in _later_modules():
+            later.enter_context(m.scoped())
+        return _exact_blobs_ok_inner(repo, ref)
 
 
 def _exact_blobs_ok_inner(repo=None, ref=None):
@@ -274,7 +278,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
                 current[name] = meta.split()[2]
             if set(current) != set(pins):
                 return False
-        if any(current[p] != sha and not _u2_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
+        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -282,7 +286,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
             return False
         # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
         changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST and not _u2_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
                for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
@@ -292,7 +296,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
                 if f.is_symlink() or (f.exists() and f.stat().st_mode & 0o111):
                     return False
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
-            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _u2_owns(p, root, ref) for p in untracked):
+            if any(p not in OWNED_PATHS and p != MANIFEST and not _ci_evidence_only(p) and not _later_owns(p, root, ref) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
@@ -304,7 +308,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST or _u2_owns(path, repo, ref)
+    return path in OWNED_PATHS or path == MANIFEST or _later_owns(path, repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -323,7 +327,7 @@ def supersedes(path, value, repo=None, ref=None):
     if not (path in SUPERSEDED and exact_blobs_ok(repo, ref)):
         return False
     pin = manifest(repo, ref).get('source_blobs', {}).get(path)
-    return pin == value or (pin is not None and _u2_follows(path, value, pin, repo, ref))
+    return pin == value or (pin is not None and _later_follows(path, value, pin, repo, ref))
 
 
 def valid(repo=None, ref=None):

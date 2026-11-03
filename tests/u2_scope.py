@@ -58,6 +58,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_u2_opex_lines.py',
     'tests/test_u2_profile_import.py',
     'tests/test_u2_save_atomicity_oracle.py',
+    'tests/test_u1_scope.py',
     'tests/test_u2_scope.py',
     'tests/u2_browser_role.py',
 ))
@@ -69,6 +70,8 @@ GOVERNANCE_PATHS = frozenset((
 ))
 OWNED_PATHS = PRESENTATION_PATHS | SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE (the U1 cohort pins every one of them at exactly the BASE blob recorded in the manifest).
+# ``app/v2/react_workspace_router.py``: the U2 include sits in the router body, before the RC-UX tail, so the protected RC-UX tail check
+# (exactly ``['_rcux_router']``) is unchanged; the body change is admitted only through this cohort's exact pin.
 SUPERSEDED = frozenset((
     'app/v2/react_workspace_router.py',
     'frontend/src/app/CostWorkbench.tsx',
@@ -78,6 +81,7 @@ SUPERSEDED = frozenset((
     'static/react/finco-react.css',
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
+    'tests/test_u1_scope.py',     # one bounded successor assertion (later registered + exact cohort's finite set)
     'tests/u1_scope.py',
 ))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/')

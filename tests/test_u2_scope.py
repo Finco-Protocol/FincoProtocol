@@ -157,3 +157,66 @@ def test_protected_r1_and_unowned_code_modified_after_signing_fails_closed(path,
     assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
     assert not U2.allowed_path(path)
     _git(wt, 'reset', '--hard', '-q', 'HEAD~1')
+
+
+_RCUX_TAIL = "# ───────────────────────────── RC-UX: React adapters"
+_ROUTER = 'app/v2/react_workspace_router.py'
+
+
+def _tail_includes(text):
+    import re
+    return re.findall(r"^router\.include_router\((\w+)\)$", text[text.index(_RCUX_TAIL):], flags=re.M)
+
+
+def test_the_u2_mount_is_in_the_body_and_the_rcux_tail_keeps_exactly_its_one_include():
+    import re
+    text = (U2.ROOT / _ROUTER).read_text(encoding='utf-8')
+    assert _tail_includes(text) == ['_rcux_router']                                               # protected RC-UX tail check, unchanged
+    body = text[:text.index(_RCUX_TAIL)]
+    base_body = _git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}')
+    base_body = base_body[:base_body.index(_RCUX_TAIL)]
+    added = sorted(set(re.findall(r"^router\.include_router\((\w+)\)$", body, flags=re.M)) - set(re.findall(r"^router\.include_router\((\w+)\)$", base_body, flags=re.M)))
+    assert added == ['_u2_opex_lines_router']                                                     # exactly the one reviewed read-only include
+    assert text[text.index(_RCUX_TAIL):] == _git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}')[_git(U2.ROOT, 'show', f'{U2.BASE}:{_ROUTER}').index(_RCUX_TAIL):]
+
+
+@pytest.mark.parametrize('where', ['tail', 'body'])
+def test_an_unreviewed_second_include_router_fails_closed(where, wt):
+    path = wt / _ROUTER
+    text = path.read_text(encoding='utf-8')
+    extra = "from app.v2.react_unreviewed import router as _unreviewed_router  # noqa: E402\n\nrouter.include_router(_unreviewed_router)\n"
+    if where == 'tail':
+        text = text.rstrip('\n') + '\n\n' + extra
+    else:
+        i = text.index(_RCUX_TAIL)
+        text = text[:i] + extra + '\n' + text[i:]
+    path.write_text(text, encoding='utf-8')
+    if where == 'tail':
+        assert _tail_includes(text) != ['_rcux_router']                                           # the protected RC-UX check refuses it
+    assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt) and not C.valid(wt)
+    assert not U1.supersedes(_ROUTER, U2._blob(text.encode()), repo=wt)
+
+
+def test_an_unrelated_committed_extra_file_fails_closed(wt):
+    extra = wt / 'app/v2/react_unreviewed.py'
+    extra.write_text('"""unreviewed"""\n')
+    _git(wt, 'add', 'app/v2/react_unreviewed.py')
+    _git(wt, '-c', 'user.name=T', '-c', 'user.email=ci-test-identity', 'commit', '-qm', 'extra', '--no-verify')
+    try:
+        assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not C.valid(wt)
+        assert not U2.allowed_path('app/v2/react_unreviewed.py') and not U1.allowed_path('app/v2/react_unreviewed.py')
+    finally:
+        _git(wt, 'reset', '--hard', '-q', 'HEAD~1')
+
+
+def _u1_test_later_owned(repo, modules):
+    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules() if m.__name__ in modules and m.exact_blobs_ok(repo)))
+
+
+def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkeypatch):
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == U2.OWNED_PATHS | {U2.MANIFEST}           # finite, closed, signed
+    assert _u1_test_later_owned(wt, tuple(m for m in C.COHORT_MODULES if m != U2.__name__)) == set()   # unregistered -> nothing admitted
+    _flip(wt / 'app/v2/react_opex_lines.py')
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()                                     # drifted -> nothing admitted
+    monkeypatch.setattr(U1, 'LATER_COHORTS', ())
+    assert U1._later_modules() == [] and not U1.allowed_path('app/v2/react_opex_lines.py')
