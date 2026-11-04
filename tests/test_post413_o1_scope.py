@@ -195,11 +195,19 @@ def test_altered_ci_v4_workflow_or_selector_and_a_stale_historical_pin_fail_clos
     assert C.valid(wt)
 
 
-def test_a_deregistered_cohort_leaves_its_paths_unowned_and_an_executable_or_committed_mode_change_fails(wt, monkeypatch):
-    monkeypatch.setattr(C, 'COHORT_MODULES', tuple(n for n in C.COHORT_MODULES if n != O.__name__))
-    assert not C.valid()                                                                         # no registered cohort owns the Workstream-B paths
-    monkeypatch.undo()
-    assert C.valid()
+def test_a_deregistered_cohort_or_a_hook_without_it_fails_and_an_executable_or_committed_mode_change_fails(wt):
+    registry = wt / 'tests/fin_v2_cohorts.py'
+    original = registry.read_text()
+    registry.write_text(original.replace(",\n                  'tests.post413_o1_scope')", ")"))            # deregistered: the real registry file no longer lists the cohort
+    assert "post413_o1_scope" not in registry.read_text()
+    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    registry.write_text(original)
+    hook = wt / 'tests/u1_scope.py'
+    hook_original = hook.read_text()
+    hook.write_text(hook_original.replace(", 'tests.post413_o1_scope')", ")"))                                  # U1 hook no longer follows the cohort
+    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    hook.write_text(hook_original)
+    assert O.exact_blobs_ok(wt) and C.valid(wt)
     (wt / ROUTE).chmod(0o755)
     assert not O.exact_blobs_ok(wt)
     _git(wt, 'checkout', '--', ROUTE)
