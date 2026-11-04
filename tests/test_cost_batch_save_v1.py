@@ -448,7 +448,9 @@ def test_single_row_command_still_works_after_a_batch_with_the_returned_token(wo
         "row_version": row["updated_at"], "workbook_version": tok["version"], "content_hash": new_hash, "csrf_token": row_csrf},
         headers={"HX-Request": "true"})
     assert single.status_code == 200 and "data-cost-error" not in single.text
-    assert _rows("capex_sub_lines", rec.project_id)[0]["amount_keur"] == 42.0
+    # the SAME row that was edited (by id, not "first by random UUID") now holds the new amount; nothing else changed it
+    after = {r["sub_line_id"]: r for r in _rows("capex_sub_lines", rec.project_id)}
+    assert after[row["sub_line_id"]]["amount_keur"] == 42.0
 
 
 def test_batch_module_adds_no_financial_authority():

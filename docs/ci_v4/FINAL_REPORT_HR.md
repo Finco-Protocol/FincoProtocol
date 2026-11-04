@@ -17,7 +17,7 @@ Svih 8 workera pročitano iz originalnih JUnit artefakata (23.770 nodeova, 603 s
 | # | Test | Root cause | Ispravak |
 |---|---|---|---|
 | 1–2 | `test_saas_revamp_entry::test_clone_unexpected_error_{htmx,non_htmx}_returns_500_with_safe_body` | R18 je unkeyed kanonski clone preusmjerio s javnog `project_library_service.create_working_copy` na atomarni `_create_working_copy` (CREATING→COMPLETE). Monkeypatch na javnoj funkciji više ne pogađa aktivnu putanju → clone **stvarno uspije** (204/303, ne lažni success). Route 500/safe-body ugovor je netaknut. Negativ: injekcija samo na staroj točki → 204. | Greška se injektira na **aktivnoj** putanji (`_create_working_copy`, koju javna funkcija omata). Isti ugovor (500, sanitizirano, bez `private-payload-marker` u odgovoru i logu, strukturirani log) + **novo**: nema `HX-Redirect`/`Location` i **nijedan projekt nije kreiran**. Produkcijski kod nepromijenjen (`project_library_service.py` je F01-pinan). |
-| 3 | `test_cost_batch_save_v1::test_single_row_command_still_works_after_a_batch_with_the_returned_token` | Nedeterminističan izbor: "prvi" red po `sub_line_id` (random UUID). C.13 Construction Contingency je izračunata linija pod contingency-% autoritetom, bez single-row amount forme (isto na `main`). Pad ~1/31 runova. Nije gubitak podataka ni pristupa. | Deterministički izbor ne-C.13 reda + **novi assert**: svaki ne-C.13 aktivni CAPEX red ima single-row editor nakon batcha, C.13 nema. Save ugovor (token/CSRF/row-version/hash) nepromijenjen. |
+| 3 | `test_cost_batch_save_v1::test_single_row_command_still_works_after_a_batch_with_the_returned_token` | Nedeterminističan izbor: "prvi" red po `sub_line_id` (random UUID). C.13 Construction Contingency je izračunata linija pod contingency-% autoritetom, bez single-row amount forme (isto na `main`). Pad ~1/31 runova. Nije gubitak podataka ni pristupa. | Deterministički izbor ne-C.13 reda + **novi assert**: svaki ne-C.13 aktivni CAPEX red ima single-row editor nakon batcha, C.13 nema; završna provjera iznosa sada čita **isti red po `sub_line_id`** (ranije opet "prvi po random UUID" → `7.0 == 42.0`). Single-row update nakon batcha izmjeren za svaku kategoriju C.01–C.16 (osim C.13): 200, bez greške. **Nije defekt spremanja.** Save ugovor (token/CSRF/row-version/hash) nepromijenjen; 0/12 padova u ponavljanju. |
 | 4 | `test_rcm_governance::test_layer_is_exactly_six_additive_paths…` | R1 (two-tab) je aditivno promijenio browser role `tests/test_model_workspace_consolidation_browser.py` (blob `2d0b5c1a`); R1 kohorta ga supersedira (git-verificiran BASE `bf53a54e`), ali RC-M guard pita samo U1-ov vlastiti `SUPERSEDED`. | Eksplicitni chain of custody `_later_state`: samo točan pin **registrirane i exact** kasnije kohorte koja supersedira tu putanju, i samo ako je njen BASE blob stanje koje stari lanac (RC-M/WS/RC-UX, WF-04, WF-03, WF-06B) već prihvaća. One-byte drift negativ. Bez wildcarda/repina. |
 | 5–7 | `test_wsv2_core_scope::{test_correction_e_d029…, test_original_presentation…, test_browser_registration…}` | Isti uzrok kao #4 (WS-V2 guard). | Isti chain of custody; za role i dalje **samo aditivno** (`_additive_only`). |
 | 8 | `test_u2_scope::test_the_u1_successor_assertion_admits_only_a_registered_exact_u2` | `tests/test_wf06b_scope.py` je dijeljena reviewed governance datoteka (Correction J) koju sve četiri kohorte potpisuju istim blobom `77d12d33`; nedostajala je u zatvorenom popisu dijeljenih putanja. | Literalni `SHARED_REVIEWED` + dokaz da **svi vlasnici potpisuju isti blob = stablo**; novi test negativa: one-byte drift, krivotvoren pin u jednom vlasniku, extra unowned path, same-cardinality zamjena, zaštićeni prefiks. |
@@ -40,9 +40,9 @@ Na commitu prije finalnog dokumenta (stablo `07608165`), **djelomično** — vla
 | `test_saas_revamp_entry.py` | 13 passed |
 | `test_rcm_governance.py` | 31 passed |
 | `test_ci_v4_{select,schedule,aggregate,release_gate}.py` | 66 passed |
-| `test_cost_batch_save_v1.py` | **1 FAILED** — s determinističkim (ne-C.13) redom single-row update nakon batcha vraća `data-cost-error`; mogući stvarni defekt, **neriješen** |
-| `test_u2_scope.py` | **1 FAILED** (`test_base_is_main_after_413…`: zatvoreni popis ne poznaje CI V4 kohortu / premještena vlasništva) |
-| `test_u1_scope.py` | **2 FAILED** (`test_base_is_the_merged_410_main…`, `test_integration_reference_is_main_after_414…`: isti razlog) |
+| `test_cost_batch_save_v1.py` | ispravljeno u f8fbb728+1: uzrok bio završni assert na `[0]` (random UUID), ne defekt; 12/12 ponavljanja PASS |
+| `test_u2_scope.py` | ispravljeno u f8fbb728: 76/76 |
+| `test_u1_scope.py` | ispravljeno u f8fbb728: oba testa PASS (+ negativi za V3 workflow/alat i engine) |
 | `test_wsv2_core_scope.py`, R17/R18/R1/U2, security, finance smoke, stari governance | **nije dovršeno lokalno** |
 
 "Prije" na 800395fd lokalno reproducirano: clone 500 ×2, rcm, u2, wsv2 ×3 FAIL; cost-batch prolazi izolirano (intermitentan u CI-ju).
@@ -62,4 +62,4 @@ Nakon ovog pusha pokreću se postojeći V3 workflowi i novi `CI V4 PR` (bootstra
 
 ## 6. Status
 
-**NOT READY.** Poznati otvoreni padovi: `test_cost_batch_save_v1` (mogući stvarni defekt single-row editora nakon batch Savea), `test_u1_scope` ×2, `test_u2_scope` ×1; WS-V2 i ostatak acceptancea nepotvrđen. Bez merge/deploya.
+**NOT READY** dok hosted CI na exact HEAD-u ne prođe i dok vlasnik ne promijeni required checkove. Poznati lokalni padovi ispravljeni; puni lokalni acceptance (WS-V2, R17/R18/R1/U2, security, finance) nije dovršen. Bez merge/deploya.
