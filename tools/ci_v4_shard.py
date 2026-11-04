@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -32,8 +33,10 @@ def main(argv=None):
     t0 = time.monotonic()
     rc = 0
     if mods:
+        # Same plugin contract as CI V3: no ambient entry-point autoload, the async plugins loaded explicitly exactly once.
+        env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
         rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(),
-                              "--junitxml", str(junit), *mods])
+                              "--junitxml", str(junit), *mods], env=env)
     wall = time.monotonic() - t0
     (out / ("shard-%d.json" % a.index)).write_text(json.dumps({
         "shard": a.index, "sha": head, "tree": tree, "plan_digest": plan["digest"], "modules": mods,

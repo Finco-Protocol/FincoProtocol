@@ -41,6 +41,6 @@
     "tools/ci_v4_release_gate.py": "1c49a51384f24bff122238510ce5391250cf31b4",
     "tools/ci_v4_schedule.py": "4b7900e7d0e608b931f095a808370847b7460a01",
     "tools/ci_v4_select.py": "f86f31bb6821d209e24d7f6cf0ab179a1c739f3f",
-    "tools/ci_v4_shard.py": "9b278348efff4c57a38e5605183e76c78dc100da"
+    "tools/ci_v4_shard.py": "5a9992f79c1dd330dd601595537d0308b93b66b5"
   }
 }
