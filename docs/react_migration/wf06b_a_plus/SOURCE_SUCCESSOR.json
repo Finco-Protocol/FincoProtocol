@@ -61,7 +61,7 @@
     "frontend/src/styles/compact-inputs.css": "a710f02fc9bdf76ca6aabe32500a8b4fefaea027",
     "frontend/src/styles/ws2-editing.css": "d43ccac299d69012731f160858e92213a03086d7",
     "static/react/finco-react.css": "10be03753c33825cf926a946ad5e1655dc4de056",
-    "static/react/finco-react.js": "24db4d8badbd383eeef1bd289b1c7f02b1c8fe14",
+    "static/react/finco-react.js": "1b153451b2ec608ee18b47805da128a9334045c7",
     "tests/fin_v2_3_scope.py": "c8009fc39c8a527444890b66689f9cfcd86764de",
     "tests/fin_v2_cohorts.py": "7d27994629192c9420691dc20bdebaa214549c13",
     "tests/fin_v2_d01_scope.py": "1ccd61699f5f48d99fba2071fd13f973af61b669",
