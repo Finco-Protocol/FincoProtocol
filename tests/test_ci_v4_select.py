@@ -181,8 +181,19 @@ def _narrow_policy():
     return pol
 
 
+def _wide_policy():
+    """The step-1 policy: no history_governance key (every dependent selected)."""
+    pol = copy.deepcopy(POLICY)
+    pol.pop("history_governance", None)
+    return pol
+
+
+def test_repository_policy_activates_history_governance_with_the_reviewed_patterns():
+    assert POLICY["history_governance"]["patterns"] == HIST
+
+
 def test_history_patterns_defer_dependents_only_when_the_policy_activates_them():
-    wide, narrow = plan(["app/auth.py"]), plan(["app/auth.py"], policy=_narrow_policy())
+    wide, narrow = plan(["app/auth.py"], policy=_wide_policy()), plan(["app/auth.py"], policy=_narrow_policy())
     assert narrow["history_deferred_to_full"]["count"] > 0 and wide["history_deferred_to_full"]["count"] == 0
     suite_modules = {m for s in narrow["suites"] for m in POLICY["suites"][s]["modules"]}
     assert not [m for m in narrow["pytest_modules"] if S._matches(m, HIST) and m not in suite_modules]
@@ -203,10 +214,10 @@ def test_a_changed_cohort_module_runs_its_own_test_module_under_the_narrow_polic
 
 def test_a_narrower_head_policy_runs_the_union_plan_and_is_flagged():
     changed = ["app/auth.py", "docs/ci_v4/ci-v4-policy.json"]
-    base = plan(changed)
+    base = plan(changed, policy=_wide_policy())
     head = plan(changed, policy=_narrow_policy())
     assert not S.covers(head, base)
-    u = S.union_plan(base, head, copy.deepcopy(POLICY), ROOT)
+    u = S.union_plan(base, head, _wide_policy(), ROOT)
     assert set(base["pytest_modules"]) <= set(u["pytest_modules"]) and u["head_policy_narrower"]["flag"]
     assert u["head_policy_narrower"]["base_only_modules"] and len(u["digest"]) == 64 and u["tier"] == "risk"
     assert S.covers(u, base)
