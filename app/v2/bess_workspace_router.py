@@ -79,10 +79,11 @@ async def inputs(request: Request, project: str, _: None = Depends(require_v2_ac
             config['battery']['useful_life_years'] = horizon
             contract = {'version': 1, 'configuration': config, 'variable_om_eur_per_dc_mwh': 0}
         identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+        from app.workbook.revenue_contracts_service import read_document_token
         return templates.TemplateResponse(request=request, name='v2/partials/bess_workspace.html', context={
             'configuration': contract['configuration'], 'variable_om': contract['variable_om_eur_per_dc_mwh'],
             'native_contract': contract, 'project': record, 'readonly': is_protected_reference(record) or owner != user.user_id,
-            'content_hash': identity.composite_hash, 'csrf_token': generate_csrf_token(), 'workbook_version': WORKBOOK.version,
+            'content_hash': identity.composite_hash, 'contracts_base_token': read_document_token(owner, record.project_id, bess_config.FIELD_ID), 'csrf_token': generate_csrf_token(), 'workbook_version': WORKBOOK.version,
             'is_initial_example': not raw, 'audit': (ws.last_runtime_summary or {}).get('bess_operating_audit', []),
         }, headers={'Cache-Control': 'no-store'})
     except PermissionError as exc:
@@ -106,8 +107,9 @@ async def save(request: Request, _: None = Depends(require_v2_active)):
     try:
         if request.headers.get('content-type', '').split(';')[0] != 'application/x-www-form-urlencoded':
             raise ValueError('BESS_FORM_ENCODING')
-        form = parse_qs(bytes(data).decode('utf-8'), keep_blank_values=True, max_num_fields=5)
-        if set(form) != {'project', 'content_hash', 'csrf_token', 'workbook_version', 'configuration'} or any(len(v) != 1 for v in form.values()):
+        form = parse_qs(bytes(data).decode('utf-8'), keep_blank_values=True, max_num_fields=6)
+        required_keys = {'project', 'content_hash', 'csrf_token', 'workbook_version', 'configuration'}
+        if set(form) not in (required_keys, required_keys | {'contracts_base_token'}) or any(len(v) != 1 for v in form.values()):
             raise ValueError('BESS_FORM_SCHEMA')
         form = {k: v[0] for k, v in form.items()}
         user, record, owner = scope(request, form['project'])
@@ -119,7 +121,7 @@ async def save(request: Request, _: None = Depends(require_v2_active)):
             raise ValueError('BESS_WORKBOOK_VERSION_MISMATCH')
         from app.workbook.revenue_contracts_service import save_contracts
         save_contracts(owner=owner, project_id=record.project_id, expected_hash=form['content_hash'],
-                       raw=form['configuration'], field_id=bess_config.FIELD_ID)
+                       raw=form['configuration'], field_id=bess_config.FIELD_ID, base_token=form.get('contracts_base_token'))
         from urllib.parse import quote
         return RedirectResponse('/v2/workbook?project=' + quote(record.project_code), status_code=303)
     except PermissionError as exc:

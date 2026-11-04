@@ -522,6 +522,8 @@ export interface RevenueContractsSaveArgs {
   /** The canonical revenue payload JSON string (streams + products); the
    *  canonical writer validates it — the client never prices anything. */
   contractsJson: string;
+  /** O1: the server token of the persisted document this payload was authored against. */
+  baseToken?: string;
 }
 
 export type RevenueContractsSaveResult =
@@ -540,6 +542,7 @@ export async function saveRevenueContracts(args: RevenueContractsSaveArgs): Prom
     contracts: args.contractsJson,
     action: "save",
   });
+  if (args.baseToken) body.set("contracts_base_token", args.baseToken);
   const response = await postForm(args.saveUrl, body);
   if (response === null) {
     return {
