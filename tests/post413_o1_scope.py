@@ -74,6 +74,7 @@ GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/post413_o1_scope.py',
     'tests/u1_scope.py',
+    'tests/u2_scope.py',
 ))
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE and that another cohort pins at that BASE blob (older guards, sibling post-#413 cohorts). Each BASE blob is recorded in the
@@ -92,6 +93,7 @@ SUPERSEDED = frozenset((
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
+    'tests/u2_scope.py',
 ))
 # No owned path may ever sit under a protected prefix; this is checked on the literal set.
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/')
