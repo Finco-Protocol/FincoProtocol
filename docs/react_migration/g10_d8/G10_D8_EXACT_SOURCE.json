@@ -4,10 +4,12 @@
   "base": "cd125b5e08302ea1db7169e172fec288aa7acea5",
   "base_tree": "a9c14a0dfcc984780cba61bbf58e39e487a8d2fe",
   "base_blobs": {
+    "app/v2/react_rcux.py": "5146e54666c2211ccaa0eec43d55ae7f559717e5",
     "tests/fin_v2_cohorts.py": "e82a62cef839fad261c7b36523a7524f9ccb814d"
   },
   "source_blobs": {
     "app/v2/react_opex_run_projection.py": "08dd28012ce8229e76e0f994371970db19a67fd0",
+    "app/v2/react_rcux.py": "6291b6383c1cac73f45102ea295980d9a448a5d7",
     "docs/react_migration/g10_d8/G10_D8_OWNER_DECISION.md": "d967d542a1808a5c682bcbece29a3b964e5df905",
     "docs/react_migration/g10_d8/OPEX_RUN_AUTHORITY_TRACE.md": "83ec6c35310ac56dfcf141278c3da84c82cfcf19",
     "docs/react_migration/g10_d8/P00_G10_D8.md": "20b8b28b5b50c32289584fa13a3f11e6c21f02bd",
@@ -16,7 +18,7 @@
     "frontend/src/app/projection/__tests__/opexRunRequest.test.mjs": "e0d39fbe6595fdae1d4c5d6dbf2f48247a5ad85c",
     "frontend/src/app/projection/opexRunRequest.ts": "542f3aefd9854ecafa8adec73a150f065a3af5a4",
     "tests/fin_v2_cohorts.py": "ae3c869c493962b33982e653b338b34fa9547bc3",
-    "tests/g10_d8_scope.py": "68834f78d5d42a31857e0326b16d23f3f490d2a9",
+    "tests/g10_d8_scope.py": "4b5be38886bd7c65f3608ac09e5b54a66feabf23",
     "tests/test_g10_d8_opex_completion.py": "533bfd22cd83669b8075d78b8a3a2d0c75d7f397",
     "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961"
   }
