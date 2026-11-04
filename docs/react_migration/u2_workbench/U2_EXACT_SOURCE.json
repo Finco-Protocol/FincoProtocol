@@ -18,7 +18,7 @@
   "schema_version": "U2_COST_COMPLETION_EXACT_SOURCE_V1",
   "source_blobs": {
     "app/v2/react_opex_lines.py": "4e264a364e0ebee210b72172ddc718e1f1d5e1f2",
-    "app/v2/react_workspace_router.py": "f09f9a72e0da149f3c82023f21c5ff7b21f4e74d",
+    "app/v2/react_workspace_router.py": "e058a8cac8692e8f8e45840150b7cf268a9264ea",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_CONTRACT.md": "91f1b06dfd7501c9070f277ca1e531e40feb57a1",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_PROOF.md": "665d9ae5f2ae0240d111df1c1f89223dd563c3b9",
     "docs/react_migration/u2_workbench/D7_ATOMICITY_DECISION_PACKET.md": "f12010a90f357656893688c10041a050331482e8",
@@ -46,7 +46,7 @@
     "tests/test_u2_opex_lines.py": "274dbe6f1721536decbf850086156cc2e4576e0e",
     "tests/test_u2_profile_import.py": "a4c7e9df6a611a9b10b5f9908d575b108a7abe02",
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
-    "tests/test_u2_scope.py": "53d6dd795d2055030df136fd9833e1f6871580c9",
+    "tests/test_u2_scope.py": "0772bac94ea1f8156824b9934fb713ef01eb4fde",
     "tests/test_wf06b_scope.py": "77d12d33746f782335925bbe02c6049c1f7ca9fb",
     "tests/u1_scope.py": "c428a297fffeed2a672ad0b4e72ecbf3de7c90c5",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
