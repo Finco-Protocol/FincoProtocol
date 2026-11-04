@@ -33,7 +33,7 @@
     "tests/test_post413_r1_scope.py": "4caceb2ccf8262e18c2e874fda72aebfca8d828f",
     "tests/test_r1_ppa_stale_document_replay.py": "3902b9306028b2f1cd44407308bf557471c17790",
     "tests/test_rcm_governance.py": "3ee8abfc90e3e87ff4f9441e1c3c8a19e8367f87",
-    "tests/test_rcux_governance.py": "6a4bc40cd0d211f751b566b903880407aee42a28",
+    "tests/test_rcux_governance.py": "c704d43fe0f0370f24febab8c4e1ec805386f2ee",
     "tests/test_u1_scope.py": "f2d873acef0ab879cc4b3e20a546d4a77cec7bc8",
     "tests/test_wf06b_scope.py": "77d12d33746f782335925bbe02c6049c1f7ca9fb",
     "tests/test_wsv2_core_scope.py": "4347d3828edc3633d6f75408dc63e8b2b5ea5edc",

@@ -244,7 +244,13 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
     # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
     hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+    # Sixth: the Owner-approved CI V4 cohort (tests/ci_v4_scope.py, CI policy 2026-11-04) owns exactly its literal CI_PATHS (new ci_v4_* workflows and
+    # tools only); admitted only through U1's bounded later-CI hook while that cohort is registered and exact. No existing workflow or tool is admitted.
+    from tests import u1_scope as U1
+    hits = [p for p in hits if not U1._later_ci_owns(p, S.ROOT, None)]
     assert hits == [], hits
+    for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
+        assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
 

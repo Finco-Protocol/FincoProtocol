@@ -97,7 +97,8 @@ jobs:
   shards:
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Measured on #419 (faa769d1): governance-heavy RISK shards need 50-70 min on a plain runner; 150 min is a hard ceiling, not a target.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
