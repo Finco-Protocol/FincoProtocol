@@ -232,7 +232,8 @@
         "tests/test_ci_v4_select.py",
         "tests/test_ci_v4_schedule.py",
         "tests/test_ci_v4_release_gate.py",
-        "tests/test_ci_v4_aggregate.py"
+        "tests/test_ci_v4_aggregate.py",
+        "tests/test_ci_v4_governance_gate.py"
       ],
       "no_skip": true
     },
@@ -356,5 +357,14 @@
   "weights": {
     "file": "docs/ci_v4/module_weights.json",
     "provenance": "run 41782498276 junit (all 8 workers)"
+  },
+  "history_governance_proposal": {
+    "status": "NOT ACTIVE in this policy; activated by the follow-up PR (a narrowing must be judged by the trusted base selector, which then runs the union plan)",
+    "patterns": [
+      "tests/test_*_scope.py",
+      "tests/test_*governance*.py",
+      "tests/test_*successor*.py",
+      "tests/test_ci_v3_*.py"
+    ]
   }
 }
