@@ -6,11 +6,11 @@ Status: **implementirano na grani `integration/post413-data-integrity` (PR #419,
 
 | Režim | Kada | Što se izvršava | Cilj (projekcija) |
 |---|---|---|---|
-| **FAST** | svaki PR | exact HEAD attest + synthetic merge-tree guard (jedan centralni prolaz), compile, public safety/secret scan, `pip check`, React typecheck + build + identitet servisiranog bundlea, `fast_baseline` (smoke engine/UI, Save All atomic, CSRF/secret negativi, CI V4 samotestovi), promijenjeni test-moduli | 1 worker, ~7 min |
-| **RISK** | automatski kad promjena dira kritičnu površinu ili nepoznatu putanju (fail closed) | FAST + suite po matrici (§2) + ovisni test-moduli (statički import-graf, dubina 2, cap 200) + F01 browser (4 vertikale) i native V10/V11 (20 slučajeva) kad matrica traži | adaptivno 1–8 workera, ~15–40 min |
+| **Fast** | svaki PR | exact HEAD attest + synthetic merge-tree guard (jedan centralni prolaz), compile, public safety/secret scan, `pip check`, React typecheck + build + identitet servisiranog bundlea, `fast_baseline` (smoke engine/UI, Save All atomic, CSRF/secret negativi, CI V4 samotestovi), promijenjeni test-moduli | 1 worker, ~7 min |
+| **RISK** | automatski kad promjena dira kritičnu površinu ili nepoznatu putanju (fail closed) | Fast + suite po matrici (§2) + ovisni test-moduli (statički import-graf, dubina 2, cap 200) + F01 browser (4 vertikale) i native V10/V11 (20 slučajeva) kad matrica traži | adaptivno 1–8 workera, ~15–40 min |
 | **FULL** | nightly (`ci_v4_full.yml`, 01:23 UTC), `workflow_dispatch`, **obavezno prije releasea** | **nepromijenjena** puna CI V3 regresija (`ci_v3_required_job.yml`, >21k nodeova, svi povijesni negativi/exactness) + F01 s native identitetom; FULL record vezan uz SHA+tree | 8 workera (V3 harness) |
 
-Semantika rezultata: FAST/RISK izvještavaju **SELECTED / NOT SELECTED / PASSED / FAILED / SKIPPED (not PASS)**. Neizvršeni test nikad nije PASS; FAST/RISK JUnit se nikad ne uspoređuje s punim korpusom kao da je potpuna regresija. Skip u `no_skip` suiteu (baseline, security, save-integrity, F01) ili u promijenjenom test-modulu PR-a = FAIL.
+Semantika rezultata: Fast/RISK izvještavaju **SELECTED / NOT SELECTED / PASSED / FAILED / SKIPPED (not PASS)**. Neizvršeni test nikad nije PASS; Fast/RISK JUnit se nikad ne uspoređuje s punim korpusom kao da je potpuna regresija. Skip u `no_skip` suiteu (baseline, security, save-integrity, F01) ili u promijenjenom test-modulu PR-a = FAIL.
 
 ## 2. Rizik-matrica putanja → obvezni suiteovi (`docs/ci_v4/ci-v4-policy.json`)
 
@@ -18,9 +18,9 @@ Pravilo se bira prvim podudaranjem po putanji; razina PR-a = maksimum svih putan
 
 | Pravilo | Putanje | Razina | Dodatni suiteovi |
 |---|---|---|---|
-| docs_only_markdown | `README.md`, `*.md` u `docs/`, `OPUS_V1_REVIEW/**` … | FAST | — (samo baseline + source safety) |
-| test_module_self | `tests/test_*.py` | FAST (+ sam modul, no-skip) | — |
-| radar_yield_non_financial | `finco_radar/**`, `finco_yield/**`, `finco_protocol/**`, `research/**`, `examples/**` | FAST | ovisni moduli (eskalacija u RISK ako >60) |
+| docs_only_markdown | `README.md`, `*.md` u `docs/`, `OPUS_V1_REVIEW/**` … | Fast | — (samo baseline + source safety) |
+| test_module_self | `tests/test_*.py` | Fast (+ sam modul, no-skip) | — |
+| radar_yield_non_financial | `finco_radar/**`, `finco_yield/**`, `finco_protocol/**`, `research/**`, `examples/**` | Fast | ovisni moduli (eskalacija u RISK ako >60) |
 | financial_ui | `frontend/src/app/**`, `static/react/**` | RISK | security, ui_build, **F01**, save_integrity |
 | frontend_non_financial | ostali `frontend/**`, `static/**` | RISK | security, ui_build |
 | financial_core | `financial_engine/**`, `finco_core/**`, `domain/**` | RISK | finance (goal seek, DSCR, bankability, PPA, rate), **F01 + native V10/V11**, security, save_integrity |
@@ -30,14 +30,14 @@ Pravilo se bira prvim podudaranjem po putanji; razina PR-a = maksimum svih putan
 | governance_manifests | `docs/**/*.json|*.txt`, `evidence/**` | RISK (control) | governance |
 | test_support_files | ostali `tests/**` | RISK | security, finance |
 
-Ne mogu se zaobići: validacija politike odbija pravilo koje šalje `financial_engine/`, `finco_core/`, `domain/`, `app/`, `.github/`, `tools/ci_*` ili `main_web.py` u FAST; unknown default mora biti `risk`/`full`; `force_tier` smije samo podići razinu; path traversal je odbijen.
+Ne mogu se zaobići: validacija politike odbija pravilo koje šalje `financial_engine/`, `finco_core/`, `domain/`, `app/`, `.github/`, `tools/ci_*` ili `main_web.py` u Fast; unknown default mora biti `risk`/`full`; `force_tier` smije samo podići razinu; path traversal je odbijen.
 
 ## 3. Što ostaje required na svakom PR-u, što ide u nightly/release
 
 | Provjera | Prije (V3) | CI V4 |
 |---|---|---|
 | Source attest + merge-tree | više puta (svaki workflow) | jednom u CI V4 `plan` (+ postojeći workflowi dok vlasnik ne promijeni required) |
-| Public safety/secret scan, compile | `source-safety`, `compile-and-safety` | CI V4 `static` (FAST) |
+| Public safety/secret scan, compile | `source-safety`, `compile-and-safety` | CI V4 `static` (Fast) |
 | Cijeli V3 korpus (23.770 nodeova na 800395f) | **svaki PR** (77–158 min wall, 410–610 runner-min) | **FULL**: nightly + manual + release gate |
 | Povijesni exactness/governance negativi (100 scope/governance/successor/CI modula, 11.087 s od 23.003 s JUnit = 48 %) | svaki PR | RISK kad PR dira governance/CI (kao #419), inače FULL |
 | F01 4-vertical browser + native | svaki PR (17 min) | RISK za financijski kod/Run/rate/financijski UI/app; FULL uvijek |

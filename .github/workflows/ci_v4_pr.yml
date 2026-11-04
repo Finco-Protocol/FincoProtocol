@@ -124,10 +124,11 @@ jobs:
       # Same runtime as the CI V3 workers (no Playwright/Chromium): browser modules skip exactly as in V3 and are listed SKIPPED (not PASS).
       # Browser acceptance stays in the F01 job and the mandatory browser roles. Several browser modules that V3 never executes are stale
       # (e.g. mutation posts without CSRF -> 403); enabling Chromium here is a separate, owner-approved follow-up (docs/ci_v4/FINAL_REPORT_HR.md).
-      - name: Install
+      - name: Install (Python deps + frontend node_modules, as in the CI V3 runtime image)
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+          (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
       # Plan and output live OUTSIDE the checkout: an untracked directory in the tested tree would (correctly) make the exact-source cohorts fail.
       - name: Run the planned shard (selected modules only)
         run: python -m tools.ci_v4_shard --plan "$RUNNER_TEMP/ci-v4/plan/ci-v4-plan.json" --index ${{ matrix.index }} --output "$RUNNER_TEMP/ci-v4/out"

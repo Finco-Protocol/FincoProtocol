@@ -27,7 +27,7 @@ Nijedan od 8 testova nije deselected/skipped/preimenovan; nijedan financijski/si
 ## 2. CI V4
 
 Implementirano (vidi `CI_V4_OWNER_DECISION_AND_RISK_MATRIX_HR.md`, `CI_V4_WORKER_BENCHMARK_AND_SCHEDULING_HR.md`):
-`.github/workflows/ci_v4_pr.yml` (FAST/RISK, required check ime **`CI V4 gate`**), `ci_v4_f01_job.yml`, `ci_v4_full.yml` (nightly/manual, nepromijenjeni V3), `ci_v4_release_gate.yml`; `tools/ci_v4_{select,schedule,shard,aggregate,full_record,release_gate}.py`; `docs/ci_v4/ci-v4-policy.json`, `module_weights.json` (izmjereno), `full_skip_baseline.json`; governed successor `tests/ci_v4_scope.py`. Postojeći V3 workflowi **nisu mijenjani**.
+`.github/workflows/ci_v4_pr.yml` (Fast/RISK, required check ime **`CI V4 gate`**), `ci_v4_f01_job.yml`, `ci_v4_full.yml` (nightly/manual, nepromijenjeni V3), `ci_v4_release_gate.yml`; `tools/ci_v4_{select,schedule,shard,aggregate,full_record,release_gate}.py`; `docs/ci_v4/ci-v4-policy.json`, `module_weights.json` (izmjereno), `full_skip_baseline.json`; governed successor `tests/ci_v4_scope.py`. Postojeći V3 workflowi **nisu mijenjani**.
 
 #419 po CI V4 politici: **RISK** (89 putanja; governance + app + financijski UI + CI) → 229 modula (uključujući svih 8 gornjih modula, R1 two-tab, R17, R18, U2), F01 browser, 8 workera (projekcija ~32 min).
 
@@ -54,7 +54,7 @@ Nakon ovog pusha pokreću se postojeći V3 workflowi i novi `CI V4 PR` (bootstra
 ## 5. Nepotvrđeno / otvoreno
 
 * Branch protection: **nije pročitan ni promijenjen** (nema dozvole/alata). V3 ostaje required dok vlasnik ne izvede korake iz §6 rizik-matrice. CI V4 na #419 radi u shadow/dual načinu.
-* Hosted P50/P95 za FAST/RISK ne postoje (jedan run nakon ovog pusha); benchmark tablice su projekcije nad izmjerenim težinama.
+* Hosted P50/P95 za Fast/RISK ne postoje (jedan run nakon ovog pusha); benchmark tablice su projekcije nad izmjerenim težinama.
 * FULL: `ci_v4_full.yml` se može pokrenuti tek s default grane (schedule/dispatch) — dakle nakon mergea; FULL record parser JUnit artefakata V3 nije hosted-verificiran.
 * Release gate nema deploy workflow na koji bi se spojio (ne postoji u repozitoriju).
 * Governance kaskada: dodavanje kasnije kohorte traži izmjene 6 starih guardova i 5 manifesta; preporučen zaseban "epoch seal" rad.

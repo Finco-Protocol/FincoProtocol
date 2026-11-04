@@ -19,7 +19,7 @@ Dodatni required checkovi na 800395fd [IZMJERENO]: browser 35,4 min, F01 17,1 mi
 
 Zaključak: V3 PR trošak ≈ **480–670 runner-min i 77–158 min** po pushu; red čekanja na runnere (concurrency limit organizacije) dodaje i do 60 min — više workera ≠ brže kad se PR-ovi preklapaju.
 
-## 3. FAST — [lokalno IZMJERENO + PROJEKCIJA]
+## 3. Fast — [lokalno IZMJERENO + PROJEKCIJA]
 
 `fast_baseline` (10 modula) lokalno, jedan proces: 5,4 + 0,7 + 19,9 + 13,5 + 12,8 + 1,2 + 10,5 (CI V4 samotestovi) ≈ **64 s** testova.
 
@@ -28,7 +28,7 @@ Zaključak: V3 PR trošak ≈ **480–670 runner-min i 77–158 min** po pushu; 
 | **1** | **~6 min** (plan 1,5 + shard ~2,5 instalacija + ~1,1 testovi + gate ~1; `static` ~6 min paralelno) | **~12** |
 | 2 | ne skraćuje (testovi < overhead jednog workera) | ~15 |
 
-Odluka: **FAST = 1 worker** (shard), plus paralelni `static` job. 8 workera bi bilo 8× checkout+install za ~1 min testova.
+Odluka: **Fast = 1 worker** (shard), plus paralelni `static` job. 8 workera bi bilo 8× checkout+install za ~1 min testova.
 
 ## 4. RISK — [PROJEKCIJA nad izmjerenim težinama]
 
@@ -43,7 +43,7 @@ Primjeri selekcije (trusted policy, stvarni import-graf):
 
 Runner-min za #419: 1w 237 → 8w 251 (+6 %), jer je overhead po workeru mali u odnosu na testove. Pravilo (deterministički): dodaj worker samo dok smanjuje kritični put za ≥ 300 s; cap 8. Floor: 1.217 s (mutation-security successor). RISK cilj 15–35 min za #419 je postižan **samo s 8 workera** i samo zato što #419 dira governance; običan app/engine PR je ~30–35 min s 4 workera.
 
-Za FAST/RISK shard + F01 job rade paralelno; F01 (17 min izmjereno) nije na kritičnom putu kad je max shard > 17 min.
+Za Fast/RISK shard + F01 job rade paralelno; F01 (17 min izmjereno) nije na kritičnom putu kad je max shard > 17 min.
 
 ## 5. FULL — [PROJEKCIJA nad izmjerenim težinama]
 
@@ -61,6 +61,6 @@ V3 s 8 workera danas: 69 min najsporiji shard zbog zastarjelih težina. **Prepor
 
 ## 6. Što nije izmjereno
 
-* Hosted CI V4 FAST i RISK: prvi run je na exact HEAD-u ovog pusha (vidi FINAL_REPORT_HR.md).
+* Hosted CI V4 Fast i RISK: prvi run je na exact HEAD-u ovog pusha (vidi FINAL_REPORT_HR.md).
 * Kontrolirani hosted runovi za 1/2/3/4/6/8 workera nisu pokrenuti (namjerno, radi troška); tablice gore su projekcije.
 * Chromium instalacija u RISK shardu (~1–2 min) procijenjena iz V3 browser joba.
