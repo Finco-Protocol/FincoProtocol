@@ -232,7 +232,8 @@
         "tests/test_ci_v4_select.py",
         "tests/test_ci_v4_schedule.py",
         "tests/test_ci_v4_release_gate.py",
-        "tests/test_ci_v4_aggregate.py"
+        "tests/test_ci_v4_aggregate.py",
+        "tests/test_ci_v4_governance_gate.py"
       ],
       "no_skip": true
     },
@@ -304,18 +305,11 @@
     },
     "risk_governance": {
       "kind": "pytest",
-      "why": "Exact-source cohorts, CI contracts.",
+      "why": "CI contracts and the CI V4 cohort; the history/exactness corpus is FULL-only (central gate on every PR).",
       "modules": [
-        "tests/test_u1_scope.py",
-        "tests/test_wf06b_scope.py",
         "tests/test_ci_acceptance.py",
         "tests/test_ci_optimization_v2.py",
-        "tests/test_ci_v4_scope.py",
-        "tests/test_post413_r1_scope.py",
-        "tests/test_post413_r17_scope.py",
-        "tests/test_post413_r18_scope.py",
-        "tests/test_u2_scope.py",
-        "tests/test_rcm_governance.py"
+        "tests/test_ci_v4_scope.py"
       ]
     }
   },
@@ -356,5 +350,15 @@
   "weights": {
     "file": "docs/ci_v4/module_weights.json",
     "provenance": "run 41782498276 junit (all 8 workers)"
+  },
+  "history_governance": {
+    "why": "Measured on #419 (CI V4 run 41833710956): 87 % of RISK time was historical exactness/governance tests (mutation-security successor alone 6,447 s). Owner spec: history pins are FULL/release criteria; PRs run one central bounded provenance check (tools/ci_v4_governance_gate.py, static job).",
+    "patterns": [
+      "tests/test_*_scope.py",
+      "tests/test_*governance*.py",
+      "tests/test_*successor*.py",
+      "tests/test_ci_v3_*.py"
+    ],
+    "pr_replacement": "tools/ci_v4_governance_gate.py (every PR): all registered cohorts exact + composite valid + mutation-security inventory, one pass"
   }
 }

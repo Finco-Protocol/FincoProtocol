@@ -66,11 +66,12 @@ jobs:
           if-no-files-found: error
   static:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -86,6 +87,10 @@ jobs:
           python tools/public_safety_scan.py
           python -m pip install -r requirements.txt -c constraints.txt
           python -m pip check
+      - name: Central governance gate (one pass; the history/exactness corpus runs in FULL)
+        env:
+          PYTHONPATH: .
+        run: python -m tools.ci_v4_governance_gate --output "$RUNNER_TEMP/ci-v4/governance-gate.json"
       - name: React typecheck, build and served bundle identity
         working-directory: frontend
         run: |

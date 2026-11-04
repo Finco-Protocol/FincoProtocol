@@ -168,3 +168,56 @@ def test_synthetic_regression_edits_in_critical_files_trigger_their_suites():
 def test_plan_is_deterministic_and_digest_bound():
     a, b = plan(["app/auth.py"]), plan(["app/auth.py"])
     assert a == b and len(a["digest"]) == 64
+
+
+# ── CI V4 rules v2 (step 1): a narrower head policy runs the UNION plan; history/exactness modules can be deferred only by policy ──
+
+HIST = ["tests/test_*_scope.py", "tests/test_*governance*.py", "tests/test_*successor*.py", "tests/test_ci_v3_*.py"]
+
+
+def _narrow_policy():
+    pol = copy.deepcopy(POLICY)
+    pol["history_governance"] = {"patterns": HIST}
+    return pol
+
+
+def _wide_policy():
+    """The step-1 policy: no history_governance key (every dependent selected)."""
+    pol = copy.deepcopy(POLICY)
+    pol.pop("history_governance", None)
+    return pol
+
+
+def test_repository_policy_activates_history_governance_with_the_reviewed_patterns():
+    assert POLICY["history_governance"]["patterns"] == HIST
+
+
+def test_history_patterns_defer_dependents_only_when_the_policy_activates_them():
+    wide, narrow = plan(["app/auth.py"], policy=_wide_policy()), plan(["app/auth.py"], policy=_narrow_policy())
+    assert narrow["history_deferred_to_full"]["count"] > 0 and wide["history_deferred_to_full"]["count"] == 0
+    suite_modules = {m for s in narrow["suites"] for m in POLICY["suites"][s]["modules"]}
+    assert not [m for m in narrow["pytest_modules"] if S._matches(m, HIST) and m not in suite_modules]
+    assert set(narrow["history_deferred_to_full"]["modules"]).isdisjoint(narrow["pytest_modules"])
+    assert narrow["history_deferred_to_full"]["label"].startswith("NOT SELECTED")
+
+
+def test_a_changed_history_module_still_runs_itself_under_the_narrow_policy():
+    p = plan(["tests/test_model_mutation_security_successor.py"], policy=_narrow_policy())
+    assert "tests/test_model_mutation_security_successor.py" in p["pytest_modules"]
+    assert "tests/test_model_mutation_security_successor.py" in p["no_skip_modules"]
+
+
+def test_a_changed_cohort_module_runs_its_own_test_module_under_the_narrow_policy():
+    p = plan(["tests/u1_scope.py"], policy=_narrow_policy())
+    assert p["tier"] == "risk" and "tests/test_u1_scope.py" in p["pytest_modules"] and "governance_pair" in p["rule_ids"]
+
+
+def test_a_narrower_head_policy_runs_the_union_plan_and_is_flagged():
+    changed = ["app/auth.py", "docs/ci_v4/ci-v4-policy.json"]
+    base = plan(changed, policy=_wide_policy())
+    head = plan(changed, policy=_narrow_policy())
+    assert not S.covers(head, base)
+    u = S.union_plan(base, head, _wide_policy(), ROOT)
+    assert set(base["pytest_modules"]) <= set(u["pytest_modules"]) and u["head_policy_narrower"]["flag"]
+    assert u["head_policy_narrower"]["base_only_modules"] and len(u["digest"]) == 64 and u["tier"] == "risk"
+    assert S.covers(u, base)

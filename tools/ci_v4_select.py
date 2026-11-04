@@ -202,6 +202,19 @@ def select(changed, policy, root=ROOT, base_sha="", head_sha="", tree_sha="", ev
         modules = _all_test_modules(root)
         return _finish(policy, tier, changed, triggers, rule_ids, sorted(policy["suites"]), modules, [], control, unknown, base_sha, head_sha, tree_sha, event, root, False, 0)
     dep = dependents(dep_inputs, root) if dep_inputs else []
+    # CI V4 rules v2: historical exactness / governance test modules are FULL (nightly + release) criteria. A PR runs ONE central bounded
+    # governance check (tools/ci_v4_governance_gate.py, every PR) instead; such a module is selected only when the PR changes the module
+    # itself or its own cohort module (tests/X_scope.py -> tests/test_X_scope.py). Deferred modules are reported, never counted as PASS.
+    hist = policy.get("history_governance", {}).get("patterns", [])
+    deferred = sorted({m for m in dep if _matches(m, hist)})
+    dep = [m for m in dep if not _matches(m, hist)]
+    for p in changed:
+        name = p.rsplit("/", 1)[-1]
+        if p.startswith("tests/") and p.count("/") == 1 and name.endswith("_scope.py") and not name.startswith("test_"):
+            paired = "tests/test_" + name
+            if (root / paired).is_file() and paired not in self_select:
+                self_select.append(paired)
+                rule_ids.add("governance_pair")
     truncated, dep_total = False, len(dep)
     if tier == "fast" and len(dep) > policy["dependency_escalation"]["fast_max_dependent_modules"]:
         tier = "risk"
@@ -212,10 +225,12 @@ def select(changed, policy, root=ROOT, base_sha="", head_sha="", tree_sha="", ev
     if tier == "risk" and truncated:
         rule_ids.add("dependents_truncated_full_recommended")
     suite_names = sorted(suites | {"fast_baseline"})
-    return _finish(policy, tier, changed, triggers, rule_ids, suite_names, self_select, dep, control, unknown, base_sha, head_sha, tree_sha, event, root, truncated, dep_total)
+    return _finish(policy, tier, changed, triggers, rule_ids, suite_names, self_select, dep, control, unknown, base_sha, head_sha, tree_sha, event, root,
+                   truncated, dep_total, deferred=[m for m in deferred if m not in self_select])
 
 
-def _finish(policy, tier, changed, triggers, rule_ids, suite_names, extra, dep, control, unknown, base_sha, head_sha, tree_sha, event, root, truncated, dep_total):
+def _finish(policy, tier, changed, triggers, rule_ids, suite_names, extra, dep, control, unknown, base_sha, head_sha, tree_sha, event, root, truncated, dep_total,
+            deferred=()):
     modules, kinds = set(), {}
     for s in suite_names:
         spec = policy["suites"][s]
@@ -248,6 +263,8 @@ def _finish(policy, tier, changed, triggers, rule_ids, suite_names, extra, dep, 
         "dependents": {"total": dep_total, "selected": len(dep), "truncated": truncated, "full_recommended": truncated},
         "not_selected": {"count": len(all_tests - modules), "label": "NOT SELECTED (not PASS)"},
         "no_skip_modules": sorted(no_skip),
+        "history_deferred_to_full": {"count": len([m for m in deferred if m not in modules]), "modules": [m for m in deferred if m not in modules],
+                                     "label": "NOT SELECTED on the PR: FULL (nightly + release gate); central governance gate runs instead"},
     }
     from tools.ci_v4_schedule import load_weights, plan_shards
     plan["schedule"] = plan_shards(sorted(modules), load_weights(), tier, policy)
@@ -268,6 +285,24 @@ def compare_with_head_policy(base_plan, head_policy, changed, root=ROOT, **kw):
     if not covers(head_plan, base_plan):
         raise PolicyError("head policy selects less than the trusted base policy (self-weakening change refused)")
     return head_plan
+
+
+def union_plan(base_plan, head_plan, policy, root=ROOT):
+    """Trusted base plan widened by everything the head plan adds; tier is the max. Re-scheduled and re-digested; flagged."""
+    plan = {k: v for k, v in base_plan.items() if k not in ("digest", "schedule")}
+    plan["tier"] = max(base_plan["tier"], head_plan["tier"], key=lambda t: TIER_ORDER[t])
+    for key in ("pytest_modules", "suites", "no_skip_modules", "rule_ids"):
+        plan[key] = sorted(set(base_plan.get(key, [])) | set(head_plan.get(key, [])))
+    for key in ("needs_browser", "needs_native_docker", "needs_frontend_build", "control_changed"):
+        plan[key] = bool(base_plan.get(key)) or bool(head_plan.get(key))
+    plan["head_policy_narrower"] = {"flag": True, "base_only_modules": sorted(set(base_plan["pytest_modules"]) - set(head_plan["pytest_modules"])),
+                                    "rule": "a PR never runs under its own narrower policy; union plan executed"}
+    all_tests = set(_all_test_modules(root))
+    plan["not_selected"] = {"count": len(all_tests - set(plan["pytest_modules"])), "label": "NOT SELECTED (not PASS)"}
+    from tools.ci_v4_schedule import load_weights, plan_shards
+    plan["schedule"] = plan_shards(plan["pytest_modules"], load_weights(), plan["tier"], policy)
+    plan["digest"] = hashlib.sha256(json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return plan
 
 
 def git_changed(base, head, repo=ROOT):
@@ -297,7 +332,12 @@ def main(argv=None):
             changed = git_changed(a.base, head, repo)
             plan = select(changed, policy, repo, a.base, head, tree, a.event, force_tier=a.tier)
             if a.head_policy:
-                compare_with_head_policy(plan, load_policy(a.head_policy), changed, repo, base_sha=a.base, head_sha=head, tree_sha=tree, event=a.event)
+                head_plan = select(changed, load_policy(a.head_policy), repo, a.base, head, tree, a.event, force_tier=a.tier)
+                if not covers(head_plan, plan):
+                    # Self-narrowing PR (e.g. an owner-approved policy change): it can never use its own narrower policy. It runs the
+                    # UNION of the trusted base plan and its own plan (nothing the base selects is skipped) and is flagged for review.
+                    plan = union_plan(plan, head_plan, load_policy(a.policy), repo)
+                    print("CI V4 selector: head policy is NARROWER than the trusted base; running the union plan (flagged)", file=sys.stderr)
     except (PolicyError, subprocess.CalledProcessError, OSError, ValueError) as exc:
         print("CI V4 selector FAIL CLOSED: %s" % exc, file=sys.stderr)
         return 2
