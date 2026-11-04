@@ -65,7 +65,10 @@ def test_base_is_the_merged_410_main_and_history_is_recorded_not_rewritten():
     assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST and p not in moved_by_414 and p not in later_manifests for p in changed)   # no older manifest was edited by U1
     since_414 = set(_git(U.ROOT, 'diff', '--name-only', U.INTEGRATION, '--').split())
     assert not any(p.startswith('docs/') and p.endswith('SOURCE_SUCCESSOR.json') and p != U.MANIFEST and p not in later_manifests for p in since_414)    # and none at all since main at #414
-    assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)                       # UI only
+    # UI only - except the literal CI V4 paths of the exact, registered CI V4 cohort (Owner CI policy 2026-11-04); nothing else under .github/ or tools/.
+    assert not any((p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS) and not U._later_ci_owns(p, U.ROOT, None) for p in changed)
+    for stranger in ('.github/workflows/public_safety_and_smoke.yml', 'tools/ci_v3_production.py', 'tools/ci_v4_unlisted.py', 'financial_engine/cfads.py'):
+        assert not U._later_ci_owns(stranger, U.ROOT, None), stranger
 
 
 def test_no_engine_schema_or_save_route_path_is_owned():
@@ -235,7 +238,7 @@ def test_integration_reference_is_main_after_414_and_everything_unowned_equals_i
     # Post-#413 successors: only the finite, closed path set of a later cohort that is REGISTERED and EXACT (each pinned by its own manifest).
     later_owned = set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U._later_modules() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()))
     assert changed <= U.OWNED_PATHS | {U.MANIFEST} | later_owned          # nothing else moved away from main at #414
-    assert not any(p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS for p in changed)
+    assert not any((p.startswith(U.FORBIDDEN_PREFIXES) or p in U.FORBIDDEN_PATHS) and not U._later_ci_owns(p, U.ROOT, None) for p in changed)
 
 
 def test_an_unowned_path_that_moved_away_from_main_after_414_fails_closed(wt):

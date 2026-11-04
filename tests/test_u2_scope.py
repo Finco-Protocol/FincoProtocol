@@ -56,8 +56,10 @@ def _unexplained(changed, registered_exact):
     """Changed paths neither owned by U2 nor by a REGISTERED and EXACT sibling cohort; any historical SOURCE_SUCCESSOR.json that is not a registered
     sibling's own manifest is always unexplained, and so is every forbidden path."""
     owned = U2.OWNED_PATHS | {U2.MANIFEST} | _signed(registered_exact)
+    # A forbidden-prefix path is explained ONLY as a literal CI V4 path of a registered, exact CI V4 cohort in ``registered_exact``.
+    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}
     return sorted(p for p in changed
-                  if p not in owned or p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS)
+                  if p not in owned or ((p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS) and p not in ci))
 
 
 
@@ -94,11 +96,12 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
         assert u1_pins.get(path) == blob, path                                                    # U2 supersedes exactly what U1 signed
     changed = set(_git(U2.ROOT, 'diff', '--name-only', U2.BASE, '--').split())
     registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
-    assert {m.__name__ for m in registered_exact} <= set(FOUR) and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    # the four post-#413 cohorts plus the registered CI V4 cohort (Owner CI policy 2026-11-04) - no other later cohort
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
     own_manifests = {m.MANIFEST for m in registered_exact}
     # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
     assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)
-    assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in changed)
+    assert not any((p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS) and not U1._later_ci_owns(p, U2.ROOT, None) for p in changed)
     # an R1 file may be in the diff only because the exact registered R1 cohort owns it (never U2)
     r1_owned = _signed([m for m in registered_exact if m.__name__ == 'tests.post413_r1_scope'])
     assert all(p in r1_owned for p in changed & U2.R1_PATHS)
