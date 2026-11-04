@@ -29,7 +29,7 @@
     "tests/test_ci_v4_aggregate.py": "c6e0a864dd97333f86516f00c9164978156180d7",
     "tests/test_ci_v4_release_gate.py": "93aa292fcee07c10f8ed3cf98fcf6e9afe2df1d0",
     "tests/test_ci_v4_schedule.py": "bc48e88dfbd945b43fc968e37532a1b2056e28b4",
-    "tests/test_ci_v4_scope.py": "ba441a995fd498ea6259e96e5014d284d797bdfd",
+    "tests/test_ci_v4_scope.py": "02aff7dd2052f5087c4de39e9a62f5d4cf235f4b",
     "tests/test_ci_v4_select.py": "133cd90fd05ef3c896c899163c211a3ffe7fcbee",
     "tests/test_cost_batch_save_v1.py": "2f27a7a48e63d6d31a09b5a248c5be2e5a548f92",
     "tests/test_saas_revamp_entry.py": "672393924b34d10f3f5c9e8618c7d9c539e5cc21",

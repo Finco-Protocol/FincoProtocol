@@ -23,7 +23,7 @@ def _tree(tmp_path_factory):
             (path / p).parent.mkdir(parents=True, exist_ok=True)
             (path / p).write_bytes(src.read_bytes())
     _git(path, 'add', '-A')
-    _git(path, '-c', 'user.name=ci', '-c', 'user.email=ci@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'snapshot')
+    _git(path, '-c', 'user.name=ci', '-c', 'user.email=ci-test-identity', 'commit', '-q', '--allow-empty', '-m', 'snapshot')
     yield path
     _git(V.ROOT, 'worktree', 'remove', '--force', str(path))
 
