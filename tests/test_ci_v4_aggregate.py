@@ -104,3 +104,9 @@ def test_skip_outside_no_skip_modules_is_listed_as_skipped_not_pass(tmp_path):
 def test_changed_test_module_may_not_skip(tmp_path):
     plan = S.select(["tests/test_goal_seek_v1.py"], copy.deepcopy(POLICY), root=ROOT, head_sha=SHA, tree_sha=TREE, base_sha="c" * 40)
     assert "tests/test_goal_seek_v1.py" in plan["no_skip_modules"]
+
+
+def test_changed_browser_module_is_not_no_skip_in_a_shard():
+    plan = S.select(["tests/test_model_workspace_consolidation_browser.py"], copy.deepcopy(POLICY), root=ROOT, head_sha=SHA, tree_sha=TREE, base_sha="c" * 40)
+    assert "tests/test_model_workspace_consolidation_browser.py" in plan["pytest_modules"]
+    assert "tests/test_model_workspace_consolidation_browser.py" not in plan["no_skip_modules"]

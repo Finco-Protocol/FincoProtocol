@@ -230,7 +230,9 @@ def _finish(policy, tier, changed, triggers, rule_ids, suite_names, extra, dep, 
     if missing:
         raise PolicyError("selected test modules missing from tree: %s" % missing)
     no_skip = {m for s in suite_names if policy["suites"][s].get("no_skip") and policy["suites"][s]["kind"] == "pytest"
-               for m in policy["suites"][s]["modules"]} | set(m for m in extra if m in modules)
+               for m in policy["suites"][s]["modules"]} | set(m for m in extra if m in modules and "browser" not in m)
+    # A changed *browser* module runs in its mandatory browser role / F01 job (the shard runtime has no Chromium, as in CI V3);
+    # in a shard it may only skip, and that skip is listed SKIPPED (not PASS).
     all_tests = set(_all_test_modules(root))
     plan = {
         "schema": SCHEMA, "event": event, "tier": tier,
