@@ -165,7 +165,9 @@ def test_u1_historical_blobs_include_a_later_cohorts_base_blob_only_for_its_supe
     rcux = 'tests/test_rcux_governance.py'
     base = R.manifest()['base_blobs'][rcux]
     assert base in U.historical_blobs(rcux) and base not in U.historical_blobs('app/v2/router.py')
-    assert not U.historical_blobs('tests/test_post413_r1_scope.py') - {R.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py')}
+    from tests import post413_o1_scope as O1      # the Workstream-B cohort also supersedes this test file (its own recorded BASE blob), and nothing else
+    assert not U.historical_blobs('tests/test_post413_r1_scope.py') - {R.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py'),
+                                                                      O1.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py')}
     # forged later manifest -> the later cohort is not exact -> contributes nothing
     manifest = wt / R.MANIFEST
     data = json.loads(manifest.read_text())
