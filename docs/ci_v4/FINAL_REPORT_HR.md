@@ -58,6 +58,7 @@ Nakon ovog pusha pokreću se postojeći V3 workflowi i novi `CI V4 PR` (bootstra
 * FULL: `ci_v4_full.yml` se može pokrenuti tek s default grane (schedule/dispatch) — dakle nakon mergea; FULL record parser JUnit artefakata V3 nije hosted-verificiran.
 * Release gate nema deploy workflow na koji bi se spojio (ne postoji u repozitoriju).
 * Governance kaskada: dodavanje kasnije kohorte traži izmjene 6 starih guardova i 5 manifesta; preporučen zaseban "epoch seal" rad.
+* **Nalaz (prije postojeći, nije uzrokovan #419):** browser moduli `test_cost_editing_ux_v2_browser`, `test_cost_grid_editing_browser_v1`, `test_workflow_c_browser_v1` (i drugi s modulnim skipom) V3 **nikad ne izvršava** (skip u svih 8 workera, nisu ni u jednoj browser roli). Prvi CI V4 RISK run s Chromiumom (`7f0abe6f`) pokazao je da su zastarjeli: mutacijski POST bez CSRF-a → 403, scroll/timeout asercije. CI V4 shard zato za sada ima isto okruženje kao V3 (bez Chromiuma, skip = SKIPPED, ne PASS); popravak tih testova i uključivanje Chromiuma je zaseban zadatak.
 * O1/D7/D13/G10/D8 nisu dirani.
 
 ## 6. Status
