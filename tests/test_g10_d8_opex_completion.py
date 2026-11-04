@@ -100,10 +100,63 @@ def test_d8_escalation_sources_have_no_project_wide_input():
     assert dc_driver and dc_driver[0].annual_inflation == 0.0          # driver-derived row: rate 0%, value from driver
 
 
-# ── T3: the new read-only Last-Run adapter ───────────────────────────────────────────────────────────────────
+# ── T3: the new read-only Last-Run adapter (dedicated default-OFF gate FINCO_G10_RUN_OPEX_PANEL) ────────────
+
+@pytest.fixture(autouse=True)
+def _g10_panel_enabled(monkeypatch):
+    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "1")
+
 
 def _run_projection(env, record):
     return env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
+
+
+def test_g10_panel_gate_is_default_off(monkeypatch, env):
+    """No unintended general-release exposure: without the dedicated flag the route is a typed 404,
+    even with the React surface flag on."""
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
+    record = env.create("solar")
+    response = _run_projection(env, record)
+    assert response.status_code == 404
+    assert response.json()["code"] == "G10_RUN_OPEX_PANEL_DISABLED"
+
+
+def test_g10_session_isolation_stranger_gets_404_and_owner_data(env):
+    """The latest committed history belongs to the authorized owner only; a stranger's session resolves
+    no project and must not see the owner's Run evidence (typed 404, never a payload)."""
+    from tests.test_model_react_wf2_projections_v1 import env as _env  # noqa: F401
+    record = env.create("solar")
+    from tests.test_model_react_rcm_goal_seek_v1 import run_canonical
+    run_canonical(env, record.project_code)
+    stranger_view = env.stranger.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
+    assert stranger_view.status_code == 404, stranger_view.text[:200]
+    assert "history_id" not in stranger_view.text
+    owner_view = _run_projection(env, record)
+    assert owner_view.status_code == 200 and owner_view.json()["run"]["history_id"]
+
+
+def test_g10_freshness_follows_the_authoritative_resolver_and_labels_the_displayed_row(env):
+    """CURRENT right after the Run; STALE after a working-copy input change (authoritative resolver);
+    the freshness label is bound to the displayed history row's identity, never fabricated CURRENT."""
+    from tests.test_model_react_rcm_goal_seek_v1 import run_canonical
+    from tests.fin_v2_3_support import config_json
+    from app.workbook.financial_core_config import FIELD_ID
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import WorkbookUpdateService
+    from app.persistence.workspace_repository import get_workspace_state
+    record = env.create("solar")
+    run_canonical(env, record.project_code)
+    body = _run_projection(env, record).json()
+    assert body["freshness"]["state"] == "CURRENT" and body["run"]["history_id"]
+    # change a saved input through the canonical writer (valuation policy, as the NPV parity test does)
+    ws = get_workspace_state(OWNER, record.project_id)
+    projection = env.client.get("/v2/model-react/fields/project_setup", params={"project": record.project_code}).json()
+    WorkbookUpdateService.apply_batch_draft_update(ws=ws, updates=[(FIELD_ID, config_json())], content_hash=projection["save"]["content_hash"],
+                                                  workbook_version=WORKBOOK.version, expected_scenario_id=ws.active_scenario_id,
+                                                  project_record=record, actor_user_id=record.user_id)
+    after = _run_projection(env, record).json()
+    assert after["freshness"]["state"] == "STALE"
+    assert after["run"]["history_id"] == body["run"]["history_id"]   # same displayed row, honest STALE label
 
 
 def test_g10_endpoint_requires_flag_session_and_project(env):
@@ -153,19 +206,37 @@ def test_g10_run_projection_passes_through_the_committed_run_evidence(env):
 
 
 def test_g10_second_run_appends_and_first_evidence_is_untouched(env):
+    """Positive+negative immutability oracle: the first committed row's stored P&L periods are byte/value
+    identical after a second Run, the API shows the SECOND id with the second row's own periods, and the
+    first row stays accessible. The first fetch is snapshotted before the second Run — never compared to itself."""
+    import copy
+    import json
     from tests.test_model_react_rcm_goal_seek_v1 import run_canonical
-    from app.persistence.run_history_repository import get_latest_history_entry
+    from app.persistence.run_history_repository import get_latest_history_entry, get_run_history_entry
     record = env.create("solar")
     run_canonical(env, record.project_code)
-    first = get_latest_history_entry(OWNER, record.project_id).history_id
-    first_periods = _run_projection(env, record).json()["periods"]
-    run_canonical(env, record.project_code)
+    first_entry = get_latest_history_entry(OWNER, record.project_id)
+    first = first_entry.history_id
+    first_payload = _run_projection(env, record).json()
+    assert first_payload["run"]["history_id"] == first
+    first_stored = copy.deepcopy(first_entry.financial_statements["pnl"]["periods"])
+    first_shown = copy.deepcopy(first_payload["periods"])
+    projected = [{"period": p["period"], "date": p["date"], "operating_expenses_keur": p["operating_expenses_keur"]} for p in first_stored]
+    assert first_shown == projected                                     # adapter showed exactly the stored row's projected fields
+    run_canonical(env, record.project_code)                             # second Run (same inputs)
     second = get_latest_history_entry(OWNER, record.project_id).history_id
     assert second != first
-    assert _run_projection(env, record).json()["run"]["history_id"] == second
-    assert first_periods == _run_projection(env, record).json()["periods"] or True  # rows immutable; latest is shown
-    from app.persistence.run_history_repository import get_run_history_entry
-    assert get_run_history_entry(OWNER, record.project_id, first).history_id == first  # old row still readable
+    # negative half: the FIRST row's stored evidence must be untouched by the second commit
+    first_after = get_run_history_entry(OWNER, record.project_id, first)
+    assert first_after.history_id == first
+    assert first_after.financial_statements["pnl"]["periods"] == first_stored
+    assert json.dumps(first_after.financial_statements["pnl"]["periods"], sort_keys=True) == \
+           json.dumps(first_stored, sort_keys=True)
+    # positive half: the API now shows the SECOND id with the SECOND row's own periods (not the cached first)
+    second_payload = _run_projection(env, record).json()
+    second_stored = get_latest_history_entry(OWNER, record.project_id).financial_statements["pnl"]["periods"]
+    assert second_payload["run"]["history_id"] == second
+    assert second_payload["periods"] == [{"period": p["period"], "date": p["date"], "operating_expenses_keur": p["operating_expenses_keur"]} for p in second_stored]
 
 
 # ── D8: source pins for the copy corrections ────────────────────────────────────────────────────────────────

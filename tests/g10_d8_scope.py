@@ -45,7 +45,9 @@ GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
 ))
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
-# The registry is the one pre-existing owned path: U2 owned it; this cohort supersedes it at exactly one blob.
+# Exactly one pre-existing owned path: the cohort registry. U2 owned it; this cohort supersedes U2's pin at
+# exactly one blob (recorded in ``base_blobs``), admitted only while this cohort is exact — the same bounded
+# supersession contract ``tests/u2_scope.supersedes`` offers to U1.
 SUPERSEDED = frozenset(('tests/fin_v2_cohorts.py',))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'docs/ci_v4/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'app/v2/save_all_commands.py', 'tests/ci_v4_scope.py'))
@@ -169,8 +171,9 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    """This cohort supersedes nothing (all owned paths are new at BASE)."""
-    return False
+    """Bounded supersession for U1/U2 callers: true only for a path of ``SUPERSEDED``, only while this cohort
+    is exact, and only against its exact current pin — never a general waiver for new bytes."""
+    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
 
 
 def matches(path, source=None, *, repo=None, ref=None):

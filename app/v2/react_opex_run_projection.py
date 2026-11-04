@@ -29,8 +29,16 @@ from fastapi.responses import JSONResponse
 
 from app.auth import resolve_request_session
 from app.v2.react_poc_router import react_poc_enabled
+from app.utils.workbook_flag import env_flag
 
 router = APIRouter()
+
+
+def g10_run_projection_enabled() -> bool:
+    """Dedicated G10 gate: absent/empty -> OFF. The React surface flag alone does NOT authorize this panel —
+    owner ratification of G10 Option A is a separate, still-pending decision, so the panel ships dark until
+    ``FINCO_G10_RUN_OPEX_PANEL`` is explicitly set."""
+    return env_flag("FINCO_G10_RUN_OPEX_PANEL", default=False)
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -114,6 +122,8 @@ def _run_identity(entry) -> dict[str, Any]:
 
 @router.get("/model-react/opex-run-projection")
 async def react_opex_run_projection(request: Request, project: str = ""):
+    if not g10_run_projection_enabled():
+        return _json({"ok": False, "code": "G10_RUN_OPEX_PANEL_DISABLED"}, 404)
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)

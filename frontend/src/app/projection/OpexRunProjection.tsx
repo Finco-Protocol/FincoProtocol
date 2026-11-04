@@ -1,29 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FriendlyError } from "../productLanguage";
 import { showKeur } from "../costAmounts";
 import { useCostUnit } from "../CostUnit";
 import { useReportPrecision } from "../ReportPrecision";
+import { RequestGate, type RequestIdentity } from "./opexRunRequest";
 
-/** G10 Option A (Draft) — Inputs > OPEX > Last Run: the committed immutable Run's own all-in operating expenses per
- *  financial period, read from the Run's persisted P&L evidence. The browser only lays the server's numbers out:
- *  a missing Run renders NOT_RUN and a missing statement renders NOT_AVAILABLE — never a zero and never a
- *  working-copy estimate. Freshness (CURRENT/STALE) is the server's runtime-authority verdict, shown as-is. */
+/** G10 Option A (Draft, gated) — Inputs > OPEX > Last Run: the committed immutable Run's own all-in operating
+ *  expenses per financial period, read from the Run's persisted P&L evidence. The browser only lays the
+ *  server's numbers out: a missing Run renders NOT_RUN and a missing statement renders NOT_AVAILABLE — never
+ *  a zero and never a working-copy estimate. Freshness (CURRENT/STALE) is the server's runtime-authority
+ *  verdict for the displayed history row.
+ *
+ *  Request lifecycle: every (project, reloadKey) change begins a NEW gated request (previous one aborted) and
+ *  synchronously resets the panel to loading; a settled response is applied only when its identity is still
+ *  the gate's current one, and the panel renders ONLY data whose identity matches the current props — a slow
+ *  or out-of-order response can never show another project's Run evidence, not even transiently. */
 interface RunIdentity {
   history_id: string; ran_at: string; engine_version: string | null; workbook_version: string | null;
   scenario_id: string | null; scenario_name: string | null; runtime_snapshot_id: string;
 }
 interface RunProjection {
-  ok: true; unit: string; status: "OK" | "NOT_RUN" | "OPEX_STATEMENT_UNAVAILABLE";
+  ok: true; unit: string; status: "OK" | "NOT_RUN" | "OPEX_STATEMENT_UNAVAILABLE" | "PANEL_DISABLED";
   run: RunIdentity | null; freshness: { state: string };
   years: Array<number | null>;
   periods: Array<{ period: number | null; date: string | null; operating_expenses_keur: number | null }>;
   basis: string;
 }
 type Failure = { code: string; message?: string };
+type Stage =
+  | { identity: RequestIdentity; phase: "loading" }
+  | { identity: RequestIdentity; phase: "ready"; data: RunProjection }
+  | { identity: RequestIdentity; phase: "failed"; failure: Failure };
 
-async function load(project: string): Promise<RunProjection | Failure> {
+async function load(project: string, signal: AbortSignal): Promise<RunProjection | Failure> {
   try {
-    const response = await fetch(`/v2/model-react/opex-run-projection?${new URLSearchParams({ project })}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+    const response = await fetch(`/v2/model-react/opex-run-projection?${new URLSearchParams({ project })}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal });
     const body = await response.json().catch(() => null) as (RunProjection | (Failure & { ok: false })) | null;
     if (response.ok && body && body.ok === true) return body;
     return { code: (body as Failure | null)?.code ?? `HTTP_${response.status}`, message: (body as Failure | null)?.message };
@@ -36,16 +47,32 @@ export function OpexRunProjection({ project, reloadKey }: { project: string; rel
   const [unit] = useCostUnit();
   const { precision } = useReportPrecision();
   const cell = (v: number | null | undefined) => (v === null || v === undefined || Number.isNaN(v) ? "—" : showKeur(v, unit, precision));
-  const [data, setData] = useState<RunProjection | null>(null);
-  const [failure, setFailure] = useState<Failure | null>(null);
+  const gateRef = useRef<RequestGate | null>(null);
+  if (gateRef.current === null) gateRef.current = new RequestGate();
+  const gate = gateRef.current;
+  const [stage, setStage] = useState<Stage | null>(null);
   useEffect(() => {
-    let live = true;
-    void load(project).then((r) => { if (!live) return; if ("status" in r) { setData(r); setFailure(null); } else setFailure(r); });
-    return () => { live = false; };
-  }, [project, reloadKey]);
-  if (failure) return <FriendlyError code={failure.code} message={failure.message} />;
-  if (!data) return <p className="rx-boot-loading" role="status" data-opex-run="loading">Loading the Last-Run OPEX…</p>;
+    const { identity, signal } = gate.begin(project, reloadKey);
+    setStage({ identity, phase: "loading" });            // synchronous reset: prior project's data is not renderable now
+    void load(project, signal).then((result) => {
+      if (!gate.isCurrent(identity)) return;             // stale/out-of-order response: never applied
+      setStage("status" in result
+        ? { identity, phase: "ready", data: result }
+        : { identity, phase: "failed", failure: result });
+    });
+    return () => gate.cancel();
+  }, [project, reloadKey, gate]);
+  if (stage === null || stage.identity.project !== project || stage.identity.reloadKey !== reloadKey) {
+    // Defence in depth: never render anything fetched for a different identity.
+    return <p className="rx-boot-loading" role="status" data-opex-run="loading">Loading the Last-Run OPEX…</p>;
+  }
+  if (stage.phase === "failed") return <FriendlyError code={stage.failure.code} message={stage.failure.message} />;
+  if (stage.phase === "loading") return <p className="rx-boot-loading" role="status" data-opex-run="loading">Loading the Last-Run OPEX…</p>;
+  const data = stage.data;
   const stale = data.freshness.state === "STALE";
+  if (data.status === "PANEL_DISABLED") {
+    return <p className="rx-note" data-opex-run="disabled">The Last-Run OPEX panel is not enabled for this environment.</p>;
+  }
   return (
     <section className="rx-card rcm-analysis" data-opex-run="ready" aria-label="Last-Run OPEX">
       <h3>Last Run — all-in OPEX by period</h3>
