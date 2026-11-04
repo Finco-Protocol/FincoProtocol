@@ -38,18 +38,18 @@
     "frontend/src/app/projection/OpexLineYears.tsx": "1af24c7ab54c56edc1792a55d043ae28fa9c51d2",
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
     "static/react/finco-react.css": "e8d2ad10d18b7b9a7f952893a2d0b38363c49314",
-    "static/react/finco-react.js": "5966f68f2ed0c88dd2538e84ed37f72a38d0cf0f",
-    "tests/fin_v2_cohorts.py": "e82a62cef839fad261c7b36523a7524f9ccb814d",
+    "static/react/finco-react.js": "4241feeb40a671069c74eb23b92342663880d18f",
+    "tests/fin_v2_cohorts.py": "6fe1bb54f42912f97497f1060c09efc79dd74736",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
-    "tests/test_u1_scope.py": "f2d873acef0ab879cc4b3e20a546d4a77cec7bc8",
+    "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
     "tests/test_u2_d13_profile_lifecycle.py": "e4df8bebb5bbf1fbbb909d31034ebb140c174229",
     "tests/test_u2_opex_lines.py": "274dbe6f1721536decbf850086156cc2e4576e0e",
     "tests/test_u2_profile_import.py": "a4c7e9df6a611a9b10b5f9908d575b108a7abe02",
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
-    "tests/test_u2_scope.py": "53d6dd795d2055030df136fd9833e1f6871580c9",
-    "tests/test_wf06b_scope.py": "77d12d33746f782335925bbe02c6049c1f7ca9fb",
-    "tests/u1_scope.py": "69cfd60f9c01b21551b484b642cf92011b90c9c0",
+    "tests/test_u2_scope.py": "d24662023ab13c5353a9de1d3ee3bb9a6021a31e",
+    "tests/test_wf06b_scope.py": "49b1ded0b7246cf1e67a7a65168a262622db73d5",
+    "tests/u1_scope.py": "c5a965a150e7820c132eef1492cbc0927e44c831",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "c242dda4965016b57a23568a8c8da3c7a536a537"
+    "tests/u2_scope.py": "3dbcd1b9e0d778452930faad8f217acde7b86a06"
   }
 }

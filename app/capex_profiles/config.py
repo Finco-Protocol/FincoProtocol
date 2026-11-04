@@ -26,7 +26,9 @@ MAX_BYTES = 64 * 1024
 MAX_PROFILES = 200
 _TOP_KEYS = frozenset({"version", "profiles"})
 _ROW_KEYS = frozenset({"item_key", "shape", "explicit_percent", "milestone_month"})
-_KEY = re.compile(r"^(base:[a-z][a-z_]{2,39}|C\.\d{2}\.\d{2,4})$")
+# Syntax only. A generated user-line key ``C.NN.U###`` (G-U2-1) is admitted by shape here and is NEVER trusted for its shape: Save and Run bind it to an
+# extant ACTIVE line of THIS project in the sub-line ledger (``runtime.bind_inputs``: unknown / retired / foreign / wrong-category keys are refused).
+_KEY = re.compile(r"(base:[a-z][a-z_]{2,39}|C\.\d{2}\.(?:\d{2,4}|U\d{3}))", re.ASCII)   # matched with fullmatch: no trailing newline, ASCII digits only
 SOURCE_PERSISTED = "PERSISTED_PROFILE"
 
 
@@ -59,7 +61,7 @@ def parse(raw) -> tuple[ProfileSpec, ...]:
         if not isinstance(row, dict) or set(row) != _ROW_KEYS:
             raise ProfileError("CAPEX_PROFILE_DOCUMENT_INVALID", "each profile needs exactly item_key, shape, explicit_percent, milestone_month")
         key, shape = row["item_key"], row["shape"]
-        if not isinstance(key, str) or not _KEY.match(key):
+        if not isinstance(key, str) or not _KEY.fullmatch(key):
             raise ProfileError("CAPEX_PROFILE_ITEM_KEY_INVALID", repr(key))
         try:
             shape_enum = ProfileShape(shape)

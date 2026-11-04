@@ -5,6 +5,7 @@
 <form action="/v2/workbook/bess/save" method="post" data-m7-financial-form>
 <input type="hidden" name="project" value="{{ project.project_code }}">
 <input type="hidden" name="content_hash" value="{{ content_hash }}">
+<input type="hidden" name="contracts_base_token" value="{{ contracts_base_token | default('') }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
 <input type="hidden" name="configuration" data-m7-native-payload value="{{ native_contract | tojson | forceescape }}">

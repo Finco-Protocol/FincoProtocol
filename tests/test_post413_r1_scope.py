@@ -49,7 +49,7 @@ def test_positive_cohort_is_exact_registered_and_closed():
     assert set(data['source_blobs']) == R.OWNED_PATHS - {R.MANIFEST} and set(data['base_blobs']) == R.SUPERSEDED
     assert all('*' not in p and not p.endswith('/') for p in R.OWNED_PATHS)
     assert not any(p.startswith(R.FORBIDDEN_PREFIXES) or p in R.FORBIDDEN_PATHS for p in R.OWNED_PATHS)
-    for stranger in ('app/v2/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
+    for stranger in ('app/library/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
         assert not R.allowed_path(stranger) and not R.matches(stranger) and not U.allowed_path(stranger)
     for owned in (EDITOR, BUNDLE, 'frontend/src/app/editing/saveAll.ts', 'tests/post413_r1_scope.py'):
         assert R.matches(owned) and R.allowed_path(owned) and U.allowed_path(owned)
@@ -165,7 +165,9 @@ def test_u1_historical_blobs_include_a_later_cohorts_base_blob_only_for_its_supe
     rcux = 'tests/test_rcux_governance.py'
     base = R.manifest()['base_blobs'][rcux]
     assert base in U.historical_blobs(rcux) and base not in U.historical_blobs('app/v2/router.py')
-    assert not U.historical_blobs('tests/test_post413_r1_scope.py') - {R.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py')}
+    from tests import post413_o1_scope as O1      # the Workstream-B cohort also supersedes this test file (its own recorded BASE blob), and nothing else
+    assert not U.historical_blobs('tests/test_post413_r1_scope.py') - {R.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py'),
+                                                                      O1.manifest()['base_blobs'].get('tests/test_post413_r1_scope.py')}
     # forged later manifest -> the later cohort is not exact -> contributes nothing
     manifest = wt / R.MANIFEST
     data = json.loads(manifest.read_text())

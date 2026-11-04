@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
@@ -46,6 +47,7 @@ from app.v2.opex_commands import _check_project_allows as _opex_project_allows
 MAX_ITEMS = 200                 # cells + lines + (1 if a contracts document)
 MAX_CELLS = 50                  # the C0 batch bound
 MAX_CONTRACTS_BYTES = 200_000   # same bound as the contracts form
+MAX_PROFILE_BYTES = 64 * 1024   # the profile document bound (``capex_profiles.config.MAX_BYTES``)
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 #: Fields with their own, separately authorised editor: never part of a Save All cell list.
@@ -68,6 +70,15 @@ class SaveAllInvalid(SaveAllError):
     code = "SAVE_ALL_INVALID"
 
 
+class SaveAllProfileNotEnabled(SaveAllInvalid):
+    code = "SAVE_ALL_PROFILE_NOT_ENABLED"
+
+
+def profile_enabled() -> bool:
+    """D7 activation switch (Owner decision OD-B2, NOT approved): read per call, never cached. Off => a profile document is refused before any transaction."""
+    return os.environ.get("FINCO_SAVE_ALL_PROFILE_ENABLED", "0") == "1"
+
+
 class SaveAllRequestIdReused(SaveAllError):
     code = "SAVE_ALL_REQUEST_ID_REUSED"
 
@@ -81,14 +92,27 @@ class SaveAllInput:
     cells: Sequence[tuple[str, str]] = field(default_factory=tuple)
     contracts_json: Optional[str] = None
     cost_lines: Sequence[CostLineEdit] = field(default_factory=tuple)
+    #: O1: token of the persisted contracts document the editor loaded. Part of the idempotency fingerprint ONLY when supplied, so every
+    #: body stored before O1 keeps its fingerprint.
+    contracts_base_token: Optional[str] = None
+    #: D7 (code only, NOT enabled until Owner decision OD-B2): the CAPEX monthly profile document and the token of the persisted one. Part of the
+    #: fingerprint ONLY when supplied, so every earlier body keeps its fingerprint.
+    profile_json: Optional[str] = None
+    profile_base_token: Optional[str] = None
 
     def canonical_body(self) -> str:
-        return json.dumps({
+        body = {
             "workbook_version": self.workbook_version, "content_hash": self.content_hash, "scenario_id": self.scenario_id,
             "cells": [list(c) for c in self.cells], "contracts_json": self.contracts_json,
             "cost_lines": [[l.kind, l.sub_line_id, l.label, str(l.amount_keur), l.row_version,
                             None if l.inflation_pct is None else str(l.inflation_pct), l.notes] for l in self.cost_lines],
-        }, sort_keys=True, separators=(",", ":"))
+        }
+        if self.contracts_base_token is not None:
+            body["contracts_base_token"] = self.contracts_base_token
+        if self.profile_json is not None:
+            body["profile_json"] = self.profile_json
+            body["profile_base_token"] = self.profile_base_token
+        return json.dumps(body, sort_keys=True, separators=(",", ":"))
 
 
 @dataclass(frozen=True)
@@ -103,7 +127,10 @@ def _validate_shape(data: SaveAllInput) -> list:
         raise SaveAllInvalid("A request id of 8-64 letters, digits, '-' or '_' is required.", "SAVE_ALL_REQUEST_ID_INVALID")
     n_cells, n_lines = len(data.cells), len(data.cost_lines)
     n_contracts = 1 if data.contracts_json is not None else 0
-    total = n_cells + n_lines + n_contracts
+    n_profile = 1 if data.profile_json is not None else 0
+    if n_profile and not profile_enabled():
+        raise SaveAllProfileNotEnabled("Saving the CAPEX profile together with other sections is not enabled; save the profile in the CAPEX planner.")
+    total = n_cells + n_lines + n_contracts + n_profile
     if total < 1:
         raise SaveAllInvalid("There is nothing to save.", "SAVE_ALL_EMPTY")
     if total > MAX_ITEMS:
@@ -114,6 +141,8 @@ def _validate_shape(data: SaveAllInput) -> list:
         raise SaveAllInvalid(f"At most {MAX_BATCH_LINES} CAPEX/OPEX lines can be saved together.", "SAVE_ALL_TOO_MANY_LINES")
     if data.contracts_json is not None and len(data.contracts_json.encode("utf-8")) > MAX_CONTRACTS_BYTES:
         raise SaveAllInvalid("The contracts document is too large.", "SAVE_ALL_CONTRACTS_TOO_LARGE")
+    if data.profile_json is not None and len(data.profile_json.encode("utf-8")) > MAX_PROFILE_BYTES:
+        raise SaveAllInvalid("The CAPEX profile document is too large.", "SAVE_ALL_PROFILE_TOO_LARGE")
     for field_id, _value in data.cells:
         if field_id in EXCLUDED_FIELDS:
             raise SaveAllInvalid(
@@ -126,7 +155,7 @@ def _validate_shape(data: SaveAllInput) -> list:
 def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAllResult:
     """Apply every submitted section atomically.  Raises on ANY failure with nothing persisted."""
     from app.persistence.workspace_repository import v2_apply_batch_draft_update_in_tx
-    from app.workbook.revenue_contracts_service import save_contracts_in_tx
+    from app.workbook.revenue_contracts_service import check_base_token_in_tx, save_contracts_in_tx
 
     _capex_project_allows(project_record)
     _opex_project_allows(project_record)
@@ -137,6 +166,8 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
     body = data.canonical_body()
     body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
     counts = {"cells": len(data.cells), "contracts": 1 if data.contracts_json is not None else 0, "cost_lines": len(data.cost_lines)}
+    if data.profile_json is not None:
+        counts["profile"] = 1
 
     conn = get_connection()
     conn.execute("BEGIN EXCLUSIVE")
@@ -159,6 +190,19 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
             from app.workbook.update_service import StaleContentError
             raise StaleContentError("SAVE_ALL_SCENARIO_MISMATCH")
 
+        if data.contracts_json is not None:
+            # O1: the whole-document version is verified BEFORE the first mutation of any section (cells run before contracts below).
+            check_base_token_in_tx(cur, owner=user_id, project_id=project_id, base_token=data.contracts_base_token)
+
+        if data.profile_json is not None:
+            # D7: the profile-document version is verified before the first mutation of ANY section too (typed STALE_PROFILE_DOCUMENT).
+            from app.capex_profiles.service import ProfileDocumentError, profile_document_token, stored_profile_text_in_tx
+            import hmac
+            if not data.profile_base_token or not hmac.compare_digest(
+                    str(data.profile_base_token), profile_document_token(project_id, stored_profile_text_in_tx(cur, user_id, project_id))):
+                raise ProfileDocumentError("STALE_PROFILE_DOCUMENT" if data.profile_base_token else "PROFILE_DOCUMENT_TOKEN_REQUIRED",
+                                           "the saved CAPEX profile changed after this page loaded; reload; nothing was saved")
+
         if data.cells:
             v2_apply_batch_draft_update_in_tx(
                 cur, user_id=user_id, project_id=project_id, expected_workspace_id=ws_full["workspace_id"],
@@ -166,9 +210,12 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
                 expected_workbook_version=data.workbook_version, updates=[(f, v) for f, v in data.cells], skip_cas=True)
         if data.contracts_json is not None:
             save_contracts_in_tx(cur, owner=user_id, project_id=project_id, expected_hash=data.content_hash,
-                                 raw=data.contracts_json, skip_cas=True)
+                                 raw=data.contracts_json, skip_cas=True, check_token=False)
         if parsed_lines:
             apply_cost_lines_in_tx(cur, project_id, parsed_lines)
+        if data.profile_json is not None:       # LAST: the candidate profile is proved bindable against the final, uncommitted lines and cells
+            from app.capex_profiles.service import save_profiles_in_tx
+            save_profiles_in_tx(conn, cur, owner=user_id, project_id=project_id, raw=data.profile_json, base_token=data.profile_base_token)
 
         new_hash = finalize_identity_in_tx(cur, user_id, project_id, ws_row)               # ONE final identity
         cur.execute(
@@ -188,5 +235,5 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
         conn.close()
 
 
-__all__ = ["MAX_ITEMS", "MAX_CELLS", "MAX_CONTRACTS_BYTES", "SaveAllError", "SaveAllInvalid", "SaveAllRequestIdReused",
-           "SaveAllInput", "SaveAllResult", "save_all"]
+__all__ = ["MAX_ITEMS", "MAX_CELLS", "MAX_CONTRACTS_BYTES", "MAX_PROFILE_BYTES", "SaveAllError", "SaveAllInvalid", "SaveAllProfileNotEnabled",
+           "SaveAllRequestIdReused", "SaveAllInput", "SaveAllResult", "profile_enabled", "save_all"]

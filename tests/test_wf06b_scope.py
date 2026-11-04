@@ -47,7 +47,7 @@ def test_positive_cohort_is_exact_registered_and_closed():
     assert set(data['source_blobs']) == W.OWNED_PATHS - {W.MANIFEST} and set(data['base_blobs']) == W.SUPERSEDED
     assert all('*' not in p and not p.endswith('/') for p in W.OWNED_PATHS)                # a closed literal list, never a pattern
     assert not any(p.startswith(W.FORBIDDEN_PREFIXES) or p in W.FORBIDDEN_PATHS for p in W.OWNED_PATHS)
-    for stranger in ('app/v2/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
+    for stranger in ('app/library/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
         assert not W.allowed_path(stranger) and not W.matches(stranger)
     for owned in ('app/cost_line_ledger/ledger.py', 'static/react/finco-react.js', 'tests/wf06b_scope.py'):
         assert W.matches(owned) and W.allowed_path(owned)
@@ -165,7 +165,7 @@ def test_extra_tracked_extra_untracked_and_executable_paths_fail_closed(wt):
 
 
 @pytest.mark.parametrize('path', ['financial_engine/__init__.py', 'finco_core/__init__.py', 'domain/__init__.py', 'main_web.py', 'tools/ci_v3_schema.py',
-                                  '.github/workflows/ci_v3_required_job.yml', 'app/v2/router.py', 'tests/conftest.py'])
+                                  '.github/workflows/ci_v3_required_job.yml', 'app/library/router.py', 'tests/conftest.py'])
 def test_protected_and_unowned_code_modified_after_signing_fails_closed(path, wt):
     assert W.exact_blobs_ok(wt)
     _flip(wt / path)

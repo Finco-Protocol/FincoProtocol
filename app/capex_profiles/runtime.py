@@ -14,6 +14,7 @@ profile document it returns the input object unchanged (identity), so every defa
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
@@ -87,6 +88,24 @@ def _refuse_structure(pi) -> None:
         raise CapexProfileBindingError("CAPEX_BINDING_MANUAL_FINANCING_COSTS_UNSUPPORTED", "manual financing costs would be counted twice")
 
 
+_GENERATED_KEY = re.compile(r"C\.(\d{2})\.U\d{3}", re.ASCII)
+
+
+def _verify_generated_keys(specs, leaves) -> None:
+    """G-U2-1: a generated ``C.NN.U###`` key must name an extant active line of this project whose parent category is exactly ``C.NN``.
+
+    ``leaves`` are this project's ledger rows (active only, loaded by project id), so a key that is a typo, belongs to another project/tenant,
+    names a retired (soft-deleted) or hard-deleted line is already absent. A key whose NN disagrees with the category the ledger folds that
+    line into is refused here (same code, different line / wrong category). An existing historical key is verified the same way, never skipped.
+    """
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+    field_of = {leaf.item_key: leaf.category_field for leaf in leaves}
+    for spec in specs:
+        m = _GENERATED_KEY.fullmatch(spec.item_key)
+        if m and CAPEX_CATEGORY_TO_FIELD.get("C." + m.group(1)) != field_of.get(spec.item_key):
+            raise CapexProfileBindingError("CAPEX_PROFILE_LEAF_CATEGORY_MISMATCH", spec.item_key)
+
+
 def bind_inputs(pi, raw, *, project_id: str, scenario_overrides: Optional[Mapping[str, Any]] = None) -> RuntimeBinding:
     try:
         specs = config.parse(raw)
@@ -100,6 +119,7 @@ def bind_inputs(pi, raw, *, project_id: str, scenario_overrides: Optional[Mappin
     unknown = sorted(s.item_key for s in specs if s.item_key not in known)
     if unknown:
         raise CapexProfileBindingError("CAPEX_PROFILE_LEAF_UNKNOWN", ", ".join(unknown))
+    _verify_generated_keys(specs, leaves)
     spec_by_key = {s.item_key: s for s in specs}
     leaves = tuple(dataclasses.replace(leaf, spec=spec_by_key.get(leaf.item_key)) for leaf in leaves)
     from financial_engine.financing.generic_product_policy import GenericFinancingPolicyError, derive_construction_financing
