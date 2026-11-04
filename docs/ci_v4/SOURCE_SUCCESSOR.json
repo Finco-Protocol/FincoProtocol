@@ -14,7 +14,7 @@
     ".github/workflows/ci_v4_full.yml": "000381a448f385358cbc6a2737d960676eed4dca",
     ".github/workflows/ci_v4_pr.yml": "53bc4db9f2f24ec065addec5892e4ea9c8552721",
     ".github/workflows/ci_v4_release_gate.yml": "adb2f7423bbd47af0f8773f5d2f1f062dede85a0",
-    "docs/ci_v4/CI_V4_OWNER_DECISION_AND_RISK_MATRIX_HR.md": "942426029422dd313284314a4f917ab15f743c39",
+    "docs/ci_v4/CI_V4_OWNER_DECISION_AND_RISK_MATRIX_HR.md": "ce5e60d677d84929425468d49b7914e195a6b5a8",
     "docs/ci_v4/CI_V4_WORKER_BENCHMARK_AND_SCHEDULING_HR.md": "8433c9373ca3332c15ec029c89f0577f395a3815",
     "docs/ci_v4/FINAL_REPORT_HR.md": "1cffd65b0a18ae7fb8a966ccf9d21bc26a14bcf3",
     "docs/ci_v4/ci-v4-policy.json": "5604fa35f6902dbb9b95bd2b4056b3f2a2ebec2b",

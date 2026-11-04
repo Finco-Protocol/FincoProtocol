@@ -62,6 +62,18 @@ U repozitoriju trenutačno **ne postoji deploy/release workflow**; budući deplo
 
 **Nalaz (važan za vlasnika):** postojeća governance arhitektura zahtijeva da svaka nova kasnija kohorta dodiruje 6 starih guard modula i re-pinira 5 manifesta (kaskada tranzitivne exactness). JUnit mjerenje (run 41782498276) pokazuje da 100 scope/governance/successor/CI modula troši 11.087 s od 23.003 s cijelog korpusa (48 %). Preporuka (zaseban, odvojeno odobren rad): **epoch seal** — jednokratno potvrđeno stanje svih kohorta na immutable commitu, nakon kojeg se stare kohorte provjeravaju na tom commitu (cache po object ID-u), a nove promjene samo protiv registra epohe. Ovo NIJE izvedeno u ovom PR-u.
 
+## 5a. Odluka vlasnika 2026-11-04 (#419, nakon Correction K)
+
+Vlasnik je **odobrio uklanjanje CI V3 punog regresijskog workflowa s PR-ova; na PR-ovima ide samo CI V4** (`CI V4 PR` / `CI V4 gate`).
+Puni V3 korpus ostaje: `ci_v4_full.yml` (nightly + ručno) poziva nepromijenjeni `ci_v3_required_job.yml`, a release/deploy mora proći `ci_v4_release_gate.yml` na istom SHA-u.
+
+Provedba bez izmjene koda (V3 workflow je exact-pinan u WF-03 kohorti i ~20 test-modula provjerava njegov sadržaj; izmjena koda bila bi zasebna governance kaskada):
+1. GitHub → Actions → workflow **"Public Safety and Model Smoke"** → `…` → **Disable workflow** (reverzibilno: Enable workflow).
+2. Branch protection / ruleset za `main`: **dodati** required check `CI V4 gate`; **ukloniti** `source-safety`, `safety-and-smoke / tests`, `mandatory-evidence` (više se ne emitiraju; source safety + compile pokrivaju `CI V4 / static` i `compile-and-safety`).
+3. Ostali checkovi (F01 `rate-contract-native-and-browser`, `mandatory-browser-evidence`, `compile-and-safety`, Q4, oracle, dependency, governance-history) ostaju kako jesu dok vlasnik ne odluči drukčije.
+
+Napomena: CI V4 RISK za governance-teške PR-ove (kao #419) traje 50–90 min (izmjereno); tipični PR-ovi su Fast (~6 min, projekcija) ili RISK ~30–35 min (projekcija).
+
 ## 6. Branch protection — točni ručni koraci za vlasnika
 
 Agent **nije mogao pročitati ni izmijeniti** pravila zaštite (nema API alata za branch protection). Ne tvrdi se da je required gate promijenjen. Do vlasnikove promjene, V3 ostaje required → stanje je fail-closed (ništa nije oslabljeno).
