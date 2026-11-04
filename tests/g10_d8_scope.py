@@ -44,8 +44,8 @@ GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
 ))
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
-# Every owned path is NEW at BASE: this cohort supersedes nothing.
-SUPERSEDED = frozenset()
+# The registry is the one pre-existing owned path: U2 owned it; this cohort supersedes it at exactly one blob.
+SUPERSEDED = frozenset(('tests/fin_v2_cohorts.py',))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'docs/ci_v4/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'app/v2/save_all_commands.py', 'tests/ci_v4_scope.py'))
 # Owned by parallel streams; never touched here (R1 = Save All/PPA; Opus = CI V4).
@@ -120,7 +120,7 @@ def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins = data.get('source_blobs', {})
-    if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or data.get('base_blobs', {}) != {}:
+    if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(data.get('base_blobs', {})) != SUPERSEDED:
         return False
     try:
         head = ref or 'HEAD'

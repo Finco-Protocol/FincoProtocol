@@ -3,16 +3,18 @@
   "schema_version": "G10_D8_OPEX_COMPLETION_EXACT_SOURCE_V1",
   "base": "cd125b5e08302ea1db7169e172fec288aa7acea5",
   "base_tree": "a9c14a0dfcc984780cba61bbf58e39e487a8d2fe",
-  "base_blobs": {},
+  "base_blobs": {
+    "tests/fin_v2_cohorts.py": "e82a62cef839fad261c7b36523a7524f9ccb814d"
+  },
   "source_blobs": {
-    "app/v2/react_opex_run_projection.py": "95c1de6c139d597a03cbf6ca96540b505787fd85",
-    "frontend/src/app/projection/OpexRunProjection.tsx": "f6327890ca2a67c59e99fd8b81d799685102960e",
-    "tests/test_g10_d8_opex_completion.py": "3ea275db39d05ab289a2fa9e06ba8942c1ce39b3",
-    "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961",
-    "tests/g10_d8_scope.py": "161a50ba263b04384fc1c27baca0f469f936aa99",
-    "tests/fin_v2_cohorts.py": "ae3c869c493962b33982e653b338b34fa9547bc3",
-    "docs/react_migration/g10_d8/P00_G10_D8.md": "20b8b28b5b50c32289584fa13a3f11e6c21f02bd",
+    "app/v2/react_opex_run_projection.py": "a624513cb678dc2bade76beafaa0694009ac6e8a",
+    "docs/react_migration/g10_d8/G10_D8_OWNER_DECISION.md": "d967d542a1808a5c682bcbece29a3b964e5df905",
     "docs/react_migration/g10_d8/OPEX_RUN_AUTHORITY_TRACE.md": "83ec6c35310ac56dfcf141278c3da84c82cfcf19",
-    "docs/react_migration/g10_d8/G10_D8_OWNER_DECISION.md": "d967d542a1808a5c682bcbece29a3b964e5df905"
+    "docs/react_migration/g10_d8/P00_G10_D8.md": "20b8b28b5b50c32289584fa13a3f11e6c21f02bd",
+    "frontend/src/app/projection/OpexRunProjection.tsx": "f9680bac2dbda2f313cbbc0ff08cff74446fd118",
+    "tests/fin_v2_cohorts.py": "ae3c869c493962b33982e653b338b34fa9547bc3",
+    "tests/g10_d8_scope.py": "161a50ba263b04384fc1c27baca0f469f936aa99",
+    "tests/test_g10_d8_opex_completion.py": "d0be800a89ef7d79c1c72e95cd4e3d2d1094cca7",
+    "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961"
   }
 }
