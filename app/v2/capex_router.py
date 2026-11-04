@@ -177,7 +177,7 @@ async def capex_line_add(
     project: str = Form(...),
     parent_category_code: str = Form(...),
     label: str = Form(...),
-    amount_keur: float = Form(default=0.0),
+    amount_keur: Optional[str] = Form(default=None),
     notes: str = Form(default=""),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),

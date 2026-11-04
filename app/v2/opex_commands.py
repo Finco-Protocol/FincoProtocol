@@ -114,6 +114,16 @@ def _parse_finite_opex_numerics(raw_amount: Any, raw_inflation: Any) -> tuple[fl
         results.append(v)
     return results[0], results[1]
 
+def _parse_new_line_opex_numerics(raw_amount: Any, raw_inflation: Any) -> tuple[float, float]:
+    """G7: a NEW line states its amount: required (a missing or blank value is never read as 0), finite and zero-or-greater (explicit 0 allowed)."""
+    if raw_amount is None or (isinstance(raw_amount, str) and not raw_amount.strip()):
+        raise OpexInvalidAmountError("Amount (kEUR) is required for a new line; enter 0 explicitly if the amount is zero.")
+    amount, inflation = _parse_finite_opex_numerics(raw_amount, raw_inflation)
+    if amount < 0:
+        raise OpexInvalidAmountError(f"Amount (kEUR) must be zero or greater (got {raw_amount!r}).")
+    return amount, inflation
+
+
 def _check_project_allows(project_record: Any) -> None:
     try:
         assert_project_allows_opex_sub_lines(project_record)
@@ -287,7 +297,7 @@ def add_opex_line(
     user_id: str,
     label: str,
     parent_group_code: str,
-    amount_keur: float = 0.0,
+    amount_keur: Any,
     inflation_pct: float = 0.0,
     notes: str = "",
     workbook_version: str,
@@ -305,7 +315,7 @@ def add_opex_line(
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
     _check_group_eligible(parent_group_code)
-    _amount, _inflation = _parse_finite_opex_numerics(amount_keur, inflation_pct)
+    _amount, _inflation = _parse_new_line_opex_numerics(amount_keur, inflation_pct)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()

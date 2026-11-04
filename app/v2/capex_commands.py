@@ -141,6 +141,19 @@ def _parse_finite_amount_keur(raw: Any) -> float:
         ) from exc
     return v
 
+def _parse_new_line_amount_keur(raw: Any) -> float:
+    """G7: a NEW line states its amount: required (a missing or blank value is never read as 0), finite and zero-or-greater.
+
+    An explicit ``0`` is allowed. Existing-line updates keep the unchanged finite-only rule (legacy stored values are never rewritten here).
+    """
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raise CapexInvalidAmountError("Amount (kEUR) is required for a new line; enter 0 explicitly if the amount is zero.")
+    v = _parse_finite_amount_keur(raw)
+    if v < 0:
+        raise CapexInvalidAmountError(f"Amount (kEUR) must be zero or greater (got {raw!r}).")
+    return v
+
+
 def _check_project_allows(project_record: Any) -> None:
     try:
         assert_project_allows_capex_sub_lines(project_record)
@@ -324,7 +337,7 @@ def add_capex_line(
     user_id: str,
     label: str,
     parent_category_code: str,
-    amount_keur: float = 0.0,
+    amount_keur: Any,
     notes: str = "",
     workbook_version: str,
     expected_content_hash: str,
@@ -351,7 +364,7 @@ def add_capex_line(
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
     _check_group_eligible(parent_category_code)
-    _amount = _parse_finite_amount_keur(amount_keur)
+    _amount = _parse_new_line_amount_keur(amount_keur)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
