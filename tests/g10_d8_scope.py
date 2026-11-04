@@ -139,7 +139,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
                 return False
         else:
-            listed = {line.split(' ', 3)[3] for line in
+            listed = {line.split('	', 1)[1] for line in
                       _git(root, 'ls-tree', '-r', ref, '--').decode().splitlines() if line}
             if set(pins) - listed:
                 return False
