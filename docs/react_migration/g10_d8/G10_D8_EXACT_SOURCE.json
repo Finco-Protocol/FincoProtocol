@@ -13,7 +13,7 @@
     "docs/react_migration/g10_d8/P00_G10_D8.md": "20b8b28b5b50c32289584fa13a3f11e6c21f02bd",
     "frontend/src/app/projection/OpexRunProjection.tsx": "f9680bac2dbda2f313cbbc0ff08cff74446fd118",
     "tests/fin_v2_cohorts.py": "ae3c869c493962b33982e653b338b34fa9547bc3",
-    "tests/g10_d8_scope.py": "161a50ba263b04384fc1c27baca0f469f936aa99",
+    "tests/g10_d8_scope.py": "5e3e4d6e1a94e2e5c877e2751361c56745c1cc31",
     "tests/test_g10_d8_opex_completion.py": "d0be800a89ef7d79c1c72e95cd4e3d2d1094cca7",
     "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961"
   }

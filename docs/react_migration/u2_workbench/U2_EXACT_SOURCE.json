@@ -48,8 +48,8 @@
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
     "tests/test_u2_scope.py": "53d6dd795d2055030df136fd9833e1f6871580c9",
     "tests/test_wf06b_scope.py": "77d12d33746f782335925bbe02c6049c1f7ca9fb",
-    "tests/u1_scope.py": "69cfd60f9c01b21551b484b642cf92011b90c9c0",
+    "tests/u1_scope.py": "c428a297fffeed2a672ad0b4e72ecbf3de7c90c5",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "c242dda4965016b57a23568a8c8da3c7a536a537"
+    "tests/u2_scope.py": "da040a20bde4496053ff663b0dca7d97356770c5"
   }
 }
