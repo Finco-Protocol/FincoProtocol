@@ -253,6 +253,9 @@ def test_g10_endpoint_module_has_no_writer_surface():
     source = (ROOT / "app/v2/react_opex_run_projection.py").read_text(encoding="utf-8")
     assert '@router.get(' in source
     assert "@router.post(" not in source and "@router.put(" not in source and "@router.delete(" not in source
-    registered = (ROOT / "app/v2/react_workspace_router.py").read_text(encoding="utf-8")
-    assert "from app.v2.react_opex_run_projection import router as _g10_opex_run_router" in registered
-    assert "router.include_router(_g10_opex_run_router)" in registered
+    # mounted at the RC-UX aggregation point (react_workspace_router.py stays byte-identical to main)
+    registered = (ROOT / "app/v2/react_rcux.py").read_text(encoding="utf-8")
+    assert "from app.v2.react_opex_run_projection import router as _opex_run_projection_router" in registered
+    assert "router.include_router(_opex_run_projection_router)" in registered
+    router_file = (ROOT / "app/v2/react_workspace_router.py").read_text(encoding="utf-8")
+    assert "_g10_opex_run_router" not in router_file and "_opex_run_projection_router" not in router_file
