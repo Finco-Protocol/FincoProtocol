@@ -100,7 +100,8 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
   const storeRef = useRef(store);
   storeRef.current = store;
   // The identity this editor's draft was authored against: the staged document keeps its own binding across remounts.
-  const currentSource = (): DocumentSource => ({ projectId: project, activeScenario: store?.identity?.activeScenario ?? null, contentHash: save.content_hash });
+  const baseToken = typeof contracts.base_token === "string" && contracts.base_token ? (contracts.base_token as string) : undefined;
+  const currentSource = (): DocumentSource => ({ projectId: project, activeScenario: store?.identity?.activeScenario ?? null, contentHash: save.content_hash, ...(baseToken ? { baseToken } : {}) });
   const draftSource = useRef<DocumentSource>(store?.state.documentSources.ppa ?? currentSource());
   const [draft, setDraft] = useState<ContractModel | null>(() => {
     const staged = store?.state.documents.ppa;
@@ -225,6 +226,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
     setStatus(null);
     const result = await saveRevenueContracts({
       saveUrl: save.url, project, csrfToken: save.csrf_token, contentHash: save.content_hash, contractsJson: payload,
+      baseToken: draftSource.current.baseToken ?? baseToken,
     });
     if ("kind" in result) {
       setLockedByUnknown(true);

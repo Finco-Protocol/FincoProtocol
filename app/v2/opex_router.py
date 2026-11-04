@@ -17,7 +17,7 @@ composite hash after a successful mutation.
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from app.workbook.financing_csrf import issue_token as _issue_csrf_token
 from fastapi import APIRouter, Depends, Form, Request
@@ -170,7 +170,7 @@ async def opex_line_add(
     project: str = Form(...),
     parent_group_code: str = Form(...),
     label: str = Form(...),
-    amount_keur: float = Form(default=0.0),
+    amount_keur: Optional[str] = Form(default=None),
     inflation_pct: float = Form(default=0.0),
     notes: str = Form(default=""),
     workbook_version: str = Form(...),

@@ -46,6 +46,8 @@ export interface SaveAllRequest {
   request_id: string;
   cells: ScalarCell[];
   contracts_json: string | null;
+  /** O1: token of the persisted PPA document the staged document was authored against; sent only with a document. */
+  contracts_base_token?: string;
   cost_lines: CostLineEditWire[];
 }
 
@@ -104,6 +106,7 @@ export function buildSaveAllRequest(
       project: identity.projectId, csrf_token: csrfToken, workbook_version: identity.workbookVersion,
       content_hash: identity.contentHash, scenario_id: identity.activeScenario, request_id: requestId,
       cells, contracts_json: ppaEdits > 0 ? contracts : null, cost_lines: [...lines.values()],
+      ...(ppaEdits > 0 && state.documentSources.ppa?.baseToken ? { contracts_base_token: state.documentSources.ppa.baseToken } : {}),
     },
   };
 }

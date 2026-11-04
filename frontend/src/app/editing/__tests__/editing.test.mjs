@@ -366,4 +366,21 @@ test('sectionOfField keeps debt scalars in financing and everything else in inpu
     s = S.pendingReducer(s, { type: 'rebase', identity: ident('H1'), baselines: {} });
     assert.equal(A.buildSaveAllRequest(s, ident('H1'), 'csrf', 'r7').ok, true);
   });
+
+  test('O1: the token the document was authored against travels with the document, never a fresher one, and only with a document', () => {
+    const tok = 'a'.repeat(64);
+    const src = { projectId: 'SYN-P', activeScenario: null, contentHash: 'H1', baseToken: tok };
+    const withToken = A.buildSaveAllRequest(staged('H1', src), ident('H1'), 'csrf', 'o1a');
+    assert.equal(withToken.ok, true);
+    assert.equal(withToken.request.contracts_base_token, tok);
+    // H1 token stays bound after a composite refresh to H2: the R1 guard refuses first, and no request (hence no stale token) is built.
+    let s = S.pendingReducer(staged('H1', src), { type: 'rebase', identity: ident('H2'), baselines: {} });
+    assert.equal(A.buildSaveAllRequest(s, ident('H2'), 'csrf', 'o1b').ok, false);
+    assert.equal(s.documentSources.ppa.baseToken, tok);
+    // No document -> no token field; a source without a token sends none (the server decides under its strict switch).
+    let cells = S.initialState(ident('H1'));
+    cells = S.pendingReducer(cells, { type: 'stage', edit: { section: 'inputs', key: 'project_setup.technical.p50_hours', label: 'P50', unit: 'h', baseline: '1555', value: '1611' } });
+    assert.equal('contracts_base_token' in A.buildSaveAllRequest(cells, ident('H1'), 'csrf', 'o1c').request, false);
+    assert.equal('contracts_base_token' in A.buildSaveAllRequest(staged('H1'), ident('H1'), 'csrf', 'o1d').request, false);
+  });
 }

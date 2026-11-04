@@ -71,7 +71,7 @@ def test_positive_cohort_is_exact_registered_and_closed():
     assert set(data['source_blobs']) == U2.OWNED_PATHS and set(data['base_blobs']) == U2.SUPERSEDED
     assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in U2.OWNED_PATHS)
     assert not (U2.OWNED_PATHS & U2.R1_PATHS)                                                    # addendum: no R1-owned file
-    for stranger in ('app/v2/router.py', 'app/v2/save_all_commands.py', 'tests/test_something_new.py',
+    for stranger in ('app/library/router.py', 'app/v2/acquisition_router.py', 'tests/test_something_new.py',
                      'financial_engine/x.py', '.github/workflows/ci.yml'):
         assert not U2.allowed_path(stranger) and not U1.allowed_path(stranger) and not W.allowed_path(stranger)
     # An R1 path is never U2's. It is admitted by U1 / WF-06B ONLY through the exact, registered R1 cohort that owns it (integration branch).
@@ -96,15 +96,16 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
         assert u1_pins.get(path) == blob, path                                                    # U2 supersedes exactly what U1 signed
     changed = set(_git(U2.ROOT, 'diff', '--name-only', U2.BASE, '--').split())
     registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
-    # the four post-#413 cohorts, the registered CI V4 cohort (Owner CI policy 2026-11-04) and the registered
-    # G10/D8 OPEX-completion cohort - no other later cohort
-    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    # the four post-#413 cohorts, the registered CI V4 cohort (Owner CI policy 2026-11-04), the registered
+    # G10/D8 OPEX-completion cohort and the registered Workstream-B cohort - no other later cohort
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
     own_manifests = {m.MANIFEST for m in registered_exact}
     # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
     assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)
     assert not any((p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS) and not U1._later_ci_owns(p, U2.ROOT, None) for p in changed)
-    # an R1 file may be in the diff only because the exact registered R1 cohort owns it (never U2)
-    r1_owned = _signed([m for m in registered_exact if m.__name__ == 'tests.post413_r1_scope'])
+    # an R1 file may be in the diff only because the exact registered R1 cohort (or the exact registered Workstream-B cohort, which owns the Save All
+    # module for the not-enabled D7 profile document) owns it - never U2
+    r1_owned = _signed([m for m in registered_exact if m.__name__ in ('tests.post413_r1_scope', 'tests.post413_o1_scope')])
     assert all(p in r1_owned for p in changed & U2.R1_PATHS)
     assert _unexplained(changed, registered_exact) == []                                          # U2's own paths + exact registered siblings only
 

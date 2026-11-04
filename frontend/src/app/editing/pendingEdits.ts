@@ -55,7 +55,11 @@ export interface PendingEdit {
 }
 
 /** The canonical identity a section document was authored against.  A whole-document payload (PPA) is only ever valid for it. */
-export interface DocumentSource { projectId: string; activeScenario: string | null; contentHash: string }
+export interface DocumentSource {
+  projectId: string; activeScenario: string | null; contentHash: string;
+  /** O1: the server's token of the persisted document this draft was authored against (read with the document, never derived by the client). */
+  baseToken?: string;
+}
 
 export const sameSource = (a: DocumentSource | undefined, b: DocumentSource | null | undefined): boolean =>
   !!a && !!b && a.projectId === b.projectId && a.activeScenario === b.activeScenario && a.contentHash === b.contentHash;

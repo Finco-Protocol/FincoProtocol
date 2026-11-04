@@ -47,7 +47,7 @@ def test_positive_cohort_is_exact_registered_and_closed():
     assert set(data['source_blobs']) == R.OWNED_PATHS - {R.MANIFEST} and set(data['base_blobs']) == R.SUPERSEDED
     assert all('*' not in p and not p.endswith('/') for p in R.OWNED_PATHS)
     assert not any(p.startswith(R.FORBIDDEN_PREFIXES) or p in R.FORBIDDEN_PATHS for p in R.OWNED_PATHS)
-    for stranger in ('app/v2/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
+    for stranger in ('app/library/router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py', 'financial_engine/x.py', '.github/workflows/ci.yml'):
         assert not R.allowed_path(stranger) and not R.matches(stranger) and not U.allowed_path(stranger)
     for owned in (SUP, NEW, 'tests/post413_r17_scope.py'):
         assert R.matches(owned) and R.allowed_path(owned) and U.allowed_path(owned)

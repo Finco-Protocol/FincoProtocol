@@ -14,6 +14,7 @@
     {% if contracts.calendar_preview_error %}<p role="alert" data-calendar-validation>{{ contracts.calendar_preview_error }}</p>{% endif %}
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <input type="hidden" name="contracts_base_token" value="{{ contracts.base_token | default('') }}">
     <input type="hidden" name="csrf_token" value="{{ revenue_contracts_csrf_token }}">
     <input type="hidden" name="contracts" data-revenue-payload value="">
     <section class="rc-quick fx-ui p-4 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700" data-revenue-quick data-testid="ppa-quick-add" aria-labelledby="rc-quick-title"
