@@ -31,6 +31,89 @@ class CapexProfileConflict(ValueError):
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
+PROFILE_FIELD_ID = "capex_monthly_profiles"
+
+
+class ProfileDocumentError(CapexProfileConflict):
+    """D7: the profile document version check failed; nothing was written. Carries no content of the other writer's document."""
+
+
+def profile_document_token(project_id: str, text: str) -> str:
+    """The O1 token primitive over the persisted profile document (Base scope; scenarios inherit it and never own one)."""
+    from app.workbook.revenue_contracts_service import document_token
+    return document_token(PROFILE_FIELD_ID, project_id, "base", text)
+
+
+def stored_profile_text_in_tx(cur, owner: str, project_id: str) -> str:
+    cur.execute("SELECT draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?", (owner, project_id))
+    row = cur.fetchone()
+    if row is None:
+        raise CapexProfileConflict("CAPEX_PROFILE_WORKSPACE_MISSING", "Workspace no longer exists; reload")
+    value = json.loads(row["draft_snapshot_json"] or "{}").get(config.SNAPSHOT_KEY)
+    return "" if value is None else str(value)
+
+
+def read_profile_token(owner: str, project_id: str) -> str:
+    """Token for a profile-document read echo (own short connection; the writer re-derives it under its exclusive lock)."""
+    conn = get_connection()
+    try:
+        return profile_document_token(project_id, stored_profile_text_in_tx(conn.cursor(), owner, project_id))
+    finally:
+        conn.close()
+
+
+def save_profiles_in_tx(conn, cur, *, owner: str, project_id: str, raw, base_token) -> None:
+    """D7: the profile write on the CALLER's connection and exclusive transaction (no BEGIN/COMMIT here, no identity CAS: the composing caller owns both).
+
+    Order inside the caller's transaction is cells -> contracts -> cost lines -> THIS, so the candidate is proved bindable against the final,
+    uncommitted lines and cells (the same sub-line fold the Run uses; reads go through the transaction via the existing shared-connection
+    seam, never a second connection). The profile document token is verified before anything here mutates; any failure raises and the caller
+    rolls back every section, restoring the previous bytes exactly.
+    """
+    import hmac
+
+    from app.persistence import db as _db
+    from app.persistence.records import ProjectRecord
+    from app.ui.protected_reference_service import is_protected_reference
+
+    try:
+        value = config.canonical_json(raw)
+    except ProfileError as exc:
+        raise CapexProfileBindingError(exc.code, str(exc)) from exc
+    cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=? AND archived=0", (project_id, owner))
+    project = cur.fetchone()
+    if project is None or is_protected_reference(ProjectRecord.from_row(project)):
+        raise CapexProfileConflict("CAPEX_PROFILE_PROJECT_UNAVAILABLE", "Project is unavailable or read-only; reload")
+    cur.execute("SELECT * FROM workspace_states WHERE user_id=? AND project_id=?", (owner, project_id))
+    ws = cur.fetchone()
+    if ws is None:
+        raise CapexProfileConflict("CAPEX_PROFILE_WORKSPACE_MISSING", "Workspace no longer exists; reload")
+    if ws["active_scenario_id"]:
+        cur.execute("SELECT is_base_case FROM scenarios WHERE scenario_id=? AND user_id=? AND project_id=? AND archived=0",
+                    (ws["active_scenario_id"], owner, project_id))
+        scenario = cur.fetchone()
+        if scenario is None or not scenario["is_base_case"]:
+            raise CapexProfileConflict("CAPEX_PROFILE_SCENARIO_EDIT_UNSUPPORTED",
+                                       "switch to the Base case; scenarios inherit the saved profile and cannot own one yet")
+    draft = json.loads(ws["draft_snapshot_json"] or "{}")
+    stored = "" if draft.get(config.SNAPSHOT_KEY) is None else str(draft[config.SNAPSHOT_KEY])
+    if base_token is None or base_token == "":
+        raise ProfileDocumentError("PROFILE_DOCUMENT_TOKEN_REQUIRED", "the version of the saved profile document is required; reload")
+    if not hmac.compare_digest(str(base_token), profile_document_token(project_id, stored)):
+        raise ProfileDocumentError("STALE_PROFILE_DOCUMENT", "the saved CAPEX profile changed after this page loaded; reload; nothing was saved")
+    if value:
+        draft[config.SNAPSHOT_KEY] = value
+        token = _db._LIFECYCLE_TRANSACTION.set(conn)       # the sub-line / project reads below see this transaction's uncommitted writes
+        try:
+            materialize(draft, project_id, value)          # raises CapexProfileBindingError -> the caller rolls everything back
+        finally:
+            _db._LIFECYCLE_TRANSACTION.reset(token)
+    else:
+        draft.pop(config.SNAPSHOT_KEY, None)
+    cur.execute("UPDATE workspace_states SET draft_snapshot_json=?, updated_at=? WHERE workspace_id=? AND user_id=?",
+                (_to_json(draft), _now_utc().isoformat(), ws["workspace_id"], owner))
+
+
 def materialize(snapshot: dict, project_id: str, raw: str, scenario_overrides: Optional[dict] = None) -> RuntimeBinding:
     """Bind ``raw`` to the exact effective Run inputs of ``snapshot`` (sub-lines folded as the Run folds them).  No engine run."""
     import dataclasses

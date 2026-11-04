@@ -329,6 +329,8 @@ class SaveAllBody(BaseModel):
     cells: list[GridCell] = Field(default_factory=list, max_length=200)
     contracts_json: Optional[str] = Field(None, max_length=250_000)
     contracts_base_token: Optional[str] = Field(None, max_length=128)
+    profile_json: Optional[str] = Field(None, max_length=70_000)
+    profile_base_token: Optional[str] = Field(None, max_length=128)
     cost_lines: list[SaveAllCostLine] = Field(default_factory=list, max_length=200)
 
 
@@ -351,11 +353,14 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError, OpexVersionMismatchError
     from app.v2.save_all_commands import SaveAllError, SaveAllInput, SaveAllRequestIdReused, save_all
     from app.workbook.revenue_contracts_service import ContractsTokenError, RevenueContractConflict
+    from app.capex_profiles.runtime import CapexProfileBindingError
+    from app.capex_profiles.service import CapexProfileConflict, ProfileDocumentError
 
     data = SaveAllInput(
         request_id=body.request_id, workbook_version=body.workbook_version, content_hash=body.content_hash,
         scenario_id=body.scenario_id, cells=tuple((c.field_id, c.value) for c in body.cells),
         contracts_json=body.contracts_json, contracts_base_token=body.contracts_base_token,
+        profile_json=body.profile_json, profile_base_token=body.profile_base_token,
         cost_lines=tuple(CostLineEdit(kind=l.kind, sub_line_id=l.sub_line_id, label=l.label, amount_keur=l.amount_keur,
                                       row_version=l.row_version, inflation_pct=l.inflation_pct, notes=l.notes)
                          for l in body.cost_lines))
@@ -367,6 +372,11 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
         return _json({"ok": False, "code": exc.code, "message": str(exc)}, 409)
     except SaveAllError as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc), **exc.detail}, 422)
+    except ProfileDocumentError as exc:      # D7: typed, reload:true, nothing saved, no other writer's profile in the answer
+        return _json({"ok": False, "code": exc.code, "reload": True, "section": "profile",
+                      "message": "The CAPEX profile changed after this page loaded. Nothing was saved; reload and review it."}, 409)
+    except (CapexProfileBindingError, CapexProfileConflict) as exc:     # D7: an unbindable / unsupported profile; every section rolled back
+        return _json({"ok": False, "code": exc.code, "section": "profile", "message": str(exc)}, 422)
     except ContractsTokenError as exc:       # O1: typed, reload:true, nothing saved, no other writer's document in the answer
         return _json({"ok": False, "code": exc.code, "reload": True, "section": "contracts",
                       "message": "The Revenue & PPA contracts changed after this page loaded. Nothing was saved; reload and review them."}, 409)
