@@ -46,11 +46,15 @@ TEST_AND_DOC_PATHS = frozenset((
 GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
 ))
-OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
-# Exactly one pre-existing owned path: the cohort registry. U2 owned it; this cohort supersedes U2's pin at
-# exactly one blob (recorded in ``base_blobs``), admitted only while this cohort is exact — the same bounded
-# supersession contract ``tests/u2_scope.supersedes`` offers to U1.
-SUPERSEDED = frozenset(('tests/fin_v2_cohorts.py',))
+SUPERSEDED_SOURCE_PATHS = frozenset((
+    'app/v2/react_rcux.py',
+))
+OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS | SUPERSEDED_SOURCE_PATHS
+# Two pre-existing owned paths, each superseded at exactly one blob (recorded in ``base_blobs``): the cohort
+# registry (U2-owned) and the RC-UX aggregator (RC-UX-owned, which gains this cohort's read-only adapter). Both
+# are admitted only while this cohort is exact — the same bounded supersession contract ``tests/u2_scope.supersedes``
+# offers to U1.
+SUPERSEDED = frozenset(('tests/fin_v2_cohorts.py', 'app/v2/react_rcux.py'))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'docs/ci_v4/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'app/v2/save_all_commands.py', 'tests/ci_v4_scope.py'))
 # Owned by parallel streams; never touched here (R1 = Save All/PPA; Opus = CI V4).
