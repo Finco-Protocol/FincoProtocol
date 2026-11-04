@@ -145,15 +145,37 @@ def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls(
     path = 'tests/test_model_mutation_security_successor.py'
     assert path in F.OWNED_PATHS
     source = (F.ROOT / path).read_text()
-    assert F.manifest()['source_blobs'][path] == F._blob(source.encode())
+    pin = F.manifest()['source_blobs'][path]
+    assert pin == F._blob(source.encode()) or _later_state(path, source, lambda b: F._blob(b.encode()) == pin)
     assert S.RC_UX_SUCCESSORS[ROLE] != S.WSV2_BROWSER_SUCCESSORS[ROLE]
     role_source = (F.ROOT / ROLE).read_text()
     # WF-04 successor lineage: the WS1 role state, or - only while the whole WF-04 cohort is valid - exactly the WF-04 pinned later state.
-    assert S.git_blob(role_source) == S.WSV2_BROWSER_SUCCESSORS[ROLE] or WF04.presentation_successor(ROLE, role_source)
+    assert S.git_blob(role_source) == S.WSV2_BROWSER_SUCCESSORS[ROLE] or WF04.presentation_successor(ROLE, role_source) or _later_state(ROLE, role_source, _admitted(ROLE))
     assert 'test_d029_browser_wrappers_are_exactly_the_seven_reviewed_cases_and_extras_are_refused' in source
     assert "assert S.git_blob(source) == S.WSV2_BROWSER_SUCCESSORS[path]" in source
     assert 'assert skipped[path]!=source and S.violations(skipped)' in source
     assert 'assert S.violations(extra)' in source
+
+
+def _later_state(path, source, base_admitted):
+    """#419 Correction K: exactly the pin of a REGISTERED, EXACT post-#413 cohort that SUPERSEDES ``path`` (U1's bounded later-cohort list), and only
+    where that cohort's git-verified BASE blob is itself a state this guard already admits (``base_admitted``). A chain of custody to ONE exact
+    successor blob; never a wildcard, never a repin, never an unregistered or drifted cohort, never one byte more."""
+    from tests import u1_scope as U1
+    blob = F._blob(source.encode())
+    for m in U1._later_modules():
+        if m.__name__ not in C.COHORT_MODULES or path not in m.SUPERSEDED or not m.supersedes(path, blob):
+            continue
+        base = m.base_blob(path)
+        if base and base_admitted(subprocess.check_output(['git', 'cat-file', 'blob', base], cwd=F.ROOT).decode()):
+            return True
+    return False
+
+
+def _admitted(path):
+    """The older admission chain of a presentation / role path, as a predicate over a candidate source (used for a later cohort's BASE blob)."""
+    return lambda src: (S.git_blob(src) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
+                        or WF04.presentation_successor(path, src) or _wf03().matches(path, src) or WF06B.matches(path, src))
 
 
 def _wf03():
@@ -185,7 +207,9 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
         assert (S.git_blob(sources[path]) in {{**S.WSV2_PRESENTATION_SUCCESSORS, **S.WSV2_BROWSER_SUCCESSORS}[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state
                 or WF04.presentation_successor(path, sources[path])
                 or _wf03().matches(path, sources[path])        # WF-03 successor lineage: the exact later state its cohort pins while it is valid
-                or WF06B.matches(path, sources[path]))         # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
+                or WF06B.matches(path, sources[path])          # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
+                or _later_state(path, sources[path], _admitted(path)))   # #419 K: exact pin of a registered exact later cohort, admitted base only
+        assert not _later_state(path, sources[path] + '\n', _admitted(path))
         changed = dict(sources)
         changed[path] += '\n'
         assert S.violations(changed)
@@ -240,7 +264,8 @@ def browser_contract_ok(role, acceptance):
     if role[:role.index(marker)].rstrip() != prior.rstrip():
         # WF-03 successor lineage: the original role survives verbatim; the only difference is the separately governed, ADDITIVE WF-03 browser block
         # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.
-        if not (_wf03().matches(ROLE, role) and _additive_only(prior, role[:role.index(marker)])):
+        # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.
+        if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):
             return False
     tree = ast.parse(acceptance)
     functions = tuple(n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))

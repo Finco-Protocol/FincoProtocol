@@ -42,7 +42,34 @@ RCM_HEAD = "6aaaaa586d42a3354b653661f5813e6819cb990c"       # the last reviewed 
 
 def _u1_state(path, source):
     """Exactly the reviewed U1 state of a path U1 supersedes, only while the whole U1 cohort is exact (nonrecursive: U1 reads git and its manifest only)."""
-    return path in U1.SUPERSEDED and U1.supersedes(path, U1._blob(source.encode()))
+    return (path in U1.SUPERSEDED and U1.supersedes(path, U1._blob(source.encode()))) or _later_state(path, source)
+
+
+def _later_state(path, source):
+    """#419 Correction K: exactly the pin of a REGISTERED, EXACT post-#413 cohort that SUPERSEDES ``path`` - and only where that cohort's
+    git-verified BASE blob is itself a state the older chain admitted here (``_older_admits``: RC-M/WS/RC-UX, WF-04, WF-03, WF-06B). A chain of custody
+    from the previously admitted state to one exact successor blob; never a wildcard, never a repin, never an unregistered or drifted cohort."""
+    import subprocess
+    from tests import fin_v2_cohorts as C
+    blob = U1._blob(source.encode())
+    for m in U1._later_modules():
+        if m.__name__ not in C.COHORT_MODULES or path not in m.SUPERSEDED or not m.supersedes(path, blob):
+            continue
+        base = m.base_blob(path)
+        if not base:
+            continue
+        base_src = subprocess.check_output(['git', 'cat-file', 'blob', base], cwd=U1.ROOT).decode()
+        if _older_admits(path, base_src):
+            return True
+    return False
+
+
+def _older_admits(path, src):
+    """The unchanged older admission chain of the layer assertion below (RC-M/WS/RC-UX state, WF-04, WF-03, WF-06B), as a predicate."""
+    expected = (S.WSV2_EDITING_SUCCESSORS.get(path) or S.WSV2_SAVE_ALL_SUCCESSORS.get(path) or S.WSV2_BROWSER_SUCCESSORS.get(path)
+                or S.WSV2_PRESENTATION_SUCCESSORS.get(path) or S.RC_UX_SUCCESSORS.get(path) or LAYER.get(path))
+    return bool(S.git_blob(src) == expected or WF04.presentation_successor(path, src)
+                or (path in WF03_RCM_PATHS and WF03.matches(path, src)) or WF06B.matches(path, src))
 
 
 def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted():
@@ -67,6 +94,7 @@ def test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitte
                 or (path in WF03_RCM_PATHS and WF03.matches(path, SOURCES[path]))
                 or WF06B.matches(path, SOURCES[path])
                 or _u1_state(path, SOURCES[path])), path        # PR #410: the exact state the closed WF-06B cohort pins for a path it supersedes
+        assert not _later_state(path, SOURCES[path] + "\n")                                            # one byte of drift is never a successor
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 

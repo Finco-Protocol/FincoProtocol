@@ -197,7 +197,7 @@ def _owned_ok():
 _SCOPE = []
 
 
-LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope')
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope')
 
 
 def _later_modules():
@@ -219,6 +219,11 @@ def _later_follows(path, blob, pin, root, ref):
 
 def _later_owns(path, repo, ref):
     return any(m.allowed_path(path, repo, ref) and m.exact_blobs_ok(repo, ref) for m in _later_modules())
+
+
+def _later_ci_owns(path, repo, ref):
+    """CI V4 (2026-11-04): the ONLY admission of a protected ``.github/``/``tools/`` path - a literal CI path of an exact later CI cohort."""
+    return path.startswith(('.github/', 'tools/')) and any(callable(getattr(m, 'ci_owns', None)) and m.ci_owns(path, repo, ref) for m in _later_modules())
 
 
 def _later_supersedes(path, value, repo, ref):
@@ -322,11 +327,11 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed_since_base):
+        if any((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not _later_ci_owns(p, root, ref) for p in changed_since_base):
             return False
         # everything this cohort does not own equals main at the integration commit (the reviewed #414 state), byte for byte
         changed = _git(root, 'diff', '--name-only', '--no-renames', INTEGRATION, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _later_owns(p, root, ref)) or ((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not _later_ci_owns(p, root, ref))
                for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state

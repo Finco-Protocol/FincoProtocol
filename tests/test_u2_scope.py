@@ -3,6 +3,7 @@
 Every negative mutates a real checkout of the committed HEAD (shared object database, private working tree) and asks the real cohort functions.
 """
 import json
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -282,7 +283,21 @@ def test_an_unrelated_committed_extra_file_fails_closed(wt):
 
 
 def _u1_test_later_owned(repo, modules):
-    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules() if m.__name__ in modules and m.exact_blobs_ok(repo)))
+    # The four post-#413 data-integrity cohorts only; the CI V4 cohort (also a registered later cohort) is proven by tests/test_ci_v4_scope.py.
+    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()
+                         if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))
+
+
+# Reviewed governance/bundle paths that more than one of the four cohorts owns. Closed, literal; Correction J changed tests/test_wf06b_scope.py
+# on every branch with identical text, so all four sign the same blob (proven by ``_shared_signatures``).
+SHARED_REVIEWED = frozenset(('tests/fin_v2_cohorts.py', 'tests/u1_scope.py', 'tests/test_u1_scope.py', 'tests/test_wf06b_scope.py',
+                             'static/react/finco-react.js'))
+
+
+def _shared_signatures(repo, modules, path):
+    """The set of blobs the owning cohorts pin for ``path`` plus the blob the evaluated tree holds (one element when all agree)."""
+    pins = {m.manifest(repo).get('source_blobs', {}).get(path) for m in modules if path in m.OWNED_PATHS}
+    return pins | {U1._blob((Path(repo) / path).read_bytes())}
 
 
 def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkeypatch):
@@ -291,8 +306,10 @@ def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkey
     siblings = [m for n, m in four.items() if n != U2.__name__]
     union_all, union_siblings, union_u2 = _signed(list(four.values())), _signed(siblings), U2.OWNED_PATHS | {U2.MANIFEST}
     assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all                                   # the exact union of the four signed, finite sets
-    shared = (union_u2 & union_siblings) - {'tests/fin_v2_cohorts.py', 'tests/u1_scope.py', 'tests/test_u1_scope.py', 'static/react/finco-react.js'}
+    shared = (union_u2 & union_siblings) - SHARED_REVIEWED
     assert union_u2 <= union_all and shared == set(), shared                                         # U2 and siblings share only the reviewed governance/bundle paths
+    for path in sorted(union_u2 & union_siblings):                                                   # every owner signs the SAME exact blob, = the tree
+        assert len(_shared_signatures(wt, list(four.values()), path)) == 1, path
     # U2 unregistered: its U2-only permissions disappear, the sibling cohorts' stay (they are independently registered and exact)
     without_u2 = _u1_test_later_owned(wt, tuple(m for m in C.COHORT_MODULES if m != U2.__name__))
     assert without_u2 == union_siblings and 'app/v2/react_opex_lines.py' not in without_u2
@@ -324,3 +341,23 @@ def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkey
     monkeypatch.setattr(U1, 'LATER_COHORTS', ())
     assert U1._later_modules() == [] and not U1.allowed_path('app/v2/react_opex_lines.py') and not U1.allowed_path('frontend/src/app/editing/saveAll.ts')
     assert not W.allowed_path('frontend/src/app/editing/saveAll.ts')
+
+
+def test_shared_reviewed_paths_are_signed_identically_and_fail_closed(wt):
+    """#419 Correction K negatives for the shared reviewed set: one-byte drift, a forged pin in ONE owner, an extra unowned path, same-cardinality
+    identity swap and a historical protected path are all refused."""
+    four = list(_later(FOUR))
+    union_u2, union_siblings = U2.OWNED_PATHS | {U2.MANIFEST}, _signed([m for m in four if m is not U2])
+    assert (union_u2 & union_siblings) <= SHARED_REVIEWED and 'tests/test_wf06b_scope.py' in (union_u2 & union_siblings)
+    path = 'tests/test_wf06b_scope.py'
+    _flip(wt / path)                                                                                  # one byte of drift: signatures disagree
+    assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
+    _git(wt, 'checkout', '--', path)
+    mpath = wt / U2.MANIFEST                                                                          # forged pin in one owner only
+    d = json.loads(mpath.read_text()); d['source_blobs'][path] = '0' * 40; mpath.write_text(json.dumps(d, indent=2) + '\n')
+    assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
+    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))
+    assert 'app/v2/react_unreviewed.py' not in SHARED_REVIEWED and not U2.allowed_path('app/v2/react_unreviewed.py')   # extra unowned path
+    swapped = (SHARED_REVIEWED - {path}) | {'tests/test_rcm_governance_x.py'}                         # same cardinality, different identity
+    assert len(swapped) == len(SHARED_REVIEWED) and (union_u2 & union_siblings) - swapped == {path}
+    assert not any(p.startswith(('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/')) for p in SHARED_REVIEWED)   # no protected path

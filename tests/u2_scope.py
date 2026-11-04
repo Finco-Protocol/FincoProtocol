@@ -196,7 +196,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 # Sibling post-#413 data-integrity cohorts (closed, each pinned by its own manifest). Consulted through LOW LEVEL checks only (``allowed_path`` and
 # ``exact_blobs_ok`` of the sibling, which never call this module or the registry), so the call stack stays acyclic; nothing is cached across calls.
-SIBLING_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope')
+SIBLING_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.ci_v4_scope')
 
 
 def _sibling_owns(path, root, ref):
@@ -268,7 +268,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
         # A path owned by a REGISTERED, EXACT sibling post-#413 cohort (R17 / R18 / R1) is that cohort's exact-blob responsibility; U2 itself still owns
         # none of the R1 files, and every other stranger path, protected prefix and forbidden path still fails closed.
-        if any(((p not in OWNED_PATHS and p != MANIFEST and not _sibling_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+        if any(((p not in OWNED_PATHS and p != MANIFEST and not _sibling_owns(p, root, ref)) or ((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not any(getattr(m, 'ci_owns', lambda *a: False)(p, root, ref) for m in _sibling_modules()))
                 or (p in R1_PATHS and not _sibling_owns(p, root, ref))) for p in changed):
             return False
         # 5. no owned file is executable or a link; no unowned untracked file in a working tree

@@ -39,6 +39,8 @@ PRESENTATION_PATHS = frozenset((
     'static/react/finco-react.js',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'tests/test_wsv2_core_scope.py',
+    'tests/test_rcm_governance.py',
     'tests/test_wf06b_scope.py',
     'docs/react_migration/post413_r1/P00.md',
     'frontend/src/app/editing/__tests__/editing.test.mjs',
@@ -60,6 +62,8 @@ GOVERNANCE_PATHS = frozenset((
 OWNED_PATHS = PRESENTATION_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE. Older cohorts pin these at their BASE blob; the BASE blob of each is recorded in the manifest and re-verified.
 SUPERSEDED = frozenset((
+    'tests/test_wsv2_core_scope.py',
+    'tests/test_rcm_governance.py',
     'tests/test_wf06b_scope.py',
     'tests/test_rcux_governance.py',
     'frontend/src/app/workflow/PPAEditorView.tsx',
@@ -200,7 +204,8 @@ def _exact_blobs_ok(repo=None, ref=None):
         # Only the protected subtrees can fail this check, so the diff is limited to them (same verdict as the whole-tree diff, without a full stat of the checkout).
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
                        *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
-        if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
+        # CI V4 (Owner CI policy 2026-11-04): a literal CI V4 path of the exact, low-level CI V4 cohort is the only admitted .github/ or tools/ move.
+        if any((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not _ci_v4_owns(p, root, ref) for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -215,6 +220,18 @@ def _exact_blobs_ok(repo=None, ref=None):
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
+
+
+def _ci_v4_owns(path, root, ref):
+    """Only a literal CI V4 path (``.github/workflows/ci_v4_*`` / ``tools/ci_v4_*`` listed in ``tests/ci_v4_scope.CI_PATHS``) while that cohort is
+    exact. The CI V4 cohort is low level (git objects and its own manifest only) and never imports this module, so the call graph stays acyclic."""
+    if not path.startswith(('.github/', 'tools/')):
+        return False
+    try:
+        from tests import ci_v4_scope
+    except ModuleNotFoundError:
+        return False
+    return ci_v4_scope.ci_owns(path, root, ref)
 
 
 def allowed_path(path, repo=None, ref=None):
