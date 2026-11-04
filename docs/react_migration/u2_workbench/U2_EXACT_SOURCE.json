@@ -38,7 +38,7 @@
     "frontend/src/app/projection/OpexLineYears.tsx": "1af24c7ab54c56edc1792a55d043ae28fa9c51d2",
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
     "static/react/finco-react.css": "e8d2ad10d18b7b9a7f952893a2d0b38363c49314",
-    "static/react/finco-react.js": "16e56fd7d9772f87fdba4fc3d489ebe63a3db672",
+    "static/react/finco-react.js": "24db4d8badbd383eeef1bd289b1c7f02b1c8fe14",
     "tests/fin_v2_cohorts.py": "ae3c869c493962b33982e653b338b34fa9547bc3",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
     "tests/test_u1_scope.py": "f2d873acef0ab879cc4b3e20a546d4a77cec7bc8",
