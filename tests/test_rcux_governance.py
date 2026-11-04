@@ -11,6 +11,7 @@ import pytest
 from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
 from tests import wf06b_scope as WF06B
+from tests import post413_r1_scope as R1
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
@@ -37,7 +38,8 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
         assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
                 or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path])
-                or WF06B.matches(path, SOURCES[path]))                 # PR #410: the exact WF-06B successor state of a superseded path
+                or WF06B.matches(path, SOURCES[path])                  # PR #410: the exact WF-06B successor state of a superseded path
+                or R1.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
@@ -242,7 +244,13 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
     # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
     hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+    # Sixth: the Owner-approved CI V4 cohort (tests/ci_v4_scope.py, CI policy 2026-11-04) owns exactly its literal CI_PATHS (new ci_v4_* workflows and
+    # tools only); admitted only through U1's bounded later-CI hook while that cohort is registered and exact. No existing workflow or tool is admitted.
+    from tests import u1_scope as U1
+    hits = [p for p in hits if not U1._later_ci_owns(p, S.ROOT, None)]
     assert hits == [], hits
+    for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
+        assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
     assert golden == [], golden
 

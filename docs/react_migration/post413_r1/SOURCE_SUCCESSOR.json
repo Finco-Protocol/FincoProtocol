@@ -1,0 +1,42 @@
+{
+  "base": "2c63750929477c618444e9d056030e054cc3a41c",
+  "base_blobs": {
+    "frontend/src/app/workflow/PPAEditorView.tsx": "925c5262b59a92feef3512f7fde7c481a3567262",
+    "static/react/finco-react.js": "74e7b2d500956a940bfc1b6a88097f301e756495",
+    "tests/fin_v2_cohorts.py": "38aeac3b870e3f18e0ad583c07a763353b3d616a",
+    "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
+    "tests/test_model_mutation_security_successor.py": "33a9ae6051fede0dabe52c79fb2fd151950676fe",
+    "tests/test_model_workspace_consolidation_browser.py": "bf53a54e3d0abb9ce2b66a34f175834296e0ada2",
+    "tests/test_rcm_governance.py": "6f1105dc157b13f612fde72ff22c4da65c289c94",
+    "tests/test_rcux_governance.py": "baf5e639627c51f609693cc27c22f39a985c2235",
+    "tests/test_u1_scope.py": "0ce769d64ce082658ca8364f1888da4ea9529727",
+    "tests/test_wf06b_scope.py": "7b256ad291c550b752ee021405928c97bd966e8b",
+    "tests/test_wsv2_core_scope.py": "1014bd0402db9a8ea60c446f8329f859e15ad5d6",
+    "tests/u1_scope.py": "f7ecb65f91bae3429a781984cab72b66ddda2263"
+  },
+  "base_tree": "e7869fc8f4775b5ae62a5c75be60f2efef2cfd79",
+  "schema_version": "POST413_R1_STALE_PPA_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "docs/react_migration/post413_r1/P00.md": "10be28bd4ff9912209886a0bf252a9100c095f03",
+    "frontend/src/app/editing/ChangesProvider.tsx": "6d0eb942c46c275a3b05ef799e7e322aec607154",
+    "frontend/src/app/editing/__tests__/editing.test.mjs": "03b5c509cab05d973da3e8014af926b99ae11969",
+    "frontend/src/app/editing/pendingEdits.ts": "22fc37281ddbc4c3612f8ddf9e6486d5b70dd89c",
+    "frontend/src/app/editing/saveAll.ts": "d02bd7d7e0bf7a17c968d08467c946cbd219ac32",
+    "frontend/src/app/workflow/PPAEditorView.tsx": "c98a12419e3db642af7dd4e902939f73f02d6487",
+    "static/react/finco-react.js": "5966f68f2ed0c88dd2538e84ed37f72a38d0cf0f",
+    "tests/fin_v2_cohorts.py": "e82a62cef839fad261c7b36523a7524f9ccb814d",
+    "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
+    "tests/model_react_r1_ppa_two_tab_acceptance.py": "f9270bd0e43396f4ba8ff81f9cd6e819229937e3",
+    "tests/post413_r1_scope.py": "ed6797bee03a3241e4791aa5fba88f80e0a578c0",
+    "tests/test_model_mutation_security_successor.py": "397cf27c16ed895fafb4eca3e3d73f9e9320f556",
+    "tests/test_model_workspace_consolidation_browser.py": "2d0b5c1abc6c64a47ec925244f0b098cca67fb39",
+    "tests/test_post413_r1_scope.py": "4caceb2ccf8262e18c2e874fda72aebfca8d828f",
+    "tests/test_r1_ppa_stale_document_replay.py": "3902b9306028b2f1cd44407308bf557471c17790",
+    "tests/test_rcm_governance.py": "3ee8abfc90e3e87ff4f9441e1c3c8a19e8367f87",
+    "tests/test_rcux_governance.py": "c704d43fe0f0370f24febab8c4e1ec805386f2ee",
+    "tests/test_u1_scope.py": "f2d873acef0ab879cc4b3e20a546d4a77cec7bc8",
+    "tests/test_wf06b_scope.py": "77d12d33746f782335925bbe02c6049c1f7ca9fb",
+    "tests/test_wsv2_core_scope.py": "4347d3828edc3633d6f75408dc63e8b2b5ea5edc",
+    "tests/u1_scope.py": "69cfd60f9c01b21551b484b642cf92011b90c9c0"
+  }
+}

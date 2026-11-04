@@ -672,6 +672,11 @@ def test_wf2_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(brows
     check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled)
 
 
+def test_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_enabled):
+    from tests.model_react_r1_ppa_two_tab_acceptance import check_r1_stale_ppa_document_is_never_replayed_by_a_second_tab
+    check_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_enabled)
+
+
 def test_wf2_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
     from tests.model_react_wf2_browser_acceptance import check_stale_cas_cannot_overwrite_and_keeps_the_draft
     check_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled)

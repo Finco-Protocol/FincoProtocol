@@ -221,38 +221,35 @@ def archive_scenario(user_id: str, scenario_id: str) -> bool:
 
 
 def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> "Optional[ScenarioRecord]":
-    """Promote an existing scenario to be the project's Base Case.
+    """Promote an existing scenario to be its project's Base Case.
 
-    Clears is_base_case flag from all other scenarios for this project first,
-    then sets it on the target scenario.
+    The target is resolved first and must be this user's non-archived scenario; otherwise nothing is
+    changed and ``None`` is returned.  Only the Base Case of the *same project* is demoted, and the
+    demotion and promotion share one write transaction, so a failure leaves the project exactly as it was.
     Idempotent: safe to call on a scenario that is already the base case.
     """
     with get_cursor() as cur:
-        # Clear any existing base case — scoped via subquery so it only clears
-        # one of the user's scenarios (not a different user's scenario accidentally)
+        if not cur.connection.in_transaction:
+            cur.execute("BEGIN IMMEDIATE")
         cur.execute(
-            """
-            UPDATE scenarios
-            SET is_base_case=0, updated_at=?
-            WHERE scenario_id=(
-                SELECT scenario_id FROM scenarios
-                WHERE user_id=? AND is_base_case=1
-                LIMIT 1
-            )
-            """,
-            (_now_utc().isoformat(), user_id),
+            "SELECT project_id FROM scenarios WHERE scenario_id=? AND user_id=? AND archived=0",
+            (scenario_id, user_id),
         )
-        # Promote the target scenario
-        cur.execute(
-            """
-            UPDATE scenarios
-            SET is_base_case=1, updated_at=?
-            WHERE scenario_id=? AND user_id=?
-            """,
-            (_now_utc().isoformat(), scenario_id, user_id),
-        )
-        if cur.rowcount == 0:
+        target = cur.fetchone()
+        if target is None:
             return None
+        now = _now_utc().isoformat()
+        cur.execute(
+            "UPDATE scenarios SET is_base_case=0, updated_at=? "
+            "WHERE user_id=? AND project_id=? AND is_base_case=1 AND scenario_id<>?",
+            (now, user_id, target[0], scenario_id),
+        )
+        cur.execute(
+            "UPDATE scenarios SET is_base_case=1, updated_at=? WHERE scenario_id=? AND user_id=? AND project_id=?",
+            (now, scenario_id, user_id, target[0]),
+        )
+        if cur.rowcount != 1:
+            raise RuntimeError("promote_scenario_to_base_case: target row vanished")
     return get_scenario(scenario_id, user_id)
 
 

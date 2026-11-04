@@ -1,0 +1,58 @@
+# CI V4 release / deploy gate. A deploy or release workflow MUST call this (needs:) with the exact commit it ships.
+# Passes only for a CI V4 FULL run of this repository on the identical sha that concluded success; otherwise blocks.
+name: CI V4 Release Gate
+on:
+  workflow_call:
+    inputs:
+      sha:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-hex commit to release
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  release-gate:
+    name: CI V4 release gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Find the newest successful FULL run on this exact head sha
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$'
+          RUN=$(gh api "repos/${{ github.repository }}/actions/workflows/ci_v4_full.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          if [ -z "$RUN" ]; then echo "::error::RELEASE BLOCKED: no successful CI V4 FULL run on $SHA"; exit 1; fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-v4-full-record
+          path: full
+          run-id: ${{ steps.find.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Verify FULL PASS bound to identical sha/tree (re-derived junit, run re-verified with GitHub)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m tools.ci_v4_release_gate --sha '${{ inputs.sha }}' --repo-slug '${{ github.repository }}' --policy docs/ci_v4/ci-v4-policy.json --record full/ci-v4-full-record.json --junit-dir full/junit --output gate/release-gate.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-v4-release-gate
+          path: gate/
+          if-no-files-found: error

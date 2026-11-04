@@ -250,7 +250,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         # 6. nothing outside the authorised finite set changed since main; protected prefixes can never move
         allowed = set(owners) | PINNED_PATHS | SEAL_PATHS
         changed = _git(root, 'diff', '--name-only', '--no-renames', MAIN, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in allowed and not _wf06b_allows(p, root, ref)) or p.startswith(_PROTECTED_PREFIXES) for p in changed):
+        if any((p not in allowed and not _wf06b_allows(p, root, ref)) or (p.startswith(_PROTECTED_PREFIXES) and not _wf06b_ci_owns(p, root, ref)) for p in changed):
             return False
         if ref is None:
             untracked = _git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()
@@ -259,6 +259,15 @@ def _exact_blobs_ok(repo=None, ref=None):
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
+
+
+def _wf06b_ci_owns(path, root, ref):
+    """CI V4 (Owner CI policy 2026-11-04): only a literal CI V4 ``.github/`` path, through WF-06B -> U1 -> the exact low-level CI V4 cohort."""
+    try:
+        from tests import wf06b_scope as W
+    except ModuleNotFoundError:
+        return False
+    return callable(getattr(W, '_u1_ci_owns', None)) and W._u1_ci_owns(path, root, ref)
 
 
 def _wf06b_supersedes(path, value, root, ref):

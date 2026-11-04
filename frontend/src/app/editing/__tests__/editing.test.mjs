@@ -313,3 +313,57 @@ test('sectionOfField keeps debt scalars in financing and everything else in inpu
   assert.equal(FS.sectionOfField('project_setup.technical.p50_hours'), 'inputs');
   assert.equal(FS.sectionOfField('opex.lines.security'), 'inputs');
 });
+
+// ── R1: a PPA document serialised under one saved version is never replayed under another ──
+{
+  const ident = (h, scenario = null) => ({ projectId: 'SYN-P', workbookVersion: 'wb', contentHash: h, activeScenario: scenario, lastRunSnapshotId: null });
+  const docH1 = JSON.stringify({ version: 2, streams: [{ id: 'ppa', price_eur_mwh: 60, indexation_rate: 0.02 }] });
+  const priceEdit = { section: 'ppa', key: 'ppa:price_eur_mwh', label: 'Price', unit: 'EUR/MWh', baseline: '55', value: '60' };
+  const staged = (h, source) => {
+    let s = S.initialState(ident(h));
+    s = S.pendingReducer(s, { type: 'replaceSection', section: 'ppa', edits: [priceEdit] });
+    return S.pendingReducer(s, { type: 'document', section: 'ppa', json: docH1, ...(source ? { source } : {}) });
+  };
+
+  test('R1: H1 -> 409 -> H2 identity refresh cannot emit the H1 PPA document as a valid Save All', () => {
+    let s = staged('H1');
+    assert.equal(A.buildSaveAllRequest(s, ident('H1'), 'csrf', 'r1').ok, true);
+    s = S.pendingReducer(s, { type: 'rebase', identity: ident('H2'), baselines: {} });
+    const built = A.buildSaveAllRequest(s, ident('H2'), 'csrf', 'r2');
+    assert.equal(built.ok, false);
+    assert.match(built.reason, /conflict|older saved contract|different version/);
+    assert.equal(s.documents.ppa, docH1);               // the draft intent is kept for review, never discarded
+    assert.equal(S.conflicted(s).length, 1);            // and shown as a conflict
+    assert.equal(S.blockingReason(s) !== null, true);
+  });
+
+  test('R1: the binding survives rebase, undo and an unrelated section edit', () => {
+    let s = staged('H1', { projectId: 'SYN-P', activeScenario: null, contentHash: 'H1' });
+    s = S.pendingReducer(s, { type: 'rebase', identity: ident('H2'), baselines: {} });
+    s = S.pendingReducer(s, { type: 'stage', edit: { section: 'inputs', key: 'a', label: 'A', unit: '', baseline: '1', value: '2' } });
+    s = S.pendingReducer(s, { type: 'undo' });
+    assert.deepEqual(s.documentSources.ppa, { projectId: 'SYN-P', activeScenario: null, contentHash: 'H1' });
+    assert.equal(A.buildSaveAllRequest(s, ident('H2'), 'csrf', 'r3').ok, false);
+  });
+
+  test('R1: re-serialising the document against the new version (explicit re-stage) is accepted', () => {
+    let s = staged('H1');
+    s = S.pendingReducer(s, { type: 'rebase', identity: ident('H2'), baselines: {} });
+    s = S.pendingReducer(s, { type: 'replaceSection', section: 'ppa', edits: [priceEdit] });
+    s = S.pendingReducer(s, { type: 'document', section: 'ppa', json: docH1, source: { projectId: 'SYN-P', activeScenario: null, contentHash: 'H2' } });
+    assert.equal(A.buildSaveAllRequest(s, ident('H2'), 'csrf', 'r4').ok, true);
+  });
+
+  test('R1: another scenario or project never accepts the document either', () => {
+    const s = staged('H1');
+    assert.equal(A.buildSaveAllRequest(s, ident('H1', 'scn-2'), 'csrf', 'r5').ok, false);
+    assert.equal(A.buildSaveAllRequest(s, { ...ident('H1'), projectId: 'OTHER' }, 'csrf', 'r6').ok, false);
+  });
+
+  test('R1: scalar-only Save All is unaffected by the PPA binding', () => {
+    let s = S.initialState(ident('H1'));
+    s = S.pendingReducer(s, { type: 'stage', edit: { section: 'inputs', key: 'project_setup.technical.p50_hours', label: 'P50', unit: 'h', baseline: '1555', value: '1611' } });
+    s = S.pendingReducer(s, { type: 'rebase', identity: ident('H1'), baselines: {} });
+    assert.equal(A.buildSaveAllRequest(s, ident('H1'), 'csrf', 'r7').ok, true);
+  });
+}

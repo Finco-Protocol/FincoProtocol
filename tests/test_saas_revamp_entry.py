@@ -18,6 +18,12 @@ def client_with_references(tmp_path, monkeypatch):
         yield client
 
 
+def _assert_no_project_for(user_id):
+    from app.persistence.db import get_connection
+    with get_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM projects WHERE user_id=?", (user_id,)).fetchone()[0] == 0
+
+
 def _cookie():
     from app.auth import DEMO_COOKIE_NAME, create_demo_session_token, new_demo_user_id
     user_id = new_demo_user_id()
@@ -128,12 +134,15 @@ def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_refe
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services import project_library_service
     reference = get_reference_by_template_source("generic_solar_reference")
-    _, cookies = _cookie()
+    user_id, cookies = _cookie()
 
-    def failed_clone(**kwargs):
+    def failed_clone(*args, **kwargs):
         raise RuntimeError("private-payload-marker")
 
+    # #419 Correction K: since R18 the canonical unkeyed clone runs through the atomic ``_create_working_copy`` lifecycle (the public
+    # ``create_working_copy`` wraps that same function), so the fault is injected on the ACTIVE clone path. Same 500 / safe-body contract.
     monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
+    monkeypatch.setattr(project_library_service, "_create_working_copy", failed_clone)
     response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}", cookies=cookies,
         headers={"HX-Request": "true"},
@@ -148,18 +157,23 @@ def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_refe
     assert "module=" in caplog.text
     assert "function=failed_clone" in caplog.text
     assert "lineno=" in caplog.text
+    assert "HX-Redirect" not in response.headers and "location" not in response.headers      # never a false success
+    _assert_no_project_for(user_id)
 
 
 def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services import project_library_service
     reference = get_reference_by_template_source("generic_solar_reference")
-    _, cookies = _cookie()
+    user_id, cookies = _cookie()
 
-    def failed_clone(**kwargs):
+    def failed_clone(*args, **kwargs):
         raise RuntimeError("private-payload-marker")
 
+    # #419 Correction K: since R18 the canonical unkeyed clone runs through the atomic ``_create_working_copy`` lifecycle (the public
+    # ``create_working_copy`` wraps that same function), so the fault is injected on the ACTIVE clone path. Same 500 / safe-body contract.
     monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
+    monkeypatch.setattr(project_library_service, "_create_working_copy", failed_clone)
     response = post_valid_csrf(client_with_references,
         f"/library/clone/{reference.project_id}", cookies=cookies,
     )
@@ -173,3 +187,5 @@ def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_
     assert "module=" in caplog.text
     assert "function=failed_clone" in caplog.text
     assert "lineno=" in caplog.text
+    assert "HX-Redirect" not in response.headers and "location" not in response.headers      # never a false success
+    _assert_no_project_for(user_id)

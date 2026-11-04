@@ -151,6 +151,12 @@ def _u1():
     return U
 
 
+def _u1_ci_owns(path, repo, ref):
+    """CI V4 (Owner CI policy 2026-11-04): a literal CI V4 ``.github/``/``tools/`` path, only through U1's bounded later-CI hook (exact CI V4 cohort)."""
+    U = _u1()
+    return U is not None and callable(getattr(U, '_later_ci_owns', None)) and U._later_ci_owns(path, repo, ref)
+
+
 def _u1_owns(path, repo, ref):
     """A path of the closed PR-U1 cohort, only while that cohort is itself exact (its check is low level and never calls this module)."""
     U = _u1()
@@ -250,7 +256,7 @@ def _exact_blobs_ok(repo=None, ref=None):
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        if any((p not in OWNED_PATHS and p != MANIFEST and not _u1_owns(p, root, ref)) or p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS
+        if any((p not in OWNED_PATHS and p != MANIFEST and not _u1_owns(p, root, ref)) or ((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not _u1_ci_owns(p, root, ref))
                for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state

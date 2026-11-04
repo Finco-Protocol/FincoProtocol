@@ -1,0 +1,360 @@
+{
+  "schema": "FINCO_CI_V4_POLICY_V1",
+  "semantics": "FAST and RISK report SELECTED / NOT SELECTED nodes. A non-selected test is never reported as PASS. Only the FULL regression is a complete-regression proof.",
+  "default_tier_for_unknown_path": "risk",
+  "dependency_escalation": {
+    "fast_max_dependent_modules": 60,
+    "note": "More dependent test modules than this in FAST escalates to RISK (fail closed)."
+  },
+  "tiers": {
+    "fast": {
+      "target_minutes": [
+        5,
+        15
+      ],
+      "p95_goal_minutes": 20
+    },
+    "risk": {
+      "target_minutes": [
+        15,
+        35
+      ],
+      "p95_goal_minutes": 45
+    },
+    "full": {
+      "target": "separate, nightly + release gate"
+    }
+  },
+  "control_paths": [
+    ".github/**",
+    "tools/ci_*",
+    "tools/public_safety_scan.py",
+    "docs/ci_v4/**",
+    "pytest.ini",
+    "tests/conftest.py",
+    "tests/fin_v2_cohorts.py",
+    "tests/*_scope.py",
+    "tests/test_ci_*.py",
+    "tests/ci_*",
+    "requirements*.txt",
+    "constraints.txt",
+    "pyproject.toml"
+  ],
+  "rules": [
+    {
+      "id": "docs_only_markdown",
+      "tier": "fast",
+      "why": "Prose cannot change behaviour; source safety and provenance still run.",
+      "patterns": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "THIRD_PARTY_NOTICES.md",
+        "MIGRATION_CONTROL.md",
+        "FIN_V2_3_INTEGRATION_HANDOFF.md",
+        "OPUS_V1_REVIEW/**",
+        "docs/**/*.md"
+      ],
+      "suites": []
+    },
+    {
+      "id": "test_module_self",
+      "tier": "fast",
+      "why": "A changed test module is itself selected (plus the baseline).",
+      "patterns": [
+        "tests/test_*.py"
+      ],
+      "suites": [],
+      "select_self": true
+    },
+    {
+      "id": "radar_yield_non_financial",
+      "tier": "fast",
+      "why": "Radar/Yield/Protocol surfaces are outside the financial engine; own path-filtered workflows still run.",
+      "patterns": [
+        "finco_radar/**",
+        "finco_yield/**",
+        "finco_protocol/**",
+        "research/**",
+        "examples/**"
+      ],
+      "suites": [],
+      "select_dependents": true
+    },
+    {
+      "id": "financial_ui",
+      "tier": "risk",
+      "why": "Financial UI and the compiled React bundle: full F01 matrix, browser probes.",
+      "patterns": [
+        "frontend/src/app/**",
+        "static/react/**"
+      ],
+      "suites": [
+        "risk_security",
+        "risk_ui_build",
+        "risk_f01",
+        "risk_save_integrity"
+      ],
+      "select_dependents": true
+    },
+    {
+      "id": "frontend_non_financial",
+      "tier": "risk",
+      "why": "Compiled React bundle must equal its source; browser probes.",
+      "patterns": [
+        "frontend/**",
+        "static/**"
+      ],
+      "suites": [
+        "risk_security",
+        "risk_ui_build"
+      ],
+      "select_dependents": true
+    },
+    {
+      "id": "financial_core",
+      "tier": "risk",
+      "why": "Engine, core, domain: oracle, native V10/V11 identity, DSCR/bankability/goal seek.",
+      "patterns": [
+        "financial_engine/**",
+        "finco_core/**",
+        "domain/**"
+      ],
+      "suites": [
+        "risk_finance",
+        "risk_f01",
+        "risk_f01_native",
+        "risk_security",
+        "risk_save_integrity"
+      ],
+      "select_dependents": true
+    },
+    {
+      "id": "application_surface",
+      "tier": "risk",
+      "why": "Auth/CSRF/tenancy, Run, Save All, PPA/versions/scenarios, lifecycle, adapters.",
+      "patterns": [
+        "app/**",
+        "main_web.py",
+        "main_api.py",
+        "main_mcp.py",
+        "finco_app/**",
+        "utils/**",
+        "_warm.py"
+      ],
+      "suites": [
+        "risk_security",
+        "risk_finance",
+        "risk_f01",
+        "risk_save_integrity"
+      ],
+      "select_dependents": true
+    },
+    {
+      "id": "deploy_and_deps",
+      "tier": "risk",
+      "why": "Dependencies and deploy files change the runtime.",
+      "patterns": [
+        "deploy/**",
+        "requirements*.txt",
+        "constraints.txt",
+        "pyproject.toml",
+        "pytest.ini"
+      ],
+      "suites": [
+        "risk_security",
+        "risk_finance"
+      ],
+      "select_dependents": false
+    },
+    {
+      "id": "ci_control",
+      "tier": "risk",
+      "why": "CI/governance self-modification is judged by the BASE policy and must not shrink its own selection.",
+      "patterns": [
+        ".github/**",
+        "tools/**",
+        "docs/ci_v4/**",
+        "docs/ci_v3/**",
+        "docs/ci/**",
+        "tests/conftest.py",
+        "tests/fin_v2_cohorts.py",
+        "tests/*_scope.py",
+        "tests/ci_*",
+        "tests/*governance*.py"
+      ],
+      "suites": [
+        "risk_governance",
+        "risk_security"
+      ],
+      "select_dependents": true,
+      "control": true
+    },
+    {
+      "id": "governance_manifests",
+      "tier": "risk",
+      "why": "Exact-source manifests pin blobs; any change is governance.",
+      "patterns": [
+        "docs/**/*.json",
+        "docs/**/*.txt",
+        "evidence/**"
+      ],
+      "suites": [
+        "risk_governance"
+      ],
+      "control": true
+    },
+    {
+      "id": "test_support_files",
+      "tier": "risk",
+      "why": "Non test_ files under tests/ (fixtures, helpers, browser roles) can affect many modules.",
+      "patterns": [
+        "tests/**"
+      ],
+      "suites": [
+        "risk_security",
+        "risk_finance"
+      ],
+      "select_dependents": true
+    }
+  ],
+  "suites": {
+    "fast_baseline": {
+      "kind": "pytest",
+      "why": "Always: smoke, key security/tenancy/save/dataloss negatives, CI V4 self-tests.",
+      "modules": [
+        "tests/test_public_engine_smoke.py",
+        "tests/test_public_ui_smoke.py",
+        "tests/test_save_all_atomic_v1.py",
+        "tests/test_rc_sec_csrf_successor.py",
+        "tests/test_wf07_revenue_csrf.py",
+        "tests/test_f04_signing_secret_fail_closed.py",
+        "tests/test_ci_v4_select.py",
+        "tests/test_ci_v4_schedule.py",
+        "tests/test_ci_v4_release_gate.py",
+        "tests/test_ci_v4_aggregate.py"
+      ],
+      "no_skip": true
+    },
+    "risk_security": {
+      "kind": "pytest",
+      "why": "CSRF/XSS/tenancy/secret negatives.",
+      "modules": [
+        "tests/test_rc7b_quarterly_csrf_successor.py",
+        "tests/test_rcm_adapter_csrf_successor.py",
+        "tests/test_wf09_csrf_successor.py",
+        "tests/test_financing_f35b_csrf.py"
+      ],
+      "no_skip": true
+    },
+    "risk_finance": {
+      "kind": "pytest",
+      "why": "Goal seek, DSCR sculpting, bankability, PPA economics, F01 rate contract.",
+      "modules": [
+        "tests/test_goal_seek_v1.py",
+        "tests/test_h2_dscr_sculpting_feasibility.py",
+        "tests/test_model_financing_bankability.py",
+        "tests/test_wf04_dscr_contract_terms.py",
+        "tests/test_rc7_revenue_ppa_v3_economics.py",
+        "tests/test_rc4_ppa_financial_acceptance.py",
+        "tests/test_finval_rate_contract.py",
+        "tests/test_finval_rate_run_acceptance.py"
+      ]
+    },
+    "risk_save_integrity": {
+      "kind": "pytest",
+      "why": "Save All / PPA stale edit / save-run chain data-loss cases.",
+      "modules": [
+        "tests/test_wf04_save_all_integration.py",
+        "tests/test_ppa01_save_scenario_run_chain.py",
+        "tests/test_ppa01_post_merge_authority.py"
+      ],
+      "no_skip": true
+    },
+    "risk_f01": {
+      "kind": "f01_job",
+      "browser": true,
+      "why": "Runs ONLY in the dedicated F01 job (ci_v4_f01_job.yml: four-vertical Chromium round trip, no-skip assertion, 4 browser cases); never duplicated in shards.",
+      "modules": [
+        "tests/finval_f01_browser_acceptance.py",
+        "tests/test_finval_f01_complete.py",
+        "tests/test_finval_f01_http_lifecycle.py",
+        "tests/test_finval_f01_creation.py",
+        "tests/test_finval_f01_hash_integrity.py",
+        "tests/test_finval_f01_fixture_integrity.py",
+        "tests/test_finval_f01_scope.py",
+        "tests/test_finval_rate_successor.py"
+      ],
+      "no_skip": true
+    },
+    "risk_f01_native": {
+      "kind": "native_docker",
+      "why": "Twenty exact Python V10/V11 cases with edited rates (unchanged approved native image).",
+      "modules": [
+        "tests/test_finval_f01_native_identity.py"
+      ]
+    },
+    "risk_ui_build": {
+      "kind": "pytest",
+      "why": "React contract/harvest guard tests (pytest); typecheck, build and served-bundle identity run in the static job on every PR.",
+      "modules": [
+        "tests/test_model_react_poc_v1.py",
+        "tests/test_model_react_source_harvest_v1.py"
+      ]
+    },
+    "risk_governance": {
+      "kind": "pytest",
+      "why": "Exact-source cohorts, CI contracts.",
+      "modules": [
+        "tests/test_u1_scope.py",
+        "tests/test_wf06b_scope.py",
+        "tests/test_ci_acceptance.py",
+        "tests/test_ci_optimization_v2.py",
+        "tests/test_ci_v4_scope.py",
+        "tests/test_post413_r1_scope.py",
+        "tests/test_post413_r17_scope.py",
+        "tests/test_post413_r18_scope.py",
+        "tests/test_u2_scope.py",
+        "tests/test_rcm_governance.py"
+      ]
+    }
+  },
+  "workers": {
+    "fast": {
+      "max": 2,
+      "min_module_seconds_per_extra_worker": 240,
+      "fixed_overhead_seconds_per_worker": 90
+    },
+    "risk": {
+      "max": 8,
+      "min_module_seconds_per_extra_worker": 300,
+      "fixed_overhead_seconds_per_worker": 120
+    },
+    "full": {
+      "max": 8,
+      "min_module_seconds_per_extra_worker": 600,
+      "fixed_overhead_seconds_per_worker": 150
+    },
+    "note": "Measured JUnit weights (run 41782498276). FAST: 1 runner (baseline ~2 min tests < one worker's setup). RISK: adaptive, +1 worker only while it saves >=300 s of predicted critical path, cap 8 (governance-heavy PRs such as #419: 4w~61 min, 6w~42 min, 8w~32 min predicted, +4% runner-minutes). FULL keeps the CI V3 harness (8 workers); see benchmark doc."
+  },
+  "indivisible_heavy_modules": [
+    "tests/test_model_react_rcux_goal_seek_targets_v1.py"
+  ],
+  "release_gate": {
+    "full_workflow_path": ".github/workflows/ci_v4_full.yml",
+    "record_artifact": "ci-v4-full-record",
+    "full_min_collected_nodes": 21000,
+    "max_age_days": 30,
+    "max_skipped": null,
+    "allowed_events": [
+      "schedule",
+      "workflow_dispatch"
+    ],
+    "note": "min nodes mirrors the owner statement (>21k; V3 at 800395f executed 23,770). Skips: only node ids in skip_baseline (603 reviewed natural skips); any new skip blocks. Changing either needs an owner-authorised policy change.",
+    "skip_baseline": "docs/ci_v4/full_skip_baseline.json"
+  },
+  "weights": {
+    "file": "docs/ci_v4/module_weights.json",
+    "provenance": "run 41782498276 junit (all 8 workers)"
+  }
+}

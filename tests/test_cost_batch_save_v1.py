@@ -430,16 +430,27 @@ def test_single_row_command_still_works_after_a_batch_with_the_returned_token(wo
     res = _post(world["owner"], rec, tok, lines)
     assert res.status_code == 200
     new_hash = re.search(r'id="v2-cost-authority-capex"[^>]*data-content-hash="([0-9a-f]+)"', res.text).group(1)
-    row = _rows("capex_sub_lines", rec.project_id)[0]
     from bs4 import BeautifulSoup
-    form = BeautifulSoup(res.text, "html.parser").select_one(f'form[data-sub-line-id="{row["sub_line_id"]}"]')
+    soup = BeautifulSoup(res.text, "html.parser")
+    rows = _rows("capex_sub_lines", rec.project_id)
+    # #419 Correction K: sub_line_id is a random UUID, so "the first row" was a random row. C.13 Construction Contingency is a calculated
+    # line under the typed contingency-percentage authority (its own % form, no single-row amount editor) and was picked ~1 run in 31.
+    # Every OTHER active CAPEX row must keep its single-row editor after a batch; C.13 must not gain one.
+    forms = {f.get("data-sub-line-id") for f in soup.select("form[data-sub-line-id]")}
+    editable = [r for r in rows if r["parent_category_code"] != "C.13"]
+    assert editable and all(r["sub_line_id"] in forms for r in editable)
+    assert all(r["sub_line_id"] not in forms for r in rows if r["parent_category_code"] == "C.13")
+    row = editable[0]
+    form = soup.select_one(f'form[data-sub-line-id="{row["sub_line_id"]}"]')
     row_csrf = form.select_one('input[name="csrf_token"]')["value"]
     single = world["owner"].post("/v2/capex/line/update", data={
         "project": rec.project_code, "sub_line_id": row["sub_line_id"], "label": row["label"], "amount_keur": "42",
         "row_version": row["updated_at"], "workbook_version": tok["version"], "content_hash": new_hash, "csrf_token": row_csrf},
         headers={"HX-Request": "true"})
     assert single.status_code == 200 and "data-cost-error" not in single.text
-    assert _rows("capex_sub_lines", rec.project_id)[0]["amount_keur"] == 42.0
+    # the SAME row that was edited (by id, not "first by random UUID") now holds the new amount; nothing else changed it
+    after = {r["sub_line_id"]: r for r in _rows("capex_sub_lines", rec.project_id)}
+    assert after[row["sub_line_id"]]["amount_keur"] == 42.0
 
 
 def test_batch_module_adds_no_financial_authority():

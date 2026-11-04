@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { saveRevenueContracts } from "../api";
 import { PercentInput } from "../editing/PercentInput";
 import { useOptionalChanges } from "../editing/ChangesProvider";
+import { sameSource, type DocumentSource } from "../editing/pendingEdits";
 import { ppaBaselines, ppaStageInputs } from "../editing/ppaStaging";
 import { plain } from "../productLanguage";
 import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
@@ -98,6 +99,9 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
   const store = useOptionalChanges();
   const storeRef = useRef(store);
   storeRef.current = store;
+  // The identity this editor's draft was authored against: the staged document keeps its own binding across remounts.
+  const currentSource = (): DocumentSource => ({ projectId: project, activeScenario: store?.identity?.activeScenario ?? null, contentHash: save.content_hash });
+  const draftSource = useRef<DocumentSource>(store?.state.documentSources.ppa ?? currentSource());
   const [draft, setDraft] = useState<ContractModel | null>(() => {
     const staged = store?.state.documents.ppa;
     if (staged && savedModel) {
@@ -106,6 +110,9 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
     }
     return savedModel ? cloneModel(savedModel) : null;
   });
+  // True when the saved contract moved after the draft was authored: the draft is kept for review but can never be saved over the new contract.
+  const [staleDraft, setStaleDraft] = useState<boolean>(() => !!store?.state.documents.ppa && !sameSource(draftSource.current, currentSource()));
+  const previousRaw = useRef(raw);
   const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState(false);
@@ -127,11 +134,26 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
       setLockedByUnknown(false);
       return;
     }
-    if (live && live.identity && staged.length > 0 && savedModel) {
-      // The saved contract moved while edits were staged: keep the draft, flag the edits (never a silent rebase).
+    if (live && live.identity && staged.length > 0 && savedModel && draft) {
+      if (sameJson(previousRaw.current, raw)) {
+        // Only the identity moved (another section was saved): the contract itself is unchanged, so the staged document is re-bound to the new version.
+        previousRaw.current = raw;
+        draftSource.current = currentSource();
+        setStaleDraft(false);
+        const inputs = ppaStageInputs(savedModel, withSourceDefaults(draft), Object.fromEntries(Object.entries(pctErrors)));
+        live.replaceSection("ppa", inputs);
+        live.setDocument("ppa", inputs.length ? buildContractPayload(raw, withSourceDefaults(draft)) : null, draftSource.current);
+        return;
+      }
+      // The saved contract moved while edits were staged: keep the draft, flag the edits (never a silent rebase), and never save it over the new contract.
+      previousRaw.current = raw;
+      setStaleDraft(true);
       live.rebase(live.identity, ppaBaselines(savedModel, staged));
       return;
     }
+    previousRaw.current = raw;
+    draftSource.current = currentSource();
+    setStaleDraft(false);
     setDraft(savedModel ? cloneModel(savedModel) : null);
     setShowErrors(false);
     setLockedByUnknown(false);
@@ -143,20 +165,39 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
   // Mirror the draft into the pending-change store: the field list for review and the exact contract document for Save All.
   useEffect(() => {
     const live = storeRef.current;
-    if (!live || !savedModel || !draft || creating) return;
+    if (!live || !savedModel || !draft || creating || staleDraft) return;      // a stale draft is never re-serialised onto the new contract
     const filled = withSourceDefaults(draft);
     const inputs = ppaStageInputs(savedModel, filled, Object.fromEntries(Object.entries(pctErrors)));
     live.replaceSection("ppa", inputs);
-    live.setDocument("ppa", inputs.length ? buildContractPayload(raw, filled) : null);
+    live.setDocument("ppa", inputs.length ? buildContractPayload(raw, filled) : null, draftSource.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, pctErrors]);
+
+  // The shell learned a newer project identity (for example after a refused Save All) than this projection: read the saved contract again.
+  const identityHash = store?.identity?.contentHash ?? null;
+  const refetchedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!identityHash || identityHash === save.content_hash || refetchedFor.current === identityHash || !store?.edits.some((e) => e.section === "ppa")) return;
+    refetchedFor.current = identityHash;
+    onSaved?.();
+  }, [identityHash, save.content_hash]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const discardStale = () => {
+    storeRef.current?.revertSection("ppa");
+    previousRaw.current = raw;
+    draftSource.current = currentSource();
+    setDraft(savedModel ? cloneModel(savedModel) : null);
+    setStaleDraft(false);
+    setPctErrors({});
+    setShowErrors(false);
+  };
 
   const errors = useMemo(() => (draft ? validateContractModel(withSourceDefaults(draft)) : {}), [draft]);
   const editCount = savedModel && draft ? countContractEdits(savedModel, draft) : creating && draft ? 1 : 0;
   useReportDirty("revenue-ppa", editCount);
   useReportPending("revenue-ppa", inFlight || lockedByUnknown);
   const singleFlight = useSingleFlight();
-  const readOnly = protectedReference || inFlight || lockedByUnknown;
+  const readOnly = protectedReference || inFlight || lockedByUnknown || staleDraft;
 
   const update = (index: number, patch: Partial<StreamDraft>) => {
     setDraft((prev) => prev ? { ...prev, streams: prev.streams.map((s, i) => (i === index ? { ...s, ...patch } : s)) } : prev);
@@ -166,7 +207,7 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
   const submit = (model: ContractModel, originalRaw: string) => singleFlight(() => runSubmit(model, originalRaw));
 
   const runSubmit = async (model: ContractModel, originalRaw: string) => {
-    if (lockedByUnknown || refreshing) return;      // never submit an identity older than the project; the typed draft stays untouched
+    if (lockedByUnknown || refreshing || staleDraft) return;      // never submit an identity older than the project, nor a draft authored against an older contract; the typed draft stays untouched
     setShowErrors(true);
     // A NEW contract left without a source reference records that it was entered here (never an invented external citation).
     const filled = withSourceDefaults(model);
@@ -417,6 +458,13 @@ export function PPAEditorView({ project, protectedReference, contracts, save, re
     <section className="fm-card fm-section wf-section" aria-label="Revenue and PPA contract editor" data-ppa-editor="guided">
       <div className="fm-card-title"><h3>Revenue &amp; PPA contracts</h3>
         <span>{scope}{contracts.overridden ? " · scenario-overridden" : ""} · {technology || "technology unknown"}</span></div>
+      {staleDraft && (
+        <div className="fm-info-note" role="alert" data-ppa-stale="true">
+          <strong>The saved contract changed after you started editing.</strong> Your PPA changes are kept below and listed under Changes as a conflict, but they will not
+          be saved over the newer contract. Load the saved contract, then enter your changes again.
+          <div><button type="button" className="fm-btn" data-ppa-stale-discard="true" onClick={discardStale}>Discard my PPA changes and load the saved contract</button></div>
+        </div>
+      )}
       {draft && renderEditor(draft, false)}
     </section>
   );
