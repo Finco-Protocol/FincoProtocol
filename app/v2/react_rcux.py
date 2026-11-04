@@ -2,7 +2,8 @@
 
 The pinned ``react_workspace_router`` includes this router once; every RC-UX adapter module is added here, so the pinned file does
 not change again.  Each adapter lives in its own ``react_*`` module and states its own authority boundary.  Feature flag:
-``FINCO_MODEL_REACT_V1`` (checked inside each adapter).
+``FINCO_MODEL_REACT_V1`` (checked inside each adapter); the G10 Last-Run adapter additionally
+requires its own default-OFF gate ``FINCO_G10_RUN_OPEX_PANEL`` (owner ratification pending).
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from app.v2.react_credit_headroom import router as _credit_headroom_router
 from app.v2.react_goal_seek_targets import router as _goal_seek_targets_router
 from app.v2.react_import import router as _import_router
 from app.v2.react_opex_projection import router as _opex_projection_router
+from app.v2.react_opex_run_projection import router as _opex_run_projection_router
 from app.v2.react_overview import router as _overview_router
 from app.v2.react_projects import router as _projects_router
 from app.v2.react_run_statements import router as _run_statements_router
@@ -33,10 +35,11 @@ router.include_router(_goal_seek_targets_router)
 router.include_router(_import_router)
 router.include_router(_capex_router)
 router.include_router(_opex_projection_router)
+router.include_router(_opex_run_projection_router)
 router.include_router(_overview_router)
 router.include_router(_projects_router)
 router.include_router(_run_statements_router)
 router.include_router(_trust_router)
 router.include_router(_whatif_router)
 
-RCUX_ADAPTERS = ("react_capex", "react_compare", "react_compare_projects", "react_construction_timing", "react_credit_decision", "react_credit_headroom", "react_goal_seek_targets", "react_import", "react_opex_projection", "react_overview", "react_projects", "react_run_statements", "react_trust", "react_whatif")
+RCUX_ADAPTERS = ("react_capex", "react_compare", "react_compare_projects", "react_construction_timing", "react_credit_decision", "react_credit_headroom", "react_goal_seek_targets", "react_import", "react_opex_projection", "react_opex_run_projection", "react_overview", "react_projects", "react_run_statements", "react_trust", "react_whatif")
