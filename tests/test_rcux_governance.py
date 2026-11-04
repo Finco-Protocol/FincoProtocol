@@ -248,7 +248,13 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     # tools only); admitted only through U1's bounded later-CI hook while that cohort is registered and exact. No existing workflow or tool is admitted.
     from tests import u1_scope as U1
     hits = [p for p in hits if not U1._later_ci_owns(p, S.ROOT, None)]
+    # Seventh: the closed Workstream-B cohort (tests/post413_o1_scope.py; O1 / G7 / G-U2-1 / D7, every behaviour off by default or additive, no Owner decision
+    # approved here) owns a literal, finite path set. Only a path of that set at exactly its pinned blob, while the cohort and the composite are valid, is attributed to it.
+    from tests import post413_o1_scope as O1
+    hits = [p for p in hits if not (p in O1.OWNED_PATHS and O1.matches(p, (S.ROOT / p).read_bytes()))]
     assert hits == [], hits
+    assert not O1.matches("app/capex_profiles/binding.py", (S.ROOT / "app/capex_profiles/binding.py").read_bytes())      # a sibling file the cohort does not own
+    assert not O1.matches("app/v2/router.py", b"x = 1\n")                                                                 # an owned path at foreign bytes
     for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
         assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]

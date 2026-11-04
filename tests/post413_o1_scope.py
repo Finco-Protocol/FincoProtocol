@@ -68,6 +68,13 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/test_o1_bess_contracts_token.py',
     'tests/test_o1_contracts_base_token.py',
     'tests/test_post413_o1_scope.py',
+    'tests/test_post413_r17_scope.py',
+    'tests/test_post413_r18_scope.py',
+    'tests/test_post413_r1_scope.py',
+    'tests/test_rcux_governance.py',
+    'tests/test_u1_scope.py',
+    'tests/test_u2_scope.py',
+    'tests/test_wf06b_scope.py',
 ))
 # Reviewed, bounded hooks in the PR-U1 scope module and the registry (each pinned below). This cohort's own module is owned too.
 GOVERNANCE_PATHS = frozenset((
@@ -94,6 +101,13 @@ SUPERSEDED = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
+    'tests/test_post413_r17_scope.py',
+    'tests/test_post413_r18_scope.py',
+    'tests/test_post413_r1_scope.py',
+    'tests/test_rcux_governance.py',
+    'tests/test_u1_scope.py',
+    'tests/test_u2_scope.py',
+    'tests/test_wf06b_scope.py',
 ))
 # No owned path may ever sit under a protected prefix; this is checked on the literal set.
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/')
