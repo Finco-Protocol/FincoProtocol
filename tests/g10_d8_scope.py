@@ -28,6 +28,8 @@ SCHEMA = 'G10_D8_OPEX_COMPLETION_EXACT_SOURCE_V1'
 SOURCE_PATHS = frozenset((
     'app/v2/react_opex_run_projection.py',
     'frontend/src/app/projection/OpexRunProjection.tsx',
+    'frontend/src/app/projection/opexRunRequest.ts',
+    'frontend/src/app/projection/__tests__/opexRunRequest.test.mjs',
 ))
 TEST_AND_DOC_PATHS = frozenset((
     'tests/test_g10_d8_opex_completion.py',
