@@ -81,14 +81,20 @@ class SaveAllInput:
     cells: Sequence[tuple[str, str]] = field(default_factory=tuple)
     contracts_json: Optional[str] = None
     cost_lines: Sequence[CostLineEdit] = field(default_factory=tuple)
+    #: O1: token of the persisted contracts document the editor loaded. Part of the idempotency fingerprint ONLY when supplied, so every
+    #: body stored before O1 keeps its fingerprint.
+    contracts_base_token: Optional[str] = None
 
     def canonical_body(self) -> str:
-        return json.dumps({
+        body = {
             "workbook_version": self.workbook_version, "content_hash": self.content_hash, "scenario_id": self.scenario_id,
             "cells": [list(c) for c in self.cells], "contracts_json": self.contracts_json,
             "cost_lines": [[l.kind, l.sub_line_id, l.label, str(l.amount_keur), l.row_version,
                             None if l.inflation_pct is None else str(l.inflation_pct), l.notes] for l in self.cost_lines],
-        }, sort_keys=True, separators=(",", ":"))
+        }
+        if self.contracts_base_token is not None:
+            body["contracts_base_token"] = self.contracts_base_token
+        return json.dumps(body, sort_keys=True, separators=(",", ":"))
 
 
 @dataclass(frozen=True)
@@ -126,7 +132,7 @@ def _validate_shape(data: SaveAllInput) -> list:
 def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAllResult:
     """Apply every submitted section atomically.  Raises on ANY failure with nothing persisted."""
     from app.persistence.workspace_repository import v2_apply_batch_draft_update_in_tx
-    from app.workbook.revenue_contracts_service import save_contracts_in_tx
+    from app.workbook.revenue_contracts_service import check_base_token_in_tx, save_contracts_in_tx
 
     _capex_project_allows(project_record)
     _opex_project_allows(project_record)
@@ -159,6 +165,10 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
             from app.workbook.update_service import StaleContentError
             raise StaleContentError("SAVE_ALL_SCENARIO_MISMATCH")
 
+        if data.contracts_json is not None:
+            # O1: the whole-document version is verified BEFORE the first mutation of any section (cells run before contracts below).
+            check_base_token_in_tx(cur, owner=user_id, project_id=project_id, base_token=data.contracts_base_token)
+
         if data.cells:
             v2_apply_batch_draft_update_in_tx(
                 cur, user_id=user_id, project_id=project_id, expected_workspace_id=ws_full["workspace_id"],
@@ -166,7 +176,7 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
                 expected_workbook_version=data.workbook_version, updates=[(f, v) for f, v in data.cells], skip_cas=True)
         if data.contracts_json is not None:
             save_contracts_in_tx(cur, owner=user_id, project_id=project_id, expected_hash=data.content_hash,
-                                 raw=data.contracts_json, skip_cas=True)
+                                 raw=data.contracts_json, skip_cas=True, check_token=False)
         if parsed_lines:
             apply_cost_lines_in_tx(cur, project_id, parsed_lines)
 

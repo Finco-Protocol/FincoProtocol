@@ -1284,6 +1284,15 @@ def _build_dc_revenue_reconciliation(pis) -> list[tuple[str, object, str]]:
     ]
 
 
+def _contracts_base_token(ws):
+    """O1: token of the persisted contracts document this editor view was read from (echoed so every writer can send it back)."""
+    from app.workbook.revenue_contracts_service import read_document_token
+    try:
+        return read_document_token(ws.user_id, ws.project_id)
+    except Exception:  # noqa: BLE001 - fail closed: no token means the strict writer refuses; a lenient deployment keeps working
+        return ""
+
+
 def _build_revenue_contract_editor(pis, ws):
     import json
     from app.workbook.revenue_multistream import FIELD_ID, SNAPSHOT_KEY
@@ -1377,6 +1386,7 @@ def _build_revenue_contract_editor(pis, ws):
         ppa_term_years = None
     return {"project_cod": project_cod, "calendar_preview": calendar_preview, "calendar_preview_error": calendar_preview_error, "operating_years": list(operating_years.values()), "ppa_term_years": ppa_term_years, "operating_window": operating_window, "operating_starts": operating_starts, "operating_boundaries": operating_boundaries, "active": config is not None, "raw": raw, "scope": scope, "technology": technology,
             "overridden": overridden, "rows": payload.get("streams", []), "rounding_preview": rounding_preview,
+            "base_token": _contracts_base_token(ws),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
             "period_axis": axis}
 
@@ -1393,7 +1403,7 @@ async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_ac
     project = str(form.get("project") or "").strip()
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
-    from app.workbook.revenue_contracts_service import save_contracts, RevenueContractConflict
+    from app.workbook.revenue_contracts_service import save_contracts, ContractsTokenError, RevenueContractConflict
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return JSONResponse({"error": "Project not found"}, status_code=404)
@@ -1402,7 +1412,10 @@ async def v2_revenue_contracts(request: Request, _: None = Depends(require_v2_ac
     try:
         save_contracts(owner=owner, project_id=record.project_id,
                        expected_hash=str(form.get("content_hash") or ""), raw=form.get("contracts", ""),
-                       inherit=form.get("action") == "inherit")
+                       inherit=form.get("action") == "inherit",
+                       base_token=(str(form.get("contracts_base_token")) if form.get("contracts_base_token") is not None else None))
+    except ContractsTokenError as exc:       # O1: typed, reload:true, nothing saved, no other writer's document in the answer
+        return JSONResponse({"error": str(exc), "code": exc.code, "reload": True}, status_code=409)
     except (ValueError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=409 if isinstance(exc, RevenueContractConflict) else 422)
     ws = get_workspace_state(owner, record.project_id)

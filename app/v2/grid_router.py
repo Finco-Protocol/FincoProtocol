@@ -328,6 +328,7 @@ class SaveAllBody(BaseModel):
     request_id: str = Field(..., min_length=8, max_length=64)
     cells: list[GridCell] = Field(default_factory=list, max_length=200)
     contracts_json: Optional[str] = Field(None, max_length=250_000)
+    contracts_base_token: Optional[str] = Field(None, max_length=128)
     cost_lines: list[SaveAllCostLine] = Field(default_factory=list, max_length=200)
 
 
@@ -349,12 +350,12 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     from app.v2.cost_batch_commands import CostBatchConflictError, CostBatchInvalidError, CostLineEdit
     from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError, OpexVersionMismatchError
     from app.v2.save_all_commands import SaveAllError, SaveAllInput, SaveAllRequestIdReused, save_all
-    from app.workbook.revenue_contracts_service import RevenueContractConflict
+    from app.workbook.revenue_contracts_service import ContractsTokenError, RevenueContractConflict
 
     data = SaveAllInput(
         request_id=body.request_id, workbook_version=body.workbook_version, content_hash=body.content_hash,
         scenario_id=body.scenario_id, cells=tuple((c.field_id, c.value) for c in body.cells),
-        contracts_json=body.contracts_json,
+        contracts_json=body.contracts_json, contracts_base_token=body.contracts_base_token,
         cost_lines=tuple(CostLineEdit(kind=l.kind, sub_line_id=l.sub_line_id, label=l.label, amount_keur=l.amount_keur,
                                       row_version=l.row_version, inflation_pct=l.inflation_pct, notes=l.notes)
                          for l in body.cost_lines))
@@ -366,6 +367,9 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
         return _json({"ok": False, "code": exc.code, "message": str(exc)}, 409)
     except SaveAllError as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc), **exc.detail}, 422)
+    except ContractsTokenError as exc:       # O1: typed, reload:true, nothing saved, no other writer's document in the answer
+        return _json({"ok": False, "code": exc.code, "reload": True, "section": "contracts",
+                      "message": "The Revenue & PPA contracts changed after this page loaded. Nothing was saved; reload and review them."}, 409)
     except (StaleContentError, VersionMismatchError, CapexStaleIdentityError, OpexStaleIdentityError,
             CapexVersionMismatchError, OpexVersionMismatchError, RevenueContractConflict) as exc:
         return _json({**stale, "code": "STALE_CONTENT", "detail": str(exc)}, 409)
