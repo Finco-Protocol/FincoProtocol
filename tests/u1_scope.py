@@ -151,6 +151,20 @@ def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
 
+# Immutable git-object facts only: a commit id fixes its tree, the blobs below it and its ancestry relative to another FIXED commit for good, so these
+# answers can never change. Mutable state (ancestry of the evaluated head, the working tree, the index, modes, untracked files, the diff against BASE)
+# is NEVER cached: those are read afresh on every call, so no verdict can outlive the state it judged.
+_OBJECT_FACTS = {}
+
+
+def _object_fact(root, *args):
+    key = (str(root),) + args
+    if key not in _OBJECT_FACTS:
+        _OBJECT_FACTS[key] = _git(root, *args)
+    return _OBJECT_FACTS[key]
+
+
+
 def _read(root, path, ref):
     return (Path(root) / path).read_bytes() if ref is None else _git(root, 'show', ref + ':' + path)
 
@@ -260,17 +274,17 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         _git(root, 'merge-base', '--is-ancestor', INTEGRATION, head)
-        _git(root, 'merge-base', '--is-ancestor', BASE, INTEGRATION)
-        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+        _object_fact(root, 'merge-base', '--is-ancestor', BASE, INTEGRATION)
+        if _object_fact(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
-        if _git(root, 'rev-parse', INTEGRATION + '^{tree}').decode().strip() != INTEGRATION_TREE:
+        if _object_fact(root, 'rev-parse', INTEGRATION + '^{tree}').decode().strip() != INTEGRATION_TREE:
             return False
         paths = sorted(base_blobs)
         # 2. the blob recorded for every superseded path is what git holds at BASE (#410) and at INTEGRATION (#414); history is not rewritten here
-        at_base = _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
+        at_base = _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split()
         if at_base != [base_blobs[p] for p in paths]:
             return False
-        at_integration = _git(root, 'rev-parse', *[INTEGRATION + ':' + p for p in paths]).decode().split()
+        at_integration = _object_fact(root, 'rev-parse', *[INTEGRATION + ':' + p for p in paths]).decode().split()
         if at_integration != [integration_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path

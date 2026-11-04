@@ -80,6 +80,20 @@ def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
 
+# Immutable git-object facts only: a commit id fixes its tree and the blobs below it for good, so ``rev-parse <BASE commit>^{tree}`` and
+# ``rev-parse <BASE commit>:<path>`` can never change. Mutable state (ancestry of the evaluated head, the working tree, the index, modes, untracked
+# files, the diff against BASE) is NEVER cached: those are read afresh on every call, so no verdict can outlive the state it judged.
+_OBJECT_FACTS = {}
+
+
+def _object_fact(root, *args):
+    key = (str(root),) + args
+    if key not in _OBJECT_FACTS:
+        _OBJECT_FACTS[key] = _git(root, *args)
+    return _OBJECT_FACTS[key]
+
+
+
 def _read(root, path, ref):
     return (Path(root) / path).read_bytes() if ref is None else _git(root, 'show', ref + ':' + path)
 
@@ -143,11 +157,11 @@ def _exact_blobs_ok(repo=None, ref=None):
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
-        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+        if _object_fact(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
         # 2. the blob recorded for every superseded path is what git holds at BASE (#413); history is not rewritten here
         paths = sorted(base_blobs)
-        if _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
+        if _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
             return False
         # 3. one exact blob per owned path
         if ref is None:
@@ -161,7 +175,9 @@ def _exact_blobs_ok(repo=None, ref=None):
             if listed != pins:
                 return False
         # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)
-        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        # Only the protected subtrees can fail this check, so the diff is limited to them (same verdict as the whole-tree diff, without a full stat of the checkout).
+        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
+                       *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
         if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS for p in changed):
             return False
         # 5. no owned file is executable or a link in the evaluated state

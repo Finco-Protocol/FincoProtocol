@@ -14,7 +14,7 @@ Termination: every check is low level. It reads git objects and this cohort's ma
 (only ``valid`` imports the registry lazily, and nothing low level calls ``valid``). No result cache outlives one outer governance call (``scoped``).
 """
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import subprocess
@@ -104,6 +104,20 @@ def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
 
+# Immutable git-object facts only: a commit id fixes its tree and the blobs below it for good, so ``rev-parse <BASE commit>^{tree}`` and
+# ``rev-parse <BASE commit>:<path>`` can never change. Mutable state (ancestry of the evaluated head, the working tree, the index, modes, untracked
+# files, the diff against BASE) is NEVER cached: those are read afresh on every call, so no verdict can outlive the state it judged.
+_OBJECT_FACTS = {}
+
+
+def _object_fact(root, *args):
+    key = (str(root),) + args
+    if key not in _OBJECT_FACTS:
+        _OBJECT_FACTS[key] = _git(root, *args)
+    return _OBJECT_FACTS[key]
+
+
+
 def _read(root, path, ref):
     return (Path(root) / path).read_bytes() if ref is None else _git(root, 'show', ref + ':' + path)
 
@@ -177,7 +191,26 @@ def _sibling_owns(path, root, ref):
     return False
 
 
+def _sibling_modules():
+    import importlib
+    loaded = []
+    for name in SIBLING_COHORTS:
+        try:
+            loaded.append(importlib.import_module(name))
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+    return loaded
+
+
 def _exact_blobs_ok(repo=None, ref=None):
+    with ExitStack() as siblings:      # one verdict per sibling cohort for THIS check (dropped on exit; never kept across calls)
+        for m in _sibling_modules():
+            siblings.enter_context(m.scoped())
+        return _exact_blobs_ok_inner(repo, ref)
+
+
+def _exact_blobs_ok_inner(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
@@ -187,11 +220,11 @@ def _exact_blobs_ok(repo=None, ref=None):
         head = ref or 'HEAD'
         # 1. immutable provenance: the literal base commit and tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
-        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+        if _object_fact(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
         # 2. the recorded BASE blob of every superseded path is what git holds at BASE
         paths = sorted(base_blobs)
-        if _git(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
+        if _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
             return False
         # every owned path that is NOT superseded is new at BASE
         new = sorted(OWNED_PATHS - SUPERSEDED)

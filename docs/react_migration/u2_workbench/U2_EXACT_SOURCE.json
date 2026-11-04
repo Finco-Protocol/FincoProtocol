@@ -46,8 +46,8 @@
     "tests/test_u2_profile_import.py": "a4c7e9df6a611a9b10b5f9908d575b108a7abe02",
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
     "tests/test_u2_scope.py": "a9a33547c479932904c959d97e35bc2cd78a52fe",
-    "tests/u1_scope.py": "0e5afe75c3738ce748088aa6fb01308cd2473c8e",
+    "tests/u1_scope.py": "a6d61958df17f2ff6cfcd8acd009987b98107479",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "99c89c31e13afe6d0068a62054f0f06755322640"
+    "tests/u2_scope.py": "8c8fa9ac322c181c678e62e7e2c2b78a92ee73b8"
   }
 }
