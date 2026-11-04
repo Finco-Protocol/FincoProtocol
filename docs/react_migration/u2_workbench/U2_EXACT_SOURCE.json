@@ -18,7 +18,7 @@
   "schema_version": "U2_COST_COMPLETION_EXACT_SOURCE_V1",
   "source_blobs": {
     "app/v2/react_opex_lines.py": "4e264a364e0ebee210b72172ddc718e1f1d5e1f2",
-    "app/v2/react_workspace_router.py": "e058a8cac8692e8f8e45840150b7cf268a9264ea",
+    "app/v2/react_workspace_router.py": "c767a5834ad5d1f05f2f57207c5dabfb7815621d",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_CONTRACT.md": "91f1b06dfd7501c9070f277ca1e531e40feb57a1",
     "docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_PROOF.md": "665d9ae5f2ae0240d111df1c1f89223dd563c3b9",
     "docs/react_migration/u2_workbench/D7_ATOMICITY_DECISION_PACKET.md": "f12010a90f357656893688c10041a050331482e8",
