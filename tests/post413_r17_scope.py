@@ -34,6 +34,7 @@ SOURCE_PATHS = frozenset((
     'app/persistence/scenarios_repository.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'tests/test_wf06b_scope.py',
     'tests/test_u1_scope.py',
     'docs/react_migration/post413_r17/P00.md',
     'tests/test_post413_r17_scope.py',
@@ -48,6 +49,7 @@ GOVERNANCE_PATHS = frozenset((
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
 # Owned paths that exist at BASE. Older cohorts pin these at their BASE blob; the BASE blob of each is recorded in the manifest and re-verified.
 SUPERSEDED = frozenset((
+    'tests/test_wf06b_scope.py',
     'tests/test_u1_scope.py',
     'app/persistence/_helpers.py',
     'app/persistence/scenarios_repository.py',
@@ -122,9 +124,29 @@ def scoped():
         _SCOPE.pop()
 
 
+# While an enclosing cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict shares THAT
+# scope's memo: it lives exactly as long as the enclosing outer call, is dropped with it and never outlives or crosses an outer call.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
+        memo = _enclosing_call_memo()
+        if memo is None:
+            return _exact_blobs_ok(repo, ref)
+        key = (__name__ + '.exact_blobs_ok', str(repo if repo is not None else ROOT), ref)
+        if key not in memo:
+            memo[key] = _exact_blobs_ok(repo, ref)
+        return memo[key]
     key = (str(repo if repo is not None else ROOT), ref)
     memo = _SCOPE[-1]
     if key not in memo:

@@ -242,9 +242,30 @@ def scoped():
             _SCOPE.pop()
 
 
+# Cohort modules ABOVE this one in the delegation chain that open a one-outer-call scope for their own verdicts. While one of them is inside its
+# scope no file is written and nothing is mutated (that is the scope's contract), so this cohort's verdict can share THAT scope's memo: it lives
+# exactly as long as the enclosing outer call, is dropped with it, and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
+        memo = _enclosing_call_memo()
+        if memo is None:
+            return _exact_blobs_ok(repo, ref)
+        key = ('tests.u1_scope.exact_blobs_ok', str(repo if repo is not None else ROOT), ref)
+        if key not in memo:
+            memo[key] = _exact_blobs_ok(repo, ref)
+        return memo[key]
     key = (str(repo if repo is not None else ROOT), ref)
     memo = _SCOPE[-1]
     if key not in memo:

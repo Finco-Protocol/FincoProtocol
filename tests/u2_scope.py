@@ -43,6 +43,7 @@ SOURCE_PATHS = frozenset((
     'app/v2/react_workspace_router.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
+    'tests/test_wf06b_scope.py',
     'docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_CONTRACT.md',
     'docs/react_migration/u2_workbench/D13_PROFILE_LIFECYCLE_PROOF.md',
     'docs/react_migration/u2_workbench/D7_ATOMICITY_DECISION_PACKET.md',
@@ -73,6 +74,7 @@ OWNED_PATHS = PRESENTATION_PATHS | SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANC
 # ``app/v2/react_workspace_router.py``: the U2 include sits in its own marked section BEFORE the historical RC-M block, so the RC-M
 # (exactly its five includes) and RC-UX (exactly ``['_rcux_router']``) sentinel checks are unchanged; admitted only through this cohort's exact pin.
 SUPERSEDED = frozenset((
+    'tests/test_wf06b_scope.py',
     'app/v2/react_workspace_router.py',
     'frontend/src/app/CostWorkbench.tsx',
     'frontend/src/app/capex/CapexStudio.tsx',
@@ -162,9 +164,29 @@ def scoped():
         _SCOPE.pop()
 
 
+# While an enclosing cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict shares THAT
+# scope's memo: it lives exactly as long as the enclosing outer call, is dropped with it and never outlives or crosses an outer call.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
+        memo = _enclosing_call_memo()
+        if memo is None:
+            return _exact_blobs_ok(repo, ref)
+        key = (__name__ + '.exact_blobs_ok', str(repo if repo is not None else ROOT), ref)
+        if key not in memo:
+            memo[key] = _exact_blobs_ok(repo, ref)
+        return memo[key]
     key = (str(repo if repo is not None else ROOT), ref)
     memo = _SCOPE[-1]
     if key not in memo:
