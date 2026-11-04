@@ -119,7 +119,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ci-v4-plan
-          path: plan
+          path: ${{ runner.temp }}/ci-v4/plan
       - name: Install (RISK also installs the pinned Chromium so selected browser modules execute instead of skipping)
         env:
           TIER: ${{ needs.plan.outputs.tier }}
@@ -127,13 +127,14 @@ jobs:
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
           if [ "$TIER" != fast ]; then pip install playwright==1.63.0 && python -m pip check && playwright install chromium --with-deps; fi
+      # Plan and output live OUTSIDE the checkout: an untracked directory in the tested tree would (correctly) make the exact-source cohorts fail.
       - name: Run the planned shard (selected modules only)
-        run: python -m tools.ci_v4_shard --plan plan/ci-v4-plan.json --index ${{ matrix.index }} --output out
+        run: python -m tools.ci_v4_shard --plan "$RUNNER_TEMP/ci-v4/plan/ci-v4-plan.json" --index ${{ matrix.index }} --output "$RUNNER_TEMP/ci-v4/out"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: ci-v4-shard-${{ matrix.index }}
-          path: out/
+          path: ${{ runner.temp }}/ci-v4/out/
           if-no-files-found: error
   f01:
     needs: plan

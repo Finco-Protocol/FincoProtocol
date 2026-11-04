@@ -12,7 +12,7 @@
   "source_blobs": {
     ".github/workflows/ci_v4_f01_job.yml": "99ca73daefbca15bd1642520efb4f26db00430be",
     ".github/workflows/ci_v4_full.yml": "000381a448f385358cbc6a2737d960676eed4dca",
-    ".github/workflows/ci_v4_pr.yml": "6c8b8d1bb44c90d48e48702c11066b6a3d5d328b",
+    ".github/workflows/ci_v4_pr.yml": "f8941fc5d2d95fe241a7045ebdc85184d0d56604",
     ".github/workflows/ci_v4_release_gate.yml": "adb2f7423bbd47af0f8773f5d2f1f062dede85a0",
     "docs/ci_v4/CI_V4_OWNER_DECISION_AND_RISK_MATRIX_HR.md": "c98715d79289ba942834bb5f822c8bc0606192c6",
     "docs/ci_v4/CI_V4_WORKER_BENCHMARK_AND_SCHEDULING_HR.md": "8e8fb83925bf7bcb01d33b3d46c32d84f1f96349",
