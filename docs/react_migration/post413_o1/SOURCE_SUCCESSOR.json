@@ -67,6 +67,6 @@
     "tests/test_u2_scope.py": "0565ac45742e89001dde78bc9a71b4e33ecac37c",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "9acfa7565e5cf9d95f8f2eebc4c4deb303a663d4",
-    "tests/u2_scope.py": "9f43a3fe614f0bab4c2e3f4033c183860ec31eec"
+    "tests/u2_scope.py": "5fa3165845dd4fd1d294ed5d6dd3b5c0c63872f6"
   }
 }
