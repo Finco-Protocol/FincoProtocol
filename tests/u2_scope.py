@@ -199,6 +199,37 @@ def exact_blobs_ok(repo=None, ref=None):
 SIBLING_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope')
 
 
+def _predecessor_manifest_follows_tree(path, root, ref):
+    root = Path(root) if root is not None else ROOT
+    """Option-(b) integration admission (Owner-approved, 2026-11-05): the immediate predecessor cohort's OWN
+    manifest, when this PR's governed shared-file integration re-pins it. Non-recursive BY DESIGN — it makes
+    no cohort-exact call (u1.exact re-enters u2 via supersedes, so calling it from inside u2's exact
+    evaluation would recurse). Bounded mechanically: the manifest's base ancestry is unchanged, its key set is
+    unchanged, and every re-pinned entry is a path U2 itself supersedes, re-pinned to exactly U2's own
+    tree-verified pin (stage 7 already proved those pins equal the working tree). Anything else — a moved
+    non-superseded path, a changed base, a different blob — fails closed."""
+    if path != 'docs/react_migration/u1_workbench/SOURCE_SUCCESSOR.json':
+        return False
+    try:
+        new = json.loads(_read(root, path, ref))
+        old = json.loads(_git(root, 'show', BASE + ':' + path))
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return False
+    if not (isinstance(new, dict) and isinstance(old, dict)):
+        return False
+    ns, os_ = new.get('source_blobs'), old.get('source_blobs')
+    if not (isinstance(ns, dict) and isinstance(os_, dict)) or set(ns) != set(os_):
+        return False
+    nb, ob = new.get('base_blobs'), old.get('base_blobs')
+    if not (isinstance(nb, dict) and isinstance(ob, dict)) or set(nb) != set(ob) or nb != ob:
+        return False
+    if any(new[k] != old[k] for k in new if k not in ('source_blobs', 'base_blobs')):
+        return False
+    changed = {p for p in ns if ns[p] != os_[p]}
+    own_pins = manifest(root, ref).get('source_blobs', {})
+    return bool(changed) and changed <= SUPERSEDED and all(ns[p] == own_pins.get(p) for p in changed)
+
+
 def _sibling_owns(path, root, ref):
     import importlib
     for name in SIBLING_COHORTS:
@@ -268,7 +299,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
         # A path owned by a REGISTERED, EXACT sibling post-#413 cohort (R17 / R18 / R1) is that cohort's exact-blob responsibility; U2 itself still owns
         # none of the R1 files, and every other stranger path, protected prefix and forbidden path still fails closed.
-        if any(((p not in OWNED_PATHS and p != MANIFEST and not _sibling_owns(p, root, ref)) or ((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not any(getattr(m, 'ci_owns', lambda *a: False)(p, root, ref) for m in _sibling_modules()))
+        if any(((p not in OWNED_PATHS and p != MANIFEST and not _sibling_owns(p, root, ref) and not _predecessor_manifest_follows_tree(p, root, ref)) or ((p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS) and not any(getattr(m, 'ci_owns', lambda *a: False)(p, root, ref) for m in _sibling_modules()))
                 or (p in R1_PATHS and not _sibling_owns(p, root, ref))) for p in changed):
             return False
         # 5. no owned file is executable or a link; no unowned untracked file in a working tree
