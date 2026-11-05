@@ -50,8 +50,8 @@
     "frontend/src/app/editing/pendingEdits.ts": "dec4c4cb016636394007e1ba0510c41e603df8df",
     "frontend/src/app/editing/saveAll.ts": "30af5183a60cd2cd0b430df20ab180759f0d3fe8",
     "frontend/src/app/workflow/PPAEditorView.tsx": "5de1df8aee8ebe10a7cbdbca4260ace01abe9d6f",
-    "static/react/finco-react.js": "4241feeb40a671069c74eb23b92342663880d18f",
-    "tests/fin_v2_cohorts.py": "6fe1bb54f42912f97497f1060c09efc79dd74736",
+    "static/react/finco-react.js": "1b153451b2ec608ee18b47805da128a9334045c7",
+    "tests/fin_v2_cohorts.py": "7d27994629192c9420691dc20bdebaa214549c13",
     "tests/post413_o1_scope.py": "684a6a5e810db39b9fb74f10d038006ba12db5ab",
     "tests/test_d7_save_all_profile_atomic.py": "552db96af6b9406d22b730e9b45c7554d84674f4",
     "tests/test_g7_add_line_amount.py": "404ec5e41d9eff8c523efa8022864823ecbef395",
@@ -64,9 +64,9 @@
     "tests/test_post413_r1_scope.py": "f66e92de95fec29d39a1f811cf6922f84c5c9eb9",
     "tests/test_rcux_governance.py": "23acad023973d9590cbdc5472be24b0888ffc282",
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
-    "tests/test_u2_scope.py": "d24662023ab13c5353a9de1d3ee3bb9a6021a31e",
+    "tests/test_u2_scope.py": "0565ac45742e89001dde78bc9a71b4e33ecac37c",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
-    "tests/u1_scope.py": "c5a965a150e7820c132eef1492cbc0927e44c831",
-    "tests/u2_scope.py": "3dbcd1b9e0d778452930faad8f217acde7b86a06"
+    "tests/u1_scope.py": "9acfa7565e5cf9d95f8f2eebc4c4deb303a663d4",
+    "tests/u2_scope.py": "9f43a3fe614f0bab4c2e3f4033c183860ec31eec"
   }
 }
