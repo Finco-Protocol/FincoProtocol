@@ -85,20 +85,53 @@ def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
     assert not O.supersedes(ROUTE, pins[SERVICE])                                                # one path's pin is never another path's value
 
 
+CI_V4_MANIFEST = 'docs/ci_v4/SOURCE_SUCCESSOR.json'
+CI_V4_OWN_PREFIXES = ('.github/workflows/ci_v4_', 'tools/ci_v4_', 'docs/ci_v4/', 'tests/test_ci_v4_', 'tests/ci_v4_scope.py')
+
+
+def _ci_v4_own_later_paths(repo=None):
+    """CI V4 node-split correction (Owner instruction 2026-11-04, PR-A): the ONLY later movement admitted in the CI V4 sibling manifest.
+
+    Literal CI V4 files of the CI V4 cohort itself (its workflows, ``tools/ci_v4_*``, ``docs/ci_v4/``, its own tests and cohort module), never a
+    path this cohort owns or co-pins, and only while the registered CI V4 cohort is exact. Every other sibling manifest keeps the original rule.
+    """
+    from tests import ci_v4_scope as C4
+    if C4.__name__ not in C.COHORT_MODULES or not C4.exact_blobs_ok(repo):
+        return frozenset()
+    return frozenset(p for p in C4.OWNED_PATHS if p.startswith(CI_V4_OWN_PREFIXES) and p not in O.OWNED_PATHS)
+
+
 def test_shared_sibling_pins_equal_this_cohorts_pin_and_nothing_else_moved():
-    """The jointly pinned blobs are re-pinned to the SAME literal blob in every sibling manifest; no other pin of any sibling manifest changed since BASE."""
+    """The jointly pinned blobs are re-pinned to the SAME literal blob in every sibling manifest; no other pin of any sibling manifest changed since BASE
+    (sole bounded exception: the CI V4 cohort's own literal CI files in its own manifest, while that cohort is registered and exact)."""
     pins = O.manifest()['source_blobs']
     moved_total = 0
+    later_ci = _ci_v4_own_later_paths()
     for manifest in sorted(SIBLINGS):
         before = json.loads(_git(O.ROOT, 'show', O.BASE + ':' + manifest))
         now = json.loads((O.ROOT / manifest).read_text())
         for key in ('base', 'base_tree', 'base_blobs', 'schema_version'):
             assert before.get(key) == now.get(key), (manifest, key)
-        assert set(before['source_blobs']) == set(now['source_blobs'])
-        moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'][p]}
-        assert moved <= O.OWNED_PATHS and all(now['source_blobs'][p] == pins[p] for p in moved), manifest
-        moved_total += len(moved)
+        own_later = later_ci if manifest == CI_V4_MANIFEST else frozenset()
+        assert set(before['source_blobs']) <= set(now['source_blobs']) and set(now['source_blobs']) - set(before['source_blobs']) <= own_later, manifest
+        moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'].get(p)}
+        assert moved - own_later <= O.OWNED_PATHS and all(now['source_blobs'][p] == pins[p] for p in moved - own_later), manifest
+        moved_total += len(moved - own_later)
     assert moved_total > 0
+
+
+def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(wt):
+    """Negatives for the bounded CI V4 exception: a shared/co-pinned path, a non-CI path, a drifted CI V4 file each fail closed."""
+    from tests import ci_v4_scope as C4
+    later = _ci_v4_own_later_paths()
+    assert later and all(p.startswith(CI_V4_OWN_PREFIXES) for p in later)
+    assert not later & O.OWNED_PATHS and 'tests/u1_scope.py' not in later and 'tests/fin_v2_cohorts.py' not in later
+    assert not later & {'tests/test_cost_batch_save_v1.py', 'tests/test_saas_revamp_entry.py', 'tests/u2_scope.py'}   # product / shared files stay out
+    assert '.github/workflows/public_safety_and_smoke.yml' not in later and 'tools/ci_v3_production.py' not in later
+    _flip(wt / 'tools/ci_v4_shard.py')                                                          # a drifted CI V4 file: cohort inexact -> no exception
+    assert not C4.exact_blobs_ok(wt) and _ci_v4_own_later_paths(wt) == frozenset()
+    _git(wt, 'checkout', '--', 'tools/ci_v4_shard.py')
+    assert _ci_v4_own_later_paths(wt) == later
 
 
 @pytest.mark.parametrize('path', sorted(O.OWNED_PATHS))
