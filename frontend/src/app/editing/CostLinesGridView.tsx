@@ -463,7 +463,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         ) : col === "status" ? (
           <td key={col} className="ci-col-status">{edit ? <span className="ws2-chip ws2-chip-changed">Changed</span> : editable ? <span className="ws2-chip ws2-chip-ok">Editable</span> : <span className="ws2-chip">Locked</span>}</td>
         ) : col === "infl" ? (
-          <td key={col} className="ci-num" title="The base amount follows the project's OPEX escalation.">—</td>
+          <td key={col} className="ci-num" title="No project-wide OPEX escalation input exists. Each base amount escalates at its factory item's own yearly rate (for example 2% on solar and wind items; driver-derived rows at their driver rate); the projection lists each row's rate.">—</td>
         ) : <td key={col} />)}
       </tr>
     );

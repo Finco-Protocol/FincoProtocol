@@ -8,6 +8,7 @@ import { CapexStudio } from "./capex/CapexStudio";
 import { CostLinesGridView } from "./editing/CostLinesGridView";
 import { ImportWorkspace } from "./importer/ImportWorkspace";
 import { OpexLineYears } from "./projection/OpexLineYears";
+import { OpexRunProjection } from "./projection/OpexRunProjection";
 import { OpexProjection } from "./projection/OpexProjection";
 import { COST_VIEWS, type CostSheetId, type CostView, type WorkspaceDestination } from "./workspaceNavigation";
 
@@ -56,6 +57,7 @@ export function CostWorkbench({ project, sheet, view, protectedReference, reload
         <div data-opex-years="true">
           <OpexProjection project={project} reloadKey={reloadKey} />
           <OpexLineYears project={project} reloadKey={reloadKey} />
+          <OpexRunProjection project={project} reloadKey={reloadKey} />
         </div>
       )}
     </section>

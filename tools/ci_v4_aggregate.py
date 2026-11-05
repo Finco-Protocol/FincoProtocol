@@ -8,11 +8,12 @@ against an independent re-collection (``verify_node_split``).
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import sys
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 class AggregateError(ValueError):
@@ -53,8 +54,43 @@ def read_junit(path):
             status = "error"
         elif c.find("skipped") is not None:
             status = "skipped"
-        out.append({"classname": c.get("classname", ""), "name": c.get("name", ""), "status": status, "time": float(c.get("time") or 0)})
+        skip = c.find("skipped")
+        out.append({"classname": c.get("classname", ""), "name": c.get("name", ""), "status": status, "time": float(c.get("time") or 0),
+                    "file": c.get("file"), "skip_attributes": dict(skip.attrib) if skip is not None else {},
+                    "skip_text": skip.text if skip is not None else None,
+                    "skip_reason": skip.get("message", "") if skip is not None else "",
+                    "collection_shape": len(c) == 1 and skip is not None and len(skip) == 0})
     return out
+
+
+def _collection_skip_module(case, selected, no_skip, split_modules):
+    """Recognize pytest's collection report, never a blank-class ordinary testcase.
+
+    Observed in run 42042550762: empty classname, dotted module name, one
+    <skipped message="collection skipped"> containing repr((absolute_path,
+    line, 'Skipped: reason')). All three module spellings must agree exactly.
+    JUnit is runner evidence, not an authentication boundary by itself.
+    """
+    if (case["classname"] or case["status"] != "skipped" or not case["collection_shape"]
+            or case["skip_attributes"] != {"message": "collection skipped"}):
+        return None
+    module = selected.get(case["name"])
+    if module is None or module in no_skip or module in split_modules:
+        return None
+    try:
+        location = ast.literal_eval(case["skip_text"] or "")
+    except (ValueError, SyntaxError, TypeError):
+        return None
+    if (not isinstance(location, tuple) or len(location) != 3 or not isinstance(location[0], str)
+            or type(location[1]) is not int or location[1] < 1 or not isinstance(location[2], str)
+            or not location[2].startswith("Skipped: ") or not location[2][len("Skipped: "):].strip()):
+        return None
+    source = PurePosixPath(location[0])
+    if (not source.is_absolute() or ".." in source.parts or str(source) != location[0]
+            or not location[0].endswith("/" + module) or case["file"] not in (None, module, location[0])):
+        return None
+    case["skip_reason"] = location[2][len("Skipped: "):]
+    return module
 
 
 def _expected_shard_modules(plan, index):
@@ -241,6 +277,8 @@ def aggregate(plan, shard_records, junit_paths, pytest_tier_skip_policy=None, no
                 problems.append("duplicate node %s::%s across junit files" % key)
             seen.add(key)
             c["module"] = _module_of(c["classname"], selected)
+            if c["module"] is None:
+                c["module"] = _collection_skip_module(c, selected, set(plan.get("no_skip_modules", [])), split_modules)
             cases.append(c)
     per_module = {m: 0 for m in plan["pytest_modules"]}
     counts = {"passed": 0, "failed": 0, "error": 0, "skipped": 0}
@@ -274,6 +312,8 @@ def aggregate(plan, shard_records, junit_paths, pytest_tier_skip_policy=None, no
         "plan_digest": plan["digest"], "rule_ids": plan["rule_ids"], "triggers": plan["triggers"],
         "selected_modules": len(plan["pytest_modules"]), "executed_nodes": len(cases),
         "counts": counts, "skipped_ids": sorted(skipped_ids), "skipped_label": "SKIPPED (not PASS)", "not_selected": plan["not_selected"],
+        "skipped_cases": [{"id": "%s::%s" % (c["classname"], c["name"]), "module": c["module"],
+                           "status": "SKIPPED", "reason": c["skip_reason"]} for c in cases if c["status"] == "skipped"],
         "workers": len(shard_records), "actual_critical_path_s": round(max(wall, default=0.0), 1),
         "actual_runner_minutes": round(sum(float(r.get("runner_s", r.get("wall_s", 0))) for r in shard_records) / 60.0, 2),
         "predicted_critical_path_s": plan.get("schedule", {}).get("predicted_critical_path_s"),

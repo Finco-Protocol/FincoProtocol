@@ -3,7 +3,10 @@
 Every negative mutates a real checkout of the committed HEAD (shared object database, private working tree) and asks the real cohort functions and the
 real composite registry; each negative is followed by a restoration proof. The checks need only git objects, so they stay fast.
 """
+import ast
+from contextlib import ExitStack
 import json
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -87,37 +90,167 @@ def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
 
 CI_V4_MANIFEST = 'docs/ci_v4/SOURCE_SUCCESSOR.json'
 CI_V4_OWN_PREFIXES = ('.github/workflows/ci_v4_', 'tools/ci_v4_', 'docs/ci_v4/', 'tests/test_ci_v4_', 'tests/ci_v4_scope.py')
+U2_MANIFEST = 'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json'
+# Correction I: only these already signed U2 successors; never the whole U2 owned set.
+U2_LATER_PRESENTATION = frozenset(('frontend/src/app/CostWorkbench.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'))
 
 
-def _ci_v4_own_later_paths(repo=None):
+def _tuple_assignment(source, symbol):
+    assignments = [n for n in ast.parse(source).body if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == symbol for t in n.targets)]
+    assert len(assignments) == 1 and isinstance(assignments[0].value, ast.Tuple), symbol
+    value = assignments[0].value
+    members = ast.literal_eval(value)
+    assert all(isinstance(m, str) for m in members) and len(members) == len(set(members)), symbol
+    return value, members
+
+
+def _without_tuple_module(source, symbol, module):
+    """Remove one actual tuple entry, anchored to its assignment; preserve other entries and syntax."""
+    value, members = _tuple_assignment(source, symbol)
+    assert members.count(module) == 1 and len(members) > 1, (symbol, module)
+    index = members.index(module)
+    lines = source.encode().splitlines(keepends=True)
+
+    def offset(node, end=False):
+        return sum(map(len, lines[:(node.end_lineno if end else node.lineno) - 1])) + (node.end_col_offset if end else node.col_offset)
+
+    start = offset(value.elts[index - 1], True) if index else offset(value.elts[0])
+    end = offset(value.elts[index], True) if index else offset(value.elts[1])
+    raw = source.encode()
+    if len(members) == 2:  # keep the remaining single member a tuple (the comma is significant)
+        changed = (raw[:offset(value)] + repr(tuple(m for m in members if m != module)).encode() + raw[offset(value, True):]).decode()
+    else:
+        changed = (raw[:start] + raw[end:]).decode()
+    compile(changed, '<governance-negative>', 'exec')
+    assert changed != source and _tuple_assignment(changed, symbol)[1] == tuple(m for m in members if m != module)
+    return changed
+
+
+def _ci_v4_own_later_paths(repo=None, ref=None):
     """CI V4 node-split correction (Owner instruction 2026-11-04, PR-A): the ONLY later movement admitted in the CI V4 sibling manifest.
 
     Literal CI V4 files of the CI V4 cohort itself (its workflows, ``tools/ci_v4_*``, ``docs/ci_v4/``, its own tests and cohort module), never a
     path this cohort owns or co-pins, and only while the registered CI V4 cohort is exact. Every other sibling manifest keeps the original rule.
     """
     from tests import ci_v4_scope as C4
-    if C4.__name__ not in C.COHORT_MODULES or not C4.exact_blobs_ok(repo):
+    if C4.__name__ not in C.COHORT_MODULES or not C4.exact_blobs_ok(repo, ref):
         return frozenset()
     return frozenset(p for p in C4.OWNED_PATHS if p.startswith(CI_V4_OWN_PREFIXES) and p not in O.OWNED_PATHS)
 
 
-def test_shared_sibling_pins_equal_this_cohorts_pin_and_nothing_else_moved():
-    """The jointly pinned blobs are re-pinned to the SAME literal blob in every sibling manifest; no other pin of any sibling manifest changed since BASE
-    (sole bounded exception: the CI V4 cohort's own literal CI files in its own manifest, while that cohort is registered and exact)."""
-    pins = O.manifest()['source_blobs']
+def _u2_signed_later_pins(repo=None, ref=None):
+    from tests import u2_scope as U2
+    root = Path(repo) if repo is not None else O.ROOT
+    _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
+    if U2.__name__ not in registered or U2.__name__ not in C.COHORT_MODULES or not U2.exact_blobs_ok(root, ref) or not U2.valid(root, ref):
+        return {}
+    signed = U2.manifest(root, ref)['source_blobs']
+    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']
+    return {p: signed[p] for p in U2_LATER_PRESENTATION
+            if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED
+            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)
+            and U2._blob(U2._read(root, p, ref)) == signed[p]}
+
+
+def _audit_shared_sibling_pins(repo=None, ref=None):
+    # No mutation inside this outer call; every verdict is discarded before any tamper control runs.
+    with ExitStack() as scopes:
+        for cohort in C.cohorts():
+            if callable(getattr(cohort, 'scoped', None)):
+                scopes.enter_context(cohort.scoped())
+        return _audit_shared_sibling_pins_in_scope(repo, ref)
+
+
+def _audit_shared_sibling_pins_in_scope(repo, ref):
+    root = Path(repo) if repo is not None else O.ROOT
+    pins = O.manifest(root, ref)['source_blobs']
     moved_total = 0
-    later_ci = _ci_v4_own_later_paths()
+    later_ci, later_u2 = _ci_v4_own_later_paths(root, ref), _u2_signed_later_pins(root, ref)
+    assert not later_ci & O.OWNED_PATHS and not set(later_u2) & (O.OWNED_PATHS | later_ci)
+    evidence = {}
     for manifest in sorted(SIBLINGS):
-        before = json.loads(_git(O.ROOT, 'show', O.BASE + ':' + manifest))
-        now = json.loads((O.ROOT / manifest).read_text())
+        before = json.loads(_git(root, 'show', O.BASE + ':' + manifest))
+        now = json.loads(O._read(root, manifest, ref))
         for key in ('base', 'base_tree', 'base_blobs', 'schema_version'):
             assert before.get(key) == now.get(key), (manifest, key)
-        own_later = later_ci if manifest == CI_V4_MANIFEST else frozenset()
-        assert set(before['source_blobs']) <= set(now['source_blobs']) and set(now['source_blobs']) - set(before['source_blobs']) <= own_later, manifest
+        ci_later = later_ci if manifest == CI_V4_MANIFEST else frozenset()
+        u2_later = set(later_u2) if manifest == U2_MANIFEST else set()
+        assert set(before['source_blobs']) <= set(now['source_blobs']) and set(now['source_blobs']) - set(before['source_blobs']) <= ci_later, manifest
         moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'].get(p)}
-        assert moved - own_later <= O.OWNED_PATHS and all(now['source_blobs'][p] == pins[p] for p in moved - own_later), manifest
-        moved_total += len(moved - own_later)
+        own_moved, ci_moved, u2_moved = moved & O.OWNED_PATHS, moved & ci_later, moved & u2_later
+        assert moved == own_moved | ci_moved | u2_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved))
+        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
+        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
+        evidence[manifest] = {'o1': sorted(own_moved), 'ci': sorted(ci_moved), 'u2': sorted(u2_moved)}
+        moved_total += len(own_moved)
     assert moved_total > 0
+    return evidence
+
+
+def test_shared_sibling_pins_equal_this_cohorts_pin_and_nothing_else_moved():
+    evidence = _audit_shared_sibling_pins()
+    assert set(evidence[U2_MANIFEST]['u2']) == U2_LATER_PRESENTATION
+    assert all(not row['u2'] for name, row in evidence.items() if name != U2_MANIFEST)
+
+
+@pytest.mark.parametrize('change', ['forged_pin', 'stale_pin', 'unsigned_source', 'foreign_path', 'wrong_o1_pin', 'deregistered_u2', 'broken_u2_scope'])
+def test_signed_u2_sibling_admission_rejects_tampering_at_the_evaluated_checkout(wt, change):
+    from tests import u2_scope as U2
+    ui = sorted(U2_LATER_PRESENTATION)[0]
+    target = U2_MANIFEST
+    data = json.loads((wt / target).read_text())
+    if change == 'forged_pin':
+        data['source_blobs'][ui] = '0' * 40
+    elif change == 'stale_pin':
+        data['source_blobs'][ui] = json.loads(_git(wt, 'show', O.BASE + ':' + target))['source_blobs'][ui]
+    elif change == 'foreign_path':
+        data['source_blobs']['frontend/src/app/ForeignSibling.tsx'] = '0' * 40
+    elif change == 'wrong_o1_pin':
+        assert 'tests/u1_scope.py' in O.OWNED_PATHS
+        data['source_blobs']['tests/u1_scope.py'] = '0' * 40
+    elif change == 'unsigned_source':
+        target = ui
+        _flip(wt / target)
+    elif change == 'deregistered_u2':
+        target = 'tests/fin_v2_cohorts.py'
+        registry = wt / target
+        registry.write_text(_without_tuple_module(registry.read_text(), 'COHORT_MODULES', U2.__name__))
+        assert U2.__name__ not in _tuple_assignment(registry.read_text(), 'COHORT_MODULES')[1]
+    elif change == 'broken_u2_scope':
+        target = 'tests/u2_scope.py'
+        _flip(wt / target)
+    if target == U2_MANIFEST:
+        (wt / target).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    assert not C.valid(wt)
+    _git(wt, 'checkout', '--', target)
+    # A new call observes the restored bytes; no verdict is shared across the mutation boundary.
+    assert U2.exact_blobs_ok(wt)
+
+
+def test_signed_u2_sibling_admission_checks_the_named_commit_not_another_checkout(wt):
+    before = _audit_shared_sibling_pins(wt, 'HEAD')
+    _flip(wt / sorted(U2_LATER_PRESENTATION)[0])
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    assert _audit_shared_sibling_pins(wt, 'HEAD') == before
+
+
+@pytest.mark.parametrize('entries', [
+    "'tests.older',\n                  'tests.post413_o1_scope'",
+    "'tests.older', 'tests.g10_d8_scope', 'tests.post413_o1_scope'",
+    "'tests.post413_o1_scope', 'tests.later'",
+    "'tests.older', 'tests.post413_o1_scope', 'tests.later'",
+])
+def test_deregistration_fixture_removes_only_the_anchored_entry_with_adjacent_later_cohorts(entries):
+    source = "COHORT_MODULES = (" + entries + ")\nOTHER = ('tests.post413_o1_scope',)\n"
+    changed = _without_tuple_module(source, 'COHORT_MODULES', O.__name__)
+    assert _tuple_assignment(changed, 'COHORT_MODULES')[1] == tuple(m for m in _tuple_assignment(source, 'COHORT_MODULES')[1] if m != O.__name__)
+    assert "OTHER = ('tests.post413_o1_scope',)" in changed
+    with pytest.raises(AssertionError):
+        _without_tuple_module(changed, 'COHORT_MODULES', O.__name__)
 
 
 def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(wt):
@@ -231,13 +364,14 @@ def test_altered_ci_v4_workflow_or_selector_and_a_stale_historical_pin_fail_clos
 def test_a_deregistered_cohort_or_a_hook_without_it_fails_and_an_executable_or_committed_mode_change_fails(wt):
     registry = wt / 'tests/fin_v2_cohorts.py'
     original = registry.read_text()
-    registry.write_text(original.replace(",\n                  'tests.post413_o1_scope')", ")"))            # deregistered: the real registry file no longer lists the cohort
-    assert "post413_o1_scope" not in registry.read_text()
+    registry.write_text(_without_tuple_module(original, 'COHORT_MODULES', O.__name__))
+    assert registry.read_text() != original and O.__name__ not in _tuple_assignment(registry.read_text(), 'COHORT_MODULES')[1]
     assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     registry.write_text(original)
     hook = wt / 'tests/u1_scope.py'
     hook_original = hook.read_text()
-    hook.write_text(hook_original.replace(", 'tests.post413_o1_scope')", ")"))                                  # U1 hook no longer follows the cohort
+    hook.write_text(_without_tuple_module(hook_original, 'LATER_COHORTS', O.__name__))
+    assert hook.read_text() != hook_original and O.__name__ not in _tuple_assignment(hook.read_text(), 'LATER_COHORTS')[1]
     assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     hook.write_text(hook_original)
     assert O.exact_blobs_ok(wt) and C.valid(wt)
