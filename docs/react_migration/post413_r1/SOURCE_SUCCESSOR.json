@@ -35,7 +35,7 @@
     "tests/test_rcm_governance.py": "3ee8abfc90e3e87ff4f9441e1c3c8a19e8367f87",
     "tests/test_rcux_governance.py": "23acad023973d9590cbdc5472be24b0888ffc282",
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
-    "tests/test_wf06b_scope.py": "49b1ded0b7246cf1e67a7a65168a262622db73d5",
+    "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/test_wsv2_core_scope.py": "4347d3828edc3633d6f75408dc63e8b2b5ea5edc",
     "tests/u1_scope.py": "9acfa7565e5cf9d95f8f2eebc4c4deb303a663d4"
   }

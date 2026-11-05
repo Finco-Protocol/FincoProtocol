@@ -1,0 +1,24 @@
+{
+  "schema": "FINCO_CI_V4_NODE_SPLIT_POLICY_V1",
+  "enabled_in_required_pr_gate": false,
+  "activation": "PR-A (this file) keeps node splitting OFF in the required CI V4 PR gate; only the labelled shadow benchmark (.github/workflows/ci_v4_shadow_split.yml) uses it. PR-B may set enabled_in_required_pr_gate=true only after PR-A is the trusted base (main) and the trusted-base aggregator verifies node plans.",
+  "target_unit_seconds": 900,
+  "max_parts_per_module": 8,
+  "modules": {
+    "tests/test_rcux_governance.py": {
+      "verdict": "SPLIT_SAFE",
+      "isolation_proof": "No fixture of its own; module-level constants are read-only reads of committed sources at import; every test reads the real tree and asserts (no write, no git mutation, no env/cwd change). Suite autouse module fixtures (tests/conftest.py executor/acquisition lifecycle) are re-created per process. Measured: 41 nodes, 2169 s, heaviest node 284 s (run 41912154663).",
+      "granularity": "node"
+    },
+    "tests/test_wf06b_scope.py": {
+      "verdict": "SPLIT_SAFE_FLOOR_LIMITED",
+      "isolation_proof": "Module fixture _tree creates its own detached worktree under tmp_path_factory (one per process) and removes it at teardown; fixture wt resets --hard and cleans -fdx after EVERY test, so no test depends on another's state; non-wt tests only read the real tree. Floor: one node (test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession) took 6718 s of 8197 s (run 41856777361); splitting cannot shorten that node.",
+      "granularity": "node"
+    }
+  },
+  "not_split": {
+    "tests/test_u1_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 337 s of 388 s (run 41912154663); module below target.",
+    "tests/test_post413_o1_scope.py": "NOT_BENEFICIAL: one node (test_the_ci_v4_governance_gate_passes_on_the_real_source) is 445 s of 474 s (run 41912154663); module below target.",
+    "tests/test_u2_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 402 s of 456 s (run 41912154663); module below target."
+  }
+}

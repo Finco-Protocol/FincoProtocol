@@ -3,6 +3,7 @@
 Every negative mutates a real checkout of the committed HEAD (shared object database, private working tree) and asks the real cohort functions;
 nothing is mocked except where a negative is about a forged manifest read. The checks need only git objects, so they stay fast.
 """
+import contextlib
 import json
 import os
 import shutil
@@ -228,6 +229,21 @@ def test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_forei
 
 # ── Correction D: D01 / FIN-V2-3 ``matches()`` recognise exactly the authenticated WF-06B successor bytes ─────────────────────────────────────────
 
+@contextlib.contextmanager
+def _one_outer_call():
+    """CI V4 Correction A, option (a) (Owner decision 2026-11-05): a READ-ONLY loop of ``matches()`` questions is ONE outer governance call.
+
+    Every registered cohort's documented call-scope memo (``scoped()``, exactly what the composite registry enters for one outer call) is entered
+    once around the loop, so each exact verdict is computed once instead of once per path (CI V4 runner: one ``matches()`` = 3,844 git calls / 92 s;
+    the loop asked 120 of them). Same questions, same assertions; nothing is written inside the scope (the memo's stated safety condition) and the
+    memo is dropped on exit. The mutation negatives further below keep running fresh, un-scoped evaluations."""
+    with contextlib.ExitStack() as scopes:
+        for m in C.cohorts():
+            if callable(getattr(m, 'scoped', None)):
+                scopes.enter_context(m.scoped())
+        yield
+
+
 def _pinned_and_superseded(cohort):
     return sorted(set(cohort.manifest().get('source_blobs', {})) & W.SUPERSEDED)
 
@@ -238,16 +254,17 @@ def test_matches_accepts_exactly_the_successor_bytes_and_the_historical_pin(modn
     D = importlib.import_module(f'tests.{modname}')
     paths = _pinned_and_superseded(D)
     assert 'tests/test_rcm_governance.py' in paths and f'tests/{modname}.py' in paths
-    for path in paths:
-        raw = (W.ROOT / path).read_bytes()
-        assert D.matches(path, raw) is True, path                                   # current, authenticated successor bytes
-        assert D.matches(path, raw + b'\n') is False, path                          # one byte more is nobody's reviewed state
-        assert D.matches(path, raw.decode()) is True and D.matches(path, raw.decode() + ' ') is False
-        historical = W._git(W.ROOT, 'show', f'{W.BASE}:{path}')
-        assert D.matches(path, historical) is True, path                             # the historical reviewed pin is unchanged and still matches
-    for stranger in ('financial_engine/native_v11/config.py', 'tests/conftest.py', 'unreviewed/new_authority.py', 'docs/react_migration/wf06b_a_plus/P00.md'):
-        assert stranger not in D.manifest()['source_blobs'] or stranger in W.SUPERSEDED
-        assert D.matches(stranger, (W.ROOT / stranger).read_bytes() if (W.ROOT / stranger).exists() else b'x') is False
+    with _one_outer_call():
+        for path in paths:
+            raw = (W.ROOT / path).read_bytes()
+            assert D.matches(path, raw) is True, path                                   # current, authenticated successor bytes
+            assert D.matches(path, raw + b'\n') is False, path                          # one byte more is nobody's reviewed state
+            assert D.matches(path, raw.decode()) is True and D.matches(path, raw.decode() + ' ') is False
+            historical = W._git(W.ROOT, 'show', f'{W.BASE}:{path}')
+            assert D.matches(path, historical) is True, path                             # the historical reviewed pin is unchanged and still matches
+        for stranger in ('financial_engine/native_v11/config.py', 'tests/conftest.py', 'unreviewed/new_authority.py', 'docs/react_migration/wf06b_a_plus/P00.md'):
+            assert stranger not in D.manifest()['source_blobs'] or stranger in W.SUPERSEDED
+            assert D.matches(stranger, (W.ROOT / stranger).read_bytes() if (W.ROOT / stranger).exists() else b'x') is False
 
 
 @pytest.mark.parametrize('modname', ['fin_v2_d01_scope', 'fin_v2_3_scope'])
@@ -299,12 +316,13 @@ def test_matches_refuses_successor_bytes_when_the_successor_is_not_authenticated
 
 def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
     import importlib
-    for modname in ('fin_v2_d01_scope', 'fin_v2_3_scope', 'fin_v2_r1_scope', 'fin_v2_rcux_scope', 'fin_v2_wsv2_scope'):
-        D = importlib.import_module(f'tests.{modname}')
-        for path in set(D.manifest().get('source_blobs', {})) - W.SUPERSEDED:
-            raw = (W.ROOT / path).read_bytes()
-            assert D.matches(path, raw + b'\n') is False, (modname, path)
-            assert not W.supersedes(path, W._blob(raw + b'\n')), (modname, path)
+    with _one_outer_call():
+        for modname in ('fin_v2_d01_scope', 'fin_v2_3_scope', 'fin_v2_r1_scope', 'fin_v2_rcux_scope', 'fin_v2_wsv2_scope'):
+            D = importlib.import_module(f'tests.{modname}')
+            for path in set(D.manifest().get('source_blobs', {})) - W.SUPERSEDED:
+                raw = (W.ROOT / path).read_bytes()
+                assert D.matches(path, raw + b'\n') is False, (modname, path)
+                assert not W.supersedes(path, W._blob(raw + b'\n')), (modname, path)
 
 
 # ── post-#410 CI correction (Correction A): fresh-evaluation negatives for the bounded one-outer-call memo ──────────────────────────────────
