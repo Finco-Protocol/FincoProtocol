@@ -27,7 +27,7 @@
     "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "9b704696bd2982ffd5888015df6edff5af14a777",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
     "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
-    "tests/fin_v2_cohorts.py": "7d27994629192c9420691dc20bdebaa214549c13",
+    "tests/fin_v2_cohorts.py": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
     "tests/fin_v2_integration_409_scope.py": "4c04642a41c0ab1506f69995bb0c966ae2c735e6",
     "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
     "tests/test_fin_v2_integration_409_scope.py": "ad3932151f00930125d0b5c838fcc97ece5c2080",
