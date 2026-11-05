@@ -194,13 +194,16 @@ def _git(root, *args):
     return subprocess.check_output(["git", *args], cwd=root).decode().strip()
 
 
-def _pytest_argv(extra):
+def _pytest_argv(extra, plugin=PLUGIN):
     from tools.ci_v3_pytest_config import plugin_args
-    return [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *plugin_args(), "-p", PLUGIN, *extra]
+    return [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *plugin_args(), "-p", plugin, *extra]
 
 
-def collect(modules, output, root=ROOT):
-    """Collect the exact node inventory of ``modules`` at the checked-out commit with the SAME plugin profile as shard execution."""
+def collect(modules, output, root=ROOT, plugin=PLUGIN, plugin_path=None):
+    """Collect the exact node inventory of ``modules`` at the checked-out commit with the SAME plugin profile as shard execution.
+
+    ``plugin``/``plugin_path``: the plugin module name and the directory it is imported from. The trusted-base activation
+    (tools/ci_v4_activate.py) passes an isolated copy of the TRUSTED plugin so the PR head's own plugin never measures its own tests."""
     root = Path(root)
     if _git(root, "status", "--porcelain", "--untracked-files=no"):
         raise NodeError("collection needs a clean tracked tree")
@@ -208,9 +211,11 @@ def collect(modules, output, root=ROOT):
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".raw.json")
     env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", **{ENV_COLLECT: str(tmp)})
+    if plugin_path is not None:
+        env["PYTHONPATH"] = str(plugin_path)
     env.pop(ENV_ASSIGN, None); env.pop(ENV_EVIDENCE, None)
     # --junitxml registers the same reporter plugin as a shard does, so collection and execution present the SAME plugin profile
-    rc = subprocess.call(_pytest_argv(["-rs", "--collect-only", "--junitxml", str(out.with_suffix(".collect.xml")), *sorted(set(modules))]),
+    rc = subprocess.call(_pytest_argv(["-rs", "--collect-only", "--junitxml", str(out.with_suffix(".collect.xml")), *sorted(set(modules))], plugin),
                          cwd=root, env=env, stdout=subprocess.DEVNULL)
     out.with_suffix(".collect.xml").unlink(missing_ok=True)
     if rc != 0 or not tmp.is_file():
