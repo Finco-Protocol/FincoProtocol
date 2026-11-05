@@ -105,3 +105,29 @@ točnu verziju; za PR-B required jobovi moraju fiksirati istu verziju.
 ## 7. Što nije izmjereno
 
 P50/P95 iz više runova ne postoje (po jedan uzorak po stanju). Ostale opcije (b) i epoch seal nisu izvedene.
+
+## 8. PR-B — aktivacija u required gateu (autoritet samo iz trusted baze)
+
+* `tools/ci_v4_activate.py` se pokreće **isključivo iz trusted base stabla** (`trusted/` checkout u plan/gate jobu, `git archive` base commita
+  izvan testiranog checkouta u shard jobu). PR head daje samo testove (subject), nikad svoju politiku, alat ni plugin.
+* Plan job: trusted selektor (nepromijenjen) → `decide` (čita samo trusted `node_split_policy.json`) → ako treba: instalacija ovisnosti,
+  `apply` = kolekcija stvarnih node ID-eva na testiranom HEAD-u s **materijaliziranim trusted pluginom** (`finco_ci_v4_trusted_nodes`,
+  vlastito ime modula; subjektov `tools/ci_v4_nodes.py` se nikad ne učitava) → trusted `apply_node_split` → dokaz invarijanti (mijenjaju se
+  samo `schedule`/`node_split`/`digest`; unija modula = selekcija; svaki split modul particioniran točno jednom) → ponovno pečaćenje s
+  provenijencijom (trusted SHA, SHA-256 politike i plugina, Python, digest izvornog plana, run attempt).
+* Shard job: modul-plan ide nepromijenjenim putem; node-plan isključivo trusted izvršiteljem (`activate shard`), provjera da je plan
+  aktivirala ista trusted baza i isti plugin.
+* Gate (`CI V4 gate`, ime nepromijenjeno): vrsta plana se čita iz samog artefakta i mora se slagati s outputom plan joba; node-plan →
+  **neovisna re-kolekcija u gate jobu** + trusted agregator s `--inventory` (bez fallbacka bez inventara); bez trusted verifiera → FAIL.
+* Python je fiksiran na 3.12.16 u plan/shard/gate jobovima (profil pluginova uključuje interpreter).
+
+Bootstrap: PR-B postavlja `enabled_in_required_pr_gate: true`, ali njegova baza (main nakon PR-A) ima `false` i nema `ci_v4_activate.py`, pa
+**required gate PR-B-a ostaje module-plan**. Kandidatna aktivacija istog puta (`seal → apply → shard → verify`, s HEAD-om kao kandidatnom
+trusted bazom) izvodi se u NOT REQUIRED workflowu `ci_v4_shadow_split.yml`. Tek prvi PR nakon mergea PR-B dobiva node-plan u required gateu.
+
+Kalibracija (IZMJERENO, run 41983751106, `d0bfe210`, nakon opcije (a)): wf06b 433 s, rcux 1.398 s, u1 307 s, o1 380 s. Uz cilj 900 s po
+dijelu trusted pravilo trenutno dijeli samo `test_rcux_governance.py` (2 dijela); wf06b ostaje cijeli (ispod cilja).
+
+Preporučeni post-merge kanarinac: sljedeći legitimni PR koji mijenja `tests/rcux_*`/`tests/test_rcux_governance.py` ili drugu putanju koja
+selektira rcux — provjeriti u required gateu `node-split-activation.json` (decision `node_plan`), `units` u planu i u rezultatu gatea
+`verifier.independent_inventory_digest` + PASS. Ne stvarati umjetni PR koji mijenja zaštićene testove bez odobrenog plana.
