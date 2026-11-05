@@ -1,13 +1,12 @@
 {
   "authority": "G10/D8 owner-decision packet (recommendations only); Draft PR \u2014 read-only Last-Run OPEX adapter + truthful escalation copy; no engine, schema, Save All, R1 or CI V4 change",
-  "schema_version": "G10_D8_OPEX_COMPLETION_EXACT_SOURCE_V1",
   "base": "cd125b5e08302ea1db7169e172fec288aa7acea5",
-  "base_tree": "a9c14a0dfcc984780cba61bbf58e39e487a8d2fe",
   "base_blobs": {
     "app/v2/react_rcux.py": "5146e54666c2211ccaa0eec43d55ae7f559717e5",
-    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "4651058c88953ed39383bbf83e29bcc90959ce34",
     "tests/fin_v2_cohorts.py": "e82a62cef839fad261c7b36523a7524f9ccb814d"
   },
+  "base_tree": "a9c14a0dfcc984780cba61bbf58e39e487a8d2fe",
+  "schema_version": "G10_D8_OPEX_COMPLETION_EXACT_SOURCE_V1",
   "source_blobs": {
     "app/v2/react_opex_run_projection.py": "08dd28012ce8229e76e0f994371970db19a67fd0",
     "app/v2/react_rcux.py": "6291b6383c1cac73f45102ea295980d9a448a5d7",
@@ -16,12 +15,11 @@
     "docs/react_migration/g10_d8/P00_G10_D8.md": "20b8b28b5b50c32289584fa13a3f11e6c21f02bd",
     "docs/react_migration/g10_d8/POST_424_BLOCKER.md": "31c470c2f83e75fff3509167845fe4286dc25565",
     "docs/react_migration/g10_d8/TEST_EVIDENCE.md": "7e7627d0b71e9b6b70a5f25df097fa3117ab97d1",
-    "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json": "6f36cc1b7574604d0ca7d1331ac6016064160bd3",
     "frontend/src/app/projection/OpexRunProjection.tsx": "5d98c34d4eafacfde57a654d591d567258487737",
     "frontend/src/app/projection/__tests__/opexRunRequest.test.mjs": "e0d39fbe6595fdae1d4c5d6dbf2f48247a5ad85c",
     "frontend/src/app/projection/opexRunRequest.ts": "542f3aefd9854ecafa8adec73a150f065a3af5a4",
     "tests/fin_v2_cohorts.py": "7d27994629192c9420691dc20bdebaa214549c13",
-    "tests/g10_d8_scope.py": "14184e08462a1a7e0a9abb07601525e3dcf0bf73",
+    "tests/g10_d8_scope.py": "36b0df3305849fb94900e197d071e654878d83b3",
     "tests/test_g10_d8_opex_completion.py": "392351fa033bf1d665475be3089c1080552bba7c",
     "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961"
   }
