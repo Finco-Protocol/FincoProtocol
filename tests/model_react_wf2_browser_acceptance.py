@@ -15,6 +15,8 @@ committed Run History untouched; only the explicit Run action adds a Run.
 """
 from __future__ import annotations
 
+from tests.model_react_u1_helpers import input_jump
+
 import json
 import os
 import re
@@ -173,7 +175,7 @@ def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explic
         assert history_count(context, base, record) == 0
 
         # ── OPEX line ──
-        page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
+        input_jump(page, 'OPEX')
         opex = open_inline_add(page, "opex")
         opex.get_by_label("Line label").fill("WF2 acceptance OPEX line")
         opex.get_by_label("Amount").fill("7")
@@ -181,7 +183,7 @@ def check_end_to_end_supported_workflow_save_never_runs_and_run_only_when_explic
         wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-commands='opex']")
 
         # ── PPA: guided editor, no JSON textarea; invalid input is field-specific ──
-        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()          # PR-U1: back to the Inputs overview, Revenue / PPA
+        input_jump(page, 'Revenue & PPA')          # PR-U1: back to the Inputs overview, Revenue / PPA
         page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()
@@ -536,7 +538,7 @@ def check_protected_reference_workspace_is_read_only_in_every_editor(browser, re
         from tests.model_react_u1_helpers import open_workbench
         grid = open_workbench(page, "capex")                         # PR-U1: the protected template is read-only in the CAPEX workbench
         assert grid.locator("[data-cost-addline]").is_disabled() and grid.locator("input[data-c='1']:not([disabled])").count() == 0
-        page.locator("[data-inputs-jump] [data-jump-label='Project setup']").click()
+        input_jump(page, 'Project setup')
         assert page.locator("[data-ppa-editor]").first.get_attribute("data-ppa-editor") in ("empty", "guided")
         assert page.locator("[data-ppa-editor] [data-ppa-save='true']").count() == 0 or \
             page.locator("[data-ppa-editor] [data-ppa-save='true']").first.is_disabled()

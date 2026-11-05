@@ -8,4 +8,6 @@ Baseline: main `32c7bd6b66086db7b19ec576509cb873a6d36441`, tree `77c195d4d2fe43f
 
 PR2 timelines/profiles/recurrence, PR3 financial instruments and DSCR semantics are outside this change. G10 remains default OFF. Browser acceptance uses isolated synthetic projects; local evidence is STAGING_NOT_YET_ACCEPTED. Private design material and evidence are excluded from this repository.
 
+The primary sidebar retains keyboard navigation, a discoverable mobile toggle and protected-template read-only identity. Cost sheet/view changes use the existing unsaved-edit guard, including browser hash navigation. Browser acceptance follows the current visible controls and preserves its save, pending-mutation and leave-guard assertions.
+
 Rollback uses a normal revert of the integrated change; there is no schema migration or flag change.

@@ -1,6 +1,5 @@
 /* UX-PR1 presentation. Existing editors, values and writers stay authoritative. */
 .finco-root:has([data-ux-pr1]) > .fm-topbar { min-height:32px; padding:3px 14px }
-.finco-root:has([data-ux-pr1]) > .fm-workspace-bar { display:none }
 [data-ux-pr1] { font-size:13px; padding:6px 12px; max-width:none; margin:0 }
 [data-ux-pr1] .wsv2-layout { display:grid; grid-template-columns:156px minmax(0,1fr); gap:12px; margin-top:6px }
 [data-ux-pr1] .wsv2-content { min-width:0; padding:0 }
@@ -150,4 +149,13 @@
  [data-ux-pr1] .wsv2-menu { display:flex; width:100%; justify-content:space-between }
  [data-ux-pr1] .wsv2-sidebar nav { display:none }
  [data-ux-pr1] .wsv2-sidebar nav.is-open { display:block }
+}
+
+[data-ux-pr1] .wsv2-sidebar .fm-nav { display:block; margin:0; padding:0; border:0; min-width:0; overflow:visible }
+@media (max-width:900px) {
+ [data-ux-pr1] .wsv2-sidebar .fm-nav { display:none }
+ [data-ux-pr1] .wsv2-sidebar .fm-nav.is-open { display:block }
+}
+@media (max-width:900px) {
+ [data-ux-pr1] .ux-project-actions a { display:inline-flex; align-items:center; min-height:44px; box-sizing:border-box }
 }

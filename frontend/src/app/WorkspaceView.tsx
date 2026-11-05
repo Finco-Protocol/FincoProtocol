@@ -256,7 +256,15 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ignore: (key) => key !== "capex-profile",
             onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
           });
-        } else adopt();
+        } else {
+          const current = workspaceRoute(destinationRef.current);
+          if (isCostWorkbench(current) && isCostWorkbench(route) && (current.input !== route.input || current.view !== route.view)) {
+            confirmIfDirty(adopt, {
+              ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
+              onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
+            });
+          } else adopt();
+        }
         return;
       }
       confirmIfDirty(adopt, {
@@ -280,6 +288,21 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     if (target.section === sectionRef.current) adopt();
     else confirmIfDirty(adopt, { ignore: (key) => key === "run" });
   }
+  // A primary sheet/view change can unmount a cost editor or add-line form.
+  // Consult the same existing cost-scope guard used by the workbench's own tabs.
+  function navigateFromSidebar(next: WorkspaceDestination) {
+    const current = workspaceRoute(destinationRef.current);
+    const target = workspaceRoute(next);
+    if (current.section === "inputs" && target.section === "inputs" &&
+      ((isCostWorkbench(current) && isCostWorkbench(target) && (current.input !== target.input || current.view !== target.view)) ||
+        (current.view === "monthly" && target.view !== "monthly"))) {
+      confirmIfDirty(() => navigateTo(next), {
+        ignore: current.view === "monthly"
+          ? (key) => key !== "capex-profile"
+          : (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
+      });
+    } else navigateTo(next);
+  }
   function navigate(sectionId: Section) { navigateTo(sectionId); }
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [section]);
@@ -299,8 +322,11 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       : route.input === "technical"
         ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]') ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
         : document.getElementById(INPUT_DESTINATIONS[route.input].target);
-    target?.scrollIntoView({ block: "start" });
-    target?.focus({ preventScroll: true });
+    if (target) {
+      target.tabIndex = -1;
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    }
   }, [destination, section, inputs]);
 
   // Any other in-app link that leaves this page (Project Library breadcrumb, legacy
@@ -502,10 +528,10 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
 
   return (
     <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
-    <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
+    <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content" hideBreadcrumb
       originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
       <div className="rx-page wsv2-page" role="main" id="rx-main-content" tabIndex={-1} data-react-workspace-version={workspace.react_workspace.version} data-ux-pr1="true">
-        <h1 className="fm-sr-only">{workspaceHeading(workspace)}</h1>
+        <h1 className="fm-sr-only">{workspaceHeading(workspace)}{workspace.project.protected_reference && " · TEMPLATE · READ ONLY"}</h1>
         <WorkflowBar
           project={project}
           freshness={workspace.freshness.state}
@@ -522,11 +548,11 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           <ReportPrecisionControl />
           <nav aria-label="Project actions" className="ux-project-actions">
             <a className="rx-legacy-link" href="/v2/model-react/" data-nav-my-projects="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>My Projects</a>
-            <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
+            <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" data-nav-new-project="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
           </nav>
         </WorkflowBar>
         <div className="wsv2-layout">
-          <WorkspaceSidebar active={destination} onNavigate={navigateTo} />
+          <WorkspaceSidebar active={destination} onNavigate={navigateFromSidebar} />
           <div className="wsv2-content" id="wsv2-content">
 
         {runRefresh !== "idle" && <div role={runRefresh === "blocked" ? "alert" : "status"} className="rx-card" data-run-refresh={runRefresh}>

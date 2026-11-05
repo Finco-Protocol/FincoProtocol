@@ -9,6 +9,8 @@ Every number asserted comes from the canonical API of the SAME committed Run
 """
 from __future__ import annotations
 
+from tests.model_react_u1_helpers import input_jump
+
 import json
 import os
 import re
@@ -200,7 +202,7 @@ def check_internal_mvp_path_with_financial_intelligence(browser, react_enabled, 
         wait_status(page, "ok", "verified in the fresh projection", "[data-cost-line-commands='capex']")
 
         # 6. PPA: an explicit, fully specified contract book
-        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()                  # PR-U1: back to the Inputs overview
+        input_jump(page, 'Revenue & PPA')                  # PR-U1: back to the Inputs overview
         page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()

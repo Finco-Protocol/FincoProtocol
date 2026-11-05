@@ -10,6 +10,8 @@ creates a Run; only the explicit Run action does, and at most once per activatio
 """
 from __future__ import annotations
 
+from tests.model_react_u1_helpers import input_jump
+
 import re
 from urllib.parse import urlsplit
 
@@ -169,10 +171,10 @@ def check_navigation_with_unsaved_edits_asks_and_keeps_the_draft(browser, react_
         page.wait_for_function("() => window.location.hash === '#inputs'")
         assert page.locator(CIT_CELL).input_value() == draft
 
-        # both My Projects links (the Legacy workbook link no longer exists: navigation is React-only)
+        # Both real project-exit actions retain the leave guard; the duplicate breadcrumb is gone.
         assert page.get_by_role("link", name=re.compile("Legacy workbook")).count() == 0
-        for locator in (page.locator("header.rx-header").get_by_role("link", name="My Projects"),
-                        page.locator("nav[aria-label='Project breadcrumb']").get_by_role("link", name="My Projects")):
+        for locator in (page.locator("[data-nav-my-projects='true']"),
+                        page.locator("[data-nav-new-project-workspace='true']")):
             before = page.url
             locator.first.click()
             dialog(page).get_by_role("button", name=STAY).click()
@@ -193,7 +195,7 @@ def check_navigation_with_unsaved_edits_asks_and_keeps_the_draft(browser, react_
 
         # discarding to leave through a link really leaves
         stage_cit(page, draft)
-        page.locator("header.rx-header").get_by_role("link", name="My Projects").click()
+        page.locator("[data-nav-my-projects='true']").click()
         dialog(page).get_by_role("button", name=DISCARD).click()
         page.wait_for_url(re.compile(r"/v2/model-react/?$"))
         assert history_count(context, base, record) == 0
@@ -339,20 +341,20 @@ def check_every_editor_reports_unsaved_work_and_guards_navigation(browser, react
         amount = page.locator("input[aria-label^='Amount for ']").first
         amount.fill("12345")
         wait_unsaved(page, 1)
-        page.locator("[data-cost-grid='capex'] button[aria-pressed]", has_text="OPEX").first.click()    # the sheet switch (a route change) asks too
+        input_jump(page, "OPEX")    # the sheet switch (a route change) asks too
         dialog(page).get_by_role("button", name=STAY).click()
         assert amount.input_value() == "12345", (amount.input_value(), page.url, amount.get_attribute("data-exact"))
         page.get_by_role("button", name="Discard staged edits").first.click()
         wait_unsaved(page, 0)
 
         # OPEX add form draft
-        page.locator("[data-cost-grid='capex'] button[aria-pressed]", has_text="OPEX").first.click()
+        input_jump(page, "OPEX")
         opex = open_inline_add(page, "opex")
         opex.get_by_label("Line label").fill("unsaved opex line")
         _expect_guard_and_clear(page, "Financing", lambda: opex.get_by_role("button", name="Clear").click())
 
         # PPA: defining a contract is unsaved work
-        page.locator("[data-inputs-jump] [data-jump-label='Revenue & PPA']").click()                  # PR-U1: back to the Inputs overview
+        input_jump(page, 'Revenue & PPA')                  # PR-U1: back to the Inputs overview
         page.wait_for_selector("[data-ppa-editor]", state="visible", timeout=30000)
         ppa = page.locator("[data-ppa-editor]")
         ppa.scroll_into_view_if_needed()
@@ -654,7 +656,7 @@ def check_pending_mutations_cannot_escape_their_reconciliation_contract(browser,
                 wait_status(page, "conflict", None, "[data-workflow-bar='true']")
             else:
                 page.wait_for_function("() => document.querySelector(\"[data-workflow-bar='true']\").dataset.pendingKeys.includes('run')")
-            library = page.locator("header.rx-header").get_by_role("link", name="My Projects")
+            library = page.locator("[data-nav-my-projects='true']")
             library.click()
             dialog(page).get_by_role("button", name=STAY).click()
             assert "/v2/model-react/" in page.url and urlsplit(page.url).path.endswith(record.project_code)

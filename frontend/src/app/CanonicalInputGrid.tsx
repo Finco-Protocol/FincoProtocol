@@ -268,7 +268,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
       )}
       <div className="rx-toolbar-compact">
         {rows.some(isLegacyReference) && <button type="button" className="rx-button rx-button-secondary" data-grid-legacy-toggle="true" aria-pressed={showLegacy}
-          onClick={() => setShowLegacy((value) => !value)}>{showLegacy ? "Hide" : "Show"} legacy references</button>}
+          onClick={() => setShowLegacy((value) => !value)}>{showLegacy ? "Hide" : "Show"} reference values</button>}
         <button type="button" className="rx-button rx-button-secondary" data-grid-expand-all="true"
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section }) => [section.section_id, true])))}>Expand all sections</button>
         <button type="button" className="rx-button rx-button-secondary" data-grid-collapse-derived="true"

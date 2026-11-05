@@ -141,6 +141,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       <span className="ci-bar-id" data-bar-project="true">
         <strong>{projectName || project}</strong>
         {techLabel && <span className="ci-chip ci-chip-tech">{techLabel}</span>}
+        {protectedReference && <span className="ci-chip" data-template-read-only="true">Template · Read-only</span>}
       </span>
       <label className="ci-bar-scenario">
         <span>Scenario</span>

@@ -416,9 +416,9 @@ def check_results_analysis_navigation_and_back_forward(seeded):
     run_canonical(context, base, record.project_code)
     open_section(page, base, record.project_code, "overview")
     nav = page.locator(".fm-nav a")
-    labels = [nav.nth(i).inner_text().replace("\n", " ") for i in range(nav.count())]
-    assert [label.split(" ", 1)[1] for label in labels] == [
-        "Inputs", "Statements", "Financing", "Results", "Scenarios", "Analysis", "Model checks", "Trust"]
+    from tests.model_react_u1_helpers import NAV_LABELS
+    labels = [nav.nth(i).text_content().strip() for i in range(nav.count())]
+    assert labels == list(NAV_LABELS)
     # real in-page links, no design-harness routes
     assert all((nav.nth(i).get_attribute("href") or "").startswith("#") for i in range(nav.count()))
     page.locator(".fm-nav a", has_text="Results").click()
@@ -433,7 +433,7 @@ def check_results_analysis_navigation_and_back_forward(seeded):
     page.go_forward()
     page.wait_for_selector("[data-analysis-view]")
     # the breadcrumb / library links are real routes
-    assert page.locator(".fm-workspace-bar a").first.get_attribute("href") == "/v2/model-react/"
+    assert page.locator("[data-nav-my-projects='true']").get_attribute("href") == "/v2/model-react/"
     assert errors == [], errors
 
 

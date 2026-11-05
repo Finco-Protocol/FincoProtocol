@@ -17,12 +17,13 @@ export function WorkspaceSidebar({ active, onNavigate }: {
     if (!(event.target instanceof HTMLAnchorElement)) return;
     const links = Array.from(nav.current?.querySelectorAll<HTMLAnchorElement>("a") ?? []).filter((link) => link.getClientRects().length);
     const index = links.indexOf(event.target);
-    const next = event.key === "ArrowDown" ? Math.min(index + 1, links.length - 1)
-      : event.key === "ArrowUp" ? Math.max(index - 1, 0)
+    const next = (event.key === "ArrowDown" || event.key === "ArrowRight") ? Math.min(index + 1, links.length - 1)
+      : (event.key === "ArrowUp" || event.key === "ArrowLeft") ? Math.max(index - 1, 0)
       : event.key === "Home" ? 0 : event.key === "End" ? links.length - 1 : -1;
     if (next >= 0) { event.preventDefault(); links[next]?.focus(); }
   }
   const link = (destination: WorkspaceDestination, label: string) => <a key={destination} href={`#${destination}`}
+    className={activeNavigationDestination(active) === destination ? "active" : undefined}
     aria-current={activeNavigationDestination(active) === destination ? "page" : undefined} data-workspace-destination={destination}
     onClick={(event) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -34,7 +35,7 @@ export function WorkspaceSidebar({ active, onNavigate }: {
         setOpen(!open);
         if (!open) window.requestAnimationFrame(() => nav.current?.querySelector<HTMLAnchorElement>("a[aria-current], a")?.focus());
       }}>Model sections <span aria-hidden="true">{open ? "−" : "+"}</span></button>
-    <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" className={open ? "is-open" : ""} onKeyDown={keys}>
+    <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" data-workspace-nav="true" className={`fm-nav${open ? " is-open" : ""}`} onKeyDown={keys}>
       {WORKSPACE_NAV_GROUPS.map((group) => <section className="ux-nav-group" key={group.label} aria-label={group.label}>
         <h2>{group.destination ? link(group.destination, group.label) : group.label}</h2>
         {group.items.map((item) => link(item.destination, item.label))}
