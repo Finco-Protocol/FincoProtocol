@@ -1,11 +1,12 @@
-# CI V4 SHADOW node-split benchmark - NOT REQUIRED, never satisfies or replaces "CI V4 gate".
-# Runs the HEAD node-split code (collection -> node plan -> shards -> independent re-collection + aggregation) on a FIXED list of heavy
-# governance modules at the exact PR head SHA, plus a disk-vs-tmpfs calibration. Read-only token, no secrets, no deployment, no write.
-# The required CI V4 PR gate keeps the trusted-base selector and aggregator; node splitting stays OFF there (docs/ci_v4/node_split_policy.json).
+# CI V4 CANDIDATE activation (shadow) - NOT REQUIRED, never satisfies or replaces "CI V4 gate".
+# Exercises, at the exact PR head, the SAME activation path the required gate uses once a trusted base enables node splitting
+# (tools/ci_v4_activate.py: apply -> shard -> verify with an independent re-collection), with the PR head standing in as the candidate
+# "trusted" tree. A fixed list of heavy governance modules (plus one ordinary module) replaces the selector's output. Read-only token, no secrets.
 name: CI V4 shadow split benchmark (not required)
 on:
   pull_request:
     paths:
+      - 'tools/ci_v4_activate.py'
       - 'tools/ci_v4_nodes.py'
       - 'tools/ci_v4_shard.py'
       - 'tools/ci_v4_aggregate.py'
@@ -13,6 +14,7 @@ on:
       - 'docs/ci_v4/node_split_policy.json'
       - 'docs/ci_v4/node_weights.json'
       - '.github/workflows/ci_v4_shadow_split.yml'
+      - '.github/workflows/ci_v4_pr.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +22,8 @@ concurrency:
   group: ci-v4-shadow-split-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  SHADOW_MODULES: tests/test_wf06b_scope.py tests/test_rcux_governance.py tests/test_u1_scope.py tests/test_post413_o1_scope.py
+  CANDIDATE_MODULES: tests/test_wf06b_scope.py tests/test_rcux_governance.py tests/test_u1_scope.py tests/test_post413_o1_scope.py tests/test_ci_v4_nodes.py
+  HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 jobs:
   shadow-plan:
     runs-on: ubuntu-24.04
@@ -30,44 +33,50 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.HEAD_SHA }}
+          path: subject
           fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          path: trusted
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12.16'   # exact patch: the plugin profile check compares collection and execution interpreters
           cache: pip
           cache-dependency-path: |
-            requirements.txt
-            requirements-ci-tests.txt
-            constraints.txt
+            subject/requirements.txt
+            subject/requirements-ci-tests.txt
+            subject/constraints.txt
       - name: Install (same Python runtime as the CI V4 shards)
+        working-directory: subject
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
-      - name: Collect the exact node inventory and build the labelled shadow node plan
+      - name: Candidate sealed module plan -> activation (collect with the candidate trusted plugin, split, invariants, re-seal)
         id: plan
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/shadow"
-          python -m tools.ci_v4_nodes collect --output "$RUNNER_TEMP/shadow/inventory.json" $SHADOW_MODULES
-          python -m tools.ci_v4_nodes plan --inventory "$RUNNER_TEMP/shadow/inventory.json" --tier risk --output "$RUNNER_TEMP/shadow/ci-v4-plan.json" $SHADOW_MODULES
+          mkdir -p evidence
+          (cd trusted && python -m tools.ci_v4_activate seal --subject ../subject --output ../evidence/ci-v4-plan.json $CANDIDATE_MODULES)
+          (cd trusted && python -m tools.ci_v4_activate apply --plan ../evidence/ci-v4-plan.json --subject ../subject --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --evidence ../evidence --trusted-sha "$HEAD_SHA")
           python - <<'PYCODE' >> "$GITHUB_OUTPUT"
-          import json, os
-          p = json.load(open(os.path.join(os.environ['RUNNER_TEMP'], 'shadow', 'ci-v4-plan.json')))
+          import json
+          p = json.load(open('evidence/ci-v4-plan.json'))
+          assert 'node_split' in p, 'candidate activation did not produce a node plan'
           print('matrix=' + json.dumps({'index': list(range(len(p['schedule']['shards'])))}))
           PYCODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-v4-shadow-plan
-          path: ${{ runner.temp }}/shadow/
+          path: evidence/
           if-no-files-found: error
   shadow-shards:
     needs: shadow-plan
     runs-on: ubuntu-24.04
-    # Benchmark ceiling: the indivisible wf06b floor node took 6718 s on #420 and exceeded 11,992 s (censored) on 1b22175b; a cancelled shard
-    # is reported as censored, never as a sample. 330 min stays under the 360-min hosted job limit.
-    timeout-minutes: 330
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.shadow-plan.outputs.matrix) }}
@@ -75,12 +84,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.HEAD_SHA }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.12.16'   # exact patch: the plugin profile check compares collection and execution interpreters
+          python-version: '3.12.16'
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -90,54 +99,22 @@ jobs:
         with:
           name: ci-v4-shadow-plan
           path: ${{ runner.temp }}/shadow/plan
-      # The shadow modules are git/governance tests; frontend node_modules are not installed (an import of it would fail loudly, never skip).
-      - name: Install (Python only)
+      - name: Install (Python only; the candidate modules need no frontend)
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
-      - name: Runner facts (cores, memory, tmpfs capacity)
+      - name: Candidate trusted tools extracted from the commit, outside the tested checkout (same layout as the required gate)
         run: |
-          nproc; free -m; df -h /dev/shm "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
-      - name: Run the shadow shard (exact node ids; tmp_path/worktrees on verified tmpfs, disk fallback)
-        run: python -m tools.ci_v4_shard --plan "$RUNNER_TEMP/shadow/plan/ci-v4-plan.json" --index ${{ matrix.index }} --output "$RUNNER_TEMP/shadow/out" --tmp auto
+          mkdir -p "$RUNNER_TEMP/trusted"
+          git archive --format=tar "$HEAD_SHA" tools docs/ci_v4 | tar -x -C "$RUNNER_TEMP/trusted"
+      - name: Run the candidate shard (exact node ids, trusted plugin, disk temp)
+        run: (cd "$RUNNER_TEMP/trusted" && python -m tools.ci_v4_activate shard --plan "$RUNNER_TEMP/shadow/plan/ci-v4-plan.json" --index ${{ matrix.index }} --subject "$GITHUB_WORKSPACE" --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --output "$RUNNER_TEMP/shadow/out" --trusted-sha "$HEAD_SHA")
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: ci-v4-shadow-shard-${{ matrix.index }}
           path: ${{ runner.temp }}/shadow/out/
           if-no-files-found: error
-  shadow-calibrate:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12.16'   # exact patch: the plugin profile check compares collection and execution interpreters
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-ci-tests.txt
-            constraints.txt
-      - name: Install
-        run: |
-          pip install -r requirements.txt -c constraints.txt
-          pip install -r requirements-ci-tests.txt -c constraints.txt
-      - name: Same SHA, same code - cohort composite cost on the disk checkout vs an exact clone on tmpfs
-        run: |
-          mkdir -p "$RUNNER_TEMP/calibrate"
-          nproc; free -m; df -h /dev/shm
-          python -m tools.ci_v4_nodes calibrate --output "$RUNNER_TEMP/calibrate/calibrate.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ci-v4-shadow-calibrate
-          path: ${{ runner.temp }}/calibrate/
-          if-no-files-found: warn
   shadow-verify:
     name: CI V4 shadow split verify (NOT REQUIRED)
     if: always() && needs.shadow-plan.result == 'success'
@@ -147,58 +124,57 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
+          ref: ${{ env.HEAD_SHA }}
+          path: subject
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          path: trusted
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.12.16'   # exact patch: the plugin profile check compares collection and execution interpreters
+          python-version: '3.12.16'
           cache: pip
           cache-dependency-path: |
-            requirements.txt
-            requirements-ci-tests.txt
-            constraints.txt
+            subject/requirements.txt
+            subject/requirements-ci-tests.txt
+            subject/constraints.txt
       - name: Install
+        working-directory: subject
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ci-v4-shadow-plan
-          path: ${{ runner.temp }}/ev/plan
+          path: ev/plan
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: ci-v4-shadow-shard-*
-          path: ${{ runner.temp }}/ev/shards
-      - name: Independent re-collection in THIS job, then exact node coverage (collected == disjoint union of executed)
-        run: |
-          set -euo pipefail
-          python -m tools.ci_v4_nodes collect --output "$RUNNER_TEMP/ev/independent-inventory.json" $SHADOW_MODULES
-          python -m tools.ci_v4_aggregate --plan "$RUNNER_TEMP/ev/plan/ci-v4-plan.json" --shards "$RUNNER_TEMP/ev/shards" --junit "$RUNNER_TEMP/ev/shards" \
-            --inventory "$RUNNER_TEMP/ev/independent-inventory.json" --output "$RUNNER_TEMP/ev/result"
-      - name: Summary (SHADOW - not required)
+          path: ev/shards
+      - name: Independent re-collection in THIS job + trusted-path aggregator (collected == disjoint union of executed)
+        run: (cd trusted && python -m tools.ci_v4_activate verify --plan ../ev/plan/ci-v4-plan.json --subject ../subject --shards ../ev/shards --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --output ../result --trusted-sha "$HEAD_SHA")
+      - name: Summary (CANDIDATE - not required)
         if: always()
         run: |
           python - <<'PYCODE' >> "$GITHUB_STEP_SUMMARY"
-          import json, os, glob
-          t = os.environ['RUNNER_TEMP']
-          print('## CI V4 SHADOW node-split benchmark - NOT REQUIRED (never satisfies CI V4 gate)')
+          import json, glob
+          print('## CI V4 CANDIDATE activation - NOT REQUIRED (never satisfies CI V4 gate)')
           try:
-              r = json.load(open(t + '/ev/result/ci-v4-result.json')); p = json.load(open(t + '/ev/plan/ci-v4-plan.json'))
+              r = json.load(open('result/ci-v4-result.json')); p = json.load(open('ev/plan/ci-v4-plan.json'))
           except OSError as e:
-              print('no aggregate result: %s' % e); raise SystemExit
-          print('verdict %s; executed nodes %d; counts %s' % (r['verdict'], r['executed_nodes'], r['counts']))
-          print('workers %d; predicted critical path %ss; actual slowest shard %ss; shard runner-minutes %s' % (
-              r['workers'], p['schedule']['predicted_critical_path_s'], r['actual_critical_path_s'], r['actual_runner_minutes']))
-          for f in sorted(glob.glob(t + '/ev/shards/**/shard-*.json', recursive=True)):
-              s = json.load(open(f)); print('- shard %s: wall %ss, tmp %s, units %d' % (s['shard'], s['wall_s'], s['tmp'].get('mode'), len(s.get('units', []))))
+              print('no result: %s' % e); raise SystemExit
+          print('verdict %s; executed nodes %s; counts %s; split modules %s' % (r['verdict'], r.get('executed_nodes'), r.get('counts'), sorted(p['node_split']['modules'])))
+          print('workers %s; predicted critical path %ss; actual slowest shard %ss; shard runner-minutes %s' % (
+              r.get('workers'), p['schedule']['predicted_critical_path_s'], r.get('actual_critical_path_s'), r.get('actual_runner_minutes')))
+          for f in sorted(glob.glob('ev/shards/**/shard-*.json', recursive=True)):
+              s = json.load(open(f)); print('- shard %s: wall %ss, units %d, executor %s' % (s['shard'], s['wall_s'], len(s.get('units', [])), s.get('executor')))
           for x in r['problems']: print('- PROBLEM: ' + x)
           PYCODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: ci-v4-shadow-result
-          path: |
-            ${{ runner.temp }}/ev/result/
-            ${{ runner.temp }}/ev/independent-inventory.json
+          path: result/
           if-no-files-found: warn

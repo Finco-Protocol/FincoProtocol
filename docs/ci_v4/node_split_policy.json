@@ -1,7 +1,7 @@
 {
   "schema": "FINCO_CI_V4_NODE_SPLIT_POLICY_V1",
-  "enabled_in_required_pr_gate": false,
-  "activation": "PR-A (this file) keeps node splitting OFF in the required CI V4 PR gate; only the labelled shadow benchmark (.github/workflows/ci_v4_shadow_split.yml) uses it. PR-B may set enabled_in_required_pr_gate=true only after PR-A is the trusted base (main) and the trusted-base aggregator verifies node plans.",
+  "enabled_in_required_pr_gate": true,
+  "activation": "PR-B: enabled for the REQUIRED CI V4 PR gate. Authority is read ONLY from the trusted base commit (tools/ci_v4_activate.py): the PR that sets this to true (PR-B) still runs its required gate on the sealed module plan because its base says false; the next PR whose base contains this file gets trusted-base node splitting of selected allowlisted modules, collected at the tested head with the trusted plugin and verified in the gate by an independent re-collection.",
   "target_unit_seconds": 900,
   "max_parts_per_module": 8,
   "modules": {
