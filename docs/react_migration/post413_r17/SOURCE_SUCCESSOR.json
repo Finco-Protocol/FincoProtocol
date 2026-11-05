@@ -19,7 +19,7 @@
     "tests/test_post413_r17_scope.py": "2507899c0b2964fb8b41ea092b474849f00ba0a5",
     "tests/test_r17_base_case_scope.py": "8717567f0d07ce4de291225d56684f07361c1336",
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
-    "tests/test_wf06b_scope.py": "49b1ded0b7246cf1e67a7a65168a262622db73d5",
+    "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "c5a965a150e7820c132eef1492cbc0927e44c831"
   }
 }

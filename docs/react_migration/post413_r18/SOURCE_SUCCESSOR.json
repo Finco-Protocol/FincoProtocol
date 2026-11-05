@@ -17,7 +17,7 @@
     "tests/test_post413_r18_scope.py": "8b1d5ced257c6366117ddebe73eb7ed012401786",
     "tests/test_r18_atomic_reference_clone.py": "5dcffbd37ce131a1b3c5d20be0ef6bece372d9c5",
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
-    "tests/test_wf06b_scope.py": "49b1ded0b7246cf1e67a7a65168a262622db73d5",
+    "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "c5a965a150e7820c132eef1492cbc0927e44c831"
   }
 }
