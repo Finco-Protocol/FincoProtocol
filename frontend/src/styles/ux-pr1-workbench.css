@@ -146,3 +146,8 @@
  [data-ux-pr1] [data-dense-workbench][data-density="normal"] .ws2-grid td { height:38px }
  [data-ux-pr1] [data-dense-workbench][data-density="normal"] .ws2-grid .fm-input { min-height:32px; height:32px }
 }
+@media (max-width:900px) {
+ [data-ux-pr1] .wsv2-menu { display:flex; width:100%; justify-content:space-between }
+ [data-ux-pr1] .wsv2-sidebar nav { display:none }
+ [data-ux-pr1] .wsv2-sidebar nav.is-open { display:block }
+}

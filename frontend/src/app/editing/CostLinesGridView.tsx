@@ -578,7 +578,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
               return (
                 <Fragment key={cat}>
                   <tr className="ws2-group-row" data-group-row={cat}>
-                    <th scope="colgroup" colSpan={Math.max(amountAt, 1)}>
+                    <th scope="colgroup" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>
                       <button type="button" className="ci-twisty" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}`} data-cost-twisty={cat}
                               onClick={() => { const next = new Set(collapsed); if (isCollapsed) next.delete(cat); else next.add(cat); setCollapsed(next); }} />
                       <span className="ws2-group-name">{costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}</span>
@@ -587,7 +587,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                         {g && g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Calculated" : "To be confirmed"}</span>}
                       </span>
                     </th>
-                    <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
+                    <td className={`ci-num ci-gtotal${denseWorkbench ? " ci-col-amount" : ""}`} data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
                         <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || cmdLocked || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
@@ -616,8 +616,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           </tbody>
           {allLines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>{sheet === "opex" ? "Sum of added line amounts" : "Sum of line amounts"} ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved {sheet === "opex" ? "added lines — excludes the group base amounts" : "lines"} — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>{sheet === "opex" ? "Sum of added line amounts" : "Sum of line amounts"} ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className={`ci-num${denseWorkbench ? " ci-col-amount" : ""}`}>{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved {sheet === "opex" ? "added lines — excludes the group base amounts" : "lines"} — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className={`ci-num${denseWorkbench ? " ci-col-amount" : ""}`}>{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
             </tfoot>
           )}
         </table>

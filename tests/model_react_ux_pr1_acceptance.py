@@ -17,8 +17,15 @@ def check_dense_comments_and_responsive(browser,base):
         assert grid.locator('.ci-h-notes').count()==0 and grid.locator('.ci-h-status').count()==0
         assert grid.locator('thead th').all_text_contents()[:2]==['Line','Amount (kEUR)']
         measures=[]
-        for w,h in ((1440,900),(1024,768),(390,844)):
+        for w,h in ((1440,900),(1024,768),(850,844),(390,844)):
             page.set_viewport_size({'width':w,'height':h});page.wait_for_timeout(150)
+            if w<=900:
+                nav=page.locator('#wsv2-navigation')
+                assert not nav.is_visible()
+                page.locator('.wsv2-menu').click()
+                page.wait_for_function("() => document.activeElement?.closest('#wsv2-navigation') !== null")
+                assert nav.is_visible()
+                page.keyboard.press('Escape');assert not nav.is_visible()
             page.evaluate('scrollTo(0,0)')
             m=grid.evaluate('''g=>{let rows=[...g.querySelectorAll('tr[data-line],tr[data-group-row]')].filter(e=>!e.hidden);let meaningful=rows.filter(e=>e.hasAttribute('data-line')||e.querySelector('[data-group-saved-total]'));let rects=meaningful.map(e=>e.getBoundingClientRect());return {first:rects[0].top,visible:rects.filter(r=>r.height>0&&r.top>=0&&r.bottom<=innerHeight).length,overflow:document.documentElement.scrollWidth-innerWidth,leafFont:getComputedStyle(g.querySelector('tr[data-line] input')).fontSize}}''')
             assert m['overflow']<=1,m
@@ -48,6 +55,19 @@ def check_dense_comments_and_responsive(browser,base):
         page.wait_for_function("() => document.activeElement?.hasAttribute('data-cost-notes-for')")
         notes=grid.locator(f'.ux-col-notes [data-cost-notes-for="{line_id}"]')
         assert notes.input_value()==probe
+        page.set_viewport_size({'width':1024,'height':768});page.wait_for_timeout(100)
+        scroller=grid.locator('[data-lines-scroll]')
+        scroller.evaluate('el=>el.scrollLeft=160')
+        line_name=first.locator('.ci-col-line').bounding_box()
+        line_amount=first.locator('.ci-col-amount').bounding_box()
+        group=grid.locator('tr[data-group-row]').first
+        group_name=group.locator('th').bounding_box()
+        group_amount=group.locator('[data-group-saved-total]').bounding_box()
+        assert abs(group_name['x']-line_name['x'])<2
+        assert abs(group_amount['x']-line_amount['x'])<2
+        assert abs(group_amount['width']-line_amount['width'])<2
+        if evidence: page.screenshot(path=str(evidence/'accepted-comments-sticky-1024.png'))
+        page.set_viewport_size({'width':1440,'height':900});page.wait_for_timeout(100)
         grid.locator('[data-cost-comments]').click();assert grid.locator('.ci-h-notes').count()==0
         assert next(l for l in _costlines(context,base,record.project_code,'capex')['projection']['lines'] if l['sub_line_id']==line_id).get('notes','')==before
         assert page.locator('[data-unsaved-indicator]').is_visible() and page.locator('[data-wf-run]').is_disabled()
