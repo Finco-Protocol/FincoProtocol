@@ -78,13 +78,30 @@ Treći worker ne skraćuje kritični put (floor) pa ga pravilo ne dodaje. Cilj 2
    true`); gate job instalira ovisnosti, izvodi neovisnu re-kolekciju i poziva **trusted** agregator s `--inventory`. Prvi PR nakon PR-B je kanarinac:
    provjeriti da je trusted agregator s `main` (već PR-A kod) dao PASS s „collected == disjoint union“ za svaki split modul.
 
-## 6. Preporuka izvan opsega (zasebna odluka vlasnika)
+## 6. Opcija (a) — odobrena i izvedena (Owner odluka 2026-11-05)
 
-Pod od ~1 h 50 min je u governance testu, ne u CI-ju. Opcije (svaka mijenja pinirani governance izvor, pa traži odobrenje i re-pin kaskadu):
-(a) u `tests/test_wf06b_scope.py` cijelu petlju izvesti unutar jednog vanjskog `scoped()` poziva (memo jedne vanjske provjere koji kohorte već imaju);
-(b) u kohortnim `matches()` usporediti blob prije skupe `valid()` provjere (isti ishod, bez 3.255 git poziva po putanji);
-(c) „epoch seal“ iz ranijeg izvještaja.
+Dvije READ-ONLY petlje `matches()` u `tests/test_wf06b_scope.py` (floor test i `test_matches_accepts_exactly_the_successor_bytes_and_the_historical_pin`)
+izvode se kao **jedan vanjski governance poziv** (`_one_outer_call()`: ulaz u `scoped()` svake registrirane kohorte, točno kao kompozitni registar).
+Ista pitanja, isti asserti, ništa se ne piše unutar scopea, memo se odbacuje na izlazu; mutacijski negativi i dalje rade svježe, ne-scoped evaluacije.
+Re-pin: samo pet kasnijih manifesta koji piniraju trenutni blob (O1, R1, R17, R18, U2), svaki u toj jednoj liniji na isti novi blob; WF-06B i U1
+zadržavaju povijesni pin (prihvaćen postojećim lancem supersesije). Governance gate PASS.
 
-## 7. Što nije izmjereno u ovom dokumentu
+| Mjerenje | Prije | Poslije (a) |
+|---|---|---|
+| floor node, lokalno | 3.955 s [IZMJERENO] | **41,6 s** [IZMJERENO] |
+| petlja 120 putanja, lokalno | ~460.000 git poziva | **869** git poziva [IZMJERENO] |
+| floor node, runner (shadow-shard-0 job) | > 11.992 s [CENZURIRANO] | **1 min 19 s cijeli job** [IZMJERENO, run 41976168834] |
+| shadow, 4 teška modula, 304 nodea | ≥ 200 min (timeout) | **58 min najsporiji shard, 59 runner-min**, 304/304 PASS, exact disjunktna unija [IZMJERENO] |
+| required CI V4 gate, plan s cijelim `test_wf06b_scope.py` | timeout 2 h 30 min (#421) | **~32 min** cijeli run, shard 31,5 min [IZMJERENO, run 41976168871] |
+| lokalni governance moduli (wf06b, U1, U2, R1, R17, R18, O1, CI V4 scope) | — | **418 passed**, 15 min [IZMJERENO] |
 
-Hosted shadow rezultati (stvarno najsporiji shard, runner-min, disk vs tmpfs) — vidi završni izvještaj PR-A; dok ne postoje, svi brojevi u §4 su projekcije.
+Kalibracija tmpfs (isti SHA): jedan `matches()` 91,9 s na disku vs 98,1 s na tmpfs klonu → tmpfs **ne ubrzava** (trošak je pokretanje git procesa);
+`--tmp auto` ostaje opcionalan i isključen u required putanji.
+
+Preostali najsporiji dio: `tests/test_rcux_governance.py` (~37 min na runneru, 41 node) — isti obrazac ponovljenih governance provjera; ubrzanje istim
+pristupom je zasebna odluka vlasnika. Profil pluginova: razlika je bila samo `python` patch (runneri 3.12.15 vs 3.12.16) — shadow workflow fiksira
+točnu verziju; za PR-B required jobovi moraju fiksirati istu verziju.
+
+## 7. Što nije izmjereno
+
+P50/P95 iz više runova ne postoje (po jedan uzorak po stanju). Ostale opcije (b) i epoch seal nisu izvedene.
