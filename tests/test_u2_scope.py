@@ -98,7 +98,7 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
     registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
     # the four post-#413 cohorts, the registered CI V4 cohort (Owner CI policy 2026-11-04), the registered
     # G10/D8 OPEX-completion cohort and the registered Workstream-B cohort - no other later cohort
-    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
     own_manifests = {m.MANIFEST for m in registered_exact}
     # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
     assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)
@@ -106,7 +106,10 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
     # an R1 file may be in the diff only because the exact registered R1 cohort (or the exact registered Workstream-B cohort, which owns the Save All
     # module for the not-enabled D7 profile document) owns it - never U2
     r1_owned = _signed([m for m in registered_exact if m.__name__ in ('tests.post413_r1_scope', 'tests.post413_o1_scope')])
-    assert all(p in r1_owned for p in changed & U2.R1_PATHS)
+    # UX-PR1 may supersede only this presentation mount in R1_PATHS; no writer/store path.
+    ux_mount = {p for m in registered_exact if m.__name__ == 'tests.ux_pr1_scope'
+                for p in m.SUPERSEDED if p == 'frontend/src/app/WorkspaceView.tsx'}
+    assert all(p in r1_owned | ux_mount for p in changed & U2.R1_PATHS)
     assert _unexplained(changed, registered_exact) == []                                          # U2's own paths + exact registered siblings only
 
 

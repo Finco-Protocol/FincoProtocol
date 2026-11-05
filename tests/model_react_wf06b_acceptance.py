@@ -31,7 +31,7 @@ def _costlines(context, base, code, sheet):
 def _open_sheet(page, base, code, sheet):
     open_section(page, base, code, "inputs")
     settle_inputs(page)
-    page.locator(f"[data-inputs-jump] [data-jump-label='{sheet.upper()}']").click()
+    page.locator(f"[data-workspace-destination='inputs/{sheet}']").click()
     grid = page.locator(f"[data-cost-grid='{sheet}']")
     grid.wait_for()
     page.wait_for_function("""(s) => { const g = document.querySelector(`[data-cost-grid='${s}']`);
@@ -280,7 +280,7 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         page.locator("[data-ci-search]").fill("")
         page.wait_for_timeout(200)
         assert page.locator("[data-ci-sections] tr[data-grid-row]").count() == total_rows
-        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()                          # PR-U1: the cost lines live in the CAPEX workbench
+        page.locator("[data-workspace-destination='inputs/capex']").click()                          # PR-U1: the cost lines live in the CAPEX workbench
         grid = page.locator("[data-cost-grid='capex']")
         grid.wait_for()
         page.wait_for_selector("[data-cost-grid='capex'] [data-group-saved-total]", timeout=30000)
@@ -294,7 +294,7 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         grid.locator("[data-cost-search]").fill("")
         # columns: Code | Line | Amount | per MW | Payment profile | Status | row actions. Basis / Qty / Unit price were cancelled: ONE stored amount per line.
         heads = [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
-        assert heads == ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "STATUS", "ROW ACTIONS"], heads
+        assert heads == ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "ROW ACTIONS"], heads
         assert not re.search(r"not connected|coming soon|placeholder", page.locator("body").inner_text(), re.I)
         assert grid.locator("tr[data-line] select").count() == 0, "no dead selects (Basis) in the line rows"
         assert grid.locator("[aria-label*='Quantity'], [aria-label*='Unit price'], [aria-label*='Basis']").count() == 0
@@ -326,7 +326,7 @@ def check_back_forward_keeps_staged_text_and_never_crosses_projects(browser, bas
         original = cell.input_value()
         staged = original + "7" if original else "7"
         cell.fill(staged)
-        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()
+        page.locator("[data-workspace-destination='inputs/capex']").click()
         page.wait_for_selector("[data-cost-grid='capex']", timeout=30000)
         page.go_back()
         page.wait_for_selector(f"[data-grid-cell='{field}']", timeout=30000)
@@ -417,16 +417,17 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         row = grid.locator(f"tr[data-line='{line['sub_line_id']}']")
         cell = row.locator("[data-per-mw]")
         fmt = lambda v, d=0: f"{v:,.{d}f}"
-        # default display: kEUR, 0 decimals; the server's per-MW text, re-expressed only
+        # UX-PR1: amounts default to 0 decimals; per-MW retains at least 2.
         assert (grid.locator("th.ci-h-perMw").text_content() or "").strip() == "kEUR/MW"
-        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"])) and cell.get_attribute("data-per-mw-state") == "saved"
+        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]), 2) and cell.get_attribute("data-per-mw-state") == "saved"
         assert abs(float(line["per_mw_keur"]) - float(line["amount_keur"]) / mw) < 1e-5
+        grid.locator(".ux-grid-help summary").click()
         note = page.locator("[data-permw-note]").inner_text()
         assert cap["mw"] in note and "never saved" in note and "kEUR/MW" in note
         # unit conversion is a power-of-ten shift of the same value (EUR/MW = kEUR/MW x 1000); 3 decimals shows more digits
         page.locator("[data-ci-unit]").first.select_option("EUR")
         assert (grid.locator("th.ci-h-perMw").text_content() or "").strip() == "EUR/MW"
-        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]) * 1000), cell.inner_text()
+        assert cell.inner_text().strip() == fmt(float(line["per_mw_keur"]) * 1000, 2), cell.inner_text()
         assert "(EUR," in grid.locator("[data-saved-total-row] th").inner_text() and "EUR" in grid.locator("[data-saved-total]").inner_text()      # totals say which unit they are in
         assert float(grid.locator("[data-saved-total]").get_attribute("data-exact")) == proj["saved_total_keur"]                                        # the exact value is untouched
         page.locator("[data-ci-unit]").first.select_option("kEUR")
@@ -444,7 +445,7 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         assert amount.input_value() == "1234.56789"
         assert cell.get_attribute("data-per-mw-state") == "preview" and "unsaved preview" in cell.inner_text()
         expected = 1234.56789 / mw
-        assert cell.inner_text().replace("unsaved preview", "").strip() == fmt(expected)
+        assert cell.inner_text().replace("unsaved preview", "").strip() == fmt(expected, 2)
         assert _costlines(context, base, record.project_code, "capex")["projection"]["lines"][0]["amount_keur"] == proj["lines"][0]["amount_keur"]    # nothing saved
         page.locator("[data-cost-save]").click()
         page.wait_for_function("(id) => { const t = document.querySelector(`tr[data-line='${id}']`); return t && t.querySelector('[data-per-mw]').dataset.perMwState === 'saved' && t.querySelector(\"input[data-c='1']\").dataset.exact === '1234.56789'; }", arg=line["sub_line_id"], timeout=30000)
@@ -457,6 +458,7 @@ def check_amount_only_per_mw_unit_precision_preview_and_full_precision_save(brow
         # OPEX: per MW per year, and no dead controls
         opex = _open_sheet(page, base, record.project_code, "opex")
         assert (opex.locator("th.ci-h-perMw").text_content() or "").strip() == "kEUR/MW/yr"
+        opex.locator(".ux-grid-help summary").click()
         assert "per year" in page.locator("[data-permw-note]").inner_text()
         assert not errors, errors
     finally:
@@ -558,7 +560,7 @@ def check_add_line_waits_for_the_fresh_identity_after_a_save_and_never_sends_a_s
         cell = page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first
         original = cell.input_value()
         cell.fill(str(int(float(original)) + 1) if original.replace(".", "", 1).isdigit() else "1")
-        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()                          # (no reload: the staged input must survive)
+        page.locator("[data-workspace-destination='inputs/capex']").click()                          # (no reload: the staged input must survive)
         grid = page.locator("[data-cost-grid='capex']")
         grid.wait_for()
         page.wait_for_selector("[data-cost-grid='capex'] [data-group-saved-total]", timeout=60000)

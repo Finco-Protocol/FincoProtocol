@@ -63,9 +63,9 @@ test('DSCR and other ratios never acquire a money suffix and never round a breac
 
 test('calculated cost groups are named; unknown codes are shown as received, never invented', () => {
   const eligible = [{ code: 'C.01', label: 'C.01 Production Units' }];
-  assert.equal(W.costGroupLabel('C.01', eligible), 'C.01 Production Units');
-  assert.equal(W.costGroupLabel('C.13', eligible), 'C.13 Contingency');
-  assert.equal(W.costGroupLabel('B.13', []), 'B.13 Contingencies');
+  assert.equal(W.costGroupLabel('C.01', eligible), 'Production Units');
+  assert.equal(W.costGroupLabel('C.13', eligible), 'Contingencies');
+  assert.equal(W.costGroupLabel('B.13', []), 'Contingencies');
   assert.equal(W.costGroupLabel('C.99', eligible), 'C.99');
 });
 

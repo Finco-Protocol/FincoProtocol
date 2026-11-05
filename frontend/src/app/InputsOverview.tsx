@@ -81,6 +81,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
 
   return (
     <section className="ci-overview" aria-label="Inputs overview" data-inputs-overview="true" data-run-state={state}>
+      <details className="ux-result-disclosure" open={Boolean(identity)}><summary>Last Run results{!identity && " · NOT_RUN"}</summary>
       <div className="ci-kpis" data-ci-kpis="true">
         {tiles.map((t) => (
           <div className="ci-kpi" key={t.id}>
@@ -97,6 +98,7 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
           <strong className="ci-kpi-value" data-ci-metric={llcr.id}>{llcr.text}</strong>
         </div>
       </div>
+      </details>
       <p className="ci-source" data-ci-source="true">
         {!identity
           ? <span data-ci-norun="true">No Run yet — results appear after you run the model. Saving never runs it.</span>

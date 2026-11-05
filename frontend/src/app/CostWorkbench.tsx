@@ -38,7 +38,7 @@ export function CostWorkbench({ project, sheet, view, protectedReference, reload
           <ImportWorkspace project={project} protectedReference={protectedReference} onSaved={onMutated} />
         </div>)}
       {view === "lines" && (
-        <CostLinesGridView key={sheet} project={project} sheet={sheet} reloadKey={reloadKey} onMutated={onMutated} query={query} scenarioName={scenarioName}
+        <CostLinesGridView key={sheet} project={project} sheet={sheet} reloadKey={reloadKey} onMutated={onMutated} query={query} scenarioName={scenarioName} denseWorkbench
           onSheet={(next) => onNavigate(`inputs/${next}` as WorkspaceDestination)}
           onOpenProfile={sheet === "capex" ? () => onNavigate("inputs/capex/monthly") : undefined} />
       )}

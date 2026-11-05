@@ -1,4 +1,15 @@
-import { isWorkspaceSection, type WorkspaceSection } from "./WorkspaceNav";
+/** One route and navigation vocabulary for the financial workspace. */
+export type WorkspaceSection = "overview" | "inputs" | "statements" | "results" | "analysis"
+  | "financing" | "debt-metrics" | "scenarios" | "diagnostics" | "trust";
+export const SECTION_LABELS: Record<WorkspaceSection, string> = {
+  overview: "Overview", inputs: "Inputs", statements: "Statements", results: "Results", analysis: "Analysis",
+  financing: "Financing", "debt-metrics": "Debt metrics", scenarios: "Scenarios", diagnostics: "Model checks", trust: "Trust",
+};
+export const WORKSPACE_SECTIONS = (["inputs", "statements", "financing", "results", "scenarios", "analysis", "diagnostics", "trust", "debt-metrics"] as WorkspaceSection[])
+  .map((id, index) => ({ id, label: SECTION_LABELS[id], number: String(index + 1).padStart(2, "0") }));
+export function isWorkspaceSection(value: string): value is WorkspaceSection {
+  return Object.prototype.hasOwnProperty.call(SECTION_LABELS, value);
+}
 
 export const INPUT_DESTINATIONS = {
   project: { label: "Project & Timeline", target: "wf-inputs-setup" },
@@ -6,6 +17,7 @@ export const INPUT_DESTINATIONS = {
   capex: { label: "CAPEX", target: "wf-inputs-costs" },
   opex: { label: "OPEX", target: "wf-inputs-costs" },
   revenue: { label: "Revenue / PPA", target: "wf-inputs-revenue" },
+  tax: { label: "Tax", target: "wf-inputs-grid" },
 } as const;
 export type InputDestination = keyof typeof INPUT_DESTINATIONS;
 
@@ -18,6 +30,24 @@ export const COST_VIEWS: Readonly<Record<CostSheetId, ReadonlyArray<{ id: CostVi
 };
 
 export type WorkspaceDestination = WorkspaceSection | `inputs/${InputDestination}` | "inputs/capex/monthly" | "inputs/opex/years";
+
+export const WORKSPACE_NAV_GROUPS: ReadonlyArray<{ label: string; destination?: WorkspaceDestination; items: ReadonlyArray<{ destination: WorkspaceDestination; label: string }> }> = [
+  { label: "Model", items: [{ destination: "overview", label: SECTION_LABELS.overview }] },
+  { label: "Inputs", destination: "inputs", items: [
+    { destination: "inputs/project", label: "Project" }, { destination: "inputs/technical", label: "Technical" },
+    { destination: "inputs/capex", label: "CAPEX" }, { destination: "inputs/opex", label: "OPEX" },
+    { destination: "inputs/revenue", label: "Revenue" }, { destination: "financing", label: SECTION_LABELS.financing },
+    { destination: "inputs/tax", label: "Tax" },
+  ] },
+  { label: "Outputs", items: [{ destination: "statements", label: SECTION_LABELS.statements }, { destination: "results", label: SECTION_LABELS.results }, { destination: "debt-metrics", label: SECTION_LABELS["debt-metrics"] }] },
+  { label: "Decide", items: [{ destination: "scenarios", label: SECTION_LABELS.scenarios }, { destination: "analysis", label: SECTION_LABELS.analysis }] },
+  { label: "Check", items: [{ destination: "diagnostics", label: SECTION_LABELS.diagnostics }, { destination: "trust", label: SECTION_LABELS.trust }] },
+];
+
+/** A period view retains its parent workbench's navigation highlight. */
+export function activeNavigationDestination(destination: WorkspaceDestination): WorkspaceDestination {
+  return destination === "inputs/capex/monthly" ? "inputs/capex" : destination === "inputs/opex/years" ? "inputs/opex" : destination;
+}
 
 /** Short links people can type or bookmark; the canonical hash is what the app keeps in the address bar. */
 const ALIASES: Readonly<Record<string, string>> = {

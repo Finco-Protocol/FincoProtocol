@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import "../styles/compact-inputs.css";
 import { fetchCostLines } from "./api";
-import { divideDecimalText, showKeur } from "./costAmounts";
+import { divideDecimalText, showKeur, showPerMwKeur } from "./costAmounts";
 import { groupDisplayName } from "./costGroupDisplay";
 import { useCostUnit } from "./CostUnit";
 import { useReportPrecision } from "./ReportPrecision";
@@ -100,11 +100,14 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
         <p className="ci-card-total" data-ci-card-total="capex" data-exact={cap ? String(cap.saved_total_keur) : undefined}>
           {capex.state === "loading" ? "…" : cap ? <>{shown(cap.saved_total_keur)} <small>{unit}</small></> : "Unavailable"}
         </p>
-        <p className="ci-card-sub">Saved lines — {capexPerMw !== null ? <>{shown(capexPerMw)} {unit}/MW</> : <>per MW {cap?.capacity?.note ? "not available" : "—"}</>}</p>
+        <p className="ci-card-sub">Saved lines — {capexPerMw !== null ? <>{showPerMwKeur(capexPerMw, unit, precision)} {unit}/MW</> : <>per MW {cap?.capacity?.note ? "not available" : "—"}</>}</p>
+        <p className="ux-card-basis">Saved line inputs, not a Run total. {runNote}.</p>
+        <details className="ux-cost-breakdown"><summary>Breakdown and basis</summary>
         <ul className="ci-card-groups" aria-label="Largest CAPEX groups">
           {capexGroups.map((g) => <li key={g.code}><span>{groupDisplayName(g.code, g.label)}</span><span className="ci-num">{shown(g.saved_total_keur)}</span></li>)}
         </ul>
         <p className="ci-card-note">Includes the active saved lines of the groups that take lines. Contingency, financing costs and reserves are calculated when you run the model and are not in this figure. Saved inputs, not a Run result. {runNote}.</p>
+        </details>
         <button type="button" className="fm-btn fm-btn-primary" data-open-workbench="capex" onClick={() => onOpen("capex")}>View / edit CAPEX →</button>
       </article>
       <article className="ci-card" data-ci-card="opex" aria-labelledby="ci-card-opex">
@@ -112,8 +115,10 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
         <p className="ci-card-total" data-ci-card-total="opex">
           {opex.state === "loading" ? "…" : ox && y1Excl !== null ? <>{shown(y1Excl)} <small>{unit} / year 1 · line items</small></> : "Unavailable"}
         </p>
+        <p className="ux-card-basis">Saved year-1 line inputs, excluding group bases. Not a Run total. {runNote}.</p>
+        <details className="ux-cost-breakdown"><summary>Breakdown and basis</summary>
         <p className="ci-card-sub">
-          Line items, year 1, before contingency{y1Incl !== null && <> · {shown(y1Incl)} {unit} with the applied contingency{ox?.kpis.per_mw_year1_keur != null && <> ({shown(ox.kpis.per_mw_year1_keur)} {unit}/MW/yr)</>}</>}
+          Line items, year 1, before contingency{y1Incl !== null && <> · {shown(y1Incl)} {unit} with the applied contingency{ox?.kpis.per_mw_year1_keur != null && <> ({showPerMwKeur(ox.kpis.per_mw_year1_keur, unit, precision)} {unit}/MW/yr)</>}</>}
         </p>
         <ul className="ci-card-groups" aria-label="Largest OPEX groups">
           {opexGroups.map((r) => <li key={r.code}><span>{groupDisplayName(r.code, r.name)}</span><span className="ci-num">{shown(r.values[0])}</span></li>)}
@@ -125,6 +130,7 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
               : "No group base amounts saved."}
         </p>
         <p className="ci-card-note">Year 1 of the saved line items with each line's own inflation. The six group base amounts are edited in the OPEX workbench and are added by the model when it runs, except a base the workbench marks as not used; an all-in OPEX figure that includes them is not available yet. Saved inputs, not a Run result. {runNote}.</p>
+        </details>
         <button type="button" className="fm-btn fm-btn-primary" data-open-workbench="opex" onClick={() => onOpen("opex")}>View / edit OPEX →</button>
       </article>
     </section>
