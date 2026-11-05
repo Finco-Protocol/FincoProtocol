@@ -37,6 +37,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/g10_d8_scope.py',
     'docs/react_migration/g10_d8/P00_G10_D8.md',
     'docs/react_migration/g10_d8/TEST_EVIDENCE.md',
+    'docs/react_migration/g10_d8/POST_424_BLOCKER.md',
     'docs/react_migration/g10_d8/OPEX_RUN_AUTHORITY_TRACE.md',
     'docs/react_migration/g10_d8/G10_D8_OWNER_DECISION.md',
     'docs/react_migration/g10_d8/OPEX_RUN_AUTHORITY_TRACE.md',
