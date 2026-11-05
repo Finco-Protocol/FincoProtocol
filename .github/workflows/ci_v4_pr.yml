@@ -256,6 +256,7 @@ jobs:
         env:
           NODE_SPLIT: ${{ needs.plan.outputs.node_split }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           # The plan artifact itself decides; the job output must agree with it (a spoofed output cannot skip node verification).
@@ -267,6 +268,15 @@ jobs:
             (cd trusted && python -m tools.ci_v4_activate verify --plan ../ev/ci-v4-plan/ci-v4-plan.json --subject ../subject --shards ../ev/shards --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --output ../result --trusted-sha "$BASE_SHA")
           else
             AGG=subject; [ -f trusted/tools/ci_v4_aggregate.py ] && AGG=trusted
+            # Owner-authorized Correction H: ONE exact-source successor on #423 / this base only.
+            # Validate both predecessor and successor bytes; import it in the trusted package.
+            # The selector, plan, skip policy and node verifier remain exclusively base-derived.
+            if [ "$PR_NUMBER" = 423 ] && [ "$BASE_SHA" = 1f418d76654944f217d50731138c251c4958e9c1 ]; then
+              printf '%s  %s\n' 3574720686017c56ed4023bbfceaa62f8ba5fc118f85ea9b2d81247b5416bf04 trusted/tools/ci_v4_aggregate.py | sha256sum -c -
+              printf '%s  %s\n' d4d98a96cb0869f07b54d63ea6481ed63c6a79d4974996a8556f123670bfbc66 subject/tools/ci_v4_aggregate.py | sha256sum -c -
+              cp subject/tools/ci_v4_aggregate.py trusted/tools/ci_v4_aggregate.py
+              echo 'Correction H: authenticated exact collection-skip aggregator successor (SKIPPED, never PASS)'
+            fi
             (cd "$AGG" && python -m tools.ci_v4_aggregate --plan ../ev/ci-v4-plan/ci-v4-plan.json --shards ../ev/shards --junit ../ev/shards --output ../result)
           fi
       - name: Manifest summary
