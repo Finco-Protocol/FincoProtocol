@@ -101,6 +101,13 @@ def manifest(repo=None, ref=None):
         return d if (d.get('schema_version') == SCHEMA and d.get('base') == BASE and d.get('base_tree') == BASE_TREE) else {}
     except (OSError, ValueError, AttributeError, subprocess.CalledProcessError):
         return {}
+# CI generates untracked evidence before F01/static attribution. Follow the same
+# finite artifact types as U2; this never admits a changed tracked file or source.
+_CI_EVIDENCE_EXTENSIONS = ('.json', '.xml', '.png', '.webp', '.jpg', '.jpeg', '.txt', '.csv', '.svg', '.html', '.zip')
+def _ci_evidence_only(root, path):
+    f = root/path
+    return (path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
+            and f.is_file() and not f.is_symlink() and not f.stat().st_mode & 0o111)
 _SCOPE=[]
 @contextmanager
 def scoped():
@@ -154,7 +161,8 @@ def _exact_blobs_ok(repo=None, ref=None):
         if set(changed)-permitted:
             return False
         if ref is None:
-            if set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted:
+            untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
+            if any(not _ci_evidence_only(root,p) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p

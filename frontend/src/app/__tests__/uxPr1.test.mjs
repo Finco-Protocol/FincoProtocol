@@ -31,6 +31,9 @@ test('dedicated per-MW precision preserves small nonzero values and unavailable 
   assert.equal(U.showPerMwKeur('',unit,0),'—');
   assert.equal(U.showPerMwKeur('0',unit,0),'0.00');
   assert.match(U.showPerMwKeur('0.00001',unit,0),/[1-9]/);
+  assert.match(U.showPerMwKeur('0.000000000001',unit,0),/[1-9]/);
+  assert.match(U.showPerMwKeur('0.0000000000000000000000001',unit,0),/^</);
+  assert.match(U.showPerMwKeur('-0.0000000000000000000000001',unit,0),/^\(</);
  }
  assert.equal(U.showPerMwKeur('0.625','kEUR',0),'0.63');
  assert.equal(U.showPerMwKeur('0.625','EUR',0),'625.00');

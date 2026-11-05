@@ -8,7 +8,7 @@
 [data-ux-pr1] .ux-nav-group { padding:2px 0 8px; margin:0 }
 [data-ux-pr1] .ux-nav-group h2 { margin:0; font-size:11px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase }
 [data-ux-pr1] .ux-nav-group a { display:block; padding:4px 8px; min-height:26px; border:0; border-radius:3px; font-size:13px; text-decoration:none; color:var(--ink) }
-[data-ux-pr1] .ux-nav-group a[aria-current] { background:var(--accent-soft); box-shadow:inset 3px 0 var(--brand); font-weight:650 }
+[data-ux-pr1] .ux-nav-group a[aria-current] { background:var(--blue-soft); box-shadow:inset 3px 0 var(--navy); font-weight:650 }
 [data-ux-pr1] .ci-bar { margin:0; padding:5px 7px; gap:5px 10px; align-items:center; border-radius:3px }
 [data-ux-pr1] .ci-bar-id { min-width:0; gap:5px; font-size:13px }
 [data-ux-pr1] .ci-bar-id strong { max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
@@ -59,7 +59,7 @@
 [data-ux-pr1] [data-dense-workbench] .ws2-cell-text { font-family:inherit; width:0; min-width:0; flex:1 }
 [data-ux-pr1] [data-dense-workbench] .ws2-code { min-width:0; font-size:10px }
 [data-ux-pr1] .ux-line-state { font-size:10px; color:var(--muted); white-space:nowrap }
-[data-ux-pr1] .ux-comment-presence { border:0; background:transparent; color:var(--brand); padding:1px 4px; cursor:pointer }
+[data-ux-pr1] .ux-comment-presence { border:0; background:transparent; color:var(--navy); padding:1px 4px; cursor:pointer }
 [data-ux-pr1] .ux-col-notes input { width:100% }
 [data-ux-pr1] [data-dense-workbench] .ci-gaction .ci-link { font-size:11px }
 [data-ux-pr1] .ux-card-basis { font-size:11px; color:var(--muted); margin:2px 0 }

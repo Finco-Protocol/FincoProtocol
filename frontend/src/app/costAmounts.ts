@@ -46,7 +46,11 @@ export function showPerMwKeur(value: string | number | null | undefined, unit: D
   let digits = Math.max(2, precision);
   let shown = showKeur(value, unit, digits);
   const nonzero = value != null && /[1-9]/.test(String(value));
-  while (nonzero && !/[1-9]/.test(shown) && shown !== "—" && digits < 9) shown = showKeur(value, unit, ++digits);
+  while (nonzero && !/[1-9]/.test(shown) && shown !== "—" && digits < 18) shown = showKeur(value, unit, ++digits);
+  if (nonzero && !/[1-9]/.test(shown) && shown !== "—") {
+    const threshold = "<0.000000000000000001";
+    return String(value).trim().startsWith("-") ? `(${threshold})` : threshold;
+  }
   return shown;
 }
 

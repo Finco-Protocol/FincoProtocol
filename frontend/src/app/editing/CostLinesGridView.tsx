@@ -539,7 +539,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         {denseWorkbench && <button type="button" className="fm-btn" data-cost-comments="true" aria-pressed={showComments}
           onClick={() => {
             if (showComments) closeInspector();
-            else if (narrow && filtered.length) openComment(filtered.find((line) => Boolean(line.notes)) ?? filtered[0]);
+            else if (filtered.length) openComment(filtered.find((line) => Boolean(line.notes)) ?? filtered[0]);
             else setShowComments(true);
           }}>{showComments ? "Hide comments" : "Show comments"}</button>}
         <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing || cmdLocked}

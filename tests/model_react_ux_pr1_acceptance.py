@@ -45,6 +45,7 @@ def check_dense_comments_and_responsive(browser,base):
         page.set_viewport_size({'width':1440,'height':900})
         grid.locator('[data-cost-comments]').click()
         assert grid.locator('thead th').last.text_content().strip()=='Comments'
+        page.wait_for_function("() => document.activeElement?.hasAttribute('data-cost-notes-for')")
         notes=grid.locator(f'.ux-col-notes [data-cost-notes-for="{line_id}"]')
         assert notes.input_value()==probe
         grid.locator('[data-cost-comments]').click();assert grid.locator('.ci-h-notes').count()==0
