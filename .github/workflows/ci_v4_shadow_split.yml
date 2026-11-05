@@ -65,8 +65,9 @@ jobs:
   shadow-shards:
     needs: shadow-plan
     runs-on: ubuntu-24.04
-    # Benchmark ceiling: the indivisible wf06b floor node alone took 6718 s on #420; a cancelled shard is reported as censored, not as a sample.
-    timeout-minutes: 200
+    # Benchmark ceiling: the indivisible wf06b floor node took 6718 s on #420 and exceeded 11,992 s (censored) on 1b22175b; a cancelled shard
+    # is reported as censored, never as a sample. 330 min stays under the 360-min hosted job limit.
+    timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.shadow-plan.outputs.matrix) }}

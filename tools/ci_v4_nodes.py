@@ -183,7 +183,8 @@ def pytest_unconfigure(config):
         Path(os.environ[ENV_EVIDENCE]).write_text(json.dumps({
             "schema": EVIDENCE_SCHEMA, "complete": True, "exitstatus": exitstatus,
             "binding": {k: assign.get(k) for k in ("tested_sha", "tested_tree", "plan_digest", "shard")},
-            "profile_digest": prof_digest, "collected": {m: {"count": v["count"], "digest": v["digest"]} for m, v in inventory.items()},
+            "profile_digest": prof_digest, "profile": prof,
+            "collected": {m: {"count": v["count"], "digest": v["digest"]} for m, v in inventory.items()},
             "kept": _STATE["kept"], "nodes": nodes}, indent=1, sort_keys=True))
 
 

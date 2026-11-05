@@ -129,7 +129,7 @@ def verify_node_split(plan, shard_records, node_evidence, junit_by_shard, invent
         if ev.get("exitstatus") != r.get("pytest_exit"):
             problems.append("shard %d: evidence exit status %s != shard pytest exit %s" % (idx, ev.get("exitstatus"), r.get("pytest_exit")))
         if ev.get("profile_digest") != ns["profile_digest"]:
-            problems.append("shard %d: execution plugin/conftest profile differs from the collection profile" % idx)
+            problems.append("shard %d: execution plugin/conftest profile differs from the collection profile%s" % (idx, _profile_diff(inventory, ev)))
         for m, meta in ns["modules"].items():
             col = ev.get("collected", {}).get(m)
             if col is not None and (col.get("count"), col.get("digest")) != (meta["count"], meta["digest"]):
@@ -178,6 +178,17 @@ def verify_node_split(plan, shard_records, node_evidence, junit_by_shard, invent
         if foreign:
             problems.append("%s: executed nodes outside the collection: %s" % (m, foreign[:5]))
     return problems
+
+
+def _profile_diff(inventory, evidence):
+    """Diagnostic only (the verdict is the digest comparison): which registrations / fields differ."""
+    a, b = (inventory or {}).get("profile") or {}, evidence.get("profile") or {}
+    if not a or not b:
+        return ""
+    ra = {json.dumps(r, sort_keys=True) for r in a.get("registrations", [])}
+    rb = {json.dumps(r, sort_keys=True) for r in b.get("registrations", [])}
+    fields = sorted(k for k in set(a) | set(b) if k != "registrations" and a.get(k) != b.get(k))
+    return " (collection only: %s; execution only: %s; fields: %s)" % (sorted(ra - rb)[:4], sorted(rb - ra)[:4], fields)
 
 
 def module_of_id(nodeid):
