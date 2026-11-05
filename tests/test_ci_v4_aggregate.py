@@ -115,9 +115,9 @@ def test_changed_browser_module_is_not_no_skip_in_a_shard():
     assert "tests/test_model_workspace_consolidation_browser.py" not in plan["no_skip_modules"]
 
 
-# Exact collection-skip shape from run 42042550762, junit-shard-2.xml.
+# Exact collection-skip shape from run 42042550762, junit-shard-2.xml; synthetic checkout root.
 BROWSER = "tests/test_model_workspace_productivity_v1_browser.py"
-COLLECTION = '''<testcase classname="" name="tests.test_model_workspace_productivity_v1_browser" time="0.000"><skipped message="collection skipped">('/home/runner/work/FincoProtocol/FincoProtocol/tests/test_model_workspace_productivity_v1_browser.py', 19, 'Skipped: playwright not installed in this workflow')</skipped></testcase>'''
+COLLECTION = '''<testcase classname="" name="tests.test_model_workspace_productivity_v1_browser" time="0.000"><skipped message="collection skipped">('/ci/checkout/tests/test_model_workspace_productivity_v1_browser.py', 19, 'Skipped: playwright not installed in this workflow')</skipped></testcase>'''
 
 
 def _collection_fixture(tmp_path, xml=COLLECTION, no_skip=False):
@@ -154,14 +154,14 @@ def test_actual_collection_skip_is_attributed_and_remains_skipped(tmp_path):
     COLLECTION.replace("</testcase>", "<failure message='hidden'/></testcase>"),
     COLLECTION.replace("</testcase>", "<skipped message='collection skipped'/></testcase>"),
     COLLECTION.replace("time=\"0.000\"", "file=\"tests/test_foreign.py\""),
-    COLLECTION.replace("('/home", "['/home").replace("workflow')", "workflow']"),
+    COLLECTION.replace("('/ci", "['/ci").replace("workflow')", "workflow']"),
     COLLECTION.replace("19,", "0,"),
     COLLECTION.replace("19,", "True,"),
     COLLECTION.replace("Skipped: playwright", "playwright"),
     COLLECTION.replace("/tests/test_", "/../tests/test_"),
-    COLLECTION.replace("('/home/runner/work/FincoProtocol/FincoProtocol/", "('"),
-    COLLECTION.replace("('/home", "not_a_tuple('/home"),
-    COLLECTION.replace("('/home", "('/home/") ,
+    COLLECTION.replace("('/ci/checkout/", "('"),
+    COLLECTION.replace("('/ci", "not_a_tuple('/ci"),
+    COLLECTION.replace("('/ci", "('/ci/") ,
     COLLECTION.replace("</skipped>", "<unexpected/></skipped>"),
     COLLECTION.replace("</skipped>", "</skipped>") + "<testcase classname='' name='test_foreign'/>",
 ])

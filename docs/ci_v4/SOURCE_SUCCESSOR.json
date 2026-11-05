@@ -31,7 +31,7 @@
     "tests/post413_r18_scope.py": "51e6b7410340a3717dc44909ba8b3e44796a4c19",
     "tests/post413_r1_scope.py": "ed6797bee03a3241e4791aa5fba88f80e0a578c0",
     "tests/test_ci_v4_activate.py": "1a776341c1b76b8f2d25c8b385646f60ce936652",
-    "tests/test_ci_v4_aggregate.py": "db372851722fa8d295754a00a8bb898b35719b9b",
+    "tests/test_ci_v4_aggregate.py": "db188c30aa76a363cbb71f492ac1ca86a0ef9152",
     "tests/test_ci_v4_governance_gate.py": "cf109d9858db53a8fd868d48e730ed6d74861b44",
     "tests/test_ci_v4_nodes.py": "101773639f1b74850764f47037b341100ead0a27",
     "tests/test_ci_v4_release_gate.py": "93aa292fcee07c10f8ed3cf98fcf6e9afe2df1d0",
