@@ -141,3 +141,8 @@
  [data-ux-pr1] [data-sheet-editor] .wf-field .fm-input { min-height:26px; height:26px }
  [data-ux-pr1] [data-input-grid][data-density] .rx-input-table td, [data-ux-pr1] [data-input-grid][data-density] .rx-input-table th { height:26px; font-size:13px }
 }
+[data-ux-pr1] [data-dense-workbench][data-density] { font-size:13px }
+@media (min-width:901px) {
+ [data-ux-pr1] [data-dense-workbench][data-density="normal"] .ws2-grid td { height:38px }
+ [data-ux-pr1] [data-dense-workbench][data-density="normal"] .ws2-grid .fm-input { min-height:32px; height:32px }
+}

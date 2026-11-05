@@ -79,7 +79,7 @@ def check_density_toggle_and_viewports(browser, base, kind):
         compact = cell.evaluate("el => el.getBoundingClientRect().height")
         row = grid.locator("tr[data-line]").first.evaluate("el => el.getBoundingClientRect().height")
         assert compact <= 24 and row <= 28, (compact, row)                           # ~26px rows
-        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "12.5px"
+        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "13px"
         value = cell.input_value()
         grid.locator("[data-density-toggle]").click()                                 # optional larger rows
         assert grid.get_attribute("data-density") == "normal"
@@ -176,7 +176,7 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert page.locator("[data-ci-rail]").count() == 0
         page.locator("[data-ci-rail-toggle]").click()
         grid = page.locator("[data-input-grid='canonical']")
-        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "12.5px"     # compact by default
+        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "13px"     # compact by default
         cell = grid.locator("input.rx-grid-input").first
         assert cell.evaluate("el => el.getBoundingClientRect().height") <= 24
         grid.locator("[data-density-toggle]").click()
