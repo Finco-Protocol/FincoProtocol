@@ -17,11 +17,11 @@
     "static/react/finco-react.js": "9ff045cc94c37c4242983ae83c51f7c785d34575",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/test_pr2c_combined_contract.py": "b850e59dbc21e6d5ab52eab460fbcd0a0626f082",
-    "tests/test_ux_pr2c_scope.py": "afbc5cd3638c3e56b8f32debce186725857b1359",
     "tests/u1_scope.py": "186cc98f02d7937271db896dda48ebc8b4071dd0",
     "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
-    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32",
-    "tests/ux_pr2c_scope.py": "531327f87e58ecca8224991c9e0d4f7d8828495a"
+    "tests/ux_pr2c_scope.py": "531327f87e58ecca8224991c9e0d4f7d8828495a",
+    "tests/test_ux_pr2c_scope.py": "afbc5cd3638c3e56b8f32debce186725857b1359",
+    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32"
   },
   "base_blobs": {
     "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
