@@ -168,6 +168,12 @@ def exact_blobs_ok(repo=None, ref=None):
 def _exact_blobs_ok(repo=None, ref=None):
     root=Path(repo) if repo is not None else ROOT
     try:
+        # ONE evaluation of the PR2a successor per call (its exact proof is not repeated per path).
+        S2=_pr2a()
+        ok2=S2 is not None and S2.exact_blobs_ok(root,ref)
+        pins2=S2.manifest(root,ref).get('source_blobs',{}) if ok2 else {}
+        pin_ok2=lambda p,blob: ok2 and p in S2.SUPERSEDED and pins2.get(p)==blob
+        owns2=lambda p: ok2 and S2.allowed_path(p,root,ref)
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
@@ -185,7 +191,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if baseline != d['base_blobs']:
             return False
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha and not _pr2a_pin_ok(root,p,_blob(_read(root,p,ref)),ref):
+            if _blob(_read(root,p,ref))!=sha and not pin_ok2(p,_blob(_read(root,p,ref))):
                 return False
         for path in INTEGRATION_MANIFESTS:
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -194,14 +200,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            if any(not (p in pins and new[p]==pins[p]) and not _pr2a_pin_ok(root,p,new[p],ref) for p in old if new[p]!=old[p]):
+            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if any(p not in permitted and not _pr2a_owns(root,p,ref) for p in changed):
+        if any(p not in permitted and not owns2(p) for p in changed):
             return False
         if ref is None:
             untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not _ci_evidence_only(root,p) and not _pr2a_owns(root,p,ref) for p in untracked):
+            if any(not _ci_evidence_only(root,p) and not owns2(p) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p
