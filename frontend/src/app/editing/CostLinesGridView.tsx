@@ -29,6 +29,8 @@ import { numberValidator, type CellValidator, type GridModel, type PasteAssignme
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
 import { isUserLineKey, requestProfileFocus } from "../capex/profileFocus";
+import { useOptionalCapexProfileDraft } from "../capex/ProfileDraftProvider";
+import { ProfileDraftActions, ProfileDraftNotice, ProfileRowEditor, ProfileShapeSelect } from "../capex/ProfileRowEditor";
 import { useCapexSavedTimeline } from "../capex/savedTimeline";
 import { useOpexLineTimeline } from "../projection/opexLineTimeline";
 
@@ -105,6 +107,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [inFlight, setInFlight] = useState(false);
   const [density, toggleDensity] = useDensity();
   const narrow = useNarrow();
+  const profileDraft = useOptionalCapexProfileDraft();
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileLine, setProfileLine] = useState<string | null>(null);
+  const [profileInspector, setProfileInspector] = useState(false);
+  const activateProfiles = profileDraft?.activate;
+  useEffect(() => { if (profileEditing) activateProfiles?.(); }, [profileEditing, activateProfiles]);
   const [showComments, setShowComments] = useState(false);
   const [inspector, setInspector] = useState<{ project: string; sheet: Sheet; line: string } | null>(null);
   const commentDialog = useRef<HTMLDialogElement>(null);
@@ -199,6 +207,19 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const projection = data?.projection ?? null;
   const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
   const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
+  const profileKey = (line: CostLinePayload) => lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
+  const profileEligible = (line: CostLinePayload) => line.active && !isUserLineKey(profileKey(line)) && Boolean(profileDraft?.data?.items.some(i => i.item_key === profileKey(line)));
+  const openInlineProfile = (line: CostLinePayload) => {
+    setProfileLine(line.sub_line_id);
+    if (narrow) { setProfileInspector(true); setInspector({ project, sheet, line: line.sub_line_id }); }
+  };
+  const toggleProfileEditing = () => {
+    setProfileEditing(v => !v);
+    if (narrow && !profileEditing) {
+      const first = allLines.find(profileEligible) ?? allLines.find(l => l.active);
+      if (first) openInlineProfile(first);
+    }
+  };
   const needle = (localQuery || query).trim().toLowerCase();
   const isChanged = (line: CostLinePayload) => mine.some((e) => e.key.split("#")[0] === line.sub_line_id);
   const filtered = allLines.filter((line) => {
@@ -385,6 +406,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       value: event.target.value, rowVersion: line.row_version, meta: { label: line.label, amount_keur: textOf(line.amount_keur) },
     }, { coalesce: true })} />;
   const openComment = (line: CostLinePayload) => {
+    setProfileInspector(false);
     setShowComments(true);
     if (narrow) setInspector({ project, sheet, line: line.sub_line_id });
     else window.requestAnimationFrame(() => container.current?.querySelector<HTMLInputElement>(`[data-cost-notes-for="${CSS.escape(line.sub_line_id)}"]`)?.focus());
@@ -456,7 +478,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       }
       case "profile": return (
         <td key={id} className="ci-col-profile" data-cost-profile={line.sub_line_id}>
-          {profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
+          {profileEditing && profileDraft ? <div className="pr2b-profile-cell">
+            {profileEligible(line) ? <><ProfileShapeSelect itemKey={profileKey(line)} label={line.label} />
+              <button type="button" className="ci-link" data-pr2b-open={line.sub_line_id} aria-label={`Edit profile percentages or milestone for ${line.label}`}
+                aria-expanded={profileLine === line.sub_line_id} onClick={() => profileLine === line.sub_line_id && !narrow ? setProfileLine(null) : openInlineProfile(line)}>Edit % / month</button></>
+              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? "Loading profile eligibility…" : "Not available — inactive, added or unsupported line"}</span>}
+          </div> : profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
             <span className="rx-note" data-profile-user-line={line.sub_line_id} title="The saved profile document does not accept lines you added yet; this line keeps the model default timing.">
               Model default (added line)</span>
           ) : (
@@ -593,6 +620,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             else if (filtered.length) openComment(filtered.find((line) => Boolean(line.notes)) ?? filtered[0]);
             else setShowComments(true);
           }}>{showComments ? "Hide comments" : "Show comments"}</button>}
+        {denseWorkbench && narrow && sheet === "capex" && profileDraft && <button type="button" className="fm-btn" data-pr2b-toggle="mobile" aria-pressed={profileEditing} onClick={toggleProfileEditing}>Edit profiles</button>}
         {denseWorkbench && !narrow && <button type="button" className="fm-btn" data-cost-timeline-toggle={sheet} aria-pressed={timelineOn}
           title={sheet === "capex" ? "Show the saved payment profile as months M1..Mn next to each line (read-only server preview)" : "Show the saved-line projection as years Y1..Yn next to each line (read-only server numbers)"}
           aria-label={sheet === "capex" ? "Months M1 to Mn timeline" : "Years Y1 to Yn timeline"} onClick={() => setTimelineOn((v) => !v)}>{sheet === "capex" ? "Months" : "Years"}</button>}
@@ -608,9 +636,16 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         {inspected && <>
           <header><h2>{inspected.label}</h2><button type="button" className="fm-btn" aria-label="Close line details" onClick={closeInspector}>Close</button></header>
           <p>{valueOf(inspected, "amount")} kEUR{perYear ? " / year" : ""} · {editableLine(inspected) ? "Editable" : "Read-only"}</p>
-          <label>Comment{notesField(inspected)}</label>
+          {profileInspector && sheet === "capex" && profileDraft ? <>
+            <label>Line profile <select aria-label="Choose line profile" value={inspected.sub_line_id} onChange={e => { const line = allLines.find(l => l.sub_line_id === e.target.value); if (line) openInlineProfile(line); }}>
+              {allLines.filter(l => l.active).map(l => <option key={l.sub_line_id} value={l.sub_line_id}>{l.label}</option>)}
+            </select></label>
+            <ProfileRowEditor key={profileKey(inspected)} itemKey={profileKey(inspected)} label={inspected.label} inline />
+            <ProfileDraftNotice /><ProfileDraftActions />
+          </> : <><label>Comment{notesField(inspected)}</label>
           <p>Comment edits stay staged until you save the line changes. Closing this view does not discard them.</p>
           {sheet === "capex" && <div>{staticTd("profile", inspected).props.children}</div>}
+          </>}
           <p className="rx-note" data-inspector-timeline-hint="true">{sheet === "capex" ? "Monthly amounts" : "Yearly amounts"} are shown on wider screens (Show {sheet === "capex" ? "months" : "years"}); they are read-only server numbers.</p>
           <button type="button" className="fm-btn" disabled={readOnlyProject || refreshing || cmdLocked || locked}
             onClick={() => { setRowAction({ lineId: inspected.sub_line_id, active: !inspected.active, nonce: Date.now() }); closeInspector(); }}>
@@ -619,12 +654,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         </>}
       </dialog>}
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
-        <table className="fm-table ws2-grid">
-          {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96, sigma:72} as Partial<Record<ColId,number>>)[id] ?? (id.startsWith("tl:") ? 88 : undefined)}} />)}</colgroup>}
+        <table className="fm-table ws2-grid" data-pr2b-editing={profileEditing && sheet === "capex" || undefined}>
+          {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96, sigma:72, ...(profileEditing ? {profile:280} : {})} as Partial<Record<ColId,number>>)[id] ?? (id.startsWith("tl:") ? 88 : undefined)}} />)}</colgroup>}
           <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
             <th key={id} scope="col" className={`ci-h-${id.startsWith("tl:") ? "tl" : id}${id === "amount" || id === "perMw" || id === "sigma" || id.startsWith("tl:") ? " ci-num" : ""}`}
-                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : headOf(id)}</th>))}</tr></thead>
+                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : headOf(id)}{id === "profile" && denseWorkbench && profileDraft && <button type="button" className="ci-link pr2b-edit-toggle" data-pr2b-toggle="desktop" aria-pressed={profileEditing} onClick={toggleProfileEditing}>{profileEditing ? "Close editor" : "Edit profiles"}</button>}</th>))}</tr></thead>
           <tbody>
             {groupOrder.map((cat) => {
               const g = groupInfo.get(cat);
@@ -653,12 +688,15 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                   {!isCollapsed && members.map((line) => {
                     const r = rowIndex++;
                     return (
-                      <tr key={line.sub_line_id} data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
+                      <Fragment key={line.sub_line_id}><tr data-inactive={!line.active || undefined} data-stale={!line.active || undefined} data-line={line.sub_line_id}>
                         {cols.map((id) => id === "line" ? inputTd(line, "label", r, 0)
                           : id === "amount" ? inputTd(line, "amount", r, 1)
                           : id === "infl" ? inputTd(line, "inflation", r, 2)
                           : staticTd(id, line))}
                       </tr>
+                      {sheet === "capex" && profileEditing && profileDraft && !narrow && profileLine === line.sub_line_id && <tr className="pr2b-detail-row" data-pr2b-detail={line.sub_line_id}><td colSpan={cols.length}>
+                        <h3>{line.label} · Monthly % draft</h3><ProfileRowEditor itemKey={profileKey(line)} label={line.label} showShape={false} inline />
+                      </td></tr>}</Fragment>
                     );
                   })}
                   {addGroup === cat && <tr data-add-row={cat}><td colSpan={cols.length}><div ref={setSlot} className="ci-addslot" /></td></tr>}
@@ -677,6 +715,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           )}
         </table>
       </div>
+      {sheet === "capex" && profileEditing && profileDraft && !narrow && <section className="pr2b-footer" aria-label="Shared CAPEX profile draft"><ProfileDraftNotice /><ProfileDraftActions />
+        <p>Saved monthly amount cells continue to show the saved document. The editor above contains unsaved percentage inputs; Preview is separate from Saved / Last Run.</p></section>}
       <details className="ux-grid-help" open={!denseWorkbench}><summary>Editing, saving and per-MW basis</summary>
       <p className="rx-save-scope" data-save-scope="cost-lines">
         <strong>Saves:</strong> every edited {title} line below, together — all are saved or none. Saving does not run the model.

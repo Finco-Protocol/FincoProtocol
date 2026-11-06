@@ -171,8 +171,8 @@ def _exact_blobs_ok(repo=None, ref=None):
         # ONE evaluation of the PR2a successor per call (its exact proof is not repeated per path).
         S2=_pr2a()
         ok2=S2 is not None and S2.exact_blobs_ok(root,ref)
-        pins2=S2.manifest(root,ref).get('source_blobs',{}) if ok2 else {}
-        pin_ok2=lambda p,blob: ok2 and p in S2.SUPERSEDED and pins2.get(p)==blob
+        pins2=S2.effective_pins(root,ref) if ok2 else {}
+        pin_ok2=lambda p,blob: ok2 and pins2.get(p)==blob
         owns2=lambda p: ok2 and S2.allowed_path(p,root,ref)
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
@@ -225,7 +225,11 @@ def allowed_path(path,repo=None,ref=None):
 def base_blob(path,repo=None,ref=None):
     return manifest(repo,ref).get('base_blobs',{}).get(path)
 def supersedes(path,value,repo=None,ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and manifest(repo,ref).get('source_blobs',{}).get(path)==value
+    S=_pr2a()
+    if path not in SUPERSEDED or not exact_blobs_ok(repo,ref):
+        return False
+    pins=S.effective_pins(repo,ref) if S is not None and S.exact_blobs_ok(repo,ref) else {}
+    return pins.get(path,manifest(repo,ref).get('source_blobs',{}).get(path))==value
 def valid(repo=None,ref=None):
     from tests.fin_v2_cohorts import valid as composite_valid
     return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)

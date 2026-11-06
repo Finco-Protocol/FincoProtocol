@@ -19,6 +19,7 @@ import { WorkspaceExtensionBoundary, type WorkspaceExtensionContext, type Confir
 import "../styles/wsv2-core.css";
 import { CanonicalInputGrid, type GridSaveOutcome } from "./CanonicalInputGrid";
 import { DiagnosticsView, RunsView, TrustView } from "./ux040506Views";
+import { CapexProfileDraftProvider, useCapexProfileDraft } from "./capex/ProfileDraftProvider";
 import { CostWorkbench } from "./CostWorkbench";
 import { InputsCostCards } from "./InputsCostCards";
 import { FinancialInsights } from "./insights";
@@ -117,10 +118,11 @@ interface WorkspaceViewProps {
 /** The unsaved-change registry wraps the whole workspace so navigation, Reload and
  *  Run all consult the same state the editors report into. */
 export function WorkspaceView(props: WorkspaceViewProps) {
-  return <DirtyProvider><WorkspaceViewInner {...props} /></DirtyProvider>;
+  return <DirtyProvider><CapexProfileDraftProvider project={props.project}><WorkspaceViewInner {...props} /></CapexProfileDraftProvider></DirtyProvider>;
 }
 
 function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: WorkspaceViewProps) {
+  const profileSync = useCapexProfileDraft(false).syncWorkspace;
   const confirmIfDirty = useLeaveGuard();
   const { total: dirtyTotal } = useDirtyTotal();
   const dirtyTotalRef = useRef(dirtyTotal);
@@ -213,6 +215,11 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   }, [loadWorkspace]);
 
   useEffect(() => {
+    if (workspace?.project.code === project) profileSync({ project, scenario: workspace.workbook.scenario_id ?? "",
+      hash: workspace.workbook.composite_hash, version: dataVersion, onSaved: afterMutation });
+  }, [project, workspace, dataVersion, profileSync, afterMutation]);
+
+  useEffect(() => {
     if (dataVersion === 0) return;
     void loadInputs();
     void loadRevenue();
@@ -236,6 +243,12 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     if (section === "inputs" && !revenuePayload) void loadRevenue();
   }, [section, statements, inputs, recovery, revenuePayload, loadStatements, loadInputs, loadRevenue, runRefresh]);
 
+  function sharesCapexDraft(next: WorkspaceDestination) {
+    const current = workspaceRoute(destinationRef.current), target = workspaceRoute(next);
+    return isCostWorkbench(current) && isCostWorkbench(target) && current.input === "capex" && target.input === "capex"
+      && ["lines", "monthly"].includes(current.view) && ["lines", "monthly"].includes(target.view);
+  }
+
   // Hash changes (typed URL, Back/Forward) are guarded like tab clicks: the URL has
   // already moved, so "stay" restores the hash of the section that is still shown.
   useEffect(() => {
@@ -251,7 +264,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       // Moving between groups leaves the same editors mounted, so their drafts survive.
       if (route.section === sectionRef.current) {
         // Leaving the Monthly view unmounts its editor, so an unsaved spending-profile draft is asked about first (Back / typed URL included).
-        if (workspaceRoute(destinationRef.current).view === "monthly" && route.view !== "monthly") {
+        if (workspaceRoute(destinationRef.current).view === "monthly" && route.view !== "monthly" && !sharesCapexDraft(route.destination)) {
           confirmIfDirty(adopt, {
             ignore: (key) => key !== "capex-profile",
             onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
@@ -260,7 +273,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           const current = workspaceRoute(destinationRef.current);
           if (isCostWorkbench(current) && isCostWorkbench(route) && (current.input !== route.input || current.view !== route.view)) {
             confirmIfDirty(adopt, {
-              ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
+              ignore: (key) => (sharesCapexDraft(route.destination) && key === "capex-profile") || (!key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile"),
               onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
             });
           } else adopt();
@@ -297,7 +310,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
       ((isCostWorkbench(current) && isCostWorkbench(target) && (current.input !== target.input || current.view !== target.view)) ||
         (current.view === "monthly" && target.view !== "monthly"))) {
       confirmIfDirty(() => navigateTo(next), {
-        ignore: current.view === "monthly"
+        ignore: sharesCapexDraft(next)
+          ? (key) => key === "capex-profile" || (!key.startsWith("cost-") && key !== "opex-base")
+          : current.view === "monthly"
           ? (key) => key !== "capex-profile"
           : (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
       });
@@ -593,7 +608,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                   <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
                     <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} protectedReference={protectedReference}
                       reloadKey={dataVersion} query={inputQuery} scenarioName={workspace.workbook.scenario_name || "Base Case"} onMutated={afterMutation}
-                      onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile" })} />
+                      onNavigate={(next) => confirmIfDirty(() => navigateTo(next), { ignore: (key) => (sharesCapexDraft(next) && key === "capex-profile") || (!key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile") })} />
                   </div>)}
                 <div hidden={onBench} data-inputs-overview-host={onBench ? "hidden" : "visible"}>
                   <>

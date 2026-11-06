@@ -36,18 +36,18 @@ def test_exact_registered_acyclic_and_base_is_the_merged_pr1_main():
     assert git(U.ROOT, 'rev-parse', U.BASE + '^2').strip() == 'ef485b98431c3d36a71b68a861237b5ff9f01a3f'      # the merged UX-PR1 head
     for p in U.SUPERSEDED:
         assert d['base_blobs'][p] == git(U.ROOT, 'rev-parse', U.BASE + ':' + p).strip()
-        assert U.supersedes(p, d['source_blobs'][p]) and not U.supersedes(p, '0' * 40)
+        assert U.supersedes(p, U.effective_pins()[p]) and not U.supersedes(p, '0' * 40)
     source = (U.ROOT / 'tests/ux_pr2a_scope.py').read_text()
     code = source.split('"""', 2)[2]
     assert 'import ux_pr1_scope' not in code and 'tests.ux_pr1_scope' not in code and 'import fin_v2_cohorts' not in code.split('def valid(', 1)[0]   # one-way: PR2a never imports PR1 or the registry
     assert 'ux_pr1_scope' not in [line for line in code.splitlines() if line.lstrip().startswith(('import ', 'from '))]
     for stranger in ('app/v2/react_capex.py', 'financial_engine/x.py', '.github/workflows/ci_v4_pr.yml', 'main_web.py', 'frontend/src/app/editing/saveAll.ts',
-                     'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/CostWorkbench.tsx'):
+                     'frontend/src/app/capex/UnsignedProfile.tsx', 'frontend/src/app/CostWorkbench.tsx'):
         assert not U.allowed_path(stranger) and not U.matches(stranger)
 
 
 def test_pr1_follows_pr2a_only_for_literal_pr2a_paths_at_their_exact_pin():
-    pins = U.manifest()['source_blobs']
+    pins = U.effective_pins()
     for p in U.SUPERSEDED:
         assert P1._pr2a_pin_ok(U.ROOT, p, pins[p], None) and not P1._pr2a_pin_ok(U.ROOT, p, '0' * 40, None)
     assert not P1._pr2a_pin_ok(U.ROOT, 'frontend/src/app/CostWorkbench.tsx', pins['static/react/finco-react.js'], None)

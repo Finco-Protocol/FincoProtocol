@@ -166,3 +166,35 @@
 .ws2-grid .ci-col-tl[data-timeline-state="unavailable"], .ws2-grid .ci-col-sigma[data-timeline-state="none"] { color: var(--fm-muted, #6b7280); }
 [data-dense-workbench] .rx-lines-scroll { overflow-x: auto; max-width: 100%; }
 [data-dense-workbench] .ws2-grid thead th.ci-h-line, [data-dense-workbench] .ws2-grid td.ci-col-line { position: sticky; left: 0; z-index: 1; background: var(--fm-surface, #fff); }
+
+/* UX-PR2b: percentage inputs are draft data, separate from saved server money. */
+.pr2b-edit-toggle { display: block; font-weight: normal; white-space: nowrap; }
+.pr2b-profile-cell { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.pr2b-profile-cell select { min-width: 0; max-width: 155px; height: 26px; font: inherit; }
+.pr2b-profile-cell .ci-link { white-space: nowrap; }
+.pr2b-detail-row > td { padding: 10px 16px !important; background: var(--surface-alt, #f6f8fa); }
+.pr2b-detail-row h3 { margin: 0 0 8px; font-size: 13px; }
+.pr2b-editor, .pr2b-footer, .pr2b-notice { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.pr2b-editor { border-inline-start: 3px solid #a77812; padding-inline-start: 10px; }
+.pr2b-row-heading, .pr2b-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.pr2b-editor textarea { display: block; box-sizing: border-box; width: 100%; max-width: 650px; font: inherit; }
+.pr2b-months { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding: 6px 0 12px; }
+.pr2b-months > * { flex: 0 0 78px; display: flex; flex-direction: column; gap: 4px; }
+.pr2b-month input { box-sizing: border-box; width: 76px; min-height: 32px; font: inherit; }
+.pr2b-footer { padding: 10px; border-top: 1px solid var(--border, #ddd); }
+.pr2b-actions button { max-width: 100%; white-space: normal; }
+.pr2b-import:not([open]), .pr2b-confirm:not([open]) { display: none !important; }
+.pr2b-import[open], .pr2b-confirm[open] { box-sizing: border-box; width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid #adb5bd; border-radius: 10px; background: white; color: #18212b; }
+.pr2b-import textarea { box-sizing: border-box; width: 100%; }
+.pr2b-import input[type=file] { max-width: 100%; }
+.pr2b-editor :focus-visible, .pr2b-actions :focus-visible { outline: 2px solid #1666c1; outline-offset: 2px; }
+@media (max-width: 900px) {
+  .ux-line-inspector .pr2b-editor { width: auto; }
+  .pr2b-editor input, .pr2b-editor select, .pr2b-editor button, .pr2b-actions button { min-height: 44px; }
+  .ux-line-inspector select { max-width: 100%; }
+  .ux-line-inspector .pr2b-actions { align-items: stretch; flex-direction: column; }
+  .pr2b-import input[type=file] { width: 100%; }
+}
+[data-ux-pr1] [data-dense-workbench] .ws2-grid[data-pr2b-editing] { min-width: 1040px; }
+.pr2b-profile-cell { overflow: hidden; }
+.pr2b-profile-cell select { flex: 1 1 150px; }
