@@ -42,7 +42,7 @@ export function checkRunEvidence(e: Evidence): Gate {
   if (!id || !r.structure || !r.capacity) return deny('Run evidence shape is missing.');
   if (![id.snapshot_id, id.history_id, id.ran_at, id.composite_hash].every(present)) return deny('Run identity is missing.');
   const last = c.history_rows.find(h => h.history_id === id.history_id);
-  if (!last?.is_last || !last.selected || (scope.historyId && scope.historyId !== id.history_id)) return deny('Selected history is not Studio Last Run. Open Debt metrics for historical evidence.');
+  if (!last?.is_last || !last.selected || (scope.historyId && scope.historyId !== id.history_id)) return deny('Selected history is not the current Sources & Uses Last Run. Open Debt metrics for historical evidence.');
   if (!before.identity || before.identity.snapshot_id !== id.snapshot_id || before.identity.composite_hash !== id.composite_hash
       || before.identity.ran_at !== id.ran_at || id.scenario_id !== scope.scenarioId) return deny('Last Run scope cannot be established.');
   const state = s.freshness;
