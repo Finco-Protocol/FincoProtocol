@@ -93,6 +93,11 @@ def test_pr2b_shared_draft_saved_timeline_and_mobile(live_server, browser, rcm_r
         assert str(next(l for l in fresh_lines['lines'] if l['sub_line_id']==sub)['amount_keur']) != '1234.56789'
         assert len(posts) == 1 and '/spending-profiles/save' in posts[0]
         amount.fill(old)
+        toggle=page.locator('[data-cost-timeline-toggle="capex"]')
+        if toggle.get_attribute('aria-pressed')!='true':toggle.click()
+        page.wait_for_selector('[data-timeline-note="ready"]')
+        fresh_preview=context.request.get(f'{live_server}/v2/model-react/capex/preview?project={code}&'+urlencode({'spec':json.dumps([[key,'EXPLICIT',','.join(values),'']])}),headers={'X-Finco-React-Request':'1'}).json()
+        assert [page.locator(f'[data-timeline-cell="{sub}:M{m}"]').text_content() for m in range(1,n+1)]==[m['items'][key] for m in fresh_preview['plan']['months']]
         # Mobile uses the native top-layer inspector with full editing and no page overflow.
         for width in (390,320):
             page.set_viewport_size({'width':width,'height':844}); page.wait_for_timeout(100)
@@ -206,10 +211,12 @@ def test_pr2b_amount_save_is_separate_and_reconcile_keeps_profile(live_server,br
             milestone.fill(invalid);assert page.locator('[data-capex-save]').is_disabled()
         for valid in ('1',str(prof['months'])):
             milestone.fill(valid);assert page.locator('[data-capex-save]').is_enabled()
+        page.locator('[data-capex-preview]').click();page.wait_for_selector('[data-pr2b-preview-state="current"]')
         amount=page.locator(f'tr[data-line="{sub}"] input[data-c="1"]');amount.fill('4321.1234567')
         posts=[];page.on('request',lambda r:posts.append(r.url) if r.method=='POST' else None)
         page.locator('[data-cost-save]').click()
         page.wait_for_selector('[data-pr2b-stale]')
+        page.wait_for_selector('[data-pr2b-preview-state="stale"]')
         assert _profiles(context,live_server,code)['saved']['rows']=={}
         assert milestone.input_value()==str(prof['months'])
         assert page.locator('[data-capex-save]').is_disabled()

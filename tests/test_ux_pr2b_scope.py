@@ -146,5 +146,5 @@ def test_allowed_ci_artifact_is_not_source_and_verdict_does_not_survive_call(wt)
 def test_committed_executable_is_ref_rejected_and_fixture_restores_original_head(wt):
     path='frontend/src/app/capex/profileDraft.ts'
     git(wt,'update-index','--chmod=+x',path)
-    git(wt,'-c','user.name=FINCO synthetic validation','-c','user.email=synthetic@example.invalid','commit','-m','Synthetic invalid mode negative')
+    git(wt,'-c','user.name=FINCO synthetic validation','-c','user.email=noreply@users.noreply.github.com','commit','-m','Synthetic invalid mode negative')
     assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')

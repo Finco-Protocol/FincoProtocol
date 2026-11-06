@@ -9,7 +9,7 @@ import { useDirtyTotal, useRegisterDiscard, useReportDirty, useReportPending, us
 interface WorkspaceSignal { project: string; scenario: string; hash: string; version: number; onSaved: () => void }
 interface State {
   data: CapexProfiles | null; baseline: CapexProfiles | null; draft: ProfileDraft; history: ProfileDraft[]; future: ProfileDraft[];
-  plan: { plan: CapexPlan; spec: string; project: string; scenario: string; hash: string } | null;
+  plan: { plan: CapexPlan; spec: string; project: string; scenario: string; hash: string; invalidated?: boolean } | null;
   busy: "" | "preview" | "save"; loadError: string; stale: string;
   status: { tone: "ok" | "error" | "conflict"; text: string } | null;
   error: { code: string; message: string } | null; dialog: "reset" | "orphans" | null;
@@ -75,6 +75,7 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
     }
     if (active.current && (!old || old.project !== next.project || old.scenario !== next.scenario || old.hash !== next.hash || old.version !== next.version)) {
       previewAbort.current?.abort(); ++previewTicket.current;
+      update(s => ({ ...s, plan: s.plan ? { ...s.plan, invalidated: true } : null }));
       void load();
     }
   }, [load, update]);
@@ -150,7 +151,7 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   };
   let specNow = "";
   try { specNow = encodeSpec(keys, wireProfileDraft(keys, state.draft)); } catch { /* Ambiguous/invalid lexical input cannot be sent as a spec. */ }
-  const outdated = Boolean(state.plan && (state.plan.spec !== specNow || state.plan.project !== project || state.plan.scenario !== data?.save.scenario_id || state.plan.hash !== data?.save.content_hash));
+  const outdated = Boolean(state.plan && (state.plan.invalidated || state.stale || state.plan.spec !== specNow || state.plan.project !== project || state.plan.scenario !== data?.save.scenario_id || state.plan.hash !== data?.save.content_hash));
   const runPreview = () => singleFlight(async () => {
     const s = current.current, snapshot = s.data;
     if (!snapshot || snapshot.project.code !== projectRef.current || scopeMismatch || !specNow || specNow.length > 8000 || locked) return;
