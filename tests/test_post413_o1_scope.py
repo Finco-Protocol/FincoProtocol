@@ -209,8 +209,8 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         assert set(before['source_blobs']) <= set(now['source_blobs']) and set(now['source_blobs']) - set(before['source_blobs']) <= ci_later, manifest
         moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'].get(p)}
         own_moved, ci_moved, u2_moved = moved & O.OWNED_PATHS, moved & ci_later, moved & u2_later
-        ux_moved = moved & set(later_ux)
         ux2_moved = moved & set(later_ux2)
+        ux_moved = (moved & set(later_ux)) - ux2_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's
         assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
