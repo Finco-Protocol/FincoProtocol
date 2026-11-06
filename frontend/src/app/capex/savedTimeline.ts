@@ -10,7 +10,7 @@ export const MAX_SPEC_CHARS = 8000;
 
 export interface TimelineRow {
   shape: string;
-  /** "100%" for the closed-form shapes; the saved entry text for Monthly % (the server validates the 100% sum). */
+  /** "100%" ONLY when the server's own plan validated this saved row (its allocator requires the weights to total 100%); otherwise "—". The browser sums nothing. */
   sigma: string;
   /** Server month amounts M1..Mn, or null when the server did not return a valid allocation for this item. */
   cells: string[] | null;
@@ -22,19 +22,6 @@ export type CapexTimelineState =
   | { project: string; kind: "loading" }
   | { project: string; kind: "error"; code: string; message: string }
   | { project: string; kind: "ready"; months: number; rows: Record<string, TimelineRow>; bound: boolean; bindingCode: string; baseCase: boolean };
-
-const decimalSum = (entries: string): string => {
-  // Input-validation HINT for the typed Monthly % text only (the server stays the authority): exact string arithmetic in integer micro-units.
-  let micro = 0n;
-  for (const part of entries.split(",")) {
-    const text = part.trim().replace(/%$/, "");
-    if (!/^\d+(?:\.\d{1,6})?$/.test(text)) return "?";
-    const [i, f = ""] = text.split(".");
-    micro += BigInt(i) * 1_000_000n + BigInt((f + "000000").slice(0, 6));
-  }
-  const whole = micro / 1_000_000n; const frac = (micro % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
-  return frac ? `${whole}.${frac}%` : `${whole}%`;
-};
 
 export function useCapexSavedTimeline(project: string, enabled: boolean, reloadKey: number): CapexTimelineState {
   const [state, setState] = useState<CapexTimelineState>({ project, kind: "idle" });
@@ -63,11 +50,16 @@ export function useCapexSavedTimeline(project: string, enabled: boolean, reloadK
       const rows: Record<string, TimelineRow> = {};
       for (const key of savedKeys) {
         const saved = draft[key];
-        const sigma = saved.shape === "EXPLICIT" ? decimalSum(saved.explicit) : "100%";
-        rows[key] = { shape: saved.shape, sigma, cells: null, status: "unavailable", detail: null };
+        rows[key] = { shape: saved.shape, sigma: "—", cells: null, status: "unavailable", detail: null };
       }
       if (preview.ok !== true) {
         for (const key of savedKeys) rows[key].detail = preview.message ?? "The server preview is unavailable.";
+        setState({ project, kind: "ready", rows, ...base });
+        return;
+      }
+      // The preview and the saved profile must describe the same snapshot and the same construction length; otherwise nothing is shown as authoritative.
+      if (preview.content_hash !== profiles.save.content_hash || preview.plan.months_count !== profiles.months) {
+        for (const key of savedKeys) rows[key].detail = "The preview and the saved profile are from different saved states. Reload.";
         setState({ project, kind: "ready", rows, ...base });
         return;
       }
@@ -75,6 +67,7 @@ export function useCapexSavedTimeline(project: string, enabled: boolean, reloadK
         const row = rows[planRow.item_key];
         if (!row) continue;
         row.status = planRow.status;
+        row.sigma = planRow.status === "valid" ? "100%" : "—";
         row.detail = planRow.error_detail ?? planRow.error_code;
         if (planRow.status === "valid") row.cells = preview.plan.months.map((m) => m.items[planRow.item_key] ?? "—");
       }

@@ -32,9 +32,10 @@ def check_capex_inline_months(browser, base):
         prof = _profiles(context, base, code)
         months = prof['months']
         items = [i for i in prof['items'] if i['amount_keur'] > 0 and not re.fullmatch(r'C\.\d{2}\.U\d{3}', i['item_key'])]
-        assert len(items) >= 2
-        uniform, milestone = items[0]['item_key'], items[1]['item_key']
-        _save_profile(context, base, code, [(uniform, 'UNIFORM', '', ''), (milestone, 'MILESTONE', '', '1')])
+        assert len(items) >= 4 and months >= 3
+        uniform, milestone, explicit = items[0]['item_key'], items[1]['item_key'], items[2]['item_key']
+        explicit_text = ','.join(['0', '100'] + ['0'] * (months - 2))
+        _save_profile(context, base, code, [(uniform, 'UNIFORM', '', ''), (milestone, 'MILESTONE', '', '1'), (explicit, 'EXPLICIT', explicit_text, '')])
         page.goto(f'{base}/v2/model-react/{code}#inputs/capex')
         grid = page.locator('[data-cost-grid="capex"]'); grid.wait_for(); page.wait_for_selector('[data-saved-total]')
         # Off by default: PR1's compact grid is unchanged.
@@ -44,13 +45,13 @@ def check_capex_inline_months(browser, base):
         heads = grid.locator('thead th').all_text_contents()
         assert 'Σ %' in heads and [h for h in heads if re.fullmatch(r'M\d+', h)] == [f'M{i}' for i in range(1, months + 1)], heads
         # The numbers are the server's own preview of the SAVED document, cell for cell (no browser arithmetic).
-        spec = json.dumps([[uniform, 'UNIFORM', '', ''], [milestone, 'MILESTONE', '', '1']])
+        spec = json.dumps([[uniform, 'UNIFORM', '', ''], [milestone, 'MILESTONE', '', '1'], [explicit, 'EXPLICIT', explicit_text, '']])
         preview = context.request.get(f'{base}/v2/model-react/capex/preview?project={code}&' + urlencode({'spec': spec}), headers={'X-Finco-React-Request': '1'}).json()
         assert preview['ok'] is True
         # Resolve rows by the server-assigned display code through the cost-lines payload, then compare every month cell.
         lines = context.request.get(f'{base}/v2/model-react/costlines?project={code}&sheet=capex').json()
         by_code = {l['finco_display_code']: l['sub_line_id'] for l in lines['projection']['lines']}
-        for key in (uniform, milestone):
+        for key in (uniform, milestone, explicit):
             sub = by_code.get(key)
             assert sub, (key, list(by_code)[:5])
             for n in range(1, months + 1):
@@ -59,7 +60,7 @@ def check_capex_inline_months(browser, base):
                 assert cell.text_content().strip() == preview['plan']['months'][n - 1]['items'][key], (key, n)
             assert grid.locator(f'[data-timeline-sigma="{sub}"]').text_content().strip() == '100%'
         # A line without a saved profile keeps the model default: a dash with the reason, never 0.
-        other = next(i['item_key'] for i in items[2:] if i['item_key'] in by_code)
+        other = next(i['item_key'] for i in items[3:] if i['item_key'] in by_code)
         cell = grid.locator(f'[data-timeline-cell="{by_code[other]}:M1"]')
         assert cell.text_content().strip() == '—' and 'Model default' in (cell.get_attribute('title') or '')
         # Layout: the grid scrolls inside its own region; the page never overflows.
