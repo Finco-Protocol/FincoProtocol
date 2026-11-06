@@ -26,6 +26,7 @@
     "tests/model_react_wf1_browser_acceptance.py": "3924c454ae607e50554c0d9908c4bfab6dd4bd68",
     "tests/model_react_wf2_browser_acceptance.py": "f0455f6a18ec12c9d0a3a225324ff36fc6633471",
     "tests/model_react_wf2_lifecycle_acceptance.py": "4825c8e3a501bf6e48d47a1f577825e472d06a5e",
+    "tests/test_model_workspace_consolidation_browser.py": "2d0b5c1abc6c64a47ec925244f0b098cca67fb39",
     "tests/test_post413_o1_scope.py": "66cb9453baaba47e2db03f3d8a01e68a668feeba",
     "tests/test_project_lifecycle_browser.py": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
     "tests/test_u2_scope.py": "0565ac45742e89001dde78bc9a71b4e33ecac37c",
@@ -37,7 +38,7 @@
   "base_tree": "77c195d4d2fe43fae63cbccaf217b6f2f1a7bb54",
   "schema_version": "UX_PR1_PRESENTATION_EXACT_SOURCE_V1",
   "source_blobs": {
-    "docs/react_migration/ux_pr1/IMPLEMENTATION.md": "56290d50778e7a50281ea70c8bb86ebf94b10ecb",
+    "docs/react_migration/ux_pr1/IMPLEMENTATION.md": "c9ccb37ad49500f8252087d9dfb7644ee24c8337",
     "frontend/src/app/CanonicalInputGrid.tsx": "c70715c1e96563e8f3454d13703600b61833687c",
     "frontend/src/app/CostWorkbench.tsx": "fcad0c05a7535ec782f7c70892b2585e9c669d5e",
     "frontend/src/app/InputsCostCards.tsx": "31aa2f50ecb78ba9c058daa2572d9768e3326541",
@@ -66,8 +67,9 @@
     "tests/model_react_wf1_browser_acceptance.py": "43b2a420a95c11b83ee2967743622ce5d9a20720",
     "tests/model_react_wf2_browser_acceptance.py": "24d35c0f03e727b921f286a3f9ba9785e30e0cde",
     "tests/model_react_wf2_lifecycle_acceptance.py": "b4d153b5cc3bd6b9398dcc72966e255a390ee805",
+    "tests/test_model_workspace_consolidation_browser.py": "f3d6bac063ac94ac33d4dd18e970f9c515935929",
     "tests/test_post413_o1_scope.py": "a9fc2bf14f597c7c08aa005fd0562cd07ad0938f",
-    "tests/test_project_lifecycle_browser.py": "09c1227831aa751760cbbbf107102c55b178322c",
+    "tests/test_project_lifecycle_browser.py": "3c324b29c367970ae7b9ff11e9ad95fa079305b5",
     "tests/test_u2_scope.py": "b3e958c771475464e1ffbaba0fda2c9605386f76",
     "tests/test_ux_pr1_presentation.py": "dc686ed6a7f8c71d71aef9ff6dcc721a8b1d85c3",
     "tests/test_ux_pr1_scope.py": "62f3b1c17aab127726537874d6725bc4a5af3ba7",
@@ -75,7 +77,7 @@
     "tests/u1_scope.py": "f5a58833e4ad2237723992d9fce9eb750c2ef1b5",
     "tests/u2_scope.py": "afd8f23d5153a0b4f53d6ea344d05cf7ee759fb4",
     "tests/ux_pr1_browser_role.py": "67a50d9a2315096452975750dfa9809b8d234cd3",
-    "tests/ux_pr1_scope.py": "ad08e3ab2532596e13a5e626318949d039f6c23e",
+    "tests/ux_pr1_scope.py": "06d08cea153191f1538889f9e8177af2cf053bc5",
     "tests/wf06b_scope.py": "952e82913a0e25947f5c558dfc4a75f615139f6a"
   }
 }
