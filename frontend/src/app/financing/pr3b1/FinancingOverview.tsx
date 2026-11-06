@@ -38,7 +38,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
     { label: 'Scalars', path: 'terms', availability: s.senior_lock_reason ? `Locked: ${s.senior_lock_reason}` : s.editable ? 'Existing Debt terms editor' : 'Read-only project' },
     { label: 'Bankability', path: 'bankability', availability: s.bankability.available ? `Existing editor · fees ${s.editable && s.bankability.fees_editable ? 'editable' : 'read-only'}` : s.bankability.reason || 'NOT AVAILABLE' },
     { label: 'Facilities (read-only)', path: 'facilities', availability: s.multisenior.active ? 'Two-Senior · read-only / release gated' : s.capital_stack.reason || 'Existing facility view' },
-    { label: 'Investors', path: 'investors', availability: 'Existing agreement editor · access and CAS checked there' },
+    { label: 'Investors', path: 'investors', availability: s.editable ? 'Existing agreement view · edit availability checked there' : 'Read-only project · existing agreement view' },
     { label: 'Valuation (read-only)', path: 'debt-metrics', availability: 'No valuation editor · recorded metrics only' },
   ];
   return <section className="pr3b1" aria-label="Financing one-screen overview" data-run-state={gate.state}>
