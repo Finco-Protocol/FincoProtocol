@@ -28,6 +28,8 @@ OWNED_PATHS = frozenset((
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
     'tests/model_react_ux_pr2a_acceptance.py',
+    'tests/test_post413_o1_scope.py',
+    'tests/test_u2_scope.py',
     'tests/test_ux_pr2a_scope.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
@@ -46,6 +48,8 @@ SUPERSEDED = frozenset((
     'tests/u1_scope.py',
     'tests/u2_scope.py',
     'tests/ux_pr1_scope.py',
+    'tests/test_post413_o1_scope.py',
+    'tests/test_u2_scope.py',
 ))
 # Sibling manifests whose pins of OWNED paths may move to these same bytes (nothing else in them may change).
 INTEGRATION_MANIFESTS = frozenset((
@@ -76,7 +80,7 @@ def _blob(raw):
 def manifest(repo=None, ref=None):
     try:
         d = json.loads(_read(Path(repo) if repo is not None else ROOT, MANIFEST, ref))
-        return d if (d.get('schema_version') == SCHEMA and d.get('base') == BASE and d.get('base_tree') == BASE_TREE) else {}
+        return d if (set(d) == {'base', 'base_tree', 'schema_version', 'source_blobs', 'base_blobs'} and d.get('schema_version') == SCHEMA and d.get('base') == BASE and d.get('base_tree') == BASE_TREE) else {}
     except (OSError, ValueError, AttributeError, subprocess.CalledProcessError):
         return {}
 # CI generates untracked evidence before F01/static attribution. Follow the same

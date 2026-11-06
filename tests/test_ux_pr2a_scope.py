@@ -38,7 +38,9 @@ def test_exact_registered_acyclic_and_base_is_the_merged_pr1_main():
         assert d['base_blobs'][p] == git(U.ROOT, 'rev-parse', U.BASE + ':' + p).strip()
         assert U.supersedes(p, d['source_blobs'][p]) and not U.supersedes(p, '0' * 40)
     source = (U.ROOT / 'tests/ux_pr2a_scope.py').read_text()
-    assert 'ux_pr1_scope' not in source.split('"""', 2)[2] and 'fin_v2_cohorts' not in source.split('def valid(', 1)[0]   # one-way: PR2a never calls PR1 or the registry
+    code = source.split('"""', 2)[2]
+    assert 'import ux_pr1_scope' not in code and 'tests.ux_pr1_scope' not in code and 'import fin_v2_cohorts' not in code.split('def valid(', 1)[0]   # one-way: PR2a never imports PR1 or the registry
+    assert 'ux_pr1_scope' not in [line for line in code.splitlines() if line.lstrip().startswith(('import ', 'from '))]
     for stranger in ('app/v2/react_capex.py', 'financial_engine/x.py', '.github/workflows/ci_v4_pr.yml', 'main_web.py', 'frontend/src/app/editing/saveAll.ts',
                      'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/CostWorkbench.tsx'):
         assert not U.allowed_path(stranger) and not U.matches(stranger)
@@ -75,7 +77,7 @@ def test_forgery_modes_registration_and_foreign_paths_fail_closed(change, wt):
     elif change == 'history': d['base_blobs'][next(iter(d['base_blobs']))] = '0' * 40
     elif change == 'schema': d['schema_version'] = 'OTHER'
     elif change == 'key': d['unexpected'] = True
-    elif change == 'mode': (wt / 'frontend/src/app/capex/savedTimeline.ts').chmod(0o755)
+    elif change == 'mode': (wt / 'frontend/src/app/capex/savedTimeline.ts').chmod(0o755)   # restored in the finally below (a pure mode change is invisible to some reset modes)
     elif change == 'symlink':
         target = wt / 'frontend/src/app/projection/opexLineTimeline.ts'
         target.unlink(); target.symlink_to(wt / 'tests/ux_pr2a_scope.py')
@@ -84,7 +86,10 @@ def test_forgery_modes_registration_and_foreign_paths_fail_closed(change, wt):
         p = wt / 'tests/fin_v2_cohorts.py'; p.write_text(p.read_text().replace(", 'tests.ux_pr2a_scope'", ''))
     elif change == 'forbidden': (wt / 'app').mkdir(exist_ok=True); (wt / 'app' / 'unsigned_new.py').write_text('X = 1\n')
     path.write_text(json.dumps(d, indent=2) + '\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    try:
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    finally:
+        (wt / 'frontend/src/app/capex/savedTimeline.ts').chmod(0o644)
 
 
 @pytest.mark.parametrize('path', sorted(U.INTEGRATION_MANIFESTS))

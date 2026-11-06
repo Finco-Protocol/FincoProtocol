@@ -170,6 +170,17 @@ def _ux_pr1_signed_later_pins(repo=None, ref=None):
     return {p:pins[p] for p in UX_PR1_LATER_SHARED if p not in O.OWNED_PATHS and UX.supersedes(p,pins[p],root,ref)}
 
 
+def _ux_pr2a_signed_later_pins(repo=None, ref=None):
+    """UX-PR2a: the literal later pins of paths it supersedes that this cohort does not own, authenticated by its exact, registered cohort."""
+    from tests import ux_pr2a_scope as UX2
+    root = Path(repo) if repo is not None else O.ROOT
+    _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
+    if UX2.__name__ not in registered or UX2.__name__ not in C.COHORT_MODULES or not UX2.exact_blobs_ok(root, ref):
+        return {}
+    pins = UX2.manifest(root, ref)['source_blobs']
+    return {p: pins[p] for p in UX2.SUPERSEDED if p not in O.OWNED_PATHS and UX2.supersedes(p, pins[p], root, ref)}
+
+
 def _audit_shared_sibling_pins(repo=None, ref=None):
     # No mutation inside this outer call; every verdict is discarded before any tamper control runs.
     with ExitStack() as scopes:
@@ -185,6 +196,7 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
     moved_total = 0
     later_ci, later_u2 = _ci_v4_own_later_paths(root, ref), _u2_signed_later_pins(root, ref)
     later_ux = _ux_pr1_signed_later_pins(root, ref)
+    later_ux2 = _ux_pr2a_signed_later_pins(root, ref)
     assert not later_ci & O.OWNED_PATHS and not set(later_u2) & (O.OWNED_PATHS | later_ci)
     evidence = {}
     for manifest in sorted(SIBLINGS):
@@ -198,10 +210,12 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'].get(p)}
         own_moved, ci_moved, u2_moved = moved & O.OWNED_PATHS, moved & ci_later, moved & u2_later
         ux_moved = moved & set(later_ux)
-        assert moved == own_moved | ci_moved | u2_moved | ux_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved))
+        ux2_moved = moved & set(later_ux2)
+        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
         assert all(now['source_blobs'][p] == later_ux[p] for p in ux_moved), manifest
+        assert all(now['source_blobs'][p] == later_ux2[p] for p in ux2_moved), manifest
         evidence[manifest] = {'o1': sorted(own_moved), 'ci': sorted(ci_moved), 'u2': sorted(u2_moved)}
         moved_total += len(own_moved)
     assert moved_total > 0

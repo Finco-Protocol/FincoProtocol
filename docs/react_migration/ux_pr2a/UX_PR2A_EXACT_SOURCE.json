@@ -7,6 +7,8 @@
     "static/react/finco-react.css": "b944262b8e4093c63b7553836abba8bc293e8958",
     "static/react/finco-react.js": "57b1b21ae6ae0029058332ebd24baa7246f5835e",
     "tests/fin_v2_cohorts.py": "299c4e9e51dca793e0a44921025ad6813c5e0549",
+    "tests/test_post413_o1_scope.py": "e3866fcfb0d8a442fdb06c9dc814752df90b4354",
+    "tests/test_u2_scope.py": "b3e958c771475464e1ffbaba0fda2c9605386f76",
     "tests/u1_scope.py": "f5a58833e4ad2237723992d9fce9eb750c2ef1b5",
     "tests/u2_scope.py": "afd8f23d5153a0b4f53d6ea344d05cf7ee759fb4",
     "tests/ux_pr1_scope.py": "06d08cea153191f1538889f9e8177af2cf053bc5"
@@ -24,11 +26,13 @@
     "static/react/finco-react.js": "9e276efa17898b8b54f4afaed6baf793e03733d8",
     "tests/fin_v2_cohorts.py": "a9fd04dc934195428fffa699fefdf00fe3a606a5",
     "tests/model_react_ux_pr2a_acceptance.py": "23bf29ba6e0880e5985528d6e81feef439b246f7",
-    "tests/test_ux_pr2a_scope.py": "d1df6081177dad8932586a2433a7767a497671fe",
+    "tests/test_post413_o1_scope.py": "312bf5147d3eb1353996634b4e4a1f3baaae4048",
+    "tests/test_u2_scope.py": "2fcf0cf6a6802bbf5237e9c5216c8d30d4c2da40",
+    "tests/test_ux_pr2a_scope.py": "d7dc78f1756cb45541ac8f9e81b67583ef5ad7bd",
     "tests/u1_scope.py": "71e506adc00b4695bf5b9f208fe9a67cf527cd40",
     "tests/u2_scope.py": "02d18ecd623cff41dbe595f056bc0473758b0171",
     "tests/ux_pr1_scope.py": "1af8bc93910643f6017df5acd0fdc65fbdcc9ee8",
     "tests/ux_pr2a_browser_role.py": "46118603b520c0a625f1577d5fef4d43f0de01e5",
-    "tests/ux_pr2a_scope.py": "ad1a2d2f9650ea444513bfdfe05900d6ec78e64b"
+    "tests/ux_pr2a_scope.py": "2514d2e92b1fec3b6959dba30039d151b2323126"
   }
 }
