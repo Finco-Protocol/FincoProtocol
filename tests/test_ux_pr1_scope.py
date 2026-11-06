@@ -22,6 +22,18 @@ def wt(tree):
     git(tree,'reset','--hard','-q')
     git(tree,'clean','-fdxq')
 
+def _effective_pin(path,historical):
+    """Current signed authority: PR1 pin, replaced by the exact PR2a pin, then the exact PR2b pin (one-way, literal sets)."""
+    from tests import ux_pr2a_scope as A, ux_pr2b_scope as B
+    pin=historical
+    if path in A.SUPERSEDED:
+        assert A.exact_blobs_ok() and A.manifest()['base_blobs'][path]==historical  # lineage PR1 -> PR2a
+        pin=A.manifest()['source_blobs'][path]
+    if path in B.SUPERSEDED:
+        assert B.exact_blobs_ok() and B.manifest()['base_blobs'][path]==pin  # lineage PR2a -> PR2b
+        pin=B.manifest()['source_blobs'][path]
+    return pin
+
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
     with ExitStack() as scopes:
@@ -34,7 +46,12 @@ def test_exact_registered_and_historical_maps_immutable():
         assert set(d['source_blobs'])==U.OWNED_PATHS and set(d['base_blobs'])==U.SUPERSEDED
         for p in U.SUPERSEDED:
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
-            assert U.supersedes(p,d['source_blobs'][p]) and not U.supersedes(p,'0'*40)
+            hist=d['source_blobs'][p]
+            eff=_effective_pin(p,hist)
+            assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40)
+            if eff!=hist:  # a historical pin is preserved but no longer current authority
+                assert not U.supersedes(p,hist)
+            assert git(U.ROOT,'hash-object',p).strip()==eff
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
             assert {k:v for k,v in old.items() if k!='source_blobs'}=={k:v for k,v in now.items() if k!='source_blobs'}

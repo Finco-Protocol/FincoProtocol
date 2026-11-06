@@ -21,6 +21,7 @@
     "tests/test_model_workspace_consolidation_browser.py": "d883b8d54353a9c86dc3c0d1b14b5adab57c2957",
     "tests/test_post413_o1_scope.py": "8f6e429c1bbdd931144db2f026a3fd005eff9515",
     "tests/test_u2_scope.py": "d52600649b1cbceeb31ab245d8f2e5b6c1f26d99",
+    "tests/test_ux_pr1_scope.py": "53ecaab6d12f193e669aa4af47bd98b45ca5fd4e",
     "tests/test_ux_pr2a_scope.py": "8451649ed6817c318ae9a8e88609a2afdd07d6a9",
     "tests/test_ux_pr2b_scope.py": "c5459b6414171247c5d5f9a950b25464f807bac6",
     "tests/u1_scope.py": "2e102e0a61ad765234e31a4a4324efbfc8ba4a9c",
@@ -28,7 +29,7 @@
     "tests/ux_pr1_scope.py": "d5c73be5abc9d52585c4050d60598d667b1148b0",
     "tests/ux_pr2a_scope.py": "0d97d6ba7ca66c40080a94dc502f0da649647e8e",
     "tests/ux_pr2b_browser_role.py": "579425283c5f2dfdaeee9e8b74c6cf7505a61b4d",
-    "tests/ux_pr2b_scope.py": "f9a0ac0c77c9ab345ccdf36c5f9da8ee136b58e9",
+    "tests/ux_pr2b_scope.py": "3a778ebae525a0ffabd114e2df3aabae15ab6b60",
     "tools/ci_merge_tree_guard.py": "dcea0b01c938034495d16ec6d84a695e1550c1a0"
   },
   "base_blobs": {
@@ -43,6 +44,7 @@
     "tests/test_model_workspace_consolidation_browser.py": "f3d6bac063ac94ac33d4dd18e970f9c515935929",
     "tests/test_post413_o1_scope.py": "9b6176b3f58fd8d84ed2222af880617af8805646",
     "tests/test_u2_scope.py": "2fcf0cf6a6802bbf5237e9c5216c8d30d4c2da40",
+    "tests/test_ux_pr1_scope.py": "62f3b1c17aab127726537874d6725bc4a5af3ba7",
     "tests/test_ux_pr2a_scope.py": "d7dc78f1756cb45541ac8f9e81b67583ef5ad7bd",
     "tests/u1_scope.py": "71e506adc00b4695bf5b9f208fe9a67cf527cd40",
     "tests/u2_scope.py": "02d18ecd623cff41dbe595f056bc0473758b0171",
