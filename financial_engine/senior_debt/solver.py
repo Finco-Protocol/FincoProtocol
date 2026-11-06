@@ -1029,12 +1029,17 @@ def _solve_dscr(
                 D, new_D,
                 abs_tol, rel_tol,
             )
-            max_abs_diff = _compute_max_abs_diff(
-                rows, new_rows_check,
-                cfads_by, new_cfads,
-                cash_tax_by, new_cash_tax,
-                D, new_D,
-            )
+            # V8-B1 (O8): max_abs_diff is diagnostic only - the decision is ``converged`` above. Every iteration overwrites
+            # the previous value and it is read solely by the diagnostics of the iteration that RETURNS: a converged
+            # iteration, or the last one (MAX_ITERATIONS_REACHED reports the last computed value). It is therefore
+            # computed exactly on those iterations; the value reported is the same float, computed from the same inputs.
+            if converged or iteration == max_iter:
+                max_abs_diff = _compute_max_abs_diff(
+                    rows, new_rows_check,
+                    cfads_by, new_cfads,
+                    cash_tax_by, new_cash_tax,
+                    D, new_D,
+                )
 
             if converged:
                 # Finalisation — enforce exact interest/CFADS handshake
@@ -1272,13 +1277,16 @@ def _solve_gearing_sculpted(
         rows = _roll(cfads_by)
         new_cfads, new_cash_tax = tax_cfads_fn({r.period_index: r.interest_keur for r in rows})
         new_rows = _roll(new_cfads)
-        max_abs_diff = _compute_max_abs_diff(
-            rows, new_rows, cfads_by, new_cfads, cash_tax_by, new_cash_tax, D, D,
-        )
-        if _schedules_converged(
+        converged = _schedules_converged(
             rows, new_rows, cfads_by, new_cfads, cash_tax_by, new_cash_tax, D, D,
             abs_tol, rel_tol,
-        ):
+        )
+        # V8-B1 (O8): diagnostic-only metric, computed on the iteration that returns (converged or last), as in the DSCR loop.
+        if converged or iteration == max_iter:
+            max_abs_diff = _compute_max_abs_diff(
+                rows, new_rows, cfads_by, new_cfads, cash_tax_by, new_cash_tax, D, D,
+            )
+        if converged:
             final_rows, final_cfads, _final_tax, fin_ok = _finalise_authoritative(
                 D, period_indices, rate_map, period_start_end, new_cfads, policy,
                 "dscr_sculpted", tax_cfads_fn,
