@@ -40,8 +40,10 @@ def _tree(tmp_path_factory):
 
 @pytest.fixture()
 def wt(_tree):
+    # A mode-negative commits in this detached test worktree; restore the original ref too.
+    starting_head = _git(_tree, 'rev-parse', 'HEAD').strip()
     yield _tree
-    _git(_tree, 'reset', '--hard', '-q')
+    _git(_tree, 'reset', '--hard', '-q', starting_head)
     _git(_tree, 'clean', '-fdxq')
 
 
