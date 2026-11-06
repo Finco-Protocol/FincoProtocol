@@ -153,8 +153,10 @@ def _u2_signed_later_pins(repo=None, ref=None):
             and U2._blob(U2._read(root, p, ref)) == signed[p]}
 
 
-# UX-PR1 adds only these two coordinated current sibling pins beyond the two existing U2 presentation paths.
-UX_PR1_LATER_SHARED = frozenset(('tests/wf06b_scope.py', 'static/react/finco-react.css'))
+# UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.
+# The consolidation fixture preserves named optional-browser collection without a policy change.
+UX_PR1_LATER_SHARED = frozenset(('tests/wf06b_scope.py', 'static/react/finco-react.css',
+                                 'tests/test_model_workspace_consolidation_browser.py'))
 
 def _ux_pr1_signed_later_pins(repo=None, ref=None):
     from tests import ux_pr1_scope as UX
@@ -407,3 +409,26 @@ def test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call():
         assert O.exact_blobs_ok()
         assert len(O._SCOPE) == 1 and len(O._SCOPE[0]) == 1
     assert O._SCOPE == [] and U._SCOPE == []
+
+
+def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
+    from tests import ux_pr1_scope as UX
+    path = 'tests/test_model_workspace_consolidation_browser.py'
+    assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
+    before = _audit_shared_sibling_pins(wt, 'HEAD')
+    assert _ux_pr1_signed_later_pins(wt)[path] == UX.manifest(wt)['source_blobs'][path]
+    original = (wt / path).read_bytes()
+    _flip(wt / path)
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    assert _audit_shared_sibling_pins(wt, 'HEAD') == before
+    (wt / path).write_bytes(original)
+    sibling = wt / 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+    raw = sibling.read_bytes()
+    data = json.loads(raw)
+    data['source_blobs'][path] = '0' * 40
+    sibling.write_text(json.dumps(data, indent=2) + '\n')
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    sibling.write_bytes(raw)
+    assert _audit_shared_sibling_pins(wt) == before
