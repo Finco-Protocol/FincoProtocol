@@ -1,0 +1,34 @@
+{
+  "base": "713c0daf434dd79616f5a07451de6accddde93e0",
+  "base_blobs": {
+    "frontend/src/app/editing/CostLinesGridView.tsx": "032448df418c5a079b8691da1cad2c2dd7a326b8",
+    "frontend/src/app/projection/OpexLineYears.tsx": "1af24c7ab54c56edc1792a55d043ae28fa9c51d2",
+    "frontend/src/styles/ux-pr1-workbench.css": "80c50f761e3aa9a51d450d226aac86870f752f43",
+    "static/react/finco-react.css": "b944262b8e4093c63b7553836abba8bc293e8958",
+    "static/react/finco-react.js": "57b1b21ae6ae0029058332ebd24baa7246f5835e",
+    "tests/fin_v2_cohorts.py": "299c4e9e51dca793e0a44921025ad6813c5e0549",
+    "tests/u1_scope.py": "f5a58833e4ad2237723992d9fce9eb750c2ef1b5",
+    "tests/u2_scope.py": "afd8f23d5153a0b4f53d6ea344d05cf7ee759fb4",
+    "tests/ux_pr1_scope.py": "06d08cea153191f1538889f9e8177af2cf053bc5"
+  },
+  "base_tree": "11e796b14b55c9039bd17ccc00f16c3929196357",
+  "schema_version": "UX_PR2A_TIMELINE_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "docs/react_migration/ux_pr2a/IMPLEMENTATION.md": "97a1d051eafc7d8cbffbc8722a951c0a6e2e799d",
+    "frontend/src/app/capex/savedTimeline.ts": "6da2bcf2eff7ab08795f3f2b371d63e87e2d721d",
+    "frontend/src/app/editing/CostLinesGridView.tsx": "5954f5ba05e54a77e70ece3f4ceae57525a5f6d3",
+    "frontend/src/app/projection/OpexLineYears.tsx": "49f3c322a6659e48c8023bdaee71b04eea05e6ba",
+    "frontend/src/app/projection/opexLineTimeline.ts": "24c23aa8d7522e36fa080f6baedd5ad49223eb9d",
+    "frontend/src/styles/ux-pr1-workbench.css": "bf32de736d47c7b3e9756b139550038d2bd790e8",
+    "static/react/finco-react.css": "58ebeac72dabc16d224b8376f28cb44797499db4",
+    "static/react/finco-react.js": "9e276efa17898b8b54f4afaed6baf793e03733d8",
+    "tests/fin_v2_cohorts.py": "a9fd04dc934195428fffa699fefdf00fe3a606a5",
+    "tests/model_react_ux_pr2a_acceptance.py": "23bf29ba6e0880e5985528d6e81feef439b246f7",
+    "tests/test_ux_pr2a_scope.py": "d1df6081177dad8932586a2433a7767a497671fe",
+    "tests/u1_scope.py": "71e506adc00b4695bf5b9f208fe9a67cf527cd40",
+    "tests/u2_scope.py": "02d18ecd623cff41dbe595f056bc0473758b0171",
+    "tests/ux_pr1_scope.py": "1af8bc93910643f6017df5acd0fdc65fbdcc9ee8",
+    "tests/ux_pr2a_browser_role.py": "46118603b520c0a625f1577d5fef4d43f0de01e5",
+    "tests/ux_pr2a_scope.py": "ad1a2d2f9650ea444513bfdfe05900d6ec78e64b"
+  }
+}

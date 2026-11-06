@@ -34,12 +34,12 @@
     "frontend/src/app/capex/__tests__/profileImport.test.mjs": "4c4deaf03fbbab10ad34d2721a7ea077e4aa2996",
     "frontend/src/app/capex/profileFocus.ts": "485d3adeee2e7a25e0f7c88d7711f2ddfd57e610",
     "frontend/src/app/capex/profileImport.ts": "9a0224c3ed25be6923abde8cb32e98f5e4ec0408",
-    "frontend/src/app/editing/CostLinesGridView.tsx": "032448df418c5a079b8691da1cad2c2dd7a326b8",
-    "frontend/src/app/projection/OpexLineYears.tsx": "1af24c7ab54c56edc1792a55d043ae28fa9c51d2",
+    "frontend/src/app/editing/CostLinesGridView.tsx": "5954f5ba05e54a77e70ece3f4ceae57525a5f6d3",
+    "frontend/src/app/projection/OpexLineYears.tsx": "49f3c322a6659e48c8023bdaee71b04eea05e6ba",
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
-    "static/react/finco-react.css": "b944262b8e4093c63b7553836abba8bc293e8958",
-    "static/react/finco-react.js": "57b1b21ae6ae0029058332ebd24baa7246f5835e",
-    "tests/fin_v2_cohorts.py": "299c4e9e51dca793e0a44921025ad6813c5e0549",
+    "static/react/finco-react.css": "58ebeac72dabc16d224b8376f28cb44797499db4",
+    "static/react/finco-react.js": "9e276efa17898b8b54f4afaed6baf793e03733d8",
+    "tests/fin_v2_cohorts.py": "a9fd04dc934195428fffa699fefdf00fe3a606a5",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
     "tests/test_u2_d13_profile_lifecycle.py": "e4df8bebb5bbf1fbbb909d31034ebb140c174229",
@@ -48,8 +48,8 @@
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
     "tests/test_u2_scope.py": "b3e958c771475464e1ffbaba0fda2c9605386f76",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
-    "tests/u1_scope.py": "f5a58833e4ad2237723992d9fce9eb750c2ef1b5",
+    "tests/u1_scope.py": "71e506adc00b4695bf5b9f208fe9a67cf527cd40",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "afd8f23d5153a0b4f53d6ea344d05cf7ee759fb4"
+    "tests/u2_scope.py": "02d18ecd623cff41dbe595f056bc0473758b0171"
   }
 }
