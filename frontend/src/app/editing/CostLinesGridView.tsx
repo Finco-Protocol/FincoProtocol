@@ -595,7 +595,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           }}>{showComments ? "Hide comments" : "Show comments"}</button>}
         {denseWorkbench && !narrow && <button type="button" className="fm-btn" data-cost-timeline-toggle={sheet} aria-pressed={timelineOn}
           title={sheet === "capex" ? "Show the saved payment profile as months M1..Mn next to each line (read-only server preview)" : "Show the saved-line projection as years Y1..Yn next to each line (read-only server numbers)"}
-          onClick={() => setTimelineOn((v) => !v)}>{timelineOn ? (sheet === "capex" ? "Hide months" : "Hide years") : (sheet === "capex" ? "Show months M1…Mn" : "Show years Y1…Yn")}</button>}
+          aria-label={sheet === "capex" ? "Months M1 to Mn timeline" : "Years Y1 to Yn timeline"} onClick={() => setTimelineOn((v) => !v)}>{sheet === "capex" ? "Months" : "Years"}</button>}
         <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing || cmdLocked}
                 onClick={() => openAdd(addGroup ?? groupOrder.find((c) => eligibleCodes.has(c)))}>
           + Add line
