@@ -67,6 +67,27 @@ export function rowToWire(row: ProfileDraftRow): SavedRow {
 export function wireProfileDraft(keys: readonly string[], draft: ProfileDraft): Draft {
   return Object.fromEntries(keys.map(k => [k, rowToWire(draft[k] ?? emptyProfileRow())]));
 }
+/** PR2c (OD-B2 gated): the D7 Save All profile document — the exact wire format
+ *  `save_profiles_in_tx` parses (`{"version":1,"profiles":[{item_key, shape,
+ *  explicit_percent: string[], milestone_month: int|null}]}`), or `null` when no row
+ *  carries a shape or a row cannot be serialised yet (invalid EXPLICIT input). */
+export function profileD7Document(keys: readonly string[], draft: ProfileDraft): string | null {
+  const profiles: Array<Record<string, unknown>> = [];
+  for (const key of keys) {
+    const row = draft[key] ?? emptyProfileRow();
+    if (!row.shape) continue;
+    try {
+      const wire = rowToWire(row);
+      profiles.push({
+        item_key: key, shape: wire.shape,
+        explicit_percent: wire.explicit === "" ? [] : wire.explicit.split(","),
+        milestone_month: wire.milestone === "" ? null : Number(wire.milestone),
+      });
+    } catch { return null; }
+  }
+  if (!profiles.length) return null;
+  return JSON.stringify({ version: 1, profiles });
+}
 export function profileDocument(keys: readonly string[], draft: ProfileDraft): Record<string, SavedRow> {
   const wire = wireProfileDraft(keys, draft);
   return Object.fromEntries(keys.filter(k => wire[k].shape).map(k => [k, wire[k]]));

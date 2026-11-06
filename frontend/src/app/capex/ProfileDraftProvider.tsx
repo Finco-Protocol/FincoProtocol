@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { encodeSpec, fetchCapexPreview, fetchCapexProfiles, saveCapexProfile } from "./api";
 import type { CapexPlan, CapexProfiles, SavedRow } from "./types";
-import { emptyProfileRow, profileDraftFromSaved, profileDocument, rowProblems, sameDraftRow, sameProfileDocument,
+import { emptyProfileRow, profileD7Document, profileDraftFromSaved, profileDocument, rowProblems, sameDraftRow, sameProfileDocument,
   wireProfileDraft, type ProfileDraft, type ProfileDraftRow } from "./profileDraft";
 import { isUserLineKey } from "./profileFocus";
+import { useChanges } from "../editing/ChangesProvider";
 import { useDirtyTotal, useRegisterDiscard, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock } from "../workflow/workflowShared";
 
 interface WorkspaceSignal { project: string; scenario: string; hash: string; version: number; onSaved: () => void }
@@ -36,6 +37,12 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   const singleFlight = useSingleFlight();
   const { pendingKeys } = useDirtyTotal();
   const externalPending = pendingKeys.some(k => k !== "capex-profile" && k !== "run");
+  // PR2c (OD-B2 gated): when the server advertises the combined atomic Save All, the dirty profile
+  // draft is published into the pending store (D7 document + base token + one representative edit) so
+  // the drawer's Save All carries it in the SAME transaction as staged line amounts.  The flag OFF
+  // keeps the PR2b two-writer behavior unchanged.
+  const changes = useChanges();
+  const combinedSubmissionPublish = useRef<{ submission: Submission; authoredHash: string } | null>(null);
   const registerDiscard = useRegisterDiscard();
   const update = useCallback((fn: (s: State) => State) => { const next = fn(current.current); current.current = next; setState(next); }, []);
   const dirtyOf = (s: State) => {
@@ -168,7 +175,12 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   const verify = (fresh: CapexProfiles, submission: Submission) => fresh.project.code === submission.project && scopeOf(fresh) === submission.scope && !fresh.saved.error && sameProfileDocument(fresh.saved.rows, submission.expected);
   const save = (action: "save" | "reset", confirmed = false) => singleFlight(async () => {
     const s = current.current, snapshot = s.data, baseline = s.baseline;
-    if (!snapshot || !baseline || readOnly || lockedRef.current || externalPending || s.stale || scopeMismatch || (action === "save" && (problems.length || snapshot.saved.error || (!dirtyOf(s) && !orphans.length)))) return;
+    if (action === "save" && combinedCapable) {
+      update(v => ({ ...v, status: { tone: "conflict",
+        text: "Use Save All: it will save this profile together with the staged line amounts in one all-or-none transaction." } }));
+      return;
+    }
+    if (!snapshot || !baseline || readOnly || lockedRef.current || (action === "reset" ? false : externalPending) || s.stale || scopeMismatch || (action === "save" && (problems.length || snapshot.saved.error || (!dirtyOf(s) && !orphans.length)))) return;
     if (action === "save" && orphans.length && !confirmed) { update(v => ({ ...v, dialog: "orphans" })); return; }
     const wire = action === "reset" ? Object.fromEntries(keys.map(k => [k, { shape: "", explicit: "", milestone: "" }])) : wireProfileDraft(keys, s.draft);
     const submission: Submission = { project, scope: scopeOf(snapshot), expected: action === "reset" ? {} : profileDocument(keys, s.draft) };
@@ -211,6 +223,63 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
       update(v => ({ ...v, baseline: fresh, stale: "", plan: null, status: { tone: "ok", text: "The saved profile is unchanged. Draft retained against the latest inputs/token; it has not been saved. Review duration/validation and preview again." } }));
     } else update(v => ({ ...v, stale: "The saved profile or scope differs from the draft baseline. Draft retained. Review it, then explicitly discard or return to its original context; no overwrite or retry was made." }));
   });
+  // PR2c: publish (or clear) the staged profile into the pending store.  Idempotent per render:
+  // each dispatch is guarded so no store update loop can start.
+  const combinedContract = data?.save.save_all_combined;
+  const combinedCapable = Boolean(combinedContract?.available) && !scopeMismatch && !state.stale;
+  useEffect(() => {
+    if (!combinedCapable || !changes.identity) return;
+    if (dirtyCount > 0 && !state.busy && !lockedRef.current) {
+      const document = profileD7Document(keys, state.draft);
+      if (document === null || problems.length > 0) return;   // invalid draft: never published, Save All refuses
+      const source = { projectId: changes.identity.projectId, activeScenario: changes.identity.activeScenario,
+                       contentHash: changes.identity.contentHash,
+                       baseToken: combinedContract?.profile_base_token ?? "" };
+      if (!changes.get("profile", "document")) {
+        changes.stage({ section: "profile", key: "document", label: "CAPEX monthly profile", unit: "changes",
+                        baseline: "", value: "staged" });
+      }
+      const store = changes.state;
+      if (store.documents.profile !== document || store.documentSources.profile?.baseToken !== source.baseToken
+          || store.documentSources.profile?.contentHash !== source.contentHash) {
+        changes.setDocument("profile", document, source);
+        combinedSubmissionPublish.current = {
+          submission: { project, scope: scopeOf(data!), expected: profileDocument(keys, state.draft) },
+          authoredHash: changes.identity.contentHash };
+      }
+    } else if (dirtyCount === 0 && changes.get("profile", "document")) {
+      changes.setDocument("profile", null);
+      changes.revert("profile:document");
+    }
+  });
+  // The staged profile edit disappearing means EITHER a committed combined save (the saved document
+  // matches what was published -> verify and clear) OR an explicit revert/discard through the pending
+  // store (the saved document still matches the baseline -> clear the local draft honestly).  Anything
+  // else stays locked for human reconciliation; nothing is retried here.
+  const stagedAlive = combinedCapable && Boolean(changes.get("profile", "document"));
+  const stagedAliveRef = useRef(stagedAlive);
+  useEffect(() => {
+    if (!(stagedAliveRef.current && !stagedAlive)) return;
+    stagedAliveRef.current = false;
+    const published = combinedSubmissionPublish.current;
+    void (async () => {
+      const fresh = await load();
+      if (!fresh) return;
+      if (published && verify(fresh, published.submission)) {
+        combinedSubmissionPublish.current = null;
+        setLocked(false);
+        update(v => ({ ...v, baseline: fresh, data: fresh, draft: profileDraftFromSaved(fresh), history: [], future: [], plan: null, stale: "",
+          status: { tone: "ok", text: "The profile and the staged line amounts were saved together in one transaction and verified by read-back. The model was not run." } }));
+        (signal.current?.onSaved ?? callback.current)?.();
+      } else if (fresh.save.content_hash === published?.authoredHash
+                 && sameProfileDocument(fresh.saved.rows, profileDocument(Object.keys(profileDraftFromSaved(fresh)), profileDraftFromSaved(fresh)))) {
+        update(v => ({ ...v, draft: profileDraftFromSaved(fresh), history: [], future: [], status: null }));
+      } else {
+        setLocked(true);
+        update(v => ({ ...v, status: { tone: "conflict", text: "The combined save outcome could not be verified against the saved profile. Draft retained; reconcile without resubmitting." } }));
+      }
+    })();
+  }, [stagedAlive]);
   return { ...state, data, draft: state.draft, saved, keys, dirtyCount, orphans, problems, readOnly, editable, locked, scopeMismatch, externalPending,
     specNow, outdated, activate, syncWorkspace, reload: load, change, changeShape, undo, redo, applyBulk, clearAll, discard, runPreview, save, reconcile,
     setDialog: (dialog: State["dialog"]) => update(s => ({ ...s, dialog })) };

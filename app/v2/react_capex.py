@@ -120,7 +120,7 @@ async def react_capex_profiles(request: Request, project: str = ""):
     can_edit = bool(ctx["can_edit"])
     reason = "" if can_edit else ("A scenario is selected: scenarios inherit the saved profile; switch to the Base case to edit it."
                                   if not ctx["base_case"] else "This project is read-only for you; the profile can be viewed but not saved.")
-    return _json({
+    payload = {
         "ok": True,
         "project": {"code": record.project_code, "name": record.project_name, "vertical": scope["key"], "pilot_tier": scope["pilot_tier"]},
         "months": ctx["months"], "timeline": _timeline(ctx["timeline"]),
@@ -134,7 +134,16 @@ async def react_capex_profiles(request: Request, project: str = ""):
                  "scenario_id": ws.active_scenario_id or ""},
         "semantics": {"save_runs_the_model": False, "preview_is_a_result": False,
                       "idc_and_sources_uses": "Calculated by the model when you run it. They are not estimated here."},
-    })
+    }
+    # PR2c (OD-B2 gated): when the combined atomic Save All is enabled, the read echoes the
+    # persisted profile-document token (D7 read echo) so a client can author a combined request
+    # against exactly this saved version.  The flag OFF keeps this payload byte-identical.
+    from app.v2.save_all_commands import profile_enabled
+    if profile_enabled() and can_edit:
+        from app.capex_profiles.service import read_profile_token
+        payload["save"]["save_all_combined"] = {"available": True, "url": "/v2/workbook/save-all",
+                                                "profile_base_token": read_profile_token(owner, record.project_id)}
+    return _json(payload)
 
 
 def parse_spec(raw: str):

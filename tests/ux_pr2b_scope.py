@@ -1,6 +1,6 @@
 """UX-PR2b low-level closed successor: verified unmerged PR2a parent, exact blobs/modes/ancestry. No predecessor or registry evaluation below valid()."""
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import hashlib
 import json
 import subprocess
@@ -25,6 +25,23 @@ INTEGRATION_MANIFESTS = frozenset((
 CI_PATHS = frozenset(('tools/ci_merge_tree_guard.py',))
 FORBIDDEN_PREFIXES = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'migrations/', 'schemas/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'))
+def _pr2c():
+    try:
+        from tests import ux_pr2c_scope as S
+        return S
+    except ImportError:
+        return None
+
+
+def effective_pins(repo=None, ref=None):
+    """Only authenticated exact successor pins supersede the immutable historical pins."""
+    pins = dict(manifest(repo, ref).get('source_blobs', {}))
+    S = _pr2c()
+    if S is not None and S.exact_blobs_ok(repo, ref):
+        pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
+    return pins
+
+
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 # Only immutable BASE git objects are cached. Working bytes, ref ancestry, modes,
@@ -58,11 +75,15 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    with ExitStack() as successors:
+        S=_pr2c()
+        if S is not None:
+            successors.enter_context(S.scoped())
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 def exact_blobs_ok(repo=None, ref=None):
     key=(str(repo if repo is not None else ROOT),ref)
     if not _SCOPE:
@@ -74,6 +95,11 @@ def exact_blobs_ok(repo=None, ref=None):
 def _exact_blobs_ok(repo=None, ref=None):
     root=Path(repo) if repo is not None else ROOT
     try:
+        S4=_pr2c()
+        ok4=S4 is not None and S4.exact_blobs_ok(root,ref)
+        pins4=S4.manifest(root,ref).get('source_blobs',{}) if ok4 else {}
+        pin_ok4=lambda p,blob: ok4 and p in S4.SUPERSEDED and pins4.get(p)==blob
+        owns4=lambda p: ok4 and S4.allowed_path(p,root,ref)
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
@@ -91,7 +117,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if baseline != d['base_blobs']:
             return False
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha:
+            if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))):
                 return False
         for path in INTEGRATION_MANIFESTS:
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -100,14 +126,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            if any(p not in pins or new[p]!=pins[p] for p in old if new[p]!=old[p]):
+            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if set(changed)-permitted:
+        if any(p not in permitted and not owns4(p) for p in changed):
             return False
         if ref is None:
             untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not _ci_evidence_only(root,p) for p in untracked):
+            if any(not _ci_evidence_only(root,p) and not owns4(p) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p
@@ -121,7 +147,8 @@ def _exact_blobs_ok(repo=None, ref=None):
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
 def allowed_path(path,repo=None,ref=None):
-    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}
+    S=_pr2c()
+    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST} or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
 def base_blob(path,repo=None,ref=None):
     return manifest(repo,ref).get('base_blobs',{}).get(path)
 def supersedes(path,value,repo=None,ref=None):

@@ -1,0 +1,41 @@
+{
+  "base": "96d04d25cf79b14011cdee18258820aeb4cd4f74",
+  "base_tree": "9403b402f7299f7f75e9177c933563c270f2108f",
+  "schema_version": "UX_PR2C_COMBINED_SAVE_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "P00_PR2C.md": "6bae78e409326178b1bfcfd860b3135b692d9aef",
+    "app/v2/react_capex.py": "2d208d180633bc34b58207cf932e544f593a9aa4",
+    "app/v2/react_workspace_router.py": "ed0426b7b4663a3eb9f437eb30b3b79360fb7847",
+    "docs/react_migration/ux_pr2c/IMPLEMENTATION.md": "4ee08af42b92ccdca51eb4238fcc84e5be6a0d8b",
+    "frontend/src/app/capex/ProfileDraftProvider.tsx": "832bd6ad83d0cf7a28debfc751ac82cac6f540e4",
+    "frontend/src/app/capex/__tests__/pr2cCombinedSave.test.mjs": "7c604c8512e4f498b3770411af63c5fa6506aa50",
+    "frontend/src/app/capex/profileDraft.ts": "0416aae169fb1e9a1db7f160c13f2f91352d8a57",
+    "frontend/src/app/capex/types.ts": "a498e13724bdd09511be1860494251dfba60f686",
+    "frontend/src/app/editing/pendingEdits.ts": "c70748b5de42237816bb6240d74f3c415c281f97",
+    "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
+    "frontend/src/app/editing/wsv2Extensions.tsx": "7157ac769b8c1b2d38753843547a51500af16cba",
+    "static/react/finco-react.js": "9ff045cc94c37c4242983ae83c51f7c785d34575",
+    "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
+    "tests/test_pr2c_combined_contract.py": "b850e59dbc21e6d5ab52eab460fbcd0a0626f082",
+    "tests/test_ux_pr2c_scope.py": "afbc5cd3638c3e56b8f32debce186725857b1359",
+    "tests/ux_pr2c_scope.py": "f954f2657a87ab6c4f7ece86d182d765c87dc074",
+    "tests/u1_scope.py": "186cc98f02d7937271db896dda48ebc8b4071dd0",
+    "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
+    "tests/ux_pr2b_scope.py": "307dc99880250ed8d6218d223f7cfe65638cdf1c"
+  },
+  "base_blobs": {
+    "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
+    "app/v2/react_workspace_router.py": "c767a5834ad5d1f05f2f57207c5dabfb7815621d",
+    "frontend/src/app/capex/ProfileDraftProvider.tsx": "f750601e7d5bd73c6f65e5bd9d207bd19b79e35c",
+    "frontend/src/app/capex/profileDraft.ts": "c6fd8e9e58e6b6347f88d4247ca2b50a560a7f15",
+    "frontend/src/app/editing/pendingEdits.ts": "dec4c4cb016636394007e1ba0510c41e603df8df",
+    "frontend/src/app/editing/saveAll.ts": "30af5183a60cd2cd0b430df20ab180759f0d3fe8",
+    "frontend/src/app/editing/wsv2Extensions.tsx": "86f1dcee84c672605cc1457e0e32bcca61992d27",
+    "tests/fin_v2_cohorts.py": "fc0a1d3fbda880dd8a39fa28adb1c660e7b84b95",
+    "tests/u1_scope.py": "2e102e0a61ad765234e31a4a4324efbfc8ba4a9c",
+    "tests/u2_scope.py": "3c4cd4fee236b331cedd537af989d4880deb243f",
+    "tests/ux_pr2b_scope.py": "3a778ebae525a0ffabd114e2df3aabae15ab6b60",
+    "frontend/src/app/capex/types.ts": "be1d6e510ef703ca92e61bb314789fc6f6129de6",
+    "static/react/finco-react.js": "73eb0e605461e278496d95bf6f3c8c8e3ddd5e8b"
+  }
+}

@@ -49,6 +49,10 @@ export interface SaveAllRequest {
   /** O1: token of the persisted PPA document the staged document was authored against; sent only with a document. */
   contracts_base_token?: string;
   cost_lines: CostLineEditWire[];
+  /** PR2c (OD-B2 gated): the staged CAPEX monthly profile document, sent only with a real profile mutation. */
+  profile_json?: string;
+  /** O1 token primitive: the persisted profile document the staged draft was authored against (read with it, never derived). */
+  profile_base_token?: string;
 }
 
 export type BuildResult = { ok: true; request: SaveAllRequest } | { ok: false; reason: string };
@@ -74,11 +78,14 @@ export function buildSaveAllRequest(
   const cells: ScalarCell[] = [];
   const lines = new Map<string, CostLineEditWire>();
   let ppaEdits = 0;
+  let profileEdits = 0;
   for (const edit of edits) {
     if (edit.section === "inputs" || edit.section === "financing") {
       cells.push({ field_id: edit.key, value: submitValue(edit) });
     } else if (edit.section === "ppa") {
       ppaEdits += 1;
+    } else if (edit.section === "profile") {
+      profileEdits += 1;
     } else {
       const [subLineId, column] = edit.key.split("#");
       const id = `${edit.section}:${subLineId}`;
@@ -99,6 +106,17 @@ export function buildSaveAllRequest(
   if (ppaEdits > 0 && !sameSource(state.documentSources.ppa, identity)) {
     return { ok: false, reason: "The Revenue & PPA changes were prepared against an older saved contract and cannot be saved over the current one. Reload the saved contract in the PPA section and re-enter them." };
   }
+  // PR2c: the profile rides the same whole-document + base-token pattern.  It is sent only with a real
+  // profile mutation, only for the identity it was authored against, and only with the server-issued token.
+  const profile = state.documents.profile ?? null;
+  if (profileEdits > 0 && profile === null) return { ok: false, reason: "The CAPEX monthly profile changes were not serialised; reopen the profile section." };
+  if (profileEdits > 0 && !sameSource(state.documentSources.profile, identity)) {
+    return { ok: false, reason: "The CAPEX monthly profile was prepared against an older saved version and cannot be saved over the current one. Reload the profile section and re-enter the changes." };
+  }
+  const profileToken = state.documentSources.profile?.baseToken;
+  if (profileEdits > 0 && !profileToken) {
+    return { ok: false, reason: "The CAPEX monthly profile has no server token; reload the profile section and try again." };
+  }
 
   return {
     ok: true,
@@ -107,6 +125,8 @@ export function buildSaveAllRequest(
       content_hash: identity.contentHash, scenario_id: identity.activeScenario, request_id: requestId,
       cells, contracts_json: ppaEdits > 0 ? contracts : null, cost_lines: [...lines.values()],
       ...(ppaEdits > 0 && state.documentSources.ppa?.baseToken ? { contracts_base_token: state.documentSources.ppa.baseToken } : {}),
+      ...(profileEdits > 0 && profile !== null ? { profile_json: profile } : {}),
+      ...(profileEdits > 0 && profile !== null && profileToken ? { profile_base_token: profileToken } : {}),
     },
   };
 }
