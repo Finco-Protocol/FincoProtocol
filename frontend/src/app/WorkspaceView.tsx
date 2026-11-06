@@ -323,6 +323,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
         ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]') ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
         : document.getElementById(INPUT_DESTINATIONS[route.input].target);
     if (target) {
+      if (target instanceof HTMLDetailsElement) target.open = true;
       target.tabIndex = -1;
       target.scrollIntoView({ block: "start" });
       target.focus({ preventScroll: true });
@@ -610,6 +611,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                       </details>
                     </div>
                     <div id="wf-inputs-grid" tabIndex={-1}>
+                      {route.input === "tax" && !gridPayload.grid.sections.some((item) => item.section_id === "tax-assumptions") &&
+                        <p role="status" data-tax-navigation-fallback="true">Tax assumptions are not available in this project's input grid. Showing available assumptions.</p>}
                       <CanonicalInputGrid payload={gridPayload} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} onFocusRow={setFocusInfo} />
                     </div>
                     </div>

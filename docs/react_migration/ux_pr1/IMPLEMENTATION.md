@@ -11,3 +11,5 @@ PR2 timelines/profiles/recurrence, PR3 financial instruments and DSCR semantics 
 The primary sidebar retains keyboard navigation, a discoverable mobile toggle and protected-template read-only identity. Cost sheet/view changes use the existing unsaved-edit guard, including browser hash navigation. Browser acceptance follows the current visible controls and preserves its save, pending-mutation and leave-guard assertions.
 
 Rollback uses a normal revert of the integrated change; there is no schema migration or flag change.
+
+Mobile route close and initial menu focus run before paint, preventing a previous transition from closing or stealing focus from the next action. Optional Playwright imports run at fixture/test setup so RISK collection preserves all 357 named consolidation cases as honest skips when absent; the separate mandatory Chromium role still executes them. Tax navigation opens the server-provided tax group, with explicit fallback text only if the group is absent.

@@ -105,3 +105,89 @@ def check_real_clipboard(browser,base):
         assert not errors,errors
     finally:
         context.close()
+
+
+def check_mobile_route_lifecycle(browser, base, width):
+    """Rapid genuine clicks must not race a passive close from the previous route."""
+    from playwright.sync_api import expect
+    from tests.model_react_wf2_lifecycle_acceptance import dialog, STAY, DISCARD
+    context, page, record, errors = session(browser, base, f'ux-pr1-nav-{width}', 'solar')
+    try:
+        page.set_viewport_size({'width': width, 'height': 900 if width == 1440 else 844})
+        page.goto(f'{base}/v2/model-react/{record.project_code}#inputs')
+        page.wait_for_selector('[data-grid-cell="tax.assumptions.cit_rate_pct"]')
+        nav = page.locator('[data-workspace-nav]')
+        toggle = page.locator('.wsv2-menu')
+
+        def choose(destination, guarded=False):
+            if width <= 900:
+                toggle.click()
+                expect(toggle).to_have_attribute('aria-expanded', 'true')
+            expect(nav).to_be_visible()
+            link = nav.locator(f'[data-workspace-destination="{destination}"]')
+            link.click()
+            if guarded:
+                expect(dialog(page)).to_be_visible()
+            else:
+                expect(link).to_have_attribute('aria-current', 'page')
+            if width <= 900:
+                expect(toggle).to_have_attribute('aria-expanded', 'false')
+                expect(nav).to_be_hidden()
+
+        for _ in range(4):
+            for destination in ('inputs/project', 'inputs/technical', 'inputs/capex', 'inputs/opex', 'inputs/revenue'):
+                choose(destination)
+        for history, destination in ((page.go_back, 'inputs/opex'), (page.go_back, 'inputs/capex'),
+                                     (page.go_forward, 'inputs/opex'), (page.go_forward, 'inputs/revenue')):
+            history()
+            expect(nav.locator(f'[data-workspace-destination="{destination}"]')).to_have_attribute('aria-current', 'page')
+            if width <= 900:
+                expect(toggle).to_have_attribute('aria-expanded', 'false')
+        choose('inputs/tax')
+        tax = page.locator('[data-grid-section="tax-assumptions"]')
+        expect(tax).to_have_attribute('open', '')
+        page.wait_for_function('() => document.activeElement?.closest(\'[data-grid-section="tax-assumptions"]\') !== null')
+        expect(page.locator('[data-tax-navigation-fallback]')).to_have_count(0)
+        cell = tax.locator('[data-grid-cell="tax.assumptions.cit_rate_pct"]')
+        cell.fill('17')
+        expect(page.locator('[data-unsaved-indicator]')).to_be_visible()
+        choose('financing', guarded=True)
+        dialog(page).get_by_role('button', name=STAY, exact=True).click()
+        expect(cell).to_have_value('17')
+        choose('financing', guarded=True)
+        dialog(page).get_by_role('button', name=DISCARD, exact=True).click()
+        expect(nav.locator('[data-workspace-destination="financing"]')).to_have_attribute('aria-current', 'page')
+        # Keyboard can reopen, traverse and escape the one primary menu.
+        if width <= 900:
+            toggle.focus(); page.keyboard.press('Enter')
+            expect(toggle).to_have_attribute('aria-expanded', 'true')
+        nav.locator('a').first.focus(); page.keyboard.press('End')
+        expect(nav.locator('a').last).to_be_focused()
+        page.keyboard.press('Escape')
+        if width <= 900:
+            expect(toggle).to_be_focused()
+            expect(nav).to_be_hidden()
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def check_tax_fallback(browser, base):
+    """A response without a tax group gets explicit fallback copy, never invented fields."""
+    context, page, record, errors = session(browser, base, 'ux-pr1-tax-fallback', 'solar')
+    try:
+        def without_tax(route):
+            response = route.fetch()
+            payload = response.json()
+            payload['grid']['sections'] = [s for s in payload['grid']['sections'] if s['section_id'] != 'tax-assumptions']
+            route.fulfill(response=response, json=payload)
+        page.route('**/v2/model-react/inputs?*', without_tax)
+        page.goto(f'{base}/v2/model-react/{record.project_code}#inputs/tax')
+        expect_text = page.locator('[data-tax-navigation-fallback]')
+        expect_text.wait_for()
+        assert "not available in this project's input grid" in expect_text.inner_text()
+        assert page.locator('[data-grid-section="tax-assumptions"]').count() == 0
+        assert page.locator('[data-input-grid]').is_visible()
+        assert not errors, errors
+    finally:
+        context.close()

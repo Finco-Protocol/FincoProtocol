@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { WORKSPACE_NAV_GROUPS, activeNavigationDestination, type WorkspaceDestination } from "./workspaceNavigation";
 
 export function WorkspaceSidebar({ active, onNavigate }: {
@@ -8,10 +8,14 @@ export function WorkspaceSidebar({ active, onNavigate }: {
   const [open, setOpen] = useState(false);
   const nav = useRef<HTMLElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // Close before the new route is painted; a passive effect can close a newly reopened menu.
+  useLayoutEffect(() => {
     if (nav.current?.contains(document.activeElement) && toggle.current?.getClientRects().length) toggle.current.focus();
     setOpen(false);
   }, [active]);
+  useLayoutEffect(() => {
+    if (open) nav.current?.querySelector<HTMLAnchorElement>("a[aria-current], a")?.focus();
+  }, [open]);
   function keys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") { setOpen(false); toggle.current?.focus(); return; }
     if (!(event.target instanceof HTMLAnchorElement)) return;
@@ -27,13 +31,12 @@ export function WorkspaceSidebar({ active, onNavigate }: {
     aria-current={activeNavigationDestination(active) === destination ? "page" : undefined} data-workspace-destination={destination}
     onClick={(event) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); onNavigate(destination);
+      event.preventDefault(); setOpen(false); onNavigate(destination);
     }}>{label}</a>;
   return <aside className="wsv2-sidebar" data-workspace-sidebar="true">
     <button ref={toggle} type="button" className="rx-button rx-button-secondary wsv2-menu" aria-expanded={open}
       aria-controls="wsv2-navigation" onClick={() => {
-        setOpen(!open);
-        if (!open) window.requestAnimationFrame(() => nav.current?.querySelector<HTMLAnchorElement>("a[aria-current], a")?.focus());
+        setOpen((previous) => !previous);
       }}>Model sections <span aria-hidden="true">{open ? "−" : "+"}</span></button>
     <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" data-workspace-nav="true" className={`fm-nav${open ? " is-open" : ""}`} onKeyDown={keys}>
       {WORKSPACE_NAV_GROUPS.map((group) => <section className="ux-nav-group" key={group.label} aria-label={group.label}>

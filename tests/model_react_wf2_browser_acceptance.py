@@ -20,7 +20,6 @@ from tests.model_react_u1_helpers import input_jump
 import json
 import os
 import re
-from playwright.sync_api import expect
 
 from tests.model_react_wf1_browser_acceptance import make_session
 
@@ -304,6 +303,7 @@ def ppa_panel(page):
 
 
 def check_guided_ppa_editor_creates_edits_and_schedules_a_contract_book(browser, react_enabled):
+    from playwright.sync_api import expect
     context, page, record, errors = make_session(browser, react_enabled, "wf2-ppa-user")
     base = react_enabled
     try:

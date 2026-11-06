@@ -65,7 +65,7 @@ def wf03_servers(tmp_path_factory):
 def wf03_browser():
     # Close our sync Playwright loop before the unchanged secure-cookie and
     # Consolidation fixtures create theirs later in this same role/module.
-    from playwright.sync_api import sync_playwright
+    sync_playwright = pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow").sync_playwright
     with sync_playwright() as pw:
         options={'args':['--no-sandbox']}
         if os.environ.get('FINCO_TEST_CHROMIUM_PATH'):

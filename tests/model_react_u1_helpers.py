@@ -10,6 +10,8 @@ def ensure_navigation_open(page):
     nav = page.locator('[data-workspace-nav]')
     if not nav.is_visible():
         page.locator('.wsv2-menu').click()
+    if page.locator('.wsv2-menu').is_visible():
+        page.wait_for_function("() => document.querySelector('.wsv2-menu').getAttribute('aria-expanded') === 'true'")
     nav.wait_for(state='visible')
     return nav
 

@@ -15,7 +15,6 @@ import time
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from playwright.sync_api import sync_playwright
 
 from tests.test_model_mutation_request_security_v1 import snapshot
 
@@ -83,6 +82,7 @@ def mutation_browser_servers(tmp_path,monkeypatch):
 def test_verified_secure_lax_policy_same_origin_same_site_and_cross_site(mutation_browser_servers,tmp_path):
     own,target,other_port,observations=mutation_browser_servers
     results=[]
+    sync_playwright = pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow").sync_playwright
     with sync_playwright() as pw:
         browser=pw.chromium.launch(executable_path=os.environ.get('FINCO_TEST_CHROMIUM_PATH') or None,args=['--no-sandbox'])
         try:
@@ -157,6 +157,7 @@ def check_legacy_cost_buttons_use_their_own_operation_tokens(mutation_browser_se
 
     events=[];errors=[]
     evidence=Path(os.environ.get('FINCO_MUTATION_COST_UI_EVIDENCE','artifacts/workspace-consolidation/mutation-cost-ui.json'))
+    sync_playwright = pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow").sync_playwright
     with sync_playwright() as pw:
         browser=pw.chromium.launch(executable_path=os.environ.get('FINCO_TEST_CHROMIUM_PATH') or None,args=['--no-sandbox'])
         context=browser.new_context(ignore_https_errors=True,viewport={'width':1440,'height':1000})
