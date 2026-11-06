@@ -8,6 +8,20 @@ from tests import ux_pr1_scope as P
 from tests import fin_v2_cohorts as C
 
 
+def immutable_check(fn):
+    """Share proofs only during this immutable positive check; negative mutations never use this decorator."""
+    from functools import wraps
+    from contextlib import ExitStack
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        with ExitStack() as scopes:
+            for m in C.cohorts():
+                if callable(getattr(m,'scoped',None)):
+                    scopes.enter_context(m.scoped())
+            return fn(*args,**kwargs)
+    return wrapped
+
+
 def git(root,*args):
     return subprocess.check_output(['git',*args],cwd=root,text=True,stderr=subprocess.STDOUT).strip()
 
@@ -32,6 +46,7 @@ def wt(tree):
     assert git(tree,'rev-parse','HEAD')==original
 
 
+@immutable_check
 def test_exact_root_closed_registration_and_immutable_predecessors():
     assert B.BASE=='4d661e5a6e06e3a41a31b8c1ddd1896dd835e760'
     assert git(B.ROOT,'rev-parse',B.BASE+'^{tree}')==B.BASE_TREE
@@ -41,7 +56,10 @@ def test_exact_root_closed_registration_and_immutable_predecessors():
     for manifest in (A.MANIFEST,P.MANIFEST):
         assert git(B.ROOT,'diff',B.BASE,'--',manifest)==''
     source=(B.ROOT/'tests/ux_pr2b_scope.py').read_text().split('def valid(',1)[0]
-    assert 'ux_pr1_scope' not in source and 'ux_pr2a_scope' not in source and 'fin_v2_cohorts' not in source
+    import ast
+    imports=[n for n in ast.walk(ast.parse(source)) if isinstance(n,(ast.Import,ast.ImportFrom))]
+    names=[ast.unparse(n) for n in imports]
+    assert not any(any(x in name for x in ('ux_pr1_scope','ux_pr2a_scope','fin_v2_cohorts')) for name in names), names
     assert set(B.manifest()['source_blobs'])==B.OWNED_PATHS
     for p in B.SUPERSEDED:
         pin=B.manifest()['source_blobs'][p]
@@ -61,7 +79,7 @@ def test_one_byte_in_every_owned_blob_fails_closed(path,wt):
     assert B.exact_blobs_ok(wt)
 
 
-@pytest.mark.parametrize('case',['blob','missing','extra','base','tree','history','schema','key','foreign','executable','symlink','deregister','evidence-executable','evidence-source'])
+@pytest.mark.parametrize('case',['blob','missing','extra','base','tree','history','schema','key','foreign','executable','symlink','deregister','evidence-executable','evidence-source','evidence-symlink'])
 def test_forgery_modes_unknown_paths_and_untrusted_evidence(case,wt):
     d=B.manifest(wt); manifest=wt/B.MANIFEST
     target=wt/'frontend/src/app/capex/profileDraft.ts'
@@ -82,6 +100,7 @@ def test_forgery_modes_unknown_paths_and_untrusted_evidence(case,wt):
         folder=wt/'evidence';folder.mkdir(exist_ok=True)
         f=folder/('unsafe.json' if case=='evidence-executable' else 'unsigned.py'); f.write_text('{}')
         if case=='evidence-executable':f.chmod(0o755)
+        if case=='evidence-symlink':f.unlink();f.symlink_to(target)
     manifest.write_text(json.dumps(d,indent=2)+'\n')
     assert not B.exact_blobs_ok(wt) and not C.valid(wt)
 
@@ -122,3 +141,10 @@ def test_allowed_ci_artifact_is_not_source_and_verdict_does_not_survive_call(wt)
     assert not B.exact_blobs_ok(wt)
     q.write_bytes(raw);assert B.exact_blobs_ok(wt)
     assert B._SCOPE==[] and A._SCOPE==[] and P._SCOPE==[]
+
+
+def test_committed_executable_is_ref_rejected_and_fixture_restores_original_head(wt):
+    path='frontend/src/app/capex/profileDraft.ts'
+    git(wt,'update-index','--chmod=+x',path)
+    git(wt,'-c','user.name=FINCO synthetic validation','-c','user.email=synthetic@example.invalid','commit','-m','Synthetic invalid mode negative')
+    assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')

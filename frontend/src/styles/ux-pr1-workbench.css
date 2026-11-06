@@ -198,3 +198,5 @@
 [data-ux-pr1] [data-dense-workbench] .ws2-grid[data-pr2b-editing] { min-width: 1040px; }
 .pr2b-profile-cell { overflow: hidden; }
 .pr2b-profile-cell select { flex: 1 1 150px; }
+
+.ux-line-inspector [aria-label="Close line details"] { flex-shrink: 0; min-width: 64px; white-space: nowrap; }

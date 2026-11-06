@@ -482,7 +482,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             {profileEligible(line) ? <><ProfileShapeSelect itemKey={profileKey(line)} label={line.label} />
               <button type="button" className="ci-link" data-pr2b-open={line.sub_line_id} aria-label={`Edit profile percentages or milestone for ${line.label}`}
                 aria-expanded={profileLine === line.sub_line_id} onClick={() => profileLine === line.sub_line_id && !narrow ? setProfileLine(null) : openInlineProfile(line)}>Edit % / month</button></>
-              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? "Loading profile eligibility…" : "Not available — inactive, added or unsupported line"}</span>}
+              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? profileDraft.loadError ? "Not available — profile eligibility could not be loaded" : "Loading profile eligibility…" : "Not available — inactive, added or unsupported line"}</span>}
           </div> : profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
             <span className="rx-note" data-profile-user-line={line.sub_line_id} title="The saved profile document does not accept lines you added yet; this line keeps the model default timing.">
               Model default (added line)</span>

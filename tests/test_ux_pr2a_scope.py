@@ -7,6 +7,20 @@ from tests import ux_pr1_scope as P1
 from tests import fin_v2_cohorts as C
 
 
+def immutable_check(fn):
+    """Share proofs only during this immutable positive check; negative mutations never use this decorator."""
+    from functools import wraps
+    from contextlib import ExitStack
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        with ExitStack() as scopes:
+            for m in C.cohorts():
+                if callable(getattr(m,'scoped',None)):
+                    scopes.enter_context(m.scoped())
+            return fn(*args,**kwargs)
+    return wrapped
+
+
 def git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, text=True, stderr=subprocess.STDOUT)
 
@@ -26,6 +40,7 @@ def wt(tree):
     git(tree, 'clean', '-fdxq')
 
 
+@immutable_check
 def test_exact_registered_acyclic_and_base_is_the_merged_pr1_main():
     assert U.exact_blobs_ok() and U.valid() and U.__name__ in C.COHORT_MODULES and U.protected_blobs() == {}
     assert P1.exact_blobs_ok() and all(m.exact_blobs_ok() for m in C.cohorts())
@@ -46,6 +61,7 @@ def test_exact_registered_acyclic_and_base_is_the_merged_pr1_main():
         assert not U.allowed_path(stranger) and not U.matches(stranger)
 
 
+@immutable_check
 def test_pr1_follows_pr2a_only_for_literal_pr2a_paths_at_their_exact_pin():
     pins = U.effective_pins()
     for p in U.SUPERSEDED:

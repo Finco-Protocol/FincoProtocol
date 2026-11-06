@@ -193,3 +193,70 @@ def test_pr2b_save_failures_retain_full_draft(live_server, browser, rcm_react_fl
             page.wait_for_selector('[data-capex-status="ok"]')
             assert len(calls)==1 and shape.is_enabled()
     finally: context.close()
+
+
+def test_pr2b_amount_save_is_separate_and_reconcile_keeps_profile(live_server,browser,rcm_react_flag):
+    context,page,code,errors=_open(browser,live_server,'amount-scope')
+    try:
+        prof,key,sub=_edit(context,page,live_server,code)
+        shape=page.locator(f'[data-pr2b-shape="{key}"]');shape.select_option('MILESTONE')
+        page.locator(f'[data-pr2b-open="{sub}"]').click()
+        milestone=page.locator(f'[data-capex-milestone="{key}"]')
+        for invalid in ('0',str(prof['months']+1)):
+            milestone.fill(invalid);assert page.locator('[data-capex-save]').is_disabled()
+        for valid in ('1',str(prof['months'])):
+            milestone.fill(valid);assert page.locator('[data-capex-save]').is_enabled()
+        amount=page.locator(f'tr[data-line="{sub}"] input[data-c="1"]');amount.fill('4321.1234567')
+        posts=[];page.on('request',lambda r:posts.append(r.url) if r.method=='POST' else None)
+        page.locator('[data-cost-save]').click()
+        page.wait_for_selector('[data-pr2b-stale]')
+        assert _profiles(context,live_server,code)['saved']['rows']=={}
+        assert milestone.input_value()==str(prof['months'])
+        assert page.locator('[data-capex-save]').is_disabled()
+        assert len(posts)==1 and '/grid/cost-lines/save' in posts[0]
+        page.locator('[data-pr2b-reconcile]').click()
+        page.wait_for_selector('[data-capex-status="ok"]')
+        assert milestone.input_value()==str(prof['months']) and page.locator('[data-capex-save]').is_enabled()
+        page.locator('[data-capex-save]').click();page.wait_for_selector('[data-capex-status="ok"]')
+        page.wait_for_function("() => document.querySelector('[data-pr2b-draft-state]')?.dataset.pr2bDraftState==='saved'")
+        assert _profiles(context,live_server,code)['saved']['rows'][key]['milestone']==str(prof['months'])
+        assert len(posts)==2 and '/spending-profiles/save' in posts[1]
+        assert not errors,errors
+    finally:context.close()
+
+
+def test_pr2b_paste_ambiguity_preview_identity_and_scope_retention(live_server,browser,rcm_react_flag):
+    context,page,code,errors=_open(browser,live_server,'paste-identity')
+    try:
+        prof,key,sub=_edit(context,page,live_server,code);n=prof['months']
+        page.locator(f'[data-pr2b-shape="{key}"]').select_option('EXPLICIT')
+        page.locator(f'[data-pr2b-open="{sub}"]').click()
+        first=page.locator(f'[data-capex-month-input="{key}:1"]')
+        def paste(text):
+            first.evaluate("(el,text)=>{const dt=new DataTransfer();dt.setData('text/plain',text);el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:dt}))}",text)
+        paste('12,5');page.wait_for_selector('[data-capex-import-ambiguous]')
+        assert first.input_value()==''
+        modal=page.locator('.pr2b-import[open]');modal.locator('[data-capex-import-cancel]').click()
+        for sep in ('\t','\n'):
+            values=['12,5']+['0']*(n-2)+['87,5'];paste(sep.join(values))
+            assert first.input_value()=='12.5' and page.locator('[data-capex-save]').is_enabled()
+        def mismatched(route):
+            response=route.fetch();body=response.json();body['content_hash']='0'*64
+            route.fulfill(response=response,json=body)
+        page.route('**/v2/model-react/capex/preview?*',mismatched)
+        page.locator('[data-capex-preview]').click();page.wait_for_selector('[data-capex-error="PREVIEW_IDENTITY_CHANGED"]')
+        assert page.locator('[data-pr2b-preview]').count()==0 and first.input_value()=='12.5'
+        page.unroute('**/v2/model-react/capex/preview?*')
+        # A response carrying a different scenario must never overwrite the draft or become a usable Save context.
+        _save_profile(context,live_server,code,[(key,'UNIFORM','','')])
+        page.locator('[data-capex-save]').click();page.wait_for_selector('[data-capex-status="error"]')
+        def wrong_scope(route):
+            response=route.fetch();body=response.json();body['save']['scenario_id']='another-scenario'
+            body['edit']={'allowed':False,'base_case':False,'reason':'Scenario is read-only'}
+            route.fulfill(response=response,json=body)
+        page.route('**/v2/model-react/capex/profiles?*',wrong_scope)
+        page.locator('[data-pr2b-reconcile]').click()
+        page.get_by_text('The profile response belongs to a different project/scenario or duration.',exact=False).wait_for()
+        assert first.input_value()=='12.5' and page.locator('[data-capex-save]').is_disabled()
+        assert 'different project/scenario' in page.locator('[data-pr2b-draft-state]').inner_text()
+    finally:context.close()

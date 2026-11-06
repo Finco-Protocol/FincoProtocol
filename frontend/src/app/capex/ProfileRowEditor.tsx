@@ -8,7 +8,7 @@ export function ProfileShapeSelect({ itemKey, label }: { itemKey: string; label:
   const c = useCapexProfileDraft(false);
   const row = (c.scopeMismatch ? c.saved[itemKey] : c.draft[itemKey]) ?? emptyProfileRow();
   return <select value={row.shape} disabled={!c.editable(itemKey)} data-capex-shape={itemKey} data-pr2b-shape={itemKey}
-    aria-label={`Shape for ${label}`} onChange={e => c.changeShape(itemKey, e.target.value)}>
+    title={SHAPE_LABEL[row.shape] ?? "Model default — no override"} aria-label={`Shape for ${label}`} onChange={e => c.changeShape(itemKey, e.target.value)}>
     <option value="">Model default — no override</option>
     {c.data?.shapes.map(shape => <option key={shape} value={shape}>{SHAPE_LABEL[shape] ?? shape}</option>)}
   </select>;
@@ -16,8 +16,8 @@ export function ProfileShapeSelect({ itemKey, label }: { itemKey: string; label:
 
 export function ProfileDraftNotice() {
   const c = useCapexProfileDraft(false);
-  return <div className="pr2b-notice" data-pr2b-draft-state={c.locked ? "unknown" : c.scopeMismatch ? "scope-mismatch" : c.dirtyCount ? "unsaved" : "saved"}>
-    <p><strong>{c.dirtyCount ? `Unsaved profile — ${c.dirtyCount} item(s)` : "Saved profile inputs"}</strong>. Profile Save is separate from line amounts/comments and never runs the model.</p>
+  return <div className="pr2b-notice" data-pr2b-draft-state={!c.data ? c.loadError ? "unavailable" : "loading" : c.locked ? "unknown" : c.scopeMismatch ? "scope-mismatch" : c.dirtyCount ? "unsaved" : "saved"}>
+    <p><strong>{c.dirtyCount ? `Unsaved profile — ${c.dirtyCount} item(s)` : !c.data ? c.loadError ? "Not available — profile inputs could not be loaded" : "Loading profile inputs…" : "Saved profile inputs"}</strong>. Profile Save is separate from line amounts/comments and never runs the model.</p>
     {c.loadError && <p role="alert">{c.loadError}</p>}
     {c.stale && <p role="alert" data-pr2b-stale="true">{c.stale}</p>}
     {c.scopeMismatch && <details data-pr2b-retained-draft="true"><summary>Review the retained draft from its original project/scenario</summary>
