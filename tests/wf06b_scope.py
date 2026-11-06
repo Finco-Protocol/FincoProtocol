@@ -301,7 +301,7 @@ def matches(path, source=None, *, repo=None, ref=None):
         return True
     # PR #413 Correction H: the exact later state of a path the closed PR-U1 cohort supersedes (its pin, while U1 is exact and the composite is valid).
     U = _u1()
-    return bool(U is not None and source is not None and path in U.SUPERSEDED and U.supersedes(path, _blob(raw), repo, ref) and valid(repo, ref))
+    return bool(U is not None and source is not None and path in pins and _pin_ok(path, _blob(raw), pins[path], repo, ref) and valid(repo, ref))
 
 
 def protected_blobs(repo=None, ref=None):

@@ -61,7 +61,11 @@ function rowState(row: GridRowPayload, gridEditable: boolean): RowState {
   return row.reason ? "unavailable" : "derived";
 }
 
-const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Calculated", unavailable: "Not supported" };
+const STATE_TEXT: Record<RowState, string> = { editable: "Editable", derived: "Calculated", unavailable: "Read-only" };
+
+/** A server-labelled legacy reference is not a second editor or an effective-price projection. */
+export const isLegacyReference = (row: Pick<GridRowPayload, "field_id" | "label" | "editable">) =>
+  !row.field_id && !row.editable && /\(legacy key\)/i.test(row.label);
 
 function sectionCounts(section: GridSectionPayload, gridEditable: boolean) {
   const counts: Record<RowState, number> = { editable: 0, derived: 0, unavailable: 0 };
@@ -74,6 +78,7 @@ function showsGroupRow(category: GridCategoryPayload): boolean {
   return category.rows.length > 1 || (category.rows[0] !== undefined && category.rows[0].label.trim() !== category.label.trim());
 }
 export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query = "", onFocusRow }: CanonicalInputGridProps) {
+  const [showLegacy, setShowLegacy] = useState(false);
   const rows = useMemo(() => flattenRows(payload), [payload]);
   // WS-2: when the shell mounts the pending-change store, staged cells live THERE (one authority, survives navigation,
   // listed in the Changes drawer).  Without a store (isolated render) the grid keeps its own local drafts as before.
@@ -262,6 +267,8 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
         </p>
       )}
       <div className="rx-toolbar-compact">
+        {rows.some(isLegacyReference) && <button type="button" className="rx-button rx-button-secondary" data-grid-legacy-toggle="true" aria-pressed={showLegacy}
+          onClick={() => setShowLegacy((value) => !value)}>{showLegacy ? "Hide" : "Show"} reference values</button>}
         <button type="button" className="rx-button rx-button-secondary" data-grid-expand-all="true"
           onClick={() => setOpened(Object.fromEntries(sections.map(({ section }) => [section.section_id, true])))}>Expand all sections</button>
         <button type="button" className="rx-button rx-button-secondary" data-grid-collapse-derived="true"
@@ -314,6 +321,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
                     const editableRow = state === "editable";
                     return (
                       <tr key={`${row.code}:${row.field_id}`} data-grid-row={row.field_id || row.code} data-row-state={state}
+                          hidden={isLegacyReference(row) && !showLegacy && !q && staged === undefined} data-legacy-reference={isLegacyReference(row) || undefined}
                           className={activeCode === rowKey ? "rx-active" : undefined}>
                         <th scope="row" className="rx-rowhead">{plain(row.label)}</th>
                         <td>

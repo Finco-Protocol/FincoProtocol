@@ -40,8 +40,10 @@ def _tree(tmp_path_factory):
 
 @pytest.fixture()
 def wt(_tree):
+    # A mode-negative commits in this detached test worktree; restore the original ref too.
+    starting_head = _git(_tree, 'rev-parse', 'HEAD').strip()
     yield _tree
-    _git(_tree, 'reset', '--hard', '-q')
+    _git(_tree, 'reset', '--hard', '-q', starting_head)
     _git(_tree, 'clean', '-fdxq')
 
 
@@ -153,6 +155,21 @@ def _u2_signed_later_pins(repo=None, ref=None):
             and U2._blob(U2._read(root, p, ref)) == signed[p]}
 
 
+# UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.
+# The consolidation fixture preserves named optional-browser collection without a policy change.
+UX_PR1_LATER_SHARED = frozenset(('tests/wf06b_scope.py', 'static/react/finco-react.css',
+                                 'tests/test_model_workspace_consolidation_browser.py'))
+
+def _ux_pr1_signed_later_pins(repo=None, ref=None):
+    from tests import ux_pr1_scope as UX
+    root = Path(repo) if repo is not None else O.ROOT
+    _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
+    if UX.__name__ not in registered or UX.__name__ not in C.COHORT_MODULES or not UX.valid(root, ref):
+        return {}
+    pins = UX.manifest(root, ref)['source_blobs']
+    return {p:pins[p] for p in UX_PR1_LATER_SHARED if p not in O.OWNED_PATHS and UX.supersedes(p,pins[p],root,ref)}
+
+
 def _audit_shared_sibling_pins(repo=None, ref=None):
     # No mutation inside this outer call; every verdict is discarded before any tamper control runs.
     with ExitStack() as scopes:
@@ -167,6 +184,7 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
     pins = O.manifest(root, ref)['source_blobs']
     moved_total = 0
     later_ci, later_u2 = _ci_v4_own_later_paths(root, ref), _u2_signed_later_pins(root, ref)
+    later_ux = _ux_pr1_signed_later_pins(root, ref)
     assert not later_ci & O.OWNED_PATHS and not set(later_u2) & (O.OWNED_PATHS | later_ci)
     evidence = {}
     for manifest in sorted(SIBLINGS):
@@ -179,9 +197,11 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         assert set(before['source_blobs']) <= set(now['source_blobs']) and set(now['source_blobs']) - set(before['source_blobs']) <= ci_later, manifest
         moved = {p for p in now['source_blobs'] if now['source_blobs'][p] != before['source_blobs'].get(p)}
         own_moved, ci_moved, u2_moved = moved & O.OWNED_PATHS, moved & ci_later, moved & u2_later
-        assert moved == own_moved | ci_moved | u2_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved))
+        ux_moved = moved & set(later_ux)
+        assert moved == own_moved | ci_moved | u2_moved | ux_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
+        assert all(now['source_blobs'][p] == later_ux[p] for p in ux_moved), manifest
         evidence[manifest] = {'o1': sorted(own_moved), 'ci': sorted(ci_moved), 'u2': sorted(u2_moved)}
         moved_total += len(own_moved)
     assert moved_total > 0
@@ -391,3 +411,26 @@ def test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call():
         assert O.exact_blobs_ok()
         assert len(O._SCOPE) == 1 and len(O._SCOPE[0]) == 1
     assert O._SCOPE == [] and U._SCOPE == []
+
+
+def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
+    from tests import ux_pr1_scope as UX
+    path = 'tests/test_model_workspace_consolidation_browser.py'
+    assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
+    before = _audit_shared_sibling_pins(wt, 'HEAD')
+    assert _ux_pr1_signed_later_pins(wt)[path] == UX.manifest(wt)['source_blobs'][path]
+    original = (wt / path).read_bytes()
+    _flip(wt / path)
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    assert _audit_shared_sibling_pins(wt, 'HEAD') == before
+    (wt / path).write_bytes(original)
+    sibling = wt / 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+    raw = sibling.read_bytes()
+    data = json.loads(raw)
+    data['source_blobs'][path] = '0' * 40
+    sibling.write_text(json.dumps(data, indent=2) + '\n')
+    with pytest.raises(AssertionError):
+        _audit_shared_sibling_pins(wt)
+    sibling.write_bytes(raw)
+    assert _audit_shared_sibling_pins(wt) == before

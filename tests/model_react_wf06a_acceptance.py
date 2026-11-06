@@ -63,7 +63,7 @@ def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(brow
         open_section(page, base, record.project_code, "inputs")
         settle_inputs(page)
         for sheet in ("CAPEX", "OPEX"):
-            page.locator(f"[data-inputs-jump] [data-jump-label='{sheet}']").click()
+            page.locator(f"[data-workspace-destination='inputs/{sheet.lower()}']").click()
             grid = page.locator(f"[data-cost-grid='{sheet.lower()}']")
             grid.wait_for()
             # the sheet switch briefly keeps the previous sheet's lines: wait for the sheet's own columns and its first group heading

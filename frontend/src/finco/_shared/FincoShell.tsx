@@ -81,8 +81,10 @@ export function projectWorkspaceHref(
   return `${fincoBasePath()}ModelWorkspace?${params.toString()}#workbook`;
 }
 
-export function Shell({ children, crumb = "Project library", mainContentId = "fm-main-content", dataOrigin = "synthetic-demo", originLabel, libraryHref }: {
+export function Shell({ children, crumb = "Project library", mainContentId = "fm-main-content", dataOrigin = "synthetic-demo", originLabel, libraryHref, hideBreadcrumb = false }: {
   children: React.ReactNode;
+  /** A workspace with its own project actions can omit the duplicate breadcrumb. */
+  hideBreadcrumb?: boolean;
   crumb?: string;
   mainContentId?: string;
   dataOrigin?: "synthetic-demo" | "caller-provided" | "canonical-run" | "unavailable";
@@ -123,12 +125,12 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
           {!live && <div className="fm-avatar">AR</div>}
         </div>
       </header>
-      <nav className="fm-workspace-bar" aria-label="Project breadcrumb">
+      {!hideBreadcrumb && <nav className="fm-workspace-bar" aria-label="Project breadcrumb">
         {live
           ? <><a href={libraryHref ?? "/v2/model-react/"} data-nav-my-projects-crumb="true">My Projects</a><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span>
             <a className="rcm-nav-new-project" href="/v2/model-react/#new-project" data-nav-new-project="true">+ New Project</a></>
           : <><a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>}
-      </nav>
+      </nav>}
       {!live && <div className="fm-notice">Design prototype • No live calculations or backend connection</div>}
       {children}
     </div>

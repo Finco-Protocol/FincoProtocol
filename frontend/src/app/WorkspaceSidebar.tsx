@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { INPUT_DESTINATIONS, type WorkspaceDestination } from "./workspaceNavigation";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { WORKSPACE_NAV_GROUPS, activeNavigationDestination, type WorkspaceDestination } from "./workspaceNavigation";
 
 export function WorkspaceSidebar({ active, onNavigate }: {
   active: WorkspaceDestination;
@@ -8,46 +8,41 @@ export function WorkspaceSidebar({ active, onNavigate }: {
   const [open, setOpen] = useState(false);
   const nav = useRef<HTMLElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // Close before the new route is painted; a passive effect can close a newly reopened menu.
+  useLayoutEffect(() => {
     if (nav.current?.contains(document.activeElement) && toggle.current?.getClientRects().length) toggle.current.focus();
     setOpen(false);
   }, [active]);
+  useLayoutEffect(() => {
+    if (open) nav.current?.querySelector<HTMLAnchorElement>("a[aria-current], a")?.focus();
+  }, [open]);
   function keys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") { setOpen(false); toggle.current?.focus(); return; }
     if (!(event.target instanceof HTMLAnchorElement)) return;
     const links = Array.from(nav.current?.querySelectorAll<HTMLAnchorElement>("a") ?? []).filter((link) => link.getClientRects().length);
     const index = links.indexOf(event.target);
-    const next = event.key === "ArrowDown" ? Math.min(index + 1, links.length - 1)
-      : event.key === "ArrowUp" ? Math.max(index - 1, 0)
+    const next = (event.key === "ArrowDown" || event.key === "ArrowRight") ? Math.min(index + 1, links.length - 1)
+      : (event.key === "ArrowUp" || event.key === "ArrowLeft") ? Math.max(index - 1, 0)
       : event.key === "Home" ? 0 : event.key === "End" ? links.length - 1 : -1;
     if (next >= 0) { event.preventDefault(); links[next]?.focus(); }
   }
   const link = (destination: WorkspaceDestination, label: string) => <a key={destination} href={`#${destination}`}
-    aria-current={active === destination ? "page" : undefined} data-workspace-destination={destination}
+    className={activeNavigationDestination(active) === destination ? "active" : undefined}
+    aria-current={activeNavigationDestination(active) === destination ? "page" : undefined} data-workspace-destination={destination}
     onClick={(event) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); onNavigate(destination);
+      event.preventDefault(); setOpen(false); onNavigate(destination);
     }}>{label}</a>;
   return <aside className="wsv2-sidebar" data-workspace-sidebar="true">
     <button ref={toggle} type="button" className="rx-button rx-button-secondary wsv2-menu" aria-expanded={open}
       aria-controls="wsv2-navigation" onClick={() => {
-        setOpen(!open);
-        if (!open) window.requestAnimationFrame(() => nav.current?.querySelector<HTMLAnchorElement>("a[aria-current], a")?.focus());
+        setOpen((previous) => !previous);
       }}>Model sections <span aria-hidden="true">{open ? "−" : "+"}</span></button>
-    <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" className={open ? "is-open" : ""} onKeyDown={keys}>
-      {link("overview", "Overview")}
-      <details open><summary>Inputs</summary>
-        {link("inputs", "Inputs overview")}
-        {Object.entries(INPUT_DESTINATIONS).map(([key, item]) => link(`inputs/${key}` as WorkspaceDestination, item.label))}
-        {link("financing", "Financing / Equity")}
-      </details>
-      <details open><summary>Outputs & analysis</summary>
-        {link("statements", "Statements")}{link("results", "Results / Run history")}
-        {link("scenarios", "Scenarios")}{link("analysis", "Analysis / Credit")}
-      </details>
-      <details open><summary>Checks & reporting</summary>
-        {link("diagnostics", "Model checks")}{link("trust", "Trust / Reporting")}
-      </details>
+    <nav id="wsv2-navigation" ref={nav} aria-label="Financial workspace" data-workspace-nav="true" className={`fm-nav${open ? " is-open" : ""}`} onKeyDown={keys}>
+      {WORKSPACE_NAV_GROUPS.map((group) => <section className="ux-nav-group" key={group.label} aria-label={group.label}>
+        <h2>{group.destination ? link(group.destination, group.label) : group.label}</h2>
+        {group.items.map((item) => link(item.destination, item.label))}
+      </section>)}
     </nav>
   </aside>;
 }

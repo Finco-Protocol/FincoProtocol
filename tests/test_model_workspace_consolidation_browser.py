@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser  # noqa: F401
+from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser as _wf03_browser  # noqa: F401
+
+
+@pytest.fixture
+def wf03_browser(request):
+    # Keep the helper module unchanged and the selected cases individually attributable.
+    pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow")
+    return request.getfixturevalue("_wf03_browser")
 
 
 @pytest.mark.parametrize('template',['generic_solar_reference','generic_wind_reference','generic_data_center_reference','generic_ev_charging_reference'])

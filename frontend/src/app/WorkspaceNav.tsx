@@ -1,31 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-export type WorkspaceSection =
-  | "overview" | "inputs" | "statements" | "results" | "analysis"
-  | "financing" | "scenarios" | "diagnostics" | "trust";
-
-/** Order and numbering follow the approved FINCO Model section model. */
-export const WORKSPACE_SECTIONS: ReadonlyArray<{ id: WorkspaceSection; label: string; number: string }> = [
-  { id: "inputs", label: "Inputs", number: "01" },
-  { id: "statements", label: "Statements", number: "02" },
-  { id: "financing", label: "Financing", number: "03" },
-  { id: "results", label: "Results", number: "04" },
-  { id: "scenarios", label: "Scenarios", number: "05" },
-  { id: "analysis", label: "Analysis", number: "06" },
-  { id: "diagnostics", label: "Model checks", number: "07" },
-  { id: "trust", label: "Trust", number: "08" },
-];
-
-export const SECTION_LABELS: Record<WorkspaceSection, string> = {
-  overview: "Overview",
-  ...Object.fromEntries(WORKSPACE_SECTIONS.map((s) => [s.id, s.label])),
-} as Record<WorkspaceSection, string>;
-
-const SECTION_IDS = ["overview", ...WORKSPACE_SECTIONS.map((s) => s.id)] as WorkspaceSection[];
-
-export function isWorkspaceSection(value: string): value is WorkspaceSection {
-  return (SECTION_IDS as string[]).includes(value);
-}
+import { WORKSPACE_SECTIONS, type WorkspaceSection } from "./workspaceNavigation";
+export { WORKSPACE_SECTIONS, SECTION_LABELS, isWorkspaceSection } from "./workspaceNavigation";
+export type { WorkspaceSection } from "./workspaceNavigation";
 
 /**
  * Section navigation for the live workspace.  Every item is a real in-page link

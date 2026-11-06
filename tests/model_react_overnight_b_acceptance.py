@@ -11,6 +11,8 @@ Screenshots go under ``$ONB_SCREENSHOT_DIR`` as ``onb-*.png``.
 """
 from __future__ import annotations
 
+from tests.model_react_u1_helpers import input_jump, open_cost_help, ensure_navigation_open, NAV_LABELS
+
 import os
 import re
 from urllib.parse import urlsplit
@@ -328,9 +330,11 @@ def check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy(br
         # there is no global Save: the only Save buttons are the editors' own
         assert page.get_by_role("button", name=re.compile(r"^Save all", re.I)).count() == 0
         # the CAPEX/OPEX scope follows the sheet that is open
-        page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
+        input_jump(page, 'OPEX')
+        open_cost_help(page)
         page.wait_for_function("() => /OPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
-        page.locator("[data-inputs-jump] [data-jump-label='CAPEX']").click()
+        input_jump(page, 'CAPEX')
+        open_cost_help(page)
         page.wait_for_function("() => /CAPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
         open_section(page, base, record.project_code, "financing")
         # open_section only waits for the generic workspace.  The Debt terms editor loads its own read, so wait for the
@@ -419,9 +423,9 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         # anchored navigation reaches every group; Financing is its own destination
         for label, target in (("Project setup", "wf-inputs-setup"), ("Assumptions", "wf-inputs-grid"), ("CAPEX", "wf-inputs-costs"),
                               ("OPEX", "wf-inputs-costs"), ("Revenue & PPA", "wf-inputs-revenue")):
-            page.locator(f"[data-inputs-jump] [data-jump-label='{label}']").click()
+            input_jump(page, label)
             assert page.locator(f"#{target}").bounding_box()["y"] < 900 + 50
-            assert page.evaluate("id => document.activeElement && document.activeElement.id", target) == target
+            page.wait_for_function("id => Boolean(document.activeElement?.closest('#' + id))", arg=target, timeout=3000)
         # a section holding an unsaved edit cannot be collapsed and says so on its summary
         first_cell = page.locator("details.rx-input-section[open] [data-grid-cell]").first
         section_of_cell = first_cell.locator("xpath=ancestor::details[contains(@class,'rx-input-section')]")
@@ -434,13 +438,16 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         page.locator("#wf-inputs-grid [data-discard='true']").click()
         page.wait_for_function("() => !document.querySelector('[data-staged-in-section]')")
         # the OPEX jump request is not replayed when Inputs is entered again later
-        page.locator("[data-inputs-jump] [data-jump-label='OPEX']").click()
+        input_jump(page, 'OPEX')
+        open_cost_help(page)
         page.wait_for_function("() => /OPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
-        page.locator("[data-workspace-nav] a", has_text="Statements").click()
-        page.locator("[data-workspace-nav] a", has_text="Inputs").click()
+        ensure_navigation_open(page).locator("a", has_text="Statements").click()
+        page.wait_for_selector('[data-workspace-nav] a[aria-current="page"][href="#statements"]', state="attached")
+        page.wait_for_function('() => innerWidth > 900 || document.querySelector(".wsv2-menu").getAttribute("aria-expanded") === "false"')
+        ensure_navigation_open(page).locator("a", has_text="Inputs").click()
         settle_inputs(page)
         assert page.locator("[data-inputs-overview-host='visible']").count() == 1, "Inputs re-opens on the overview, not on a past workbench click"
-        page.locator("[data-inputs-jump] [data-jump-label='Financing']").click()
+        input_jump(page, 'Financing')
         page.wait_for_selector("[data-sheet-editor='debt']")
         assert page.url.endswith("#financing")
         if kind == "solar" or width == 390:
@@ -471,7 +478,6 @@ def check_protected_reference_inputs_stay_visible_and_read_only(browser, base):
 
 # ── U03: responsive navigation ─────────────────────────────────────────────────────────────────────────────────
 
-NAV_LABELS = ("Inputs", "Statements", "Financing", "Results", "Scenarios", "Analysis", "Model checks", "Trust")
 
 
 def nav_state(page):
@@ -479,7 +485,7 @@ def nav_state(page):
         const nav = document.querySelector('[data-workspace-nav]');
         const box = nav.getBoundingClientRect();
         const links = Array.from(nav.querySelectorAll('a')).map(a => { const r = a.getBoundingClientRect();
-          return { text: a.innerText.replace(/\\s+/g, ' ').trim(), inView: r.left >= box.left - 1 && r.right <= box.right + 1,
+          return { text: a.textContent.replace(/\\s+/g, ' ').trim(), inView: r.left >= box.left - 1 && r.right <= box.right + 1,
                    height: r.height, current: a.getAttribute('aria-current') === 'page' }; });
         return { scroll: nav.scrollLeft, canScroll: nav.scrollWidth > nav.clientWidth + 1, links,
                  docOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
@@ -501,9 +507,10 @@ def check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overf
         for width in WIDTHS:
             page.set_viewport_size({"width": width, "height": 844})
             open_section(page, base, record.project_code, "inputs")
+            ensure_navigation_open(page)
             page.wait_for_function(ACTIVE_IN_VIEW, timeout=3000)
             state = nav_state(page)
-            assert [l["text"].split(" ", 1)[-1] for l in state["links"]] == list(NAV_LABELS), (width, state["links"])
+            assert [l["text"] for l in state["links"]] == list(NAV_LABELS), (width, state["links"])
             assert not state["docOverflow"], f"document-level horizontal overflow at {width}px"
             current = [l for l in state["links"] if l["current"]]
             assert len(current) == 1 and current[0]["inView"], f"the active destination must stay visible at {width}px"
@@ -513,7 +520,7 @@ def check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overf
                 assert page.locator(".rx-nav-wrap[data-nav-overflow-right]").count() == 1, "overflow must be signalled"
                 assert page.locator("[data-nav-position]").is_visible() and "more" in page.locator("[data-nav-position]").inner_text()
             else:
-                assert width >= 768 and all(l["inView"] for l in state["links"])
+                assert all(l["inView"] for l in state["links"]), "the opened vertical menu exposes every destination without horizontal scrolling"
             # later destinations are reachable by keyboard and scroll into view when focused
             page.locator("[data-workspace-nav] a").first.focus()
             page.keyboard.press("End")
@@ -528,6 +535,7 @@ def check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overf
             page.wait_for_function(FOCUS_IN_VIEW, timeout=3000)
             page.keyboard.press("Enter")
             page.wait_for_function("() => location.hash === '#analysis'")
+            ensure_navigation_open(page)
             page.wait_for_function(ACTIVE_IN_VIEW, timeout=3000)
             after = nav_state(page)
             assert [l for l in after["links"] if l["current"]][0]["text"].endswith("Analysis") and [l for l in after["links"] if l["current"]][0]["inView"]
@@ -538,6 +546,7 @@ def check_workspace_navigation_is_discoverable_keyboard_operable_and_never_overf
         page.set_viewport_size({"width": 320, "height": 844})
         for hash_id, label in (("scenarios", "Scenarios"), ("analysis", "Analysis"), ("trust", "Trust"), ("diagnostics", "Model checks")):
             open_section(page, base, record.project_code, hash_id)
+            ensure_navigation_open(page)
             page.wait_for_function(ACTIVE_IN_VIEW, timeout=3000)
             state = nav_state(page)
             active = [l for l in state["links"] if l["current"]]

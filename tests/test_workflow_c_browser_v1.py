@@ -15,8 +15,6 @@ import time
 
 import pytest
 
-pytest.importorskip("playwright", reason="playwright not installed in this workflow")
-from playwright.sync_api import sync_playwright  # noqa: E402
 
 PORT = 8795
 
@@ -50,6 +48,8 @@ def live_server(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def browser():
+    # Optional dependency is checked at setup, preserving every collected test identity.
+    sync_playwright = pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow").sync_playwright
     with sync_playwright() as pw:
         options = {"args": ["--no-sandbox"]}
         exe = os.environ.get("FINCO_TEST_CHROMIUM_PATH")

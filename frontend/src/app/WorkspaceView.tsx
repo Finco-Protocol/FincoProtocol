@@ -8,9 +8,10 @@ import { fetchInputs, fetchStatements, fetchWorkspace } from "./api";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { toStatementSnapshot, toStatementStatus } from "./adapters";
 import { FinancialResults } from "./FinancialResults";
-import { WorkspaceNav, type WorkspaceSection } from "./WorkspaceNav";
+import { type WorkspaceSection } from "./WorkspaceNav";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { FinancialOverview } from "./FinancialOverview";
+import { DebtMetricsWorkspace } from "./debtmetrics/DebtMetricsWorkspace";
 import { ReportPrecisionControl } from "./ReportPrecision";
 import { financialInputOrder } from "./inputLayout";
 import { workspaceRoute, canonicalHash, isCostWorkbench, INPUT_DESTINATIONS, type CostView, type InputDestination, type WorkspaceDestination } from "./workspaceNavigation";
@@ -29,6 +30,7 @@ import { FriendlyError, resultStatus, RESULT_STATUS_HELP } from "./productLangua
 import { RunIdentityLabel } from "./runIdentity";
 import { VerticalScopeBanner } from "./VerticalScope";
 import "../styles/rc-react-mvp.css";
+import "../styles/ux-pr1-workbench.css";
 import { ModelExportView } from "./workflow/ModelExportView";
 import { PPAEditorView } from "./workflow/PPAEditorView";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
@@ -140,7 +142,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   const [statements, setStatements] = useState<StatementsPayload | null>(null);
   const [inputs, setInputs] = useState<InputsPayload | null>(null);
   const [inputQuery, setInputQuery] = useState("");
-  const [railOpen, setRailOpen] = useState(true);
+  const [railOpen, setRailOpen] = useState(false);
   const [focusInfo, setFocusInfo] = useState<FocusedField | null>(null);
   const displayedInputs = useMemo(() => inputs ? financialInputOrder(inputs) : null, [inputs]);
   const [recovery, setRecovery] = useState<RecoveryPayload | null>(null);
@@ -254,7 +256,15 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             ignore: (key) => key !== "capex-profile",
             onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
           });
-        } else adopt();
+        } else {
+          const current = workspaceRoute(destinationRef.current);
+          if (isCostWorkbench(current) && isCostWorkbench(route) && (current.input !== route.input || current.view !== route.view)) {
+            confirmIfDirty(adopt, {
+              ignore: (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
+              onStay: () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${destinationRef.current}`),
+            });
+          } else adopt();
+        }
         return;
       }
       confirmIfDirty(adopt, {
@@ -278,6 +288,21 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     if (target.section === sectionRef.current) adopt();
     else confirmIfDirty(adopt, { ignore: (key) => key === "run" });
   }
+  // A primary sheet/view change can unmount a cost editor or add-line form.
+  // Consult the same existing cost-scope guard used by the workbench's own tabs.
+  function navigateFromSidebar(next: WorkspaceDestination) {
+    const current = workspaceRoute(destinationRef.current);
+    const target = workspaceRoute(next);
+    if (current.section === "inputs" && target.section === "inputs" &&
+      ((isCostWorkbench(current) && isCostWorkbench(target) && (current.input !== target.input || current.view !== target.view)) ||
+        (current.view === "monthly" && target.view !== "monthly"))) {
+      confirmIfDirty(() => navigateTo(next), {
+        ignore: current.view === "monthly"
+          ? (key) => key !== "capex-profile"
+          : (key) => !key.startsWith("cost-") && key !== "opex-base" && key !== "capex-profile",
+      });
+    } else navigateTo(next);
+  }
   function navigate(sectionId: Section) { navigateTo(sectionId); }
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [section]);
@@ -292,11 +317,17 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     if (!route.input || section !== "inputs" || !inputs) return;
     const target = isCostWorkbench(route)
       ? document.getElementById("wf-inputs-costs")
+      : route.input === "tax"
+        ? document.querySelector<HTMLElement>('[data-grid-section="tax-assumptions"]') ?? document.getElementById(INPUT_DESTINATIONS.tax.target)
       : route.input === "technical"
         ? document.querySelector<HTMLElement>('[data-grid-section="project_setup-technical"]') ?? document.getElementById(INPUT_DESTINATIONS[route.input].target)
         : document.getElementById(INPUT_DESTINATIONS[route.input].target);
-    target?.scrollIntoView({ block: "start" });
-    target?.focus({ preventScroll: true });
+    if (target) {
+      if (target instanceof HTMLDetailsElement) target.open = true;
+      target.tabIndex = -1;
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    }
   }, [destination, section, inputs]);
 
   // Any other in-app link that leaves this page (Project Library breadcrumb, legacy
@@ -498,27 +529,10 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
 
   return (
     <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
-    <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content"
+    <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content" hideBreadcrumb
       originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
-      <div className="rx-page wsv2-page" role="main" id="rx-main-content" tabIndex={-1} data-react-workspace-version={workspace.react_workspace.version}>
-        <header className="rx-header">
-          <div>
-            <p className="rx-brand">FINCO Protocol · Model</p>
-            <h1 className="rx-title">{workspaceHeading(workspace)}
-              {workspace.project.protected_reference && <span className="rx-badge">TEMPLATE · READ ONLY</span>}
-            </h1>
-          </div>
-          <nav aria-label="Workspace navigation">
-            <a className="rx-legacy-link" href="/v2/model-react/" data-nav-my-projects="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>My Projects</a>
-            {" · "}
-            <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
-          </nav>
-        </header>
-        <div className="wsv2-layout">
-        <WorkspaceSidebar active={destination} onNavigate={navigateTo} />
-        <div className="wsv2-content" id="wsv2-content">
-        <div className="wsv2-section-index"><WorkspaceNav active={section} onNavigate={navigate} /></div>
-        <ReportPrecisionControl />
+      <div className="rx-page wsv2-page" role="main" id="rx-main-content" tabIndex={-1} data-react-workspace-version={workspace.react_workspace.version} data-ux-pr1="true">
+        <h1 className="fm-sr-only">{workspaceHeading(workspace)}{workspace.project.protected_reference && " · TEMPLATE · READ ONLY"}</h1>
         <WorkflowBar
           project={project}
           freshness={workspace.freshness.state}
@@ -531,7 +545,17 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           onRan={reconcileRun}
           onReload={refreshAll}
           reconciliationBlocked={runRefresh !== "idle"}
-        />
+        >
+          <ReportPrecisionControl />
+          <nav aria-label="Project actions" className="ux-project-actions">
+            <a className="rx-legacy-link" href="/v2/model-react/" data-nav-my-projects="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(onNavigateToLibrary); }}>My Projects</a>
+            <a className="rx-legacy-link" href="/v2/model-react/#new-project" data-nav-new-project-workspace="true" data-nav-new-project="true" onClick={(e) => { e.preventDefault(); confirmIfDirty(() => { window.location.href = "/v2/model-react/#new-project"; }); }}>New Project</a>
+          </nav>
+        </WorkflowBar>
+        <div className="wsv2-layout">
+          <WorkspaceSidebar active={destination} onNavigate={navigateFromSidebar} />
+          <div className="wsv2-content" id="wsv2-content">
+
         {runRefresh !== "idle" && <div role={runRefresh === "blocked" ? "alert" : "status"} className="rx-card" data-run-refresh={runRefresh}>
           {runRefresh === "reading" ? "Reading the confirmed Run…" : "The Run was committed, but its current views could not be matched. Reload to reconcile before relying on the results. No extra Run was started."}
         </div>}
@@ -562,7 +586,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
               const gridPayload: InputsPayload = ledgerTechnology ? { ...displayedInputs, grid: { ...displayedInputs.grid,
                 sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } } : displayedInputs;
               return <>
-                <InputsJumpNav onJump={jumpWithinInputs} />
+                {!onBench && <details className="ux-input-tools"><summary>Input shortcuts and import</summary>
+                  <InputsJumpNav onJump={jumpWithinInputs} />
+                </details>}
                 {bench && (
                   <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
                     <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} protectedReference={protectedReference}
@@ -585,6 +611,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                       </details>
                     </div>
                     <div id="wf-inputs-grid" tabIndex={-1}>
+                      {route.input === "tax" && !gridPayload.grid.sections.some((item) => item.section_id === "tax-assumptions") &&
+                        <p role="status" data-tax-navigation-fallback="true">Tax assumptions are not available in this project's input grid. Showing available assumptions.</p>}
                       <CanonicalInputGrid payload={gridPayload} busy={busy} onSave={saveCells} onReconcile={reconcileInputs} query={inputQuery} onFocusRow={setFocusInfo} />
                     </div>
                     </div>
@@ -616,6 +644,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             })()
             : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>
         )}
+        {section === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={dataVersion} onEditTerms={() => navigateTo("financing")} />}
         {section === "financing" && (
           <FinancingStudio project={project} reloadKey={dataVersion} onSaved={afterMutation} />
         )}

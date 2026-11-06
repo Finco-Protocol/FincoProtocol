@@ -11,7 +11,7 @@
 // its ORIGINAL binding; the server returns the original committed result and
 // never recalculates.  A definitive failure consumes the intent.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { fetchRuns, runModel } from "../api";
 import { clearRunIntent, createRunIntent, loadRunIntent, type RunIntent } from "../runIntent";
 import { RunFailureNotice } from "../RunFailureNotice";
@@ -32,6 +32,7 @@ interface Props {
   projectName?: string;
   technology?: string;
   scenarioName?: string;
+  children?: ReactNode;
   onRan: (run: ConfirmedRun) => Promise<void>;
   onReload: () => void;
 }
@@ -43,7 +44,7 @@ const MEANING: Record<string, string> = {
   NOT_RUN: "No committed Run yet.",
 };
 
-export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload, reconciliationBlocked = false, projectName, technology, scenarioName }: Props) {
+export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload, reconciliationBlocked = false, projectName, technology, scenarioName, children }: Props) {
   const saveAll = useSaveAllBridge();
   const { total, breakdown, pendingKeys, confirmIfDirty } = useDirtyTotal();
   const fetcher = useCallback(() => fetchRuns(project), [project]);
@@ -131,6 +132,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
   }
 
   const techLabel = technology ? technology.charAt(0).toUpperCase() + technology.slice(1) : "";
+  const savePending = saveAll.saving || pendingKeys.some((key) => key !== "run");
   const saveAllDisabled = total === 0 || saveAll.disabled || saveAll.run === null || running;
   return (
     <div className="wf-bar ci-bar" role="region" aria-label="Model status and actions" data-workflow-bar="true"
@@ -139,6 +141,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
       <span className="ci-bar-id" data-bar-project="true">
         <strong>{projectName || project}</strong>
         {techLabel && <span className="ci-chip ci-chip-tech">{techLabel}</span>}
+        {protectedReference && <span className="ci-chip" data-template-read-only="true">Template · Read-only</span>}
       </span>
       <label className="ci-bar-scenario">
         <span>Scenario</span>
@@ -147,7 +150,8 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
         </select>
       </label>
       {total > 0
-        ? <span className="wf-dirty ci-state" role="status" data-unsaved-indicator="true">{total} unsaved edit{total === 1 ? "" : "s"}</span>
+        ? <span className="wf-dirty ci-state" role="status" data-unsaved-indicator="true">{total} staged · unsaved edit{total === 1 ? "" : "s"}</span>
+        : savePending ? <span className="ci-state" role="status" data-save-unconfirmed="true">Save in progress or unconfirmed</span>
         : <span className="ci-state ci-saved" data-saved-indicator="true">Saved</span>}
       <span className="rx-badge ci-run-badge" data-run-state-label={freshness} title={MEANING[freshness] ?? ""}><strong>{LABEL[freshness] ?? freshness}</strong></span>
       {lastRun && (
@@ -155,6 +159,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
           Run <code>{lastRun.history_id.slice(0, 8)}</code>{lastRunWhen && ` · ${lastRunWhen}`}{lastRun.active_scenario_name ? ` · ${lastRun.active_scenario_name}` : " · Base"}
         </span>
       )}
+      {children}
       <div className="wf-bar-actions">
         <button type="button" className="fm-btn" onClick={() => confirmIfDirty(onReload, { draftsOnly: true })} data-wf-reload="true">Reload</button>
         <button type="button" className="fm-btn ci-save-all" disabled={saveAllDisabled} data-bar-save-all="true" data-bar-save-all-total={total}

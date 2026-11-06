@@ -40,6 +40,20 @@ export function showKeur(amountKeur: string | number | null | undefined, unit: D
   return formatMoneyText(String(amountKeur), "kEUR", unit, precision);
 }
 
+/** Per-MW display has its own minimum precision. Never turn a non-zero server value into a displayed zero.
+ * Reuses the existing unit formatter; no stored amount or model input is rounded or recomputed. */
+export function showPerMwKeur(value: string | number | null | undefined, unit: DisplayUnit, precision: number): string {
+  let digits = Math.max(2, precision);
+  let shown = showKeur(value, unit, digits);
+  const nonzero = value != null && /[1-9]/.test(String(value));
+  while (nonzero && !/[1-9]/.test(shown) && shown !== "—" && digits < 18) shown = showKeur(value, unit, ++digits);
+  if (nonzero && !/[1-9]/.test(shown) && shown !== "—") {
+    const threshold = "<0.000000000000000001";
+    return String(value).trim().startsWith("-") ? `(${threshold})` : threshold;
+  }
+  return shown;
+}
+
 export const UNIT_LABEL: Record<DisplayUnit, string> = { EUR: "EUR", kEUR: "kEUR", mEUR: "mEUR" };
 
 /** Column / total labels follow the chosen unit. */

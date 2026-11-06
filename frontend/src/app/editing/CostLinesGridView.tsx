@@ -14,7 +14,7 @@ import "../../styles/ws2-editing.css";
 import { fetchCostLines, saveCostLinesBatch } from "../api";
 import { buildCostLineEdits, classifyBatchAttempt, sameDecimalText, type CostLineEditWire } from "../costLinePayload";
 import { friendlyMessage } from "../productLanguage";
-import { divideDecimalText, perMwLabel, showKeur } from "../costAmounts";
+import { divideDecimalText, perMwLabel, showKeur, showPerMwKeur } from "../costAmounts";
 import { sectionOfField } from "./fieldSection";
 import { useSaveAllBridge } from "../saveAllBridge";
 import { CostUnitSelect, useCostUnit } from "../CostUnit";
@@ -68,6 +68,8 @@ export interface CostLinesGridProps {
   onSheet?: (next: Sheet) => void;
   /** PR-U2a: open CAPEX · Monthly schedule (owned by the workbench); the item to focus is handed over in memory. */
   onOpenProfile?: (itemKey: string) => void;
+  /** Dense workspace presentation only; isolated/legacy consumers keep their existing layout. */
+  denseWorkbench?: boolean;
   /** Where the inline add-line form of the clicked group is drawn (a table cell this grid owns). */
 }
 export function CostLinesGridView(props: CostLinesGridProps) {
@@ -88,19 +90,22 @@ function useNarrow(query = "(max-width: 900px)") {
   return narrow;
 }
 
-type ColId = "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu";
+type ColId = "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu" | "notes";
 type LineFilter = "all" | "nonzero" | "changed" | "inactive";
 const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
 ];
 
-function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet, onOpenProfile }: CostLinesGridProps) {
+function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", scenarioName = "Base Case", onSheet, onOpenProfile, denseWorkbench = false }: CostLinesGridProps) {
   const [data, setData] = useState<CostLinesPayload | null>(null);
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<Status>(null);
   const [inFlight, setInFlight] = useState(false);
   const [density, toggleDensity] = useDensity();
   const narrow = useNarrow();
+  const [showComments, setShowComments] = useState(false);
+  const [inspector, setInspector] = useState<{ project: string; sheet: Sheet; line: string } | null>(null);
+  const commentDialog = useRef<HTMLDialogElement>(null);
   const [loadedKey, setLoadedKey] = useState(-1);
   const [groupPreset, setGroupPreset] = useState<{ code: string; nonce: number } | null>(null);
   const [rowAction, setRowAction] = useState<{ lineId: string; active: boolean; nonce: number } | null>(null);
@@ -177,6 +182,14 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     changes.get(section, `${line.sub_line_id}#${col}`)?.value ?? baselineOf(line, col);
 
   const allLines = data?.lines ?? [];
+  // A project switch cannot show the preceding project's comment, even before effects settle.
+  const inspected = inspector?.project === project && inspector.sheet === sheet && narrow
+    ? allLines.find((line) => line.sub_line_id === inspector.line) : undefined;
+  useEffect(() => {
+    const dialog = commentDialog.current;
+    if (inspected && dialog && !dialog.open) dialog.showModal();
+    else if (!inspected && dialog?.open) dialog.close();
+  }, [inspected]);
   const projection = data?.projection ?? null;
   const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
   const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
@@ -305,7 +318,10 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
 
   const capacity = projection?.capacity ?? null;
   const perYear = sheet === "opex";
-  const cols: ColId[] = narrow
+  const cols: ColId[] = denseWorkbench
+    ? narrow ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
+      : ["line", "amount", "perMw", sheet === "capex" ? "profile" : "infl", "menu", ...(showComments ? ["notes" as const] : [])]
+    : narrow
     ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
     : sheet === "capex"
       ? ["line", "amount", "perMw", "profile", "status", "menu"]
@@ -313,6 +329,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const amountAt = cols.indexOf("amount");
   const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
   const fmtKeur = (n: number | string | null) => showKeur(n, unit, precision);
+  const fmtPerMw = (n: number | string | null) => denseWorkbench ? showPerMwKeur(n, unit, precision) : fmtKeur(n);
   // Totals follow the chosen unit; the amount inputs are always kEUR. Whenever the unit is not kEUR the totals say which unit they are in.
   const unitTag = unit === "kEUR" ? null : <small className="ci-preview"> {unit}</small>;
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
@@ -348,6 +365,21 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     return edit ? (edit.canonical ?? (edit.error ? null : edit.value)) : undefined;
   };
 
+  const notesField = (line: CostLinePayload) => <input className="fm-input ux-comment-input" aria-label={`Notes for ${line.label}`}
+    data-cost-notes-for={line.sub_line_id} disabled={!editableLine(line)}
+    value={changes.get(section, `${line.sub_line_id}#notes`)?.value ?? (line.notes ?? "")}
+    onChange={(event) => changes.stage({
+      section, key: `${line.sub_line_id}#notes`, label: `${line.label} — notes`, unit: "", baseline: line.notes ?? "",
+      value: event.target.value, rowVersion: line.row_version, meta: { label: line.label, amount_keur: textOf(line.amount_keur) },
+    }, { coalesce: true })} />;
+  const openComment = (line: CostLinePayload) => {
+    setShowComments(true);
+    if (narrow) setInspector({ project, sheet, line: line.sub_line_id });
+    else window.requestAnimationFrame(() => container.current?.querySelector<HTMLInputElement>(`[data-cost-notes-for="${CSS.escape(line.sub_line_id)}"]`)?.focus());
+  };
+  const closeInspector = () => { setInspector(null); setShowComments(false); commentDialog.current?.close(); };
+  const infoState = (line: CostLinePayload) => lineInfo.get(line.sub_line_id)?.mapping_status === "UNRESOLVED"
+    ? "To be confirmed" : !editableLine(line) ? "Locked" : "";
   const inputTd = (line: CostLinePayload, col: "label" | "amount" | "inflation", r: number, c: number) => {
     const rowEditable = editableLine(line);
     const edit = changes.get(section, `${line.sub_line_id}#${col}`);
@@ -364,21 +396,25 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         onFocus={keys.onFocus} onKeyDown={keys.onKeyDown} onPaste={keys.onPaste}
         onChange={(event) => { setStatus(null); setPasteNote(""); changes.stage(stageInput(line, col, event.target.value), { coalesce: true }); }} />
     );
-    const notesBlock = col === "label" ? (
+    const notesBlock = col === "label" && !denseWorkbench ? (
       <details className="ws2-row-notes">
         <summary>{line.active ? "Notes" : "Notes · inactive line"}</summary>
-        <input className="fm-input" aria-label={`Notes for ${line.label}`} disabled={!rowEditable}
-               value={changes.get(section, `${line.sub_line_id}#notes`)?.value ?? (line.notes ?? "")}
-               onChange={(event) => changes.stage({
-                 section, key: `${line.sub_line_id}#notes`, label: `${line.label} — notes`, unit: "", baseline: line.notes ?? "",
-                 value: event.target.value, rowVersion: line.row_version, meta: { label: line.label, amount_keur: textOf(line.amount_keur) },
-               }, { coalesce: true })} />
+        {notesField(line)}
       </details>
     ) : null;
     return (
       <td key={col} className={col === "label" ? "ci-col-line" : col === "amount" ? "ci-col-amount" : undefined}>
         {col === "label"
-          ? <div className="ws2-label-wrap">{field}{notesBlock}</div>
+          ? <div className="ws2-label-wrap">{field}{notesBlock}
+              {denseWorkbench && <>
+                {(!line.active || isChanged(line) || infoState(line)) && <span className="ux-line-state" title={infoState(line) || undefined}>
+                  {!line.active ? "Inactive" : isChanged(line) ? "Staged" : infoState(line)}</span>}
+                {(narrow || Boolean(line.notes) || changes.get(section, `${line.sub_line_id}#notes`) !== undefined) &&
+                  <button type="button" className="ux-comment-presence" data-comment-presence={Boolean(line.notes) ? "saved" : "none"}
+                    aria-label={`${narrow ? "Details and comment" : "Show comment"} for ${line.label}`} title={line.notes ? "Saved comment" : "Line details and comment"}
+                    onClick={() => openComment(line)}>{narrow ? "⋯" : "●"}</button>}
+              </>}
+            </div>
           : col === "amount" ? <span className="ci-amt">{field}<span className="ci-amt-shown" aria-hidden="true" data-amt-shown="true">{showKeur(raw, "kEUR", precision)}</span></span>
           : field}
         {edit?.error && <small id={errorId} className="ws2-cell-error" role="alert">{edit.error}</small>}
@@ -397,7 +433,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         return (
           <td key={id} className="ci-num ci-col-permw" data-per-mw={line.sub_line_id} data-per-mw-state={!live ? "unavailable" : preview !== undefined ? "preview" : "saved"}
               title={!live ? (capacity?.note ?? "Per-MW is shown for active lines when the installed capacity is known.") : preview !== undefined ? "Unsaved preview — not saved" : undefined}>
-            {live ? <>{fmtKeur(text)}{preview !== undefined && <small className="ci-preview"> unsaved preview</small>}</> : "—"}
+            {live ? <>{fmtPerMw(text)}{preview !== undefined && <small className="ci-preview"> unsaved preview</small>}</> : "—"}
           </td>);
       }
       case "profile": return (
@@ -426,11 +462,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                    onToggle={() => setMenuFor(menuFor === line.sub_line_id ? null : line.sub_line_id)}
                    onAction={(active) => { setMenuFor(null); setRowAction({ lineId: line.sub_line_id, active, nonce: Date.now() }); }} />
         </td>);
+      case "notes": return <td key={id} className="ux-col-notes">{notesField(line)}</td>;
       default: return <td key={id} />;
     }
   };
 
-  const HEAD: Record<ColId, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "" };
+  const HEAD: Record<ColId, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "", notes: "Comments" };
   const baseTr = (cat: string, row: CostLineGroupBase) => {
     const id = row.field_id;
     const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
@@ -458,7 +495,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         ) : col === "perMw" ? (
           <td key={col} className="ci-num ci-col-permw" data-per-mw-state={perMwText === null ? "unavailable" : edit ? "preview" : "saved"}
               title={perMwText === null ? (capacity?.note ?? "Per-MW is shown when the installed capacity is known.") : edit ? "Unsaved preview — not saved" : undefined}>
-            {perMwText === null ? "—" : <>{fmtKeur(perMwText)}{edit && <small className="ci-preview"> unsaved preview</small>}</>}
+            {perMwText === null ? "—" : <>{fmtPerMw(perMwText)}{edit && <small className="ci-preview"> unsaved preview</small>}</>}
           </td>
         ) : col === "status" ? (
           <td key={col} className="ci-col-status">{edit ? <span className="ws2-chip ws2-chip-changed">Changed</span> : editable ? <span className="ws2-chip ws2-chip-ok">Editable</span> : <span className="ws2-chip">Locked</span>}</td>
@@ -471,27 +508,16 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   let rowIndex = 0;
 
   return (
-    <section className="fm-card fm-section" aria-label={`${title} line items`} data-cost-grid={sheet} data-density={density}>
-      <div className="fm-card-title ci-detail-head">
+    <section className="fm-card fm-section" aria-label={`${title} line items`} data-cost-grid={sheet} data-density={density} data-dense-workbench={denseWorkbench || undefined}>
+      <div className="fm-card-title ci-detail-head" hidden={denseWorkbench}>
         <h2 id={headingId}>{title} — all lines</h2>
         <span className="ci-detail-sub" data-cost-subtitle="true">{allLines.length} lines · scenario {scenarioName}</span>
         <span className="fm-toolbar">
-                    <button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
-          <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button>
-          <button type="button" className="fm-btn" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>
+          {!denseWorkbench && <><button type="button" className={`fm-btn ${sheet === "capex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "capex"} onClick={() => switchSheet("capex")}>CAPEX</button>
+          <button type="button" className={`fm-btn ${sheet === "opex" ? "fm-btn-primary" : ""}`} aria-pressed={sheet === "opex"} onClick={() => switchSheet("opex")}>OPEX</button></>}
+          {!denseWorkbench && <button type="button" className="fm-btn" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>}
         </span>
       </div>
-      <p className="rx-save-scope" data-save-scope="cost-lines">
-        <strong>Saves:</strong> every edited {title} line below, together — all are saved or none. Saving does not run the model.
-        {" "}Edits stay staged while you move between sections and are listed under <em>Changes</em>.
-      </p>
-      <p className="ws2-grid-keys rx-note">Enter or ↓ next row · ↑ previous · Tab next cell · Esc cancels the cell · paste a block from Excel · Ctrl+Z / Ctrl+Y undo / redo.</p>
-      {sheet === "capex" || sheet === "opex" ? (
-        <p className="rx-note" data-permw-note={capacity ? (capacity.available ? "available" : "unavailable") : "none"}>
-          {capacity?.available
-            ? <>One saved amount per line, in kEUR. {perMwLabel(unit, perYear)} = amount ÷ {capacity.mw} MW {capacity.basis}{perYear ? ", per year" : ""} — read-only, never saved.</>
-            : <>One saved amount per line, in kEUR. {capacity?.note ?? "Per-MW figures are not available for this project."}</>}
-        </p>) : null}
       {refreshing && (
         <div className="fm-info-note" role="status" data-cost-refreshing="true">
           {loadError ? <>{loadError} <button type="button" className="fm-btn" onClick={() => void load()}>Retry</button></> : "Updating to the latest saved state… adding or retiring lines is available again in a moment."}
@@ -510,6 +536,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           ))}
         </span>
         <CostUnitSelect />
+        {denseWorkbench && <button type="button" className="fm-btn" data-cost-comments="true" aria-pressed={showComments}
+          onClick={() => {
+            if (showComments) closeInspector();
+            else if (filtered.length) openComment(filtered.find((line) => Boolean(line.notes)) ?? filtered[0]);
+            else setShowComments(true);
+          }}>{showComments ? "Hide comments" : "Show comments"}</button>}
         <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing || cmdLocked}
                 onClick={() => openAdd(addGroup ?? groupOrder.find((c) => eligibleCodes.has(c)))}>
           + Add line
@@ -517,8 +549,23 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         <button type="button" className="fm-btn" data-cost-expand="true" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(groupOrder))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
         <span className="ci-shown" data-cost-shown="true" role="status">{filtered.length} of {allLines.length} lines shown</span>
       </div>
+      {denseWorkbench && <dialog ref={commentDialog} className="ux-line-inspector" aria-label="Line details and comment"
+        onCancel={(event) => { event.preventDefault(); closeInspector(); }} onClose={() => { setInspector(null); setShowComments(false); }}>
+        {inspected && <>
+          <header><h2>{inspected.label}</h2><button type="button" className="fm-btn" aria-label="Close line details" onClick={closeInspector}>Close</button></header>
+          <p>{valueOf(inspected, "amount")} kEUR{perYear ? " / year" : ""} · {editableLine(inspected) ? "Editable" : "Read-only"}</p>
+          <label>Comment{notesField(inspected)}</label>
+          <p>Comment edits stay staged until you save the line changes. Closing this view does not discard them.</p>
+          {sheet === "capex" && <div>{staticTd("profile", inspected).props.children}</div>}
+          <button type="button" className="fm-btn" disabled={readOnlyProject || refreshing || cmdLocked || locked}
+            onClick={() => { setRowAction({ lineId: inspected.sub_line_id, active: !inspected.active, nonce: Date.now() }); closeInspector(); }}>
+            {inspected.active ? "Deactivate line…" : "Reactivate line…"}
+          </button>
+        </>}
+      </dialog>}
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table ws2-grid">
+          {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96} as Partial<Record<ColId,number>>)[id]}} />)}</colgroup>}
           <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
             <th key={id} scope="col" className={`ci-h-${id}${id === "amount" || id === "perMw" ? " ci-num" : ""}`}
@@ -531,7 +578,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
               return (
                 <Fragment key={cat}>
                   <tr className="ws2-group-row" data-group-row={cat}>
-                    <th scope="colgroup" colSpan={Math.max(amountAt, 1)}>
+                    <th scope="colgroup" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>
                       <button type="button" className="ci-twisty" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}`} data-cost-twisty={cat}
                               onClick={() => { const next = new Set(collapsed); if (isCollapsed) next.delete(cat); else next.add(cat); setCollapsed(next); }} />
                       <span className="ws2-group-name">{costGroupLabel(cat, data.line_management?.eligible_groups ?? [])}</span>
@@ -540,7 +587,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                         {g && g.mapping_status !== "PROVEN" && <span className="ws2-chip" data-mapping-status={g.mapping_status} title={MAPPING_NOTE[g.mapping_status]}>{g.mapping_status === "DERIVED" ? "Calculated" : "To be confirmed"}</span>}
                       </span>
                     </th>
-                    <td className="ci-num ci-gtotal" data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
+                    <td className={`ci-num ci-gtotal${denseWorkbench ? " ci-col-amount" : ""}`} data-group-saved-total={g && g.saved_total_keur !== null ? cat : undefined}>{g && g.saved_total_keur !== null ? <>{fmtKeur(g.saved_total_keur)}{unitTag}</> : ""}</td>
                     {cols.length - amountAt - 1 > 0 && (
                       <td colSpan={cols.length - amountAt - 1} className="ci-gaction">
                         <button type="button" className="ci-link" disabled={readOnlyProject || refreshing || cmdLocked || !data.line_management.eligible_groups.some((eg) => eg.code === cat)} data-cost-group-add={cat}
@@ -569,13 +616,27 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           </tbody>
           {allLines.length > 0 && total !== null && (
             <tfoot>
-              <tr className="ws2-grid-total"><th scope="row" colSpan={Math.max(amountAt, 1)}>{sheet === "opex" ? "Sum of added line amounts" : "Sum of line amounts"} ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className="ci-num">{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
-              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved {sheet === "opex" ? "added lines — excludes the group base amounts" : "lines"} — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className="ci-num">{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
+              <tr className="ws2-grid-total"><th scope="row" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>{sheet === "opex" ? "Sum of added line amounts" : "Sum of line amounts"} ({unit}, as shown — not a model result)</th><td data-lines-sum="true" data-exact={total} className={`ci-num${denseWorkbench ? " ci-col-amount" : ""}`}>{fmtKeur(total)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>
+              {projection && <tr className="ws2-grid-total" data-saved-total-row="true"><th scope="row" className={denseWorkbench ? "ci-col-line" : undefined} colSpan={Math.max(amountAt, 1)}>Saved on the server ({unit}, sum of active saved {sheet === "opex" ? "added lines — excludes the group base amounts" : "lines"} — not a model result)</th><td data-saved-total="true" data-exact={String(projection.saved_total_keur)} className={`ci-num${denseWorkbench ? " ci-col-amount" : ""}`}>{fmtKeur(projection.saved_total_keur)}{unitTag}</td>{cols.length - amountAt - 1 > 0 && <td colSpan={cols.length - amountAt - 1} />}</tr>}
             </tfoot>
           )}
         </table>
       </div>
+      <details className="ux-grid-help" open={!denseWorkbench}><summary>Editing, saving and per-MW basis</summary>
+      <p className="rx-save-scope" data-save-scope="cost-lines">
+        <strong>Saves:</strong> every edited {title} line below, together — all are saved or none. Saving does not run the model.
+        {" "}Edits stay staged while you move between sections and are listed under <em>Changes</em>.
+      </p>
+      <p className="ws2-grid-keys rx-note">Enter or ↓ next row · ↑ previous · Tab next cell · Esc cancels the cell · paste a block from Excel · Ctrl+Z / Ctrl+Y undo / redo.</p>
+      {sheet === "capex" || sheet === "opex" ? (
+        <p className="rx-note" data-permw-note={capacity ? (capacity.available ? "available" : "unavailable") : "none"}>
+          {capacity?.available
+            ? <>One saved amount per line, in kEUR. {perMwLabel(unit, perYear)} = amount ÷ {capacity.mw} MW {capacity.basis}{perYear ? ", per year" : ""} — read-only, never saved.</>
+            : <>One saved amount per line, in kEUR. {capacity?.note ?? "Per-MW figures are not available for this project."}</>}
+        </p>) : null}
+      </details>
       <div className="fm-toolbar" style={{ marginTop: 10 }}>
+        {denseWorkbench && <button type="button" className="fm-btn" aria-pressed={density === "compact"} data-density-toggle="true" onClick={toggleDensity}>Compact rows</button>}
         <button type="button" className="fm-btn fm-btn-primary" data-cost-save="true" disabled={locked || !stagedLines || readOnlyProject || changes.invalidCount > 0} onClick={() => void save()}>
           Save {stagedLines || ""} staged line{stagedLines === 1 ? "" : "s"} atomically
         </button>
