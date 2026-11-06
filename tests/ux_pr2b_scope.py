@@ -9,8 +9,8 @@ BASE = '4d661e5a6e06e3a41a31b8c1ddd1896dd835e760'
 BASE_TREE = 'e6453b1828c39a7698c5cddbcfa0f9aab9a631a9'
 MANIFEST = 'docs/react_migration/ux_pr2b/UX_PR2B_EXACT_SOURCE.json'
 SCHEMA = 'UX_PR2B_PROFILE_DRAFT_EXACT_SOURCE_V1'
-OWNED_PATHS = frozenset(('docs/react_migration/ux_pr2b/IMPLEMENTATION.md', 'frontend/src/app/WorkspaceView.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/capex/ProfileDraftProvider.tsx', 'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/capex/__tests__/profileDraft.test.mjs', 'frontend/src/app/capex/profileDraft.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', 'frontend/src/styles/ux-pr1-workbench.css', 'static/react/finco-react.css', 'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/model_react_ux_pr2b_acceptance.py', 'tests/test_model_workspace_consolidation_browser.py', 'tests/test_post413_o1_scope.py', 'tests/test_u2_scope.py', 'tests/test_ux_pr2a_scope.py', 'tests/test_ux_pr2b_scope.py', 'tests/u1_scope.py', 'tests/u2_scope.py', 'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_browser_role.py', 'tests/ux_pr2b_scope.py'))
-SUPERSEDED = frozenset(('frontend/src/app/WorkspaceView.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx', 'frontend/src/styles/ux-pr1-workbench.css', 'static/react/finco-react.css', 'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/test_model_workspace_consolidation_browser.py', 'tests/test_post413_o1_scope.py', 'tests/test_u2_scope.py', 'tests/test_ux_pr2a_scope.py', 'tests/u1_scope.py', 'tests/u2_scope.py', 'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py'))
+OWNED_PATHS = frozenset(('docs/react_migration/ux_pr2b/IMPLEMENTATION.md', 'frontend/src/app/WorkspaceView.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/capex/ProfileDraftProvider.tsx', 'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/capex/__tests__/profileDraft.test.mjs', 'frontend/src/app/capex/profileDraft.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', 'frontend/src/styles/ux-pr1-workbench.css', 'static/react/finco-react.css', 'static/react/finco-react.js', 'tests/ci_v4_scope.py', 'tests/fin_v2_cohorts.py', 'tests/model_react_ux_pr2b_acceptance.py', 'tests/test_ci_merge_event_identity.py', 'tests/test_model_workspace_consolidation_browser.py', 'tests/test_post413_o1_scope.py', 'tests/test_u2_scope.py', 'tests/test_ux_pr2a_scope.py', 'tests/test_ux_pr2b_scope.py', 'tests/u1_scope.py', 'tests/u2_scope.py', 'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_browser_role.py', 'tests/ux_pr2b_scope.py', 'tools/ci_merge_tree_guard.py'))
+SUPERSEDED = frozenset(('frontend/src/app/WorkspaceView.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx', 'frontend/src/styles/ux-pr1-workbench.css', 'static/react/finco-react.css', 'static/react/finco-react.js', 'tests/ci_v4_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_model_workspace_consolidation_browser.py', 'tests/test_post413_o1_scope.py', 'tests/test_u2_scope.py', 'tests/test_ux_pr2a_scope.py', 'tests/u1_scope.py', 'tests/u2_scope.py', 'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tools/ci_merge_tree_guard.py'))
 # Sibling manifests whose pins of OWNED paths may move to these same bytes (nothing else in them may change).
 INTEGRATION_MANIFESTS = frozenset((
  'docs/ci_v4/SOURCE_SUCCESSOR.json',
@@ -21,6 +21,8 @@ INTEGRATION_MANIFESTS = frozenset((
  'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
  'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
 ))
+# Owner-directed Correction B: this one existing CI guard, never a wildcard tools admission.
+CI_PATHS = frozenset(('tools/ci_merge_tree_guard.py',))
 FORBIDDEN_PREFIXES = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'migrations/', 'schemas/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'))
 def _git(root, *args):
@@ -77,7 +79,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
             return False
         permitted=OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}
-        if any(p.startswith(FORBIDDEN_PREFIXES) or p in FORBIDDEN_PATHS or '*' in p or '..' in p.split('/') or p.startswith('/') for p in permitted):
+        if any((p.startswith(FORBIDDEN_PREFIXES) and p not in CI_PATHS) or p in FORBIDDEN_PATHS or '*' in p or '..' in p.split('/') or p.startswith('/') for p in permitted):
             return False
         _git(root,'merge-base','--is-ancestor',BASE,ref or 'HEAD')
         if _base_fact(root,'rev-parse',BASE+'^{tree}').decode().strip()!=BASE_TREE:
@@ -133,3 +135,6 @@ def matches(path,source=None,*,repo=None,ref=None):
     return path in pins and valid(repo,ref) and (source is None or _blob(raw)==pins[path])
 def protected_blobs(repo=None,ref=None):
     return {}
+
+def ci_owns(path,repo=None,ref=None):
+    return path in CI_PATHS and exact_blobs_ok(repo,ref)
