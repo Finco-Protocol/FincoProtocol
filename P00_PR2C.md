@@ -27,6 +27,7 @@ Audited at: branch `feat/ux-pr2b-inline-profile-editing` @ `96d04d25cf79b14011cd
 |---|---|---|---|
 | S1 | staged line edits + dirty profile draft | Save All (one POST) | 200: amounts + full profile committed in one tx; response `content_hash` advances; run STALE; both drafts cleared after verified read-back identity |
 | S2 | profile draft only (no line edits) | Save All | 200: profile committed alone (cost_lines empty); same guarantees |
+| S2b | draft clears the final/only profile (real removal) | Save All | 200: the canonical EMPTY document `{"version":1,"profiles":[]}` removes the saved profile document inside the same tx (parser accepts it; canonical form `""`; base token CAS-verified first); no mutation emits no profile fields |
 | S3 | line edits only (no profile change) | Save All | 200: exactly today's behavior; `profile_json` omitted (never manufactured) |
 | S4 | stale line `row_version` | Save All | 409 per-line verdicts; **nothing** written (profile incl.); edits stay staged |
 | S5 | stale/missing/counterfeit `profile_base_token` | Save All | 409 `STALE_PROFILE_DOCUMENT` / `PROFILE_DOCUMENT_TOKEN_REQUIRED`; nothing written (cells/lines NOT applied) |

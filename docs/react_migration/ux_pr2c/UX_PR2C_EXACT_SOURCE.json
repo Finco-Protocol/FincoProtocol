@@ -3,25 +3,27 @@
   "base_tree": "584d29ee7873b143e140900c3af714ace2eec645",
   "schema_version": "UX_PR2C_COMBINED_SAVE_EXACT_SOURCE_V1",
   "source_blobs": {
-    "P00_PR2C.md": "6bae78e409326178b1bfcfd860b3135b692d9aef",
+    "P00_PR2C.md": "73c3fb5b90e2eb9ac9f35b93c619e9c902930bd1",
     "app/v2/react_capex.py": "2d208d180633bc34b58207cf932e544f593a9aa4",
     "app/v2/react_workspace_router.py": "ed0426b7b4663a3eb9f437eb30b3b79360fb7847",
-    "docs/react_migration/ux_pr2c/IMPLEMENTATION.md": "4ee08af42b92ccdca51eb4238fcc84e5be6a0d8b",
-    "frontend/src/app/capex/ProfileDraftProvider.tsx": "832bd6ad83d0cf7a28debfc751ac82cac6f540e4",
-    "frontend/src/app/capex/__tests__/pr2cCombinedSave.test.mjs": "7c604c8512e4f498b3770411af63c5fa6506aa50",
-    "frontend/src/app/capex/profileDraft.ts": "0416aae169fb1e9a1db7f160c13f2f91352d8a57",
+    "docs/react_migration/ux_pr2c/IMPLEMENTATION.md": "dfaf2a27f580e132ff18681fa3382a105c2f8be2",
+    "frontend/src/app/capex/ProfileDraftProvider.tsx": "1a93a98ffce4a413657269dde5f4b6fcab7bc9d5",
+    "frontend/src/app/capex/__tests__/pr2cCombinedSave.test.mjs": "87f254fbeeaf351bb66a9649a05da9babf6e5eb4",
+    "frontend/src/app/capex/profileDraft.ts": "ec7b864df9d3336a30fd133123979d0ddce96219",
+    "frontend/src/app/capex/profilePublish.ts": "cb40af3d1cb83033f264f27dbb68755acf405f6c",
     "frontend/src/app/capex/types.ts": "a498e13724bdd09511be1860494251dfba60f686",
     "frontend/src/app/editing/pendingEdits.ts": "c70748b5de42237816bb6240d74f3c415c281f97",
     "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
     "frontend/src/app/editing/wsv2Extensions.tsx": "7157ac769b8c1b2d38753843547a51500af16cba",
-    "static/react/finco-react.js": "9ff045cc94c37c4242983ae83c51f7c785d34575",
+    "static/react/finco-react.js": "cf4453578cc62af77347b10c5e6ff798e1b4edde",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/test_pr2c_combined_contract.py": "b850e59dbc21e6d5ab52eab460fbcd0a0626f082",
+    "tests/test_ux_pr2c_scope.py": "04084ccaa502d46d1fe9d6d959c072f44d34328c",
     "tests/u1_scope.py": "186cc98f02d7937271db896dda48ebc8b4071dd0",
     "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
-    "tests/ux_pr2c_scope.py": "531327f87e58ecca8224991c9e0d4f7d8828495a",
-    "tests/test_ux_pr2c_scope.py": "afbc5cd3638c3e56b8f32debce186725857b1359",
-    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32"
+    "tests/ux_pr2a_scope.py": "06170c0c2b885947da1d553b012925f71dad56ec",
+    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32",
+    "tests/ux_pr2c_scope.py": "98ebfb44ebf82bb899bee19befdc5374ebbaca53"
   },
   "base_blobs": {
     "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
@@ -36,6 +38,7 @@
     "tests/fin_v2_cohorts.py": "fc0a1d3fbda880dd8a39fa28adb1c660e7b84b95",
     "tests/u1_scope.py": "2e102e0a61ad765234e31a4a4324efbfc8ba4a9c",
     "tests/u2_scope.py": "3c4cd4fee236b331cedd537af989d4880deb243f",
+    "tests/ux_pr2a_scope.py": "0d97d6ba7ca66c40080a94dc502f0da649647e8e",
     "tests/ux_pr2b_scope.py": "69fc90a39ca61463177902646e0aba169e5f227b"
   }
 }

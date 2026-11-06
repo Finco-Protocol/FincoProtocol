@@ -34,6 +34,7 @@ OWNED_PATHS = frozenset((
     'frontend/src/app/capex/ProfileDraftProvider.tsx',
     'frontend/src/app/capex/__tests__/pr2cCombinedSave.test.mjs',
     'frontend/src/app/capex/profileDraft.ts',
+    'frontend/src/app/capex/profilePublish.ts',
     'frontend/src/app/capex/types.ts',
     'frontend/src/app/editing/pendingEdits.ts',
     'frontend/src/app/editing/saveAll.ts',
@@ -44,6 +45,7 @@ OWNED_PATHS = frozenset((
     'tests/test_ux_pr2c_scope.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
+    'tests/ux_pr2a_scope.py',
     'tests/ux_pr2b_scope.py',
     'tests/ux_pr2c_scope.py',
 ))
@@ -62,6 +64,7 @@ SUPERSEDED = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
+    'tests/ux_pr2a_scope.py',
     'tests/ux_pr2b_scope.py',
 ))
 # Sibling manifests whose pins of OWNED paths may move to these same bytes
@@ -139,7 +142,6 @@ def _pr2b():
         return None
 
 
-    'docs/react_migration/ux_pr2c/IMPLEMENTATION.md',
 
 
 def exact_blobs_ok(repo=None, ref=None):

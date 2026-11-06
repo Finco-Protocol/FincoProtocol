@@ -49,39 +49,41 @@ def test_every_superseded_path_records_its_base_blob():
 
 
 def test_one_byte_of_drift_in_an_owned_source_fails_closed(wt):
+    # byte-exact writes: text mode would translate \n to \r\n on Windows and
+    # leave CRLF behind after the restore, breaking the LF blob pins.
     path = ROOT / "frontend/src/app/editing/saveAll.ts"
-    original = path.read_text(encoding="utf-8")
+    original = path.read_bytes()
     try:
-        path.write_text(original + "\n// drift\n", encoding="utf-8")
+        path.write_bytes(original + b"\n// drift\n")
         assert C.exact_blobs_ok(ROOT) is False
         assert C.matches("frontend/src/app/editing/saveAll.ts") is False
     finally:
-        path.write_text(original, encoding="utf-8")
+        path.write_bytes(original)
     assert C.exact_blobs_ok(ROOT) is True
 
 
 def test_one_byte_of_drift_in_the_gated_server_read_fails_closed(wt):
     path = ROOT / "app/v2/react_capex.py"
-    original = path.read_text(encoding="utf-8")
+    original = path.read_bytes()
     try:
-        path.write_text(original.replace("profile_enabled() and can_edit",
-                                         "profile_enabled() or can_edit"), encoding="utf-8")
+        path.write_bytes(original.replace(b"profile_enabled() and can_edit",
+                                          b"profile_enabled() or can_edit"))
         assert C.exact_blobs_ok(ROOT) is False
     finally:
-        path.write_text(original, encoding="utf-8")
+        path.write_bytes(original)
     assert C.exact_blobs_ok(ROOT) is True
 
 
 def test_a_forged_sibling_pin_fails_closed(wt):
     manifest_path = ROOT / "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json"
-    original = manifest_path.read_text(encoding="utf-8")
+    original = manifest_path.read_bytes()
     try:
         d = json.loads(original)
         d["source_blobs"]["frontend/src/app/editing/saveAll.ts"] = "0" * 40
-        manifest_path.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+        manifest_path.write_bytes((json.dumps(d, indent=2) + "\n").encode("utf-8"))
         assert C.exact_blobs_ok(ROOT) is False
     finally:
-        manifest_path.write_text(original, encoding="utf-8")
+        manifest_path.write_bytes(original)
     assert C.exact_blobs_ok(ROOT) is True
 
 

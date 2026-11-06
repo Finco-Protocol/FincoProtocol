@@ -69,9 +69,14 @@ export function wireProfileDraft(keys: readonly string[], draft: ProfileDraft): 
 }
 /** PR2c (OD-B2 gated): the D7 Save All profile document — the exact wire format
  *  `save_profiles_in_tx` parses (`{"version":1,"profiles":[{item_key, shape,
- *  explicit_percent: string[], milestone_month: int|null}]}`), or `null` when no row
- *  carries a shape or a row cannot be serialised yet (invalid EXPLICIT input). */
-export function profileD7Document(keys: readonly string[], draft: ProfileDraft): string | null {
+ *  explicit_percent: string[], milestone_month: int|null}]}`).  A real mutation that
+ *  clears the final/only profile serialises the canonical EMPTY document
+ *  (`{"version":1,"profiles":[]}`): the server parser accepts it and its canonical
+ *  form is "", which removes the saved profile document inside the same transaction
+ *  (the base token is still verified first).  `null` means either "nothing to save"
+ *  (no mutation in evidence) or "not serialisable yet" (invalid EXPLICIT input) —
+ *  a serialization error is never mistaken for a legitimate empty document. */
+export function profileD7Document(keys: readonly string[], draft: ProfileDraft, saved?: ProfileDraft): string | null {
   const profiles: Array<Record<string, unknown>> = [];
   for (const key of keys) {
     const row = draft[key] ?? emptyProfileRow();
@@ -85,7 +90,13 @@ export function profileD7Document(keys: readonly string[], draft: ProfileDraft):
       });
     } catch { return null; }
   }
-  if (!profiles.length) return null;
+  if (!saved) return profiles.length ? JSON.stringify({ version: 1, profiles }) : null;
+  // With the saved baseline in evidence, "nothing to save" is exact: a draft equal to the
+  // saved document is never serialised (with or without profiles), and a real mutation
+  // serialises either the full document or the canonical EMPTY one (removal).
+  const changed = [...new Set([...Object.keys(saved), ...Object.keys(draft)])]
+    .some(k => !sameDraftRow(draft[k] ?? emptyProfileRow(), saved[k] ?? emptyProfileRow()));
+  if (!changed) return null;
   return JSON.stringify({ version: 1, profiles });
 }
 export function profileDocument(keys: readonly string[], draft: ProfileDraft): Record<string, SavedRow> {

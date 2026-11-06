@@ -70,12 +70,22 @@ def _pr2b():
     except ImportError:
         return None
 
+def _pr2c():
+    try:
+        from tests import ux_pr2c_scope as S
+        return S
+    except ImportError:
+        return None
+
 def effective_pins(repo=None, ref=None):
     """Only authenticated exact successor pins supersede the immutable historical pins."""
     pins = dict(manifest(repo, ref).get('source_blobs', {}))
     S = _pr2b()
     if S is not None and S.exact_blobs_ok(repo, ref):
         pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
+    S4 = _pr2c()
+    if S4 is not None and S4.exact_blobs_ok(repo, ref):
+        pins.update({p: b for p, b in S4.manifest(repo, ref)['source_blobs'].items() if p in S4.SUPERSEDED})
     return pins
 
 def _git(root, *args):
@@ -134,7 +144,16 @@ def _exact_blobs_ok(repo=None, ref=None):
         S3=_pr2b()
         ok3=S3 is not None and S3.exact_blobs_ok(root,ref)
         pins3=S3.manifest(root,ref).get('source_blobs',{}) if ok3 else {}
-        pin_ok3=lambda p,blob: ok3 and p in S3.SUPERSEDED and pins3.get(p)==blob
+        # PR2c composes into the same bounded admission: a sibling-manifest pin of a path the
+        # exact ux_pr2c cohort supersedes may move to exactly that cohort's pin (its own
+        # sibling-leg check proved the move), exactly as ux_pr2b's pins are admitted.
+        S4=_pr2c()
+        ok4=S4 is not None and S4.exact_blobs_ok(root,ref)
+        pins4=S4.manifest(root,ref).get('source_blobs',{}) if ok4 else {}
+        def pin_ok3(p,blob):
+            if ok3 and p in S3.SUPERSEDED and pins3.get(p)==blob:
+                return True
+            return ok4 and p in S4.SUPERSEDED and pins4.get(p)==blob
         owns3=lambda p: ok3 and S3.allowed_path(p,root,ref)
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})

@@ -4,7 +4,8 @@ import type { CapexPlan, CapexProfiles, SavedRow } from "./types";
 import { emptyProfileRow, profileD7Document, profileDraftFromSaved, profileDocument, rowProblems, sameDraftRow, sameProfileDocument,
   wireProfileDraft, type ProfileDraft, type ProfileDraftRow } from "./profileDraft";
 import { isUserLineKey } from "./profileFocus";
-import { useChanges } from "../editing/ChangesProvider";
+import { decideDisappearance, type AuthoredSession } from "./profilePublish";
+import { useOptionalChanges } from "../editing/ChangesProvider";
 import { useDirtyTotal, useRegisterDiscard, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock } from "../workflow/workflowShared";
 
 interface WorkspaceSignal { project: string; scenario: string; hash: string; version: number; onSaved: () => void }
@@ -40,9 +41,16 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   // PR2c (OD-B2 gated): when the server advertises the combined atomic Save All, the dirty profile
   // draft is published into the pending store (D7 document + base token + one representative edit) so
   // the drawer's Save All carries it in the SAME transaction as staged line amounts.  The flag OFF
-  // keeps the PR2b two-writer behavior unchanged.
-  const changes = useChanges();
-  const combinedSubmissionPublish = useRef<{ submission: Submission; authoredHash: string } | null>(null);
+  // keeps the PR2b two-writer behavior unchanged.  The pending store is optional: standalone routes
+  // without a ChangesProvider simply never arm the combined staging (no throw, no behavior change).
+  const changes = useOptionalChanges();
+  // One authoring session per dirty period: the staged document is bound to the identity and the
+  // server token under which it was authored and is NEVER re-stamped while it stays dirty.  An
+  // external identity change (another section saved, scenario switch) leaves the staged document
+  // authored against its original identity — Save All then refuses it honestly ("older saved
+  // version") instead of silently rebasing a whole document over a changed saved state, and a
+  // fresh token is only accepted after the user explicitly reconciles.
+  const combinedAuthored = useRef<AuthoredSession | null>(null);
   const registerDiscard = useRegisterDiscard();
   const update = useCallback((fn: (s: State) => State) => { const next = fn(current.current); current.current = next; setState(next); }, []);
   const dirtyOf = (s: State) => {
@@ -200,6 +208,15 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
     const fresh = await load();
     if (fresh && verify(fresh, submission)) {
       submitted.current = null; setLocked(false);
+      // A completed profile-only save (including Reset) ends any staged combined mirror: the
+      // profile state it was authored against is gone, and the store must not carry a stale
+      // document.  (When the combined capability is advertised, profile-only save is refused
+      // above, so this only fires on the OFF path or after an external capability flip.)
+      combinedAuthored.current = null;
+      if (changes && changes.get("profile", "document")) {
+        changes.setDocument("profile", null);
+        changes.revert("profile:document");
+      }
       update(v => ({ ...v, busy: "", baseline: fresh, data: fresh, draft: profileDraftFromSaved(fresh), history: [], future: [], plan: null, stale: "",
         status: { tone: "ok", text: action === "reset" ? "Saved profile removed and verified in the fresh projection. The results are now STALE; the model was not run."
           : "Profile saved and verified in the fresh projection. The results are now STALE; the model was not run. Only profiles were saved, not staged line amounts or comments." } }));
@@ -224,56 +241,91 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
     } else update(v => ({ ...v, stale: "The saved profile or scope differs from the draft baseline. Draft retained. Review it, then explicitly discard or return to its original context; no overwrite or retry was made." }));
   });
   // PR2c: publish (or clear) the staged profile into the pending store.  Idempotent per render:
-  // each dispatch is guarded so no store update loop can start.
+  // each dispatch is guarded so no store update loop can start.  The document is serialised with
+  // the saved baseline in evidence, so a real removal of the final/only profile rides the combined
+  // path as the canonical EMPTY document (the server removes the saved profile in the same
+  // transaction); "nothing to save" and "not serialisable yet" both stay unpublished.
   const combinedContract = data?.save.save_all_combined;
-  const combinedCapable = Boolean(combinedContract?.available) && !scopeMismatch && !state.stale;
+  const combinedCapable = Boolean(changes && combinedContract?.available) && !scopeMismatch && !state.stale;
+  const savedBaseline = state.baseline ? profileDraftFromSaved(state.baseline) : undefined;
   useEffect(() => {
-    if (!combinedCapable || !changes.identity) return;
-    if (dirtyCount > 0 && !state.busy && !lockedRef.current) {
-      const document = profileD7Document(keys, state.draft);
-      if (document === null || problems.length > 0) return;   // invalid draft: never published, Save All refuses
-      const source = { projectId: changes.identity.projectId, activeScenario: changes.identity.activeScenario,
-                       contentHash: changes.identity.contentHash,
-                       baseToken: combinedContract?.profile_base_token ?? "" };
-      if (!changes.get("profile", "document")) {
-        changes.stage({ section: "profile", key: "document", label: "CAPEX monthly profile", unit: "changes",
-                        baseline: "", value: "staged" });
+    if (!changes) return;
+    const authored = combinedAuthored.current;
+    if (combinedCapable && changes.identity && data && dirtyCount > 0 && !state.busy && !lockedRef.current) {
+      const identityUnchanged = !authored || (changes.identity.contentHash === authored.authoredHash
+        && combinedContract?.profile_base_token === authored.baseToken);
+      if (!authored) {
+        // FIRST publication of this dirty session: author once against the live identity + token.
+        const document = profileD7Document(keys, state.draft, savedBaseline);
+        if (document === null || problems.length > 0) return;   // nothing serialisable: never published; Save All refuses
+        const source = { projectId: changes.identity.projectId, activeScenario: changes.identity.activeScenario,
+                         contentHash: changes.identity.contentHash,
+                         baseToken: combinedContract?.profile_base_token ?? "" };
+        if (!changes.get("profile", "document")) {
+          changes.stage({ section: "profile", key: "document", label: "CAPEX monthly profile", unit: "changes",
+                          baseline: "", value: "staged" });
+        }
+        const store = changes.state;
+        if (store.documents.profile !== document || store.documentSources.profile?.baseToken !== source.baseToken
+            || store.documentSources.profile?.contentHash !== source.contentHash) {
+          changes.setDocument("profile", document, source);
+        }
+        combinedAuthored.current = {
+          authoredHash: changes.identity.contentHash, baseToken: source.baseToken,
+          submission: { project, scope: scopeOf(data), expected: profileDocument(keys, state.draft) },
+          baselineExpected: profileDocument(keys, savedBaseline ?? {}) };
+      } else if (identityUnchanged) {
+        // Same authoring session: only refresh the serialisation of the SAME draft (undo/redo,
+        // further edits) while the identity and token are unchanged.  An advanced identity never
+        // re-stamps here; the staged document stays authored against its original identity.
+        const document = profileD7Document(keys, state.draft, savedBaseline);
+        if (document !== null && problems.length === 0 && changes.state.documents.profile !== document) {
+          changes.setDocument("profile", document, { projectId: changes.identity.projectId, activeScenario: changes.identity.activeScenario,
+                                                     contentHash: authored.authoredHash, baseToken: authored.baseToken });
+          combinedAuthored.current = { ...authored, submission: { project, scope: scopeOf(data), expected: profileDocument(keys, state.draft) } };
+        }
       }
-      const store = changes.state;
-      if (store.documents.profile !== document || store.documentSources.profile?.baseToken !== source.baseToken
-          || store.documentSources.profile?.contentHash !== source.contentHash) {
-        changes.setDocument("profile", document, source);
-        combinedSubmissionPublish.current = {
-          submission: { project, scope: scopeOf(data!), expected: profileDocument(keys, state.draft) },
-          authoredHash: changes.identity.contentHash };
+      // identity advanced while dirty: no dispatch at all — the honest "older saved version"
+      // refusal applies if Save All is attempted; the user reconciles explicitly.
+    } else if (dirtyCount === 0) {
+      // clean: the authoring session ends with the store mirror.
+      combinedAuthored.current = null;
+      if (changes.get("profile", "document")) {
+        changes.setDocument("profile", null);
+        changes.revert("profile:document");
       }
-    } else if (dirtyCount === 0 && changes.get("profile", "document")) {
-      changes.setDocument("profile", null);
-      changes.revert("profile:document");
     }
   });
-  // The staged profile edit disappearing means EITHER a committed combined save (the saved document
-  // matches what was published -> verify and clear) OR an explicit revert/discard through the pending
-  // store (the saved document still matches the baseline -> clear the local draft honestly).  Anything
-  // else stays locked for human reconciliation; nothing is retried here.
-  const stagedAlive = combinedCapable && Boolean(changes.get("profile", "document"));
+  // The staged profile edit disappearing means EITHER a committed combined save (the fresh saved
+  // document matches exactly what was published -> verify and clear) OR an explicit revert/discard
+  // through the pending store (nothing written since authoring -> clear the local draft honestly)
+  // OR an external change that cleared the staged mirror while the saved profile is unchanged
+  // (draft retained, never silently rebased or locked).  A capability flip while the edit is still
+  // staged is NOT a disappearance.  Anything else stays locked for human reconciliation; nothing
+  // is retried here and no HTTP success is trusted without the read-back.
+  const stagedAlive = combinedCapable && Boolean(changes?.get("profile", "document"));
   const stagedAliveRef = useRef(stagedAlive);
   useEffect(() => {
-    if (!(stagedAliveRef.current && !stagedAlive)) return;
-    stagedAliveRef.current = false;
-    const published = combinedSubmissionPublish.current;
+    const was = stagedAliveRef.current;
+    stagedAliveRef.current = stagedAlive;                     // track BOTH edges: false -> true -> false
+    if (!(was && !stagedAlive)) return;                       // only the true -> false edge observes completion
+    if (changes && changes.get("profile", "document")) return; // capability flip, not a disappearance
+    const published = combinedAuthored.current;
     void (async () => {
       const fresh = await load();
-      if (!fresh) return;
-      if (published && verify(fresh, published.submission)) {
-        combinedSubmissionPublish.current = null;
+      const verdict = decideDisappearance(published, fresh);
+      if (verdict.kind === "committed" && fresh) {
+        combinedAuthored.current = null;
         setLocked(false);
         update(v => ({ ...v, baseline: fresh, data: fresh, draft: profileDraftFromSaved(fresh), history: [], future: [], plan: null, stale: "",
           status: { tone: "ok", text: "The profile and the staged line amounts were saved together in one transaction and verified by read-back. The model was not run." } }));
         (signal.current?.onSaved ?? callback.current)?.();
-      } else if (fresh.save.content_hash === published?.authoredHash
-                 && sameProfileDocument(fresh.saved.rows, profileDocument(Object.keys(profileDraftFromSaved(fresh)), profileDraftFromSaved(fresh)))) {
+      } else if (verdict.kind === "reverted" && fresh) {
+        combinedAuthored.current = null;
         update(v => ({ ...v, draft: profileDraftFromSaved(fresh), history: [], future: [], status: null }));
+      } else if (verdict.kind === "unstaged" && fresh) {
+        combinedAuthored.current = null;
+        update(v => ({ ...v, status: { tone: "conflict", text: "The saved workbook changed while the profile draft was staged. The draft is retained here; reconcile the saved state, then stage the profile again for Save All." } }));
       } else {
         setLocked(true);
         update(v => ({ ...v, status: { tone: "conflict", text: "The combined save outcome could not be verified against the saved profile. Draft retained; reconcile without resubmitting." } }));
