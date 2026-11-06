@@ -162,7 +162,7 @@ def exact_blobs_ok(repo=None, ref=None):
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     successor = _merge_event_successor()
-    successor_ok = successor.exact_blobs_ok(root, ref)
+    successor_ok = successor.ci_authority_ok(root, ref)
     authorized_ci = successor.CI_PATHS if successor_ok else frozenset()
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})

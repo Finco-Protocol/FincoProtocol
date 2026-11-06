@@ -92,7 +92,16 @@ def exact_blobs_ok(repo=None, ref=None):
     if key not in _SCOPE[-1]:
         _SCOPE[-1][key]=_exact_blobs_ok(repo,ref)
     return _SCOPE[-1][key]
-def _exact_blobs_ok(repo=None, ref=None):
+def ci_authority_ok(repo=None, ref=None):
+    """Signature-level authority for the literal CI_PATHS only: same manifest/BASE/ancestry/pin/mode proof as exact_blobs_ok, WITHOUT the whole-tree changed-path closure (that closure stays in exact_blobs_ok and composite_valid, so an unrelated drift is still refused globally)."""
+    key=(str(repo if repo is not None else ROOT),ref,'ci-authority')
+    if not _SCOPE:
+        with scoped():
+            return ci_authority_ok(repo,ref)
+    if key not in _SCOPE[-1]:
+        _SCOPE[-1][key]=_exact_blobs_ok(repo,ref,closure=False)
+    return _SCOPE[-1][key]
+def _exact_blobs_ok(repo=None, ref=None, closure=True):
     root=Path(repo) if repo is not None else ROOT
     try:
         S4=_pr2c()
@@ -119,7 +128,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         for p,sha in pins.items():
             if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))):
                 return False
-        for path in INTEGRATION_MANIFESTS:
+        for path in (INTEGRATION_MANIFESTS if closure else ()):  # sibling manifests are another cohort's signature; global closure/composite check them
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
             if set(now)!=set(before) or any(now[k]!=before[k] for k in before if k!='source_blobs'):
                 return False
@@ -129,11 +138,11 @@ def _exact_blobs_ok(repo=None, ref=None):
             if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if any(p not in permitted and not owns4(p) for p in changed):
+        if closure and any(p not in permitted and not owns4(p) for p in changed):
             return False
         if ref is None:
             untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not _ci_evidence_only(root,p) and not owns4(p) for p in untracked):
+            if closure and any(not _ci_evidence_only(root,p) and not owns4(p) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p
@@ -164,4 +173,4 @@ def protected_blobs(repo=None,ref=None):
     return {}
 
 def ci_owns(path,repo=None,ref=None):
-    return path in CI_PATHS and exact_blobs_ok(repo,ref)
+    return path in CI_PATHS and ci_authority_ok(repo,ref)

@@ -22,8 +22,8 @@ import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = '96d04d25cf79b14011cdee18258820aeb4cd4f74'
-BASE_TREE = '9403b402f7299f7f75e9177c933563c270f2108f'
+BASE = 'f0ead1687bafd41db7472e4009234d0410451210'
+BASE_TREE = '584d29ee7873b143e140900c3af714ace2eec645'
 MANIFEST = 'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json'
 SCHEMA = 'UX_PR2C_COMBINED_SAVE_EXACT_SOURCE_V1'
 OWNED_PATHS = frozenset((
