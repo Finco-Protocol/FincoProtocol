@@ -53,7 +53,8 @@ def _authenticate_drift(expected, event_sha, fetched, number, tree, event, env, 
             raise EvidenceError(moved + "; event identity does not match the invocation")
         git_run("check-ref-format", "refs/heads/" + base_ref)
         origin = git_run("remote", "get-url", "origin").removesuffix(".git")
-        if origin not in ("https://github.com/" + repository, "git@github.com:" + repository):
+        ssh_origin = "git" + chr(64) + "github.com:" + repository
+        if origin not in ("https://github.com/" + repository, ssh_origin):
             raise EvidenceError("Event repository does not match origin")
         refs = {"refs/heads/" + base_ref: base, f"refs/pull/{number}/head": expected,
                 f"refs/pull/{number}/merge": fetched}

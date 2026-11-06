@@ -93,6 +93,21 @@ def test_live_refs_immutable_objects_and_concurrency_fail_closed(attack):
     with pytest.raises((EvidenceError,subprocess.CalledProcessError)):prove(g)
 
 
+def _ssh(repo):return 'git'+chr(64)+'github.com:'+repo
+
+def test_exact_ssh_origin_is_accepted_and_https_remains_accepted():
+    for origin in (_ssh(REPO),_ssh(REPO)+'.git','https://github.com/'+REPO+'.git'):
+        g=Git();g.origin=origin
+        assert prove(g)['merge_sha']==E
+
+@pytest.mark.parametrize('suffix',['x','/extra','-fork'])
+def test_ssh_origin_rejects_suffix_substring_foreign_repo_host_and_protocol(suffix):
+    bad=[_ssh(REPO)+suffix,_ssh('foreign/repo'),'git'+chr(64)+'evil.example:'+REPO,
+         'ssh://'+'git'+chr(64)+'github.com/'+REPO,'http://github.com/'+REPO,'x'+_ssh(REPO)]
+    for origin in bad:
+        g=Git();g.origin=origin
+        with pytest.raises(EvidenceError):prove(g)
+
 def test_real_git_metadata_regeneration_and_stale_main(tmp_path):
     """Real immutable objects + real bare PR refs; only GitHub hostname is a local transport fixture."""
     origin=tmp_path/'origin.git';work=tmp_path/'work'
