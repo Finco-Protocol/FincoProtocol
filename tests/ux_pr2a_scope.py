@@ -8,7 +8,7 @@ edited: PR1 follows PR2a only through ``supersedes(path, blob)`` for a literal p
 pins of sibling manifests may move only for paths this cohort owns, and only to these same bytes.
 """
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import hashlib
 import json
 import subprocess
@@ -111,15 +111,20 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    with ExitStack() as successors:
+        S=_pr2b()
+        if S is not None:
+            successors.enter_context(S.scoped())
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 def exact_blobs_ok(repo=None, ref=None):
     key=(str(repo if repo is not None else ROOT),ref)
     if not _SCOPE:
-        return _exact_blobs_ok(repo,ref)
+        with scoped():
+            return exact_blobs_ok(repo,ref)
     if key not in _SCOPE[-1]:
         _SCOPE[-1][key]=_exact_blobs_ok(repo,ref)
     return _SCOPE[-1][key]

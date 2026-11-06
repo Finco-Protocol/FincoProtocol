@@ -168,7 +168,7 @@
 [data-dense-workbench] .ws2-grid thead th.ci-h-line, [data-dense-workbench] .ws2-grid td.ci-col-line { position: sticky; left: 0; z-index: 1; background: var(--fm-surface, #fff); }
 
 /* UX-PR2b: percentage inputs are draft data, separate from saved server money. */
-.pr2b-edit-toggle { display: block; font-weight: normal; white-space: nowrap; }
+.pr2b-edit-toggle { display: inline; font-weight: normal; white-space: nowrap; }
 .pr2b-profile-cell { display: flex; align-items: center; gap: 6px; max-width: 100%; }
 .pr2b-profile-cell select { min-width: 0; max-width: 155px; height: 26px; font: inherit; }
 .pr2b-profile-cell .ci-link { white-space: nowrap; }

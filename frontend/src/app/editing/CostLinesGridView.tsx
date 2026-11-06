@@ -659,7 +659,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
             <th key={id} scope="col" className={`ci-h-${id.startsWith("tl:") ? "tl" : id}${id === "amount" || id === "perMw" || id === "sigma" || id.startsWith("tl:") ? " ci-num" : ""}`}
-                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : headOf(id)}{id === "profile" && denseWorkbench && profileDraft && <button type="button" className="ci-link pr2b-edit-toggle" data-pr2b-toggle="desktop" aria-pressed={profileEditing} onClick={toggleProfileEditing}>{profileEditing ? "Close editor" : "Edit profiles"}</button>}</th>))}</tr></thead>
+                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : id === "profile" && denseWorkbench && profileDraft ? null : headOf(id)}{id === "profile" && denseWorkbench && profileDraft && <button type="button" className="ci-link pr2b-edit-toggle" data-pr2b-toggle="desktop" aria-label="Edit payment profiles" aria-pressed={profileEditing} onClick={toggleProfileEditing}>{profileEditing ? "Close profiles" : "Payment profile · edit"}</button>}</th>))}</tr></thead>
           <tbody>
             {groupOrder.map((cat) => {
               const g = groupInfo.get(cat);

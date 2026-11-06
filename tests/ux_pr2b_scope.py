@@ -64,7 +64,8 @@ def scoped():
 def exact_blobs_ok(repo=None, ref=None):
     key=(str(repo if repo is not None else ROOT),ref)
     if not _SCOPE:
-        return _exact_blobs_ok(repo,ref)
+        with scoped():
+            return exact_blobs_ok(repo,ref)
     if key not in _SCOPE[-1]:
         _SCOPE[-1][key]=_exact_blobs_ok(repo,ref)
     return _SCOPE[-1][key]

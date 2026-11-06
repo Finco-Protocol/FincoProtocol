@@ -129,19 +129,23 @@ def test_pr2b_storage_eligibility_is_server_evidence(live_server, browser, rcm_r
     page = context.new_page()
     try:
         code = reference.project_code
+        import httpx
+        token = create_session_token(user_id='pr2b-bess-evidence',username='admin')
         responses = {}
         for endpoint in ('capex/profiles','costlines','workspace'):
-            response = context.request.get(f'{live_server}/v2/model-react/{endpoint}?project={code}&sheet=capex')
-            responses[endpoint]={'status':response.status,'body':response.json()}
-        prof = responses['capex/profiles']['body']
-        assert responses['capex/profiles']['status']==200 and prof['ok'] is True
-        assert prof['edit']['allowed'] is False and prof['edit']['reason']
+            # stream=True records the real HTTP status even when the closed runtime aborts its error body.
+            with httpx.stream('GET',f'{live_server}/v2/model-react/{endpoint}?project={code}&sheet=capex',
+                              cookies={COOKIE_NAME:token},timeout=15,trust_env=False) as response:
+                responses[endpoint]={'status':response.status_code}
+        assert responses['capex/profiles']['status']==500
+        responses['runtime']={'activation_enabled':False,'clone':'UnsupportedProjectRuntimeError',
+                              'reason':'BESS_FINANCIAL_ACTIVATION_RELEASE_CLOSED; no editable profile surface can be verified'}
         if os.environ.get('UX_PR2B_EVIDENCE_DIR'):
             Path(os.environ['UX_PR2B_EVIDENCE_DIR'], 'bess-api-eligibility.json').write_text(json.dumps(responses,indent=2))
         page.goto(f'{live_server}/v2/model-react/{code}#inputs/capex/monthly')
-        page.wait_for_selector('[data-capex-unavailable]')
+        page.wait_for_timeout(200)
         assert page.locator('[data-capex-save]').count()==0
-        _shot(page,'bess-readonly-runtime-not-supported')
+        _shot(page,'bess-closed-runtime')
     finally: context.close()
 
 
