@@ -159,3 +159,10 @@
 @media (max-width:900px) {
  [data-ux-pr1] .ux-project-actions a { display:inline-flex; align-items:center; min-height:44px; box-sizing:border-box }
 }
+
+/* UX-PR2a — inline read-only timeline columns (CAPEX M1..Mn / OPEX Y1..Yn). The grid scrolls inside its own region, never the page. */
+.ws2-grid .ci-col-tl, .ws2-grid .ci-h-tl { min-width: 5.5em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws2-grid .ci-col-sigma, .ws2-grid .ci-h-sigma { min-width: 4.5em; white-space: nowrap; }
+.ws2-grid .ci-col-tl[data-timeline-state="unavailable"], .ws2-grid .ci-col-sigma[data-timeline-state="none"] { color: var(--fm-muted, #6b7280); }
+[data-dense-workbench] .rx-lines-scroll { overflow-x: auto; max-width: 100%; }
+[data-dense-workbench] .ws2-grid thead th.ci-h-line, [data-dense-workbench] .ws2-grid td.ci-col-line { position: sticky; left: 0; z-index: 1; background: var(--fm-surface, #fff); }

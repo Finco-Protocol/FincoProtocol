@@ -196,7 +196,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 # Sibling post-#413 data-integrity cohorts (closed, each pinned by its own manifest). Consulted through LOW LEVEL checks only (``allowed_path`` and
 # ``exact_blobs_ok`` of the sibling, which never call this module or the registry), so the call stack stays acyclic; nothing is cached across calls.
-SIBLING_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope')
+SIBLING_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope')
 
 
 def _predecessor_manifest_follows_tree(path, root, ref):

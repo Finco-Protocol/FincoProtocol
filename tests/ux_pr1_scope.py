@@ -103,6 +103,23 @@ INTEGRATION_MANIFESTS = frozenset((
 ))
 FORBIDDEN_PREFIXES = ('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'migrations/', 'schemas/')
 FORBIDDEN_PATHS = frozenset(('main_web.py', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'))
+def _pr2a():
+    """One-way delegation to the low level UX-PR2a successor (git objects + its own manifest only; it never imports this module)."""
+    try:
+        from tests import ux_pr2a_scope as S
+    except ImportError:
+        return None
+    return S
+
+def _pr2a_pin_ok(root, path, blob, ref):
+    """A PR1 pin may be superseded ONLY for a literal path of the PR2a cohort at exactly its pin, while that cohort is itself exact."""
+    S = _pr2a()
+    return S is not None and S.supersedes(path, blob, root, ref)
+
+def _pr2a_owns(root, path, ref):
+    S = _pr2a()
+    return S is not None and S.allowed_path(path, root, ref) and S.exact_blobs_ok(root, ref)
+
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 # Only immutable BASE git objects are cached. Working bytes, ref ancestry, modes,
@@ -151,6 +168,12 @@ def exact_blobs_ok(repo=None, ref=None):
 def _exact_blobs_ok(repo=None, ref=None):
     root=Path(repo) if repo is not None else ROOT
     try:
+        # ONE evaluation of the PR2a successor per call (its exact proof is not repeated per path).
+        S2=_pr2a()
+        ok2=S2 is not None and S2.exact_blobs_ok(root,ref)
+        pins2=S2.manifest(root,ref).get('source_blobs',{}) if ok2 else {}
+        pin_ok2=lambda p,blob: ok2 and p in S2.SUPERSEDED and pins2.get(p)==blob
+        owns2=lambda p: ok2 and S2.allowed_path(p,root,ref)
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
@@ -168,7 +191,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if baseline != d['base_blobs']:
             return False
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha:
+            if _blob(_read(root,p,ref))!=sha and not pin_ok2(p,_blob(_read(root,p,ref))):
                 return False
         for path in INTEGRATION_MANIFESTS:
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -177,14 +200,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            if any(p not in pins or new[p]!=pins[p] for p in old if new[p]!=old[p]):
+            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if set(changed)-permitted:
+        if any(p not in permitted and not owns2(p) for p in changed):
             return False
         if ref is None:
             untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not _ci_evidence_only(root,p) for p in untracked):
+            if any(not _ci_evidence_only(root,p) and not owns2(p) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p
