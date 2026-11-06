@@ -98,7 +98,7 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
     registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
     # the four post-#413 cohorts, the registered CI V4 cohort (Owner CI policy 2026-11-04), the registered
     # G10/D8 OPEX-completion cohort and the registered Workstream-B cohort - no other later cohort
-    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
     own_manifests = {m.MANIFEST for m in registered_exact}
     # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
     assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)

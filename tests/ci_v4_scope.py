@@ -87,6 +87,12 @@ FORBIDDEN_PATHS = frozenset(('main_web.py',))
 CI_PREFIXES = ('.github/', 'tools/')
 
 
+def _merge_event_successor():
+    # One-way low-level proof: PR2b reads git + its own manifest, never this cohort.
+    from tests import ux_pr2b_scope as B
+    return B
+
+
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
@@ -135,11 +141,12 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    with _merge_event_successor().scoped():
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
@@ -154,6 +161,9 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
+    successor = _merge_event_successor()
+    successor_ok = successor.ci_authority_ok(root, ref)
+    authorized_ci = successor.CI_PATHS if successor_ok else frozenset()
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
     if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
@@ -179,7 +189,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         # engine/core/domain never moved; under .github/ and tools/ only the literal CI_PATHS differ from BASE
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
                        *[p.rstrip('/') for p in ENGINE_PREFIXES + CI_PREFIXES]).decode().splitlines()
-        if any(p.startswith(ENGINE_PREFIXES) or (p.startswith(CI_PREFIXES) and p not in CI_PATHS) for p in changed):
+        if any(p.startswith(ENGINE_PREFIXES) or (p.startswith(CI_PREFIXES) and p not in CI_PATHS and p not in authorized_ci) for p in changed):
             return False
         if ref is None:
             for p in OWNED_PATHS | {MANIFEST}:
@@ -203,8 +213,8 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def ci_owns(path, repo=None, ref=None):
-    """The ONLY admission of a ``.github/`` or ``tools/`` path for an older guard: a literal CI V4 path while this cohort is exact."""
-    return path in CI_PATHS and exact_blobs_ok(repo, ref)
+    """A literal CI V4 path or the exact owner-authorized merge-guard successor; never a wildcard CI admission."""
+    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)) and exact_blobs_ok(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):

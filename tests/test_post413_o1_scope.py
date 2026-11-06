@@ -166,7 +166,8 @@ def _ux_pr1_signed_later_pins(repo=None, ref=None):
     _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
     if UX.__name__ not in registered or UX.__name__ not in C.COHORT_MODULES or not UX.valid(root, ref):
         return {}
-    pins = UX.manifest(root, ref)['source_blobs']
+    from tests import ux_pr2a_scope as UX2
+    pins = {**UX.manifest(root, ref)['source_blobs'], **UX2.effective_pins(root,ref)}
     return {p:pins[p] for p in UX_PR1_LATER_SHARED if p not in O.OWNED_PATHS and UX.supersedes(p,pins[p],root,ref)}
 
 
@@ -177,8 +178,8 @@ def _ux_pr2a_signed_later_pins(repo=None, ref=None):
     _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
     if UX2.__name__ not in registered or UX2.__name__ not in C.COHORT_MODULES or not UX2.exact_blobs_ok(root, ref):
         return {}
-    pins = UX2.manifest(root, ref)['source_blobs']
-    return {p: pins[p] for p in UX2.SUPERSEDED if p not in O.OWNED_PATHS and UX2.supersedes(p, pins[p], root, ref)}
+    pins = UX2.effective_pins(root,ref)
+    return {p: pins[p] for p in pins if p not in O.OWNED_PATHS and UX2.supersedes(p, pins[p], root, ref)}
 
 
 def _audit_shared_sibling_pins(repo=None, ref=None):
@@ -432,7 +433,8 @@ def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
     path = 'tests/test_model_workspace_consolidation_browser.py'
     assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
     before = _audit_shared_sibling_pins(wt, 'HEAD')
-    assert _ux_pr1_signed_later_pins(wt)[path] == UX.manifest(wt)['source_blobs'][path]
+    from tests import ux_pr2b_scope as UX3
+    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.manifest(wt)['source_blobs'][path]
     original = (wt / path).read_bytes()
     _flip(wt / path)
     with pytest.raises(AssertionError):

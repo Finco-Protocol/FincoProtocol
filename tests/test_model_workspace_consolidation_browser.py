@@ -889,3 +889,6 @@ from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403
 
 # WF-04 Debt Metrics: Owner-authorised mandatory acceptance; additive import only.
 from tests.model_react_wf04_debt_metrics_acceptance import *  # noqa: E402,F401,F403
+
+# UX-PR2b: additive real Chromium acceptance; existing mandatory cases remain intact.
+from tests.model_react_ux_pr2b_acceptance import *  # noqa: E402,F401,F403
