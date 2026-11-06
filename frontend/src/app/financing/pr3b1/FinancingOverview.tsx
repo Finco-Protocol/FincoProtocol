@@ -83,6 +83,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
           {(s.capital_stack.unsupported ?? []).map((u, i) => <p key={i}>{u.name} · {u.status} · {unsupportedReason(u)}</p>)}
         </details>
     <p><a href="#results">Returns and valuation · existing Results</a></p>
+    {!cov && <p id="pr3b1-quality">Quality / diagnostics · Last Run evidence unavailable. {gate.reason}</p>}
     {cov && <>
       <div id="pr3b1-quality" className="pr3b1-verdicts">
         <article className="pr3b1-card"><h3>Model Integrity</h3><strong>{cov.integrity.status || 'UNAVAILABLE'}</strong><ul>{(cov.integrity.failures ?? []).map((f: { id: string; title?: string; reason?: string }) => <li key={f.id}>{f.title || f.id} · {f.reason}</li>)}</ul><Findings rows={cov.integrityFindings} /></article>
