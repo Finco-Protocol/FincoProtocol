@@ -23,7 +23,7 @@
     "frontend/src/app/editing/pendingEdits.ts": "c70748b5de42237816bb6240d74f3c415c281f97",
     "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
     "frontend/src/app/workflow/PPAEditorView.tsx": "5de1df8aee8ebe10a7cbdbca4260ace01abe9d6f",
-    "static/react/finco-react.js": "cf4453578cc62af77347b10c5e6ff798e1b4edde",
+    "static/react/finco-react.js": "4399aa34d373265b6074fcba35b36eae53c6e98f",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
     "tests/model_react_r1_ppa_two_tab_acceptance.py": "f9270bd0e43396f4ba8ff81f9cd6e819229937e3",
@@ -37,6 +37,6 @@
     "tests/test_u1_scope.py": "0f5498ae9a3e50a83e4f359f40e5888e54c1e5c4",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/test_wsv2_core_scope.py": "4347d3828edc3633d6f75408dc63e8b2b5ea5edc",
-    "tests/u1_scope.py": "186cc98f02d7937271db896dda48ebc8b4071dd0"
+    "tests/u1_scope.py": "f031e1ff8689f50f640858c7a26f1f26917e1e6d"
   }
 }

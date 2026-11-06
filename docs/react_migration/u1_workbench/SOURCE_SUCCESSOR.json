@@ -109,7 +109,7 @@
     "frontend/src/app/workspaceNavigation.ts": "bb8306f8f323a6f5fc33484d5371d3baef789920",
     "frontend/src/styles/compact-inputs.css": "7e43b683704870f162811ce989510cc8c9563a07",
     "static/react/finco-react.css": "f6fd36f014676bcf7c8cc076c963b587540f0bd9",
-    "static/react/finco-react.js": "cf4453578cc62af77347b10c5e6ff798e1b4edde",
+    "static/react/finco-react.js": "4399aa34d373265b6074fcba35b36eae53c6e98f",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
     "tests/model_react_mvp_acceptance.py": "19878afd0fad6674e17c18607d71beb7ccf8891b",
@@ -135,7 +135,7 @@
     "tests/test_wf06b_scope.py": "7b256ad291c550b752ee021405928c97bd966e8b",
     "tests/test_wsv2_core_scope.py": "1014bd0402db9a8ea60c446f8329f859e15ad5d6",
     "tests/u1_browser_role.py": "f1b6219ed17ac5542956de9c3994f42a6357eea2",
-    "tests/u1_scope.py": "186cc98f02d7937271db896dda48ebc8b4071dd0",
+    "tests/u1_scope.py": "f031e1ff8689f50f640858c7a26f1f26917e1e6d",
     "tests/wf06b_scope.py": "1cefe61c3e86a1d792320d7f11094594ce60e92c"
   },
   "validation": "See tests/test_u1_scope.py (tamper negatives) and the exact-head CI of the PR-U1 pull request; this manifest is a seal, not a PASS claim."

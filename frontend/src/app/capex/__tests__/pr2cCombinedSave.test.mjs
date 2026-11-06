@@ -145,13 +145,20 @@ const row = (shape, explicit = '', milestone = '') => ({ shape, explicit, milest
 const fresh = (rows, hash, scenario = null) => ({ project: { code: 'demo-project' }, save: { content_hash: hash, scenario_id: scenario }, saved: { rows, error: null } });
 const session = (hash, expected, baseline) => ({ authoredHash: hash, baseToken: 'tok-1', submission: { project: 'demo-project', scope: 'demo-project|null', expected }, baselineExpected: baseline });
 
-test('observer: a committed combined save is proven by read-back of the exact published rows', () => {
+test('observer: a committed combined save is proven by read-back of the exact published rows AND an advanced identity', () => {
   const expected = { 'c-12': row('UNIFORM') };
-  assert.equal(PB.decideDisappearance(session('h2', expected, {}), fresh(expected, 'h2')).kind, 'committed');
+  assert.equal(PB.decideDisappearance(session('h2', expected, {}), fresh(expected, 'h3')).kind, 'committed');
+});
+
+test('observer: rows matching the published document with an UNCHANGED identity is a revert, never a commit (edited-then-undone draft)', () => {
+  const baseline = { 'c-12': row('UNIFORM') };
+  const s = session('h1', baseline, baseline);   // published document == baseline rows (edited, then undone back)
+  assert.equal(PB.decideDisappearance(s, fresh(baseline, 'h1')).kind, 'reverted');
+  assert.notEqual(PB.decideDisappearance(s, fresh(baseline, 'h1')).kind, 'committed');
 });
 
 test('observer: the empty removal document is committed when the saved profile is really gone', () => {
-  assert.equal(PB.decideDisappearance(session('h2', {}, {}), fresh({}, 'h2')).kind, 'committed');
+  assert.equal(PB.decideDisappearance(session('h2', {}, {}), fresh({}, 'h3')).kind, 'committed');
 });
 
 test('observer: same composite hash after the staged edit disappeared means an explicit revert, never a commit', () => {

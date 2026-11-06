@@ -183,9 +183,16 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   const verify = (fresh: CapexProfiles, submission: Submission) => fresh.project.code === submission.project && scopeOf(fresh) === submission.scope && !fresh.saved.error && sameProfileDocument(fresh.saved.rows, submission.expected);
   const save = (action: "save" | "reset", confirmed = false) => singleFlight(async () => {
     const s = current.current, snapshot = s.data, baseline = s.baseline;
-    if (action === "save" && combinedCapable) {
+    if (combinedCapable) {
+      // Under the advertised combined capability there is exactly ONE writer for the
+      // profile document (the D7 combined transaction).  Profile-only Save AND Reset are
+      // blocked with honest guidance: a removal rides Save All as the canonical empty
+      // document, in the same transaction as any staged line amounts — never as a second
+      // concurrent writer racing them.  Reset keeps its PR2b meaning while the flag is OFF.
       update(v => ({ ...v, status: { tone: "conflict",
-        text: "Use Save All: it will save this profile together with the staged line amounts in one all-or-none transaction." } }));
+        text: action === "reset"
+          ? "Use Save All to remove the profile: clear the profile rows here, and Save All will remove the saved profile together with the staged line amounts in one all-or-none transaction."
+          : "Use Save All: it will save this profile together with the staged line amounts in one all-or-none transaction." } }));
       return;
     }
     if (!snapshot || !baseline || readOnly || lockedRef.current || (action === "reset" ? false : externalPending) || s.stale || scopeMismatch || (action === "save" && (problems.length || snapshot.saved.error || (!dirtyOf(s) && !orphans.length)))) return;

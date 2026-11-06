@@ -38,14 +38,17 @@ export type DisappearanceOutcome =
 export function decideDisappearance(session: AuthoredSession | null, fresh: FreshProfiles | null): DisappearanceOutcome {
   if (!fresh || !session) return { kind: "unknown" };
   const scope = `${fresh.project.code}|${fresh.save.scenario_id}`;
-  if (fresh.project.code === session.submission.project && scope === session.submission.scope
+  const inScope = fresh.project.code === session.submission.project && scope === session.submission.scope;
+  // A commit is proven only by the rows AND by the composite identity actually advancing:
+  // rows alone cannot distinguish a real commit from an edited-then-undone draft whose
+  // published document happened to equal the baseline (nothing was ever written).
+  if (inScope && fresh.save.content_hash !== session.authoredHash
       && !fresh.saved.error && sameProfileDocument(fresh.saved.rows, session.submission.expected)) {
     return { kind: "committed" };
   }
   // A revert is proven only in the authored scope: the same composite hash somewhere else
   // (another scenario) is not evidence about this staged edit.
-  if (fresh.project.code === session.submission.project && scope === session.submission.scope
-      && fresh.save.content_hash === session.authoredHash) {
+  if (inScope && fresh.save.content_hash === session.authoredHash) {
     return { kind: "reverted" };
   }
   if (!fresh.saved.error && sameProfileDocument(fresh.saved.rows, session.baselineExpected)) {
