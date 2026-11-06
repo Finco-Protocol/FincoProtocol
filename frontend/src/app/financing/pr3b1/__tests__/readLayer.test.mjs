@@ -18,6 +18,8 @@ const negatives={
  'raw totals mismatch':e=>{e.studio.sources_uses.view.total_sources.value=100.0000000001},
  'formatted equality is insufficient':e=>{e.studio.sources_uses.view.total_sources.value='100'},
  'missing total is not zero':e=>{e.studio.sources_uses.view.total_uses.value=null},
+ 'missing Studio identity':e=>{delete e.studio.identity},
+ 'missing Run identity':e=>{delete e.credit.data.runs[0].identity},
  'missing snapshot':e=>{delete e.credit.data.runs[0].identity.snapshot_id},
  'missing history':e=>{delete e.credit.data.runs[0].identity.history_id},
  'project switch':e=>{e.scope.project='other'},

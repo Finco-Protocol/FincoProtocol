@@ -18,6 +18,11 @@ export function checkRunEvidence(e: Evidence): Gate {
   const deny = (detail: string): Gate => ({ state: 'UNAVAILABLE', showRun: false,
     reason: `Last Run changed — reload. ${detail}`, assurance: 'NOT_PROVEN' });
   const { scope, before, after, studio: s, credit: c, creditBefore: cb, fields } = e;
+  if (!scope || !before?.project || !after?.project || !before.workbook || !after.workbook
+      || !before.freshness || !after.freshness || !s?.identity || !s.project || !s.sources_uses
+      || !c?.project || !cb?.project || !Array.isArray(c.history_rows) || !Array.isArray(cb.history_rows)
+      || !fields?.project || !fields.save || !Array.isArray(fields.fields)
+      || (c.data && !Array.isArray(c.data.runs)) || (cb.data && !Array.isArray(cb.data.runs))) return deny('Response identity or shape is missing.');
   if (![before, after, s, c, cb, fields].every(x => x.ok && x.project.code === scope.project)
       || (c.data && c.data.project_code !== scope.project) || (cb.data && cb.data.project_code !== scope.project)) return deny('Project scope differs.');
   if (anchor(before) !== anchor(after)) return deny('Workspace changed during read.');
@@ -34,6 +39,7 @@ export function checkRunEvidence(e: Evidence): Gate {
     state: 'NOT_RUN', showRun: false, reason: 'NOT_RUN — no committed Last Run. Saved Sources & Uses is NOT AVAILABLE.', assurance: 'NOT_PROVEN' };
   if (!r || c.data?.runs.length !== 1) return deny('One selected Run is required.');
   const id = r.identity;
+  if (!id || !r.structure || !r.capacity) return deny('Run evidence shape is missing.');
   if (![id.snapshot_id, id.history_id, id.ran_at, id.composite_hash].every(present)) return deny('Run identity is missing.');
   const last = c.history_rows.find(h => h.history_id === id.history_id);
   if (!last?.is_last || !last.selected || (scope.historyId && scope.historyId !== id.history_id)) return deny('Selected history is not Studio Last Run. Open Debt metrics for historical evidence.');

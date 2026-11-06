@@ -13,7 +13,7 @@ export const LEGACY_VIEWS = [ ['terms', 'Debt terms'], ['overview', 'Overview'],
   ['bankability', 'Bankability'], ['facilities', 'Senior facilities'], ['sources-uses', 'Sources & uses'], ['investors', 'Investors & sponsor'] ] as const;
 function Terms({ rows }: { rows: Term[] }) {
   return <dl className="pr3b1-values">{rows.map((r, i) => <div key={`${r.label}-${i}`}>
-    <dt>{r.label}</dt><dd>{r.display}<small>{r.source}{r.reason ? ` · ${r.reason}` : ''}</small></dd>
+    <dt>{r.label}</dt><dd>{r.display}<small title={r.source}>{r.source.startsWith('Working Copy') ? 'Working Copy' : r.source.startsWith('Contract') ? 'Contract limitation' : 'Last Run'}{r.reason ? ` · ${r.reason}` : ''}</small></dd>
   </div>)}</dl>;
 }
 const amount = (r: SuRow): Term => ({ label: r.label, display: r.value == null ? 'NOT AVAILABLE' : r.display, source: r.authority, reason: r.reason });
@@ -44,15 +44,15 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
   return <section className="pr3b1" aria-label="Financing one-screen overview" data-run-state={gate.state}>
     <header className="pr3b1-header"><div><h2>Financing</h2><p>Term Sheet · Working Copy and Last Run stay distinct</p></div><button type="button" onClick={onReload}>Reload evidence</button></header>
     <nav className="pr3b1-blocks" aria-label="Existing financing functions">{blocks.map(b => <a key={b.label} href={link(b.path)}><strong>{b.label}</strong><small>{b.availability}</small></a>)}</nav>
-    {e.credit.history_rows.length > 0 && <label className="pr3b1-history">Run history <select aria-label="Run history" value={e.credit.data?.runs[0]?.identity.history_id ?? ''}
+    {e.credit.history_rows.length > 0 && <label className="pr3b1-history">Run history <select aria-label="Run history" value={e.credit.data?.runs[0]?.identity?.history_id ?? ''}
       disabled={!onHistoryChange} onChange={ev => onHistoryChange?.(ev.target.value)}>{e.credit.history_rows.map(h => <option key={h.history_id} value={h.history_id}>{h.is_last ? 'Last Run' : 'Historical'} · {h.scenario} · {h.ran_at}</option>)}</select></label>}
     <div className={`pr3b1-state pr3b1-state-${gate.state.toLowerCase()}`} role="status"><strong>{gate.state}</strong> · {gate.reason}
       {r && <small>Last Run · {r.identity.scenario} · {r.identity.ran_at} · snapshot {r.identity.snapshot_id}</small>}
       {gate.showRun && <small>Totals and read identities agree; Studio snapshot identity is not proven.</small>}
     </div>
     <div className="pr3b1-main">
-      <article className="pr3b1-sheet"><h3>Term Sheet</h3><small>Working Copy model values are informational. No new editing or financial calculation.</small>
-        <div className="pr3b1-term-groups">{groups.map(g => <details open key={g.label}><summary>{g.label}</summary>{g.rows.length ? <Terms rows={g.rows} /> : <p>NOT AVAILABLE — no supplied terms.</p>}</details>)}</div>
+      <article className="pr3b1-sheet"><h3>Term Sheet</h3><small>Working Copy model values are informational.</small>
+        <div className="pr3b1-term-groups">{groups.map(g => <details open={g.label === 'Size' || g.label === 'Pricing'} key={g.label}><summary>{g.label}</summary>{g.rows.length ? <Terms rows={g.rows} /> : <p>NOT AVAILABLE — no supplied terms.</p>}</details>)}</div>
         {s.senior_lock_reason && <p role="note">Scalar editing locked · {s.senior_lock_reason}</p>}
         <p>Lock-up DSCR and Minimum LLCR are model information, with no new edit or Run-verification claim.</p>
         <details><summary>Facility terms · Working Copy · read-only</summary>
@@ -70,8 +70,8 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
       <div className="pr3b1-run-zones" data-run-zones={gate.showRun ? 'visible' : 'hidden'}>
         {!gate.showRun ? <div className="pr3b1-card"><h3>Last Run evidence</h3><p>{gate.reason}</p><a href={link('debt-metrics')}>Open Debt metrics / historical evidence</a></div> : <>
           <article className="pr3b1-card" aria-label="Sources & Uses Last Run"><h3>Sources & Uses <small>Last Run · kEUR</small></h3>
-            <h4>Sources</h4><Terms rows={su!.sources.map(amount)} /><h4>Uses</h4><Terms rows={su!.uses.map(amount)} />
-            <div className="pr3b1-totals"><Terms rows={su!.totals.map(amount)} /></div><p>Balance · {su!.balance} · Integrity · {su!.integrity}</p><small>{su!.note} {su!.reason}</small>
+            <div className="pr3b1-su-scroll" tabIndex={0} role="region" aria-label="Sources and Uses rows"><h4>Sources</h4><Terms rows={su!.sources.map(amount)} /><h4>Uses</h4><Terms rows={su!.uses.map(amount)} />
+            <div className="pr3b1-totals"><Terms rows={su!.totals.map(amount)} /></div></div><p>Balance · {su!.balance} · Integrity · {su!.integrity}</p><small>{su!.note} {su!.reason}</small>
             <p>Saved Sources & Uses: NOT AVAILABLE. No Working Copy reconstruction.</p>
           </article>
           <article className="pr3b1-card" aria-label="Coverage Last Run"><h3>Coverage <small>Last Run</small></h3>
@@ -79,14 +79,14 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
               creditTerm('Sizing target DSCR', cov!.capacity.target_dscr, 'Last Run · capacity.target_dscr'),creditTerm('Binding constraint', cov!.capacity.binding_constraint, cov!.bindingScope)]} />
             <p>Coverage · {dm?.evaluation?.coverage.status || 'UNAVAILABLE'} · {dm?.evaluation?.coverage.message || dm?.evaluation?.coverage.reason || dm?.reason}</p>
             <p>DSRA · {dm?.reserves?.dsra.available ? `Initial funding ${number(dm.reserves.dsra.initial_funding_keur)} kEUR` : dm?.reserves?.dsra.reason || 'NOT AVAILABLE'}</p>
-            <p>Run execution, Model Integrity and coverage are independent server verdicts. No client threshold engine.</p>
+            <p>Run execution, Model Integrity and coverage are independent server verdicts.</p>
           </article>
         </>}
       </div>
     </div>
     {cov && <>
       <div className="pr3b1-verdicts">
-        <article className="pr3b1-card"><h3>Model Integrity</h3><strong>{cov.integrity.status || 'UNAVAILABLE'}</strong><Findings rows={cov.integrityFindings} /></article>
+        <article className="pr3b1-card"><h3>Model Integrity</h3><strong>{cov.integrity.status || 'UNAVAILABLE'}</strong><ul>{(cov.integrity.failures ?? []).map((f: { id: string; title?: string; reason?: string }) => <li key={f.id}>{f.title || f.id} · {f.reason}</li>)}</ul><Findings rows={cov.integrityFindings} /></article>
         <article className="pr3b1-card"><h3>Financial Bankability</h3><p>{cov.bindingScope}</p><Findings rows={cov.bankabilityFindings} /></article>
         <article className="pr3b1-card"><h3>Covenant Compliance</h3><p>{dm?.contract_terms?.note || dm?.contract_terms?.reason || 'NOT AVAILABLE — contract terms not supplied'}</p>
           <p>EoD · {dm?.evaluation?.eod.status || 'UNAVAILABLE'} · {dm?.evaluation?.eod.message || dm?.evaluation?.eod.reason}</p>
@@ -94,6 +94,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
           <p>Period lock-up · {dm?.reserves?.lockup.available ? dm.reserves.lockup.note || 'Recorded period markers below' : dm?.reserves?.lockup.reason || 'NOT AVAILABLE'}</p>
         </article>
       </div>
+      {cov.otherFindings.length > 0 && <details><summary>Other server findings · original classifications</summary><Findings rows={cov.otherFindings} /></details>}
       <details open><summary>Outstanding and coverage · native period schedule · Last Run</summary><p>{dm?.axis?.frequency} · {dm?.axis?.note} {dm?.basis_note}</p>
         {cov.periods.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Native debt period schedule"><table><thead><tr>{['Period','Opening kEUR','Closing kEUR','DSCR (x)','Sizing target (x)','Shortfall kEUR','Below one','EoD breach','Covenant breach','Lock-up'].map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
           <tbody>{cov.periods.map(p => <tr key={p.period_index}><th scope="row">{p.label} · {p.date}</th><td>{number(p.senior_opening_keur)}</td><td>{number(p.senior_closing_keur)}</td><td>{number(p.dscr)}</td><td>{number(p.sizing_target_dscr)}</td><td>{number(p.shortfall_keur)}</td>{[p.below_one,p.eod_breach,p.covenant_breach,p.lockup_active].map((v,i) => <td key={i}>{v == null ? 'NOT AVAILABLE' : v ? 'Yes' : 'No'}</td>)}</tr>)}</tbody></table></div> : <p>NOT AVAILABLE · {dm?.reason || 'No native period evidence.'}</p>}
@@ -102,6 +103,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange }: {
         {su!.construction.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Construction period evidence"><table><thead><tr><th scope="col">Period</th><th scope="col">Server field</th><th scope="col">kEUR</th><th scope="col">Authority / reason</th></tr></thead><tbody>{su!.construction.flatMap(p => p.fields.map((f,i) => <tr key={`${p.period}-${i}`}><th scope="row">{p.period} · {p.date}</th><td>{f.label}</td><td>{f.value == null ? 'NOT AVAILABLE' : f.display}</td><td>{f.authority} · {f.reason}</td></tr>))}</tbody></table></div> : <p>NOT AVAILABLE — no construction rows supplied.</p>}
       </details>
     </>}
+    <details><summary>Evidence and limitations</summary><p>Studio has no snapshot ID. Consistency assurance: {gate.assurance}.</p><Terms rows={groups.flatMap(g => g.rows).map(t => ({ ...t, display: t.source, source: 'Contract limitation', reason: undefined }))} /></details>
     <details><summary>All existing Financing views</summary><nav className="pr3b1-legacy" aria-label="All existing Financing views">{LEGACY_VIEWS.map(([id,label]) => <a key={id} href={link(id)}>{label}</a>)}</nav></details>
   </section>;
 }
