@@ -29,6 +29,8 @@ import { numberValidator, type CellValidator, type GridModel, type PasteAssignme
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
 import { isUserLineKey, requestProfileFocus } from "../capex/profileFocus";
+import { useCapexSavedTimeline } from "../capex/savedTimeline";
+import { useOpexLineTimeline } from "../projection/opexLineTimeline";
 
 type Sheet = "capex" | "opex";
 const MAPPING_NOTE: Record<string, string> = {
@@ -90,7 +92,7 @@ function useNarrow(query = "(max-width: 900px)") {
   return narrow;
 }
 
-type ColId = "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu" | "notes";
+type ColId = "line" | "amount" | "perMw" | "infl" | "profile" | "status" | "menu" | "notes" | "sigma" | `tl:${number}`;
 type LineFilter = "all" | "nonzero" | "changed" | "inactive";
 const FILTERS: ReadonlyArray<{ id: LineFilter; label: string }> = [
   { id: "all", label: "All" }, { id: "nonzero", label: "Non-zero" }, { id: "changed", label: "Changed" }, { id: "inactive", label: "Calculated / unsupported" },
@@ -122,6 +124,10 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [filter, setFilter] = useState<LineFilter>("all");
   const [localQuery, setLocalQuery] = useState("");
   const [profiles, setProfiles] = useState<ProfileView | null>(null);
+  // UX-PR2a: optional inline timeline (CAPEX M1..Mn / OPEX Y1..Yn). Read-only server numbers; off by default so PR1's compact grid is unchanged.
+  const [timelineOn, setTimelineOn] = useState(false);
+  const capexTl = useCapexSavedTimeline(project, denseWorkbench && timelineOn && sheet === "capex", reloadKey);
+  const opexTl = useOpexLineTimeline(project, denseWorkbench && timelineOn && sheet === "opex", reloadKey);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -318,9 +324,15 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
 
   const capacity = projection?.capacity ?? null;
   const perYear = sheet === "opex";
+  // Timeline columns exist only on the dense desktop grid, only while the server answers for THIS project, and only as read-only cells.
+  const tlCapex = capexTl.project === project && capexTl.kind === "ready" ? capexTl : null;
+  const tlOpex = opexTl.project === project && opexTl.kind === "ready" ? opexTl.data : null;
+  const timelineCols: ColId[] = !timelineOn || narrow ? [] : sheet === "capex"
+    ? (tlCapex ? ["sigma", ...Array.from({ length: tlCapex.months }, (_, i) => `tl:${i + 1}` as ColId)] : [])
+    : (tlOpex ? tlOpex.years.map((_, i) => `tl:${i + 1}` as ColId) : []);
   const cols: ColId[] = denseWorkbench
     ? narrow ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
-      : ["line", "amount", "perMw", sheet === "capex" ? "profile" : "infl", "menu", ...(showComments ? ["notes" as const] : [])]
+      : ["line", "amount", "perMw", sheet === "capex" ? "profile" : "infl", ...timelineCols, "menu", ...(showComments ? ["notes" as const] : [])]
     : narrow
     ? (sheet === "capex" ? ["line", "amount"] : ["line", "amount", "infl"])
     : sheet === "capex"
@@ -436,6 +448,12 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             {live ? <>{fmtPerMw(text)}{preview !== undefined && <small className="ci-preview"> unsaved preview</small>}</> : "—"}
           </td>);
       }
+      case "sigma": {
+        const key = info?.finco_display_code ?? "";
+        const row = line.active && tlCapex ? tlCapex.rows[key] : undefined;
+        return <td key={id} className="ci-num ci-col-sigma" data-timeline-sigma={line.sub_line_id} data-timeline-state={row ? row.status : "none"}
+                   title={row ? (row.status === "invalid" ? `The server rejects this saved profile: ${row.detail ?? "invalid"}` : "Total of the saved profile; the server enforces 100%") : undefined}>{row ? row.sigma : "—"}</td>;
+      }
       case "profile": return (
         <td key={id} className="ci-col-profile" data-cost-profile={line.sub_line_id}>
           {profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
@@ -463,11 +481,32 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
                    onAction={(active) => { setMenuFor(null); setRowAction({ lineId: line.sub_line_id, active, nonce: Date.now() }); }} />
         </td>);
       case "notes": return <td key={id} className="ux-col-notes">{notesField(line)}</td>;
-      default: return <td key={id} />;
+      default: {
+        if (id.startsWith("tl:")) return timelineTd(id, line);
+        return <td key={id} />;
+      }
     }
   };
+  // One read-only timeline cell: M<n> (CAPEX, server preview of the SAVED profile) or Y<n> (OPEX, server saved-line projection). Unavailable is a dash, never 0.
+  const timelineTd = (id: ColId, line: CostLinePayload) => {
+    const n = Number(id.slice(3));
+    if (sheet === "capex") {
+      const key = lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
+      const row = line.active && tlCapex ? tlCapex.rows[key] : undefined;
+      const reason = !line.active ? "Inactive line" : isUserLineKey(key) ? "Added line: model default timing (profiles on added lines are not released)"
+        : !row ? "Model default timing — monthly values unavailable in this view" : row.status !== "valid" ? (row.detail ?? "Server preview unavailable") : "";
+      const value = row?.status === "valid" ? row.cells?.[n - 1] : undefined;
+      return <td key={id} className="ci-num ci-col-tl" data-timeline-cell={`${line.sub_line_id}:M${n}`} data-timeline-state={value !== undefined ? "server" : "unavailable"} title={value !== undefined ? undefined : reason}>{value !== undefined ? value : "—"}</td>;
+    }
+    const entry = line.active ? tlOpex?.byLine[line.sub_line_id] : undefined;
+    const raw = entry?.values[n - 1];
+    const known = raw !== undefined && raw !== null && !Number.isNaN(raw);
+    return <td key={id} className="ci-num ci-col-tl" data-timeline-cell={`${line.sub_line_id}:Y${n}`} data-timeline-state={known ? "server" : "unavailable"}
+               title={known ? undefined : line.active ? "Not in the saved projection yet (save the line, then reload)" : "Inactive line"}>{known ? fmtKeur(raw as number) : "—"}</td>;
+  };
 
-  const HEAD: Record<ColId, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "", notes: "Comments" };
+  const HEAD: Record<Exclude<ColId, `tl:${number}`>, string> = { line: "Line", amount: "Amount (kEUR)", perMw: perMwLabel(unit, perYear), infl: "Inflation (%)", profile: "Payment profile", status: "Status", menu: "", notes: "Comments", sigma: "Σ %" };
+  const headOf = (id: ColId) => id.startsWith("tl:") ? `${sheet === "capex" ? "M" : "Y"}${id.slice(3)}` : HEAD[id as Exclude<ColId, `tl:${number}`>];
   const baseTr = (cat: string, row: CostLineGroupBase) => {
     const id = row.field_id;
     const name = costGroupLabel(cat, data.line_management?.eligible_groups ?? []);
@@ -527,6 +566,18 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         <div className="fm-info-note" role="status" data-opex-bases-unavailable="true">The six group base amounts could not be loaded, so they are not listed here. Reload to try again; saved base amounts are not changed.</div>)}
       {status && <div className="fm-info-note" role={status.tone === "ok" ? "status" : "alert"} data-tone={status.tone}>{status.text}</div>}
       {pasteNote && <div className="fm-info-note" role="status" data-paste-note="true">{pasteNote}</div>}
+      {denseWorkbench && !narrow && timelineOn && (() => {
+        const tl = sheet === "capex" ? capexTl : opexTl;
+        if (tl.project !== project || tl.kind === "idle" || tl.kind === "loading") return <div className="fm-info-note" role="status" data-timeline-note="loading">Loading the saved timeline from the server…</div>;
+        if (tl.kind === "error") return <div className="fm-info-note" role="alert" data-timeline-note="error">{tl.message} Line amounts are unaffected.</div>;
+        return <div className="fm-info-note" role="status" data-timeline-note="ready">
+          {sheet === "capex"
+            ? <>Months M1…M{(tl as { months: number }).months} are the server preview of the <strong>saved</strong> payment profile (read-only; edit it in Monthly schedule, which has its own Save). Lines without a saved profile use the model default timing and show —.
+                {!(tl as { bound: boolean }).bound && (tl as { bindingCode: string }).bindingCode ? <> Saved profile is not Run-compatible: {(tl as { bindingCode: string }).bindingCode}.</> : null}</>
+            : <>Years Y1…Yn are the server projection of the <strong>saved</strong> lines (full-year basis, read-only). This is not Last Run all-in OPEX.</>}
+          {stagedLines > 0 ? <> Unsaved changes on {stagedLines} line(s) are <strong>not</strong> reflected here until you save.</> : null}
+        </div>;
+      })()}
       <div className="ci-linebar" data-ci-linebar="true">
         <input type="search" className="fm-input ci-linesearch" data-cost-search="true" value={localQuery} placeholder="Search line or group…"
                aria-label={`Search ${title} lines`} onChange={(e) => setLocalQuery(e.target.value)} />
@@ -542,6 +593,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             else if (filtered.length) openComment(filtered.find((line) => Boolean(line.notes)) ?? filtered[0]);
             else setShowComments(true);
           }}>{showComments ? "Hide comments" : "Show comments"}</button>}
+        {denseWorkbench && !narrow && <button type="button" className="fm-btn" data-cost-timeline-toggle={sheet} aria-pressed={timelineOn}
+          title={sheet === "capex" ? "Show the saved payment profile as months M1..Mn next to each line (read-only server preview)" : "Show the saved-line projection as years Y1..Yn next to each line (read-only server numbers)"}
+          onClick={() => setTimelineOn((v) => !v)}>{timelineOn ? (sheet === "capex" ? "Hide months" : "Hide years") : (sheet === "capex" ? "Show months M1…Mn" : "Show years Y1…Yn")}</button>}
         <button type="button" className="fm-btn ci-addline" data-cost-addline="true" disabled={readOnlyProject || refreshing || cmdLocked}
                 onClick={() => openAdd(addGroup ?? groupOrder.find((c) => eligibleCodes.has(c)))}>
           + Add line
@@ -557,6 +611,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           <label>Comment{notesField(inspected)}</label>
           <p>Comment edits stay staged until you save the line changes. Closing this view does not discard them.</p>
           {sheet === "capex" && <div>{staticTd("profile", inspected).props.children}</div>}
+          <p className="rx-note" data-inspector-timeline-hint="true">{sheet === "capex" ? "Monthly amounts" : "Yearly amounts"} are shown on wider screens (Show {sheet === "capex" ? "months" : "years"}); they are read-only server numbers.</p>
           <button type="button" className="fm-btn" disabled={readOnlyProject || refreshing || cmdLocked || locked}
             onClick={() => { setRowAction({ lineId: inspected.sub_line_id, active: !inspected.active, nonce: Date.now() }); closeInspector(); }}>
             {inspected.active ? "Deactivate line…" : "Reactivate line…"}
@@ -565,11 +620,11 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
       </dialog>}
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table ws2-grid">
-          {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96} as Partial<Record<ColId,number>>)[id]}} />)}</colgroup>}
+          {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96, sigma:72} as Partial<Record<ColId,number>>)[id] ?? (id.startsWith("tl:") ? 88 : undefined)}} />)}</colgroup>}
           <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
-            <th key={id} scope="col" className={`ci-h-${id}${id === "amount" || id === "perMw" ? " ci-num" : ""}`}
-                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : HEAD[id]}</th>))}</tr></thead>
+            <th key={id} scope="col" className={`ci-h-${id.startsWith("tl:") ? "tl" : id}${id === "amount" || id === "perMw" || id === "sigma" || id.startsWith("tl:") ? " ci-num" : ""}`}
+                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : headOf(id)}</th>))}</tr></thead>
           <tbody>
             {groupOrder.map((cat) => {
               const g = groupInfo.get(cat);

@@ -7,23 +7,23 @@ import { useReportPrecision } from "../ReportPrecision";
 
 /** PR-U2b — Inputs > OPEX > Years, per saved line. The server passes through the same view model the group projection is built from; the browser
  *  only lays the numbers out. Saved lines, technology-driven rows and the six group base amounts are shown apart; nothing is an all-in OPEX figure. */
-type Series = Array<number | null>;
-interface LineRow { sub_line_id: string; label: string; y1_keur: number; inflation_pct: number; values: Series; source: "saved_line" }
-interface DriverRow { label: string; values: Series; source: "technology_driver" }
-interface Group {
+export type Series = Array<number | null>;
+export interface LineRow { sub_line_id: string; label: string; y1_keur: number; inflation_pct: number; values: Series; source: "saved_line" }
+export interface DriverRow { label: string; values: Series; source: "technology_driver" }
+export interface Group {
   code: string; name: string; derived: boolean; has_data: boolean; values: Series; lines: LineRow[]; drivers: DriverRow[];
   placeholder_rows_not_listed: number; reconciles: boolean | null;
 }
 interface Base { group: string; field_id: string; value: string; editable: boolean; used_by_run: boolean; note: string | null }
-interface Payload {
+export interface Payload {
   ok: true; unit: string; years: number[]; groups: Group[]; contingency: { rate_pct: number; by_year: Series };
   totals: { excluding_contingency: Series; including_contingency: Series }; bases: unknown; basis: string;
 }
-type Failure = { code: string; message?: string };
+export type Failure = { code: string; message?: string };
 
-async function load(project: string): Promise<Payload | Failure> {
+export async function loadOpexLineYears(project: string, signal?: AbortSignal): Promise<Payload | Failure> {
   try {
-    const r = await fetch(`/v2/model-react/opex-projection/lines?${new URLSearchParams({ project })}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
+    const r = await fetch(`/v2/model-react/opex-projection/lines?${new URLSearchParams({ project })}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal });
     const body = await r.json().catch(() => null) as (Payload | (Failure & { ok: false })) | null;
     if (r.ok && body && body.ok === true) return body;
     return { code: (body as Failure | null)?.code ?? `HTTP_${r.status}`, message: (body as Failure | null)?.message };
@@ -44,7 +44,7 @@ export function OpexLineYears({ project, reloadKey }: { project: string; reloadK
   const [failure, setFailure] = useState<Failure | null>(null);
   useEffect(() => {
     let live = true;
-    void load(project).then((r) => { if (!live) return; if ("years" in r) { setData(r); setFailure(null); } else setFailure(r); });
+    void loadOpexLineYears(project).then((r) => { if (!live) return; if ("years" in r) { setData(r); setFailure(null); } else setFailure(r); });
     return () => { live = false; };
   }, [project, reloadKey]);
   if (failure) return <FriendlyError code={failure.code} message={failure.message} />;
