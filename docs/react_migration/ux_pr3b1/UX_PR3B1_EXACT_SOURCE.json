@@ -36,7 +36,7 @@
     "tests/test_post413_o1_scope.py": "40b935e1cdd342452a60f0d5e1ebf6865be95041",
     "tests/test_rcux_governance.py": "0c13f48288a1644aa5979bccbb1bca752186a6a2",
     "tests/test_u2_scope.py": "a15587a631a7833a95c01bfaf10c713e55f14423",
-    "tests/test_ux_pr1_scope.py": "bc2c6e19ce4739db5cc9c1007866f1fb51b7f9f1",
+    "tests/test_ux_pr1_scope.py": "d611b058a480de61247fffecf89c7ea6f493ea56",
     "tests/test_ux_pr3b1_scope.py": "10f2c18605874163c764377717e2550e332c5f78",
     "tests/u1_scope.py": "b7714d88bdd75eda7f019789bceae3e8ba116031",
     "tests/u2_scope.py": "e969c0ef46f410e190f9618befe21b1dde279784",

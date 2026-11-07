@@ -26,11 +26,15 @@ def _effective_pin(path,historical):
     """Follow only registered literal moves, authenticating every base-to-source link."""
     from tests import ux_pr2a_scope as A, ux_pr2b_scope as B, ux_pr2c_scope as D, ux_pr3b1_scope as E
     pin=historical
-    for successor in (A,B,D,E):  # PR1 -> PR2a -> PR2b -> PR2c -> PR3b1
+    # PR2c legitimately moved some PR2b sibling pins. Read each predecessor at
+    # the next signed BASE so those current-pin moves cannot erase a lineage link.
+    chain=((A,B.BASE),(B,D.BASE),(D,E.BASE),(E,None))
+    for successor,ref in chain:  # PR1 -> PR2a -> PR2b -> PR2c -> PR3b1
         if path in successor.SUPERSEDED:
             assert successor.__name__ in C.COHORT_MODULES
             assert successor.exact_blobs_ok()
-            signed=successor.manifest()
+            assert successor.exact_blobs_ok(ref=ref)
+            signed=successor.manifest(ref=ref)
             assert signed['base_blobs'][path]==pin
             pin=signed['source_blobs'][path]
     return pin
