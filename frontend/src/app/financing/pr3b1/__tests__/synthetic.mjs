@@ -3,7 +3,7 @@ export function synthetic(state = 'CURRENT') {
   const cell = (v, d = String(v)) => ({ v, d });
   const amount = (label, value) => ({ label, value, display: String(value), authority: 'Synthetic canonical Last Run', reason: '' });
   const run = { identity: { snapshot_id: 'synthetic-snapshot', history_id: 'synthetic-history', ran_at: '2026-01-01', composite_hash: 'run-hash', scenario_id: null, scenario: 'Synthetic Base', state: `LAST RUN · ${state}` },
-    integrity: { status: 'PASS' }, structure: { requested_gearing: cell(.8,'80.0%'), total_sources: cell(100), total_uses: cell(100), tenor: { first_debt_service_date: '2027-06-30', last_debt_service_date: '2030-12-31' } },
+    integrity: { status: 'PASS' }, structure: { requested_gearing: cell(.8,'80.0%'), total_sources: cell(100), total_uses: cell(100), tenor: { first_debt_service_date: cell('2027-06-30'), last_debt_service_date: cell('2030-12-31'), contractual_maturity_date: cell(null,'UNAVAILABLE') } },
     capacity: { final_commitment: cell(70,'70 kEUR'), min_dscr: cell(.9,'0.90x'), avg_dscr: cell(1.1,'1.10x'), target_dscr: cell(1.2,'1.20x'), binding_constraint: cell('DSCR') }, findings: [], links: {},
     debt_metrics: { schema: 'WF04_DEBT_METRICS_V1', available: true, reason: '', axis: { frequency: 'SEMIANNUAL', note: 'Native synthetic axis' },
       contract_terms: { recorded: true, note: 'Recorded terms' }, evaluation: { coverage: { status: 'WARN', message: 'Debt-service shortfall warning' }, eod: { status: 'BREACH', reason: 'Server verdict' }, covenant: { status: 'BREACH', reason: 'Server verdict' } },

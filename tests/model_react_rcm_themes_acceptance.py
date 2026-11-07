@@ -85,10 +85,9 @@ def test_new_surfaces_are_legible_in_every_theme(live_server, browser, rcm_react
             for tab, marker in (("overview", "[data-financing-overview='true']"), ("bankability", "[data-bankability-editor='true']"),
                                 ("facilities", "[data-capital-stack='true']"), ("sources-uses", "[data-sources-uses='true']"),
                                 ("investors", "[data-investors-panel='true']")):
-                page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+                page.goto(f"{live_server}/v2/model-react/{record.project_code}?financing={tab}#financing")
                 page.wait_for_selector("[data-financing-studio='true']")
                 select_theme(theme)
-                page.locator(f"[data-financing-tab-button='{tab}']").click()
                 page.wait_for_selector(marker, timeout=30000)
                 check(page, f"{theme} / financing {tab}")
         assert [e for e in errors if "status of" not in e] == [], errors

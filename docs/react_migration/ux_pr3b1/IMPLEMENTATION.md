@@ -1,0 +1,7 @@
+# PR3b-1 integrated Financing read layer
+
+Based on merged PR #429 main d295922bfd4e39f769a3e0ed132f6a009e86cdd9. The existing Financing entry mounts the read layer by default; explicit financing selectors retain original editors and evidence. Compatibility transitions use the existing React shell without new writers. Financial calculations, CAS, permissions, Run semantics and profile flag default remain unchanged.
+
+The closed cohort pins literal source, base blobs/tree/ancestry, file modes and only coordinated moved sibling pins. Existing historical predecessor maps are preserved; direct UX predecessors follow only this exact registered successor. No process-wide mutable-state cache or per-path repeated whole-tree scan is introduced.
+
+The optional shadow correction recognizes only workflowShared.tsx at the independently reviewed U1 commit 87c6e92f64d815182c49dda205edb5d93bb96155, through existing U1 manifest and registered exact authority. No global blob allowlist or financial policy is added. Negative controls cover tampering, modes, manifests, deregistration, unrelated paths, wrong refs and changed working bytes. Private runtime evidence remains outside this repository.

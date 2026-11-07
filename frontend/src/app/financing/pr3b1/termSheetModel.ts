@@ -21,9 +21,9 @@ export function termSheetModel(e: Evidence, gate: Gate): TermGroup[] {
     { label: 'Pricing', rows: detail(['All-in interest rate', 'Base rate', 'Margin']).concat([
       { label: 'Pricing authority', display: s.senior_pricing_mode, source: 'Working Copy · all-in rate authoritative; base/margin informational' }]) },
     { label: 'Tenor', rows: run ? [
-      { label: 'First debt service', display: run.structure.tenor?.first_debt_service_date ?? 'NOT AVAILABLE', source: 'Last Run · structure.tenor' },
-      { label: 'Last debt service', display: run.structure.tenor?.last_debt_service_date ?? 'NOT AVAILABLE', source: 'Last Run · structure.tenor' },
-      { label: 'Contractual maturity', display: run.structure.tenor?.contractual_maturity_date ?? 'NOT AVAILABLE', source: 'Last Run · structure.tenor' }]
+      creditTerm('First debt service', run.structure.tenor?.first_debt_service_date, 'Last Run · structure.tenor.first_debt_service_date'),
+      creditTerm('Last debt service', run.structure.tenor?.last_debt_service_date, 'Last Run · structure.tenor.last_debt_service_date'),
+      creditTerm('Contractual maturity', run.structure.tenor?.contractual_maturity_date, 'Last Run · structure.tenor.contractual_maturity_date')]
       : [absent('Debt service dates', gate.reason)] },
     { label: 'Repayment', rows: detail(['Amortization']) },
     { label: 'Fees', rows: detail(['Commitment fee', 'Arrangement fee', 'Structuring fee']) },

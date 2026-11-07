@@ -214,7 +214,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if baseline != d['base_blobs']:
             return False
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha and not pin_ok2(p,_blob(_read(root,p,ref))):
+            if _blob(_read(root,p,ref))!=sha and not pin_ok2(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref):
                 return False
         for path in INTEGRATION_MANIFESTS:
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -223,14 +223,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) for p in old if new[p]!=old[p]):
+            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
-        if any(p not in permitted and not owns2(p) for p in changed):
+        if any(p not in permitted and not owns2(p) and not _pr3b1_owns(p,root,ref) for p in changed):
             return False
         if ref is None:
             untracked = set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not _ci_evidence_only(root,p) and not owns2(p) for p in untracked):
+            if any(not _ci_evidence_only(root,p) and not owns2(p) and not _pr3b1_owns(p,root,ref) for p in untracked):
                 return False
             for p in permitted:
                 f=root/p
@@ -262,3 +262,21 @@ def matches(path,source=None,*,repo=None,ref=None):
     return path in pins and valid(repo,ref) and (source is None or _blob(raw)==pins[path])
 def protected_blobs(repo=None,ref=None):
     return {}
+
+
+def _pr3b1():
+    try:
+        from tests import ux_pr3b1_scope as S
+        return S
+    except ImportError:
+        return None
+
+
+def _pr3b1_pin(path, blob, repo=None, ref=None):
+    S = _pr3b1()
+    return S is not None and S.supersedes(path, blob, repo, ref)
+
+
+def _pr3b1_owns(path, repo=None, ref=None):
+    S = _pr3b1()
+    return S is not None and S.allowed_path(path, repo, ref) and S.exact_blobs_ok(repo, ref)

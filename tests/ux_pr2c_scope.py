@@ -222,7 +222,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if baseline != d['base_blobs']:
             return False
         for path, sha in pins.items():
-            if _blob(_read(root, path, ref)) != sha:
+            if _blob(_read(root, path, ref)) != sha and not _pr3b1_pin(path, _blob(_read(root, path, ref)), root, ref):
                 return False
         # Sibling manifests: only moved pins of paths this cohort owns may change.
         for sibling in INTEGRATION_MANIFESTS:
@@ -231,16 +231,16 @@ def _exact_blobs_ok(repo=None, ref=None):
             if set(now) != set(before) or any(now[k] != before[k] for k in before if k != 'source_blobs'):
                 return False
             old, new = before['source_blobs'], now['source_blobs']
-            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) for p in old):
+            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref) for p in old):
                 return False
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE,
                        *([ref] if ref else []), '--').decode().splitlines()
-        if set(changed) - (OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}):
+        if any(not _pr3b1_owns(p, root, ref) for p in set(changed) - (OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST})):
             return False
         if ref is None:
             untracked = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()) - \
                 (OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST})
-            if any(not _ci_evidence_only(root, p) for p in untracked):
+            if any(not _ci_evidence_only(root, p) and not _pr3b1_owns(p, root, ref) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
@@ -260,7 +260,11 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path not in SUPERSEDED or not exact_blobs_ok(repo, ref):
+        return False
+    pin = manifest(repo, ref).get('source_blobs', {}).get(path)
+    S = _pr3b1()
+    return pin == value or (S is not None and S.base_blob(path, repo, ref) == pin and S.supersedes(path, value, repo, ref))
 
 
 def valid(repo=None, ref=None):
@@ -278,3 +282,21 @@ def protected_blobs(repo=None, ref=None):
     return {}
 
 
+
+
+def _pr3b1():
+    try:
+        from tests import ux_pr3b1_scope as S
+        return S
+    except ImportError:
+        return None
+
+
+def _pr3b1_pin(path, blob, repo=None, ref=None):
+    S = _pr3b1()
+    return S is not None and S.supersedes(path, blob, repo, ref)
+
+
+def _pr3b1_owns(path, repo=None, ref=None):
+    S = _pr3b1()
+    return S is not None and S.allowed_path(path, repo, ref) and S.exact_blobs_ok(repo, ref)

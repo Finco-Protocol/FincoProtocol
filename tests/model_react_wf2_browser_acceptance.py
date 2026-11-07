@@ -40,6 +40,8 @@ def open_workspace(page, base, record, section="overview"):
 
 def goto_section(page, section):
     page.evaluate(f"() => {{ window.location.hash = '#{section}'; }}")
+    if section == "financing":
+        page.locator("[data-financing-tab-button='terms']").click()
 
 
 def runs(context, base, record):

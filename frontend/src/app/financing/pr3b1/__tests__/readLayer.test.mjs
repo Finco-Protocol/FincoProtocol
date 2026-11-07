@@ -57,3 +57,37 @@ test('Working sponsor input provenance never masquerades as Last Run',()=>{
  const e=synthetic();e.studio.sponsor_view.equity=[{label:'Synthetic equity input',value:30,display:'30',source:'Working ProjectInputs.financing.share_capital_keur',reason:''}];
  const html=m.render(e);assert.match(html,/Synthetic equity input<\/dt><dd>30<small title="Working ProjectInputs.financing.share_capital_keur">Working Copy/);
 });
+for (const technology of ['Solar','Wind','Battery (synthetic wire only; release gated)']) {
+ test(`${technology}: read contract preserves native evidence without technology transfer`,()=>{
+  const e=synthetic();e.before.project.project_type=technology;e.after.project.project_type=technology;
+  const g=gate(e);assert.equal(g.showRun,true);assert.equal(g.assurance,'MITIGATED_NOT_PROVEN');
+  assert.equal(m.termSheetModel(e,g)[0].rows[0].display,'80.0%');
+  assert.deepEqual(m.sourcesUsesModel(e,g).drawn.map(r=>r.seniorDraw.value),[50,20]);
+  assert.equal(m.coverageModel(e,g).outstanding[0].opening,70);
+  e.studio.capital_stack.rows=[];assert.match(m.render(e),/no configured facility terms supplied/);
+  e.studio.multisenior.active=true;assert.match(m.termSheetModel(e,gate(e))[0].rows[3].display,/NOT AVAILABLE/);
+  e.credit.data.runs[0].integrity={status:'FAIL',failures:[{id:'SYNTHETIC_INVALIDITY',reason:'Server-supplied failure'}]};
+  assert.match(m.render(e),/Server-supplied failure/);
+ });
+ test(`${technology}: incomplete or historical evidence never mixes with Last Run`,()=>{
+  for (const broken of ['total','snapshot','history','freshness']) {
+   const e=synthetic();
+   if(broken==='total')e.studio.sources_uses.view.total_sources.value=null;
+   if(broken==='snapshot')delete e.credit.data.runs[0].identity.snapshot_id;
+   if(broken==='history')for(const c of [e.credit,e.creditBefore])c.history_rows[0].is_last=false;
+   if(broken==='freshness')e.studio.sources_uses.view.freshness='STALE';
+   assert.equal(gate(e).showRun,false,broken);
+  }
+ });
+}
+test('typed refusals and aborted GETs do not produce partial evidence',async()=>{
+ for(const status of [403,404,409])await assert.rejects(m.readEvidence(synthetic().scope,new AbortController().signal,async()=>({ok:false,status})),new RegExp(String(status)));
+ const abort=new AbortController();abort.abort();
+ await assert.rejects(m.readEvidence(synthetic().scope,abort.signal,async(url,options)=>{options.signal.throwIfAborted()}),err=>err.name==='AbortError');
+});
+
+test('real tenor wire cells render their server display; missing maturity stays unavailable',()=>{
+ const e=synthetic(),tenor=m.termSheetModel(e,gate(e)).find(g=>g.label==='Tenor').rows;
+ assert.equal(tenor[0].display,'2027-06-30');assert.equal(tenor[1].display,'2030-12-31');assert.equal(tenor[2].display,'NOT AVAILABLE');
+ assert.doesNotThrow(()=>m.render(e));
+});

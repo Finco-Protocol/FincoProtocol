@@ -1,10 +1,16 @@
-import type { CreditPayload, CreditRunView } from '../../credit/types';
+import type { CreditPayload, CreditRunView, CreditCell } from '../../credit/types';
 import type { DebtMetricsView } from '../../debtmetrics/types';
 import type { FinancingStudioPayload, SourcesUsesView, SuRow } from '../types';
 
 /** Narrow extensions verified against the existing GET projections. No new API. */
-export type Run = CreditRunView & { debt_metrics?: DebtMetricsView };
-export type Credit = CreditPayload & { data: (NonNullable<CreditPayload['data']> & { runs: Run[] }) | null };
+export type Run = Omit<CreditRunView, 'structure'> & {
+  structure: {
+    requested_gearing?: CreditCell; total_sources?: CreditCell; total_uses?: CreditCell;
+    tenor?: { first_debt_service_date?: CreditCell; last_debt_service_date?: CreditCell; contractual_maturity_date?: CreditCell };
+  };
+  debt_metrics?: DebtMetricsView;
+};
+export type Credit = Omit<CreditPayload, 'data'> & { data: (Omit<NonNullable<CreditPayload['data']>, 'runs'> & { runs: Run[] }) | null };
 export type SourcesUses = SourcesUsesView & {
   construction_rows?: Array<{ period: number; date: string | null; fields: SuRow[] }>;
   su_authority_gap?: string; funding_waterfall_reason?: string;

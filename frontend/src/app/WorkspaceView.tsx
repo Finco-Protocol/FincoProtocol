@@ -354,6 +354,9 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     if (!anchor) return;
     const href = anchor.getAttribute("href") || "";
     if (!href || href.startsWith("#") || anchor.hasAttribute("download") || (anchor.target && anchor.target !== "_self")) return;
+    // The read layer handles these same-scope transitions in React. Its own
+    // callback selects only the existing Financing views; no writer is left.
+    if (anchor.getAttribute("data-financing-read-link") === "true" && anchor.closest('[data-financing-read-layer="true"]')) return;
     if (anchor.hasAttribute("data-nav-my-projects") || anchor.hasAttribute("data-nav-new-project-workspace")) return;
     event.preventDefault();
     event.stopPropagation();
@@ -661,7 +664,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
         )}
         {section === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={dataVersion} onEditTerms={() => navigateTo("financing")} />}
         {section === "financing" && (
-          <FinancingStudio project={project} reloadKey={dataVersion} onSaved={afterMutation} />
+          <FinancingStudio project={project} scenarioId={workspace.workbook.scenario_id} reloadKey={dataVersion} onSaved={afterMutation} />
         )}
         {section === "scenarios" && (
           <ScenarioWorkspace project={project} freshness={workspace.freshness.state}

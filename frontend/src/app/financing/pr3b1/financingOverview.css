@@ -8,3 +8,5 @@
 .pr3b1-su-scroll{max-height:25rem;overflow:auto;overscroll-behavior:contain;padding-right:.3rem}
 
 .pr3b1-jumps{border-bottom:1px solid var(--pr3b1-border);margin:.5rem 0}.pr3b1-card{border-radius:3px}.pr3b1 details[id]{scroll-margin-top:1rem}
+
+.pr3b1-compat{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0}

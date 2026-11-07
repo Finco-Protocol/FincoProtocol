@@ -65,7 +65,7 @@ def unexpected(errors, allow=(), net=()):
 
 
 def open_panel(page, base, code):
-    page.goto(f"{base}/v2/model-react/{code}#financing")
+    page.goto(f"{base}/v2/model-react/{code}?financing=investors#financing")
     page.wait_for_selector("[data-financing-studio='true']", timeout=30000)
     page.locator("[data-financing-tab-button='investors']").click()
     page.wait_for_selector("[data-investors-panel='true'], [data-investors-state]", timeout=30000)

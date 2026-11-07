@@ -341,7 +341,8 @@ def check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy(br
         # editor this check is about (Debt terms is the default Financing tab), then keep the exact-uniqueness assertion.
         studio = page.locator("[data-financing-studio]")
         studio.wait_for(timeout=30000)
-        assert studio.get_attribute("data-financing-tab") == "terms", "the Financing section must open on Debt terms"
+        assert studio.get_attribute("data-financing-tab") == "workspace", "Financing opens its one-screen read layer"
+        page.locator("[data-financing-tab-button='terms']").click()
         page.locator("[data-sheet-editor='debt']").wait_for(timeout=30000)
         assert page.locator("[data-save-scope='debt']").count() == 1
         open_section(page, base, record.project_code, "scenarios")

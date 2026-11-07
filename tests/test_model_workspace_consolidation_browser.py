@@ -892,3 +892,6 @@ from tests.model_react_wf04_debt_metrics_acceptance import *  # noqa: E402,F401,
 
 # UX-PR2b: additive real Chromium acceptance; existing mandatory cases remain intact.
 from tests.model_react_ux_pr2b_acceptance import *  # noqa: E402,F401,F403
+
+# PR3b-1: mounted one-screen read layer, compatibility editors and refusal acceptance.
+from tests.model_react_pr3b1_acceptance import *  # noqa: E402,F401,F403
