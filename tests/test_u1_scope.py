@@ -79,7 +79,8 @@ def test_no_engine_schema_or_save_route_path_is_owned():
 
 def test_older_cohorts_still_exact_through_the_bounded_hooks():
     from tests import fin_v2_integration_409_scope as INT
-    assert INT.exact_blobs_ok() and all(m.exact_blobs_ok() for m in C.cohorts())
+    with C.call_scope():       # ONE outer governance call over this read-only enumeration: each cohort's verdict is computed once, dropped on exit
+        assert INT.exact_blobs_ok() and all(m.exact_blobs_ok() for m in C.cohorts())
 
 
 @pytest.mark.parametrize('path', sorted(U.OWNED_PATHS - {U.MANIFEST}))

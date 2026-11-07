@@ -357,6 +357,17 @@ WSV2_EDITING_SUCCESSORS={'frontend/src/app/workflow/workflowShared.tsx': '3f6360
 
 
 def violations(sources,*,check_pin=True):
+    """One outer governance call (PR #429 performance correction): the per-path composite checks below (``fin_v2_cohorts.matches`` for every blob that
+    is not individually admitted) share each cohort's exact verdict and the composite verdict for THIS call only; nothing outlives the call."""
+    try:
+        from tests.fin_v2_cohorts import call_scope
+    except ImportError:
+        return _violations(sources,check_pin=check_pin)
+    with call_scope():
+        return _violations(sources,check_pin=check_pin)
+
+
+def _violations(sources,*,check_pin=True):
     errors=[];trees={}
     for path,expected in BLOBS.items():
         text=sources.get(path)

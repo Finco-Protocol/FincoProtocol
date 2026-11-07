@@ -70,12 +70,22 @@ def _pr2b():
     except ImportError:
         return None
 
+def _pr2c():
+    try:
+        from tests import ux_pr2c_scope as S
+        return S
+    except ImportError:
+        return None
+
 def effective_pins(repo=None, ref=None):
     """Only authenticated exact successor pins supersede the immutable historical pins."""
     pins = dict(manifest(repo, ref).get('source_blobs', {}))
     S = _pr2b()
     if S is not None and S.exact_blobs_ok(repo, ref):
         pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
+    S4 = _pr2c()
+    if S4 is not None and S4.exact_blobs_ok(repo, ref):
+        pins.update({p: b for p, b in S4.manifest(repo, ref)['source_blobs'].items() if p in S4.SUPERSEDED})
     return pins
 
 def _git(root, *args):
@@ -120,9 +130,27 @@ def scoped():
             yield
         finally:
             _SCOPE.pop()
+# While an enclosing OLDER cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict
+# shares THAT scope's memo exactly as ``tests/u1_scope.py`` and ``tests/post413_r1_scope.py`` already do: it lives only as long as the enclosing
+# outer call, is dropped with it and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
 def exact_blobs_ok(repo=None, ref=None):
     key=(str(repo if repo is not None else ROOT),ref)
     if not _SCOPE:
+        memo=_enclosing_call_memo()
+        if memo is not None:
+            shared=('tests.ux_pr2a_scope.exact_blobs_ok',)+key
+            if shared not in memo:
+                with scoped():
+                    memo[shared]=exact_blobs_ok(repo,ref)
+            return memo[shared]
         with scoped():
             return exact_blobs_ok(repo,ref)
     if key not in _SCOPE[-1]:
@@ -134,8 +162,17 @@ def _exact_blobs_ok(repo=None, ref=None):
         S3=_pr2b()
         ok3=S3 is not None and S3.exact_blobs_ok(root,ref)
         pins3=S3.manifest(root,ref).get('source_blobs',{}) if ok3 else {}
-        pin_ok3=lambda p,blob: ok3 and p in S3.SUPERSEDED and pins3.get(p)==blob
-        owns3=lambda p: ok3 and S3.allowed_path(p,root,ref)
+        # PR2c composes into the same bounded admission: a sibling-manifest pin of a path the
+        # exact ux_pr2c cohort supersedes may move to exactly that cohort's pin (its own
+        # sibling-leg check proved the move), exactly as ux_pr2b's pins are admitted.
+        S4=_pr2c()
+        ok4=S4 is not None and S4.exact_blobs_ok(root,ref)
+        pins4=S4.manifest(root,ref).get('source_blobs',{}) if ok4 else {}
+        def pin_ok3(p,blob):
+            if ok3 and p in S3.SUPERSEDED and pins3.get(p)==blob:
+                return True
+            return ok4 and p in S4.SUPERSEDED and pins4.get(p)==blob
+        owns3=lambda p: ok3 and (S3.allowed_path(p,root,ref) or _pr2c_owns(p,root,ref))
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
@@ -182,9 +219,27 @@ def _exact_blobs_ok(repo=None, ref=None):
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
-def allowed_path(path,repo=None,ref=None):
+def _pr2c_owns(path,root,ref):
+    """Bounded UX-PR2c tip admission for THIS cohort's own whole-tree closure: the path is one of the exact UX-PR2c cohort's literal paths while that
+    cohort is exact.  Never a widening of PR2a's own public ``allowed_path``."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.exact_blobs_ok(root,ref) and S.allowed_path(path,root,ref)
+
+
+def successor_owns(path,root,ref):
+    """Tip-aware closure admission for the DIRECT PREDECESSOR's whole-tree closure (UX-PR1): a changed path since the PR1 BASE is admitted only inside
+    the literal path sets of the exact direct successor (PR2b) or the exact tip (PR2c) — never as a widening of PR2a's own public ``allowed_path``."""
     S=_pr2b()
-    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST} or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
+    return S is not None and S.exact_blobs_ok(root,ref) and (S.allowed_path(path,root,ref) or _pr2c_owns(path,root,ref))
+
+
+def allowed_path(path,repo=None,ref=None):
+    """Literal scope containment (Correction E): PR2a recognises ONLY its own literal authorized paths.  Newer successors are independently registered
+    and authorize their own paths; delegating ``allowed_path`` to a descendant converted this narrow historical contract into transitive ownership."""
+    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}
 def base_blob(path,repo=None,ref=None):
     return manifest(repo,ref).get('base_blobs',{}).get(path)
 def supersedes(path,value,repo=None,ref=None):

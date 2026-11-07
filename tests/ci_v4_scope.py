@@ -87,6 +87,17 @@ FORBIDDEN_PATHS = frozenset(('main_web.py',))
 CI_PREFIXES = ('.github/', 'tools/')
 
 
+def _pr2c_supersedes(path, value, root, ref):
+    """Bounded UX-PR2c hook (PR #429 Correction G, Owner-authorized static-timeout change): a different current blob is accepted for path only while
+    the exact UX-PR2c cohort supersedes the path at exactly this value (its literal SUPERSEDED membership, its own manifest pin, its own exactness).
+    The mutation-security gate tool itself stays ci_v4-owned and un-delegated; a missing, forged or altered cohort admits nothing."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.supersedes(path, value, root, ref)
+
+
 def _merge_event_successor():
     # One-way low-level proof: PR2b reads git + its own manifest, never this cohort.
     from tests import ux_pr2b_scope as B
@@ -149,10 +160,31 @@ def scoped():
             _SCOPE.pop()
 
 
+# While an enclosing OLDER cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict
+# shares THAT scope's memo exactly as ``tests/u1_scope.py`` and ``tests/post413_r1_scope.py`` already do: it lives only as long as the enclosing
+# outer call, is dropped with it and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
     key = (str(repo if repo is not None else ROOT), ref)
+    if not _SCOPE:
+        memo = _enclosing_call_memo()
+        if memo is None:
+            return _exact_blobs_ok(repo, ref)
+        shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key
+        if shared not in memo:
+            memo[shared] = _exact_blobs_ok(repo, ref)
+        return memo[shared]
     memo = _SCOPE[-1]
     if key not in memo:
         memo[key] = _exact_blobs_ok(repo, ref)
@@ -177,7 +209,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
             return False
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha and not _pr2c_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}

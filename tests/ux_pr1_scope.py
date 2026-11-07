@@ -162,9 +162,27 @@ def scoped():
             yield
         finally:
             _SCOPE.pop()
+# While an enclosing OLDER cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict
+# shares THAT scope's memo exactly as ``tests/u1_scope.py`` and ``tests/post413_r1_scope.py`` already do: it lives only as long as the enclosing
+# outer call, is dropped with it and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
 def exact_blobs_ok(repo=None, ref=None):
     key=(str(repo if repo is not None else ROOT),ref)
     if not _SCOPE:
+        memo=_enclosing_call_memo()
+        if memo is not None:
+            shared=('tests.ux_pr1_scope.exact_blobs_ok',)+key
+            if shared not in memo:
+                with scoped():
+                    memo[shared]=exact_blobs_ok(repo,ref)
+            return memo[shared]
         with scoped():
             return exact_blobs_ok(repo,ref)
     if key not in _SCOPE[-1]:
@@ -178,7 +196,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         ok2=S2 is not None and S2.exact_blobs_ok(root,ref)
         pins2=S2.effective_pins(root,ref) if ok2 else {}
         pin_ok2=lambda p,blob: ok2 and pins2.get(p)==blob
-        owns2=lambda p: ok2 and S2.allowed_path(p,root,ref)
+        owns2=lambda p: ok2 and (S2.allowed_path(p,root,ref) or S2.successor_owns(p,root,ref))
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:

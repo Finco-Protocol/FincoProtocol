@@ -15,7 +15,7 @@ COHORT_MODULES = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2
                   'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',
                   'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope',
                   'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope',
-                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope')
+                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope')
 # The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).
 PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'
 
@@ -35,7 +35,41 @@ def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
 
 
+_CALL = []      # one memo per OUTERMOST call_scope; empty outside every call scope (nothing is ever kept across calls)
+
+
+@contextlib.contextmanager
+def call_scope():
+    """ONE outer governance call: every registered cohort that offers a call-scope memo is entered once, so each cohort's exact verdict is
+    computed once for the whole call instead of once per changed path or per caller (measured on PR #429: the unscoped per-path loop of the
+    RC-UX cohort ran ~11.6k git processes for the same answer the scoped composite gives in ~280). The composite verdict of ``valid`` is shared
+    the same way inside the block. Everything is dropped when the OUTERMOST block exits (each cohort's ``scoped()`` drops its memo there); nothing
+    is cached across calls, worktrees, refs, monkeypatches, commits or mutations: callers use it only around a read-only enumeration."""
+    if _CALL:           # a nested block shares the outermost memo
+        yield
+        return
+    with contextlib.ExitStack() as scopes:
+        for m in cohorts():
+            if callable(getattr(m, 'scoped', None)):
+                scopes.enter_context(m.scoped())
+        _CALL.append({})
+        try:
+            yield
+        finally:
+            _CALL.pop()
+
+
 def valid(repo=None, ref=None):
+    key = ('valid', str(repo if repo is not None else ROOT), ref)
+    if _CALL and key in _CALL[-1]:
+        return _CALL[-1][key]
+    verdict = _valid(repo, ref)
+    if _CALL:
+        _CALL[-1][key] = verdict
+    return verdict
+
+
+def _valid(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     mods = cohorts()
     if not mods:

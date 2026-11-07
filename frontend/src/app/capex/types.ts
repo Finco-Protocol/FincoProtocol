@@ -18,7 +18,9 @@ export interface CapexProfiles {
   saved: { rows: Record<string, SavedRow>; error: string | null; binding: { saved: boolean; bound: boolean; code: string; items: number } };
   last_run: CapexLastRun;
   edit: { allowed: boolean; reason: string; base_case: boolean };
-  save: { url: string; csrf_token: string; content_hash: string; scenario_id: string };
+  save: { url: string; csrf_token: string; content_hash: string; scenario_id: string;
+          /** PR2c (OD-B2 gated): present only while the combined atomic Save All is enabled server-side. */
+          save_all_combined?: { available: boolean; url: string; profile_base_token: string }; };
   semantics: { save_runs_the_model: boolean; preview_is_a_result: boolean; idc_and_sources_uses: string };
 }
 export interface PlanRow {
