@@ -17,9 +17,10 @@ def run():
     started = time.monotonic()
     from tests import fin_v2_cohorts as C
     from tests import model_mutation_security_successor as S
-    cohorts = {m.__name__: bool(m.exact_blobs_ok()) for m in C.cohorts()}
-    registered = list(C.COHORT_MODULES)
-    composite = bool(C.valid())
+    with C.call_scope():      # ONE outer governance call for both passes: each cohort's exact verdict is computed once and shared with the composite
+        cohorts = {m.__name__: bool(m.exact_blobs_ok()) for m in C.cohorts()}
+        registered = list(C.COHORT_MODULES)
+        composite = bool(C.valid())
     sources = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
     violations = S.violations(sources)
     successor = bool(S.current_mutation_successor_valid())

@@ -197,7 +197,7 @@ def _owned_ok():
 _SCOPE = []
 
 
-LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope')
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope')
 
 
 def _later_modules():
@@ -382,6 +382,17 @@ def supersedes(path, value, repo=None, ref=None):
             return False
         pin = manifest(repo, ref).get('source_blobs', {}).get(path)
         return pin == value or (pin is not None and _later_follows(path, value, pin, repo, ref))
+    # PR2c Correction B: a governance manifest the exact tip cohort moves (one of its
+    # INTEGRATION_MANIFESTS) is admitted at its current bytes only while that cohort is
+    # exact — its own sibling-leg check proves the manifest's only change is exactly the
+    # moved pins to its exact pins, so any other content drift fails closed with the
+    # whole cohort.  Everything else keeps the later-cohort supersession chain.
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return _later_supersedes(path, value, repo, ref)
+    if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):
+        return True
     return _later_supersedes(path, value, repo, ref)      # a path an older guard owns (e.g. WF-06B / tests/test_rcux_governance.py): the later cohort's exact pin only
 
 

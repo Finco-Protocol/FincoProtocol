@@ -8,6 +8,7 @@ pinned file-by-file in ``RC_UX_SUCCESSORS`` (``tests/model_mutation_security_suc
 untracked protected source fails closed.
 """
 from pathlib import Path
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import re
@@ -131,6 +132,17 @@ def _wf06b_supersedes(path, value, root, ref):
     return W.supersedes(path, value, root, ref)
 
 
+def _pr2c_supersedes(path, value, root, ref):
+    """Bounded UX-PR2c hook (PR #429 Correction D): a different current blob is accepted for ``path`` only while the exact UX-PR2c cohort supersedes the
+    path at exactly this value (its literal SUPERSEDED membership, its own manifest pin and its own exactness). A missing, forged or altered cohort
+    admits nothing; this manifest keeps describing the reviewed state it always did."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.supersedes(path, value, root, ref)
+
+
 def _wf06b_allows(path, root, ref):
     """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
     try:
@@ -140,17 +152,45 @@ def _wf06b_allows(path, root, ref):
     return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
 
 
+_SCOPE = []
+
+
+@contextmanager
+def scoped():
+    """Within ONE outer governance call the result of ``exact_blobs_ok`` is computed once (the same one-verdict contract the other cohorts keep).
+    Dropped on exit; nothing is cached across calls."""
+    if _SCOPE:
+        yield
+        return
+    _SCOPE.append({})
+    try:
+        yield
+    finally:
+        _SCOPE.pop()
+
+
 def exact_blobs_ok(repo=None, ref=None):
     """History and every owned byte: the pin set equals the owned set and each pin is the exact Git blob."""
+    key = (str(repo if repo is not None else ROOT), ref)
+    if key in _SCOPE[-1] if _SCOPE else False:
+        return _SCOPE[-1][key]
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if set(pins) != OWNED_PATHS:
+        if _SCOPE:
+            _SCOPE[-1][key] = False
         return False
     try:
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-        return all(_blob(_read(root, p, ref)) == expected or _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, expected in pins.items())
+        verdict = all(_blob(_read(root, p, ref)) == expected
+                      or _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref)
+                      or _pr2c_supersedes(p, _blob(_read(root, p, ref)), root, ref)
+                      for p, expected in pins.items())
     except (OSError, ValueError, subprocess.CalledProcessError):
-        return False
+        verdict = False
+    if _SCOPE:
+        _SCOPE[-1][key] = verdict
+    return verdict
 
 
 def allowed_path(path, repo=None, ref=None):
@@ -167,7 +207,22 @@ def _other_cohort_allows(path, root, ref):
     return any(m.__name__ != __name__ and m.allowed_path(path, root, ref) for m in cohorts())
 
 
+def _call_scope():
+    """The registry's one-outer-call scope (every registered cohort's verdict computed once for this call; dropped on exit, never cached
+    across calls). Without the registry nothing is shared and every check is recomputed, exactly as before."""
+    try:
+        from tests.fin_v2_cohorts import call_scope
+    except ImportError:
+        return nullcontext()
+    return call_scope()
+
+
 def valid(repo=None, ref=None):
+    with _call_scope():
+        return _valid(repo, ref)
+
+
+def _valid(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):
         return False
@@ -190,12 +245,18 @@ def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
     if source is None and PRESENTATION.match(path):
         return valid(repo, ref)
-    if path not in pins or not valid(repo, ref):
+    if path not in pins:
         return False
-    if source is None:
-        return True
-    raw = source.encode() if isinstance(source, str) else source
-    return _blob(raw) == pins[path] or _wf06b_supersedes(path, _blob(raw), Path(repo) if repo is not None else ROOT, ref)
+    if source is not None:
+        # Same conjunction as before (pinned path AND valid tree AND an accepted pin for these bytes), the cheap byte check first: a byte string
+        # that is no accepted pin can never match whatever the tree's validity, so the full governance closure is not run to learn it.
+        raw = source.encode() if isinstance(source, str) else source
+        try:
+            if not (_blob(raw) == pins[path] or _wf06b_supersedes(path, _blob(raw), Path(repo) if repo is not None else ROOT, ref)):
+                return False
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return False
+    return valid(repo, ref)
 
 
 def protected_blobs(repo=None, ref=None):

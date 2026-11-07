@@ -9,11 +9,12 @@
 // (WSV2_INTERFACE_CONTRACT.md).  `rebase` re-reads it after a reload or a committed change;
 // an edit whose baseline moved is MARKED as a conflict, never silently rebased.
 
-export type EditSection = "inputs" | "ppa" | "capex" | "opex" | "financing";
-export const EDIT_SECTIONS: readonly EditSection[] = ["inputs", "ppa", "capex", "opex", "financing"];
+export type EditSection = "inputs" | "ppa" | "capex" | "opex" | "financing" | "profile";
+export const EDIT_SECTIONS: readonly EditSection[] = ["inputs", "ppa", "capex", "opex", "financing", "profile"];
 
 export const SECTION_LABEL: Record<EditSection, string> = {
   inputs: "Project inputs", ppa: "Revenue & PPA", capex: "CAPEX", opex: "OPEX", financing: "Financing",
+  profile: "CAPEX monthly profile",
 };
 
 /** Canonical identity the drafts were staged against (owned by the shell; read-only here). */
@@ -248,7 +249,7 @@ export const orderedEdits = (state: PendingState): PendingEdit[] =>
   Object.values(state.edits).sort((a, b) => a.order - b.order);
 
 export function countBySection(state: PendingState): Record<EditSection, number> {
-  const counts: Record<EditSection, number> = { inputs: 0, ppa: 0, capex: 0, opex: 0, financing: 0 };
+  const counts: Record<EditSection, number> = { inputs: 0, ppa: 0, capex: 0, opex: 0, financing: 0, profile: 0 };
   for (const edit of Object.values(state.edits)) counts[edit.section] += 1;
   return counts;
 }
