@@ -44,6 +44,28 @@ test('all eight categories, seven legacy paths, edit lock, fee restriction and u
 test('two-Senior does not masquerade as single-Senior commitment',()=>{const e=synthetic();e.studio.multisenior.active=true;const rows=m.termSheetModel(e,gate(e))[0].rows;assert.match(rows[3].display,/NOT AVAILABLE/);assert.ok(!rows[3].display.includes('70'));});
 test('read orchestration bookends all calls; no writes and abort signal retained',async()=>{const e=synthetic();let calls=[];const signal=new AbortController().signal;const fake=async(url,opts)=>{calls.push([url,opts]);let b=url.includes('workspace')?e.before:url.includes('credit-decision')?e.credit:url.includes('studio')?e.studio:e.fields;return {ok:true,json:async()=>b}};const out=await m.readEvidence(e.scope,signal,fake);assert.equal(gate(out).showRun,true);assert.equal(calls.length,6);assert.match(calls[0][0],/workspace/);assert.match(calls[1][0],/credit-decision/);assert.match(calls[4][0],/credit-decision/);assert.match(calls[5][0],/workspace/);for(const [url,opts] of calls){assert.equal(opts.method,'GET');assert.equal(opts.cache,'no-store');assert.equal(opts.signal,signal);assert.ok(!('body' in opts));assert.ok(url.includes('project=synthetic-project'));}});
 test('failed endpoint never returns partial evidence',async()=>{await assert.rejects(m.readEvidence(synthetic().scope,new AbortController().signal,async()=>({ok:false,status:503})),/503/);});
+test('relative GET URLs preserve special project and selected Run characters without query injection',async()=>{
+ const e=synthetic(),project='Solar / č &+=?#%',history='Run / ž &+=?#%';
+ e.scope.project=project;e.scope.historyId=history;
+ for(const body of [e.before,e.after,e.studio,e.fields,e.creditBefore,e.credit])body.project={...body.project,code:project};
+ for(const credit of [e.creditBefore,e.credit])credit.data.project_code=project;
+ const signal=new AbortController().signal,calls=[];
+ const fake=async(url,options)=>{
+  calls.push([url,options]);
+  const path=url.split('?')[0];
+  return {ok:true,json:async()=>path.endsWith('workspace')?e.before:path.endsWith('credit-decision')?e.credit:path.endsWith('studio')?e.studio:e.fields};
+ };
+ await m.readEvidence(e.scope,signal,fake);
+ const paths=['/v2/model-react/workspace','/v2/model-react/analysis/credit-decision','/v2/model-react/financing/studio','/v2/model-react/fields/debt','/v2/model-react/analysis/credit-decision','/v2/model-react/workspace'];
+ assert.equal(calls.length,paths.length);
+ calls.forEach(([url,options],i)=>{
+  const selected=paths[i].endsWith('credit-decision');
+  const query=new URLSearchParams({project});if(selected)query.append('run',history);
+  assert.equal(url,`${paths[i]}?${query.toString()}`);
+  assert.deepEqual([...new URLSearchParams(url.slice(url.indexOf('?')+1))],selected?[['project',project],['run',history]]:[['project',project]]);
+  assert.equal(options.method,'GET');assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');assert.equal(options.signal,signal);assert.ok(!('body' in options));
+ });
+});
 for(const kind of ['project','scenario'])test(`wrong ${kind} cannot return Working Copy evidence`,async()=>{
  const e=synthetic();
  if(kind==='project')e.studio.project={...e.studio.project,code:'synthetic-other-project'};

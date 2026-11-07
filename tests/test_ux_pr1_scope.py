@@ -23,16 +23,17 @@ def wt(tree):
     git(tree,'clean','-fdxq')
 
 def _effective_pin(path,historical):
-    """Current signed authority; retain the historical PR1 -> PR2a -> PR2b lineage checks."""
-    from tests import ux_pr2a_scope as A, ux_pr2b_scope as B
+    """Follow only registered literal moves, authenticating every base-to-source link."""
+    from tests import ux_pr2a_scope as A, ux_pr2b_scope as B, ux_pr2c_scope as D, ux_pr3b1_scope as E
     pin=historical
-    if path in A.SUPERSEDED:
-        assert A.exact_blobs_ok() and A.manifest()['base_blobs'][path]==historical  # lineage PR1 -> PR2a
-        pin=A.manifest()['source_blobs'][path]
-    if path in B.SUPERSEDED:
-        assert B.exact_blobs_ok() and B.manifest()['base_blobs'][path]==pin  # lineage PR2a -> PR2b
-        pin=B.manifest()['source_blobs'][path]
-    return A.effective_pins().get(path,pin)
+    for successor in (A,B,D,E):  # PR1 -> PR2a -> PR2b -> PR2c -> PR3b1
+        if path in successor.SUPERSEDED:
+            assert successor.__name__ in C.COHORT_MODULES
+            assert successor.exact_blobs_ok()
+            signed=successor.manifest()
+            assert signed['base_blobs'][path]==pin
+            pin=signed['source_blobs'][path]
+    return pin
 
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
@@ -78,7 +79,11 @@ def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):
     elif change=='deregister':
         p=wt/'tests/fin_v2_cohorts.py';p.write_text(p.read_text().replace(", 'tests.ux_pr1_scope'",''))
     path.write_text(json.dumps(d,indent=2)+'\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    try:
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    finally:
+        # core.filemode=false makes reset preserve a pure executable-mode mutation.
+        (wt/'frontend/src/app/WorkspaceView.tsx').chmod(0o644)
 
 @pytest.mark.parametrize('path',sorted(U.INTEGRATION_MANIFESTS))
 def test_shared_pin_and_historical_map_tamper_fail_closed(path,wt):
