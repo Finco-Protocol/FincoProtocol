@@ -26,10 +26,10 @@
     "tests/test_ux_pr2b_scope.py": "e9218ef7d922659dedbf401b0f05678946eb53b2",
     "tests/u1_scope.py": "f031e1ff8689f50f640858c7a26f1f26917e1e6d",
     "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
-    "tests/ux_pr1_scope.py": "d5c73be5abc9d52585c4050d60598d667b1148b0",
-    "tests/ux_pr2a_scope.py": "06170c0c2b885947da1d553b012925f71dad56ec",
+    "tests/ux_pr1_scope.py": "44bf3bca9744ab013f006ae9777b18b15dc9e239",
+    "tests/ux_pr2a_scope.py": "661267b7646baa86512dc8bb18b53a7b040f22ea",
     "tests/ux_pr2b_browser_role.py": "579425283c5f2dfdaeee9e8b74c6cf7505a61b4d",
-    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32",
+    "tests/ux_pr2b_scope.py": "81fde717608b885b703c542a7b8a0c18f1949e36",
     "tools/ci_merge_tree_guard.py": "dcea0b01c938034495d16ec6d84a695e1550c1a0"
   },
   "base_blobs": {

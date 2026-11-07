@@ -154,7 +154,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             if ok3 and p in S3.SUPERSEDED and pins3.get(p)==blob:
                 return True
             return ok4 and p in S4.SUPERSEDED and pins4.get(p)==blob
-        owns3=lambda p: ok3 and S3.allowed_path(p,root,ref)
+        owns3=lambda p: ok3 and (S3.allowed_path(p,root,ref) or _pr2c_owns(p,root,ref))
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:
@@ -201,9 +201,27 @@ def _exact_blobs_ok(repo=None, ref=None):
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
-def allowed_path(path,repo=None,ref=None):
+def _pr2c_owns(path,root,ref):
+    """Bounded UX-PR2c tip admission for THIS cohort's own whole-tree closure: the path is one of the exact UX-PR2c cohort's literal paths while that
+    cohort is exact.  Never a widening of PR2a's own public ``allowed_path``."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.exact_blobs_ok(root,ref) and S.allowed_path(path,root,ref)
+
+
+def successor_owns(path,root,ref):
+    """Tip-aware closure admission for the DIRECT PREDECESSOR's whole-tree closure (UX-PR1): a changed path since the PR1 BASE is admitted only inside
+    the literal path sets of the exact direct successor (PR2b) or the exact tip (PR2c) — never as a widening of PR2a's own public ``allowed_path``."""
     S=_pr2b()
-    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST} or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
+    return S is not None and S.exact_blobs_ok(root,ref) and (S.allowed_path(path,root,ref) or _pr2c_owns(path,root,ref))
+
+
+def allowed_path(path,repo=None,ref=None):
+    """Literal scope containment (Correction E): PR2a recognises ONLY its own literal authorized paths.  Newer successors are independently registered
+    and authorize their own paths; delegating ``allowed_path`` to a descendant converted this narrow historical contract into transitive ownership."""
+    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}
 def base_blob(path,repo=None,ref=None):
     return manifest(repo,ref).get('base_blobs',{}).get(path)
 def supersedes(path,value,repo=None,ref=None):

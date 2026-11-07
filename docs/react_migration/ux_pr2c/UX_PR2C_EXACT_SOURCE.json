@@ -22,9 +22,10 @@
     "tests/test_ux_pr2c_scope.py": "04084ccaa502d46d1fe9d6d959c072f44d34328c",
     "tests/u1_scope.py": "f031e1ff8689f50f640858c7a26f1f26917e1e6d",
     "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
-    "tests/ux_pr2a_scope.py": "06170c0c2b885947da1d553b012925f71dad56ec",
-    "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32",
-    "tests/ux_pr2c_scope.py": "0ab4e3870c0cb4434e9f830376ef846c340ae31e"
+    "tests/ux_pr1_scope.py": "44bf3bca9744ab013f006ae9777b18b15dc9e239",
+    "tests/ux_pr2a_scope.py": "661267b7646baa86512dc8bb18b53a7b040f22ea",
+    "tests/ux_pr2b_scope.py": "81fde717608b885b703c542a7b8a0c18f1949e36",
+    "tests/ux_pr2c_scope.py": "3410e2df678a4e7aafac607679d855ba241cae58"
   },
   "base_blobs": {
     "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
@@ -40,6 +41,7 @@
     "tests/test_u2_scope.py": "d52600649b1cbceeb31ab245d8f2e5b6c1f26d99",
     "tests/u1_scope.py": "2e102e0a61ad765234e31a4a4324efbfc8ba4a9c",
     "tests/u2_scope.py": "3c4cd4fee236b331cedd537af989d4880deb243f",
+    "tests/ux_pr1_scope.py": "d5c73be5abc9d52585c4050d60598d667b1148b0",
     "tests/ux_pr2a_scope.py": "0d97d6ba7ca66c40080a94dc502f0da649647e8e",
     "tests/ux_pr2b_scope.py": "69fc90a39ca61463177902646e0aba169e5f227b"
   }

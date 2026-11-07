@@ -178,7 +178,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         ok2=S2 is not None and S2.exact_blobs_ok(root,ref)
         pins2=S2.effective_pins(root,ref) if ok2 else {}
         pin_ok2=lambda p,blob: ok2 and pins2.get(p)==blob
-        owns2=lambda p: ok2 and S2.allowed_path(p,root,ref)
+        owns2=lambda p: ok2 and (S2.allowed_path(p,root,ref) or S2.successor_owns(p,root,ref))
         d=manifest(root,ref)
         pins=d.get('source_blobs',{})
         if set(pins)!=OWNED_PATHS or set(d.get('base_blobs',{}))!=SUPERSEDED:

@@ -156,8 +156,9 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
 def allowed_path(path,repo=None,ref=None):
-    S=_pr2c()
-    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST} or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
+    """Literal scope containment (Correction E): PR2b recognises ONLY its own literal authorized paths; PR2c is independently registered and
+    authorizes its own paths at the composite level."""
+    return path in OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST}
 def base_blob(path,repo=None,ref=None):
     return manifest(repo,ref).get('base_blobs',{}).get(path)
 def supersedes(path,value,repo=None,ref=None):
