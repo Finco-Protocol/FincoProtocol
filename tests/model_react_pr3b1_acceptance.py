@@ -68,6 +68,14 @@ def test_pr3b1_actual_solar_wind_last_run(live_server,fin_session,kind):
     assert 'dm_run=' in page.url
     page.reload();page.wait_for_selector('[data-run-state="CURRENT"]',timeout=60000)
     assert page.get_by_role('combobox',name='Run history',exact=True).input_value()==run['identity']['history_id']
+    # The separate existing Debt Metrics destination must still edit terms
+    # directly, rather than landing on the new Financing overview.
+    page.evaluate("window.__pr3b1_terms_document = true; location.hash='#debt-metrics'")
+    page.wait_for_selector('[data-dm-edit-terms="true"]',timeout=60000)
+    page.locator('[data-dm-edit-terms="true"]').click()
+    page.wait_for_selector('[data-sheet-editor="debt"]',timeout=60000)
+    assert 'financing=terms' in page.url
+    assert page.evaluate('window.__pr3b1_terms_document === true')
     assert not writes
     assert not [e for e in errors if 'Failed to load resource' not in e]
 

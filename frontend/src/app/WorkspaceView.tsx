@@ -289,10 +289,15 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
     return () => window.removeEventListener("hashchange", onHash);
   }, [confirmIfDirty]);
 
-  function navigateTo(next: WorkspaceDestination) {
+  function navigateTo(next: WorkspaceDestination, financingView?: "terms") {
     if (next === destinationRef.current) return;
     const target = workspaceRoute(next);
     const adopt = () => {
+      if (next === "financing" && financingView) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("financing", financingView);
+        window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }
       if (window.location.hash !== `#${next}`) allowNextHash.current = true;
       window.location.hash = next;
       setDestination(next);
@@ -662,7 +667,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
             })()
             : <p className="rx-boot-loading" role="status">Loading the project assumptions…</p>
         )}
-        {section === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={dataVersion} onEditTerms={() => navigateTo("financing")} />}
+        {section === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={dataVersion} onEditTerms={() => navigateTo("financing", "terms")} />}
         {section === "financing" && (
           <FinancingStudio project={project} scenarioId={workspace.workbook.scenario_id} reloadKey={dataVersion} onSaved={afterMutation} />
         )}
