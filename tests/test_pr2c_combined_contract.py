@@ -102,9 +102,13 @@ class TestGatedAdvertisement:
         assert sections == ["cells", "contracts", "cost_lines"]
 
     def test_flag_on_advertises_the_profile_section(self, capex, monkeypatch):
+        """Correction D: the workspace advertisement stays byte-identical in BOTH flag
+        states — the historical U2 exact-prefix contract on the workspace router is kept
+        original, and the combined capability is advertised only on the profiles read
+        (`save.save_all_combined`), which the pending store actually consumes."""
         monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "1")
         sections = read_workspace(capex, capex.record)["save_all"]["sections"]
-        assert sections == ["cells", "contracts", "cost_lines", "profile"]
+        assert sections == ["cells", "contracts", "cost_lines"]
 
     def test_the_save_all_url_and_csrf_are_unchanged_by_the_flag(self, capex, monkeypatch):
         off = read_workspace(capex, capex.record)["save_all"]

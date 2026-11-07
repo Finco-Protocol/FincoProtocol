@@ -45,13 +45,6 @@ from app.v2.react_poc_router import REACT_ASSET_VERSION, react_poc_enabled
 
 router = APIRouter()
 
-def _save_all_profile_enabled() -> bool:
-    """PR2c (OD-B2 gated): the combined CAPEX-profile Save All capability is advertised
-    only while the D7 switch is on; the OFF default keeps the advertisement byte-identical."""
-    from app.v2.save_all_commands import profile_enabled
-    return profile_enabled()
-
-
 REACT_WORKSPACE_VERSION = "ux02-v1"
 
 
@@ -279,9 +272,7 @@ async def react_workspace_shell(request: Request, project: str):
             "integrity": None,
             "save_all": ({"available": True, "url": "/v2/workbook/save-all",
                           "csrf_token": _issue_csrf_token(request, project, purpose="model-save-all-v1"),
-                          "sections": ["cells", "contracts", "cost_lines"
-                                       ] + (["profile"] if _save_all_profile_enabled() else []),
-                          "max_items": 200,
+                          "sections": ["cells", "contracts", "cost_lines"], "max_items": 200,
                           "excluded": ["debt.financing.instruments"]}
                          if not is_protected_reference(record) and owner == user.user_id
                          else {"available": False, "reason": "This project is read-only for you; Save All is not available."}),

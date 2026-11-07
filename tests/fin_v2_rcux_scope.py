@@ -8,6 +8,7 @@ pinned file-by-file in ``RC_UX_SUCCESSORS`` (``tests/model_mutation_security_suc
 untracked protected source fails closed.
 """
 from pathlib import Path
+from contextlib import contextmanager
 import hashlib
 import json
 import re
@@ -131,6 +132,17 @@ def _wf06b_supersedes(path, value, root, ref):
     return W.supersedes(path, value, root, ref)
 
 
+def _pr2c_supersedes(path, value, root, ref):
+    """Bounded UX-PR2c hook (PR #429 Correction D): a different current blob is accepted for ``path`` only while the exact UX-PR2c cohort supersedes the
+    path at exactly this value (its literal SUPERSEDED membership, its own manifest pin and its own exactness). A missing, forged or altered cohort
+    admits nothing; this manifest keeps describing the reviewed state it always did."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.supersedes(path, value, root, ref)
+
+
 def _wf06b_allows(path, root, ref):
     """Bounded WF-06B hook: a path of the closed WF-06B cohort, only while that cohort is itself exact."""
     try:
@@ -140,17 +152,45 @@ def _wf06b_allows(path, root, ref):
     return W.allowed_path(path, root, ref) and W.exact_blobs_ok(root, ref)
 
 
+_SCOPE = []
+
+
+@contextmanager
+def scoped():
+    """Within ONE outer governance call the result of ``exact_blobs_ok`` is computed once (the same one-verdict contract the other cohorts keep).
+    Dropped on exit; nothing is cached across calls."""
+    if _SCOPE:
+        yield
+        return
+    _SCOPE.append({})
+    try:
+        yield
+    finally:
+        _SCOPE.pop()
+
+
 def exact_blobs_ok(repo=None, ref=None):
     """History and every owned byte: the pin set equals the owned set and each pin is the exact Git blob."""
+    key = (str(repo if repo is not None else ROOT), ref)
+    if key in _SCOPE[-1] if _SCOPE else False:
+        return _SCOPE[-1][key]
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if set(pins) != OWNED_PATHS:
+        if _SCOPE:
+            _SCOPE[-1][key] = False
         return False
     try:
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-        return all(_blob(_read(root, p, ref)) == expected or _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, expected in pins.items())
+        verdict = all(_blob(_read(root, p, ref)) == expected
+                      or _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref)
+                      or _pr2c_supersedes(p, _blob(_read(root, p, ref)), root, ref)
+                      for p, expected in pins.items())
     except (OSError, ValueError, subprocess.CalledProcessError):
-        return False
+        verdict = False
+    if _SCOPE:
+        _SCOPE[-1][key] = verdict
+    return verdict
 
 
 def allowed_path(path, repo=None, ref=None):

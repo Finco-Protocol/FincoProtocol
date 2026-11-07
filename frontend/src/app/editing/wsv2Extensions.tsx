@@ -35,8 +35,7 @@ const sectionsOfDirtyKey = (key: string): EditSection[] =>
       : key === "cost-lines-capex" ? ["capex"]
         : key === "cost-lines-opex" ? ["opex"]
           : key === "opex-base" ? ["inputs"]          // the six OPEX base amounts are canonical cells staged in the "inputs" section
-            : key === "capex-profile" ? ["profile"]   // PR2c: the profile draft publishes into the store when combined is enabled
-              : [];
+            : [];
 
 function DirtyBridge() {
   const changes = useChanges();
