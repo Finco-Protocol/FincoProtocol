@@ -22,7 +22,7 @@ function Findings({ rows }: { rows: CreditFinding[] }) {
     {f.actual && <span>{f.actual.d}</span>}<small>{f.detail || f.reason_code}</small>
   </li>)}</ul> : <p>No findings supplied in these server classifications.</p>;
 }
-/** Source-only component: mounting is deferred until the shared-bundle owner (#429) merges. */
+/** Presentation-only overview mounted by the existing Financing workspace. */
 export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOpenExisting }: {
   evidence: Evidence; onReload: () => void; onHistoryChange?: (historyId: string) => void; onOpenExisting?: (view: string) => void;
 }) {

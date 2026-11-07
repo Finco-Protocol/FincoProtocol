@@ -126,5 +126,5 @@ def test_pr3b1_protected_reference_keeps_existing_read_only_views(live_server,fi
     page.wait_for_selector('[data-sheet-editor="debt"]')
     assert page.locator('[data-sheet-editor="debt"] input.fm-input').count()==0
     page.locator('[data-financing-tab-button="bankability"]').click()
-    page.wait_for_selector('[data-bankability-readonly="true"]')
+    page.wait_for_selector('[data-bank-readonly="true"]')
     assert page.locator('[data-bank-save]').is_disabled()
