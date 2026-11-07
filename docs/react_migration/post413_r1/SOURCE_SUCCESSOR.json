@@ -23,7 +23,7 @@
     "frontend/src/app/editing/pendingEdits.ts": "c70748b5de42237816bb6240d74f3c415c281f97",
     "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
     "frontend/src/app/workflow/PPAEditorView.tsx": "5de1df8aee8ebe10a7cbdbca4260ace01abe9d6f",
-    "static/react/finco-react.js": "62dacad8b96ebd9a39ad8d17604bb9e04c559907",
+    "static/react/finco-react.js": "c0f3248bd915f43f763782749525d818e6ad6d7b",
     "tests/fin_v2_cohorts.py": "623f4c61c2fee0601fa186d3372aceb9822d41a4",
     "tests/model_mutation_security_successor.py": "f311ab71314f6a5a149ec92d6aab4d57b6d4b808",
     "tests/model_react_r1_ppa_two_tab_acceptance.py": "f9270bd0e43396f4ba8ff81f9cd6e819229937e3",

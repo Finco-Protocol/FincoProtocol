@@ -44,6 +44,13 @@ test('all eight categories, seven legacy paths, edit lock, fee restriction and u
 test('two-Senior does not masquerade as single-Senior commitment',()=>{const e=synthetic();e.studio.multisenior.active=true;const rows=m.termSheetModel(e,gate(e))[0].rows;assert.match(rows[3].display,/NOT AVAILABLE/);assert.ok(!rows[3].display.includes('70'));});
 test('read orchestration bookends all calls; no writes and abort signal retained',async()=>{const e=synthetic();let calls=[];const signal=new AbortController().signal;const fake=async(url,opts)=>{calls.push([url,opts]);let b=url.includes('workspace')?e.before:url.includes('credit-decision')?e.credit:url.includes('studio')?e.studio:e.fields;return {ok:true,json:async()=>b}};const out=await m.readEvidence(e.scope,signal,fake);assert.equal(gate(out).showRun,true);assert.equal(calls.length,6);assert.match(calls[0][0],/workspace/);assert.match(calls[1][0],/credit-decision/);assert.match(calls[4][0],/credit-decision/);assert.match(calls[5][0],/workspace/);for(const [url,opts] of calls){assert.equal(opts.method,'GET');assert.equal(opts.cache,'no-store');assert.equal(opts.signal,signal);assert.ok(!('body' in opts));assert.ok(url.includes('project=synthetic-project'));}});
 test('failed endpoint never returns partial evidence',async()=>{await assert.rejects(m.readEvidence(synthetic().scope,new AbortController().signal,async()=>({ok:false,status:503})),/503/);});
+for(const kind of ['project','scenario'])test(`wrong ${kind} cannot return Working Copy evidence`,async()=>{
+ const e=synthetic();
+ if(kind==='project')e.studio.project={...e.studio.project,code:'synthetic-other-project'};
+ else e.studio.identity={...e.studio.identity,scenario_id:'synthetic-other-scenario'};
+ const fake=async url=>({ok:true,json:async()=>url.includes('workspace')?e.before:url.includes('credit-decision')?e.credit:url.includes('studio')?e.studio:e.fields});
+ await assert.rejects(m.readEvidence(e.scope,new AbortController().signal,fake),/scope changed/);
+});
 test('source layer has no financial writer or aggregation implementation',async()=>{for(const f of ['readEvidence.ts','termSheetModel.ts','sourcesUsesModel.ts','coverageModel.ts','FinancingOverview.tsx']){const s=await readFile(join(root,f),'utf8');assert.doesNotMatch(s,/method:\s*['"](?:POST|PATCH|PUT|DELETE)|\.reduce\(|\/workbook\/(?:update|run|save-all)/);}});
 
 test('addendum: one workspace with anchors, unique transitional destinations and existing Results',()=>{

@@ -21,5 +21,14 @@ export async function readEvidence(scope: Scope, signal: AbortSignal, read: Read
   ]);
   const creditAfter = await get<Credit>(credit, scope, signal, read);
   const after = await get<Workspace>(workspace, scope, signal, read);
+  // Reject cross-scope Working Copy data before any overview can render it.
+  // Run freshness/totals remain the separate Last Run gate in the component.
+  if ([before, after, studio, fields, creditBefore, creditAfter].some(x => x?.project?.code !== scope.project)
+      || before?.workbook?.scenario_id !== scope.scenarioId || after?.workbook?.scenario_id !== scope.scenarioId
+      || studio?.identity?.scenario_id !== scope.scenarioId
+      || (creditBefore.data?.project_code != null && creditBefore.data.project_code !== scope.project)
+      || (creditAfter.data?.project_code != null && creditAfter.data.project_code !== scope.project)) {
+    throw new Error('Financing scope changed. Reload evidence.');
+  }
   return { scope, before, after, creditBefore, credit: creditAfter, studio, fields };
 }

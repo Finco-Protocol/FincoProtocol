@@ -2,7 +2,7 @@
 import pytest
 from tests.model_react_rcm_financing_acceptance import fin_session, no_page_overflow
 
-__all__ = ('test_pr3b1_mounted_workspace_links_and_responsive','test_pr3b1_read_layer_get_failures_and_race','test_pr3b1_actual_solar_wind_last_run','test_pr3b1_identity_mismatch_and_abort','test_pr3b1_late_aborted_read_cannot_replace_remounted_scope','test_pr3b1_protected_reference_keeps_existing_read_only_views','fin_session')
+__all__ = ('test_pr3b1_mounted_workspace_links_and_responsive','test_pr3b1_read_layer_get_failures_and_race','test_pr3b1_actual_solar_wind_last_run','test_pr3b1_identity_mismatch_and_abort','test_pr3b1_late_aborted_read_cannot_replace_remounted_scope','test_pr3b1_protected_reference_keeps_existing_read_only_views','test_pr3b1_wrong_scope_never_renders_working_terms','fin_session')
 
 @pytest.mark.parametrize('width',[1440,1024,390,320])
 def test_pr3b1_mounted_workspace_links_and_responsive(live_server,fin_session,width):
@@ -136,3 +136,21 @@ def test_pr3b1_protected_reference_keeps_existing_read_only_views(live_server,fi
     page.locator('[data-financing-tab-button="bankability"]').click()
     page.wait_for_selector('[data-bank-readonly="true"]')
     assert page.locator('[data-bank-save]').is_disabled()
+
+
+@pytest.mark.parametrize('kind',['project','scenario'])
+def test_pr3b1_wrong_scope_never_renders_working_terms(live_server,fin_session,kind):
+    context,page,record,errors=fin_session('pr3b1-wrong-scope-'+kind)
+    marker='SYNTHETIC_WRONG_SCOPE_DO_NOT_RENDER'
+    def wrong_scope(route):
+        response=route.fetch();body=response.json()
+        if kind=='project':body['project']['code']='synthetic-other-project'
+        else:body['identity']['scenario_id']='synthetic-other-scenario'
+        body['senior_lock_reason']=marker
+        route.fulfill(response=response,json=body)
+    page.route('**/v2/model-react/financing/studio?*',wrong_scope)
+    page.goto(f'{live_server}/v2/model-react/{record.project_code}#financing')
+    page.wait_for_selector('[data-run-state], [data-financing-studio] [role="alert"]',timeout=60000)
+    assert marker not in page.locator('body').inner_text()
+    page.locator('[data-financing-studio] [role="alert"]').filter(has_text='scope changed').wait_for()
+    assert page.locator('[data-run-zones="visible"]').count()==0
