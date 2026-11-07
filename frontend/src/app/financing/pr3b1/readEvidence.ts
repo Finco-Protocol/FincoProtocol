@@ -2,9 +2,9 @@ import type { Credit, Evidence, Fields, Scope, Studio, Workspace } from './types
 
 export type ReadFetch = typeof fetch;
 async function get<T>(path: string, scope: Scope, signal: AbortSignal, read: ReadFetch): Promise<T> {
-  const url = new URL(path, 'http://finco.invalid'); url.searchParams.set('project', scope.project);
-  if (path.endsWith('credit-decision') && scope.historyId) url.searchParams.append('run', scope.historyId);
-  const response = await read(`${url.pathname}${url.search}`, { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal });
+  const query = new URLSearchParams({ project: scope.project });
+  if (path.endsWith('credit-decision') && scope.historyId) query.append('run', scope.historyId);
+  const response = await read(`${path}?${query.toString()}`, { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal });
   if (!response.ok) throw new Error(`Financing read unavailable (${response.status}). Reload.`);
   const body = await response.json();
   if (body.ok !== true) throw new Error('Financing read unavailable. Reload.');

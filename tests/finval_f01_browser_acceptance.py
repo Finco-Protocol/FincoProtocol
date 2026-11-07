@@ -18,7 +18,7 @@ def test_low_and_standard_percent_are_distinct_after_save_and_reload(live_server
     context=browser.new_context(viewport={'width':1440,'height':1000})
     try:
         context.add_cookies([{'name':COOKIE_NAME,'value':create_session_token(user_id=owner,username='admin'),'url':live_server}])
-        page=context.new_page();page.goto(f'{live_server}/v2/model-react/{rec.project_code}#financing')
+        page=context.new_page();page.goto(f'{live_server}/v2/model-react/{rec.project_code}?financing=terms#financing')
         rows=[]
         for human,text in [(.056,'0.056'),(5.6,'5.60')]:
             field=page.get_by_label('All-in Interest Rate (%)',exact=True)

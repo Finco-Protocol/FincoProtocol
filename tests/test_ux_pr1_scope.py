@@ -23,7 +23,7 @@ def wt(tree):
     git(tree,'clean','-fdxq')
 
 def _effective_pin(path,historical):
-    """Current signed authority: PR1 pin, replaced by the exact PR2a pin, then the exact PR2b pin (one-way, literal sets)."""
+    """Current signed authority; retain the historical PR1 -> PR2a -> PR2b lineage checks."""
     from tests import ux_pr2a_scope as A, ux_pr2b_scope as B
     pin=historical
     if path in A.SUPERSEDED:
@@ -32,7 +32,7 @@ def _effective_pin(path,historical):
     if path in B.SUPERSEDED:
         assert B.exact_blobs_ok() and B.manifest()['base_blobs'][path]==pin  # lineage PR2a -> PR2b
         pin=B.manifest()['source_blobs'][path]
-    return pin
+    return A.effective_pins().get(path,pin)
 
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
