@@ -141,7 +141,8 @@ def signature_ok(repo=None, ref=None):
     """Source/base/mode authority only, for the predecessor's literal CI_PATHS.
 
     Does not admit any path or satisfy global governance; full exactness still
-    checks the complete changed/untracked closure. Mutable results never escape
+    checks sibling manifests and the complete changed/untracked closure. The
+    independent signature does not read foreign manifests. Mutable results never escape
     the enclosing read-only call, and signature/full memo entries are distinct.
     """
     return _verdict(repo, ref, False)
@@ -175,14 +176,16 @@ def _exact(repo=None, ref=None, closure=True):
         if baseline!=d['base_blobs']: return False
         for p,b in pins.items():
             if _blob(_read(root,p,ref))!=b: return False
-        for p in INTEGRATION_MANIFESTS:
-            before=json.loads(_base_fact(root,'show',BASE+':'+p));now=json.loads(_read(root,p,ref))
-            if set(now)!=set(before) or any(now[k]!=before[k] for k in before if k!='source_blobs'): return False
-            a,b=before['source_blobs'],now['source_blobs']
-            if set(a)!=set(b) or any(b[k]!=a[k] and (k not in SUPERSEDED or b[k]!=pins[k]) for k in a): return False
-        permitted=OWNED_PATHS|INTEGRATION_MANIFESTS|{MANIFEST}
-        changed=set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
-        if closure and changed-permitted: return False
+        permitted=OWNED_PATHS|{MANIFEST}
+        if closure:
+            for p in INTEGRATION_MANIFESTS:
+                before=json.loads(_base_fact(root,'show',BASE+':'+p));now=json.loads(_read(root,p,ref))
+                if set(now)!=set(before) or any(now[k]!=before[k] for k in before if k!='source_blobs'): return False
+                a,b=before['source_blobs'],now['source_blobs']
+                if set(a)!=set(b) or any(b[k]!=a[k] and (k not in SUPERSEDED or b[k]!=pins[k]) for k in a): return False
+            permitted=permitted|INTEGRATION_MANIFESTS
+            changed=set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
+            if changed-permitted: return False
         if ref is None:
             for p in permitted:
                 f=root/p

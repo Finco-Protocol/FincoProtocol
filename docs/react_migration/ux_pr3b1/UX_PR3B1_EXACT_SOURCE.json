@@ -35,7 +35,7 @@
     "tests/test_post413_o1_scope.py": "40b935e1cdd342452a60f0d5e1ebf6865be95041",
     "tests/test_rcux_governance.py": "0c13f48288a1644aa5979bccbb1bca752186a6a2",
     "tests/test_u2_scope.py": "a15587a631a7833a95c01bfaf10c713e55f14423",
-    "tests/test_ux_pr3b1_scope.py": "c65b0f167e09f7ef147eb350dd6e0326f520ef9b",
+    "tests/test_ux_pr3b1_scope.py": "10f2c18605874163c764377717e2550e332c5f78",
     "tests/u1_scope.py": "b7714d88bdd75eda7f019789bceae3e8ba116031",
     "tests/u2_scope.py": "e969c0ef46f410e190f9618befe21b1dde279784",
     "tests/ux_pr1_scope.py": "d681e82b5ab70b4ff181892fb6ec9c30dc7919a9",
@@ -43,7 +43,7 @@
     "tests/ux_pr2b_scope.py": "d7a4f97419849def5bff83b325a13d05cedab1e5",
     "tests/ux_pr2c_scope.py": "328e352b72381aee284344994d1150a949e5b44c",
     "tests/ux_pr3b1_browser_role.py": "1b3c53a4b937ac3d994f21fbab3c5518a7602502",
-    "tests/ux_pr3b1_scope.py": "2e094dc594b73c8ca517ecc4156cdc93a06670d5"
+    "tests/ux_pr3b1_scope.py": "bcf61aca9de0a65f3bd26b06a2c8463cce516a35"
   },
   "base_blobs": {
     "frontend/src/app/WorkspaceView.tsx": "87c8c21a8bb621d03222edd3c9f5b6650717dced",

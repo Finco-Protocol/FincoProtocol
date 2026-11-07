@@ -125,3 +125,17 @@ def test_signature_only_ci_authority_never_admits_global_drift_or_unknown_ci():
     finally:
         unrelated.write_bytes(raw);guard.write_bytes(guard_raw)
     assert C.exact_blobs_ok()
+
+
+def test_signature_only_ci_authority_ignores_foreign_manifest_forgery_but_full_proof_rejects_it():
+    from tests import ux_pr2b_scope as B
+    foreign=ROOT/'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+    raw=foreign.read_bytes()
+    try:
+        d=json.loads(raw);d['source_blobs']['static/react/finco-react.js']='0'*40
+        foreign.write_text(json.dumps(d,indent=2)+'\n')
+        assert C.signature_ok() and B.ci_authority_ok()
+        assert not C.exact_blobs_ok() and not C.valid() and not B.exact_blobs_ok()
+        assert not C.supersedes('static/react/finco-react.js',C.manifest()['source_blobs']['static/react/finco-react.js'])
+    finally:foreign.write_bytes(raw)
+    assert C.exact_blobs_ok()
