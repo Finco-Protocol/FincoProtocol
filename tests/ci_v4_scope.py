@@ -87,6 +87,17 @@ FORBIDDEN_PATHS = frozenset(('main_web.py',))
 CI_PREFIXES = ('.github/', 'tools/')
 
 
+def _pr2c_supersedes(path, value, root, ref):
+    """Bounded UX-PR2c hook (PR #429 Correction G, Owner-authorized static-timeout change): a different current blob is accepted for path only while
+    the exact UX-PR2c cohort supersedes the path at exactly this value (its literal SUPERSEDED membership, its own manifest pin, its own exactness).
+    The mutation-security gate tool itself stays ci_v4-owned and un-delegated; a missing, forged or altered cohort admits nothing."""
+    try:
+        from tests import ux_pr2c_scope as S
+    except ImportError:
+        return False
+    return S.supersedes(path, value, root, ref)
+
+
 def _merge_event_successor():
     # One-way low-level proof: PR2b reads git + its own manifest, never this cohort.
     from tests import ux_pr2b_scope as B
@@ -177,7 +188,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
             return False
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha and not _pr2c_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}

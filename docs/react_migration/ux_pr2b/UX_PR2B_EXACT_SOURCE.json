@@ -14,7 +14,7 @@
     "frontend/src/styles/ux-pr1-workbench.css": "5ec86b49afb3c62445c41bf9bd64f030881ae27a",
     "static/react/finco-react.css": "a2c4c8ee0e59720cb454359753e6de8a39d48042",
     "static/react/finco-react.js": "758924d56ee937ebd44a4fd1c1595b3142856bf2",
-    "tests/ci_v4_scope.py": "0f495a497eb518a1f24ea4f11630faa18d83340e",
+    "tests/ci_v4_scope.py": "96a1f78479bdb17451bbaf4451e6a24ce9d7b3a8",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/model_react_ux_pr2b_acceptance.py": "a38c85456ba8d2ddf2783a70183f76d6939297d7",
     "tests/test_ci_merge_event_identity.py": "262b2b7fbd7b943de66e41a61cd760a7f158fda1",

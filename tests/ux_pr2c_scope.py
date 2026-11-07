@@ -27,6 +27,8 @@ BASE_TREE = '584d29ee7873b143e140900c3af714ace2eec645'
 MANIFEST = 'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json'
 SCHEMA = 'UX_PR2C_COMBINED_SAVE_EXACT_SOURCE_V1'
 OWNED_PATHS = frozenset((
+    '.github/workflows/ci_v4_pr.yml',
+    'tests/ci_v4_scope.py',
     'P00_PR2C.md',
     'app/v2/react_capex.py',
     'app/v2/react_workspace_router.py',
@@ -54,6 +56,8 @@ OWNED_PATHS = frozenset((
 # Paths this cohort takes over from earlier closed cohorts (their historical pins
 # move to these same bytes via INTEGRATION_MANIFESTS; nothing else in them changes).
 SUPERSEDED = frozenset((
+    '.github/workflows/ci_v4_pr.yml',
+    'tests/ci_v4_scope.py',
     'app/v2/react_capex.py',
     'app/v2/react_workspace_router.py',
     'frontend/src/app/capex/ProfileDraftProvider.tsx',

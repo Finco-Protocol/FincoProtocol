@@ -12,7 +12,7 @@
   "source_blobs": {
     ".github/workflows/ci_v4_f01_job.yml": "99ca73daefbca15bd1642520efb4f26db00430be",
     ".github/workflows/ci_v4_full.yml": "000381a448f385358cbc6a2737d960676eed4dca",
-    ".github/workflows/ci_v4_pr.yml": "f78e3b13b38f48a5f92222f066492b3db9439643",
+    ".github/workflows/ci_v4_pr.yml": "3998b1adc504c02e28f63ca530ba283296265eb5",
     ".github/workflows/ci_v4_release_gate.yml": "adb2f7423bbd47af0f8773f5d2f1f062dede85a0",
     ".github/workflows/ci_v4_shadow_split.yml": "0463449ffaa6d38537f479b1edeebd710eb42c71",
     "docs/ci_v4/CI_V4_NODE_SPLIT_HR.md": "2239999b00edc5d0e5da19418a35f390a766d7bc",
@@ -24,7 +24,7 @@
     "docs/ci_v4/module_weights.json": "17f386fa542c4766d3e3ce352de257f76389fa16",
     "docs/ci_v4/node_split_policy.json": "2075e0f17fabe1742c3335de57e01b8729171a66",
     "docs/ci_v4/node_weights.json": "77b5891a674ad450c07884893e9341742100a286",
-    "tests/ci_v4_scope.py": "0f495a497eb518a1f24ea4f11630faa18d83340e",
+    "tests/ci_v4_scope.py": "96a1f78479bdb17451bbaf4451e6a24ce9d7b3a8",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/fin_v2_integration_409_scope.py": "f4e3b602e386920b7ac46a977f19375d54a38afc",
     "tests/post413_r17_scope.py": "3ce053786d3cc693c21ba1641966fec381bd2dc9",

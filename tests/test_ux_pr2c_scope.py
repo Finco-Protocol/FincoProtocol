@@ -108,3 +108,14 @@ def test_the_activation_flag_is_a_literal_false_in_no_candidate():
     """PR2c adds no activation switch of its own: the D7 switch is the only gate."""
     src = (ROOT / "app/v2/react_capex.py").read_text(encoding="utf-8")
     assert "FINCO_SAVE_ALL_PROFILE_ENABLED" not in src  # the gate is read only in save_all_commands
+
+
+def test_the_ci_v4_workflow_diff_against_its_base_is_exactly_the_static_timeout():
+    """Correction G (Owner-authorized): the governed .github/workflows/ci_v4_pr.yml takeover admits ONE literal change — the static job's safety ceiling
+    30 -> 90 minutes.  The gate job, its steps, the trusted-base selector and every other byte stay identical to BASE; anything else fails closed."""
+    import subprocess
+    base = subprocess.check_output(["git", "show", f"{C.BASE}:.github/workflows/ci_v4_pr.yml"], cwd=str(ROOT), stderr=subprocess.DEVNULL).decode("utf-8")
+    text = (ROOT / ".github/workflows/ci_v4_pr.yml").read_text(encoding="utf-8")
+    assert "timeout-minutes: 90" in text and text.count("timeout-minutes: 90") == 1
+    assert "timeout-minutes: 30" not in text
+    assert text.replace("timeout-minutes: 90", "timeout-minutes: 30", 1) == base
