@@ -22,12 +22,13 @@
     "static/react/finco-react.css": "b80f69f095e8451e19a93330fdf541d38e46f3fa",
     "static/react/finco-react.js": "8d8b51e78d7b066265d4604d7a4afd3ce02706e2",
     "tests/fin_v2_cohorts.py": "623f4c61c2fee0601fa186d3372aceb9822d41a4",
-    "tests/model_react_overnight_b_acceptance.py": "1abed4ff593a4838ba1d97d5a4b9208a214cee0b",
+    "tests/model_react_overnight_b_acceptance.py": "5a464d50847a061d52a07bf6f82655e7241d9523",
     "tests/model_react_pr3b1_acceptance.py": "c3b6b7d0c579a9adfdd971e1ad77d4a361a5663f",
     "tests/model_react_rcm_financing_acceptance.py": "0f1c1844130dafb742f2c0edd0c99fab48d67849",
     "tests/model_react_rcm_investors_acceptance.py": "0eb3527bf6ab9ce5e45fe831dac8aafdfb1a221e",
     "tests/model_react_rcm_themes_acceptance.py": "83a72c8de1ff85b9b3ae8d85d9ecacabe83b15e0",
     "tests/model_react_rcux_analysis_acceptance.py": "c4cdebc54097ad4cf4046d53f260afdf5d6b7366",
+    "tests/model_react_rcux_navigation_acceptance.py": "b3753be20065794de0630ea1ccc2942a6ac62cf1",
     "tests/model_react_wf04_debt_metrics_acceptance.py": "7fa7988a2c18ce933b24bb08902bd224406b6700",
     "tests/model_react_wf2_browser_acceptance.py": "c7e6a5c81a0d01e75825f830a2df8be76dfbcef2",
     "tests/test_model_workspace_consolidation_browser.py": "ff1137eb91ad5bc08f1c9f79375fae0b132a4862",
@@ -42,7 +43,7 @@
     "tests/ux_pr2b_scope.py": "d7a4f97419849def5bff83b325a13d05cedab1e5",
     "tests/ux_pr2c_scope.py": "328e352b72381aee284344994d1150a949e5b44c",
     "tests/ux_pr3b1_browser_role.py": "1b3c53a4b937ac3d994f21fbab3c5518a7602502",
-    "tests/ux_pr3b1_scope.py": "4698c644248aa23c4ca22797788f900005f9f94f"
+    "tests/ux_pr3b1_scope.py": "2e094dc594b73c8ca517ecc4156cdc93a06670d5"
   },
   "base_blobs": {
     "frontend/src/app/WorkspaceView.tsx": "87c8c21a8bb621d03222edd3c9f5b6650717dced",
@@ -55,6 +56,7 @@
     "tests/model_react_rcm_investors_acceptance.py": "6bf989629935a247cd392a61dea23914b20c29bc",
     "tests/model_react_rcm_themes_acceptance.py": "a763beb9995e537cd7c5fe88c21cd9213068ff60",
     "tests/model_react_rcux_analysis_acceptance.py": "ed6191f11716051b76b6ec1914028ec2e87d9362",
+    "tests/model_react_rcux_navigation_acceptance.py": "4c50dde4a51a91ff53b7982348b96416d3cf6603",
     "tests/model_react_wf04_debt_metrics_acceptance.py": "7fe86508ab81e89246350f6f06c13912703a842f",
     "tests/model_react_wf2_browser_acceptance.py": "24d35c0f03e727b921f286a3f9ba9785e30e0cde",
     "tests/test_model_workspace_consolidation_browser.py": "d883b8d54353a9c86dc3c0d1b14b5adab57c2957",
