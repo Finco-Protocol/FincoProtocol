@@ -131,7 +131,8 @@ def test_unexplained_changed_paths_are_refused_for_the_four_cohort_contract():
 
 
 def test_older_cohorts_still_exact_through_the_bounded_hooks():
-    assert all(m.exact_blobs_ok() for m in C.cohorts())
+    with C.call_scope():       # ONE outer governance call over this read-only enumeration: each cohort's verdict is computed once, dropped on exit
+        assert all(m.exact_blobs_ok() for m in C.cohorts())
 
 
 @pytest.mark.parametrize('path', sorted(U2.OWNED_PATHS))

@@ -160,10 +160,31 @@ def scoped():
             _SCOPE.pop()
 
 
+# While an enclosing OLDER cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict
+# shares THAT scope's memo exactly as ``tests/u1_scope.py`` and ``tests/post413_r1_scope.py`` already do: it lives only as long as the enclosing
+# outer call, is dropped with it and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
-    if not _SCOPE:
-        return _exact_blobs_ok(repo, ref)
     key = (str(repo if repo is not None else ROOT), ref)
+    if not _SCOPE:
+        memo = _enclosing_call_memo()
+        if memo is None:
+            return _exact_blobs_ok(repo, ref)
+        shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key
+        if shared not in memo:
+            memo[shared] = _exact_blobs_ok(repo, ref)
+        return memo[shared]
     memo = _SCOPE[-1]
     if key not in memo:
         memo[key] = _exact_blobs_ok(repo, ref)

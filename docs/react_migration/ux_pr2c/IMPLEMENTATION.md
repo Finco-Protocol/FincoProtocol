@@ -30,3 +30,18 @@ Functional corrections (both found in review, both code + tests):
 - **Profile-only save/reset** clears any staged combined mirror on verified completion.
 
 Mounted-provider behavior is covered by the pure decision machine tests plus static render smoke (`pr2cCombinedSave.test.mjs`); the provider's read-back remains authoritative — a successful HTTP result alone never clears the draft.
+
+## Correction H — CI performance (repeated-work mechanism, no assertion changed)
+
+Measured on exact head `a2d3d40d` (required CI V4 run 42361979325; local Python 3.12 / 3.13 reproduction): the RC-UX cohort's `valid()` evaluated every one of the 725 changed paths against every registered cohort **without an outer call scope**, so each `allowed_path` re-derived the exact verdicts of the later cohorts (`ux_pr2b`, `ux_pr2c`, `ci_v4`, `wf06b` …) from scratch: ~11,600 git processes for an answer the scoped composite gives with ~280. Every `F.matches` / `F.valid` in `tests/test_fin_v2_rcux_scope.py` paid that cost several times (55 tests = 6,655 s). The U1/U2 "older cohorts still exact" tests and the central gate asked each cohort one by one with no shared scope (1,884 s / 2,281 s / 13 min).
+
+Fix (production governance code, same answers):
+- `tests/fin_v2_cohorts.py`: `call_scope()` — ONE outer call that enters every registered cohort's existing `scoped()` and shares the composite `valid` verdict; dropped when the OUTERMOST block exits, never kept across calls, worktrees, refs, monkeypatches or mutations.
+- `tests/fin_v2_rcux_scope.py`: `valid()` runs inside that scope; `matches()` rejects a byte string that is no accepted pin before the full closure (same conjunction, cheap check first; acceptance still needs a valid tree AND an accepted pin).
+- `tools/ci_v4_governance_gate.py`: the cohort map and the composite share one outer call scope; record schema and verdict rules unchanged.
+- `tests/test_u1_scope.py`, `tests/test_u2_scope.py`: the read-only "older cohorts still exact" enumeration runs inside one outer call scope; every assertion unchanged.
+- `tests/model_mutation_security_successor.py`: `violations()` runs inside one outer call scope (its per-path `fin_v2_cohorts.matches` loop shared one verdict set instead of re-deriving the composite 23 times per call); `tests/test_post413_o1_scope.py` learns the exact PR2c signed pins exactly as it already knows the PR1/PR2a ones (its audit of moved sibling pins is otherwise unchanged).
+- `tests/ux_pr1_scope.py`, `tests/ux_pr2a_scope.py`, `tests/ux_pr2b_scope.py`, `tests/ux_pr2c_scope.py`, `tests/ci_v4_scope.py`: when an enclosing OLDER cohort is inside its one-outer-call scope the verdict shares that scope's memo (the precedent already used by `tests/u1_scope.py` and `tests/post413_r1_scope.py`); outside every scope nothing is shared.
+- Governance: `tests/test_u1_scope.py`, `tests/model_mutation_security_successor.py`, `tests/test_post413_o1_scope.py` and `tools/ci_v4_governance_gate.py` join `ux_pr2c` OWNED/SUPERSEDED with recorded base blobs (the gate stays under the CI V4 CI_PATHS authority); sibling pins move only under the existing governed rule. New tamper/lifetime negatives in `tests/test_ux_pr2c_scope.py`.
+
+No financial math, no `app/` source, no workflow, no policy/weights/worker change; hosted timings of the new head are the only valid basis for recalibrating `docs/ci_v4/*weights.json`.

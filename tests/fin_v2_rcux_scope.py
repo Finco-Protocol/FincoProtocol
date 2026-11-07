@@ -8,7 +8,7 @@ pinned file-by-file in ``RC_UX_SUCCESSORS`` (``tests/model_mutation_security_suc
 untracked protected source fails closed.
 """
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import re
@@ -207,7 +207,22 @@ def _other_cohort_allows(path, root, ref):
     return any(m.__name__ != __name__ and m.allowed_path(path, root, ref) for m in cohorts())
 
 
+def _call_scope():
+    """The registry's one-outer-call scope (every registered cohort's verdict computed once for this call; dropped on exit, never cached
+    across calls). Without the registry nothing is shared and every check is recomputed, exactly as before."""
+    try:
+        from tests.fin_v2_cohorts import call_scope
+    except ImportError:
+        return nullcontext()
+    return call_scope()
+
+
 def valid(repo=None, ref=None):
+    with _call_scope():
+        return _valid(repo, ref)
+
+
+def _valid(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):
         return False
@@ -230,12 +245,18 @@ def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
     if source is None and PRESENTATION.match(path):
         return valid(repo, ref)
-    if path not in pins or not valid(repo, ref):
+    if path not in pins:
         return False
-    if source is None:
-        return True
-    raw = source.encode() if isinstance(source, str) else source
-    return _blob(raw) == pins[path] or _wf06b_supersedes(path, _blob(raw), Path(repo) if repo is not None else ROOT, ref)
+    if source is not None:
+        # Same conjunction as before (pinned path AND valid tree AND an accepted pin for these bytes), the cheap byte check first: a byte string
+        # that is no accepted pin can never match whatever the tree's validity, so the full governance closure is not run to learn it.
+        raw = source.encode() if isinstance(source, str) else source
+        try:
+            if not (_blob(raw) == pins[path] or _wf06b_supersedes(path, _blob(raw), Path(repo) if repo is not None else ROOT, ref)):
+                return False
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return False
+    return valid(repo, ref)
 
 
 def protected_blobs(repo=None, ref=None):

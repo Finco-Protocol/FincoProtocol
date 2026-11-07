@@ -29,6 +29,10 @@ SCHEMA = 'UX_PR2C_COMBINED_SAVE_EXACT_SOURCE_V1'
 OWNED_PATHS = frozenset((
     '.github/workflows/ci_v4_pr.yml',
     'tests/ci_v4_scope.py',
+    'tools/ci_v4_governance_gate.py',
+    'tests/test_u1_scope.py',
+    'tests/model_mutation_security_successor.py',
+    'tests/test_post413_o1_scope.py',
     'P00_PR2C.md',
     'app/v2/react_capex.py',
     'app/v2/react_workspace_router.py',
@@ -58,6 +62,10 @@ OWNED_PATHS = frozenset((
 SUPERSEDED = frozenset((
     '.github/workflows/ci_v4_pr.yml',
     'tests/ci_v4_scope.py',
+    'tools/ci_v4_governance_gate.py',
+    'tests/test_u1_scope.py',
+    'tests/model_mutation_security_successor.py',
+    'tests/test_post413_o1_scope.py',
     'app/v2/react_capex.py',
     'app/v2/react_workspace_router.py',
     'frontend/src/app/capex/ProfileDraftProvider.tsx',
@@ -163,9 +171,31 @@ def _pr2b():
 
 
 
+# While an enclosing OLDER cohort module is inside its one-outer-call scope nothing is written or mutated (that scope's contract), so this verdict
+# shares THAT scope's memo exactly as ``tests/u1_scope.py`` and ``tests/post413_r1_scope.py`` already do: it lives only as long as the enclosing
+# outer call, is dropped with it and never outlives or crosses an outer call. Outside every scope nothing is shared.
+_ENCLOSING_SCOPE_MODULES = ('tests.wf06b_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope')
+
+
+def _enclosing_call_memo():
+    import sys
+    for name in _ENCLOSING_SCOPE_MODULES:
+        scope = getattr(sys.modules.get(name), '_SCOPE', None)
+        if scope:
+            return scope[-1]
+    return None
+
+
 def exact_blobs_ok(repo=None, ref=None):
     key = (str(repo if repo is not None else ROOT), ref)
     if not _SCOPE:
+        memo = _enclosing_call_memo()
+        if memo is not None:
+            shared = ('tests.ux_pr2c_scope.exact_blobs_ok',) + key
+            if shared not in memo:
+                with scoped():
+                    memo[shared] = exact_blobs_ok(repo, ref)
+            return memo[shared]
         with scoped():
             return exact_blobs_ok(repo, ref)
     if key not in _SCOPE[-1]:
