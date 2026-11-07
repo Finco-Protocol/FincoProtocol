@@ -109,3 +109,19 @@ def test_forged_ancestry_and_committed_mode_are_rejected_with_exact_source(tmp_p
     mode_commit=subprocess.check_output(['git','commit-tree',mode_tree,'-p','HEAD'],input='Synthetic mode refusal\n',cwd=ROOT,text=True,env=env).strip()
     assert not C.exact_blobs_ok(ref=mode_commit)  # correct ancestry and source, forged committed executable mode
     assert C.exact_blobs_ok()
+
+
+def test_signature_only_ci_authority_never_admits_global_drift_or_unknown_ci():
+    from tests import ux_pr2b_scope as B
+    unrelated=ROOT/'app/v2/react_opex_lines.py';raw=unrelated.read_bytes()
+    guard=ROOT/'tools/ci_merge_tree_guard.py';guard_raw=guard.read_bytes()
+    try:
+        unrelated.write_bytes(raw+b'\n')
+        assert C.signature_ok() and not C.exact_blobs_ok() and not C.valid()
+        assert B.ci_authority_ok() and B.ci_owns('tools/ci_merge_tree_guard.py')
+        assert not B.exact_blobs_ok() and not B.ci_owns('tools/ci_v4_unknown.py')
+        guard.write_bytes(guard_raw+b'\n')
+        assert not B.ci_authority_ok() and not B.ci_owns('tools/ci_merge_tree_guard.py')
+    finally:
+        unrelated.write_bytes(raw);guard.write_bytes(guard_raw)
+    assert C.exact_blobs_ok()

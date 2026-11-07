@@ -149,7 +149,7 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         if baseline != d['base_blobs']:
             return False
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref):
+            if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref,signature=not closure):
                 return False
         for path in (INTEGRATION_MANIFESTS if closure else ()):  # sibling manifests are another cohort's signature; global closure/composite check them
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -208,9 +208,13 @@ def _pr3b1():
         return None
 
 
-def _pr3b1_pin(path, blob, repo=None, ref=None):
+def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):
     S = _pr3b1()
-    return S is not None and S.supersedes(path, blob, repo, ref)
+    if S is None:
+        return False
+    if signature:
+        return path in S.SUPERSEDED and S.signature_ok(repo, ref) and S.manifest(repo, ref).get('source_blobs', {}).get(path) == blob
+    return S.supersedes(path, blob, repo, ref)
 
 
 def _pr3b1_owns(path, repo=None, ref=None):

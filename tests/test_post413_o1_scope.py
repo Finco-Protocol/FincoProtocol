@@ -448,7 +448,7 @@ def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
     assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
     before = _audit_shared_sibling_pins(wt, 'HEAD')
     from tests import ux_pr2b_scope as UX3
-    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.manifest(wt)['source_blobs'][path]
+    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]
     original = (wt / path).read_bytes()
     _flip(wt / path)
     with pytest.raises(AssertionError):

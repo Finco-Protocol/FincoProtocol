@@ -56,6 +56,7 @@ OWNED_PATHS = frozenset((
     'tests/ux_pr2c_scope.py',
     'tests/ux_pr3b1_browser_role.py',
     'tests/ux_pr3b1_scope.py',
+    'tests/test_post413_o1_scope.py',
 ))
 SUPERSEDED = frozenset((
     'frontend/src/app/WorkspaceView.tsx',
@@ -79,6 +80,7 @@ SUPERSEDED = frozenset((
     'tests/ux_pr2a_scope.py',
     'tests/ux_pr2b_scope.py',
     'tests/ux_pr2c_scope.py',
+    'tests/test_post413_o1_scope.py',
 ))
 INTEGRATION_MANIFESTS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
@@ -130,23 +132,35 @@ def _base_fact(root, *args):
 
 
 def exact_blobs_ok(repo=None, ref=None):
-    key=(str(repo if repo is not None else ROOT),ref)
+    return _verdict(repo, ref, True)
+
+
+def signature_ok(repo=None, ref=None):
+    """Source/base/mode authority only, for the predecessor's literal CI_PATHS.
+
+    Does not admit any path or satisfy global governance; full exactness still
+    checks the complete changed/untracked closure. Mutable results never escape
+    the enclosing read-only call, and signature/full memo entries are distinct.
+    """
+    return _verdict(repo, ref, False)
+
+
+def _verdict(repo, ref, closure):
+    key=(str(repo if repo is not None else ROOT),ref,closure)
     if not _SCOPE:
-        # Same existing one-outer-call contract as PR2c: no working verdict survives
-        # a read-only enumeration. No per-path whole-tree scan, no process cache.
         for name in ('tests.ux_pr2c_scope','tests.ux_pr2b_scope','tests.ux_pr2a_scope','tests.ux_pr1_scope','tests.u1_scope','tests.wf06b_scope','tests.wf03_lifecycle_scope','tests.fin_v2_wf06a_scope','tests.fin_v2_integration_409_scope'):
             outer=getattr(sys.modules.get(name),'_SCOPE',None)
             if outer:
-                memo=outer[-1];shared=('tests.ux_pr3b1_scope.exact',)+key
+                memo=outer[-1];shared=('tests.ux_pr3b1_scope.verdict',)+key
                 if shared not in memo:
-                    with scoped(): memo[shared]=exact_blobs_ok(repo,ref)
+                    with scoped(): memo[shared]=_verdict(repo,ref,closure)
                 return memo[shared]
-        with scoped(): return exact_blobs_ok(repo,ref)
-    if key not in _SCOPE[-1]: _SCOPE[-1][key]=_exact(repo,ref)
+        with scoped(): return _verdict(repo,ref,closure)
+    if key not in _SCOPE[-1]: _SCOPE[-1][key]=_exact(repo,ref,closure)
     return _SCOPE[-1][key]
 
 
-def _exact(repo=None, ref=None):
+def _exact(repo=None, ref=None, closure=True):
     from tests.fin_v2_cohorts import COHORT_MODULES
     if __name__ not in COHORT_MODULES: return False
     root=Path(repo) if repo is not None else ROOT
@@ -166,13 +180,13 @@ def _exact(repo=None, ref=None):
             if set(a)!=set(b) or any(b[k]!=a[k] and (k not in SUPERSEDED or b[k]!=pins[k]) for k in a): return False
         permitted=OWNED_PATHS|INTEGRATION_MANIFESTS|{MANIFEST}
         changed=set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
-        if changed-permitted: return False
+        if closure and changed-permitted: return False
         if ref is None:
             for p in permitted:
                 f=root/p
                 if not f.is_file() or f.is_symlink() or f.stat().st_mode&0o111: return False
             extra=set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if any(not (p.startswith('evidence/') and p.endswith(('.json','.xml','.png','.txt','.csv','.html','.zip')) and (root/p).is_file() and not (root/p).is_symlink() and not (root/p).stat().st_mode&0o111) for p in extra): return False
+            if closure and any(not (p.startswith('evidence/') and p.endswith(('.json','.xml','.png','.txt','.csv','.html','.zip')) and (root/p).is_file() and not (root/p).is_symlink() and not (root/p).stat().st_mode&0o111) for p in extra): return False
         else:
             modes=_git(root,'ls-tree','-r',ref,'--',*sorted(permitted)).decode().splitlines()
             if len(modes)!=len(permitted) or any(not l.startswith('100644 ') for l in modes): return False
