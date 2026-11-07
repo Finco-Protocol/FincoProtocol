@@ -30,7 +30,7 @@
     "tests/model_react_rcux_analysis_acceptance.py": "c4cdebc54097ad4cf4046d53f260afdf5d6b7366",
     "tests/model_react_rcux_navigation_acceptance.py": "b3753be20065794de0630ea1ccc2942a6ac62cf1",
     "tests/model_react_wf04_debt_metrics_acceptance.py": "7fa7988a2c18ce933b24bb08902bd224406b6700",
-    "tests/model_react_wf2_browser_acceptance.py": "c7e6a5c81a0d01e75825f830a2df8be76dfbcef2",
+    "tests/model_react_wf2_browser_acceptance.py": "9ff132632b3ce63c097d0e80a83569f837e7c779",
     "tests/test_model_workspace_consolidation_browser.py": "ff1137eb91ad5bc08f1c9f79375fae0b132a4862",
     "tests/test_post413_o1_scope.py": "40b935e1cdd342452a60f0d5e1ebf6865be95041",
     "tests/test_rcux_governance.py": "0c13f48288a1644aa5979bccbb1bca752186a6a2",
