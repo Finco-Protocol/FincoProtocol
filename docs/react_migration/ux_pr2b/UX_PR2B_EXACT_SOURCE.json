@@ -20,7 +20,7 @@
     "tests/test_ci_merge_event_identity.py": "262b2b7fbd7b943de66e41a61cd760a7f158fda1",
     "tests/test_model_workspace_consolidation_browser.py": "d883b8d54353a9c86dc3c0d1b14b5adab57c2957",
     "tests/test_post413_o1_scope.py": "8f6e429c1bbdd931144db2f026a3fd005eff9515",
-    "tests/test_u2_scope.py": "d52600649b1cbceeb31ab245d8f2e5b6c1f26d99",
+    "tests/test_u2_scope.py": "40625b89c6a765e24e1ed87d8de219d117165706",
     "tests/test_ux_pr1_scope.py": "53ecaab6d12f193e669aa4af47bd98b45ca5fd4e",
     "tests/test_ux_pr2a_scope.py": "8451649ed6817c318ae9a8e88609a2afdd07d6a9",
     "tests/test_ux_pr2b_scope.py": "e9218ef7d922659dedbf401b0f05678946eb53b2",

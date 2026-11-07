@@ -43,6 +43,7 @@ OWNED_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/test_pr2c_combined_contract.py',
     'tests/test_ux_pr2c_scope.py',
+    'tests/test_u2_scope.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
     'tests/ux_pr2a_scope.py',
@@ -62,6 +63,7 @@ SUPERSEDED = frozenset((
     'frontend/src/app/editing/wsv2Extensions.tsx',
     'static/react/finco-react.js',
     'tests/fin_v2_cohorts.py',
+    'tests/test_u2_scope.py',
     'tests/u1_scope.py',
     'tests/u2_scope.py',
     'tests/ux_pr2a_scope.py',
@@ -103,6 +105,17 @@ def _base_fact(root, *args):
 
 def _read(root, path, ref):
     return (Path(root) / path).read_bytes() if ref is None else _git(root, 'show', ref + ':' + path)
+
+
+# CI generates untracked evidence before F01/static attribution. Follow the same finite
+# artifact types as U2 / UX-PR2b; this never admits a changed tracked file or source.
+_CI_EVIDENCE_EXTENSIONS = ('.json', '.xml', '.png', '.webp', '.jpg', '.jpeg', '.txt', '.csv', '.svg', '.html', '.zip')
+
+
+def _ci_evidence_only(root, path):
+    f = Path(root) / path
+    return (path.startswith('evidence/') and path.endswith(_CI_EVIDENCE_EXTENSIONS)
+            and f.is_file() and not f.is_symlink() and not f.stat().st_mode & 0o111)
 
 
 def _blob(raw):
@@ -191,7 +204,7 @@ def _exact_blobs_ok(repo=None, ref=None):
         if ref is None:
             untracked = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines()) - \
                 (OWNED_PATHS | INTEGRATION_MANIFESTS | {MANIFEST})
-            if untracked:
+            if any(not _ci_evidence_only(root, p) for p in untracked):
                 return False
         else:
             modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()

@@ -18,12 +18,13 @@
     "static/react/finco-react.js": "4399aa34d373265b6074fcba35b36eae53c6e98f",
     "tests/fin_v2_cohorts.py": "aa39e445f47280b48e41cfe998320e7a1a2e6468",
     "tests/test_pr2c_combined_contract.py": "b850e59dbc21e6d5ab52eab460fbcd0a0626f082",
+    "tests/test_u2_scope.py": "40625b89c6a765e24e1ed87d8de219d117165706",
     "tests/test_ux_pr2c_scope.py": "04084ccaa502d46d1fe9d6d959c072f44d34328c",
     "tests/u1_scope.py": "f031e1ff8689f50f640858c7a26f1f26917e1e6d",
     "tests/u2_scope.py": "59965a6f7d96e7986f702c0271b88a52c4a5a461",
     "tests/ux_pr2a_scope.py": "06170c0c2b885947da1d553b012925f71dad56ec",
     "tests/ux_pr2b_scope.py": "eb425c7edcb3919859b20bfb54c6ebe3ce959c32",
-    "tests/ux_pr2c_scope.py": "98ebfb44ebf82bb899bee19befdc5374ebbaca53"
+    "tests/ux_pr2c_scope.py": "6b86fa2a90427bfbd499f0f67c960e3dc43a678b"
   },
   "base_blobs": {
     "app/v2/react_capex.py": "001ad8bb3f95a846d45955baf701b34637c3c09e",
@@ -36,6 +37,7 @@
     "frontend/src/app/editing/wsv2Extensions.tsx": "86f1dcee84c672605cc1457e0e32bcca61992d27",
     "static/react/finco-react.js": "73eb0e605461e278496d95bf6f3c8c8e3ddd5e8b",
     "tests/fin_v2_cohorts.py": "fc0a1d3fbda880dd8a39fa28adb1c660e7b84b95",
+    "tests/test_u2_scope.py": "d52600649b1cbceeb31ab245d8f2e5b6c1f26d99",
     "tests/u1_scope.py": "2e102e0a61ad765234e31a4a4324efbfc8ba4a9c",
     "tests/u2_scope.py": "3c4cd4fee236b331cedd537af989d4880deb243f",
     "tests/ux_pr2a_scope.py": "0d97d6ba7ca66c40080a94dc502f0da649647e8e",
