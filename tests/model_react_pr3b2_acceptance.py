@@ -175,6 +175,7 @@ def test_pr3b2_investor_discard_keeps_separate_scalar_draft(live_server,fin_sess
     context,page,rec,errors=fin_session('pr3b2-investor-guard')
     root=open_inputs(page,live_server,rec.project_code);before=draft(rec)
     root.get_by_label('All-in Interest Rate',exact=True).fill('4.64')
+    page.locator('#pr3b1-funding > summary').click()
     page.locator('[data-financing-read-link][data-financing-tab-button="investors"]').click()
     page.locator('[data-inv="agreement_id"]').fill('PR3B2-UNSAVED')
     page.get_by_role('button',name='Back to Financing workspace',exact=True).click()

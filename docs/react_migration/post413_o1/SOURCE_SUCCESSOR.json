@@ -64,7 +64,7 @@
     "tests/test_post413_r1_scope.py": "f66e92de95fec29d39a1f811cf6922f84c5c9eb9",
     "tests/test_rcux_governance.py": "0c13f48288a1644aa5979bccbb1bca752186a6a2",
     "tests/test_u1_scope.py": "8f58878effa3d1d07fe630eea68b0e0c16c01d9b",
-    "tests/test_u2_scope.py": "b19776c30bb04943ac7dd590d6575a43a5589b6a",
+    "tests/test_u2_scope.py": "ca7e4ece8bfbea94d20facb92361118511908ca9",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "8398ce67b25d0354dc4167192e5e55b662c606b6",
     "tests/u2_scope.py": "fa1b1cfcd264c971b6898a0932941a516d1c4198"

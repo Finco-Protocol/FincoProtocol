@@ -21,10 +21,10 @@
     "tests/ux_pr2b_scope.py": "d93a533b043cf2a0f9919d5c719f168d37971aef",
     "tests/u1_scope.py": "8398ce67b25d0354dc4167192e5e55b662c606b6",
     "tests/u2_scope.py": "fa1b1cfcd264c971b6898a0932941a516d1c4198",
-    "tests/test_u2_scope.py": "b19776c30bb04943ac7dd590d6575a43a5589b6a",
+    "tests/test_u2_scope.py": "ca7e4ece8bfbea94d20facb92361118511908ca9",
     "tests/test_ux_pr1_scope.py": "04bf1d19b954fbfd17c0df2984871472ecdf715b",
     "tests/test_ux_pr3b2_scope.py": "4d5bc66b36153de761d5be4f18947a1692dbc922",
-    "tests/model_react_pr3b2_acceptance.py": "2ccc0a128ba0e9dc8f4c539baa2db92b9d6b545d",
+    "tests/model_react_pr3b2_acceptance.py": "99791cf5058463f7e8ded09d48d217880ddbb9fd",
     "tests/ux_pr3b2_browser_role.py": "5b93729cbdfb502e843c86daddbb161198c3389b",
     "tests/test_model_workspace_consolidation_browser.py": "423ec822d396a2e83ea58525222de70828909858",
     "frontend/src/app/editing/wsv2Extensions.tsx": "13ad921dc13d7e7d1c813ffa12fcfa0f4dd37008"
