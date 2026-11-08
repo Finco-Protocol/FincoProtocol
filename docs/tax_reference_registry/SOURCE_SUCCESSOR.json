@@ -3,6 +3,7 @@
   "base": "785024c752bbd1700d6051cf15115d9980d0b4a1",
   "base_blobs": {
     "tests/fin_v2_cohorts.py": "3d38dad0829cf8667f3498589723b435d5ca543a",
+    "tests/test_ux_pr3b2_scope.py": "f7ac957d768146b923b85614180f90236b003745",
     "tests/ux_pr3b1_scope.py": "f269ba3d1785ca033874a766e8ab8f155f19c710",
     "tests/ux_pr3b2_scope.py": "00270d57758883d5f88679e9980efe9c084ba1dd"
   },
@@ -26,8 +27,9 @@
     "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
     "tests/tax_reference_registry/test_registry_compare_activation.py": "7af9aaa8237e8cb6d829eedb51d00640fe96d672",
     "tests/tax_reference_registry/test_schema_and_currency.py": "05821ab7038e6276dd255c5baff48f10a9aee4ad",
-    "tests/tax_reference_registry_scope.py": "1475382c5435814aef63394483a8f269ccdad147",
-    "tests/test_tax_reference_registry_scope.py": "eaf020eb90f68e89bb96eeacee24e50ad7c34d4a",
+    "tests/tax_reference_registry_scope.py": "c2eb1a44873249a2b50de4f5c3ac6902ae04b1d3",
+    "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
+    "tests/test_ux_pr3b2_scope.py": "1240153642f2467ab1ec6b47b6da2cf13ea4e467",
     "tests/ux_pr3b1_scope.py": "5643b96b873471544c5d1ae5e20bd6ee3ec87f22",
     "tests/ux_pr3b2_scope.py": "0dc684985ba3a60082bb9c24c729b0a85c26f9b7"
   }

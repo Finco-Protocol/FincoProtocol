@@ -261,3 +261,15 @@ def test_successor_rejects_wrong_ancestor_and_tampered_cohort(restored_manifest)
     assert cohort.exact_blobs_ok() is False
     assert S.effective_pins().get("tests/fin_v2_cohorts.py") != _git_blob("tests/fin_v2_cohorts.py")
     assert S.exact_blobs_ok() is False
+
+
+def test_signature_ignores_unrelated_drift_but_full_exactness_does_not():
+    target = ROOT / "app" / "v2" / "react_opex_lines.py"
+    raw = target.read_bytes()
+    try:
+        target.write_bytes(raw + b"\n")
+        assert cohort.signature_ok() is True
+        assert cohort.exact_blobs_ok() is False  # a protected-prefix change is never admitted
+    finally:
+        target.write_bytes(raw)
+    assert cohort.exact_blobs_ok() is True

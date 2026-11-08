@@ -69,6 +69,7 @@ GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/ux_pr3b1_scope.py',
     'tests/ux_pr3b2_scope.py',
+    'tests/test_ux_pr3b2_scope.py',
     'tests/tax_reference_registry_scope.py',
 ))
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
@@ -78,6 +79,7 @@ SUPERSEDED = frozenset((
     'tests/fin_v2_cohorts.py',
     'tests/ux_pr3b1_scope.py',
     'tests/ux_pr3b2_scope.py',
+    'tests/test_ux_pr3b2_scope.py',
 ))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'app/', 'frontend/', 'static/')
 FORBIDDEN_PATHS = frozenset(('main_web.py',))
@@ -136,16 +138,20 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    return _verdict(repo, ref, True)
+
+
+def _verdict(repo, ref, closure):
     if _SCOPE:
-        key = (str(repo if repo is not None else ROOT), ref)
+        key = (str(repo if repo is not None else ROOT), ref, closure)
         memo = _SCOPE[-1]
         if key not in memo:
-            memo[key] = _exact_blobs_ok(repo, ref)
+            memo[key] = _exact_blobs_ok(repo, ref, closure)
         return memo[key]
-    return _exact_blobs_ok(repo, ref)
+    return _exact_blobs_ok(repo, ref, closure)
 
 
-def _exact_blobs_ok(repo=None, ref=None):
+def _exact_blobs_ok(repo=None, ref=None, closure=True):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
@@ -178,10 +184,12 @@ def _exact_blobs_ok(repo=None, ref=None):
             if listed != pins:
                 return False
         # 4. no protected prefix ever moved since BASE
-        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
-                       *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
-        if changed:
-            return False
+        # (signature-only verdicts skip this global-closure step: they never judge unrelated paths)
+        if closure:
+            changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
+                           *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
+            if changed:
+                return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
             for p in OWNED_PATHS | {MANIFEST}:
@@ -202,8 +210,9 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def signature_ok(repo=None, ref=None):
-    """Source/base/mode authority only. This cohort reads no foreign manifest, so its signature is its full exact verdict."""
-    return exact_blobs_ok(repo, ref)
+    """Source/base/mode authority only: exact owned bytes, base, tree and modes. It never judges unrelated (global-closure) paths, so a
+    dirty foreign file cannot flip it; full exactness (``exact_blobs_ok``) still adds the protected-prefix closure."""
+    return _verdict(repo, ref, False)
 
 
 def base_blob(path, repo=None, ref=None):
