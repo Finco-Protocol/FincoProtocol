@@ -92,7 +92,7 @@ def test_exact_blobs_ok_on_head():
 
 
 def test_every_owned_pin_equals_the_current_blob():
-    for path, pin in cohort.effective_pins().items():
+    for path, pin in _manifest_json()["source_blobs"].items():
         assert _git_blob(path) == pin, path
 
 

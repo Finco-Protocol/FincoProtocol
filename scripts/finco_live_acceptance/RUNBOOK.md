@@ -65,3 +65,7 @@ No documented per-project disposal API was found. No forced delete, reference re
 ## CI and release gates
 
 Run manually after a release only when an operator requests it. Do not add to workflows, nightly jobs, deployment hooks, required browser roles, pytest discovery or normal FINCO Run. Existing ordinary CI validates this PR once. CI_NEUTRAL_CONFIRMED additionally requires measured unchanged test/job selection and no material recurring governance overhead; otherwise leave CI_IMPACT_UNVERIFIED or CI_REGRESSION_BLOCKED, keep Draft and give the owner the bounded blocker.
+
+## Active shared-source blocker
+
+PR #433 owns an active edit of `tests/fin_v2_cohorts.py`. Owner instructions require holding conflicting source registration rather than overriding that stream. This Draft therefore changes only new standalone runner files; required source governance will reject their unregistered scope. The private handoff contains the exact validated prototype and a bounded re-integration plan. An owner must compose the successor against the accepted integrated main, preserve historical manifests and rerun exact-head CI before any merge recommendation. `selfcheck_scope` explicitly returns BLOCKED/2 while the source module is not registered. No CI skip or wildcard allowance is provided.

@@ -6,7 +6,11 @@ from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import patch
-from tests import onaccept01_scope as N,tax_reference_registry_scope as T,fin_v2_cohorts as C
+from tests import tax_reference_registry_scope as T,fin_v2_cohorts as C
+try:
+    from tests import onaccept01_scope as N
+except ImportError:
+    N=None
 
 @contextmanager
 def restore(p):
@@ -64,4 +68,8 @@ class SourceChecks(unittest.TestCase):
             self.assertFalse(p.name.startswith('test'))
             ast.parse(p.read_text())
 
-if __name__=='__main__':unittest.main(verbosity=2)
+if __name__=='__main__':
+    if N is None:
+        print('SOURCE_INTEGRATION_BLOCKED_ACTIVE_PR433; private bounded patch-plan required')
+        raise SystemExit(2)
+    unittest.main(verbosity=2)
