@@ -24,17 +24,30 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   const [problems, setProblems] = useState<string[]>([]);
   const [inFlight, setInFlight] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [staleDraft, setStaleDraft] = useState(false);
   const [locked, setLocked] = useUnresolvedLock("sheet-debt-bankability");
   const singleFlight = useSingleFlight();
   const grid = useRef<HTMLTableElement>(null);
 
   // A new authoritative view replaces the draft (a draft whose baseline moved underneath it is never silently rebased).
   const seen = useRef(baselineText);
+  const ownCommit = useRef(false);
   useEffect(() => {
-    if (seen.current !== baselineText) { seen.current = baselineText; setDraft(baseline); setProblems([]); }
+    if (ownCommit.current || serializeBankability(draft) === seen.current) {
+      ownCommit.current=false;seen.current=baselineText;setDraft(baseline);setStaleDraft(false);setProblems([]);
+    } else {
+      // Inherited (disabled, non-submitted) vectors follow the server projection;
+      // actively edited period vectors and every serialized document input survive.
+      setDraft(d => ({ ...d, rates: d.ratesMode === 'inherit' ? baseline.rates : d.rates,
+        targets: d.targetsMode !== 'periods' ? baseline.targets : d.targets }));
+      if (seen.current !== baselineText) {
+        setStaleDraft(true);setStatus({ tone: 'conflict', text: 'Saved configuration changed. Your draft is retained; review the refreshed values before saving.' });
+      }
+      seen.current = baselineText;
+    }
   }, [baseline, baselineText]);
   // Only a different project resets the editor; a reload after a Save keeps its success message (the baseline effect above re-bases a clean draft).
-  useEffect(() => { setDraft(baseline); setStatus(null); setProblems([]); setConfirmReset(false); }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setDraft(baseline); setStatus(null); setProblems([]); setConfirmReset(false);setStaleDraft(false); }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const draftText = serializeBankability(draft);
   const dirty = draftText !== baselineText;
@@ -70,6 +83,8 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         });
         if ("kind" in result) { setLocked(true); setStatus({ tone: "conflict", text: result.message }); return; }
         if (!result.ok) { setStatus({ tone: "error", text: `${result.message} Nothing was changed.` }); return; }
+        ownCommit.current = true;
+        setStaleDraft(false);
         setStatus({ tone: "ok", text: `${label} saved and read back. The Last Run, if any, is now Results outdated — press Run when ready.` });
         onSaved();
       } finally { setInFlight(false); setConfirmReset(false); }
@@ -120,7 +135,8 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   const reserveLocked = !isReleasedReserveMode(baseline.reserveMode);   // a stored unreleased policy is read-only and preserved
 
   return (
-    <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title">
+    <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title" aria-busy={inFlight}
+      data-state={inFlight ? 'saving' : staleDraft || locked ? 'stale' : status?.tone === 'error' ? 'error' : dirty ? 'dirty' : status?.tone === 'ok' ? 'saved' : 'clean'}>
       <h3 id="rcm-bank-title" className="rcm-h3">Bankability configuration <span className="rcm-badge" data-bank-dirty={dirty}>{dirty ? "UNSAVED CHANGES" : "SAVED"}</span></h3>
       <p className="rx-note">Working inputs, project-owned across scenarios. The Last Run stays unchanged until you Run. Save writes only this configuration; the server validates every value.</p>
       {!editable && <p className="rx-status rx-status-conflict" role="status" data-bank-readonly="true">Read-only: templates cannot be edited. Start a project from this template to change financing terms.</p>}
@@ -255,9 +271,10 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
       {problems.length > 0 && (
         <ul className="rx-status rx-status-error rcm-problems" role="alert" data-bank-problems="true">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
       )}
+      {staleDraft && <p role="alert">Your draft differs from the refreshed saved configuration. <button type="button" disabled={disabled} onClick={() => setStaleDraft(false)}>Keep draft against refreshed configuration</button></p>}
       <div className="rcm-actions-row">
-        <button type="button" className="rx-button" data-bank-save="true" disabled={disabled || !dirty} aria-busy={inFlight} onClick={submit}>{inFlight ? "Saving…" : "Save bankability"}</button>
-        <button type="button" className="rx-button rx-button-secondary" data-bank-discard="true" disabled={disabled || !dirty} onClick={() => { setDraft(baseline); setProblems([]); setStatus(null); }}>Discard changes</button>
+        <button type="button" className="rx-button" data-bank-save="true" disabled={disabled || !dirty || staleDraft} aria-busy={inFlight} onClick={submit}>{inFlight ? "Saving…" : "Save bankability"}</button>
+        <button type="button" className="rx-button rx-button-secondary" data-bank-discard="true" disabled={disabled || !dirty} onClick={() => { setDraft(baseline); setProblems([]); setStatus(null);setStaleDraft(false); }}>Discard changes</button>
         {!confirmReset
           ? <button type="button" className="rx-button rx-button-secondary" data-bank-reset="true" disabled={disabled || Object.keys(view.config ?? {}).length === 0} onClick={() => setConfirmReset(true)}>Reset configuration…</button>
           : <span role="group" aria-label="Confirm reset" data-bank-reset-confirm="true">Remove the whole bankability configuration{reserveLocked ? ", including the stored reserve policy" : ""}?{" "}
