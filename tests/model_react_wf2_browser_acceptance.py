@@ -40,6 +40,14 @@ def open_workspace(page, base, record, section="overview"):
 
 def goto_section(page, section):
     page.evaluate(f"() => {{ window.location.hash = '#{section}'; }}")
+    if section == "financing":
+        page.wait_for_selector("[data-financing-tab-button='terms'], nav[aria-label='Available existing Financing views']", state="attached")
+        fallback = page.locator("nav[aria-label='Available existing Financing views']")
+        if fallback.count():
+            page.get_by_text("Existing Financing views", exact=True).click()
+            fallback.get_by_role("button", name="Debt terms", exact=True).click()
+        else:
+            page.locator("[data-financing-tab-button='terms']").click()
 
 
 def runs(context, base, record):

@@ -338,10 +338,11 @@ def check_inputs_save_scope_language_is_accurate_and_free_of_engineering_copy(br
         page.wait_for_function("() => /CAPEX line below/.test(document.querySelector(\"[data-save-scope='cost-lines']\")?.innerText)")
         open_section(page, base, record.project_code, "financing")
         # open_section only waits for the generic workspace.  The Debt terms editor loads its own read, so wait for the
-        # editor this check is about (Debt terms is the default Financing tab), then keep the exact-uniqueness assertion.
+        # editor this check is about via the one-screen entry, then keep the exact-uniqueness assertion.
         studio = page.locator("[data-financing-studio]")
         studio.wait_for(timeout=30000)
-        assert studio.get_attribute("data-financing-tab") == "terms", "the Financing section must open on Debt terms"
+        assert studio.get_attribute("data-financing-tab") == "workspace", "Financing opens its one-screen read layer"
+        page.locator("[data-financing-tab-button='terms']").click()
         page.locator("[data-sheet-editor='debt']").wait_for(timeout=30000)
         assert page.locator("[data-save-scope='debt']").count() == 1
         open_section(page, base, record.project_code, "scenarios")
@@ -448,6 +449,7 @@ def check_inputs_are_compact_complete_and_navigable(browser, base, kind, width, 
         settle_inputs(page)
         assert page.locator("[data-inputs-overview-host='visible']").count() == 1, "Inputs re-opens on the overview, not on a past workbench click"
         input_jump(page, 'Financing')
+        page.locator("[data-financing-read-link][data-financing-tab-button='terms']").click()
         page.wait_for_selector("[data-sheet-editor='debt']")
         assert page.url.endswith("#financing")
         if kind == "solar" or width == 390:

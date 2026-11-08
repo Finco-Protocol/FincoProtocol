@@ -88,6 +88,25 @@ def _tabs(page) -> int:
 
 def _click_every_tab(page, label, seen):
     """Visit every tab of every tablist currently rendered (one nesting level at a time) and audit after each."""
+    if label == "financing":
+        # The one-screen entry replaces tabs; retain the audit of all seven
+        # existing destinations through their actual compatibility controls.
+        page.locator('[data-financing-read-link][data-financing-tab-button="terms"]').click()
+        page.wait_for_selector('[data-sheet-editor="debt"]')
+        destinations = (
+            ("terms", '[data-sheet-editor="debt"]'),
+            ("overview", '[data-financing-overview]'),
+            ("debt-metrics", '[data-debt-metrics], [data-dm-empty]'),
+            ("bankability", '[data-bankability-editor]'),
+            ("facilities", '[data-capital-stack]'),
+            ("sources-uses", '[data-sources-uses]'),
+            ("investors", '[data-investors-panel]'),
+        )
+        for view, marker in destinations:
+            page.locator('[data-financing-tab-button="' + view + '"]').click()
+            page.wait_for_selector(marker, timeout=60000)
+            audit(page, f"{label} > {view}", seen)
+        return len(destinations)
     total = 0
     for list_index in range(page.locator("[role=tablist]").count()):
         tablist = page.locator("[role=tablist]").nth(list_index)
