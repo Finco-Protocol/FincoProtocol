@@ -895,3 +895,6 @@ from tests.model_react_ux_pr2b_acceptance import *  # noqa: E402,F401,F403
 
 # PR3b-1: mounted one-screen read layer, compatibility editors and refusal acceptance.
 from tests.model_react_pr3b1_acceptance import *  # noqa: E402,F401,F403
+
+# PR3b-2: additive canonical block Save lifecycle acceptance.
+from tests.model_react_pr3b2_acceptance import *  # noqa: E402,F401,F403

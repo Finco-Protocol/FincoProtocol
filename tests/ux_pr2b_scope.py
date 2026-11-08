@@ -41,7 +41,7 @@ def effective_pins(repo=None, ref=None):
         pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
     S5 = _pr3b1()
     if S5 is not None and S5.exact_blobs_ok(repo, ref):
-        pins.update({p: b for p, b in S5.manifest(repo, ref)['source_blobs'].items() if p in S5.SUPERSEDED})
+        pins.update({p: b for p, b in S5.effective_pins(repo, ref).items() if p in S5.SUPERSEDED})
     return pins
 
 
@@ -213,7 +213,7 @@ def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):
     if S is None:
         return False
     if signature:
-        return path in S.SUPERSEDED and S.signature_ok(repo, ref) and S.manifest(repo, ref).get('source_blobs', {}).get(path) == blob
+        return path in S.SUPERSEDED and S.signature_ok(repo, ref) and S.effective_pins(repo, ref, signature=True).get(path) == blob
     return S.supersedes(path, blob, repo, ref)
 
 

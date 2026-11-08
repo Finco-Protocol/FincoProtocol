@@ -1,10 +1,10 @@
 {
   "authorization": "Financial Owner T01-D brief 2026-11-08: governed dormant integration of the offline tax reference registry; reference-only; NO country activation, NO FX defaults, NO engine hook, NO tax computation.",
-  "base": "4e22f330d97eec66befcbb5df6dc4e1529ae6835",
+  "base": "785024c752bbd1700d6051cf15115d9980d0b4a1",
   "base_blobs": {
-    "tests/fin_v2_cohorts.py": "623f4c61c2fee0601fa186d3372aceb9822d41a4"
+    "tests/fin_v2_cohorts.py": "3d38dad0829cf8667f3498589723b435d5ca543a"
   },
-  "base_tree": "cc12db380b5d3fb51dc46b4113050855864bc360",
+  "base_tree": "063d27ce5ef6841ec641e377662cbda924d97667",
   "schema_version": "T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1",
   "source_blobs": {
     "docs/tax_reference_registry/FINAL_REPORT_HR.md": "069624c6e99b21341beafa56added55da17ff986",
@@ -18,7 +18,7 @@
     "tax_reference_registry/loader.py": "2146fe00d71045b2c7731cedf522672afbe8233e",
     "tax_reference_registry/records.py": "3e42f3ed36794e459490dd9c92171b98c557977f",
     "tax_reference_registry/registry.py": "6e7bce70dbdfc03c09df63d881cdf328dbb462fa",
-    "tests/fin_v2_cohorts.py": "09d162ce85a97fcfddb520e39be394859b55c921",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
     "tests/tax_reference_registry/conftest.py": "396c5751b86b04ff6092ed217aeea1a803716658",
     "tests/tax_reference_registry/test_loader_errors.py": "25ef6f5de8fd64137f232d13c473fa5565ce3069",
     "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",

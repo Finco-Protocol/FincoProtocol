@@ -126,9 +126,13 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try: yield
-    finally: _SCOPE.pop()
+    from contextlib import ExitStack
+    with ExitStack() as successors:
+        S=_successor()
+        if S is not None: successors.enter_context(S.scoped())
+        _SCOPE.append({})
+        try: yield
+        finally: _SCOPE.pop()
 
 
 def _base_fact(root, *args):
@@ -178,24 +182,28 @@ def _exact(repo=None, ref=None, closure=True):
         if _base_fact(root,'rev-parse',BASE+'^{tree}').decode().strip()!=BASE_TREE: return False
         baseline={line.split('\t',1)[1]:line.split()[2] for line in _base_fact(root,'ls-tree','-r',BASE,'--',*sorted(OWNED_PATHS)).decode().splitlines()}
         if baseline!=d['base_blobs']: return False
+        S=_successor()
+        next_ok=S is not None and (S.exact_blobs_ok(root,ref) if closure else S.signature_ok(root,ref))
+        next_pins={p:b for p,b in S.manifest(root,ref).get('source_blobs',{}).items() if p in S.SUPERSEDED} if next_ok else {}
+        next_owns=lambda p: next_ok and S.allowed_path(p,root,ref)
         for p,b in pins.items():
-            if _blob(_read(root,p,ref))!=b: return False
+            if _blob(_read(root,p,ref))!=b and next_pins.get(p)!=_blob(_read(root,p,ref)): return False
         permitted=OWNED_PATHS|{MANIFEST}
         if closure:
             for p in INTEGRATION_MANIFESTS:
                 before=json.loads(_base_fact(root,'show',BASE+':'+p));now=json.loads(_read(root,p,ref))
                 if set(now)!=set(before) or any(now[k]!=before[k] for k in before if k!='source_blobs'): return False
                 a,b=before['source_blobs'],now['source_blobs']
-                if set(a)!=set(b) or any(b[k]!=a[k] and (k not in SUPERSEDED or b[k]!=pins[k]) for k in a): return False
+                if set(a)!=set(b) or any(b[k]!=a[k] and (k not in SUPERSEDED or b[k]!=pins[k]) and next_pins.get(k)!=b[k] for k in a): return False
             permitted=permitted|INTEGRATION_MANIFESTS
             changed=set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
-            if changed-permitted: return False
+            if any(not next_owns(p) for p in changed-permitted): return False
         if ref is None:
             for p in permitted:
                 f=root/p
                 if not f.is_file() or f.is_symlink() or f.stat().st_mode&0o111: return False
             extra=set(_git(root,'ls-files','--others','--exclude-standard').decode().splitlines())-permitted
-            if closure and any(not (p.startswith('evidence/') and p.endswith(('.json','.xml','.png','.txt','.csv','.html','.zip')) and (root/p).is_file() and not (root/p).is_symlink() and not (root/p).stat().st_mode&0o111) for p in extra): return False
+            if closure and any(not next_owns(p) and not (p.startswith('evidence/') and p.endswith(('.json','.xml','.png','.txt','.csv','.html','.zip')) and (root/p).is_file() and not (root/p).is_symlink() and not (root/p).stat().st_mode&0o111) for p in extra): return False
         else:
             modes=_git(root,'ls-tree','-r',ref,'--',*sorted(permitted)).decode().splitlines()
             if len(modes)!=len(permitted) or any(not l.startswith('100644 ') for l in modes): return False
@@ -205,7 +213,8 @@ def _exact(repo=None, ref=None, closure=True):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS|INTEGRATION_MANIFESTS|{MANIFEST}
+    S=_successor()
+    return path in OWNED_PATHS|INTEGRATION_MANIFESTS|{MANIFEST} or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
 
 
 def base_blob(path, repo=None, ref=None):
@@ -213,7 +222,23 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and manifest(repo,ref).get('source_blobs',{}).get(path)==value
+    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
+
+
+def _successor():
+    try:
+        from tests import ux_pr3b2_scope as S
+        return S
+    except ImportError:
+        return None
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    pins=dict(manifest(repo,ref).get('source_blobs',{}))
+    S=_successor()
+    if S is not None and (S.signature_ok(repo,ref) if signature else S.exact_blobs_ok(repo,ref)):
+        pins.update({p:b for p,b in S.manifest(repo,ref)['source_blobs'].items() if p in S.SUPERSEDED})
+    return pins
 
 
 def valid(repo=None, ref=None):

@@ -88,7 +88,7 @@ def effective_pins(repo=None, ref=None):
         pins.update({p: b for p, b in S4.manifest(repo, ref)['source_blobs'].items() if p in S4.SUPERSEDED})
     S5 = _pr3b1()
     if S5 is not None and S5.exact_blobs_ok(repo, ref):
-        pins.update({p: b for p, b in S5.manifest(repo, ref)['source_blobs'].items() if p in S5.SUPERSEDED})
+        pins.update({p: b for p, b in S5.effective_pins(repo, ref).items() if p in S5.SUPERSEDED})
     return pins
 
 def _git(root, *args):

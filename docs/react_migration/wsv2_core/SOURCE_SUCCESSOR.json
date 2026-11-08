@@ -342,7 +342,7 @@
     "frontend/src/styles/wsv2-core.css": "b1ee9bd4c32cd297c03b493b931c4d713122b324",
     "static/react/finco-react.css": "4634e51e1707a908dec5cd8ec4010487617a5fa0",
     "static/react/finco-react.js": "a8e42da398fdf71f2fe4c21cbcbd8e96ab25cd8e",
-    "tests/fin_v2_cohorts.py": "09d162ce85a97fcfddb520e39be394859b55c921",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
     "tests/model_mutation_security_successor.py": "9a8f9205a43a4d48dec2ca20f805c0eb9adfe409",
     "tests/model_react_mvp_acceptance.py": "12cc69a78ded7a79dc00b699a5bb5d173feb3b08",
     "tests/model_react_rcm_financing_acceptance.py": "df42c9e19f43a597a8267c5f6c973dea6f6ff884",

@@ -41,7 +41,7 @@
     "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
     "static/react/finco-react.js": "758924d56ee937ebd44a4fd1c1595b3142856bf2",
     "tests/ci_v4_scope.py": "fe25a85088ee3525e4aba35822996b124af10a2e",
-    "tests/fin_v2_cohorts.py": "09d162ce85a97fcfddb520e39be394859b55c921",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
     "tests/fin_v2_rcux_scope.py": "44098f99570fdebb443c9163a5a6ab743ea38598",
     "tests/model_mutation_security_successor.py": "f311ab71314f6a5a149ec92d6aab4d57b6d4b808",
     "tests/test_post413_o1_scope.py": "de67bd7a7c6eaf103d551e96cf58b34a943a1f31",

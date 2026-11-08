@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "../../styles/rcm-financing.css";
 import { SheetFieldsEditor } from "../workflow/SheetFieldsEditor";
-import { LoadingNote, UnavailableNote } from "../workflow/workflowShared";
+import { LoadingNote, UnavailableNote, useLeaveGuard, useDirtyTotal, WorkflowDialog } from "../workflow/workflowShared";
 import { BankabilityEditor } from "./BankabilityEditor";
 import { fetchFinancingStudio } from "./financingApi";
 import { CapitalStackView, OverviewView, SourcesUsesPanel } from "./FinancingViews";
@@ -38,6 +38,11 @@ export function FinancingStudio({ project, scenarioId, reloadKey, onSaved }: {
   const [studio, setStudio] = useState<FinancingStudioPayload | null>(null);
   const [error, setError] = useState<{ code: string; message?: string } | null>(null);
   const [nonce, setNonce] = useState(0);
+  const guard = useLeaveGuard();
+  const { pendingKeys, breakdown, isUnresolved } = useDirtyTotal();
+  const [leaveDocument, setLeaveDocument] = useState<Tab | null>(null);
+  const [navigationNotice, setNavigationNotice] = useState<string | null>(null);
+  useEffect(() => { setLeaveDocument(null); setNavigationNotice(null); }, [project, scenarioId]);
 
   const load = useCallback(async () => {
     const result = await fetchFinancingStudio(project);
@@ -48,17 +53,41 @@ export function FinancingStudio({ project, scenarioId, reloadKey, onSaved }: {
   const needsStudio = tab !== "workspace" && tab !== "terms" && tab !== "investors" && tab !== "debt-metrics";
   useEffect(() => { if (needsStudio) void load(); }, [load, reloadKey, nonce, needsStudio]);
 
-  function choose(next: Tab) {
+  function adopt(next: Tab) {
     setTab(next);
     const url = new URL(window.location.href);
     url.hash = "financing";
     if (next === "workspace") url.searchParams.delete("financing"); else url.searchParams.set("financing", next);
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }
+  function choose(next: Tab) {
+    if (next === tab) return;
+    // Internal document navigation discards only the mounted local document.
+    // Shared scalar drafts remain in ChangesProvider; global shell navigation
+    // retains its existing guard and discard semantics.
+    const documentKey = tab === 'investors' ? 'sheet-debt-investors'
+      : tab === 'workspace' || tab === 'bankability' ? 'sheet-debt-bankability' : null;
+    const relevant = (key: string) => key === documentKey || key === 'sheet-debt' || key === 'sheet-debt-inline';
+    if (pendingKeys.some(key => relevant(key) && !isUnresolved(key))) {
+      setNavigationNotice('A Financing Save is in progress. Wait for its result before changing views.');
+      return;
+    }
+    setNavigationNotice(null);
+    if (documentKey && ((breakdown[documentKey] ?? 0) > 0 || pendingKeys.includes(documentKey))) {
+      setLeaveDocument(next);
+      return;
+    }
+    guard(() => adopt(next), { ignore: key => !['sheet-debt', 'sheet-debt-inline'].includes(key) || !pendingKeys.includes(key) });
+  }
 
   return (
     <div data-financing-studio="true" data-financing-tab={tab} data-financing-freshness={studio?.freshness ?? "LOADING"}>
-      {tab === "workspace" ? <FinancingReadLayer scope={{ project, scenarioId, historyId: selectedRunFromUrl() ?? undefined }} reloadKey={reloadKey} onOpenExisting={view => { if (TABS.some(t => t.id === view)) choose(view as Tab); }} /> : <>
+      {navigationNotice && <p role="status">{navigationNotice}</p>}
+      {leaveDocument && <WorkflowDialog title="Leave this Financing document?"
+        description="Unsaved edits in this document will be discarded. Separate scalar drafts are retained. Leaving does not cancel or retry an unresolved Save; reload the workspace to reconcile its outcome."
+        confirmLabel="Discard document and continue" cancelLabel="Stay and keep editing" danger
+        onCancel={() => setLeaveDocument(null)} onConfirm={() => { const next = leaveDocument; setLeaveDocument(null); adopt(next); }} />}
+      {tab === "workspace" ? <FinancingReadLayer scope={{ project, scenarioId, historyId: selectedRunFromUrl() ?? undefined }} reloadKey={reloadKey} onSaved={onSaved} onOpenExisting={view => { if (TABS.some(t => t.id === view)) choose(view as Tab); }} /> : <>
       <p><button type="button" className="rx-button rx-button-secondary" onClick={() => choose("workspace")}>Back to Financing workspace</button></p>
       <details open><summary>Existing Financing editors and evidence</summary>
         <nav className="pr3b1-compat" aria-label="Existing Financing functions">

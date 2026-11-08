@@ -48,7 +48,7 @@
     "frontend/src/app/financing/pr3b1/types.ts": "1c7ec140295df51b287c1b702eaa45fbffaf0500",
     "static/react/finco-react.css": "b80f69f095e8451e19a93330fdf541d38e46f3fa",
     "static/react/finco-react.js": "c4865486b0c98f6b7a245304327c68efa9dfa178",
-    "tests/fin_v2_cohorts.py": "09d162ce85a97fcfddb520e39be394859b55c921",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
     "tests/finval_f01_browser_acceptance.py": "e325b1cb09aed16beeda5f3922069148292a11e9",
     "tests/model_react_overnight_b_acceptance.py": "5a464d50847a061d52a07bf6f82655e7241d9523",
     "tests/model_react_pr3b1_acceptance.py": "6fc916b9963d5c6d982015cd31b5696284af0a37",
