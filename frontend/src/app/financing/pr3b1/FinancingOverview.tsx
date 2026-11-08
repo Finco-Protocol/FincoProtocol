@@ -23,8 +23,8 @@ function Findings({ rows }: { rows: CreditFinding[] }) {
   </li>)}</ul> : <p>No findings supplied in these server classifications.</p>;
 }
 /** Presentation-only overview mounted by the existing Financing workspace. */
-export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOpenExisting }: {
-  evidence: Evidence; onReload: () => void; onHistoryChange?: (historyId: string) => void; onOpenExisting?: (view: string) => void;
+export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOpenExisting, embedded = false }: {
+  evidence: Evidence; onReload: () => void; onHistoryChange?: (historyId: string) => void; onOpenExisting?: (view: string) => void; embedded?: boolean;
 }) {
   const gate = checkRunEvidence(e), groups = termSheetModel(e, gate), su = sourcesUsesModel(e, gate), cov = coverageModel(e, gate);
   const s = e.studio, r = gate.showRun ? e.credit.data?.runs[0] : undefined, dm = cov?.debtMetrics;
@@ -39,7 +39,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
     const view = new URLSearchParams(href.split('#')[0]).get('financing');
     if (view) { event.preventDefault(); onOpenExisting(view); }
   }}>
-    <header className="pr3b1-header"><div><h2>Financing</h2><p>Term Sheet · Working Copy and Last Run stay distinct</p></div><button type="button" onClick={onReload}>Reload evidence</button></header>
+    <header className="pr3b1-header"><div>{embedded ? <h3>Financing evidence</h3> : <h2>Financing</h2>}<p>Term Sheet · Working Copy and Last Run stay distinct</p></div><button type="button" onClick={onReload}>Reload evidence</button></header>
     <nav className="pr3b1-jumps" aria-label="Financing workspace sections"><a href="#pr3b1-terms">Structure &amp; Terms</a><a href="#pr3b1-funding">Facilities / Funding</a><a href="#pr3b1-run">Last Run</a><a href="#pr3b1-quality">Quality / diagnostics</a></nav>
     {e.credit.history_rows.length > 0 && <label className="pr3b1-history">Run history <select aria-label="Run history" value={e.credit.data?.runs[0]?.identity?.history_id ?? ''}
       disabled={!onHistoryChange} onChange={ev => onHistoryChange?.(ev.target.value)}>{e.credit.history_rows.map(h => <option key={h.history_id} value={h.history_id}>{h.is_last ? 'Last Run' : 'Historical'} · {h.scenario} · {h.ran_at}</option>)}</select></label>}
@@ -48,9 +48,9 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
       {gate.showRun && <small>Totals and read identities agree; Sources & Uses snapshot identity is not proven.</small>}
     </div>
     <div className="pr3b1-main">
-      <article className="pr3b1-sheet" id="pr3b1-terms"><h3>Structure &amp; Terms <small>Working Copy</small></h3><h4>Term Sheet</h4><small>Working Copy model values are informational.</small>
+      <article className="pr3b1-sheet" id="pr3b1-terms"><h3>Structure &amp; Terms <small>Working Copy</small></h3><details open={!embedded}><summary>Saved terms and source notes</summary><h4>Term Sheet</h4><small>Working Copy model values are informational.</small>
         <div className="pr3b1-term-groups">{groups.filter(g => g.label !== 'Sponsor').map(g => <details open={g.label === 'Size' || g.label === 'Pricing'} key={g.label}><summary>{g.label}</summary>{g.rows.length ? <Terms rows={g.rows} /> : <p>NOT AVAILABLE — no supplied terms.</p>}</details>)}</div>
-        <p className="pr3b1-editors"><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="terms" href={link('terms')}>Open existing Debt terms editor</a> · <a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="bankability" href={link('bankability')}>Open existing Bankability editor</a></p>
+        </details><p className="pr3b1-editors"><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="terms" href={link('terms')}>Open existing Debt terms editor</a> · <a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="bankability" href={link('bankability')}>Open existing Bankability editor</a></p>
         <p>{s.editable ? 'Existing editors retain their Save and permission checks.' : 'Read-only project.'} Fees {s.editable && s.bankability.fees_editable ? 'editable in Bankability' : 'read-only'} · {s.bankability.available ? 'Bankability available' : s.bankability.reason || 'Bankability NOT AVAILABLE'}</p>
         {s.senior_lock_reason && <p role="note">Locked: {s.senior_lock_reason}</p>}
         <p>Lock-up DSCR and Minimum LLCR are model information, with no new edit or Run-verification claim.</p>

@@ -24,6 +24,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   const [problems, setProblems] = useState<string[]>([]);
   const [inFlight, setInFlight] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [staleDraft, setStaleDraft] = useState(false);
   const [locked, setLocked] = useUnresolvedLock("sheet-debt-bankability");
   const singleFlight = useSingleFlight();
   const grid = useRef<HTMLTableElement>(null);
@@ -31,10 +32,14 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   // A new authoritative view replaces the draft (a draft whose baseline moved underneath it is never silently rebased).
   const seen = useRef(baselineText);
   useEffect(() => {
-    if (seen.current !== baselineText) { seen.current = baselineText; setDraft(baseline); setProblems([]); }
+    if (seen.current !== baselineText) {
+      if (serializeBankability(draft) === seen.current) { setDraft(baseline); setProblems([]); }
+      else { setStaleDraft(true);setStatus({ tone: 'conflict', text: 'Saved configuration changed. Your draft is retained; review the refreshed values before saving.' }); }
+      seen.current = baselineText;
+    }
   }, [baseline, baselineText]);
   // Only a different project resets the editor; a reload after a Save keeps its success message (the baseline effect above re-bases a clean draft).
-  useEffect(() => { setDraft(baseline); setStatus(null); setProblems([]); setConfirmReset(false); }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setDraft(baseline); setStatus(null); setProblems([]); setConfirmReset(false);setStaleDraft(false); }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const draftText = serializeBankability(draft);
   const dirty = draftText !== baselineText;
@@ -70,6 +75,8 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         });
         if ("kind" in result) { setLocked(true); setStatus({ tone: "conflict", text: result.message }); return; }
         if (!result.ok) { setStatus({ tone: "error", text: `${result.message} Nothing was changed.` }); return; }
+        seen.current = value === '' ? serializeBankability(draftFromView({ ...view, config: {} })) : value;
+        setStaleDraft(false);
         setStatus({ tone: "ok", text: `${label} saved and read back. The Last Run, if any, is now Results outdated — press Run when ready.` });
         onSaved();
       } finally { setInFlight(false); setConfirmReset(false); }
@@ -255,9 +262,10 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
       {problems.length > 0 && (
         <ul className="rx-status rx-status-error rcm-problems" role="alert" data-bank-problems="true">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
       )}
+      {staleDraft && <p role="alert">Your draft differs from the refreshed saved configuration. <button type="button" disabled={disabled} onClick={() => setStaleDraft(false)}>Keep draft against refreshed configuration</button></p>}
       <div className="rcm-actions-row">
-        <button type="button" className="rx-button" data-bank-save="true" disabled={disabled || !dirty} aria-busy={inFlight} onClick={submit}>{inFlight ? "Saving…" : "Save bankability"}</button>
-        <button type="button" className="rx-button rx-button-secondary" data-bank-discard="true" disabled={disabled || !dirty} onClick={() => { setDraft(baseline); setProblems([]); setStatus(null); }}>Discard changes</button>
+        <button type="button" className="rx-button" data-bank-save="true" disabled={disabled || !dirty || staleDraft} aria-busy={inFlight} onClick={submit}>{inFlight ? "Saving…" : "Save bankability"}</button>
+        <button type="button" className="rx-button rx-button-secondary" data-bank-discard="true" disabled={disabled || !dirty} onClick={() => { setDraft(baseline); setProblems([]); setStatus(null);setStaleDraft(false); }}>Discard changes</button>
         {!confirmReset
           ? <button type="button" className="rx-button rx-button-secondary" data-bank-reset="true" disabled={disabled || Object.keys(view.config ?? {}).length === 0} onClick={() => setConfirmReset(true)}>Reset configuration…</button>
           : <span role="group" aria-label="Confirm reset" data-bank-reset-confirm="true">Remove the whole bankability configuration{reserveLocked ? ", including the stored reserve policy" : ""}?{" "}
