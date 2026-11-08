@@ -64,7 +64,7 @@ def server(mode='ok'):
 
 class PolicyChecks(unittest.TestCase):
     def test_reject_non_allowlisted_targets(self):
-        for u in ('https://app.finco.one.evil.invalid','https://user:password@app.finco.one','http://app.finco.one','https://app.finco.one:444','https://staging.finco.one','http://localhost','https://app.finco.one/?secret=x','https://app.finco.one/#x','https://app.finco.one\\evil','http://127.0.0.1%2f:9000'):
+        for u in ('https://app.finco.one.evil.invalid','http://fixture:placeholder@127.0.0.1:9999','http://app.finco.one','https://app.finco.one:444','https://staging.finco.one','http://localhost','https://app.finco.one/?secret=x','https://app.finco.one/#x','https://app.finco.one\\evil','http://127.0.0.1%2f:9000'):
             with self.subTest(target=u),self.assertRaises(Refused):target(u)
     def test_production_cannot_be_made_writable(self):
         for allow in (False,True):

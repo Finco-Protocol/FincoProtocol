@@ -15,7 +15,7 @@
     "scripts/finco_live_acceptance/policy.py": "8fca6e28a2d5fb6d75b77fea19c4a1117a4b2fd7",
     "scripts/finco_live_acceptance/routes.py": "da86e7ec9d8589e74a616a331bdbd7e5103424e8",
     "scripts/finco_live_acceptance/runner.py": "5d7efe95c906083a256b8e56c530eced1b9f2bbb",
-    "scripts/finco_live_acceptance/selfcheck.py": "feb0b3f47391052bbe8ecb8b50a4f39fa6f0ba66",
+    "scripts/finco_live_acceptance/selfcheck.py": "d3b346f01d7c3481d71651880dcacaf9a46a34a8",
     "scripts/finco_live_acceptance/selfcheck_scope.py": "3a2460365a6a6d769b3219b31aab5827ca8ba320",
     "tests/fin_v2_cohorts.py": "1275cd874bf65981fa4bf592ec3c121a715096c1",
     "tests/onaccept01_scope.py": "f56200d4953a23527ed00b3bcbe8bae2fd200090",
