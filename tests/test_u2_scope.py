@@ -109,23 +109,7 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
     # UX-PR1 may supersede only this presentation mount in R1_PATHS; no writer/store path.
     ux_mount = {p for m in registered_exact if m.__name__ == 'tests.ux_pr1_scope'
                 for p in m.SUPERSEDED if p == 'frontend/src/app/WorkspaceView.tsx'}
-    # PR3b-2 takes over ONE pure discard-key mapping, never the Save All writer.
-    # Authenticate the actual base/current blobs AND prove every other byte of
-    # this writer-adjacent file still equals accepted main.
-    discard_bridge = set()
-    for m in registered_exact:
-        p = 'frontend/src/app/editing/wsv2Extensions.tsx'
-        if m.__name__ != 'tests.ux_pr3b2_scope' or p not in m.SUPERSEDED:
-            continue
-        base = _git(U2.ROOT, 'show', m.BASE + ':' + p)
-        old = 'key.startsWith("sheet-debt")'
-        new = 'key === "sheet-debt" || key === "sheet-debt-inline"'
-        assert base.count(old) == 1
-        assert (U2.ROOT/p).read_text() == base.replace(old,new,1)
-        assert m.base_blob(p) == _git(U2.ROOT,'rev-parse',m.BASE+':'+p).strip()
-        assert m.supersedes(p,_git(U2.ROOT,'hash-object',p).strip())
-        discard_bridge.add(p)
-    assert all(p in r1_owned | ux_mount | discard_bridge for p in changed & U2.R1_PATHS)
+    assert all(p in r1_owned | ux_mount for p in changed & U2.R1_PATHS)
     assert _unexplained(changed, registered_exact) == []                                          # U2's own paths + exact registered siblings only
 
 

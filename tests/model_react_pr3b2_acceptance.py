@@ -182,7 +182,7 @@ def test_pr3b2_investor_discard_keeps_separate_scalar_draft(live_server,fin_sess
     page.get_by_role('button',name='Stay and keep editing',exact=True).click()
     assert page.locator('[data-inv="agreement_id"]').input_value()=='PR3B2-UNSAVED'
     page.get_by_role('button',name='Back to Financing workspace',exact=True).click()
-    page.get_by_role('button',name='Discard changes and continue',exact=True).click()
+    page.get_by_role('button',name='Discard document and continue',exact=True).click()
     page.wait_for_selector('[data-financing-editing]',timeout=60000)
     assert root.get_by_label('All-in Interest Rate',exact=True).input_value()=='4.64'
     assert draft(rec)==before

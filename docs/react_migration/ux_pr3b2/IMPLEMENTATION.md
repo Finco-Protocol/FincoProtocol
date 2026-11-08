@@ -12,9 +12,10 @@ values use the existing shared store, remain visible on refusals and are
 cleared only by verified Save or explicit Reset/discard. An unknown outcome
 locks editing and can be reconciled only by the identical idempotent request.
 Leaving a local Bankability or Investor document requires confirmation. Discarding
-that document never clears a separate staged scalar draft: the existing discard
-bridge now matches only the two scalar debt editor keys, not every debt-prefixed
-document editor. Save All/profile construction and transaction logic are unchanged.
+that document never clears a separate staged scalar draft: a local confirmation unmounts only the selected document without invoking shell
+discard handlers. The global discard bridge, Save All/profile construction and
+transaction logic remain byte-identical to main. Internal navigation waits for an
+in-flight Save; unresolved outcomes remain locked and require reconciliation.
 
 Bankability remains one configuration document saved by its existing canonical
 writer. It is available under Advanced with the original supported repayment,

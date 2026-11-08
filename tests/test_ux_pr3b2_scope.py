@@ -14,15 +14,17 @@ def test_current_registered_cohort_and_unchanged_financial_sources():
     assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) for p in changed)
     old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
     assert (F.ROOT/E.MANIFEST).read_bytes()==old
+    for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
+        assert (F.ROOT/p).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+p],cwd=F.ROOT)
 
-@pytest.mark.parametrize('kind',['byte','discard_bridge','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
+@pytest.mark.parametrize('kind',['byte','foreign_discard_bridge','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
 def test_source_and_scope_tamper_fail_closed(kind):
     source=F.ROOT/'frontend/src/app/financing/pr3b2/blockContract.ts'
-    p=F.ROOT/F.MANIFEST if kind in ('manifest','base','tree','base_blob') else F.ROOT/'tests/fin_v2_cohorts.py' if kind=='registration' else F.ROOT/'frontend/src/app/editing/wsv2Extensions.tsx' if kind=='discard_bridge' else source
+    p=F.ROOT/F.MANIFEST if kind in ('manifest','base','tree','base_blob') else F.ROOT/'tests/fin_v2_cohorts.py' if kind=='registration' else F.ROOT/'frontend/src/app/editing/wsv2Extensions.tsx' if kind=='foreign_discard_bridge' else source
     raw=p.read_bytes();mode=p.stat().st_mode
     extra=F.ROOT/('app/pr3b2_unreviewed.py' if kind=='protected' else 'frontend/src/app/financing/pr3b2/unreviewed.ts')
     try:
-        if kind in ('byte','discard_bridge','registration'):p.write_bytes(raw+b'\n')
+        if kind in ('byte','foreign_discard_bridge','registration'):p.write_bytes(raw+b'\n')
         elif kind=='mode':p.chmod(mode|0o111)
         elif kind=='symlink':p.unlink();p.symlink_to(F.ROOT/'tests/ux_pr3b2_scope.py')
         elif kind in ('unrelated','protected'):extra.write_text('unsigned\n')
@@ -46,6 +48,7 @@ def test_dropped_registry_wrong_ref_and_forged_committed_ancestry(monkeypatch):
     monkeypatch.undo()
     assert not F.exact_blobs_ok(ref=F.BASE)
     tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=F.ROOT,text=True).strip()
-    orphan=subprocess.check_output(['git','commit-tree',tree],input='Synthetic ancestry control\n',text=True,cwd=F.ROOT).strip()
+    identity = dict(os.environ, GIT_AUTHOR_NAME='FINCO synthetic control', GIT_AUTHOR_EMAIL='control@example.invalid', GIT_COMMITTER_NAME='FINCO synthetic control', GIT_COMMITTER_EMAIL='control@example.invalid')
+    orphan=subprocess.check_output(['git','commit-tree',tree],input='Synthetic ancestry control\n',text=True,cwd=F.ROOT,env=identity).strip()
     assert not F.exact_blobs_ok(ref=orphan)
     assert F.exact_blobs_ok()

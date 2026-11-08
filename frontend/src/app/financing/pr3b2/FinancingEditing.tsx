@@ -102,6 +102,7 @@ export function FinancingEditing({ project, scenarioId, reloadKey, onSaved }: {
     <header><h3>Financing inputs <small>Working Copy</small></h3><button type="button" disabled={busy !== null || locked} onClick={() => void load()}>Reload saved values</button></header>
     <p className="pr3b2-note">Save each block together. Saving changes inputs only; Last Run stays historical until Run.</p>
     {notice && <p role={Object.values(phase).some(x => x === 'error' || x === 'stale') || locked ? 'alert' : 'status'}>{notice}</p>}
+    {locked && !unknown && <p role="alert">A previous Save has an unresolved outcome. Reload the workspace to reconcile saved values before editing.</p>}
     {unknown && <button type="button" disabled={busy !== null} onClick={() => void flight(async () => { setBusy(unknown.block);try { await commit(unknown.block, unknown.url, unknown.request); } finally { setBusy(null); } })}>Check and retry identical Save</button>}
     {BLOCKS.map(block => {
       const fs = fields.fields.filter(f => blockOf(f) === block.id && !structured(f.field_id));
