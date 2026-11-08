@@ -23,7 +23,7 @@
     "tests/u2_scope.py": "fa1b1cfcd264c971b6898a0932941a516d1c4198",
     "tests/test_u2_scope.py": "b19776c30bb04943ac7dd590d6575a43a5589b6a",
     "tests/test_ux_pr1_scope.py": "04bf1d19b954fbfd17c0df2984871472ecdf715b",
-    "tests/test_ux_pr3b2_scope.py": "25f6574372a1eaa8db659d58a7e2fa3bf0218d47",
+    "tests/test_ux_pr3b2_scope.py": "f7ac957d768146b923b85614180f90236b003745",
     "tests/model_react_pr3b2_acceptance.py": "820ce2ef0c771266493724c46d12e1bdac9b11df",
     "tests/ux_pr3b2_browser_role.py": "5b93729cbdfb502e843c86daddbb161198c3389b",
     "tests/test_model_workspace_consolidation_browser.py": "423ec822d396a2e83ea58525222de70828909858"

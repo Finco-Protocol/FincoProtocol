@@ -48,7 +48,7 @@ def test_dropped_registry_wrong_ref_and_forged_committed_ancestry(monkeypatch):
     monkeypatch.undo()
     assert not F.exact_blobs_ok(ref=F.BASE)
     tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=F.ROOT,text=True).strip()
-    identity = dict(os.environ, GIT_AUTHOR_NAME='FINCO synthetic control', GIT_AUTHOR_EMAIL='control@example.invalid', GIT_COMMITTER_NAME='FINCO synthetic control', GIT_COMMITTER_EMAIL='control@example.invalid')
+    identity = dict(os.environ, GIT_AUTHOR_NAME='FINCO synthetic control', GIT_AUTHOR_EMAIL='synthetic.invalid', GIT_COMMITTER_NAME='FINCO synthetic control', GIT_COMMITTER_EMAIL='synthetic.invalid')
     orphan=subprocess.check_output(['git','commit-tree',tree],input='Synthetic ancestry control\n',text=True,cwd=F.ROOT,env=identity).strip()
     assert not F.exact_blobs_ok(ref=orphan)
     assert F.exact_blobs_ok()
