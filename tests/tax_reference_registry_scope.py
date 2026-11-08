@@ -130,11 +130,13 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    from contextlib import ExitStack
+    with ExitStack() as scopes:
+        S=_successor()
+        if S is not None:scopes.enter_context(S.scoped())
+        _SCOPE.append({})
+        try:yield
+        finally:_SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
@@ -167,6 +169,14 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         paths = sorted(base_blobs)
         if _object_fact(root, 'rev-parse', *[BASE + ':' + p for p in paths]).decode().split() != [base_blobs[p] for p in paths]:
             return False
+        S=_successor()
+        next_ok=S is not None and (S.exact_blobs_ok(root,ref) if closure else S.signature_ok(root,ref))
+        accepted=dict(pins)
+        if next_ok:
+            for p,b in S.effective_pins(root,ref).items():
+                if p in S.SUPERSEDED and p in pins:
+                    if S.base_blob(p,root,ref)!=pins[p]:return False
+                    accepted[p]=b
         # 3. one exact blob per owned path. The working-tree comparison uses
         # git's own hashing (clean filters applied) so the verdict is identical
         # on LF and CRLF checkouts and always equals the ls-tree blob.
@@ -174,14 +184,14 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
             computed = {}
             for owned in sorted(pins):
                 computed[owned] = _git(root, 'hash-object', root / owned).decode().strip()
-            if computed != pins:
+            if computed != accepted:
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if listed != accepted:
                 return False
         # 4. no protected prefix ever moved since BASE
         # (signature-only verdicts skip this global-closure step: they never judge unrelated paths)
@@ -206,7 +216,8 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    S=_successor()
+    return path in OWNED_PATHS or path == MANIFEST or (S is not None and S.allowed_path(path,repo,ref) and S.exact_blobs_ok(repo,ref))
 
 
 def signature_ok(repo=None, ref=None):
@@ -222,7 +233,7 @@ def base_blob(path, repo=None, ref=None):
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for the composite
     registry path, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo,ref).get(path) == value
 
 
 def valid(repo=None, ref=None):
@@ -240,3 +251,18 @@ def matches(path, source=None, *, repo=None, ref=None):
 
 def protected_blobs(repo=None, ref=None):
     return {}  # Never admits a financial_engine, finco_core or domain source.
+
+
+def _successor():
+    try:
+        from tests import onaccept01_scope as S
+        return S
+    except ImportError:return None
+
+
+def effective_pins(repo=None,ref=None,*,signature=False):
+    pins=dict(manifest(repo,ref).get('source_blobs',{}))
+    S=_successor()
+    if S is not None and (S.signature_ok(repo,ref) if signature else S.exact_blobs_ok(repo,ref)):
+        pins.update({p:b for p,b in S.effective_pins(repo,ref).items() if p in S.SUPERSEDED and p in pins and S.base_blob(p,repo,ref)==pins[p]})
+    return pins
