@@ -39,8 +39,8 @@ import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = '4e22f330d97eec66befcbb5df6dc4e1529ae6835'
-BASE_TREE = 'cc12db380b5d3fb51dc46b4113050855864bc360'
+BASE = '785024c752bbd1700d6051cf15115d9980d0b4a1'
+BASE_TREE = '063d27ce5ef6841ec641e377662cbda924d97667'
 MANIFEST = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 SCHEMA = 'T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1'
 
