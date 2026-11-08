@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from tests.model_react_rcm_financing_acceptance import fin_session, no_page_overflow
 
-__all__=('fin_session','test_pr3b2_atomic_block_and_unchanged_run','test_pr3b2_stale_csrf_and_retry_keep_draft','test_pr3b2_unknown_outcome_replays_identical_request','test_pr3b2_bankability_draft_and_original_paths','test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation','test_pr3b2_changed_bankability_keeps_local_draft_until_review')
+__all__=('fin_session','test_pr3b2_atomic_block_and_unchanged_run','test_pr3b2_stale_csrf_and_retry_keep_draft','test_pr3b2_unknown_outcome_replays_identical_request','test_pr3b2_bankability_draft_and_original_paths','test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation','test_pr3b2_changed_bankability_keeps_local_draft_until_review','test_pr3b2_investor_discard_keeps_separate_scalar_draft')
 
 def fields(context,base,code):
     return context.request.get(base+'/v2/model-react/fields/debt',params={'project':code}).json()
@@ -170,3 +170,19 @@ def test_pr3b2_changed_bankability_keeps_local_draft_until_review(live_server,fi
     bank.get_by_role('button',name='Discard changes',exact=True).click()
     assert bank.locator('[data-bank="day_count"]').input_value()=='act_360' and draft(rec)==before
     other.close()
+
+def test_pr3b2_investor_discard_keeps_separate_scalar_draft(live_server,fin_session):
+    context,page,rec,errors=fin_session('pr3b2-investor-guard')
+    root=open_inputs(page,live_server,rec.project_code);before=draft(rec)
+    root.get_by_label('All-in Interest Rate',exact=True).fill('4.64')
+    page.locator('[data-financing-read-link][data-financing-tab-button="investors"]').click()
+    page.locator('[data-inv="agreement_id"]').fill('PR3B2-UNSAVED')
+    page.get_by_role('button',name='Back to Financing workspace',exact=True).click()
+    page.get_by_role('button',name='Stay and keep editing',exact=True).click()
+    assert page.locator('[data-inv="agreement_id"]').input_value()=='PR3B2-UNSAVED'
+    page.get_by_role('button',name='Back to Financing workspace',exact=True).click()
+    page.get_by_role('button',name='Discard changes and continue',exact=True).click()
+    page.wait_for_selector('[data-financing-editing]',timeout=60000)
+    assert root.get_by_label('All-in Interest Rate',exact=True).input_value()=='4.64'
+    assert draft(rec)==before
+    root.get_by_role('button',name='Reset Structure & Terms',exact=True).click()

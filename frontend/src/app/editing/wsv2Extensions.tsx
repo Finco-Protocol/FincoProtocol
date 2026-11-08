@@ -30,7 +30,7 @@ const toIdentity = (c: WorkspaceExtensionContext): EditIdentity => ({
 /** Scalar fields are shared between the assumption grid and the sheet editors (one field = one pending edit), so discarding any of those
  *  editors clears the scalar sections; the other sections map one-to-one. */
 const sectionsOfDirtyKey = (key: string): EditSection[] =>
-  key === "input-grid" || key.startsWith("sheet-project_setup") || key.startsWith("sheet-debt") ? ["inputs", "financing"]
+  key === "input-grid" || key.startsWith("sheet-project_setup") || key === "sheet-debt" || key === "sheet-debt-inline" ? ["inputs", "financing"]
     : key === "revenue-ppa" ? ["ppa"]
       : key === "cost-lines-capex" ? ["capex"]
         : key === "cost-lines-opex" ? ["opex"]

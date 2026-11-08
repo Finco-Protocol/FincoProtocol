@@ -15,14 +15,14 @@ def test_current_registered_cohort_and_unchanged_financial_sources():
     old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
     assert (F.ROOT/E.MANIFEST).read_bytes()==old
 
-@pytest.mark.parametrize('kind',['byte','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
+@pytest.mark.parametrize('kind',['byte','discard_bridge','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
 def test_source_and_scope_tamper_fail_closed(kind):
     source=F.ROOT/'frontend/src/app/financing/pr3b2/blockContract.ts'
-    p=F.ROOT/F.MANIFEST if kind in ('manifest','base','tree','base_blob') else F.ROOT/'tests/fin_v2_cohorts.py' if kind=='registration' else source
+    p=F.ROOT/F.MANIFEST if kind in ('manifest','base','tree','base_blob') else F.ROOT/'tests/fin_v2_cohorts.py' if kind=='registration' else F.ROOT/'frontend/src/app/editing/wsv2Extensions.tsx' if kind=='discard_bridge' else source
     raw=p.read_bytes();mode=p.stat().st_mode
     extra=F.ROOT/('app/pr3b2_unreviewed.py' if kind=='protected' else 'frontend/src/app/financing/pr3b2/unreviewed.ts')
     try:
-        if kind in ('byte','registration'):p.write_bytes(raw+b'\n')
+        if kind in ('byte','discard_bridge','registration'):p.write_bytes(raw+b'\n')
         elif kind=='mode':p.chmod(mode|0o111)
         elif kind=='symlink':p.unlink();p.symlink_to(F.ROOT/'tests/ux_pr3b2_scope.py')
         elif kind in ('unrelated','protected'):extra.write_text('unsigned\n')

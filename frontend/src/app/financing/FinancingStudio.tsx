@@ -58,7 +58,8 @@ export function FinancingStudio({ project, scenarioId, reloadKey, onSaved }: {
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }
   function choose(next: Tab) {
-    guard(() => adopt(next), { ignore: key => key !== 'sheet-debt-bankability' && (key !== 'sheet-debt-inline' || !pendingKeys.includes(key)) });
+    guard(() => adopt(next), { ignore: key => key === 'sheet-debt' || key === 'sheet-debt-inline'
+      ? !pendingKeys.includes(key) : key !== 'sheet-debt-bankability' && key !== 'sheet-debt-investors' });
   }
 
   return (

@@ -11,6 +11,10 @@ checks precede the POST; fresh projection read-back proves persistence. Dirty
 values use the existing shared store, remain visible on refusals and are
 cleared only by verified Save or explicit Reset/discard. An unknown outcome
 locks editing and can be reconciled only by the identical idempotent request.
+Leaving a local Bankability or Investor document requires confirmation. Discarding
+that document never clears a separate staged scalar draft: the existing discard
+bridge now matches only the two scalar debt editor keys, not every debt-prefixed
+document editor. Save All/profile construction and transaction logic are unchanged.
 
 Bankability remains one configuration document saved by its existing canonical
 writer. It is available under Advanced with the original supported repayment,
