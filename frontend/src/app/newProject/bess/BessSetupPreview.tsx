@@ -111,7 +111,7 @@ export function BessSetupPreview({ capability, requestId, csrfToken }: {
         ["Create project", cap.create_supported], ["Save inputs", cap.save_supported], ["Financial Run", cap.run_supported],
       ] as const).map(([label, supported]) => <div key={label}><dt>{label}</dt><dd>{supported ? "Available" : "Unavailable"}</dd></div>)}
     </dl>
-    <p>The protected Storage reference stays read-only. This preview keeps input in this browser tab only; it does not create a Working Copy or save a draft.</p>
+    <p>The protected Storage reference stays read-only. This preview keeps input in this browser tab only; it does not create a financial project or save a draft.</p>
     <button type="button" className="rx-button rx-button-secondary" aria-expanded={open} aria-controls="bess-local-preview"
       disabled={!cap.preview_supported || !csrfToken} onClick={() => setOpen(!open)}>
       {open ? "Hide setup preview (keep input)" : "Preview standalone Storage inputs"}
