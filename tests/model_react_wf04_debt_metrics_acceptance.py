@@ -278,7 +278,7 @@ def test_editing_terms_in_debt_terms_saves_without_running_and_never_rewrites_th
     try:
         record = world.healthy
         before = len(history_rows(record))
-        page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}?financing=terms#financing")
         page.wait_for_selector("[data-sheet-editor='debt']", timeout=30000)
         field = page.locator("#wf-debt-debt-contract-min-dscr-eod")
         assert float(field.input_value()) == 1.0
@@ -319,7 +319,7 @@ def test_save_all_commits_both_terms_with_another_pending_edit_in_one_request_an
 
     page.on("response", on_response)
     try:
-        page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}?financing=terms#financing")
         page.wait_for_selector("[data-sheet-editor='debt']", timeout=30000)
         from app.persistence import db
         from app.persistence.workspace_repository import get_workspace_state

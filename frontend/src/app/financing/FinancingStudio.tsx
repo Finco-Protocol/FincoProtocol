@@ -7,9 +7,11 @@ import { fetchFinancingStudio } from "./financingApi";
 import { CapitalStackView, OverviewView, SourcesUsesPanel } from "./FinancingViews";
 import { InvestorsPanel } from "./InvestorsPanel";
 import { DebtMetricsWorkspace } from "../debtmetrics/DebtMetricsWorkspace";
+import { selectedRunFromUrl } from "../debtmetrics/debtMetricsLink";
+import { FinancingReadLayer } from "./pr3b1/FinancingReadLayer";
 import type { FinancingStudioPayload } from "./types";
 
-type Tab = "overview" | "terms" | "bankability" | "facilities" | "sources-uses" | "investors" | "debt-metrics";
+type Tab = "workspace" | "overview" | "terms" | "bankability" | "facilities" | "sources-uses" | "investors" | "debt-metrics";
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "terms", label: "Debt terms" },
   { id: "overview", label: "Overview" },
@@ -22,15 +24,15 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
 
 function tabFromUrl(): Tab {
   const raw = new URLSearchParams(window.location.search).get("financing");
-  // "Debt terms" is the default so the existing financing editor is what opens with the section (unchanged entry behaviour)
-  return TABS.some((t) => t.id === raw) ? (raw as Tab) : "terms";
+  // Missing/unknown legacy selector opens the single Financing workspace. Explicit selectors preserve every existing editor.
+  return TABS.some((t) => t.id === raw) ? (raw as Tab) : "workspace";
 }
 
 /** Financing workspace: an overview, the scalar debt terms (existing editor), the typed bankability editor, the Two-Senior
  *  capital stack and Sources & Uses.  Everything shown is read from the canonical financing authorities; the only writes are the
  *  canonical per-field Saves of the two editors, each with its own CAS. */
-export function FinancingStudio({ project, reloadKey, onSaved }: {
-  project: string; reloadKey: number; onSaved: () => void;
+export function FinancingStudio({ project, scenarioId, reloadKey, onSaved }: {
+  project: string; scenarioId: string | null; reloadKey: number; onSaved: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [studio, setStudio] = useState<FinancingStudioPayload | null>(null);
@@ -43,30 +45,28 @@ export function FinancingStudio({ project, reloadKey, onSaved }: {
   }, [project]);
   // The studio read is heavy (the full Debt-sheet context); the default Debt terms tab and Investors use their own reads, so it is
   // fetched only when a tab that shows it is open — the section's original editor then opens with exactly its original request timing.
-  const needsStudio = tab !== "terms" && tab !== "investors" && tab !== "debt-metrics";
+  const needsStudio = tab !== "workspace" && tab !== "terms" && tab !== "investors" && tab !== "debt-metrics";
   useEffect(() => { if (needsStudio) void load(); }, [load, reloadKey, nonce, needsStudio]);
 
   function choose(next: Tab) {
     setTab(next);
     const url = new URL(window.location.href);
-    if (next === "terms") url.searchParams.delete("financing"); else url.searchParams.set("financing", next);
+    url.hash = "financing";
+    if (next === "workspace") url.searchParams.delete("financing"); else url.searchParams.set("financing", next);
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   return (
     <div data-financing-studio="true" data-financing-tab={tab} data-financing-freshness={studio?.freshness ?? "LOADING"}>
-      <div className="rcm-tabs" role="tablist" aria-label="Financing sections">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" id={`rcm-fin-tab-${t.id}`} aria-selected={tab === t.id} aria-controls="rcm-fin-panel"
-                  className={`rcm-tab${tab === t.id ? " active" : ""}`} data-financing-tab-button={t.id} onClick={() => choose(t.id)}
-                  onKeyDown={(e) => {
-                    const i = TABS.findIndex((x) => x.id === tab);
-                    if (e.key === "ArrowRight") { e.preventDefault(); choose(TABS[(i + 1) % TABS.length].id); }
-                    if (e.key === "ArrowLeft") { e.preventDefault(); choose(TABS[(i + TABS.length - 1) % TABS.length].id); }
-                  }}>{t.label}</button>
-        ))}
-      </div>
-      <div id="rcm-fin-panel" role="tabpanel" aria-labelledby={`rcm-fin-tab-${tab}`}>
+      {tab === "workspace" ? <FinancingReadLayer scope={{ project, scenarioId, historyId: selectedRunFromUrl() ?? undefined }} reloadKey={reloadKey} onOpenExisting={view => { if (TABS.some(t => t.id === view)) choose(view as Tab); }} /> : <>
+      <p><button type="button" className="rx-button rx-button-secondary" onClick={() => choose("workspace")}>Back to Financing workspace</button></p>
+      <details open><summary>Existing Financing editors and evidence</summary>
+        <nav className="pr3b1-compat" aria-label="Existing Financing functions">
+          {TABS.map(t => <button key={t.id} type="button" className="rx-button rx-button-secondary" aria-current={tab === t.id ? 'page' : undefined}
+            data-financing-tab-button={t.id} onClick={() => choose(t.id)}>{t.label}</button>)}
+        </nav>
+      </details>
+      <div id="rcm-fin-panel">
         {/* Debt terms never waits for the studio read: it is the section's original editor and opens immediately */}
         {tab === "terms" && <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={reloadKey} onSaved={onSaved} />}
         {tab !== "terms" && tab !== "debt-metrics" && tab !== "investors" && !studio && (error
@@ -82,6 +82,7 @@ export function FinancingStudio({ project, reloadKey, onSaved }: {
         {tab === "debt-metrics" && <DebtMetricsWorkspace project={project} reloadKey={reloadKey} onEditTerms={() => choose("terms")} />}
         {tab === "investors" && <InvestorsPanel project={project} reloadKey={reloadKey} onSaved={() => { onSaved(); setNonce((n) => n + 1); }} />}
       </div>
+      </>}
     </div>
   );
 }

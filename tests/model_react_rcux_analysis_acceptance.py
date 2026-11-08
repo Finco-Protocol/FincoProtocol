@@ -401,7 +401,7 @@ def test_rcux_construction_timing_templates_are_read_only(live_server, an_sessio
 
 
 def _open_financing_overview(page, base, code):
-    page.goto(f"{base}/v2/model-react/{code}#financing")
+    page.goto(f"{base}/v2/model-react/{code}?financing=overview#financing")
     page.wait_for_selector("[data-financing-studio='true']", timeout=60000)
     page.locator("[data-financing-tab-button='overview']").click()
     page.wait_for_selector("[data-financing-reserve-returns='true']", timeout=60000)

@@ -12,6 +12,7 @@ from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
 from tests import wf06b_scope as WF06B
 from tests import post413_r1_scope as R1
+from tests import ux_pr3b1_scope as PR3
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 LAYER = S.RC_UX_SUCCESSORS
@@ -27,6 +28,46 @@ def _git(*args):
     return subprocess.check_output(["git", *args], cwd=S.ROOT, stderr=subprocess.DEVNULL).decode("utf-8")
 
 
+def _authenticated_u1_workflow_successor(path, source, *, repo=None, ref=None):
+    """Only U1's reviewed workflowShared state, while its exact registered authority holds.
+
+    This is a historical-test boundary, not a general descendant/path admission.
+    The reviewed commit supplies the pin; current U1 exactness proves its use now.
+    """
+    from tests import fin_v2_cohorts as registry, u1_scope as U1
+    if path != "frontend/src/app/workflow/workflowShared.tsx" or "tests.u1_scope" not in registry.COHORT_MODULES:
+        return False
+    root = repo if repo is not None else S.ROOT
+    reviewed = "87c6e92f64d815182c49dda205edb5d93bb96155"  # first U1 review correction that pinned these bytes
+    try:
+        if subprocess.check_output(["git", "rev-parse", reviewed + "^{tree}"], cwd=root, stderr=subprocess.DEVNULL).decode().strip() != "7f73c481cc754ed02b521831e7f97b134252d19f":
+            return False
+        subprocess.check_call(["git", "merge-base", "--is-ancestor", reviewed, ref or "HEAD"], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        reviewed_blob = subprocess.check_output(["git", "rev-parse", reviewed + ":" + path], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
+        if U1.manifest(root, ref).get("source_blobs", {}).get(path) != reviewed_blob:
+            return False
+        return U1.matches(path, source, repo=root, ref=ref)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def _authenticated_ux1_mvp_successor(path, source, *, repo=None, ref=None):
+    """The other unchanged reviewed presentation pin exposed by the same loop."""
+    from tests import fin_v2_cohorts as registry, ux_pr1_scope as UX1
+    if path != "tests/model_react_mvp_acceptance.py" or "tests.ux_pr1_scope" not in registry.COHORT_MODULES:
+        return False
+    root = repo if repo is not None else S.ROOT
+    reviewed = "94647307cf9022f975e05bd0e78664e616589378"
+    try:
+        if subprocess.check_output(["git", "rev-parse", reviewed + "^{tree}"], cwd=root, stderr=subprocess.DEVNULL).decode().strip() != "62428078b4d61e1a19cb37f432c50e81c584aa8f":
+            return False
+        subprocess.check_call(["git", "merge-base", "--is-ancestor", reviewed, ref or "HEAD"], cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        reviewed_blob = subprocess.check_output(["git", "rev-parse", reviewed + ":" + path], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
+        return UX1.manifest(root, ref).get("source_blobs", {}).get(path) == reviewed_blob and UX1.matches(path, source, repo=root, ref=ref)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
 def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned():
     assert all(ALLOWED.match(path) for path in LAYER), [p for p in LAYER if not ALLOWED.match(p)]
     assert "static/react/finco-react.js" in LAYER
@@ -39,7 +80,10 @@ def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_
         assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
                 or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path])
                 or WF06B.matches(path, SOURCES[path])                  # PR #410: the exact WF-06B successor state of a superseded path
-                or R1.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
+                or R1.matches(path, SOURCES[path])
+                or _authenticated_u1_workflow_successor(path, SOURCES[path])
+                or _authenticated_ux1_mvp_successor(path, SOURCES[path])
+                or PR3.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
     assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 

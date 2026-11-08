@@ -68,9 +68,8 @@ def shot(page, name):
 
 
 def open_tab(page, base, code, tab):
-    page.goto(f"{base}/v2/model-react/{code}#financing")
+    page.goto(f"{base}/v2/model-react/{code}?financing={tab}#financing")
     page.wait_for_selector("[data-financing-studio='true']", timeout=30000)
-    page.locator(f"[data-financing-tab-button='{tab}']").click()
     page.wait_for_selector({"overview": "[data-financing-overview='true']", "terms": "[data-sheet-editor], .rx-card", "bankability": "[data-bankability-editor='true'], [data-bankability-state]",
                             "facilities": "[data-capital-stack='true']", "sources-uses": "[data-sources-uses='true']"}[tab], timeout=30000)
 
@@ -142,7 +141,7 @@ def captured_value(body: str) -> str:
 def test_financing_workspace_has_the_six_sections_with_authority_and_closed_structures_stated(live_server, fin_session):
     context, page, record, errors = fin_session("rcm-fin-struct")
     open_tab(page, live_server, record.project_code, "overview")
-    assert [t.inner_text() for t in page.locator("[role='tab']").all()] == ["Debt terms", "Overview", "Debt metrics", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]   # WF-04 adds exactly one tab, "Debt metrics"
+    assert [t.inner_text() for t in page.locator("[aria-label='Existing Financing functions'] [data-financing-tab-button]").all()] == ["Debt terms", "Overview", "Debt metrics", "Bankability", "Senior facilities", "Sources & uses", "Investors & sponsor"]   # WF-04 adds exactly one tab, "Debt metrics"
     assert page.locator("[data-senior-pricing='FLAT']").count() == 1 and page.locator("[data-senior-dscr='FLAT_SCALAR']").count() == 1
     closed = page.locator("[data-financing-closed='true']").inner_text()
     for needle in ("Junior / subordinated", "Mezzanine / PIK", "Third or further senior", "Floating-rate"):
