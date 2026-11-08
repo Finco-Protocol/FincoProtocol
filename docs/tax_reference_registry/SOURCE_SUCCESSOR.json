@@ -1,0 +1,30 @@
+{
+  "authorization": "Financial Owner T01-D brief 2026-11-08: governed dormant integration of the offline tax reference registry; reference-only; NO country activation, NO FX defaults, NO engine hook, NO tax computation.",
+  "base": "4e22f330d97eec66befcbb5df6dc4e1529ae6835",
+  "base_blobs": {
+    "tests/fin_v2_cohorts.py": "623f4c61c2fee0601fa186d3372aceb9822d41a4"
+  },
+  "base_tree": "cc12db380b5d3fb51dc46b4113050855864bc360",
+  "schema_version": "T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "docs/tax_reference_registry/FINAL_REPORT_HR.md": "069624c6e99b21341beafa56added55da17ff986",
+    "docs/tax_reference_registry/NEXT_INTEGRATION_CONTRACT.md": "8acd5a8f3a346e23cb523ebc146080e04dbf02b7",
+    "tax_reference_registry/__init__.py": "12e8e8c7e20a9e36ce73ef288f80baa65d98c42b",
+    "tax_reference_registry/__main__.py": "58e43c2947b3f22938cc7c5cc35912e328ca1fdb",
+    "tax_reference_registry/activation.py": "5f9a1ff23326b9d873abc81f9f33a31d7c200a31",
+    "tax_reference_registry/cli.py": "9092560795c82cc61cc6a5d9cc89022e552dc31a",
+    "tax_reference_registry/currency.py": "b019367a6af0ecf1255fb269f9abdca93b2a8526",
+    "tax_reference_registry/enums.py": "b0675319b265018e11aedd86f30ed84e7b18299e",
+    "tax_reference_registry/loader.py": "2146fe00d71045b2c7731cedf522672afbe8233e",
+    "tax_reference_registry/records.py": "3e42f3ed36794e459490dd9c92171b98c557977f",
+    "tax_reference_registry/registry.py": "6e7bce70dbdfc03c09df63d881cdf328dbb462fa",
+    "tests/fin_v2_cohorts.py": "09d162ce85a97fcfddb520e39be394859b55c921",
+    "tests/tax_reference_registry/conftest.py": "396c5751b86b04ff6092ed217aeea1a803716658",
+    "tests/tax_reference_registry/test_loader_errors.py": "25ef6f5de8fd64137f232d13c473fa5565ce3069",
+    "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
+    "tests/tax_reference_registry/test_registry_compare_activation.py": "7af9aaa8237e8cb6d829eedb51d00640fe96d672",
+    "tests/tax_reference_registry/test_schema_and_currency.py": "05821ab7038e6276dd255c5baff48f10a9aee4ad",
+    "tests/tax_reference_registry_scope.py": "2a48d29e68f394c212897db66f51cc022a392c14",
+    "tests/test_tax_reference_registry_scope.py": "c7467f89ae20e948dcb9b9ab4dfdc6f753c2fc99"
+  }
+}

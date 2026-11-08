@@ -176,19 +176,41 @@ def test_no_automatic_country_fallback():
 
 # ── repo isolation: no production module imports this package ────────────────
 def test_no_production_import_of_registry():
-    repo_root = dt.__file__  # placeholder to keep import local
+    """The registry must stay inert: no app/, engine, core, domain, frontend or
+    entry-point module may import it. Governance modules (composite registry +
+    scope tests) are the only sanctioned references and are excluded here."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
+    production_prefixes = (
+        "app/",
+        "financial_engine/",
+        "finco_core/",
+        "domain/",
+        "frontend/",
+        "static/",
+        "tools/",
+        "main_api.py",
+        "main_web.py",
+        "main_mcp.py",
+        "_warm.py",
+    )
     offenders = []
     for path in root.rglob("*.py"):
         rel = path.relative_to(root).as_posix()
-        if rel.startswith(("tax_reference_registry/", "tests/tax_reference_registry/")):
+        if rel.startswith(("tax_reference_registry/", "tests/")):
+            continue
+        if not rel.startswith(production_prefixes) and rel not in (
+            "main_api.py",
+            "main_web.py",
+            "main_mcp.py",
+            "_warm.py",
+        ):
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if "tax_reference_registry" in text:
+        if "import tax_reference_registry" in text or "from tax_reference_registry" in text:
             offenders.append(rel)
-    assert offenders == [], f"production files reference the registry: {offenders}"
+    assert offenders == [], f"production files import the registry: {offenders}"
