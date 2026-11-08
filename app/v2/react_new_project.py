@@ -45,6 +45,11 @@ from app.workbook.financing_csrf import extract_bound_token, issue_token
 
 router = APIRouter()
 
+# Isolated, non-persisting Storage preview. The existing creators below remain
+# authoritative and continue to refuse Storage.
+from app.v2.bess_setup_router import router as bess_setup_router
+router.include_router(bess_setup_router)
+
 
 def _setup_auth(request, resource, operation=None):
     user = resolve_request_session(request)
@@ -335,6 +340,9 @@ async def react_new_project_options(request: Request):
             entry.update({"template_source": _TECHNOLOGIES[key][0], "default_country": _TECHNOLOGIES[key][1],
                           "capacity_label": _CAPACITY_LABEL[key],
                           "default_capacity_mw": float(pi.technical.capacity_mw), "timeline": _timeline(pi)})
+        if key == "storage":
+            from app.services.bess_setup_preview import capability
+            entry["setup_preview"] = capability()
         technologies.append(entry)
     request_id = uuid.uuid4().hex
     return _json({
@@ -344,6 +352,7 @@ async def react_new_project_options(request: Request):
         "bounds": {"capacity_min_mw": CAPACITY_MIN_MW, "capacity_max_mw": CAPACITY_MAX_MW, "name_max_length": NAME_MAX_LENGTH},
         "request_id": request_id,
         "csrf_token": issue_token(request, request_id, purpose=PURPOSE),
+        "bess_preview_csrf_token": issue_token(request, request_id, purpose="on-bess-01-preview"),
     })
 
 

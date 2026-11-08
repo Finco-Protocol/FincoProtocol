@@ -1,0 +1,31 @@
+{
+  "base": "91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14",
+  "base_blobs": {
+    "app/v2/react_new_project.py": "3708438d53790c98fa5851b0763230b23ba0e7b2",
+    "frontend/src/app/newProject/NewProjectWizard.tsx": "2fb78750c5f03e951e593ab8ec199b102868c451",
+    "frontend/src/app/newProject/types.ts": "a23cc4df262ad1eb3a2dcb61b979bc03584dda78",
+    "static/react/finco-react.css": "f341a2fab92ed9bfec46c90cd2046adcb77686bc",
+    "static/react/finco-react.js": "334f34ac52a0a382e501ddfe0650bb2812ed13ee",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac"
+  },
+  "base_tree": "e9573d7802b319deb943dab60667778a431370e4",
+  "schema_version": "ON_BESS_01_PREVIEW_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "app/services/bess_setup_preview.py": "480abfdccb6c6cd2a57033a1c93904cf90fefa04",
+    "app/v2/bess_setup_router.py": "0a378d6966613a5a6f609499a06b6aa38dab4e42",
+    "app/v2/react_new_project.py": "37e7bbe021ec220f69abf8207d0fedc0a043e865",
+    "docs/bess_setup/IMPLEMENTATION.md": "133527a75aff73f4270a048ad257e24981e05be9",
+    "frontend/src/app/newProject/NewProjectWizard.tsx": "6bac61547975990edde1a3705baebc54590ffe86",
+    "frontend/src/app/newProject/bess/BessSetupPreview.tsx": "6ac49791c031f90646d5bb3c5f923c2f19b5b3bb",
+    "frontend/src/app/newProject/bess/bessSetup.css": "82e7a317c183904671c0a45d252d79fd0770a619",
+    "frontend/src/app/newProject/bess/types.ts": "491a1089ee8129d3596e559cd30e9ef7bb61c56f",
+    "frontend/src/app/newProject/types.ts": "319d7a5e6417e7241aa81b4657572eb3f223be02",
+    "static/react/finco-react.css": "b75011e091aa95c17bc69de467996bae3de71c0b",
+    "static/react/finco-react.js": "d9d4405acf057150b8a5d74fbe62767637e50859",
+    "tests/fin_v2_cohorts.py": "44555c917e7ebdddbfa66f33fe27214555c1d058",
+    "tests/on_bess01_browser_checks.py": "28e7d730b1b6c641281e8a762997774f53510ca4",
+    "tests/on_bess01_contract_checks.py": "72c63e233f2291f47c84babd0e841327de9f134a",
+    "tests/on_bess01_governance_checks.py": "bfa3ff2189be560ee8eeec2826c8139114e77fb3",
+    "tests/on_bess01_scope.py": "3576ddd77ba7fc3986ec188dd7bce16bb17be465"
+  }
+}
