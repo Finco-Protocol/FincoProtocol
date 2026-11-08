@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from tests.model_react_rcm_financing_acceptance import fin_session, no_page_overflow
 
-__all__=('fin_session','test_pr3b2_atomic_block_and_unchanged_run','test_pr3b2_stale_csrf_and_retry_keep_draft','test_pr3b2_unknown_outcome_replays_identical_request','test_pr3b2_bankability_draft_and_original_paths','test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation')
+__all__=('fin_session','test_pr3b2_atomic_block_and_unchanged_run','test_pr3b2_stale_csrf_and_retry_keep_draft','test_pr3b2_unknown_outcome_replays_identical_request','test_pr3b2_bankability_draft_and_original_paths','test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation','test_pr3b2_changed_bankability_keeps_local_draft_until_review')
 
 def fields(context,base,code):
     return context.request.get(base+'/v2/model-react/fields/debt',params={'project':code}).json()
@@ -117,6 +117,8 @@ def test_pr3b2_bankability_draft_and_original_paths(live_server,fin_session):
 def test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation(live_server,fin_session):
     context,page,rec,errors=fin_session('pr3b2-scenario')
     root=open_inputs(page,live_server,rec.project_code);original=root.get_by_label('All-in Interest Rate',exact=True).input_value()
+    financing_writes=[]
+    page.on('request',lambda r:financing_writes.append(r.url) if r.method=='POST' and any(p in r.url for p in ('/workbook/save-all','/workbook/update','/workbook/investor/')) else None)
     before=draft(rec);root.get_by_label('All-in Interest Rate',exact=True).fill('4.54')
     page.evaluate("location.hash='#scenarios'")
     page.get_by_role('button',name='Stay and keep editing').click()
@@ -130,9 +132,31 @@ def test_pr3b2_scenario_guard_keeps_then_discards_only_on_confirmation(live_serv
     page.wait_for_selector('[data-financing-editing]',timeout=60000)
     assert root.get_by_label('All-in Interest Rate',exact=True).input_value()==original
     after=draft(rec)
-    # Canonical scenario creation materializes these two previously absent defaults.
-    defaults={'rev_co2_enabled':False,'rev_co2_price_eur_mwh':0.0}
-    for key,default in defaults.items():
-        assert before[0].get(key,default)==after[0].get(key,default)==default
-    assert {k:v for k,v in after[0].items() if k not in defaults}=={k:v for k,v in before[0].items() if k not in defaults}
+    # The unchanged scenario redirect has separate Revenue normalization (baseline
+    # replay retained privately). Pin every Financing input and every Run record.
+    from app.workbook.registry import WORKBOOK
+    keys={v for k,v in WORKBOOK.field_id_to_snapshot_key().items() if k.startswith('debt.')}
+    assert {k:after[0].get(k) for k in keys}=={k:before[0].get(k) for k in keys}
+    assert not financing_writes
     assert after[1:]==before[1:]
+
+def test_pr3b2_changed_bankability_keeps_local_draft_until_review(live_server,fin_session):
+    context,page,rec,errors=fin_session('pr3b2-bank-race')
+    root=open_inputs(page,live_server,rec.project_code)
+    root.get_by_text('Advanced · Bankability, repayment profile, fees & reserves',exact=True).click()
+    bank=root.locator('[data-bankability-editor]');bank.locator('[data-bank="sizing_mode"]').select_option('gearing_cap')
+    other=context.new_page();other.goto(f'{live_server}/v2/model-react/{rec.project_code}?financing=bankability#financing')
+    other.locator('[data-bank="day_count"]').select_option('act_360')
+    other.get_by_role('button',name='Save bankability',exact=True).click()
+    other.get_by_text('saved and read back',exact=False).wait_for(timeout=60000)
+    before=draft(rec)
+    bank.get_by_role('button',name='Save bankability',exact=True).click()
+    bank.get_by_text('changed after this view loaded',exact=False).wait_for(timeout=60000)
+    assert bank.locator('[data-bank="sizing_mode"]').input_value()=='gearing_cap' and draft(rec)==before
+    root.get_by_role('button',name='Reload saved values',exact=True).click()
+    bank.get_by_role('button',name='Keep draft against refreshed configuration').wait_for(timeout=60000)
+    assert bank.locator('[data-bank="sizing_mode"]').input_value()=='gearing_cap'
+    assert bank.get_by_role('button',name='Save bankability',exact=True).is_disabled()
+    bank.get_by_role('button',name='Discard changes',exact=True).click()
+    assert bank.locator('[data-bank="day_count"]').input_value()=='act_360' and draft(rec)==before
+    other.close()

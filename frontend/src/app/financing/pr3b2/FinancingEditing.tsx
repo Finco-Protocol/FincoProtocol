@@ -110,19 +110,21 @@ export function FinancingEditing({ project, scenarioId, reloadKey, onSaved }: {
       return <fieldset key={block.id} data-financing-block={block.id} data-state={state} disabled={disabled}>
         <legend>{block.label} <small role="status">{state}</small></legend>
         <div className="pr3b2-fields">{fs.map(f => {
-          const e = store?.get('financing', f.field_id), persisted = String(f.value ?? ''), value = e?.value ?? persisted;
-          return <label key={f.field_id}>{f.label} <small>{f.unit}</small>{canEdit(f, w, fields) && store ? <>
-            {f.field_type === 'select' && f.options?.length ? <select aria-label={f.label} value={value} onChange={ev => stage(f, ev.target.value)}>
+          const e = store?.get('financing', f.field_id), persisted = String(f.value ?? '');
+          const foreign = !!e && (e.conflict?.code === 'SCOPE_CHANGED' || store?.identity?.projectId !== project || store.identity.activeScenario !== scenarioId);
+          const value = foreign ? persisted : e?.value ?? persisted;
+          return <label key={f.field_id}>{f.label} <small id={`pr3b2-unit-${f.field_id}`}>{f.unit}</small>{canEdit(f, w, fields) && store ? <>
+            {f.field_type === 'select' && f.options?.length ? <select disabled={foreign} aria-label={f.label} aria-describedby={`pr3b2-unit-${f.field_id}`} aria-invalid={!!e?.error} value={value} onChange={ev => stage(f, ev.target.value)}>
               {!f.options.includes(value) && <option value={value}>{value || '—'}</option>}{f.options.map(o => <option key={o} value={o}>{f.option_labels?.[o] ?? o}</option>)}</select>
-              : <input aria-label={f.label} autoComplete="off" value={value} onChange={ev => stage(f, ev.target.value)} />}
+              : <input disabled={foreign} aria-label={f.label} aria-describedby={`pr3b2-unit-${f.field_id}`} aria-invalid={!!e?.error} autoComplete="off" value={value} onChange={ev => stage(f, ev.target.value)} />}
             {e?.conflict && <small role="alert">{e.conflict.message}</small>}
             {e?.error && <small role="alert">{e.error}</small>}
-          </> : <output>{f.display_value ?? persisted}<small>Read-only · {f.binding_label}. Existing editor retains its authority.</small></output>}</label>;
+          </> : <output>{f.display_value ?? persisted}<small>Read-only · {w.save_all?.reason || f.binding_label}. Existing editor retains its authority.</small></output>}</label>;
         })}</div>
         {!fs.length && <p>No scalar fields supplied. Use the existing facility / investor editor below.</p>}
         {fs.some(f => canEdit(f, w, fields)) && <div className="pr3b2-actions"><button type="button" disabled={!pending.length || pending.some(e => e.conflict) || disabled} onClick={() => save(block.id)}>Save {block.label}</button>
           <button type="button" disabled={!pending.length || disabled} onClick={() => { pending.forEach(e => store?.revert(e.id));setPhase(p => ({ ...p, [block.id]: 'clean' })); }}>Reset {block.label}</button>
-          {pending.some(e => e.conflict) && <button type="button" disabled={disabled} onClick={() => { pending.forEach(e => { const f = fs.find(f => f.field_id === e.key)!;store?.revert(e.id);store?.stage({ section: 'financing', key: e.key, label: e.label, unit: e.unit, baseline: String(f.value ?? ''), value: e.value }); });setPhase(p => ({ ...p, [block.id]: 'dirty' })); }}>Keep my draft against these saved values</button>}</div>}
+          {pending.some(e => e.conflict) && !pending.some(e => e.conflict?.code === 'SCOPE_CHANGED') && <button type="button" disabled={disabled} onClick={() => { pending.forEach(e => { const f = fs.find(f => f.field_id === e.key)!;store?.revert(e.id);store?.stage({ section: 'financing', key: e.key, label: e.label, unit: e.unit, baseline: String(f.value ?? ''), value: e.value }); });setPhase(p => ({ ...p, [block.id]: 'dirty' })); }}>Keep my draft against these saved values</button>}</div>}
       </fieldset>;
     })}
     <details className="pr3b2-bank"><summary>Advanced · Bankability, repayment profile, fees &amp; reserves</summary>

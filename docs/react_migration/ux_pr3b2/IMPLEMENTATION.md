@@ -25,7 +25,7 @@ configuration. No new repayment algorithm or financing instrument is introduced.
 | `terms` | GET fields/debt | POST workbook/update per field remains; scalar block additionally uses published atomic Save All |
 | `bankability` | GET financing/studio + fields/debt tokens | POST workbook/update, debt.bankability.configuration; same document editor under Advanced |
 | `facilities` | GET financing/studio | Read-only capital stack; no new facility writer or activation |
-| `investors` | GET investors/agreement | Existing server-issued agreement save URL, agreement-version/composite CAS; full existing editor retained |
+| `investors` | GET investors/agreement | POST workbook/investor/agreement from server-issued URL, agreement-version/composite CAS; full existing editor retained |
 | `debt-metrics` | GET analysis/debt-metrics / credit-decision, selected Run | Read-only native schedule/history; Edit terms retains existing destination |
 | `sources-uses` | GET financing/studio, committed Last Run | Read-only; no fabricated Saved Sources & Uses |
 | `overview` | GET financing/studio | Read-only detailed evidence |

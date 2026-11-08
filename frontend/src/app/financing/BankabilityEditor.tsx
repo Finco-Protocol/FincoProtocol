@@ -31,8 +31,11 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
 
   // A new authoritative view replaces the draft (a draft whose baseline moved underneath it is never silently rebased).
   const seen = useRef(baselineText);
+  const ownCommit = useRef(false);
   useEffect(() => {
-    if (seen.current !== baselineText) {
+    if (ownCommit.current) {
+      ownCommit.current=false;seen.current=baselineText;setDraft(baseline);setStaleDraft(false);setProblems([]);
+    } else if (seen.current !== baselineText) {
       if (serializeBankability(draft) === seen.current) { setDraft(baseline); setProblems([]); }
       else { setStaleDraft(true);setStatus({ tone: 'conflict', text: 'Saved configuration changed. Your draft is retained; review the refreshed values before saving.' }); }
       seen.current = baselineText;
@@ -75,7 +78,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
         });
         if ("kind" in result) { setLocked(true); setStatus({ tone: "conflict", text: result.message }); return; }
         if (!result.ok) { setStatus({ tone: "error", text: `${result.message} Nothing was changed.` }); return; }
-        seen.current = value === '' ? serializeBankability(draftFromView({ ...view, config: {} })) : value;
+        ownCommit.current = true;
         setStaleDraft(false);
         setStatus({ tone: "ok", text: `${label} saved and read back. The Last Run, if any, is now Results outdated — press Run when ready.` });
         onSaved();
@@ -127,7 +130,8 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   const reserveLocked = !isReleasedReserveMode(baseline.reserveMode);   // a stored unreleased policy is read-only and preserved
 
   return (
-    <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title">
+    <section className="rx-card rcm-fin" data-bankability-editor="true" aria-labelledby="rcm-bank-title" aria-busy={inFlight}
+      data-state={inFlight ? 'saving' : staleDraft || locked ? 'stale' : status?.tone === 'error' ? 'error' : dirty ? 'dirty' : status?.tone === 'ok' ? 'saved' : 'clean'}>
       <h3 id="rcm-bank-title" className="rcm-h3">Bankability configuration <span className="rcm-badge" data-bank-dirty={dirty}>{dirty ? "UNSAVED CHANGES" : "SAVED"}</span></h3>
       <p className="rx-note">Working inputs, project-owned across scenarios. The Last Run stays unchanged until you Run. Save writes only this configuration; the server validates every value.</p>
       {!editable && <p className="rx-status rx-status-conflict" role="status" data-bank-readonly="true">Read-only: templates cannot be edited. Start a project from this template to change financing terms.</p>}

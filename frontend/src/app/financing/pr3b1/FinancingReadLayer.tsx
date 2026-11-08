@@ -4,6 +4,7 @@ import { FinancingOverview } from './FinancingOverview';
 import { readEvidence } from './readEvidence';
 import type { Evidence, Scope } from './types';
 import { FinancingEditing } from '../pr3b2/FinancingEditing';
+import { checkRunEvidence } from './runEvidence';
 
 /** Scope-keyed child drops all previous responses immediately on project/scenario/history switch. */
 export function FinancingReadLayer({ scope, reloadKey = 0, onOpenExisting, onSaved }: { scope: Scope; reloadKey?: number; onOpenExisting?: (view: string) => void; onSaved?: () => void }) {
@@ -14,6 +15,7 @@ function ScopedRead({ scope, reloadKey, onOpenExisting, onSaved }: { scope: Scop
   const [nonce, setNonce] = useState(0);
   const [loaded, setLoaded] = useState<{ key: string; evidence?: Evidence; error?: string } | null>(null);
   const key = JSON.stringify([scope, historyId, reloadKey, nonce]);
+  useEffect(() => setHistoryId(scope.historyId), [scope.historyId]);
   useEffect(() => {
     const abort = new AbortController();
     readEvidence({ ...scope, historyId }, abort.signal).then(evidence => {
@@ -38,6 +40,12 @@ function ScopedRead({ scope, reloadKey, onOpenExisting, onSaved }: { scope: Scop
     if (id) url.searchParams.set(RUN_PARAM, id); else url.searchParams.delete(RUN_PARAM);
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }} />;
-  return <>{onSaved && <><h2>Financing</h2><FinancingEditing project={scope.project} scenarioId={scope.scenarioId} reloadKey={reloadKey}
+  const current = loaded?.key === key ? loaded.evidence : undefined;
+  const gate = current ? checkRunEvidence(current) : null;
+  const run = gate?.showRun ? current?.credit.data?.runs[0] : undefined;
+  return <>{onSaved && <><h2>Financing</h2>
+    <div className="pr3b1-state" role="status" aria-label="Financing Run status"><strong>{gate?.state ?? (loaded?.key === key ? 'UNAVAILABLE' : 'Loading evidence')}</strong> · {gate?.reason}
+      {run && <><span> · Integrity {run.integrity?.status}</span><span> · Coverage {run.debt_metrics?.evaluation?.coverage.status} {run.debt_metrics?.evaluation?.coverage.message}</span></>}
+    </div><FinancingEditing project={scope.project} scenarioId={scope.scenarioId} reloadKey={reloadKey}
     onSaved={() => { setNonce(n => n + 1);onSaved(); }} /></>}{content}</>;
 }
