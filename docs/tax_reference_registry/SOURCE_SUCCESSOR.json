@@ -1,0 +1,36 @@
+{
+  "authorization": "Financial Owner T01-D brief 2026-11-08: governed dormant integration of the offline tax reference registry; reference-only; NO country activation, NO FX defaults, NO engine hook, NO tax computation.",
+  "base": "785024c752bbd1700d6051cf15115d9980d0b4a1",
+  "base_blobs": {
+    "tests/fin_v2_cohorts.py": "3d38dad0829cf8667f3498589723b435d5ca543a",
+    "tests/test_ux_pr3b2_scope.py": "f7ac957d768146b923b85614180f90236b003745",
+    "tests/ux_pr3b1_scope.py": "f269ba3d1785ca033874a766e8ab8f155f19c710",
+    "tests/ux_pr3b2_scope.py": "00270d57758883d5f88679e9980efe9c084ba1dd"
+  },
+  "base_tree": "063d27ce5ef6841ec641e377662cbda924d97667",
+  "schema_version": "T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "docs/tax_reference_registry/FINAL_REPORT_HR.md": "069624c6e99b21341beafa56added55da17ff986",
+    "docs/tax_reference_registry/NEXT_INTEGRATION_CONTRACT.md": "8acd5a8f3a346e23cb523ebc146080e04dbf02b7",
+    "tax_reference_registry/__init__.py": "12e8e8c7e20a9e36ce73ef288f80baa65d98c42b",
+    "tax_reference_registry/__main__.py": "58e43c2947b3f22938cc7c5cc35912e328ca1fdb",
+    "tax_reference_registry/activation.py": "5f9a1ff23326b9d873abc81f9f33a31d7c200a31",
+    "tax_reference_registry/cli.py": "9092560795c82cc61cc6a5d9cc89022e552dc31a",
+    "tax_reference_registry/currency.py": "b019367a6af0ecf1255fb269f9abdca93b2a8526",
+    "tax_reference_registry/enums.py": "b0675319b265018e11aedd86f30ed84e7b18299e",
+    "tax_reference_registry/loader.py": "2146fe00d71045b2c7731cedf522672afbe8233e",
+    "tax_reference_registry/records.py": "3e42f3ed36794e459490dd9c92171b98c557977f",
+    "tax_reference_registry/registry.py": "6e7bce70dbdfc03c09df63d881cdf328dbb462fa",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
+    "tests/tax_reference_registry/conftest.py": "396c5751b86b04ff6092ed217aeea1a803716658",
+    "tests/tax_reference_registry/test_loader_errors.py": "25ef6f5de8fd64137f232d13c473fa5565ce3069",
+    "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
+    "tests/tax_reference_registry/test_registry_compare_activation.py": "7af9aaa8237e8cb6d829eedb51d00640fe96d672",
+    "tests/tax_reference_registry/test_schema_and_currency.py": "05821ab7038e6276dd255c5baff48f10a9aee4ad",
+    "tests/tax_reference_registry_scope.py": "c2eb1a44873249a2b50de4f5c3ac6902ae04b1d3",
+    "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
+    "tests/test_ux_pr3b2_scope.py": "1240153642f2467ab1ec6b47b6da2cf13ea4e467",
+    "tests/ux_pr3b1_scope.py": "5643b96b873471544c5d1ae5e20bd6ee3ec87f22",
+    "tests/ux_pr3b2_scope.py": "0dc684985ba3a60082bb9c24c729b0a85c26f9b7"
+  }
+}

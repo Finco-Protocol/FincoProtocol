@@ -18,7 +18,7 @@
     "frontend/src/app/projection/OpexRunProjection.tsx": "5d98c34d4eafacfde57a654d591d567258487737",
     "frontend/src/app/projection/__tests__/opexRunRequest.test.mjs": "e0d39fbe6595fdae1d4c5d6dbf2f48247a5ad85c",
     "frontend/src/app/projection/opexRunRequest.ts": "542f3aefd9854ecafa8adec73a150f065a3af5a4",
-    "tests/fin_v2_cohorts.py": "3d38dad0829cf8667f3498589723b435d5ca543a",
+    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
     "tests/g10_d8_scope.py": "36b0df3305849fb94900e197d071e654878d83b3",
     "tests/test_g10_d8_opex_completion.py": "392351fa033bf1d665475be3089c1080552bba7c",
     "tests/test_g10_d8_scope.py": "f96df04e57640ea6fe52fc5353a330bc5f695961"

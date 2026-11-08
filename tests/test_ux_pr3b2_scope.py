@@ -11,7 +11,12 @@ def test_current_registered_cohort_and_unchanged_financial_sources():
     assert F.__name__ in C.COHORT_MODULES
     assert os.environ.get('FINCO_SAVE_ALL_PROFILE_ENABLED','0')=='0'
     changed=subprocess.check_output(['git','diff','--name-only',F.BASE],cwd=F.ROOT,text=True).splitlines()
-    assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) for p in changed)
+    try:
+        from tests import tax_reference_registry_scope as T
+        t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
+    except ImportError:
+        t01d=frozenset()
+    assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
     old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
     assert (F.ROOT/E.MANIFEST).read_bytes()==old
     for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
