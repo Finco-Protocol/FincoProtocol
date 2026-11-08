@@ -33,11 +33,16 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
   const seen = useRef(baselineText);
   const ownCommit = useRef(false);
   useEffect(() => {
-    if (ownCommit.current) {
+    if (ownCommit.current || serializeBankability(draft) === seen.current) {
       ownCommit.current=false;seen.current=baselineText;setDraft(baseline);setStaleDraft(false);setProblems([]);
-    } else if (seen.current !== baselineText) {
-      if (serializeBankability(draft) === seen.current) { setDraft(baseline); setProblems([]); }
-      else { setStaleDraft(true);setStatus({ tone: 'conflict', text: 'Saved configuration changed. Your draft is retained; review the refreshed values before saving.' }); }
+    } else {
+      // Inherited (disabled, non-submitted) vectors follow the server projection;
+      // actively edited period vectors and every serialized document input survive.
+      setDraft(d => ({ ...d, rates: d.ratesMode === 'inherit' ? baseline.rates : d.rates,
+        targets: d.targetsMode !== 'periods' ? baseline.targets : d.targets }));
+      if (seen.current !== baselineText) {
+        setStaleDraft(true);setStatus({ tone: 'conflict', text: 'Saved configuration changed. Your draft is retained; review the refreshed values before saving.' });
+      }
       seen.current = baselineText;
     }
   }, [baseline, baselineText]);

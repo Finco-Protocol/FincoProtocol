@@ -46,6 +46,9 @@ def test_pr3b2_atomic_block_and_unchanged_run(live_server,fin_session,width):
     assert writes[0]['contracts_json'] is None and writes[0]['cost_lines']==[] and 'profile_json' not in writes[0]
     after=draft(rec);assert after[1:]==before[1:]
     fresh=fields(context,live_server,rec.project_code)
+    authoritative=context.request.get(live_server+'/v2/model-react/financing/studio',params={'project':rec.project_code}).json()
+    for i,p in enumerate(authoritative['bankability']['periods']):
+        assert float(root.locator(f'[data-grid-cell="rate-{i}"]').input_value())==float(p['rate_pct'])
     intended={'debt.senior.gearing_pct','debt.senior.interest_rate_pct'}
     assert {f['field_id']:f['value'] for f in fresh['fields'] if f['binding_label']=='bound' and f['field_id'] not in intended}=={f['field_id']:f['value'] for f in data['fields'] if f['binding_label']=='bound' and f['field_id'] not in intended}
     assert draft(other)==other_before
@@ -106,6 +109,13 @@ def test_pr3b2_bankability_draft_and_original_paths(live_server,fin_session):
     root=open_inputs(page,live_server,rec.project_code)
     root.get_by_text('Advanced · Bankability, repayment profile, fees & reserves',exact=True).click()
     bank=root.locator('[data-bankability-editor]');bank.locator('[data-bank="sizing_mode"]').select_option('gearing_cap')
+    root.get_by_label('All-in Interest Rate',exact=True).fill('4.21')
+    root.get_by_role('button',name='Save Structure & Terms',exact=True).click()
+    root.get_by_text('Saved and read back:',exact=False).wait_for(timeout=60000)
+    page.wait_for_function("() => document.querySelector('[data-financing-editing]').getAttribute('aria-busy') === 'false'")
+    assert bank.locator('[data-bank="sizing_mode"]').input_value()=='gearing_cap'
+    current=context.request.get(live_server+'/v2/model-react/financing/studio',params={'project':rec.project_code}).json()
+    assert float(bank.locator('[data-grid-cell="rate-0"]').input_value())==float(current['bankability']['periods'][0]['rate_pct'])
     page.locator('[data-financing-read-link][data-financing-tab-button="terms"]').click()
     page.get_by_role('button',name='Stay and keep editing').click()
     assert bank.locator('[data-bank="sizing_mode"]').input_value()=='gearing_cap'
