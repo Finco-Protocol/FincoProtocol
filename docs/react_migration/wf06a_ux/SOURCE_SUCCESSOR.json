@@ -1,8 +1,33 @@
 {
-  "authorization": {},
+  "schema_version": "WF06A_UX_EXACT_SOURCE_V1",
   "base": "ebf1f15113ec95d69d29e8aa4e4635686dd1f39a",
   "base_tree": "45e8efdd7e8b0fa8df6497c4e9510a7a27815f85",
-  "path_ledger": [],
+  "authorization": {},
+  "source_blobs": {
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
+    "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
+    "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
+    "frontend/src/app/RunFailureNotice.tsx": "83adb17a55c518cf98225b9d29e3e020d3607248",
+    "frontend/src/app/__tests__/wf06a.test.mjs": "39a5b7b779a2f4af7314113fae6a97c8f2bc2348",
+    "frontend/src/app/editing/CostLinesGridView.tsx": "a31c064ec04c7b501edd97cd8d797c5a8e2cefa4",
+    "frontend/src/app/workflow/CostLineManager.tsx": "438e881eb950875f91b4c7e2edd494fb6c65ab3e",
+    "frontend/src/styles/ws2-editing.css": "f8a58bf4871cd02e6b4c11095ae03765b28a17fa",
+    "static/react/finco-react.css": "4634e51e1707a908dec5cd8ec4010487617a5fa0",
+    "static/react/finco-react.js": "a8e42da398fdf71f2fe4c21cbcbd8e96ab25cd8e",
+    "tests/fin_v2_cohorts.py": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
+    "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
+    "tests/model_react_wf06a_acceptance.py": "0ee620589964bd30f6a14ab7073258bd915c5a9d",
+    "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
+    "tests/test_wf03_lifecycle_scope.py": "0c0f0efbc945bf37e977e95023cf84095c0939dc",
+    "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
+    "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
+    "tests/wf03_lifecycle_scope.py": "6a237eddd48da4034de7165dd8ef60746f9e6214",
+    "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
+    "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
+  },
   "predecessor_pins": {
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": {
       "tests/fin_v2_cohorts.py": "baae671c7fd265c2afcc6bbbe53495bab376eb3d"
@@ -42,32 +67,7 @@
       "tests/wsv2_core_scope.py": "9af504bbc5efdae602ea08e6eee3efe6dff7111a"
     }
   },
+  "path_ledger": [],
   "rollback": "Revert the WF-06A commit(s): presentation sources, bundle, governance hooks and predecessor pins return together to the BASE state.",
-  "schema_version": "WF06A_UX_EXACT_SOURCE_V1",
-  "source_blobs": {
-    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
-    "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
-    "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
-    "frontend/src/app/RunFailureNotice.tsx": "83adb17a55c518cf98225b9d29e3e020d3607248",
-    "frontend/src/app/__tests__/wf06a.test.mjs": "39a5b7b779a2f4af7314113fae6a97c8f2bc2348",
-    "frontend/src/app/editing/CostLinesGridView.tsx": "a31c064ec04c7b501edd97cd8d797c5a8e2cefa4",
-    "frontend/src/app/workflow/CostLineManager.tsx": "438e881eb950875f91b4c7e2edd494fb6c65ab3e",
-    "frontend/src/styles/ws2-editing.css": "f8a58bf4871cd02e6b4c11095ae03765b28a17fa",
-    "static/react/finco-react.css": "4634e51e1707a908dec5cd8ec4010487617a5fa0",
-    "static/react/finco-react.js": "a8e42da398fdf71f2fe4c21cbcbd8e96ab25cd8e",
-    "tests/fin_v2_cohorts.py": "6b651af73f019b01fb11bbd0344f0eabadad22ac",
-    "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
-    "tests/model_react_wf06a_acceptance.py": "0ee620589964bd30f6a14ab7073258bd915c5a9d",
-    "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
-    "tests/test_wf03_lifecycle_scope.py": "0c0f0efbc945bf37e977e95023cf84095c0939dc",
-    "tests/test_wf04_scope.py": "a3738a45a74d1cfda815dadcd296747f2becc6fe",
-    "tests/test_wsv2_core_scope.py": "09cbb920b7b1032b2dc3568e635b79cce8d49774",
-    "tests/wf03_lifecycle_scope.py": "6a237eddd48da4034de7165dd8ef60746f9e6214",
-    "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
-    "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
-  },
   "validation": "See IMPLEMENTATION_EVIDENCE.md and exact-head CI; this manifest is a seal, not a PASS claim."
 }

@@ -67,12 +67,17 @@ TEST_AND_DOC_PATHS = frozenset((
 ))
 GOVERNANCE_PATHS = frozenset((
     'tests/fin_v2_cohorts.py',
+    'tests/ux_pr3b1_scope.py',
+    'tests/ux_pr3b2_scope.py',
     'tests/tax_reference_registry_scope.py',
 ))
 OWNED_PATHS = SOURCE_PATHS | TEST_AND_DOC_PATHS | GOVERNANCE_PATHS
-# The only owned path that exists at BASE and that older cohorts pin: the composite registry.
+# The owned paths that exist at BASE and that older cohorts pin: the composite registry, and the two newest UX successors whose bounded
+# one-way successor hook (``_successor()``, exactly like PR3b-1 -> PR3b-2 before it) now follows this cohort. Nothing else exists at BASE.
 SUPERSEDED = frozenset((
     'tests/fin_v2_cohorts.py',
+    'tests/ux_pr3b1_scope.py',
+    'tests/ux_pr3b2_scope.py',
 ))
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'app/', 'frontend/', 'static/')
 FORBIDDEN_PATHS = frozenset(('main_web.py',))
@@ -194,6 +199,11 @@ def _exact_blobs_ok(repo=None, ref=None):
 
 def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS or path == MANIFEST
+
+
+def signature_ok(repo=None, ref=None):
+    """Source/base/mode authority only. This cohort reads no foreign manifest, so its signature is its full exact verdict."""
+    return exact_blobs_ok(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):

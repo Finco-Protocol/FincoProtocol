@@ -96,25 +96,36 @@ def test_every_owned_pin_equals_the_current_blob():
         assert _git_blob(path) == pin, path
 
 
-def test_shared_composite_registry_blob_is_re_pinned_everywhere():
-    """The one shared file this cohort moved is pinned at the SAME new blob in
-    every sibling manifest that pins it (the established integration re-pin
-    pattern; historical blobs stay in git history and in base_blobs)."""
+INTEGRATION_MANIFESTS = (
+    "docs/ci_v4/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",
+)
+
+
+def test_shared_composite_registry_blob_is_re_pinned_only_in_the_current_integration_manifests():
+    """Exactly the seven manifests the newest accepted integration (PR3b-2) re-pins carry the NEW composite-registry blob;
+    every other historical manifest is byte-identical to BASE (no historical pin is ever rewritten)."""
     import glob
 
     current = _git_blob("tests/fin_v2_cohorts.py")
-    stale = []
+    for path in INTEGRATION_MANIFESTS:
+        pin = json.loads(Path(path).read_text(encoding="utf-8"))["source_blobs"]["tests/fin_v2_cohorts.py"]
+        assert pin == current, path
+    rewritten = []
     for path in glob.glob("docs/**/*.json", recursive=True):
-        try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (ValueError, OSError):
+        path = path.replace("\\", "/")
+        if path in INTEGRATION_MANIFESTS or path == cohort.MANIFEST:
             continue
-        if not isinstance(data, dict):
-            continue
-        pin = (data.get("source_blobs") or {}).get("tests/fin_v2_cohorts.py")
-        if pin is not None and pin != current:
-            stale.append(path)
-    assert stale == [], f"stale shared-registry pins: {stale}"
+        head = subprocess.run(["git", "rev-parse", "HEAD:" + path], capture_output=True, text=True).stdout.strip()
+        base = subprocess.run(["git", "rev-parse", cohort.BASE + ":" + path], capture_output=True, text=True)
+        if base.returncode == 0 and base.stdout.strip() != head:
+            rewritten.append(path)
+    assert rewritten == [], f"historical manifests rewritten since BASE: {rewritten}"
 
 
 def test_registry_paths_admitted_and_financing_paths_not():
@@ -206,3 +217,47 @@ def test_activation_guards_present_in_owned_package():
         activate_country("ZZ")
     with pytest.raises(ActivationBlockedError):
         get_effective_run_profile("ZZ")
+
+
+# -- bounded successor hook: PR3b-2 follows this cohort for exactly the superseded governance paths --
+def _pr3b2():
+    from tests import ux_pr3b2_scope
+
+    return ux_pr3b2_scope
+
+
+def test_pr3b2_follows_this_cohort_only_for_its_superseded_blobs():
+    S = _pr3b2()
+    for path in sorted(cohort.SUPERSEDED):
+        blob = _git_blob(path)
+        assert cohort.supersedes(path, blob) is True
+        assert S.effective_pins().get(path) == blob  # the known successor blob is accepted through the chain
+    assert S.exact_blobs_ok() is True
+    assert S.allowed_path("tax_reference_registry/loader.py") is True
+    # not a wildcard: a neighbouring path and a financial path stay refused
+    assert S.allowed_path("tax_reference_registry/other.py") is False
+    assert S.allowed_path("app/v2/router.py") is False
+
+
+def test_successor_rejects_forged_unknown_and_cross_path_blobs():
+    S = _pr3b2()
+    path = "tests/ux_pr3b2_scope.py"
+    good = _git_blob(path)
+    assert S.supersedes(path, "0" * 40) is False  # forged / unknown
+    assert S.supersedes(path, _git_blob("tests/fin_v2_cohorts.py")) is False  # a real blob pinned for ANOTHER path
+    assert S.supersedes("tests/not_superseded.py", good) is False  # path outside the closed set
+    assert cohort.supersedes("tests/ux_pr3b2_scope.py", _git_blob("tests/ux_pr3b1_scope.py")) is False  # cross-path
+
+
+def test_successor_rejects_wrong_ancestor_and_tampered_cohort(restored_manifest):
+    S = _pr3b2()
+    # wrong ancestry: judged at the accepted parent the successor does not exist, so it contributes nothing
+    assert cohort.exact_blobs_ok(ref=cohort.BASE) is False
+    assert S.effective_pins(ref=cohort.BASE).get("tests/fin_v2_cohorts.py") != _git_blob("tests/fin_v2_cohorts.py")
+    # a forged pin in this cohort's manifest makes it inexact, so the chain falls back to the historical pins only
+    data = json.loads((ROOT / cohort.MANIFEST).read_text(encoding="utf-8"))
+    data["source_blobs"]["tests/fin_v2_cohorts.py"] = "0" * 40
+    (ROOT / cohort.MANIFEST).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assert cohort.exact_blobs_ok() is False
+    assert S.effective_pins().get("tests/fin_v2_cohorts.py") != _git_blob("tests/fin_v2_cohorts.py")
+    assert S.exact_blobs_ok() is False
