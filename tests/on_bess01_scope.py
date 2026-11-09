@@ -86,6 +86,68 @@ FROZEN = frozenset((
     'tests/test_u1_scope.py',
     'tests/test_wf03_lifecycle_scope.py',
 ))
+GENERATED_EVIDENCE = frozenset((
+    'evidence/browser/data_center-0.056.png',
+    'evidence/browser/data_center-5.60.png',
+    'evidence/browser/data_center.json',
+    'evidence/browser/ev_charging-0.056.png',
+    'evidence/browser/ev_charging-5.60.png',
+    'evidence/browser/ev_charging.json',
+    'evidence/browser/solar-0.056.png',
+    'evidence/browser/solar-5.60.png',
+    'evidence/browser/solar.json',
+    'evidence/browser/wind-0.056.png',
+    'evidence/browser/wind-5.60.png',
+    'evidence/browser/wind.json',
+    'evidence/financial-browser.xml',
+    'evidence/financial/data_center-history-False.json',
+    'evidence/financial/data_center-history-True.json',
+    'evidence/financial/data_center-rate-0.056.json',
+    'evidence/financial/data_center-rate-0.56.json',
+    'evidence/financial/data_center-rate-5.6.json',
+    'evidence/financial/data_center-rate-9.0.json',
+    'evidence/financial/ev_charging-history-False.json',
+    'evidence/financial/ev_charging-history-True.json',
+    'evidence/financial/ev_charging-rate-0.056.json',
+    'evidence/financial/ev_charging-rate-0.56.json',
+    'evidence/financial/ev_charging-rate-5.6.json',
+    'evidence/financial/ev_charging-rate-9.0.json',
+    'evidence/financial/solar-history-False.json',
+    'evidence/financial/solar-history-True.json',
+    'evidence/financial/solar-rate-0.056.json',
+    'evidence/financial/solar-rate-0.56.json',
+    'evidence/financial/solar-rate-5.6.json',
+    'evidence/financial/solar-rate-9.0.json',
+    'evidence/financial/wind-history-False.json',
+    'evidence/financial/wind-history-True.json',
+    'evidence/financial/wind-rate-0.056.json',
+    'evidence/financial/wind-rate-0.56.json',
+    'evidence/financial/wind-rate-5.6.json',
+    'evidence/financial/wind-rate-9.0.json',
+    'evidence/merge-tree.json',
+    'evidence/native.xml',
+    'evidence/native/native-data_center-0.056.json',
+    'evidence/native/native-data_center-0.56.json',
+    'evidence/native/native-data_center-5.6.json',
+    'evidence/native/native-data_center-9.0.json',
+    'evidence/native/native-data_center-None.json',
+    'evidence/native/native-ev_charging-0.056.json',
+    'evidence/native/native-ev_charging-0.56.json',
+    'evidence/native/native-ev_charging-5.6.json',
+    'evidence/native/native-ev_charging-9.0.json',
+    'evidence/native/native-ev_charging-None.json',
+    'evidence/native/native-solar-0.056.json',
+    'evidence/native/native-solar-0.56.json',
+    'evidence/native/native-solar-5.6.json',
+    'evidence/native/native-solar-9.0.json',
+    'evidence/native/native-solar-None.json',
+    'evidence/native/native-wind-0.056.json',
+    'evidence/native/native-wind-0.56.json',
+    'evidence/native/native-wind-5.6.json',
+    'evidence/native/native-wind-9.0.json',
+    'evidence/native/native-wind-None.json',
+    'evidence/source.json',
+))
 _SCOPE = []
 _ENCLOSING_SCOPES = (
     'tests.fin_v2_3_scope',
@@ -225,6 +287,44 @@ def _foreign_bytes_and_modes_ok(root):
     return True
 
 
+def _generated_evidence_ok(root, path):
+    """Finite existing F01 workflow outputs only; never source ownership.
+
+    No prefix/glob exception: unknown files and tracked evidence still fail the
+    source delta closure. These regular data files are never evaluated and
+    never supply pins or authority. Attestations must name the real HEAD/tree.
+    """
+    if path not in GENERATED_EVIDENCE:
+        return False
+    p = root / path
+    if (not p.is_file() or p.is_symlink() or p.stat().st_mode & 0o111
+            or p.stat().st_size > 5_000_000
+            or any(parent.is_symlink() for parent in p.parents if parent != root and root in parent.parents)):
+        return False
+    raw = p.read_bytes()
+    try:
+        if path.endswith('.png'):
+            return raw.startswith(b'\x89PNG\r\n\x1a\n')
+        if path.endswith('.xml'):
+            import xml.etree.ElementTree as ET
+            return b'<!DOCTYPE' not in raw.upper() and ET.fromstring(raw).tag in ('testsuite', 'testsuites')
+        data = json.loads(raw)
+        if path in ('evidence/source.json', 'evidence/merge-tree.json'):
+            head = _git(root, 'rev-parse', 'HEAD').decode().strip()
+            tree = _git(root, 'rev-parse', 'HEAD^{tree}').decode().strip()
+            if not isinstance(data, dict) or data.get('head') != head or data.get('tree') != tree:
+                return False
+            if path == 'evidence/source.json':
+                return set(data) == {'head', 'tree'}
+            required = {'head', 'tree', 'mode', 'merge_sha', 'merge_tree', 'equivalent'}
+            return (required <= set(data) <= required | {'authenticated_drift'}
+                    and data['equivalent'] is True and data['mode'] in ('main-head', 'identical-tree')
+                    and data['merge_tree'] in (None, tree))
+        return isinstance(data, (dict, list))
+    except (ValueError, TypeError, KeyError, SyntaxError):
+        return False
+
+
 def _exact(repo, ref, closure):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -270,7 +370,7 @@ def _exact(repo, ref, closure):
                 return False
             if ref is None:
                 extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
-                if not extra <= allowed:
+                if any(p not in allowed and not _generated_evidence_ok(root, p) for p in extra):
                     return False
                 if not _foreign_bytes_and_modes_ok(root):
                     return False
@@ -287,7 +387,8 @@ def _exact(repo, ref, closure):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS | {MANIFEST}
+    root = Path(repo) if repo is not None else ROOT
+    return path in OWNED_PATHS | {MANIFEST} or (ref is None and _generated_evidence_ok(root, path))
 
 
 def base_blob(path, repo=None, ref=None):

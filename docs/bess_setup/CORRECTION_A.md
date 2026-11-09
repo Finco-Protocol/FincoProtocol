@@ -56,6 +56,17 @@ engine/core/domain, tax package, CI policy and workflows remain unchanged.
 No new test is automatically discovered. Explicit checks are
 `tests/on_bess01_{contract,governance,browser,correction}_checks.py`.
 
+The first hosted correction exposed a missing workflow-state case: F01 creates
+`evidence/source.json` and its existing PNG/JSON outputs before source tests run.
+The source seal correctly rejected unknown untracked files, but also rejected
+those required outputs. The leaf now names exactly 60 existing F01 output file
+paths, separately from source ownership. Only untracked regular non-executable
+bounded PNG/JSON/JUnit data is admitted. Source attestations must match the real
+HEAD/tree; unknown names, code files, wrong data types, forged identity and links
+remain refused. A tracked output still fails the source delta closure. There is
+no `evidence/` prefix permission, wildcard or general ignore rule. Existing CI
+definitions, financial fixtures and original assertions remain unchanged.
+
 The full path/blob ledger, caller inventory, negative results, CI evidence and
 budget belong in the private delivery packet. Preview governance is not BESS
 financial runtime admission.

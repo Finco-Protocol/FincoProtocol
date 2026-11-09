@@ -3,6 +3,7 @@ import ast
 import json
 import os
 import subprocess
+from contextlib import contextmanager
 
 import pytest
 
@@ -222,4 +223,77 @@ def test_hidden_foreign_drift_cannot_use_git_index_flags():
     finally:
         p.write_bytes(raw)
         subprocess.run(['git', 'update-index', '--no-assume-unchanged', path], cwd=B.ROOT, check=True)
+    assert B.exact_blobs_ok()
+
+
+@contextmanager
+def evidence_file(path, raw):
+    p = B.ROOT / path
+    old = p.read_bytes() if p.exists() else None
+    mode = p.stat().st_mode if p.exists() else 0o644
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(raw)
+    try:
+        yield p
+    finally:
+        if p.is_symlink():
+            p.unlink()
+        if old is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.write_bytes(old)
+            p.chmod(mode)
+        for parent in p.parents:
+            if parent == B.ROOT or B.ROOT not in parent.parents:
+                break
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+
+
+def real_attestation():
+    from tools.ci_acceptance import attest
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=B.ROOT).decode().strip()
+    return attest(head)
+
+
+def test_existing_workflow_attestation_is_data_and_never_source_ownership():
+    from tests import fin_v2_cohorts as C
+    from tests.test_trust_readiness_controls import test_known_gap_state_changing_posts_have_no_csrf_token
+    path = 'evidence/source.json'
+    with evidence_file(path, json.dumps(real_attestation()).encode()):
+        assert path not in B.OWNED_PATHS | B.SUPERSEDED
+        assert B.allowed_path(path) and B.exact_blobs_ok() and C.valid()
+        test_known_gap_state_changing_posts_have_no_csrf_token()
+    assert B.exact_blobs_ok()
+
+
+@pytest.mark.parametrize('fault', ['head', 'tree', 'extra-key', 'mode', 'symlink'])
+def test_workflow_attestation_never_admits_forgery_or_foreign_modes(fault):
+    d = real_attestation()
+    if fault in ('head', 'tree'):
+        d[fault] = '0' * 40
+    elif fault == 'extra-key':
+        d['source_override'] = 'app/unreviewed.py'
+    with evidence_file('evidence/source.json', json.dumps(d).encode()) as p:
+        if fault == 'mode':
+            p.chmod(0o755)
+        elif fault == 'symlink':
+            p.unlink()
+            p.symlink_to(B.ROOT / 'docs/bess_setup/SOURCE_SUCCESSOR.json')
+        assert not B.exact_blobs_ok()
+    assert B.exact_blobs_ok()
+
+
+@pytest.mark.parametrize('path,raw', [
+    ('evidence/unreviewed.json', b'{}'),
+    ('evidence/source.py', b'unsigned = True\n'),
+    ('evidence/browser/solar-0.056.png', b'not a PNG'),
+    ('evidence/financial/solar-rate-0.056.json', b'not JSON'),
+    ('evidence/native.xml', b'<!DOCTYPE x><testsuite/>'),
+])
+def test_data_exception_has_no_prefix_glob_or_executable_escape(path, raw):
+    with evidence_file(path, raw):
+        assert not B.exact_blobs_ok()
     assert B.exact_blobs_ok()
