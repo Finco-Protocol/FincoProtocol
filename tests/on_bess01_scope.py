@@ -298,6 +298,24 @@ def _maps_ok(root, ref, pins):
     return True
 
 
+def _current_map_pin_contract_ok(root, pins):
+    """Signature proof derives expected foreign-map pins without reading them.
+
+    The canonical maps contain only immutable BASE content and literal reviewed
+    source-pin substitutions. A forged expected map pin still fails signature;
+    forged/missing current map bytes fail the separate full closure. Signatures
+    confer no global path or source authority.
+    """
+    for path in CURRENT_MAPS:
+        expected = json.loads(_base(root, 'show', BASE + ':' + path))
+        for key in (SUPERSEDED - CURRENT_MAPS) & expected['source_blobs'].keys():
+            expected['source_blobs'][key] = pins[key]
+        canonical = (json.dumps(expected, indent=2, sort_keys=True) + '\n').encode()
+        if pins[path] != _blob(canonical):
+            return False
+    return True
+
+
 def _foreign_bytes_and_modes_ok(root):
     # Git's index can hide drift through assume-unchanged/core.filemode. Verify
     # every non-owned accepted-main object directly as well as the git delta.
@@ -413,11 +431,14 @@ def _exact(repo, ref, closure):
         old = {line.split('\t')[1]: line.split()[2] for line in _base(root, 'ls-tree', '-r', BASE, '--', *sorted(OWNED_PATHS)).decode().splitlines()}
         if old != data['base_blobs']:
             return False
-        if any(_blob(_read(root, p, ref)) != pin for p, pin in pins.items()):
+        if not _current_map_pin_contract_ok(root, pins):
+            return False
+        identity_paths = OWNED_PATHS if closure else OWNED_PATHS - CURRENT_MAPS
+        if any(_blob(_read(root, p, ref)) != pins[p] for p in identity_paths):
             return False
         if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p) for p in FROZEN):
             return False
-        if not _maps_ok(root, ref, pins):
+        if closure and not _maps_ok(root, ref, pins):
             return False
         # Preserve ALL original assertion ASTs in the single reviewed consumer.
         import ast
@@ -448,12 +469,13 @@ def _exact(repo, ref, closure):
                     return False
                 if not _foreign_bytes_and_modes_ok(root):
                     return False
+        identity_modes = (allowed | FROZEN) if closure else (allowed | FROZEN) - CURRENT_MAPS
         if ref is None:
-            if any(not (root / p).is_file() or (root / p).is_symlink() or (root / p).stat().st_mode & 0o111 for p in allowed | FROZEN):
+            if any(not (root / p).is_file() or (root / p).is_symlink() or (root / p).stat().st_mode & 0o111 for p in identity_modes):
                 return False
         else:
-            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(allowed | FROZEN)).decode().splitlines()
-            if len(modes) != len(allowed | FROZEN) or any(not line.startswith('100644 ') for line in modes):
+            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(identity_modes)).decode().splitlines()
+            if len(modes) != len(identity_modes) or any(not line.startswith('100644 ') for line in modes):
                 return False
         return True
     except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):

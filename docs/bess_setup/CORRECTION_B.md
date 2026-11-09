@@ -34,3 +34,10 @@ The terminal BESS/Tax memo bridge excludes the O1 scope: its original contract
 requires exactly its own one verdict entry. Other already-open read-only scopes
 still provide bounded per-call reuse; no verdict survives an outer call.
 The original O1 memo assertion is unchanged and is repeated in opt-in proof.
+
+Signature-only CI authority derives every expected integration-map pin from
+immutable accepted-main JSON plus the finite reviewed source-pin substitutions,
+without reading foreign current map bytes. Full closure separately checks those
+bytes, map semantics and complete path/mode closure. Forged expected pins fail
+both proofs; forged current foreign maps preserve only the bounded CI signature
+and fail every full/global proof. The original PR3b-1 negative test is unchanged.

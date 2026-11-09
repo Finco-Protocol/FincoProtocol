@@ -117,3 +117,20 @@ def test_generated_output_add_missing_modified_controls(fault):
 def test_original_o1_memo_contract_is_preserved_without_changing_the_assertion():
     from tests.test_post413_o1_scope import test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call
     test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call()
+
+
+def test_original_signature_and_foreign_manifest_contract_stays_strict():
+    from tests.test_ux_pr3b1_scope import test_signature_only_ci_authority_ignores_foreign_manifest_forgery_but_full_proof_rejects_it
+    test_signature_only_ci_authority_ignores_foreign_manifest_forgery_but_full_proof_rejects_it()
+
+
+def test_a_forged_expected_foreign_map_pin_cannot_gain_signature_authority():
+    p = B.ROOT / B.MANIFEST
+    raw = p.read_bytes()
+    try:
+        d = json.loads(raw)
+        d['source_blobs']['docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'] = '0' * 40
+        p.write_text(json.dumps(d))
+        assert not B.signature_ok() and not B.exact_blobs_ok()
+    finally:
+        p.write_bytes(raw)
