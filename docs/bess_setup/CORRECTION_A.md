@@ -59,7 +59,7 @@ No new test is automatically discovered. Explicit checks are
 The first hosted correction exposed a missing workflow-state case: F01 creates
 `evidence/source.json` and its existing PNG/JSON outputs before source tests run.
 The source seal correctly rejected unknown untracked files, but also rejected
-those required outputs. The leaf now names exactly 60 existing F01 output file
+those required outputs. The leaf now names exactly 76 existing F01 output file
 paths, separately from source ownership. Only untracked regular non-executable
 bounded PNG/JSON/JUnit data is admitted. Source attestations must match the real
 HEAD/tree; unknown names, code files, wrong data types, forged identity and links
