@@ -91,12 +91,21 @@ class PolicyChecks(unittest.TestCase):
         self.assertFalse(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':'foreign'})))
         self.assertTrue(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':None})))
         self.assertFalse(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':None})))
+    def test_foreign_write_attempt_is_counted_before_origin_refusal(self):
+        p=NetworkPolicy('https://app.finco.one')
+        self.assertFalse(p.permit('https://forbidden.invalid/write','POST','secret=not-persisted'))
+        self.assertEqual(p.attempted_mutations,1);self.assertEqual(p.sent_mutations,0)
+        self.assertEqual(p.blocked,['CROSS_ORIGIN_REFUSED'])
     def test_prefix_guard(self):
         p=NetworkPolicy('http://127.0.0.1:9999','synthetic-writable');p.authenticated=True;p.allowed_post=('/v2/model-react/new-project/create',None,None)
         self.assertFalse(p.permit(p.base+'/v2/model-react/new-project/create','POST','{"name":"Existing client"}'))
     def test_scope_protected_and_foreign_refused(self):
         for code,protected,owner,name in [('other',False,True,PREFIX+'t'),('own',True,True,PREFIX+'t'),('own',False,False,PREFIX+'t'),('own',False,True,'client')]:
             with self.assertRaises(Refused):checked_scope({'ok':True,'project':{'code':code,'name':name,'protected_reference':protected},'save_all':{'available':owner}},'own',PREFIX+'t')
+    def test_canonical_vertical_key_not_legacy_display_type(self):
+        payload={'ok':True,'project':{'code':'own','name':PREFIX+'test','protected_reference':False,'project_type':'Generic legacy display'},'vertical':{'key':'solar'},'workbook':{'scenario_id':None},'save_all':{'available':True}}
+        self.assertEqual(checked_scope(payload,'own',PREFIX+'test','solar')['project_hash'],digest('own'))
+        with self.assertRaises(Refused):checked_scope(payload,'own',PREFIX+'test','wind')
     def test_cleanup_refusal_never_forced(self):self.assertEqual(cleanup_result({'message':'Protected/reference demo state cannot be disposed'}),'CLEANUP_REFUSED_PROTECTED')
     def test_missing_zip_explicit(self):
         refs,cat=references([Path('/tmp/onaccept-nonexistent.zip')]);self.assertFalse(refs);self.assertEqual(cat[0]['availability'],'INPUT_NOT_AVAILABLE')

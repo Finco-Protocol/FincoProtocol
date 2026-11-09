@@ -72,7 +72,7 @@ def checked_scope(payload: dict, project: str, expected_name: str, technology: s
     if (payload.get('ok') is not True or p.get('code')!=project or p.get('name')!=expected_name
         or not expected_name.startswith(PREFIX) or p.get('protected_reference') is not False
         or payload.get('save_all',{}).get('available') is not True
-        or (technology is not None and p.get('project_type')!=technology)):
+        or (technology is not None and payload.get('vertical',{}).get('key')!=technology)):
         raise Refused('SYNTHETIC_PROJECT_OWNERSHIP_NOT_PROVEN')
     # save_all.available is the existing server's owner==session-user and not-protected guard.
     return {'project_hash':digest(project),'scenario_hash':digest(str(payload.get('workbook',{}).get('scenario_id')))}
@@ -110,12 +110,12 @@ class NetworkPolicy:
         self.attempted_mutations=0;self.sent_mutations=0;self.blocked=[];self.posts=[]
 
     def permit(self, url: str, method: str, body: str | None=None) -> bool:
+        if method in ('POST','PUT','PATCH','DELETE'):self.attempted_mutations+=1
         try:
             u=urlsplit(url)
             if origin(url)!=origin(self.base) or u.username or u.password:
                 raise Refused('CROSS_ORIGIN_REFUSED')
             if method not in ('GET','HEAD'):
-                self.attempted_mutations+=1
                 if self.mode!='synthetic-writable' or method!='POST' or self.allowed_post is None or not self.authenticated:
                     raise Refused('MUTATION_BLOCKED')
                 path,project,scenario=self.allowed_post
