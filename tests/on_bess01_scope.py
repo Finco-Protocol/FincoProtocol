@@ -83,6 +83,8 @@ FROZEN = frozenset((
     'tests/test_finval_f01_fixture_integrity.py',
     'tests/test_finval_f01_scope.py',
     'tests/test_finval_rate_successor.py',
+    'tests/test_u1_scope.py',
+    'tests/test_wf03_lifecycle_scope.py',
 ))
 _SCOPE = []
 

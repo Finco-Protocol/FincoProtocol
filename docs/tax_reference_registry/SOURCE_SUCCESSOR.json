@@ -31,6 +31,6 @@
     "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
     "tests/test_ux_pr3b2_scope.py": "eb4e50983f1d85d6b79d1a161de9c5107606731f",
     "tests/ux_pr3b1_scope.py": "5643b96b873471544c5d1ae5e20bd6ee3ec87f22",
-    "tests/ux_pr3b2_scope.py": "296e3266c4d7b44c4d8d283de567cd0b916ed9e9"
+    "tests/ux_pr3b2_scope.py": "ff91b0a5fd3a000c4f68b51abcc395d58d3f071a"
   }
 }

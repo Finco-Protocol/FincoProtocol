@@ -197,7 +197,7 @@ def _owned_ok():
 _SCOPE = []
 
 
-LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope')
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.on_bess01_scope')
 
 
 def _later_modules():
@@ -372,12 +372,6 @@ def historical_blobs(path, repo=None, ref=None):
             blob = later.base_blob(path, repo, ref)
             if blob:
                 found.add(blob)
-    # Correction A: WF-06B still pins the exact accepted-main WF03 helper.
-    # Admit that historical object only through the terminal, finite leaf;
-    # never add the path to an earlier cohort's immutable superseded set.
-    from tests import on_bess01_scope as B
-    if path in B.SUPERSEDED and B.exact_blobs_ok(repo, ref):
-        found.add(B.base_blob(path, repo, ref))
     return found
 
 

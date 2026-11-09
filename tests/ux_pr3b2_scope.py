@@ -152,10 +152,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value:
-        return True
-    from tests import on_bess01_scope as B
-    return B.supersedes(path,value,repo,ref)
+    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
 
 
 def _successor():

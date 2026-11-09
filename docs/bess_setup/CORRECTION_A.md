@@ -13,7 +13,8 @@ all handler statements, imports, schema, gates, stream bound and responses;
 pin-independent mutation controls reject registration aliases, extra routes,
 extra validators, bypassed gates, persistence and response leaks.
 
-The low-level direction is WF03/WF06B/U1 → UX PR3b-2 → T01-D → BESS.
+The low-level direction is WF03/WF06B → U1's literal later-cohort list
+(including BESS), and UX PR3b-2 → T01-D → BESS.
 The BESS leaf never evaluates a predecessor or composite. `valid()` is only a
 public composite convenience, never called by a predecessor hook. Current
 verdict memos end with each read-only call. T01-D keeps its original owned and
@@ -39,7 +40,7 @@ Path handoff:
 | React root registration | BESS leaf + exact accepted-parent AST prefix |
 | Wizard and generated JS/CSS | UX PR3b-2 → T01-D effective pins → BESS |
 | Composite registry | Seven current maps, T01-D map, finite BESS source pins |
-| WF03 caller inventory | WF06B/U1 → UX PR3b-2 → BESS exact supersession; U1 verifies the original accepted-main historical blob |
+| WF03 caller inventory | WF06B/U1 → registered BESS leaf; U1's existing history loop verifies the original accepted-main blob |
 | UX/T01-D helper and UX consumer | T01-D current map + BESS leaf |
 | New parser/router/UI/checks/docs | Literal BESS ownership and complete closure |
 
