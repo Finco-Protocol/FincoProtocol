@@ -44,6 +44,7 @@ OWNED_PATHS = APP_PATHS | CURRENT_MAPS | frozenset((
     'tests/wf03_lifecycle_scope.py',
     'tests/u1_scope.py',
     'tests/ux_pr3b2_scope.py',
+    'tests/ux_pr3b1_scope.py',
     'tests/tax_reference_registry_scope.py',
     'tests/test_ux_pr3b2_scope.py',
     'tests/on_bess01_scope.py',
@@ -54,6 +55,11 @@ OWNED_PATHS = APP_PATHS | CURRENT_MAPS | frozenset((
     'tests/on_bess01_governance_checks.py',
     'docs/bess_setup/IMPLEMENTATION.md',
     'docs/bess_setup/CORRECTION_A.md',
+    'docs/bess_setup/CORRECTION_B.md',
+    'tests/test_trust_readiness_registry.py',
+    'tests/model_react_rcm_financing_acceptance.py',
+    'tests/on_bess01_reviewed_successors.py',
+    'tests/on_bess01_successor_checks.py',
 ))
 SUPERSEDED = frozenset((
     'app/v2/react_poc_router.py',
@@ -64,10 +70,17 @@ SUPERSEDED = frozenset((
     'tests/wf03_lifecycle_scope.py',
     'tests/u1_scope.py',
     'tests/ux_pr3b2_scope.py',
+    'tests/ux_pr3b1_scope.py',
     'tests/tax_reference_registry_scope.py',
     'tests/test_ux_pr3b2_scope.py',
+    'tests/test_trust_readiness_registry.py',
+    'tests/model_react_rcm_financing_acceptance.py',
 )) | CURRENT_MAPS
 FROZEN = frozenset((
+    'app/v2/router.py',
+    'frontend/src/app/financing/BankabilityEditor.tsx',
+    'frontend/src/app/financing/FinancingStudio.tsx',
+    'frontend/src/app/workflow/workflowShared.tsx',
     'app/v2/react_new_project.py',
     'frontend/src/app/newProject/types.ts',
     'app/workbook/bess_config.py',
@@ -314,13 +327,43 @@ def _generated_evidence_ok(root, path):
         return False
     p = root / path
     if (not p.is_file() or p.is_symlink() or p.stat().st_mode & 0o111
+            or p.stat().st_mode & 0o7777 != 0o644 or p.stat().st_nlink != 1
             or p.stat().st_size > 5_000_000
             or any(parent.is_symlink() for parent in p.parents if parent != root and root in parent.parents)):
         return False
     raw = p.read_bytes()
     try:
         if path.endswith('.png'):
-            return raw.startswith(b'\x89PNG\r\n\x1a\n')
+            # Validate bounded PNG framing and CRCs; magic bytes alone are insufficient.
+            import struct
+            import zlib
+            if not raw.startswith(b'\x89PNG\r\n\x1a\n'):
+                return False
+            offset, kinds = 8, []
+            while offset + 12 <= len(raw):
+                length = int.from_bytes(raw[offset:offset + 4], 'big')
+                end = offset + 12 + length
+                if end > len(raw):
+                    return False
+                kind = raw[offset + 4:offset + 8]
+                chunk = raw[offset + 8:offset + 8 + length]
+                crc = int.from_bytes(raw[end - 4:end], 'big')
+                if zlib.crc32(kind + chunk) & 0xffffffff != crc:
+                    return False
+                if not kinds:
+                    if kind != b'IHDR' or length != 13:
+                        return False
+                    width, height, depth, color, compression, filtering, interlace = struct.unpack('>IIBBBBB', chunk)
+                    if (not 0 < width <= 10000 or not 0 < height <= 10000 or width * height > 20_000_000
+                            or depth != 8 or color not in (2, 6) or compression or filtering or interlace):
+                        return False
+                elif kind == b'IHDR':
+                    return False
+                kinds.append(kind)
+                offset = end
+                if kind == b'IEND':
+                    return length == 0 and offset == len(raw) and b'IDAT' in kinds
+            return False
         if path.endswith('.xml'):
             import xml.etree.ElementTree as ET
             return b'<!DOCTYPE' not in raw.upper() and ET.fromstring(raw).tag in ('testsuite', 'testsuites')
@@ -333,9 +376,22 @@ def _generated_evidence_ok(root, path):
             if path == 'evidence/source.json':
                 return set(data) == {'head', 'tree'}
             required = {'head', 'tree', 'mode', 'merge_sha', 'merge_tree', 'equivalent'}
-            return (required <= set(data) <= required | {'authenticated_drift'}
-                    and data['equivalent'] is True and data['mode'] in ('main-head', 'identical-tree')
-                    and data['merge_tree'] in (None, tree))
+            if not (required <= set(data) <= required | {'authenticated_drift'} and data['equivalent'] is True):
+                return False
+            if data['mode'] == 'main-head':
+                return set(data) == required and data['merge_sha'] is None and data['merge_tree'] is None
+            if data['mode'] != 'identical-tree' or data['merge_tree'] != tree:
+                return False
+            import re
+            merge = data['merge_sha']
+            if not isinstance(merge, str) or not re.fullmatch('[0-9a-f]{40}', merge):
+                return False
+            # The workflow has fetched this immutable object. Metadata is data,
+            # never a source-authority shortcut; verify its actual tree/parents.
+            parents = _git(root, 'rev-list', '--parents', '-n', '1', merge).decode().split()
+            return (len(parents) == 3 and parents[-1] == head
+                    and _git(root, 'rev-parse', merge + '^{tree}').decode().strip() == tree
+                    and ('authenticated_drift' not in data or isinstance(data['authenticated_drift'], dict)))
         return isinstance(data, (dict, list))
     except (ValueError, TypeError, KeyError, SyntaxError):
         return False
@@ -369,6 +425,9 @@ def _exact(repo, ref, closure):
         p = 'tests/test_ux_pr3b2_scope.py'
         assertions = lambda raw: [ast.dump(n) for n in ast.walk(ast.parse(raw)) if isinstance(n, ast.Assert)]
         if assertions(_read(root, p, ref)) != assertions(_base(root, 'show', BASE + ':' + p)):
+            return False
+        from tests.on_bess01_reviewed_successors import reviewed_edits_ok
+        if not reviewed_edits_ok(lambda p: _read(root, p, ref), lambda p: _base(root, 'show', BASE + ':' + p)):
             return False
         from tests.on_bess01_router_review import violations
         if violations(_read(root, 'app/v2/bess_setup_router.py', ref),
