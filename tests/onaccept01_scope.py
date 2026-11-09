@@ -99,7 +99,44 @@ def exact_blobs_ok(repo=None, ref=None):
     return _verdict(repo,ref,True)
 
 
+def _tip():
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.post432_l01_l02_scope' not in COHORT_MODULES:
+        return None
+    from tests import post432_l01_l02_scope
+    return post432_l01_l02_scope
+
+
+def _tip_pins(root, ref):
+    T = _tip()
+    if T is None or not T.signature_ok(root, ref):
+        return {}
+    return {p: b for p, b in T.manifest(root, ref)['source_blobs'].items() if p in T.SUPERSEDED}
+
+
+def later_owned(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    T = _tip()
+    return (T.OWNED_PATHS | {T.MANIFEST}) if T is not None and T.signature_ok(root, ref) else frozenset()
+
+
+def later_supersedes(path, value, repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    T = _tip()
+    return T is not None and T.signature_ok(root, ref) and T.supersedes(path, value, root, ref)
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    root = Path(repo) if repo is not None else ROOT
+    pins = {p: b for p, b in manifest(root, ref).get('source_blobs', {}).items() if p in SUPERSEDED}
+    pins.update(_tip_pins(root, ref))
+    return pins
+
+
 def _reviewed_handoffs_ok(root, ref):
+    T = _tip()
+    if T is not None and T.signature_ok(root, ref):
+        return T.reviewed_edits_ok(root, ref)
     for path, substitutions in HANDOFFS.items():
         expected = _base(root,'show',BASE+':'+path).decode()
         for old,new in substitutions:
@@ -117,7 +154,7 @@ def _reviewed_handoffs_ok(root, ref):
 def _maps_ok(root, ref, pins, closure=True):
     for path in CURRENT_MAPS:
         expected = json.loads(_base(root,'show',BASE+':'+path))
-        for key in (SUPERSEDED - CURRENT_MAPS) & expected['source_blobs'].keys():
+        for key in ((SUPERSEDED - CURRENT_MAPS) | (set(_tip_pins(root,ref)) - CURRENT_MAPS)) & expected['source_blobs'].keys():
             expected['source_blobs'][key] = pins[key]
         raw = (json.dumps(expected,indent=2,sort_keys=True)+'\n').encode()
         if _blob(raw) != pins[path] or (closure and _read(root,path,ref) != raw):
@@ -147,6 +184,8 @@ def _exact(repo, ref, closure):
                 or any(pins.get(p) != b for p,b in REVIEWED_OPERATOR_BLOBS.items())):
             return False
         allowed = OWNED_PATHS | {MANIFEST}
+        later = later_owned(root,ref)
+        cur = dict(pins, **_tip_pins(root,ref))
         identity = allowed if closure else allowed - CURRENT_MAPS
         if ref is None:
             rows = _git(root,'ls-files','--stage','--',*sorted(identity)).decode().splitlines()
@@ -160,7 +199,7 @@ def _exact(repo, ref, closure):
             # One Git invocation hashes the finite reviewed sources with Git clean-filter semantics.
             actual = subprocess.check_output(['git','hash-object','--stdin-paths'],cwd=root,
                 input=('\n'.join(ordered)+'\n').encode(),stderr=subprocess.DEVNULL).decode().splitlines()
-            if (any(value != pins[p] for p,value in zip(ordered,actual) if p != MANIFEST)
+            if (any(value != cur[p] for p,value in zip(ordered,actual) if p != MANIFEST)
                     or len(actual) != len(ordered)
                     or any(tracked[p][1] != value for p,value in zip(ordered,actual))):
                 return False
@@ -168,20 +207,20 @@ def _exact(repo, ref, closure):
             rows = _git(root,'ls-tree','-r',ref,'--',*sorted(identity)).decode().splitlines()
             if len(rows) != len(identity) or any(not line.startswith('100644 blob ') for line in rows):
                 return False
-            if any(_blob(_read(root,p,ref)) != pins[p] for p in identity if p != MANIFEST):
+            if any(_blob(_read(root,p,ref)) != cur[p] for p in identity if p != MANIFEST):
                 return False
-        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,pins,closure):
+        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,cur,closure):
             return False
         if closure:
             changed = set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
-            if not changed <= allowed:
+            if not changed <= (allowed | later):
                 return False
             if ref is None:
                 # A signature never judges foreign drift. Full closure compares ALL accepted foreign bytes/modes directly,
                 # including protected BESS files even if the index tries to hide them.
                 for line in _base(root,'ls-tree','-r',BASE).decode().splitlines():
                     meta,path = line.split('\t',1)
-                    if path in allowed:
+                    if path in allowed or path in later:
                         continue
                     mode,kind,pin = meta.split(); p=root/path
                     if (kind != 'blob' or mode not in ('100644','100755') or not p.is_file() or p.is_symlink()
@@ -197,7 +236,7 @@ def _exact(repo, ref, closure):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS | {MANIFEST}
+    return path in OWNED_PATHS | {MANIFEST} or path in later_owned(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -205,7 +244,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and signature_ok(repo,ref) and manifest(repo,ref)['source_blobs'].get(path)==value
+    return path in SUPERSEDED and signature_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
 
 
 def valid(repo=None, ref=None):
@@ -226,6 +265,9 @@ def protected_blobs(repo=None, ref=None):
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        T = _tip()
+        if T is not None and T.signature_ok(root) and T.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root,'merge-base','origin/main','HEAD').decode().strip() != BASE:
             return False
         actual = _git(root,'diff',BASE,'--name-only').decode().splitlines()

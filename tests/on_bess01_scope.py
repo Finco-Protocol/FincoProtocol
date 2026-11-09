@@ -316,13 +316,13 @@ def _current_map_pin_contract_ok(root, pins):
     return True
 
 
-def _foreign_bytes_and_modes_ok(root):
+def _foreign_bytes_and_modes_ok(root, later=frozenset()):
     # Git's index can hide drift through assume-unchanged/core.filemode. Verify
     # every non-owned accepted-main object directly as well as the git delta.
     # This grants no path permission; it strengthens the complete closure.
     for line in _base(root, 'ls-tree', '-r', BASE).decode().splitlines():
         meta, path = line.split('\t', 1)
-        if path in OWNED_PATHS | {MANIFEST}:
+        if path in OWNED_PATHS | {MANIFEST} | later:
             continue
         mode, kind, pin = meta.split()
         p = root / path
@@ -426,7 +426,7 @@ def effective_pins(repo=None, ref=None, *, signature=False):
     pins = dict(manifest(repo, ref).get('source_blobs', {}))
     S = _successor()
     if S is not None and S.signature_ok(repo, ref):
-        pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
+        pins.update(S.effective_pins(repo, ref))
     return pins
 
 
@@ -451,7 +451,7 @@ def _exact(repo, ref, closure):
             return False
         S = _successor()
         next_ok = S is not None and S.signature_ok(root, ref)
-        next_pins = S.manifest(root, ref)['source_blobs'] if next_ok else {}
+        next_pins = S.effective_pins(root, ref) if next_ok else {}
         current_pins = dict(pins, **next_pins)
         identity_paths = OWNED_PATHS if closure else OWNED_PATHS - CURRENT_MAPS
         if any(_blob(_read(root, p, ref)) != current_pins[p] for p in identity_paths):
@@ -481,7 +481,7 @@ def _exact(repo, ref, closure):
             return False
         allowed = OWNED_PATHS | {MANIFEST}
         if next_ok:
-            allowed = allowed | S.OWNED_PATHS | {S.MANIFEST}
+            allowed = allowed | S.OWNED_PATHS | {S.MANIFEST} | S.later_owned(root, ref)
         if closure:
             changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
             if not changed <= allowed:
@@ -490,7 +490,7 @@ def _exact(repo, ref, closure):
                 extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
                 if any(p not in allowed and not _generated_evidence_ok(root, p) for p in extra):
                     return False
-                if not _foreign_bytes_and_modes_ok(root):
+                if not _foreign_bytes_and_modes_ok(root, S.later_owned(root, ref) if next_ok else frozenset()):
                     return False
         identity_modes = (allowed | FROZEN) if closure else (allowed | FROZEN) - CURRENT_MAPS
         if ref is None:
@@ -517,7 +517,10 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+        return True
+    S = _successor()
+    return S is not None and S.signature_ok(repo, ref) and S.later_supersedes(path, value, repo, ref)
 
 
 def valid(repo=None, ref=None):

@@ -18,6 +18,8 @@ def test_current_registered_cohort_and_unchanged_financial_sources():
         t01d=frozenset()
     from tests import on_bess01_scope as B
     t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
+    from tests import post432_l01_l02_scope as L
+    t01d = t01d | (L.SOURCE_PATHS if L.exact_blobs_ok() else frozenset())      # post-#434 L01/L02: exactly its two pinned presentation sources, only while that cohort is exact
     assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
     old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
     assert (F.ROOT/E.MANIFEST).read_bytes()==old

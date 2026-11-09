@@ -44,6 +44,16 @@ def _cell(value: Any, display: Optional[str] = None, reason: str = "") -> dict[s
     return {"v": value, "d": display if display is not None else str(value), "reason": ""}
 
 
+# Presentation-only comparison of the Senior sizing target.  A bank-case ratio that is the target up to binary floating-point noise
+# (1.1999999999999997 vs 1.2) is AT the target; any economically meaningful shortfall (1.1999, 1.19) stays BELOW.  Contractual
+# verdicts (Event of Default, covenant, coverage) are decided by ``dscr_contract_terms`` and never read this tolerance.
+RATIO_NOISE_TOL = 1e-12
+
+
+def _noise_equal(actual: Optional[float], required: Optional[float]) -> bool:
+    return actual is not None and required is not None and abs(actual - required) <= RATIO_NOISE_TOL
+
+
 def _x(value: Optional[float], refs: Sequence[float] = (1.0,), reason: str = "") -> dict[str, Any]:
     return _cell(None, reason=reason) if value is None else _cell(value, T.format_ratio(value, refs))
 
@@ -91,14 +101,17 @@ def evaluate_run(entry: Any) -> tuple[T.RunTerms, list[dict[str, Any]], dict[str
 # ── the covenant monitor ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 def _status_row(*, row_id: str, label: str, role: str, description: str, basis: str, required: Optional[float], operator: str, actual: Optional[float],
                 status: str, status_label: str, severity: str, reason: str = "", periods: Sequence[Mapping] = (), actual_reason: str = "",
-                extra_refs: Sequence[float] = (), required_note: str = "") -> dict[str, Any]:
+                extra_refs: Sequence[float] = (), required_note: str = "", snap_noise: bool = False) -> dict[str, Any]:
     refs = tuple(x for x in (required,) + tuple(extra_refs) if x is not None)
+    raw_actual = actual
+    if snap_noise and _noise_equal(actual, required):
+        actual = required                      # display and headroom only: the persisted ratio is unchanged (kept in ``actual.v``)
     head = T.headroom(actual, required)
     return {
         "id": row_id, "label": label, "role": role, "description": description, "basis": basis,
         "required": ({"v": required, "d": T.format_ratio(required, refs), "operator": operator, "note": required_note} if required is not None
                      else {"v": None, "d": UNAVAILABLE, "operator": operator, "note": required_note or reason}),
-        "actual": _x(actual, refs, actual_reason),
+        "actual": {**_x(actual, refs, actual_reason), "v": raw_actual} if raw_actual is not None else _x(actual, refs, actual_reason),
         "headroom": ({"absolute": {"v": head["absolute_x"], "d": T.format_delta_x(head["absolute_x"])},
                       "relative": {"v": head["relative_pct"], "d": T.format_relative_pct(head["relative_pct"])},
                       "note": "negative = below the threshold; actual − required, and actual ÷ required − 1"} if head else None),
@@ -174,13 +187,13 @@ def _covenant_table(ev: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], su
                 tight = (ratio, r)
     if tight is not None:
         row = tight[1]
-        meets = row["bank_dscr"] >= row["sizing_target_dscr"]
+        meets = row["bank_dscr"] >= row["sizing_target_dscr"] or _noise_equal(row["bank_dscr"], row["sizing_target_dscr"])
         table.append(_status_row(
             row_id="SIZING_TARGET", label="Sizing target DSCR", role="SIZING_ASSUMPTION",
             description="Sizing assumption — NOT a contractual covenant. It sized the Senior debt on the lender (bank) case.",
             basis="Tightest period of bank-case CFADS ÷ scheduled service against that period's sizing target (lender basis; base-case ratios are not compared with it).",
             required=row["sizing_target_dscr"], operator="≥", actual=row["bank_dscr"], status="AT_OR_ABOVE_TARGET" if meets else "BELOW_TARGET",
-            status_label="AT OR ABOVE TARGET" if meets else "BELOW TARGET", severity="OK" if meets else "WARNING",
+            status_label="AT OR ABOVE TARGET" if meets else "BELOW TARGET", severity="OK" if meets else "WARNING", snap_noise=True,
             periods=[{"period_index": row["period_index"], "date": row["date"], "dscr": row["bank_dscr"]}]))
     else:
         table.append(_status_row(

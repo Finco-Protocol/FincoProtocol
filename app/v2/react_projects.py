@@ -235,7 +235,50 @@ async def react_my_projects(request: Request, search: str = "", technology: str 
         })
 
 
-def _starting_assumptions(key: str, snapshot: dict[str, Any]) -> list[dict[str, str]]:
+RATE_FIELD_ID = "debt.senior.interest_rate_pct"
+RATE_UNVERIFIED = "Unverified rate unit"
+
+
+def _template_rate_percent(record: Any, snapshot: dict[str, Any]) -> Optional[str]:
+    """The Senior all-in rate of a template as HUMAN PERCENT text, or ``None`` when its unit cannot be proven.
+
+    Mirrors the provenance contract of ``create_working_copy_from_template`` (app/services/project_library_service.py): the snapshot that creation copies is the
+    saved workspace snapshot (else the baseline), and a legacy unmarked ratio is accepted only for the closed factory-reference producer whose stored ratio equals
+    the trusted seed ratio in BOTH the baseline and the copied snapshot; creation then applies the trusted seed and stamps ``human_percent_v1``.  The card shows
+    exactly that value.  A template creation would refuse (unproven provenance) shows ``None`` (-> "Unverified rate unit"); nothing is inferred from magnitude."""
+    from app.input_adapter import RATE_UNIT, RATE_UNIT_KEY
+
+    def text(value: Any) -> Optional[str]:
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return None
+        return f"{n:.12g}" if math.isfinite(n) else None
+
+    if record is None:
+        return text(snapshot.get("interest_rate_pct")) if snapshot.get(RATE_UNIT_KEY) == RATE_UNIT else None
+    try:
+        from app.persistence.workspace_repository import get_workspace_state
+        saved = get_workspace_state(record.user_id, record.project_id)
+        copied = dict((saved.saved_snapshot if saved else None) or record.baseline_snapshot or {})
+        baseline = dict(record.baseline_snapshot or {})
+        if copied.get(RATE_UNIT_KEY) is not None or baseline.get(RATE_UNIT_KEY) is not None:
+            return text(copied.get("interest_rate_pct")) if copied.get(RATE_UNIT_KEY) == RATE_UNIT else None
+        from app.persistence.projects_repository import _compute_baseline_snapshot
+        from app.services.project_library_service import _REFERENCE_DEFINITIONS
+        definition = next((d for d in _REFERENCE_DEFINITIONS if d["template_source"] == record.template_source), None)
+        seed = _compute_baseline_snapshot(record.project_type, record.template_source)
+        producer = record.replay_metadata or {}
+        legacy = str(float(seed["interest_rate_pct"]) / 100.0)
+        proven = (definition is not None and record.project_code == definition["project_code"] and record.project_origin == "factory_template"
+                  and producer.get("reference") is True and producer.get("factory") == definition["factory"]
+                  and str(baseline.get("interest_rate_pct")) == legacy and str(copied.get("interest_rate_pct")) == legacy)
+        return text(seed["interest_rate_pct"]) if proven else None
+    except Exception:  # noqa: BLE001 - an unprovable template shows "unverified", never a guess
+        return None
+
+
+def _starting_assumptions(key: str, snapshot: dict[str, Any], record: Any = None) -> list[dict[str, str]]:
     from app.workbook.input_set import ProjectInputSet
     from app.workbook.registry import WORKBOOK
 
@@ -249,6 +292,10 @@ def _starting_assumptions(key: str, snapshot: dict[str, Any]) -> list[dict[str, 
         if value is None or value == "":
             continue
         spec = WORKBOOK.field(field_id)
+        if field_id == RATE_FIELD_ID:
+            shown = _template_rate_percent(record, snapshot)
+            out.append({"label": label or spec.label, "value": shown if shown is not None else RATE_UNVERIFIED, "unit": "%" if shown is not None else ""})
+            continue
         out.append({"label": label or spec.label, "value": display_value(value), "unit": spec.unit or ""})
     return out
 
@@ -285,7 +332,7 @@ async def react_templates(request: Request):
                         capacity_label="IT capacity" if key == "data_center" else ("Charging capacity" if key == "ev_charging" else "Installed capacity"))
             record = get_reference_by_template_source(_TECHNOLOGIES[key][0])
             if record is not None:
-                card["starting_assumptions"] = _starting_assumptions(key, record.baseline_snapshot or {})
+                card["starting_assumptions"] = _starting_assumptions(key, record.baseline_snapshot or {}, record)
         templates.append(card)
     return _json({"ok": True, "templates": templates,
                   "semantics": {"read_only": True, "template_is_a_project": False,
