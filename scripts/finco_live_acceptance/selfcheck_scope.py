@@ -70,7 +70,7 @@ class SourceChecks(unittest.TestCase):
         finally:
             subprocess.check_call(['git','add','--',relative],cwd=N.ROOT)
     def test_repin_cannot_forge_runtime_or_predecessor_authority(self):
-        for relative in ('scripts/finco_live_acceptance/policy.py','tests/on_bess01_scope.py'):
+        for relative in ('scripts/finco_live_acceptance/policy.py','tests/on_bess01_scope.py',*sorted(N.REVIEWED_OPERATOR_FILES)):
             with self.subTest(path=relative),restore(relative) as source,restore(N.MANIFEST) as m:
                 source.write_bytes(source.read_bytes()+b'\n')
                 d=json.loads(m.read_text());d['source_blobs'][relative]=N._blob(source.read_bytes());m.write_text(json.dumps(d))
@@ -90,6 +90,18 @@ class SourceChecks(unittest.TestCase):
                     p.write_bytes(raw);self.assertFalse(N.signature_ok());self.assertFalse(N.exact_blobs_ok())
                 finally:
                     p.write_bytes(raw);subprocess.check_call(['git','add','--',relative],cwd=N.ROOT)
+    def test_current_maps_keep_signature_but_never_global_admission(self):
+        from tests import on_bess01_scope as B
+        relative='docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+        with restore(relative) as p:
+            p.write_bytes(p.read_bytes()+b'\n')
+            self.assertTrue(N.signature_ok());self.assertTrue(B.signature_ok())
+            self.assertFalse(N.exact_blobs_ok());self.assertFalse(B.exact_blobs_ok());self.assertFalse(C.valid())
+    def test_real_current_and_predecessor_diff_only(self):
+        for base in (N.BASE,N.PREDECESSOR_BASE):
+            changed=subprocess.check_output(['git','diff',base,'--name-only'],cwd=N.ROOT,text=True).splitlines()
+            self.assertTrue(N.nontrust_scope_authorized(changed))
+            self.assertFalse(N.nontrust_scope_authorized(changed+['app/trust_readiness/invented.py']))
     def test_wrong_source_parent_and_tree(self):
         for key in ('BASE','BASE_TREE','SOURCE_ANCHOR'):
             with patch.object(N,key,'0'*40):self.assertFalse(N.signature_ok());self.assertFalse(N.exact_blobs_ok())

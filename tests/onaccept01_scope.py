@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = '0191ef1af9080c7769a86d8fa58dfab936e74305'
 BASE_TREE = '0ad5e401ca0efe4cb493eed86a2dfc9085df94ae'
 SOURCE_ANCHOR = '5bba59c9607ab47c804c0904f549e6bced6c5d31'
+PREDECESSOR_BASE = '91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14'
+REVIEWED_OPERATOR_BLOBS = {'scripts/finco_live_acceptance/README.md': '49222d1df87b31e44ffe1377097ce1683c258b2f', 'scripts/finco_live_acceptance/RUNBOOK.md': 'c069c505e983640e20b71451d48259587553517a', 'scripts/finco_live_acceptance/selfcheck_scope.py': 'b12f0b48a4e2dda29e2feca65b1d2e779a887989'}
 MANIFEST = 'docs/onaccept01/SOURCE_SUCCESSOR.json'
 SCHEMA = 'ON_ACCEPT01_OPERATOR_ONLY_EXACT_SOURCE_V1'
 SOURCE_PATHS = frozenset(('scripts/__init__.py', 'scripts/finco_live_acceptance/README.md', 'scripts/finco_live_acceptance/RUNBOOK.md', 'scripts/finco_live_acceptance/__init__.py', 'scripts/finco_live_acceptance/__main__.py', 'scripts/finco_live_acceptance/browser.py', 'scripts/finco_live_acceptance/checks_finco_fixture.py', 'scripts/finco_live_acceptance/evidence.py', 'scripts/finco_live_acceptance/lifecycle.py', 'scripts/finco_live_acceptance/policy.py', 'scripts/finco_live_acceptance/routes.py', 'scripts/finco_live_acceptance/runner.py', 'scripts/finco_live_acceptance/selfcheck.py', 'scripts/finco_live_acceptance/selfcheck_scope.py'))
@@ -112,13 +114,13 @@ def _reviewed_handoffs_ok(root, ref):
             == old.replace(marker,"'tests.on_bess01_scope', 'tests.onaccept01_scope')"))
 
 
-def _maps_ok(root, ref, pins):
+def _maps_ok(root, ref, pins, closure=True):
     for path in CURRENT_MAPS:
         expected = json.loads(_base(root,'show',BASE+':'+path))
         for key in (SUPERSEDED - CURRENT_MAPS) & expected['source_blobs'].keys():
             expected['source_blobs'][key] = pins[key]
         raw = (json.dumps(expected,indent=2,sort_keys=True)+'\n').encode()
-        if _blob(raw) != pins[path] or _read(root,path,ref) != raw:
+        if _blob(raw) != pins[path] or (closure and _read(root,path,ref) != raw):
             return False
     return True
 
@@ -140,18 +142,21 @@ def _exact(repo, ref, closure):
         if old != data['base_blobs']:
             return False
         anchor = {line.split('\t')[1]:line.split()[2] for line in _base(root,'ls-tree','-r',SOURCE_ANCHOR,'--',*sorted(SOURCE_PATHS-REVIEWED_OPERATOR_FILES)).decode().splitlines()}
-        if len(anchor) != 11 or any(pins.get(p) != b for p,b in anchor.items()):
+        if (len(anchor) != 11 or any(pins.get(p) != b for p,b in anchor.items())
+                or set(REVIEWED_OPERATOR_BLOBS) != REVIEWED_OPERATOR_FILES
+                or any(pins.get(p) != b for p,b in REVIEWED_OPERATOR_BLOBS.items())):
             return False
         allowed = OWNED_PATHS | {MANIFEST}
+        identity = allowed if closure else allowed - CURRENT_MAPS
         if ref is None:
-            rows = _git(root,'ls-files','--stage','--',*sorted(allowed)).decode().splitlines()
+            rows = _git(root,'ls-files','--stage','--',*sorted(identity)).decode().splitlines()
             tracked = {line.split('\t')[1]:line.split('\t')[0].split() for line in rows}
-            if (len(rows) != len(allowed) or set(tracked) != allowed
+            if (len(rows) != len(identity) or set(tracked) != identity
                     or any(v[0] != '100644' or v[2] != '0' for v in tracked.values())):
                 return False
-            if any(not (root/p).is_file() or (root/p).is_symlink() or (root/p).stat().st_mode & 0o111 for p in allowed):
+            if any(not (root/p).is_file() or (root/p).is_symlink() or (root/p).stat().st_mode & 0o111 for p in identity):
                 return False
-            ordered = sorted(allowed)
+            ordered = sorted(identity)
             # One Git invocation hashes the finite reviewed sources with Git clean-filter semantics.
             actual = subprocess.check_output(['git','hash-object','--stdin-paths'],cwd=root,
                 input=('\n'.join(ordered)+'\n').encode(),stderr=subprocess.DEVNULL).decode().splitlines()
@@ -160,12 +165,12 @@ def _exact(repo, ref, closure):
                     or any(tracked[p][1] != value for p,value in zip(ordered,actual))):
                 return False
         else:
-            rows = _git(root,'ls-tree','-r',ref,'--',*sorted(allowed)).decode().splitlines()
-            if len(rows) != len(allowed) or any(not line.startswith('100644 blob ') for line in rows):
+            rows = _git(root,'ls-tree','-r',ref,'--',*sorted(identity)).decode().splitlines()
+            if len(rows) != len(identity) or any(not line.startswith('100644 blob ') for line in rows):
                 return False
-            if any(_blob(_read(root,p,ref)) != b for p,b in pins.items()):
+            if any(_blob(_read(root,p,ref)) != pins[p] for p in identity if p != MANIFEST):
                 return False
-        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,pins):
+        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,pins,closure):
             return False
         if closure:
             changed = set(_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines())
@@ -224,7 +229,8 @@ def nontrust_scope_authorized(changed, repo=None):
         if _git(root,'merge-base','origin/main','HEAD').decode().strip() != BASE:
             return False
         actual = _git(root,'diff',BASE,'--name-only').decode().splitlines()
-        if not actual or sorted(changed) != sorted(actual):
+        predecessor = _git(root,'diff',PREDECESSOR_BASE,'--name-only').decode().splitlines()
+        if not actual or sorted(changed) not in (sorted(actual),sorted(predecessor)):
             return False
         from tests import fin_v2_cohorts as C
         with C.call_scope():
