@@ -34,7 +34,7 @@
     "tests/onaccept01_scope.py": "b6dbb68073bf843e21e4004b0430d2aa8a9cb0fb",
     "tests/post432_l01_l02_scope.py": "a1b9886a2d4e07b6cee32db1d508af4b6f92c3d8",
     "tests/post432_l02_full_oracle.py": "980dcb2833c71c64d7be1297934dab860ff19bc4",
-    "tests/test_post432_l01_l02_scope.py": "7e9526c4560b5eb76bc1363b043a978d61560c9c",
+    "tests/test_post432_l01_l02_scope.py": "c5935c5d161f7674d1aa4af31bb3f0174a3a9fb5",
     "tests/test_post432_l01_sizing_target_noise_v1.py": "b14fd7ecd0290bb91c571e9b7a71e4d30ca28f36",
     "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5",
     "tests/test_ux_pr3b2_scope.py": "fa91ec33219685b5ad9e65ce08561641f9473544"

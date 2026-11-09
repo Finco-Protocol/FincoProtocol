@@ -25,7 +25,7 @@ ACCEPTED_ORDER_TAIL = ('tests.tax_reference_registry_scope', 'tests.on_bess01_sc
 
 
 def _git(root, *args):
-    return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
+    return subprocess.check_output(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=root, stderr=subprocess.DEVNULL).decode().strip()      # no ambient identity on hosted runners
 
 
 @pytest.fixture(scope='module')
