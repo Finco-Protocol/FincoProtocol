@@ -81,7 +81,7 @@ def test_successor_contract_admits_only_the_two_reviewed_edits():
         assert not S.reviewed_edits_ok(lambda p: read(p) + (b'\n' if p == path else b''), base)
 
 
-@pytest.mark.parametrize('fault', ['missing-owned', 'mode-private', 'hardlink', 'oversize', 'truncated-png', 'wrong-merge-mode', 'forged-merge'])
+@pytest.mark.parametrize('fault', ['missing-owned', 'mode-world-write', 'hardlink', 'oversize', 'truncated-png', 'wrong-merge-mode', 'forged-merge'])
 def test_generated_output_add_missing_modified_controls(fault):
     path = 'evidence/source.json'
     raw = json.dumps(real_attestation()).encode()
@@ -105,7 +105,7 @@ def test_generated_output_add_missing_modified_controls(fault):
     with evidence_file(path, raw) as p:
         link = p.with_name('hardlink-control')
         try:
-            if fault == 'mode-private': p.chmod(0o600)
+            if fault == 'mode-world-write': p.chmod(0o666)
             if fault == 'hardlink': link.hardlink_to(p)
             assert not B._generated_evidence_ok(B.ROOT, path)
             assert not B.exact_blobs_ok()

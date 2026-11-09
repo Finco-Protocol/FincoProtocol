@@ -23,7 +23,7 @@ unchanged; the existing one-way low-level handoff admits the new exact pins.
 Opt-in negative proof adds no mandatory collected test identities or jobs.
 
 The 76 existing F01 output names remain literal data-only exceptions. PNG framing,
-CRCs and dimensions, 0644 single-link modes and genuine merge object identity are
+CRCs and dimensions, 0600/0644 single-link modes and genuine merge object identity are
 checked in addition to bounded JSON/XML, size and actual HEAD/tree. Missing
 optional data never supplies authority; missing source fails closed.
 

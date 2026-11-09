@@ -327,7 +327,7 @@ def _generated_evidence_ok(root, path):
         return False
     p = root / path
     if (not p.is_file() or p.is_symlink() or p.stat().st_mode & 0o111
-            or p.stat().st_mode & 0o7777 != 0o644 or p.stat().st_nlink != 1
+            or p.stat().st_mode & 0o7777 not in (0o600, 0o644) or p.stat().st_nlink != 1
             or p.stat().st_size > 5_000_000
             or any(parent.is_symlink() for parent in p.parents if parent != root and root in parent.parents)):
         return False
@@ -393,7 +393,7 @@ def _generated_evidence_ok(root, path):
                     and _git(root, 'rev-parse', merge + '^{tree}').decode().strip() == tree
                     and ('authenticated_drift' not in data or isinstance(data['authenticated_drift'], dict)))
         return isinstance(data, (dict, list))
-    except (ValueError, TypeError, KeyError, SyntaxError):
+    except (OSError, ValueError, TypeError, KeyError, SyntaxError, subprocess.CalledProcessError):
         return False
 
 
