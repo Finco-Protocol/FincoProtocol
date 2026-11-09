@@ -112,3 +112,8 @@ def test_generated_output_add_missing_modified_controls(fault):
         finally: link.unlink(missing_ok=True)
     # Optional generated outputs never constitute authority: absence is safe.
     assert B.exact_blobs_ok()
+
+
+def test_original_o1_memo_contract_is_preserved_without_changing_the_assertion():
+    from tests.test_post413_o1_scope import test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call
+    test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call()

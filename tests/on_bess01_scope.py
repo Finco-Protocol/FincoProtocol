@@ -199,7 +199,6 @@ _ENCLOSING_SCOPES = (
     'tests.u2_scope',
     'tests.ci_v4_scope',
     'tests.g10_d8_scope',
-    'tests.post413_o1_scope',
     'tests.ux_pr1_scope',
     'tests.ux_pr2a_scope',
     'tests.ux_pr2b_scope',

@@ -29,3 +29,8 @@ optional data never supplies authority; missing source fails closed.
 
 Storage activation stays closed. This change grants no financial parity, native
 BESS execution approval, Create/Save/Run, merge, deployment or reference cloning.
+
+The terminal BESS/Tax memo bridge excludes the O1 scope: its original contract
+requires exactly its own one verdict entry. Other already-open read-only scopes
+still provide bounded per-call reuse; no verdict survives an outer call.
+The original O1 memo assertion is unchanged and is repeated in opt-in proof.
