@@ -384,7 +384,7 @@ def _downstream_scopes():
     import contextlib
     import importlib
     with contextlib.ExitStack() as stack:
-        for name in ('tests.fin_v2_integration_409_scope', 'tests.fin_v2_wf06a_scope', 'tests.wf06b_scope'):
+        for name in ('tests.fin_v2_integration_409_scope', 'tests.fin_v2_wf06a_scope', 'tests.wf06b_scope', 'tests.u1_scope'):
             try:
                 module=importlib.import_module(name)
             except ImportError:
@@ -431,7 +431,11 @@ def _exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',PARENT,ref or 'HEAD')
         _git(root,'merge-base','--is-ancestor',BASE,PARENT)
         if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
-        if any(_blob(_read(root,p,ref))!=sha and not _wf06b_supersedes(p,_blob(_read(root,p,ref)),root,ref) for p,sha in pins.items()): return False
+        # Read and hash every required source before following any successor.
+        # A missing source must refuse directly; it need not evaluate unrelated
+        # successor graphs first. No expected pin or assertion is changed.
+        current={p:_blob(_read(root,p,ref)) for p in pins}
+        if any(current[p]!=sha and not _wf06b_supersedes(p,current[p],root,ref) for p,sha in pins.items()): return False
         return _historical_maps_ok(root,ref,pins,data) and _b1_layer_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
         return False
@@ -460,9 +464,9 @@ def matches(path,source=None,*,repo=None,ref=None):
     if path == 'app/v2/bess_setup_router.py':
         from tests import on_bess01_scope as B
         return valid(repo,ref) and B.matches(path,source,repo=repo,ref=ref)
-    if path not in pins or not valid(repo,ref): return False
     raw=source.encode('utf-8') if isinstance(source,str) else source
-    return raw is None or _blob(raw)==pins[path]
+    if path not in pins or (raw is not None and _blob(raw)!=pins[path]): return False
+    return valid(repo,ref)
 
 
 def historical_pin_successor(manifest_path,path,before,after,repo=None,ref=None):

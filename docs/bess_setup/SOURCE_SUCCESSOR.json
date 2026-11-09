@@ -53,6 +53,6 @@
     "tests/test_ux_pr3b2_scope.py": "eb4e50983f1d85d6b79d1a161de9c5107606731f",
     "tests/u1_scope.py": "288b77d945d329f44bfe4db556ed8dd7af6d381d",
     "tests/ux_pr3b2_scope.py": "ff91b0a5fd3a000c4f68b51abcc395d58d3f071a",
-    "tests/wf03_lifecycle_scope.py": "b3b3132f4affe5f2e742e1f0e22de91f402e7d1b"
+    "tests/wf03_lifecycle_scope.py": "2534263d653666e61c749a8b5e4532af6c9a8a31"
   }
 }
