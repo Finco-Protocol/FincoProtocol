@@ -95,7 +95,7 @@ class PolicyChecks(unittest.TestCase):
         paths=('/v2/model-react/capex/profiles','/v2/model-react/capex/preview',
                '/v2/model-react/opex-projection/lines','/v2/model-react/scenario-overrides',
                '/v2/model-react/scenario-compare','/v2/model-react/new-project/bess-options',
-               '/v2/model-react/setup-drafts/status')
+               '/v2/model-react/setup-drafts/status','/v2/model-react/insights/history')
         p=NetworkPolicy('http://127.0.0.1:9999');p.projects.add('owned')
         for path in paths:self.assertFalse(p.permit(p.base+path+'?project=owned','GET'))
         p.authenticated=True
