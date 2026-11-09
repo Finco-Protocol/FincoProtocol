@@ -1,26 +1,38 @@
 {
-  "base": "91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14",
+  "base": "ebb9c07c30c733cbb39e9af58833f0b22baf7069",
   "base_blobs": {
     "app/v2/debt_metrics_projection.py": "72ff9125f14686035cf35f36df7a75efd6242270",
     "app/v2/react_projects.py": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
-    "tests/tax_reference_registry_scope.py": "c2eb1a44873249a2b50de4f5c3ac6902ae04b1d3",
-    "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
-    "tests/test_ux_pr3b2_scope.py": "1240153642f2467ab1ec6b47b6da2cf13ea4e467",
-    "tests/ux_pr3b2_scope.py": "0dc684985ba3a60082bb9c24c729b0a85c26f9b7"
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "fceaef0167c0614adfcd18bf242261b744eb69bb",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "a0cc0d07ab05dc4630978b479c7a7f6f21b23d92",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "a11665100d6b1aa8902e77d29c890f9bdd210b05",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json": "5caf8c98350cf7c261be24366e5703c396254085",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "e55e3f4621791ef94407ff681694b1c5ec529d69",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "04048cf2dfb07589d6c6fad8aca405c11c7ea2c1",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "9becb4be47079e3ae70df2b8074a8b3ea2b368b8",
+    "tests/fin_v2_cohorts.py": "2c1f1ce9104ec2954bb80e29a80b5a831106b040",
+    "tests/on_bess01_scope.py": "bc7a6906cdf87c444951557791aa28c0ce297591",
+    "tests/onaccept01_scope.py": "926a8f6321ae065165a6065998590ce1fbff1501"
   },
-  "base_tree": "e9573d7802b319deb943dab60667778a431370e4",
-  "schema_version": "POST432_L01_L02_EXACT_SOURCE_V1",
+  "base_tree": "b069d3d930bd41d56949c7afa86c779a539863e8",
+  "schema_version": "POST434_L01_L02_EXACT_SOURCE_V1",
   "source_blobs": {
     "app/v2/debt_metrics_projection.py": "334943135ad7520f8a2c9a425d2d9fe286ce7550",
     "app/v2/react_projects.py": "680469d7c9b1ad2136ecf67fbb4030eee2240bfc",
-    "tests/post432_l01_l02_scope.py": "575e8893b7b3816ea2b2fce75372f583f129b6d8",
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "18da5fc6ecd65175d336268fe4a7d835d4b8de6c",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "2119f775840f6108967e97c3d8a17c0a7ee712f8",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "9f730e650889cbe4139ddf59b4aec7843f33aeb6",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json": "75e38a73d2d3b5fd2d9810ebbef8b73a479685af",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "6beba24ad3c1902e8dc0e427a755bea9a998df75",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "817726059610abfe683b3f2c5bd53be81d225e8b",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "83c18f9ef52da0b7da27c0053de043c2efc11e9f",
+    "tests/fin_v2_cohorts.py": "2bc40e38a496d41211cd9689b5812084590d9b7b",
+    "tests/on_bess01_scope.py": "9b73e6f70288275ca8f90f117cab6b5a6b8c41bd",
+    "tests/onaccept01_scope.py": "e8bdd6b1cb5ae70500ab64960b8262804fbade29",
+    "tests/post432_l01_l02_scope.py": "d01edb3645cff9cb6f2c1d6a9d133016801b1729",
     "tests/post432_l02_full_oracle.py": "980dcb2833c71c64d7be1297934dab860ff19bc4",
-    "tests/tax_reference_registry_scope.py": "4d25570f36cf49a55a95c9a63b76136e324ab801",
     "tests/test_post432_l01_l02_scope.py": "44ca0bab2946ca7f3e3cb53bcffc5034e595ff3a",
     "tests/test_post432_l01_sizing_target_noise_v1.py": "b14fd7ecd0290bb91c571e9b7a71e4d30ca28f36",
-    "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5",
-    "tests/test_tax_reference_registry_scope.py": "28d478164f0078d7763e04f2908e8b2d32ba77bf",
-    "tests/test_ux_pr3b2_scope.py": "a3e9533b6e200f255d3e6edf4d301cd4baf5811c",
-    "tests/ux_pr3b2_scope.py": "4de79c89343116603cb99f0af46fe976845cf252"
+    "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5"
   }
 }

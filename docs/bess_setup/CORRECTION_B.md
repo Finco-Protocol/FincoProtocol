@@ -1,0 +1,61 @@
+# Correction B — reviewed current test successors V1
+
+Accepted main remains `91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14`.
+The Revenue router and Financing product sources are unchanged from accepted main.
+
+The F35B historical test compared the pre-O1 Revenue handler literally to a later
+accepted CAS-protected handler. Its historical constants and exact comparison
+remain. A versioned conditional branch requires the actual accepted O1 module
+bytes/AST, immutable Git base/tree, original historical bytes, O1 exact provenance
+and the closed BESS successor. Only this one assertion and its local import move.
+
+The Bankability acceptance now proves the existing typed canonical stale-CAS
+`workbook-field-error` event (`conflict: true`, `error_class: null`), exact
+no-write/readback state, retained local draft, no page POST/retry/Run and one of
+two existing approved conflict warnings. The canonical HTMX contract returns 200
+with its typed event; no HTTP 409 or new error code is invented. The probe is an
+explicit test request, separate from the UI. No product Financing code changes.
+
+`on_bess01_scope` registers the two current tests as literal superseded paths.
+`reviewed_edits_ok` compares whole source bytes against accepted main with only
+the two literal reviewed replacements. Existing predecessor maps/history are
+unchanged; the existing one-way low-level handoff admits the new exact pins.
+Opt-in negative proof adds no mandatory collected test identities or jobs.
+
+The 76 existing F01 output names remain literal data-only exceptions. PNG framing,
+CRCs and dimensions, 0600/0644 single-link modes and genuine merge object identity are
+checked in addition to bounded JSON/XML, size and actual HEAD/tree. Missing
+optional data never supplies authority; missing source fails closed.
+
+Storage activation stays closed. This change grants no financial parity, native
+BESS execution approval, Create/Save/Run, merge, deployment or reference cloning.
+
+The terminal BESS/Tax memo bridge excludes the O1 scope: its original contract
+requires exactly its own one verdict entry. Other already-open read-only scopes
+still provide bounded per-call reuse; no verdict survives an outer call.
+The original O1 memo assertion is unchanged and is repeated in opt-in proof.
+
+Signature-only CI authority derives every expected integration-map pin from
+immutable accepted-main JSON plus the finite reviewed source-pin substitutions,
+without reading foreign current map bytes. Full closure separately checks those
+bytes, map semantics and complete path/mode closure. Forged expected pins fail
+both proofs; forged current foreign maps preserve only the bounded CI signature
+and fail every full/global proof. The original PR3b-1 negative test is unchanged.
+
+## V2: execute the existing non-trust scope test under no-skip policy
+
+The first hosted round passed all four shards, both F01 jobs and all six Browser
+roles. Trusted final aggregation correctly rejected the old `trust pack not part
+of this diff` skip because changing the Revenue guard module activates its
+existing no-skip policy. The original artifact set reproduces this exact failure.
+No policy, selector, job, case identity or skip allowance changes.
+
+The reviewed V2 current branch executes the existing scope obligation: the real
+main merge-base must equal accepted BASE, the supplied changed paths must equal
+the actual Git diff and fit the literal cohort, every foreign BASE source/mode
+must remain identical, the BESS read-only structural proof and every registered
+cohort/composite must pass. Only this complete proof returns normally; the old
+historical fallback remains. All original assertion ASTs except the single
+already-reviewed F35B assertion remain unchanged. Unknown/forged diff, engine,
+writer or Radar drift never gains a pass. This is an actual source review,
+not a skip waiver or an invented trust-pack change.
