@@ -108,6 +108,9 @@ def nontrust_scope_authorized(changed, repo=None):
     and the composite must also pass. Failure retains the historical fallback;
     the unchanged no-skip CI contract then refuses that outcome.
     """
+    from tests import onaccept01_scope as N
+    if N.nontrust_scope_authorized(changed, repo):
+        return True
     from tests import on_bess01_scope as B, fin_v2_cohorts as C
     root = Path(repo) if repo is not None else B.ROOT
     try:

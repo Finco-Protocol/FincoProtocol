@@ -51,7 +51,7 @@ class SourceChecks(unittest.TestCase):
         with patch.object(C,'COHORT_MODULES',tuple(x for x in C.COHORT_MODULES if x!=N.__name__)):
             self.assertFalse(N.exact_blobs_ok());self.assertFalse(T.exact_blobs_ok());self.assertFalse(C.valid())
     def test_immutable_historical_manifests(self):
-        for p in ('docs/tax_reference_registry/SOURCE_SUCCESSOR.json','docs/react_migration/ux_pr3b2/UX_PR3B2_EXACT_SOURCE.json','docs/react_migration/ux_pr3b1/UX_PR3B1_EXACT_SOURCE.json'):
+        for p in ('docs/bess_setup/SOURCE_SUCCESSOR.json','docs/react_migration/ux_pr3b2/UX_PR3B2_EXACT_SOURCE.json','docs/react_migration/ux_pr3b1/UX_PR3B1_EXACT_SOURCE.json'):
             self.assertEqual((N.ROOT/p).read_bytes(),subprocess.check_output(['git','show',N.BASE+':'+p],cwd=N.ROOT))
     def test_committed_head_and_same_tree_orphan(self):
         head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=N.ROOT,text=True).strip()
@@ -60,6 +60,39 @@ class SourceChecks(unittest.TestCase):
         env=dict(os.environ,GIT_AUTHOR_NAME='Synthetic control',GIT_COMMITTER_NAME='Synthetic control',GIT_AUTHOR_EMAIL='synthetic.invalid',GIT_COMMITTER_EMAIL='synthetic.invalid')
         orphan=subprocess.check_output(['git','commit-tree',tree],input='Synthetic ancestry control\n',cwd=N.ROOT,text=True,env=env).strip()
         self.assertFalse(N.exact_blobs_ok(ref=orphan))
+    def test_missing_owned_and_untracked_index_refused(self):
+        with restore('scripts/finco_live_acceptance/policy.py') as p:
+            p.unlink();self.assertFalse(N.exact_blobs_ok())
+        relative='scripts/finco_live_acceptance/policy.py'
+        try:
+            subprocess.check_call(['git','update-index','--force-remove','--',relative],cwd=N.ROOT)
+            self.assertFalse(N.signature_ok())
+        finally:
+            subprocess.check_call(['git','add','--',relative],cwd=N.ROOT)
+    def test_repin_cannot_forge_runtime_or_predecessor_authority(self):
+        for relative in ('scripts/finco_live_acceptance/policy.py','tests/on_bess01_scope.py'):
+            with self.subTest(path=relative),restore(relative) as source,restore(N.MANIFEST) as m:
+                source.write_bytes(source.read_bytes()+b'\n')
+                d=json.loads(m.read_text());d['source_blobs'][relative]=N._blob(source.read_bytes());m.write_text(json.dumps(d))
+                self.assertFalse(N.signature_ok());self.assertFalse(N.exact_blobs_ok())
+    def test_current_map_moves_and_prior_pin_tampering(self):
+        d=N.manifest()
+        self.assertTrue(N._maps_ok(N.ROOT,None,d['source_blobs']))
+        for relative in ('docs/bess_setup/SOURCE_SUCCESSOR.json','app/v2/router.py','financial_engine/__init__.py','.github/workflows/protocol_ui_browser.yml'):
+            with self.subTest(path=relative),restore(relative) as p:
+                p.write_bytes(p.read_bytes()+b'\n');self.assertFalse(N.exact_blobs_ok());self.assertFalse(C.valid())
+    def test_staged_blob_or_manifest_cannot_differ_from_working_bytes(self):
+        for relative in ('scripts/finco_live_acceptance/policy.py',N.MANIFEST):
+            with self.subTest(path=relative),restore(relative) as p:
+                raw=p.read_bytes()
+                try:
+                    p.write_bytes(raw+b'\n');subprocess.check_call(['git','add','--',relative],cwd=N.ROOT)
+                    p.write_bytes(raw);self.assertFalse(N.signature_ok());self.assertFalse(N.exact_blobs_ok())
+                finally:
+                    p.write_bytes(raw);subprocess.check_call(['git','add','--',relative],cwd=N.ROOT)
+    def test_wrong_source_parent_and_tree(self):
+        for key in ('BASE','BASE_TREE','SOURCE_ANCHOR'):
+            with patch.object(N,key,'0'*40):self.assertFalse(N.signature_ok());self.assertFalse(N.exact_blobs_ok())
     def test_no_automatic_runner_or_test_registration(self):
         changed=subprocess.check_output(['git','diff','--name-only',N.BASE],cwd=N.ROOT,text=True).splitlines()
         self.assertFalse(any(p.startswith(('.github/','app/','frontend/','static/','financial_engine/','finco_core/','domain/','tools/','tax_reference_registry/','revenue_reference_core/')) for p in changed))
@@ -70,6 +103,6 @@ class SourceChecks(unittest.TestCase):
 
 if __name__=='__main__':
     if N is None:
-        print('SOURCE_INTEGRATION_BLOCKED_ACTIVE_PR433; private bounded patch-plan required')
+        print('SOURCE_SUCCESSOR_NOT_REGISTERED')
         raise SystemExit(2)
     unittest.main(verbosity=2)
