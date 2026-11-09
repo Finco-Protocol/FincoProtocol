@@ -1,33 +1,78 @@
-"""Post-#432 live acceptance L02: the template card and the wizard Review state the Senior all-in rate in the same human percent as the created project.
+"""Mandatory L02 subset (the full real-row matrix for all four references is tests/post432_l02_full_oracle.py, run explicitly).
+
+Post-#432 live acceptance L02: the template card and the wizard Review state the Senior all-in rate in the same human percent as the created project.
 
 Production evidence: the factory reference templates still store the legacy ratio ``0.055`` (``0.06``) without unit provenance, and the card printed it through a
 2-decimal formatter as ``0.06 %`` while the created project held ``5.5`` with ``human_percent_v1``.  The card now shows exactly the value project creation applies
-when the factory-reference provenance is proven, and "Unverified rate unit" otherwise.  Nothing is guessed from magnitude and no stored rate is changed."""
+when the factory-reference provenance is proven (the same contract as ``create_working_copy_from_template``), and "Unverified rate unit" otherwise.  Nothing is
+guessed from magnitude and no stored rate is changed.  The proofs below run against REAL seeded reference rows in an isolated database (the production legacy state is
+reproduced by rewriting those rows to the unmarked ratio), through the real templates endpoint and the real creator."""
 from __future__ import annotations
 
-from types import SimpleNamespace
+import json
 
 import pytest
 
 from app.input_adapter import RATE_UNIT, RATE_UNIT_KEY
-from app.persistence.projects_repository import _compute_baseline_snapshot
-from app.services.project_library_service import _REFERENCE_DEFINITIONS
+from app.persistence.db import get_cursor
+from app.persistence.projects_repository import _compute_baseline_snapshot, get_reference_by_template_source
 from app.v2 import react_projects as P
+from tests.test_pr394_staging_corrections_v1 import env  # noqa: F401  (fixture)
+
+KINDS = ("solar", "wind", "data_center", "ev_charging")
 
 
-def _factory_record(definition, rate_text):
-    return SimpleNamespace(template_source=definition["template_source"], project_type=definition["project_type"], project_code=definition["project_code"],
-                           project_origin="factory_template", replay_metadata={"reference": True, "factory": definition["factory"]}), {"interest_rate_pct": rate_text}
+def _cards(env):
+    return {c["key"]: c for c in env.client.get("/v2/model-react/templates").json()["templates"]}
 
 
-@pytest.mark.parametrize("definition", _REFERENCE_DEFINITIONS, ids=lambda d: d["template_source"])
-def test_a_proven_legacy_ratio_template_shows_the_percent_creation_applies(definition):
-    seed = _compute_baseline_snapshot(definition["project_type"], definition["template_source"])["interest_rate_pct"]
-    legacy = str(float(seed) / 100.0)
-    record, snapshot = _factory_record(definition, legacy)
-    shown = P._template_rate_percent(record, snapshot)
-    assert shown == f"{float(seed):.12g}" and float(shown) >= 1.0, (shown, legacy)      # 5.5 / 6, never 0.06 or 0.055
-    assert shown != "0.06"
+def _rate_row(card):
+    return {a["label"]: a for a in card["starting_assumptions"]}["All-in Interest Rate"]
+
+
+def _rewrite(record, *, rate, marker, baseline=True, saved=True):
+    """Reproduce a stored reference row exactly as production holds it (legacy ratio, no unit marker)."""
+    def edit(snapshot):
+        snapshot = dict(snapshot)
+        snapshot["interest_rate_pct"] = rate
+        snapshot.pop(RATE_UNIT_KEY, None)
+        if marker:
+            snapshot[RATE_UNIT_KEY] = RATE_UNIT
+        return snapshot
+    with get_cursor() as cur:
+        if baseline:
+            cur.execute("UPDATE projects SET baseline_snapshot_json=? WHERE project_id=?", (json.dumps(edit(record.baseline_snapshot)), record.project_id))
+        if saved:
+            cur.execute("SELECT saved_snapshot_json FROM workspace_states WHERE project_id=?", (record.project_id,))
+            current = json.loads(cur.fetchone()[0])
+            cur.execute("UPDATE workspace_states SET saved_snapshot_json=? WHERE project_id=?", (json.dumps(edit(current)), record.project_id))
+
+
+def _legacy_state(env):
+    _cards(env)                                                         # bootstraps the canonical reference rows
+    out = {}
+    for kind in KINDS:
+        ts = f"generic_{kind}_reference"
+        record = get_reference_by_template_source(ts)
+        seed = _compute_baseline_snapshot(record.project_type, ts)
+        out[kind] = (record, seed, str(float(seed["interest_rate_pct"]) / 100.0))
+        _rewrite(record, rate=out[kind][2], marker=False)
+    return out
+
+
+@pytest.mark.parametrize("kind", ("solar",))
+def test_real_legacy_reference_row_card_equals_created_project(env, kind):
+    state = _legacy_state(env)
+    record, seed, legacy = state[kind]
+    assert legacy in ("0.055", "0.06")                                    # the production values
+    stored = get_reference_by_template_source(f"generic_{kind}_reference")
+    assert stored.baseline_snapshot["interest_rate_pct"] == legacy and RATE_UNIT_KEY not in stored.baseline_snapshot
+    card_rate = _rate_row(_cards(env)[kind])
+    created = env.create(kind)                                            # the real creator (create_reference_seeded_project)
+    snap = created.baseline_snapshot
+    assert snap[RATE_UNIT_KEY] == RATE_UNIT
+    assert card_rate == {"label": "All-in Interest Rate", "value": f"{float(snap['interest_rate_pct']):.12g}", "unit": "%"}
+    assert float(card_rate["value"]) == float(seed["interest_rate_pct"]) and card_rate["value"] not in ("0.06", "0.055")
 
 
 @pytest.mark.parametrize("value,expected", [("5.5", "5.5"), ("6", "6"), ("0.055", "0.055"), ("0", "0"), (0.12, "0.12"), ("12", "12")])
@@ -41,43 +86,14 @@ def test_a_stamped_human_percent_is_shown_unscaled(value, expected):
     {"interest_rate_pct": "abc", RATE_UNIT_KEY: RATE_UNIT},
     {"interest_rate_pct": None, RATE_UNIT_KEY: RATE_UNIT},
     {"interest_rate_pct": "nan", RATE_UNIT_KEY: RATE_UNIT},
+    {"interest_rate_pct": "inf", RATE_UNIT_KEY: RATE_UNIT},
     {},
 ])
 def test_an_unprovable_unit_is_never_guessed(snapshot):
     assert P._template_rate_percent(None, snapshot) is None
 
 
-def test_a_factory_record_with_a_foreign_ratio_is_unverified():
-    definition = _REFERENCE_DEFINITIONS[0]
-    record, snapshot = _factory_record(definition, "0.07")              # does not equal the trusted seed ratio
-    assert P._template_rate_percent(record, snapshot) is None
-    record.replay_metadata = {}
-    seed = _compute_baseline_snapshot(definition["project_type"], definition["template_source"])["interest_rate_pct"]
-    assert P._template_rate_percent(record, {"interest_rate_pct": str(float(seed) / 100.0)}) is None   # producer provenance missing
-
-
-def test_the_card_row_carries_the_percent_unit_or_the_unverified_text(monkeypatch):
-    from app.workbook.input_set import ProjectInputSet
-    definition = next(d for d in _REFERENCE_DEFINITIONS if d["template_source"] == "generic_solar_reference")
-    seed = _compute_baseline_snapshot(definition["project_type"], definition["template_source"])
-    legacy = dict(seed, interest_rate_pct=str(float(seed["interest_rate_pct"]) / 100.0))
-    legacy.pop(RATE_UNIT_KEY, None)
-    record, _ = _factory_record(definition, None)
-    row = [a for a in P._starting_assumptions("solar", legacy, record) if a["label"] == "All-in Interest Rate"][0]
-    assert row == {"label": "All-in Interest Rate", "value": f"{float(seed['interest_rate_pct']):.12g}", "unit": "%"}
-    unverified = [a for a in P._starting_assumptions("solar", legacy, None) if a["label"] == "All-in Interest Rate"][0]
-    assert unverified["value"] == P.RATE_UNVERIFIED and unverified["unit"] == ""
-
-
-from tests.test_pr394_staging_corrections_v1 import env  # noqa: E402,F401  (fixture)
-
-
-def test_the_templates_endpoint_agrees_with_the_created_project(env):
-    cards = {c["key"]: c for c in env.client.get("/v2/model-react/templates").json()["templates"]}
-    for key in ("solar", "wind", "data_center", "ev_charging"):
-        rows = {a["label"]: a for a in cards[key]["starting_assumptions"]}
-        rate = rows["All-in Interest Rate"]
-        assert rate["unit"] == "%" and float(rate["value"]) >= 1.0, (key, rate)
-        definition = next(d for d in _REFERENCE_DEFINITIONS if d["template_source"] == f"generic_{key}_reference")
-        seed = _compute_baseline_snapshot(definition["project_type"], definition["template_source"])
-        assert float(rate["value"]) == float(seed["interest_rate_pct"])
+def test_a_foreign_ratio_on_a_real_record_is_unverified(env):
+    state = _legacy_state(env)
+    _rewrite(state["solar"][0], rate="0.07", marker=False)
+    assert _rate_row(_cards(env)["solar"]) == {"label": "All-in Interest Rate", "value": P.RATE_UNVERIFIED, "unit": ""}

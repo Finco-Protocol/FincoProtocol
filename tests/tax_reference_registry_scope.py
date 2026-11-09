@@ -34,6 +34,7 @@ there is no recursive self-approval.
 """
 from pathlib import Path
 from contextlib import contextmanager
+import contextlib
 import hashlib
 import json
 import subprocess
@@ -122,6 +123,24 @@ def _owned_ok():
             and SUPERSEDED <= OWNED_PATHS)
 
 
+def _successor():
+    """The one bounded post-#432 L01/L02 successor (tests/post432_l01_l02_scope.py): consulted through its LOW LEVEL checks only (it never imports this module)."""
+    try:
+        from tests import post432_l01_l02_scope as S
+        return S
+    except ImportError:
+        return None
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    """This cohort's pins, where a path the exact post-#432 successor supersedes follows that successor's exact pin."""
+    pins = dict(manifest(repo, ref).get('source_blobs', {}))
+    S = _successor()
+    if S is not None and (S.signature_ok(repo, ref) if signature else S.exact_blobs_ok(repo, ref)):
+        pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED and p in pins})
+    return pins
+
+
 _SCOPE = []
 
 
@@ -130,11 +149,15 @@ def scoped():
     if _SCOPE:
         yield
         return
-    _SCOPE.append({})
-    try:
-        yield
-    finally:
-        _SCOPE.pop()
+    S = _successor()
+    with contextlib.ExitStack() as successors:
+        if S is not None:
+            successors.enter_context(S.scoped())
+        _SCOPE.append({})
+        try:
+            yield
+        finally:
+            _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
@@ -170,6 +193,7 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         # 3. one exact blob per owned path. The working-tree comparison uses
         # git's own hashing (clean filters applied) so the verdict is identical
         # on LF and CRLF checkouts and always equals the ls-tree blob.
+        pins = effective_pins(root, ref, signature=not closure)
         if ref is None:
             computed = {}
             for owned in sorted(pins):
@@ -188,7 +212,8 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         if closure:
             changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
                            *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
-            if changed:
+            S = _successor()
+            if any(not (S is not None and S.allowed_path(p, root, ref) and S.exact_blobs_ok(root, ref)) for p in changed):
                 return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -206,7 +231,8 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    S = _successor()
+    return path in OWNED_PATHS or path == MANIFEST or (S is not None and S.allowed_path(path, repo, ref) and S.exact_blobs_ok(repo, ref))
 
 
 def signature_ok(repo=None, ref=None):
@@ -222,7 +248,10 @@ def base_blob(path, repo=None, ref=None):
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for the composite
     registry path, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+        return True
+    S = _successor()
+    return S is not None and S.supersedes(path, value, repo, ref)
 
 
 def valid(repo=None, ref=None):
@@ -231,7 +260,7 @@ def valid(repo=None, ref=None):
 
 
 def matches(path, source=None, *, repo=None, ref=None):
-    pins = manifest(repo, ref).get('source_blobs', {})
+    pins = effective_pins(repo, ref)
     if path not in pins or not valid(repo, ref):
         return False
     raw = source.encode() if isinstance(source, str) else source

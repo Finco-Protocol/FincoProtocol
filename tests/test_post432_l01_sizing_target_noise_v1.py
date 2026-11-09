@@ -70,3 +70,39 @@ def test_the_tolerance_is_bounded_and_only_the_sizing_row_uses_it():
 
 def test_contractual_verdicts_stay_strict():
     assert T.format_ratio(1.1999999999999997, (1.2,)) == "1.1999999999999997x"          # the exact-ulp display of the contractual rows is unchanged
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), None])
+def test_undefined_or_infinite_values_are_never_promoted(bad):
+    assert D._noise_equal(bad, 1.2) is False and D._noise_equal(1.2, bad) is False
+    if bad is not None:
+        assert _sizing_row(bad, 1.2)["status"] == ("AT_OR_ABOVE_TARGET" if bad == float("inf") else "BELOW_TARGET")
+
+
+def _row(dscr):
+    return {"applicable": True, "dscr": dscr, "bank_dscr": dscr, "sizing_target_dscr": 1.2, "period_index": 3, "date": "2030-06-30", "shortfall_keur": 0.0,
+            "base_cfads_keur": 100.0, "debt_service_keur": 100.0, "principal_keur": 60.0, "interest_keur": 40.0, "bank_cfads_keur": 100.0}
+
+
+def _terms(value):
+    term = lambda fid: T.Term(fid, T.CONFIGURED, value, repr(value))
+    return T.RunTerms(True, "", eod=term(T.EOD_FIELD_ID), contractual=term(T.COVENANT_FIELD_ID))
+
+
+def test_presentation_noise_never_softens_the_strict_contractual_verdicts():
+    """The same 1.1999999999999997x ratio: the sizing row shows AT target, while the covenant and Event of Default (target 1.2x) stay BREACHED / TRIGGERED."""
+    rows = [_row(1.1999999999999997)]
+    ev = T.evaluate(_terms(1.2), rows)
+    assert ev["eod"]["status"] == T.EOD_TRIGGERED and ev["covenant"]["status"] == T.COV_BREACHED
+    table = {r["id"]: r for r in D._covenant_table(ev, rows, {}, {})}
+    assert table["SIZING_TARGET"]["status"] == "AT_OR_ABOVE_TARGET"
+    assert table["SIZING_TARGET"]["actual"]["v"] == 1.1999999999999997
+
+
+def test_a_dscr_below_one_is_still_classified_and_never_blocked():
+    rows = [_row(0.95)]
+    ev = T.evaluate(_terms(1.2), rows)
+    assert ev["coverage"]["status"] == T.COVERAGE_DEFICIENCY
+    table = {r["id"]: r for r in D._covenant_table(ev, rows, {}, {})}
+    assert table["SIZING_TARGET"]["status"] == "BELOW_TARGET" and table["SIZING_TARGET"]["severity"] == "WARNING"
+    assert table["COVERAGE_1X"]["severity"] == "CRITICAL"

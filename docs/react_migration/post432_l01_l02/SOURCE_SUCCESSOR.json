@@ -1,0 +1,26 @@
+{
+  "base": "91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14",
+  "base_blobs": {
+    "app/v2/debt_metrics_projection.py": "72ff9125f14686035cf35f36df7a75efd6242270",
+    "app/v2/react_projects.py": "bedf78b1ba62a1278ed3145d3f2655b2f2c281f3",
+    "tests/tax_reference_registry_scope.py": "c2eb1a44873249a2b50de4f5c3ac6902ae04b1d3",
+    "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
+    "tests/test_ux_pr3b2_scope.py": "1240153642f2467ab1ec6b47b6da2cf13ea4e467",
+    "tests/ux_pr3b2_scope.py": "0dc684985ba3a60082bb9c24c729b0a85c26f9b7"
+  },
+  "base_tree": "e9573d7802b319deb943dab60667778a431370e4",
+  "schema_version": "POST432_L01_L02_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "app/v2/debt_metrics_projection.py": "334943135ad7520f8a2c9a425d2d9fe286ce7550",
+    "app/v2/react_projects.py": "680469d7c9b1ad2136ecf67fbb4030eee2240bfc",
+    "tests/post432_l01_l02_scope.py": "575e8893b7b3816ea2b2fce75372f583f129b6d8",
+    "tests/post432_l02_full_oracle.py": "980dcb2833c71c64d7be1297934dab860ff19bc4",
+    "tests/tax_reference_registry_scope.py": "4d25570f36cf49a55a95c9a63b76136e324ab801",
+    "tests/test_post432_l01_l02_scope.py": "44ca0bab2946ca7f3e3cb53bcffc5034e595ff3a",
+    "tests/test_post432_l01_sizing_target_noise_v1.py": "b14fd7ecd0290bb91c571e9b7a71e4d30ca28f36",
+    "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5",
+    "tests/test_tax_reference_registry_scope.py": "28d478164f0078d7763e04f2908e8b2d32ba77bf",
+    "tests/test_ux_pr3b2_scope.py": "a3e9533b6e200f255d3e6edf4d301cd4baf5811c",
+    "tests/ux_pr3b2_scope.py": "4de79c89343116603cb99f0af46fe976845cf252"
+  }
+}
