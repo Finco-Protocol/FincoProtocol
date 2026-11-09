@@ -318,7 +318,8 @@ def _wf06a_repin(manifest_path,source,after,root,ref):
     try:
         from tests import fin_v2_wf06a_scope as WF06A
     except ImportError: return False
-    return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
+    with _downstream_scopes():
+        return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
 
 
 def _int409(root,ref):
