@@ -120,6 +120,12 @@ def later_owned(repo=None, ref=None):
     return (T.OWNED_PATHS | {T.MANIFEST}) if T is not None and T.signature_ok(root, ref) else frozenset()
 
 
+def later_supersedes(path, value, repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    T = _tip()
+    return T is not None and T.signature_ok(root, ref) and T.supersedes(path, value, root, ref)
+
+
 def effective_pins(repo=None, ref=None, *, signature=False):
     root = Path(repo) if repo is not None else ROOT
     pins = {p: b for p, b in manifest(root, ref).get('source_blobs', {}).items() if p in SUPERSEDED}
@@ -148,7 +154,7 @@ def _reviewed_handoffs_ok(root, ref):
 def _maps_ok(root, ref, pins, closure=True):
     for path in CURRENT_MAPS:
         expected = json.loads(_base(root,'show',BASE+':'+path))
-        for key in (SUPERSEDED - CURRENT_MAPS) & expected['source_blobs'].keys():
+        for key in ((SUPERSEDED - CURRENT_MAPS) | (set(_tip_pins(root,ref)) - CURRENT_MAPS)) & expected['source_blobs'].keys():
             expected['source_blobs'][key] = pins[key]
         raw = (json.dumps(expected,indent=2,sort_keys=True)+'\n').encode()
         if _blob(raw) != pins[path] or (closure and _read(root,path,ref) != raw):
@@ -259,6 +265,9 @@ def protected_blobs(repo=None, ref=None):
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        T = _tip()
+        if T is not None and T.signature_ok(root) and T.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root,'merge-base','origin/main','HEAD').decode().strip() != BASE:
             return False
         actual = _git(root,'diff',BASE,'--name-only').decode().splitlines()

@@ -10,9 +10,11 @@
     "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "e55e3f4621791ef94407ff681694b1c5ec529d69",
     "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "04048cf2dfb07589d6c6fad8aca405c11c7ea2c1",
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "9becb4be47079e3ae70df2b8074a8b3ea2b368b8",
+    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "e9fb57c23fe7aff27e280659070317fe73ac8335",
     "tests/fin_v2_cohorts.py": "2c1f1ce9104ec2954bb80e29a80b5a831106b040",
     "tests/on_bess01_scope.py": "bc7a6906cdf87c444951557791aa28c0ce297591",
-    "tests/onaccept01_scope.py": "926a8f6321ae065165a6065998590ce1fbff1501"
+    "tests/onaccept01_scope.py": "926a8f6321ae065165a6065998590ce1fbff1501",
+    "tests/test_ux_pr3b2_scope.py": "eb4e50983f1d85d6b79d1a161de9c5107606731f"
   },
   "base_tree": "b069d3d930bd41d56949c7afa86c779a539863e8",
   "schema_version": "POST434_L01_L02_EXACT_SOURCE_V1",
@@ -26,13 +28,15 @@
     "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "6beba24ad3c1902e8dc0e427a755bea9a998df75",
     "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "817726059610abfe683b3f2c5bd53be81d225e8b",
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "83c18f9ef52da0b7da27c0053de043c2efc11e9f",
+    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "dc3844ae6afaf2abe1c7e4f04f23a87da314de43",
     "tests/fin_v2_cohorts.py": "2bc40e38a496d41211cd9689b5812084590d9b7b",
-    "tests/on_bess01_scope.py": "9b73e6f70288275ca8f90f117cab6b5a6b8c41bd",
-    "tests/onaccept01_scope.py": "e8bdd6b1cb5ae70500ab64960b8262804fbade29",
-    "tests/post432_l01_l02_scope.py": "d01edb3645cff9cb6f2c1d6a9d133016801b1729",
+    "tests/on_bess01_scope.py": "bd3b07333a13c8cd02694a62cc1b6bfb4e43f496",
+    "tests/onaccept01_scope.py": "b6dbb68073bf843e21e4004b0430d2aa8a9cb0fb",
+    "tests/post432_l01_l02_scope.py": "a1b9886a2d4e07b6cee32db1d508af4b6f92c3d8",
     "tests/post432_l02_full_oracle.py": "980dcb2833c71c64d7be1297934dab860ff19bc4",
-    "tests/test_post432_l01_l02_scope.py": "44ca0bab2946ca7f3e3cb53bcffc5034e595ff3a",
+    "tests/test_post432_l01_l02_scope.py": "7e9526c4560b5eb76bc1363b043a978d61560c9c",
     "tests/test_post432_l01_sizing_target_noise_v1.py": "b14fd7ecd0290bb91c571e9b7a71e4d30ca28f36",
-    "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5"
+    "tests/test_post432_l02_template_rate_percent_v1.py": "1b9bd0a1961e3fd13cc7ecb3028ecfbd169371c5",
+    "tests/test_ux_pr3b2_scope.py": "fa91ec33219685b5ad9e65ce08561641f9473544"
   }
 }

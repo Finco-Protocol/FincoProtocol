@@ -40,7 +40,7 @@ TEST_PATHS = frozenset((
     'tests/test_post432_l01_l02_scope.py',
 ))
 HANDOFF_FILES = frozenset(('tests/on_bess01_scope.py', 'tests/onaccept01_scope.py'))
-GOVERNANCE_PATHS = HANDOFF_FILES | {REGISTRY, 'tests/post432_l01_l02_scope.py'}
+GOVERNANCE_PATHS = HANDOFF_FILES | {REGISTRY, 'tests/post432_l01_l02_scope.py', 'tests/test_ux_pr3b2_scope.py'}
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -49,11 +49,12 @@ CURRENT_MAPS = frozenset((
     'docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json',
     'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
     'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
+    'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
 ))
 #: the only two handed-off pins a current map may move (the keys every map already records for them)
-MAP_KEYS = (REGISTRY, 'tests/on_bess01_scope.py')
+MAP_KEYS = (REGISTRY, 'tests/on_bess01_scope.py', 'tests/test_ux_pr3b2_scope.py')
 OWNED_PATHS = SOURCE_PATHS | TEST_PATHS | GOVERNANCE_PATHS | CURRENT_MAPS
-SUPERSEDED = SOURCE_PATHS | HANDOFF_FILES | {REGISTRY} | CURRENT_MAPS
+SUPERSEDED = SOURCE_PATHS | HANDOFF_FILES | {REGISTRY, 'tests/test_ux_pr3b2_scope.py'} | CURRENT_MAPS
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'frontend/', 'static/', 'tax_reference_registry/', 'scripts/')
 FORBIDDEN_PATHS = frozenset(('main_web.py',))
 
@@ -64,6 +65,8 @@ _ONACC_TIP = (
     "    return {p: b for p, b in T.manifest(root, ref)['source_blobs'].items() if p in T.SUPERSEDED}\n\n\n"
     "def later_owned(repo=None, ref=None):\n    root = Path(repo) if repo is not None else ROOT\n    T = _tip()\n"
     "    return (T.OWNED_PATHS | {T.MANIFEST}) if T is not None and T.signature_ok(root, ref) else frozenset()\n\n\n"
+    "def later_supersedes(path, value, repo=None, ref=None):\n    root = Path(repo) if repo is not None else ROOT\n    T = _tip()\n"
+    "    return T is not None and T.signature_ok(root, ref) and T.supersedes(path, value, root, ref)\n\n\n"
     "def effective_pins(repo=None, ref=None, *, signature=False):\n    root = Path(repo) if repo is not None else ROOT\n"
     "    pins = {p: b for p, b in manifest(root, ref).get('source_blobs', {}).items() if p in SUPERSEDED}\n    pins.update(_tip_pins(root, ref))\n    return pins\n\n\n"
     "def _reviewed_handoffs_ok(root, ref):\n    T = _tip()\n    if T is not None and T.signature_ok(root, ref):\n        return T.reviewed_edits_ok(root, ref)\n"
@@ -79,6 +82,11 @@ HANDOFFS = {
         ("        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,pins,closure):", "        if not _reviewed_handoffs_ok(root,ref) or not _maps_ok(root,ref,cur,closure):"),
         ("            if not changed <= allowed:", "            if not changed <= (allowed | later):"),
         ("                    if path in allowed:\n                        continue", "                    if path in allowed or path in later:\n                        continue"),
+        ("    for path in CURRENT_MAPS:\n        expected = json.loads(_base(root,'show',BASE+':'+path))\n        for key in (SUPERSEDED - CURRENT_MAPS) & expected['source_blobs'].keys():",
+         "    for path in CURRENT_MAPS:\n        expected = json.loads(_base(root,'show',BASE+':'+path))\n        for key in ((SUPERSEDED - CURRENT_MAPS) | (set(_tip_pins(root,ref)) - CURRENT_MAPS)) & expected['source_blobs'].keys():"),
+        ("def nontrust_scope_authorized(changed, repo=None):\n    root = Path(repo) if repo is not None else ROOT\n    try:\n",
+         "def nontrust_scope_authorized(changed, repo=None):\n    root = Path(repo) if repo is not None else ROOT\n    try:\n"
+         "        T = _tip()\n        if T is not None and T.signature_ok(root) and T.nontrust_scope_authorized(changed, root):\n            return True\n"),
         ("def allowed_path(path, repo=None, ref=None):\n    return path in OWNED_PATHS | {MANIFEST}", "def allowed_path(path, repo=None, ref=None):\n    return path in OWNED_PATHS | {MANIFEST} or path in later_owned(repo, ref)"),
         ("return path in SUPERSEDED and signature_ok(repo,ref) and manifest(repo,ref)['source_blobs'].get(path)==value", "return path in SUPERSEDED and signature_ok(repo,ref) and effective_pins(repo,ref).get(path)==value"),
     ),
@@ -89,6 +97,9 @@ HANDOFFS = {
         ("                if not _foreign_bytes_and_modes_ok(root):", "                if not _foreign_bytes_and_modes_ok(root, S.later_owned(root, ref) if next_ok else frozenset()):"),
         ("def _foreign_bytes_and_modes_ok(root):", "def _foreign_bytes_and_modes_ok(root, later=frozenset()):"),
         ("        if path in OWNED_PATHS | {MANIFEST}:\n            continue", "        if path in OWNED_PATHS | {MANIFEST} | later:\n            continue"),
+        ("def supersedes(path, value, repo=None, ref=None):\n    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value",
+         "def supersedes(path, value, repo=None, ref=None):\n    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:\n        return True\n"
+         "    S = _successor()\n    return S is not None and S.signature_ok(repo, ref) and S.later_supersedes(path, value, repo, ref)"),
     ),
 }
 
@@ -309,3 +320,19 @@ def matches(path, source=None, *, repo=None, ref=None):
 
 def protected_blobs(repo=None, ref=None):
     return {}  # Never admits a financial_engine, finco_core or domain source.
+
+
+def nontrust_scope_authorized(changed, repo=None):
+    """The no-engine/writer/Radar scope obligation of the trust-readiness guard for THIS exact cohort: the real main merge-base diff, not an invented trigger."""
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        if _git(root, 'merge-base', 'origin/main', 'HEAD').decode().strip() != BASE:
+            return False
+        actual = _git(root, 'diff', BASE, '--name-only').decode().splitlines()
+        if not actual or sorted(changed) != sorted(actual) or not set(actual) <= OWNED_PATHS | {MANIFEST}:
+            return False
+        from tests import fin_v2_cohorts as C
+        with C.call_scope():
+            return exact_blobs_ok(root) and C.valid(root)
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):
+        return False

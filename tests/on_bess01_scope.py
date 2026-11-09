@@ -517,7 +517,10 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+        return True
+    S = _successor()
+    return S is not None and S.signature_ok(repo, ref) and S.later_supersedes(path, value, repo, ref)
 
 
 def valid(repo=None, ref=None):
