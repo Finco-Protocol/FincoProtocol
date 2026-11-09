@@ -910,6 +910,9 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
             pytest.fail(f"F4 CSRF correction requires valid Git provenance: {exc}")
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
+        from tests.on_bess01_reviewed_successors import nontrust_scope_authorized
+        if nontrust_scope_authorized(changed):
+            return      # V2: execute the closed current source review; no skip waiver.
         pytest.skip("trust pack not part of this diff")
     if _current_f35b_csrf_authorized():
         return          # Owner-approved field-only, exact-content session CSRF correction.

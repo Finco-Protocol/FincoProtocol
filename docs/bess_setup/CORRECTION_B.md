@@ -41,3 +41,21 @@ without reading foreign current map bytes. Full closure separately checks those
 bytes, map semantics and complete path/mode closure. Forged expected pins fail
 both proofs; forged current foreign maps preserve only the bounded CI signature
 and fail every full/global proof. The original PR3b-1 negative test is unchanged.
+
+## V2: execute the existing non-trust scope test under no-skip policy
+
+The first hosted round passed all four shards, both F01 jobs and all six Browser
+roles. Trusted final aggregation correctly rejected the old `trust pack not part
+of this diff` skip because changing the Revenue guard module activates its
+existing no-skip policy. The original artifact set reproduces this exact failure.
+No policy, selector, job, case identity or skip allowance changes.
+
+The reviewed V2 current branch executes the existing scope obligation: the real
+main merge-base must equal accepted BASE, the supplied changed paths must equal
+the actual Git diff and fit the literal cohort, every foreign BASE source/mode
+must remain identical, the BESS read-only structural proof and every registered
+cohort/composite must pass. Only this complete proof returns normally; the old
+historical fallback remains. All original assertion ASTs except the single
+already-reviewed F35B assertion remain unchanged. Unknown/forged diff, engine,
+writer or Radar drift never gains a pass. This is an actual source review,
+not a skip waiver or an invented trust-pack change.

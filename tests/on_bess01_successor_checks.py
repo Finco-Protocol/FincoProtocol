@@ -134,3 +134,23 @@ def test_a_forged_expected_foreign_map_pin_cannot_gain_signature_authority():
         assert not B.signature_ok() and not B.exact_blobs_ok()
     finally:
         p.write_bytes(raw)
+
+
+def test_current_nontrust_scope_executes_only_the_real_closed_source_review():
+    changed = subprocess.check_output(['git', 'diff', B.BASE, '--name-only'], cwd=B.ROOT).decode().splitlines()
+    assert S.nontrust_scope_authorized(changed)
+    assert not S.nontrust_scope_authorized([])
+    assert not S.nontrust_scope_authorized(changed + [changed[0]])
+    assert not S.nontrust_scope_authorized(changed + ['app/trust_readiness/invented.py'])
+
+
+@pytest.mark.parametrize('path', ['financial_engine/cfads.py', 'app/v2/router.py', 'finco_radar/__init__.py'])
+def test_current_nontrust_scope_never_admits_engine_writer_or_radar_drift(path):
+    p = B.ROOT / path
+    raw = p.read_bytes()
+    try:
+        p.write_bytes(raw + b'\n')
+        actual = subprocess.check_output(['git', 'diff', B.BASE, '--name-only'], cwd=B.ROOT).decode().splitlines()
+        assert not S.nontrust_scope_authorized(actual)
+    finally:
+        p.write_bytes(raw)
