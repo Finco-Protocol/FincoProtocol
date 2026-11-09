@@ -235,6 +235,10 @@ async def react_poc_bootstrap(request: Request, project: str):
 from app.v2.react_insights_router import router as insights_router
 router.include_router(insights_router)
 
+# Read-only standalone setup is isolated from the frozen project creator.
+from app.v2.bess_setup_router import router as _bess_setup_router
+router.include_router(_bess_setup_router)
+
 
 @router.get("/model-react/{project_code}", response_class=HTMLResponse)
 async def react_poc_page(request: Request, project_code: str):

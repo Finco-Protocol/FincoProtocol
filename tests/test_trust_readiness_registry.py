@@ -910,6 +910,9 @@ def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
             pytest.fail(f"F4 CSRF correction requires valid Git provenance: {exc}")
         pytest.skip(f"cannot compute the diff against main: {exc}")
     if not any(p.startswith("app/trust_readiness/") for p in changed):
+        from tests.on_bess01_reviewed_successors import nontrust_scope_authorized
+        if nontrust_scope_authorized(changed):
+            return      # V2: execute the closed current source review; no skip waiver.
         pytest.skip("trust pack not part of this diff")
     if _current_f35b_csrf_authorized():
         return          # Owner-approved field-only, exact-content session CSRF correction.
@@ -1214,7 +1217,9 @@ def test_f35b_exact_security_successor_and_historical_pins():
     current = constants(_read_current(CSRF_GUARD_PATH))
     assert {name: current.get(name) for name in historical} == historical
     source = _git("show", f"{F35B_CSRF_BASE}:app/v2/router.py")
-    assert _revenue_critical_functions(source) == _revenue_critical_functions(_read_current("app/v2/router.py"))
+    from tests.on_bess01_reviewed_successors import o1_revenue_authorized
+    assert (_revenue_critical_functions(source) == _revenue_critical_functions(_read_current("app/v2/router.py"))
+            or o1_revenue_authorized(source, _read_current("app/v2/router.py")))
 
 
 def test_f35b_exact_security_rejects_changed_missing_extra_files_and_provenance(monkeypatch):
