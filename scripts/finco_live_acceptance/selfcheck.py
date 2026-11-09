@@ -91,6 +91,20 @@ class PolicyChecks(unittest.TestCase):
         self.assertFalse(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':'foreign'})))
         self.assertTrue(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':None})))
         self.assertFalse(p.permit(p.base+'/v2/workbook/save-all','POST',json.dumps({'project':'own','scenario_id':None})))
+    def test_audited_projection_gets_require_auth_and_owned_project(self):
+        paths=('/v2/model-react/capex/profiles','/v2/model-react/capex/preview',
+               '/v2/model-react/opex-projection/lines','/v2/model-react/scenario-overrides',
+               '/v2/model-react/scenario-compare','/v2/model-react/new-project/bess-options',
+               '/v2/model-react/setup-drafts/status')
+        p=NetworkPolicy('http://127.0.0.1:9999');p.projects.add('owned')
+        for path in paths:self.assertFalse(p.permit(p.base+path+'?project=owned','GET'))
+        p.authenticated=True
+        for path in paths:
+            self.assertTrue(p.permit(p.base+path+'?project=owned','GET'))
+            self.assertFalse(p.permit(p.base+path+'?project=foreign','GET'))
+            for method in ('POST','PUT','PATCH','DELETE'):self.assertFalse(p.permit(p.base+path,method,'{}'))
+        self.assertFalse(p.permit(p.base+'/v2/model-react/new-project/bess-preview','POST','{}'))
+        self.assertEqual(p.sent_mutations,0)
     def test_foreign_write_attempt_is_counted_before_origin_refusal(self):
         p=NetworkPolicy('https://app.finco.one')
         self.assertFalse(p.permit('https://forbidden.invalid/write','POST','secret=not-persisted'))

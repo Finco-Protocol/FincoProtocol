@@ -17,6 +17,8 @@ BASE = '0191ef1af9080c7769a86d8fa58dfab936e74305'
 BASE_TREE = '0ad5e401ca0efe4cb493eed86a2dfc9085df94ae'
 SOURCE_ANCHOR = '5bba59c9607ab47c804c0904f549e6bced6c5d31'
 PREDECESSOR_BASE = '91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14'
+REVIEWED_RUNTIME_FILES = frozenset(('scripts/finco_live_acceptance/policy.py','scripts/finco_live_acceptance/selfcheck.py'))
+REVIEWED_RUNTIME_BLOBS = {'scripts/finco_live_acceptance/policy.py': '073edf00bc7278e19ad11c80e466539b81c28062', 'scripts/finco_live_acceptance/selfcheck.py': '69b81785bf338bc544e19f4289a7cdb1b0a4e495'}
 REVIEWED_OPERATOR_BLOBS = {'scripts/finco_live_acceptance/README.md': '49222d1df87b31e44ffe1377097ce1683c258b2f', 'scripts/finco_live_acceptance/RUNBOOK.md': 'c069c505e983640e20b71451d48259587553517a', 'scripts/finco_live_acceptance/selfcheck_scope.py': 'b12f0b48a4e2dda29e2feca65b1d2e779a887989'}
 MANIFEST = 'docs/onaccept01/SOURCE_SUCCESSOR.json'
 SCHEMA = 'ON_ACCEPT01_OPERATOR_ONLY_EXACT_SOURCE_V1'
@@ -141,10 +143,12 @@ def _exact(repo, ref, closure):
         old = {line.split('\t')[1]:line.split()[2] for line in _base(root,'ls-tree','-r',BASE,'--',*sorted(SUPERSEDED)).decode().splitlines()}
         if old != data['base_blobs']:
             return False
-        anchor = {line.split('\t')[1]:line.split()[2] for line in _base(root,'ls-tree','-r',SOURCE_ANCHOR,'--',*sorted(SOURCE_PATHS-REVIEWED_OPERATOR_FILES)).decode().splitlines()}
-        if (len(anchor) != 11 or any(pins.get(p) != b for p,b in anchor.items())
+        anchor = {line.split('\t')[1]:line.split()[2] for line in _base(root,'ls-tree','-r',SOURCE_ANCHOR,'--',*sorted(SOURCE_PATHS-REVIEWED_OPERATOR_FILES-REVIEWED_RUNTIME_FILES)).decode().splitlines()}
+        if (len(anchor) != 9 or any(pins.get(p) != b for p,b in anchor.items())
                 or set(REVIEWED_OPERATOR_BLOBS) != REVIEWED_OPERATOR_FILES
-                or any(pins.get(p) != b for p,b in REVIEWED_OPERATOR_BLOBS.items())):
+                or any(pins.get(p) != b for p,b in REVIEWED_OPERATOR_BLOBS.items())
+                or set(REVIEWED_RUNTIME_BLOBS) != REVIEWED_RUNTIME_FILES
+                or any(pins.get(p) != b for p,b in REVIEWED_RUNTIME_BLOBS.items())):
             return False
         allowed = OWNED_PATHS | {MANIFEST}
         identity = allowed if closure else allowed - CURRENT_MAPS

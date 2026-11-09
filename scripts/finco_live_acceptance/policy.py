@@ -23,6 +23,11 @@ READ_API = frozenset({
  '/v2/model-react/revenue-contracts', '/v2/model-react/setup-drafts',
  '/v2/model-react/new-project/options', '/v2/model-react/new-project/preview',
  '/v2/model-react/new-project/status',
+ # Existing authenticated projections; none persists input or starts a Run.
+ '/v2/model-react/capex/profiles', '/v2/model-react/capex/preview',
+ '/v2/model-react/opex-projection/lines', '/v2/model-react/scenario-overrides',
+ '/v2/model-react/scenario-compare', '/v2/model-react/new-project/bess-options',
+ '/v2/model-react/setup-drafts/status',
 })
 
 class Refused(ValueError):
