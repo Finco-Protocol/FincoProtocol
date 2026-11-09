@@ -414,6 +414,22 @@ def _generated_evidence_ok(root, path):
         return False
 
 
+def _successor():
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.onaccept01_scope' not in COHORT_MODULES:
+        return None
+    from tests import onaccept01_scope
+    return onaccept01_scope
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    pins = dict(manifest(repo, ref).get('source_blobs', {}))
+    S = _successor()
+    if S is not None and S.signature_ok(repo, ref):
+        pins.update({p: b for p, b in S.manifest(repo, ref)['source_blobs'].items() if p in S.SUPERSEDED})
+    return pins
+
+
 def _exact(repo, ref, closure):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -433,12 +449,16 @@ def _exact(repo, ref, closure):
             return False
         if not _current_map_pin_contract_ok(root, pins):
             return False
+        S = _successor()
+        next_ok = S is not None and S.signature_ok(root, ref)
+        next_pins = S.manifest(root, ref)['source_blobs'] if next_ok else {}
+        current_pins = dict(pins, **next_pins)
         identity_paths = OWNED_PATHS if closure else OWNED_PATHS - CURRENT_MAPS
-        if any(_blob(_read(root, p, ref)) != pins[p] for p in identity_paths):
+        if any(_blob(_read(root, p, ref)) != current_pins[p] for p in identity_paths):
             return False
         if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p) for p in FROZEN):
             return False
-        if closure and not _maps_ok(root, ref, pins):
+        if closure and not _maps_ok(root, ref, current_pins):
             return False
         # Preserve ALL original assertion ASTs in the single reviewed consumer.
         import ast
@@ -456,9 +476,12 @@ def _exact(repo, ref, closure):
             return False
         old_registry = _base(root, 'show', BASE + ':tests/fin_v2_cohorts.py').decode()
         registry = _read(root, 'tests/fin_v2_cohorts.py', ref).decode()
-        if registry != old_registry.replace("'tests.tax_reference_registry_scope')", "'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')"):
+        if (registry != old_registry.replace("'tests.tax_reference_registry_scope')", "'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')")
+                and not (next_ok and _blob(registry.encode()) == next_pins.get('tests/fin_v2_cohorts.py'))):
             return False
         allowed = OWNED_PATHS | {MANIFEST}
+        if next_ok:
+            allowed = allowed | S.OWNED_PATHS | {S.MANIFEST}
         if closure:
             changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
             if not changed <= allowed:
@@ -484,7 +507,9 @@ def _exact(repo, ref, closure):
 
 def allowed_path(path, repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
-    return path in OWNED_PATHS | {MANIFEST} or (ref is None and _generated_evidence_ok(root, path))
+    S = _successor()
+    return (path in OWNED_PATHS | {MANIFEST} or (ref is None and _generated_evidence_ok(root, path))
+            or (S is not None and S.signature_ok(root, ref) and S.allowed_path(path, root, ref)))
 
 
 def base_blob(path, repo=None, ref=None):
@@ -492,7 +517,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref)['source_blobs'].get(path) == value
+    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
 
 
 def valid(repo=None, ref=None):

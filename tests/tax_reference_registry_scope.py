@@ -248,7 +248,7 @@ def effective_pins(repo=None, ref=None, *, signature=False):
     from tests import on_bess01_scope as B
     pins = dict(manifest(repo, ref).get('source_blobs', {}))
     if B.signature_ok(repo, ref) if signature else B.exact_blobs_ok(repo, ref):
-        pins.update({p: b for p, b in B.manifest(repo, ref)['source_blobs'].items() if p in B.SUPERSEDED})
+        pins.update({p: b for p, b in B.effective_pins(repo, ref, signature=signature).items() if p in B.SUPERSEDED})
     return pins
 
 
