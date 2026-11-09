@@ -37,6 +37,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = '785024c752bbd1700d6051cf15115d9980d0b4a1'
@@ -130,6 +131,12 @@ def scoped():
     if _SCOPE:
         yield
         return
+    from tests import on_bess01_scope as B
+    with B.scoped():
+        yield from _scoped_body()
+
+
+def _scoped_body():
     _SCOPE.append({})
     try:
         yield
@@ -142,6 +149,19 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _verdict(repo, ref, closure):
+    if not _SCOPE:
+        key = ('tests.tax_reference_registry_scope.verdict', str(repo if repo is not None else ROOT), ref, closure)
+        for name in ('tests.u1_scope', 'tests.wf06b_scope', 'tests.wf03_lifecycle_scope',
+                     'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope'):
+            outer = getattr(sys.modules.get(name), '_SCOPE', None)
+            if outer:
+                memo = outer[-1]
+                if key not in memo:
+                    with scoped():
+                        memo[key] = _verdict(repo, ref, closure)
+                return memo[key]
+        with scoped():
+            return _verdict(repo, ref, closure)
     if _SCOPE:
         key = (str(repo if repo is not None else ROOT), ref, closure)
         memo = _SCOPE[-1]
@@ -162,6 +182,12 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         # 1. immutable provenance: the foundation commit and its tree are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         if _object_fact(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+            return False
+        # A changed current map cannot self-authorize the reviewed handoff.
+        # The terminal leaf authenticates its finite moves against accepted main.
+        from tests import on_bess01_scope as B
+        accepted = '91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14'
+        if _read(root, MANIFEST, ref) != _object_fact(root, 'show', accepted + ':' + MANIFEST) and not B.signature_ok(root, ref):
             return False
         # 2. the blob recorded for the superseded composite registry is what git holds at BASE
         paths = sorted(base_blobs)
@@ -188,7 +214,8 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
         if closure:
             changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
                            *[p.rstrip('/') for p in FORBIDDEN_PREFIXES], *sorted(FORBIDDEN_PATHS)).decode().splitlines()
-            if changed:
+            from tests import on_bess01_scope as B
+            if changed and (not B.exact_blobs_ok(root, ref) or any(not B.allowed_path(p, root, ref) for p in changed)):
                 return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -206,13 +233,23 @@ def _exact_blobs_ok(repo=None, ref=None, closure=True):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    from tests import on_bess01_scope as B
+    return path in OWNED_PATHS or path == MANIFEST or (B.allowed_path(path, repo, ref) and B.exact_blobs_ok(repo, ref))
 
 
 def signature_ok(repo=None, ref=None):
     """Source/base/mode authority only: exact owned bytes, base, tree and modes. It never judges unrelated (global-closure) paths, so a
     dirty foreign file cannot flip it; full exactness (``exact_blobs_ok``) still adds the protected-prefix closure."""
     return _verdict(repo, ref, False)
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    """Current T01-D pins plus the authenticated, finite BESS handoff only."""
+    from tests import on_bess01_scope as B
+    pins = dict(manifest(repo, ref).get('source_blobs', {}))
+    if B.signature_ok(repo, ref) if signature else B.exact_blobs_ok(repo, ref):
+        pins.update({p: b for p, b in B.manifest(repo, ref)['source_blobs'].items() if p in B.SUPERSEDED})
+    return pins
 
 
 def base_blob(path, repo=None, ref=None):

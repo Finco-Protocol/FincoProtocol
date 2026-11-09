@@ -28,19 +28,21 @@ def client(tmp_path, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     from app.persistence import db
     from app.v2.react_new_project import router
+    from app.v2.bess_setup_router import router as bess_router
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "synthetic.db"))
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     db.init_db()
     app = FastAPI()
     app.include_router(router, prefix="/v2")
+    app.include_router(bess_router, prefix="/v2")
     with TestClient(app) as c:
         c.cookies.set(COOKIE_NAME, create_session_token(user_id="synthetic-bess-owner", username="admin"))
         yield c
 
 
 def payload(client):
-    opts = client.get(BASE + "/options").json()
-    return {"request_id": opts["request_id"], "csrf_token": opts["bess_preview_csrf_token"],
+    opts = client.get(BASE + "/bess-options").json()
+    return {"request_id": opts["request_id"], "csrf_token": opts["csrf_token"],
             "native_json": json.dumps(native()), "edits": {}}
 
 

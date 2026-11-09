@@ -27,7 +27,6 @@ export interface WizardTechnology {
   capacity_label?: string;
   default_capacity_mw?: number;
   timeline?: WizardTimeline;
-  setup_preview?: import("./bess/types").BessCapability;
 }
 
 export interface WizardOptions {
@@ -37,7 +36,6 @@ export interface WizardOptions {
   bounds: { capacity_min_mw: number; capacity_max_mw: number; name_max_length: number };
   request_id: string;
   csrf_token: string;
-  bess_preview_csrf_token?: string;
 }
 
 export interface WizardFieldError { field: string; message: string }

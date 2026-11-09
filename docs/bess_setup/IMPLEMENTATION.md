@@ -1,7 +1,7 @@
 # Standalone Storage setup preview
 
 The New Project Wizard exposes an isolated Storage preview through the existing
-authenticated options API. The Storage creation and template cards remain
+authenticated standalone BESS options API. The Storage creation and template cards remain
 disabled. A separate preview form accepts a complete, explicit native contract
 and offers canonical battery fields for local editing. The shared native parser
 validates every submission; duration is the server-derived usable DC MWh /
@@ -33,21 +33,21 @@ cmp dist/finco-react.js ../static/react/finco-react.js
 cmp dist/finco-react.css ../static/react/finco-react.css
 ```
 
-## Closed source and integration dependency
+## Closed source composition
 
 `tests/on_bess01_scope.py` seals a literal finite source set against accepted
 main `91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14`, tree
 `e9573d7802b319deb943dab60667778a431370e4`. Its manifest records exact current
-blobs and the original six moved blobs. Negative controls cover unsigned bytes,
+blobs and every moved accepted-main blob. Negative controls cover unsigned bytes,
 foreign paths, mode changes, ancestry/schema and crossed pins. Historical pins,
 manifests and CI policy are unchanged.
 
-This own-source seal is not global governance admission. The latest protected
-reference-registry cohort closes all later app/frontend/static changes and pins
-the composite registry. Updating that workstream is outside this task's scope.
-An owner-coordinated exact predecessor successor is an integration dependency;
-the normal gate must continue to refuse until composed. Do not relax the gate
-or interpret local preview tests as merge/release readiness.
+Correction A composes the latest protected cohort with this independent leaf
+through one-way, low-level hooks and finite current-map moves. The frozen
+creator remains byte-identical; BESS registration and CSRF calls have a separate
+literal structural review. See [CORRECTION_A.md](CORRECTION_A.md). Global
+governance admission still requires the real composite and central gate to pass.
+Local preview tests alone do not establish merge or financial release readiness.
 
 Private readiness, research provenance, source coverage, screenshots and final
 report are retained outside GitHub. No numerical parity or persisted BESS

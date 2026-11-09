@@ -114,7 +114,7 @@ def _exact(repo=None, ref=None, closure=True):
         if baseline!=d['base_blobs']: return False
         S=_successor()
         next_ok=S is not None and S.signature_ok(root,ref) if not closure else S is not None and S.exact_blobs_ok(root,ref)
-        next_pins={p:b for p,b in S.manifest(root,ref).get('source_blobs',{}).items() if p in S.SUPERSEDED} if next_ok else {}
+        next_pins={p:b for p,b in S.effective_pins(root,ref,signature=not closure).items()} if next_ok else {}
         next_owns=lambda p: next_ok and S.allowed_path(p,root,ref)
         for p,b in pins.items():
             if _blob(_read(root,p,ref))!=b and next_pins.get(p)!=_blob(_read(root,p,ref)): return False
@@ -152,7 +152,10 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
+    if path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value:
+        return True
+    from tests import on_bess01_scope as B
+    return B.supersedes(path,value,repo,ref)
 
 
 def _successor():
@@ -168,7 +171,7 @@ def effective_pins(repo=None, ref=None, *, signature=False):
     pins=dict(manifest(repo,ref).get('source_blobs',{}))
     S=_successor()
     if S is not None and (S.signature_ok(repo,ref) if signature else S.exact_blobs_ok(repo,ref)):
-        pins.update({p:b for p,b in S.manifest(repo,ref)['source_blobs'].items() if p in S.SUPERSEDED})
+        pins.update({p:b for p,b in S.effective_pins(repo,ref,signature=signature).items()})
     return pins
 
 

@@ -8,8 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth import resolve_request_session, validate_csrf_token
 from app.services.bess_setup_preview import capability, preview
-from app.v2.react_poc_router import react_poc_enabled
-from app.workbook.financing_csrf import extract_bound_token
+from app.workbook.financing_csrf import extract_bound_token, issue_token
 from domain.bess.contracts import BessInputError
 
 router = APIRouter()
@@ -30,8 +29,22 @@ def _json(payload, status=200):
                         status_code=status, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/model-react/new-project/bess-options")
+async def bess_options(request: Request):
+    from app.v2.react_poc_router import react_poc_enabled
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    if resolve_request_session(request) is None:
+        return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
+    import uuid
+    request_id = uuid.uuid4().hex
+    return _json({"ok": True, "capability": capability(), "request_id": request_id,
+                  "csrf_token": issue_token(request, request_id, purpose=PURPOSE)})
+
+
 @router.post("/model-react/new-project/bess-preview")
 async def bess_preview(request: Request):
+    from app.v2.react_poc_router import react_poc_enabled
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if resolve_request_session(request) is None:

@@ -1,50 +1,103 @@
-"""Closed ON-BESS-01 source seal. No historical cohort or pin is relaxed.
+"""Closed ON-BESS-01 Correction A leaf; no predecessor/composite authority.
 
-This seal proves this slice only. Integration with protected predecessor
-cohorts remains a separately reported dependency until their owner supplies
-an exact successor. It never claims global governance acceptance.
+Exact current blobs and accepted main objects, immutable historical maps,
+finite current-map moves, structural router review and complete path/mode
+closure are separate obligations. Only valid() imports the composite; the
+low-level predecessor hooks terminate here. Memos last one read-only call.
 """
 from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = '91e89bdd2127f5ec5d0e62833a1f9c3397ad5d14'
 BASE_TREE = 'e9573d7802b319deb943dab60667778a431370e4'
 MANIFEST = 'docs/bess_setup/SOURCE_SUCCESSOR.json'
 SCHEMA = 'ON_BESS_01_PREVIEW_EXACT_SOURCE_V1'
-OWNED_PATHS = frozenset((
+APP_PATHS = frozenset((
     'app/services/bess_setup_preview.py',
     'app/v2/bess_setup_router.py',
-    'app/v2/react_new_project.py',
+    'app/v2/react_poc_router.py',
+))
+CURRENT_MAPS = frozenset((
+    'docs/ci_v4/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
+    'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
+    'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
+))
+OWNED_PATHS = APP_PATHS | CURRENT_MAPS | frozenset((
     'frontend/src/app/newProject/NewProjectWizard.tsx',
-    'frontend/src/app/newProject/types.ts',
     'frontend/src/app/newProject/bess/BessSetupPreview.tsx',
     'frontend/src/app/newProject/bess/bessSetup.css',
     'frontend/src/app/newProject/bess/types.ts',
     'static/react/finco-react.js',
     'static/react/finco-react.css',
     'tests/fin_v2_cohorts.py',
+    'tests/wf03_lifecycle_scope.py',
+    'tests/u1_scope.py',
+    'tests/ux_pr3b2_scope.py',
+    'tests/tax_reference_registry_scope.py',
+    'tests/test_ux_pr3b2_scope.py',
     'tests/on_bess01_scope.py',
+    'tests/on_bess01_router_review.py',
+    'tests/on_bess01_correction_checks.py',
     'tests/on_bess01_contract_checks.py',
     'tests/on_bess01_browser_checks.py',
     'tests/on_bess01_governance_checks.py',
     'docs/bess_setup/IMPLEMENTATION.md',
+    'docs/bess_setup/CORRECTION_A.md',
 ))
 SUPERSEDED = frozenset((
-    'app/v2/react_new_project.py',
+    'app/v2/react_poc_router.py',
     'frontend/src/app/newProject/NewProjectWizard.tsx',
-    'frontend/src/app/newProject/types.ts',
     'static/react/finco-react.js',
     'static/react/finco-react.css',
     'tests/fin_v2_cohorts.py',
+    'tests/wf03_lifecycle_scope.py',
+    'tests/u1_scope.py',
+    'tests/ux_pr3b2_scope.py',
+    'tests/tax_reference_registry_scope.py',
+    'tests/test_ux_pr3b2_scope.py',
+)) | CURRENT_MAPS
+FROZEN = frozenset((
+    'app/v2/react_new_project.py',
+    'frontend/src/app/newProject/types.ts',
+    'app/workbook/bess_config.py',
+    'app/services/project_library_service.py',
+    'app/services/reference_seed_service.py',
+    'app/product_capability.py',
+    'tests/test_rcm_adapter_csrf_successor.py',
+    'tests/test_trust_readiness_controls.py',
+    'tests/test_rc_sec_csrf_successor.py',
+    'tests/test_ci_v4_scope.py',
+    'tests/test_finv2_d01_routes_and_matrix.py',
+    'tests/test_model_workspace_productivity_v1.py',
+    'tests/test_finval_f01_fixture_integrity.py',
+    'tests/test_finval_f01_scope.py',
+    'tests/test_finval_rate_successor.py',
 ))
+_SCOPE = []
 
 
 def _git(root, *args):
     return subprocess.check_output(['git', *map(str, args)], cwd=root, stderr=subprocess.DEVNULL)
+
+
+@lru_cache(maxsize=256)
+def _base_fact(root, args, reader):
+    return reader(root, *args)  # only immutable BASE objects, never current bytes
+
+
+def _base(root, *args):
+    return _base_fact(root, args, _git)
 
 
 def _read(root, path, ref):
@@ -70,37 +123,133 @@ def manifest(repo=None, ref=None):
 
 @contextmanager
 def scoped():
-    yield  # finite seal; no mutable verdict survives a read or tamper test
+    if _SCOPE:
+        yield
+        return
+    _SCOPE.append({})
+    try:
+        yield
+    finally:
+        _SCOPE.pop()
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    return _verdict(repo, ref, True)
+
+
+def signature_ok(repo=None, ref=None):
+    return _verdict(repo, ref, False)
+
+
+def _verdict(repo, ref, closure):
+    key = (str(repo if repo is not None else ROOT), ref, closure)
+    if not _SCOPE:
+        # Reuse only an already-open, read-only predecessor call scope. This is
+        # metadata lookup, never a predecessor verdict/import; it cannot form
+        # a source-authority cycle. Drop the memo with that outermost call.
+        for name in ('tests.u1_scope', 'tests.wf06b_scope', 'tests.wf03_lifecycle_scope',
+                     'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope'):
+            outer = getattr(sys.modules.get(name), '_SCOPE', None)
+            if outer:
+                memo = outer[-1]
+                shared = ('tests.on_bess01_scope.verdict',) + key
+                if shared not in memo:
+                    with scoped():
+                        memo[shared] = _verdict(repo, ref, closure)
+                return memo[shared]
+        with scoped():
+            return _verdict(repo, ref, closure)
+    if key not in _SCOPE[-1]:
+        _SCOPE[-1][key] = _exact(repo, ref, closure)
+    return _SCOPE[-1][key]
+
+
+def _maps_ok(root, ref, pins):
+    for path in CURRENT_MAPS:
+        old = json.loads(_base(root, 'show', BASE + ':' + path))
+        now = json.loads(_read(root, path, ref))
+        if set(now) != set(old) or any(now[k] != old[k] for k in old if k != 'source_blobs'):
+            return False
+        a, b = old['source_blobs'], now['source_blobs']
+        if set(a) != set(b):
+            return False
+        if any(b[p] != a[p] and (p not in SUPERSEDED - CURRENT_MAPS or b[p] != pins[p]) for p in a):
+            return False
+    return True
+
+
+def _foreign_bytes_and_modes_ok(root):
+    # Git's index can hide drift through assume-unchanged/core.filemode. Verify
+    # every non-owned accepted-main object directly as well as the git delta.
+    # This grants no path permission; it strengthens the complete closure.
+    for line in _base(root, 'ls-tree', '-r', BASE).decode().splitlines():
+        meta, path = line.split('\t', 1)
+        if path in OWNED_PATHS | {MANIFEST}:
+            continue
+        mode, kind, pin = meta.split()
+        p = root / path
+        if kind != 'blob' or mode not in ('100644', '100755') or not p.is_file() or p.is_symlink():
+            return False
+        if _blob(p.read_bytes()) != pin or bool(p.stat().st_mode & 0o111) != (mode == '100755'):
+            return False
+    return True
+
+
+def _exact(repo, ref, closure):
     root = Path(repo) if repo is not None else ROOT
     try:
+        # Registry membership only; never evaluate its composite verdict here.
+        from tests.fin_v2_cohorts import COHORT_MODULES
+        if __name__ not in COHORT_MODULES:
+            return False
         data = manifest(root, ref)
-        if set(data.get('source_blobs', {})) != OWNED_PATHS or set(data.get('base_blobs', {})) != SUPERSEDED:
+        pins = data.get('source_blobs', {})
+        if set(pins) != OWNED_PATHS or set(data.get('base_blobs', {})) != SUPERSEDED:
             return False
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-        if _git(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
+        if _base(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
-        old = {line.split('\t')[1]: line.split()[2] for line in _git(root, 'ls-tree', '-r', BASE, '--', *sorted(OWNED_PATHS)).decode().splitlines()}
+        old = {line.split('\t')[1]: line.split()[2] for line in _base(root, 'ls-tree', '-r', BASE, '--', *sorted(OWNED_PATHS)).decode().splitlines()}
         if old != data['base_blobs']:
             return False
-        for path, pin in data['source_blobs'].items():
-            if _blob(_read(root, path, ref)) != pin:
-                return False
-        allowed = OWNED_PATHS | {MANIFEST}
-        changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
-        if not changed <= allowed:
+        if any(_blob(_read(root, p, ref)) != pin for p, pin in pins.items()):
             return False
-        if ref is None:
-            extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
-            if not extra <= allowed:
+        if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p) for p in FROZEN):
+            return False
+        if not _maps_ok(root, ref, pins):
+            return False
+        # Preserve ALL original assertion ASTs in the single reviewed consumer.
+        import ast
+        p = 'tests/test_ux_pr3b2_scope.py'
+        assertions = lambda raw: [ast.dump(n) for n in ast.walk(ast.parse(raw)) if isinstance(n, ast.Assert)]
+        if assertions(_read(root, p, ref)) != assertions(_base(root, 'show', BASE + ':' + p)):
+            return False
+        from tests.on_bess01_router_review import violations
+        if violations(_read(root, 'app/v2/bess_setup_router.py', ref),
+                      _read(root, 'app/v2/react_poc_router.py', ref),
+                      _base(root, 'show', BASE + ':app/v2/react_poc_router.py')):
+            return False
+        old_registry = _base(root, 'show', BASE + ':tests/fin_v2_cohorts.py').decode()
+        registry = _read(root, 'tests/fin_v2_cohorts.py', ref).decode()
+        if registry != old_registry.replace("'tests.tax_reference_registry_scope')", "'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')"):
+            return False
+        allowed = OWNED_PATHS | {MANIFEST}
+        if closure:
+            changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
+            if not changed <= allowed:
                 return False
-            if any(not (root / p).is_file() or (root / p).is_symlink() or (root / p).stat().st_mode & 0o111 for p in allowed):
+            if ref is None:
+                extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
+                if not extra <= allowed:
+                    return False
+                if not _foreign_bytes_and_modes_ok(root):
+                    return False
+        if ref is None:
+            if any(not (root / p).is_file() or (root / p).is_symlink() or (root / p).stat().st_mode & 0o111 for p in allowed | FROZEN):
                 return False
         else:
-            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(allowed)).decode().splitlines()
-            if len(modes) != len(allowed) or any(not line.startswith('100644 ') for line in modes):
+            modes = _git(root, 'ls-tree', '-r', ref, '--', *sorted(allowed | FROZEN)).decode().splitlines()
+            if len(modes) != len(allowed | FROZEN) or any(not line.startswith('100644 ') for line in modes):
                 return False
         return True
     except (OSError, ValueError, TypeError, KeyError, subprocess.CalledProcessError):
@@ -109,6 +258,10 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS | {MANIFEST}
+
+
+def base_blob(path, repo=None, ref=None):
+    return manifest(repo, ref).get('base_blobs', {}).get(path)
 
 
 def supersedes(path, value, repo=None, ref=None):
@@ -123,8 +276,8 @@ def valid(repo=None, ref=None):
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
     raw = source.encode() if isinstance(source, str) else source
-    return path in pins and valid(repo, ref) and (source is None or _blob(raw) == pins[path])
+    return path in pins and exact_blobs_ok(repo, ref) and (source is None or _blob(raw) == pins[path])
 
 
 def protected_blobs(repo=None, ref=None):
-    return {}  # never admits an engine, revenue, tax or financial policy change
+    return {}

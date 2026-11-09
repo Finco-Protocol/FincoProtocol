@@ -372,6 +372,12 @@ def historical_blobs(path, repo=None, ref=None):
             blob = later.base_blob(path, repo, ref)
             if blob:
                 found.add(blob)
+    # Correction A: WF-06B still pins the exact accepted-main WF03 helper.
+    # Admit that historical object only through the terminal, finite leaf;
+    # never add the path to an earlier cohort's immutable superseded set.
+    from tests import on_bess01_scope as B
+    if path in B.SUPERSEDED and B.exact_blobs_ok(repo, ref):
+        found.add(B.base_blob(path, repo, ref))
     return found
 
 

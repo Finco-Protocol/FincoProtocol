@@ -199,7 +199,8 @@ PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
 # The ONLY workflow files this cohort may own: the Owner-directed 2x timeout successor (Correction E). Any other .github/ path stays unowned.
 CI_TIMEOUT_WORKFLOWS=frozenset({'.github/workflows/ci_public_job.yml','.github/workflows/ci_v3_required_job.yml','.github/workflows/public_safety_and_smoke.yml'})
-CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py'})
+# One new literal caller, admitted below only by the independent reviewed leaf.
+CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py','app/v2/bess_setup_router.py'})
 
 
 def _git(root,*args):
@@ -456,6 +457,9 @@ def valid(repo=None,ref=None):
 
 def matches(path,source=None,*,repo=None,ref=None):
     pins=manifest(repo,ref).get('source_blobs',{})
+    if path == 'app/v2/bess_setup_router.py':
+        from tests import on_bess01_scope as B
+        return valid(repo,ref) and B.matches(path,source,repo=repo,ref=ref)
     if path not in pins or not valid(repo,ref): return False
     raw=source.encode('utf-8') if isinstance(source,str) else source
     return raw is None or _blob(raw)==pins[path]

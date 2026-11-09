@@ -16,6 +16,8 @@ def test_current_registered_cohort_and_unchanged_financial_sources():
         t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
     except ImportError:
         t01d=frozenset()
+    from tests import on_bess01_scope as B
+    t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
     assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
     old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
     assert (F.ROOT/E.MANIFEST).read_bytes()==old

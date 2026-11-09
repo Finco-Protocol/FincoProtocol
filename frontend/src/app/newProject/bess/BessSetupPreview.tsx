@@ -3,7 +3,7 @@ import type { BessCapability, BessPreview, BessResponse } from "./types";
 import "./bessSetup.css";
 
 /** Local memory only. This form never addresses a project, scenario or writer. */
-export function BessSetupPreview({ capability, requestId, csrfToken }: {
+function BessSetupEditor({ capability, requestId, csrfToken }: {
   capability: BessCapability; requestId: string; csrfToken: string;
 }) {
   const [cap, setCap] = useState(capability);
@@ -156,5 +156,33 @@ export function BessSetupPreview({ capability, requestId, csrfToken }: {
       <ul>{cap.blockers.map((blocker) => <li key={blocker.code}>{blocker.message}</li>)}</ul>
     </details>
     <p className="rx-note">Solar+BESS and Wind+BESS setup are outside this standalone preview.</p>
+  </section>;
+}
+
+/** Dedicated read-only capability surface; the released creator stays unchanged. */
+export function BessSetupPreview() {
+  const [context, setContext] = useState<{ capability: BessCapability; request_id: string; csrf_token: string } | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError("");
+    void fetch("/v2/model-react/new-project/bess-options", {
+      credentials: "same-origin", cache: "no-store", signal: controller.signal, headers: { Accept: "application/json" },
+    }).then(async (response) => {
+      const body = await response.json().catch(() => null);
+      if (controller.signal.aborted) return;
+      if (!response.ok || !body?.ok || !body.capability || !body.request_id || !body.csrf_token) {
+        setError("Storage setup preview is unavailable. Check your session and retry."); return;
+      }
+      setContext(body);
+    }).catch(() => { if (!controller.signal.aborted) setError("Storage setup preview could not be loaded."); });
+    return () => controller.abort();
+  }, [attempt]);
+  if (context) return <BessSetupEditor capability={context.capability} requestId={context.request_id} csrfToken={context.csrf_token} />;
+  return <section className="bess-setup" aria-label="Standalone Storage setup availability">
+    <h3>Standalone Storage / BESS</h3>
+    {error ? <><p role="alert">{error}</p><button className="rx-button rx-button-secondary" type="button" onClick={() => setAttempt(attempt + 1)}>Retry Storage preview</button></>
+      : <p role="status">Loading Storage availability…</p>}
   </section>;
 }

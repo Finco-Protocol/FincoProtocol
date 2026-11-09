@@ -402,9 +402,7 @@ function SeededNewProjectWizard({ onCancel }: { onCancel: () => void }) {
           )}
 
           <div hidden={step !== 1}>
-            {options.technologies.find((candidate) => candidate.key === "storage")?.setup_preview &&
-              <BessSetupPreview capability={options.technologies.find((candidate) => candidate.key === "storage")!.setup_preview!}
-                requestId={options.request_id} csrfToken={options.bess_preview_csrf_token ?? ""} />}
+            <BessSetupPreview />
           </div>
           {stepError && <p className="rx-status rx-status-error" role="alert" data-wizard-error="true">{stepError}</p>}
           {unknown && (
