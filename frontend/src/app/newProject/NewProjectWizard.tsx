@@ -10,6 +10,7 @@ import {
   type WizardPath,
 } from "./api";
 import { pendingRequest, releasePendingRequest, retainPendingRequest } from "../library/api";
+import { BessSetupPreview } from "./bess/BessSetupPreview";
 import type {
   CreatedProject, PendingNotice, TemplateCard, WizardFieldError, WizardInput, WizardOptions, WizardPreview, WizardTechnology,
 } from "./types";
@@ -400,6 +401,9 @@ function SeededNewProjectWizard({ onCancel }: { onCancel: () => void }) {
             </div>
           )}
 
+          <div hidden={step !== 1}>
+            <BessSetupPreview />
+          </div>
           {stepError && <p className="rx-status rx-status-error" role="alert" data-wizard-error="true">{stepError}</p>}
           {unknown && (
             <div className="rx-status rx-status-conflict" role="alert" data-create-unknown="true">

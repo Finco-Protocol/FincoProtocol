@@ -197,7 +197,7 @@ def _owned_ok():
 _SCOPE = []
 
 
-LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope')
+LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')
 
 
 def _later_modules():
@@ -352,6 +352,7 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         return False
 
 
+@scoped()
 def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS or path == MANIFEST or _later_owns(path, repo, ref)
 
@@ -361,6 +362,7 @@ def base_blob(path, repo=None, ref=None):
     return manifest(repo, ref).get('base_blobs', {}).get(path)
 
 
+@scoped()
 def historical_blobs(path, repo=None, ref=None):
     """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
     data = manifest(repo, ref)
@@ -375,6 +377,7 @@ def historical_blobs(path, repo=None, ref=None):
     return found
 
 
+@scoped()
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
     if path in SUPERSEDED:
@@ -396,11 +399,13 @@ def supersedes(path, value, repo=None, ref=None):
     return _later_supersedes(path, value, repo, ref)      # a path an older guard owns (e.g. WF-06B / tests/test_rcux_governance.py): the later cohort's exact pin only
 
 
+@scoped()
 def valid(repo=None, ref=None):
     from tests.fin_v2_cohorts import valid as composite_valid
     return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
 
 
+@scoped()
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
     if path not in pins or not valid(repo, ref):

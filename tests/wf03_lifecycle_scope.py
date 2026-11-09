@@ -199,7 +199,8 @@ PREDECESSOR_MANIFESTS=tuple(sorted(p for p in OWNED_PATHS if p.endswith('/SOURCE
 D029_APPROVED_PATHS=frozenset({'app/persistence/workspace_repository.py'})
 # The ONLY workflow files this cohort may own: the Owner-directed 2x timeout successor (Correction E). Any other .github/ path stays unowned.
 CI_TIMEOUT_WORKFLOWS=frozenset({'.github/workflows/ci_public_job.yml','.github/workflows/ci_v3_required_job.yml','.github/workflows/public_safety_and_smoke.yml'})
-CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py'})
+# One new literal caller, admitted below only by the independent reviewed leaf.
+CSRF_PATHS=frozenset({'app/services/project_lifecycle_service.py','app/v2/react_new_project.py','app/v2/bess_setup_router.py'})
 
 
 def _git(root,*args):
@@ -317,7 +318,8 @@ def _wf06a_repin(manifest_path,source,after,root,ref):
     try:
         from tests import fin_v2_wf06a_scope as WF06A
     except ImportError: return False
-    return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
+    with _downstream_scopes():
+        return WF06A.predecessor_repin(manifest_path,source,after,root,ref)
 
 
 def _int409(root,ref):
@@ -383,7 +385,7 @@ def _downstream_scopes():
     import contextlib
     import importlib
     with contextlib.ExitStack() as stack:
-        for name in ('tests.fin_v2_integration_409_scope', 'tests.fin_v2_wf06a_scope', 'tests.wf06b_scope'):
+        for name in ('tests.fin_v2_integration_409_scope', 'tests.fin_v2_wf06a_scope', 'tests.wf06b_scope', 'tests.u1_scope'):
             try:
                 module=importlib.import_module(name)
             except ImportError:
@@ -430,7 +432,11 @@ def _exact_blobs_ok(repo=None,ref=None):
         _git(root,'merge-base','--is-ancestor',PARENT,ref or 'HEAD')
         _git(root,'merge-base','--is-ancestor',BASE,PARENT)
         if _git(root,'rev-parse',PARENT+'^{tree}').decode().strip()!=PARENT_TREE: return False
-        if any(_blob(_read(root,p,ref))!=sha and not _wf06b_supersedes(p,_blob(_read(root,p,ref)),root,ref) for p,sha in pins.items()): return False
+        # Read and hash every required source before following any successor.
+        # A missing source must refuse directly; it need not evaluate unrelated
+        # successor graphs first. No expected pin or assertion is changed.
+        current={p:_blob(_read(root,p,ref)) for p in pins}
+        if any(current[p]!=sha and not _wf06b_supersedes(p,current[p],root,ref) for p,sha in pins.items()): return False
         return _historical_maps_ok(root,ref,pins,data) and _b1_layer_ok(root,ref,pins,data)
     except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError):
         return False
@@ -456,9 +462,12 @@ def valid(repo=None,ref=None):
 
 def matches(path,source=None,*,repo=None,ref=None):
     pins=manifest(repo,ref).get('source_blobs',{})
-    if path not in pins or not valid(repo,ref): return False
+    if path == 'app/v2/bess_setup_router.py':
+        from tests import on_bess01_scope as B
+        return valid(repo,ref) and B.matches(path,source,repo=repo,ref=ref)
     raw=source.encode('utf-8') if isinstance(source,str) else source
-    return raw is None or _blob(raw)==pins[path]
+    if path not in pins or (raw is not None and _blob(raw)!=pins[path]): return False
+    return valid(repo,ref)
 
 
 def historical_pin_successor(manifest_path,path,before,after,repo=None,ref=None):

@@ -259,19 +259,38 @@ def test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_st
 
 
 def test_a_changed_working_copy_is_refused_and_nothing_is_overwritten(live_server, fin_session):
+    from tests.on_bess01_reviewed_successors import bankability_refusal_valid
     context, page, record, errors = fin_session("rcm-fin-stale")
     open_tab(page, live_server, record.project_code, "bankability")
     page.select_option("[data-bank='day_count']", "act_365")
-    # another writer changes the draft after this view loaded (canonical route, valid CAS)
     tokens = context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json()["save"]
-    other = context.request.post(f"{live_server}/v2/workbook/update", max_redirects=0, form={
-        "project": record.project_code, "field_id": FIELD, "value": json.dumps({"version": 1, "day_count": "act_360"}),
-        "workbook_version": tokens["workbook_version"], "content_hash": tokens["content_hash"], "sheet_id": "debt", "csrf_token": tokens["csrf_token"]})
+    form = {"project": record.project_code, "field_id": FIELD,
+            "value": json.dumps({"version": 1, "day_count": "act_360"}),
+            "workbook_version": tokens["workbook_version"], "content_hash": tokens["content_hash"],
+            "sheet_id": "debt", "csrf_token": tokens["csrf_token"]}
+    other = context.request.post(f"{live_server}/v2/workbook/update", max_redirects=0, form=form)
     assert other.status in (302, 303)
+    authoritative = draft_of(record)
+    assert json.loads(authoritative[0]["bankability_config_json"]) == {"version": 1, "day_count": "act_360"}
+    posts = []
+    page.on("request", lambda request: posts.append(request.url) if request.method == "POST" else None)
     page.locator("[data-bank-save='true']").click()
     page.wait_for_selector("[data-wf-status='conflict']", timeout=30000)
-    assert "changed after this view loaded" in page.locator("[data-wf-status='conflict']").inner_text()
-    assert json.loads(draft_of(record)[0]["bankability_config_json"]) == {"version": 1, "day_count": "act_360"}
+    # Readback pumps the async refresh that can replace the preflight warning.
+    fresh = context.request.get(f"{live_server}/v2/model-react/fields/debt", params={"project": record.project_code}).json()["save"]
+    assert fresh["content_hash"] != tokens["content_hash"]
+    # Independent canonical CAS probe, deliberately outside the page: the same old
+    # identity must be rejected with the server's typed workbook-field-error event.
+    # This event uses conflict:true (NOT a fabricated FieldErrorClass/code).
+    refused = context.request.post(f"{live_server}/v2/workbook/update", max_redirects=0,
+                                   headers={"HX-Request": "true"}, form={**form, "value": json.dumps({"version": 1, "day_count": "act_365"})})
+    event = json.loads(refused.headers.get("hx-trigger", "{}"))
+    assert bankability_refusal_valid(
+        status=refused.status, event=event,
+        tone=page.locator("[data-wf-status='conflict']").get_attribute("data-wf-status"),
+        warning=page.locator("[data-wf-status='conflict']").inner_text(),
+        before=authoritative, after=draft_of(record), posts=posts,
+        local_day_count=page.locator("[data-bank='day_count']").input_value())
     assert unexpected(errors) == []
 
 
