@@ -27,7 +27,7 @@
     "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
     "tests/tax_reference_registry/test_registry_compare_activation.py": "7af9aaa8237e8cb6d829eedb51d00640fe96d672",
     "tests/tax_reference_registry/test_schema_and_currency.py": "05821ab7038e6276dd255c5baff48f10a9aee4ad",
-    "tests/tax_reference_registry_scope.py": "d041a453276b6588650baf0f357907f23be05687",
+    "tests/tax_reference_registry_scope.py": "598b044f75de36682a60447927d5f64ef889b2a3",
     "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
     "tests/test_ux_pr3b2_scope.py": "eb4e50983f1d85d6b79d1a161de9c5107606731f",
     "tests/ux_pr3b1_scope.py": "5643b96b873471544c5d1ae5e20bd6ee3ec87f22",

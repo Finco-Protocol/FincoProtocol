@@ -20,6 +20,13 @@ public composite convenience, never called by a predecessor hook. Current
 verdict memos end with each read-only call. T01-D keeps its original owned and
 superseded sets: BESS app paths do not become tax package sources.
 
+U1's public admissions open its existing read-only scope. The terminal source
+checks share only already-open predecessor scope dictionaries; signature and
+full-closure keys remain separate. This avoids repeating the same source
+attestation inside one operation. No verdict survives scope exit, and no test
+is patched, skipped or changed to obtain the speedup. The original U1 history
+and scope-exit mutation assertions remain byte-identical to accepted main.
+
 The leaf owns literal paths only, proves accepted-base ancestry/tree and all
 base blobs, rejects foreign changed/untracked files, and enforces regular
 non-executable files. Its eight current maps may change only existing source

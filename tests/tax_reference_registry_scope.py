@@ -151,8 +151,8 @@ def exact_blobs_ok(repo=None, ref=None):
 def _verdict(repo, ref, closure):
     if not _SCOPE:
         key = ('tests.tax_reference_registry_scope.verdict', str(repo if repo is not None else ROOT), ref, closure)
-        for name in ('tests.u1_scope', 'tests.wf06b_scope', 'tests.wf03_lifecycle_scope',
-                     'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope'):
+        from tests.on_bess01_scope import _ENCLOSING_SCOPES
+        for name in _ENCLOSING_SCOPES:
             outer = getattr(sys.modules.get(name), '_SCOPE', None)
             if outer:
                 memo = outer[-1]

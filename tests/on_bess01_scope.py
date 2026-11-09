@@ -87,6 +87,35 @@ FROZEN = frozenset((
     'tests/test_wf03_lifecycle_scope.py',
 ))
 _SCOPE = []
+_ENCLOSING_SCOPES = (
+    'tests.fin_v2_3_scope',
+    'tests.fin_v2_ci_scope',
+    'tests.fin_v2_d01_scope',
+    'tests.fin_v2_r1_scope',
+    'tests.fin_v2_rcux_scope',
+    'tests.fin_v2_pr394_corr_scope',
+    'tests.wsv2_core_scope',
+    'tests.fin_v2_wsv2_scope',
+    'tests.wf04_scope',
+    'tests.wf03_lifecycle_scope',
+    'tests.fin_v2_wf06a_scope',
+    'tests.fin_v2_integration_409_scope',
+    'tests.wf06b_scope',
+    'tests.u1_scope',
+    'tests.post413_r17_scope',
+    'tests.post413_r18_scope',
+    'tests.post413_r1_scope',
+    'tests.u2_scope',
+    'tests.ci_v4_scope',
+    'tests.g10_d8_scope',
+    'tests.post413_o1_scope',
+    'tests.ux_pr1_scope',
+    'tests.ux_pr2a_scope',
+    'tests.ux_pr2b_scope',
+    'tests.ux_pr2c_scope',
+    'tests.ux_pr3b1_scope',
+    'tests.ux_pr3b2_scope',
+)
 
 
 def _git(root, *args):
@@ -149,8 +178,7 @@ def _verdict(repo, ref, closure):
         # Reuse only an already-open, read-only predecessor call scope. This is
         # metadata lookup, never a predecessor verdict/import; it cannot form
         # a source-authority cycle. Drop the memo with that outermost call.
-        for name in ('tests.u1_scope', 'tests.wf06b_scope', 'tests.wf03_lifecycle_scope',
-                     'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope'):
+        for name in _ENCLOSING_SCOPES:
             outer = getattr(sys.modules.get(name), '_SCOPE', None)
             if outer:
                 memo = outer[-1]
