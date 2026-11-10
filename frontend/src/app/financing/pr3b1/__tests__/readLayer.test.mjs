@@ -154,6 +154,10 @@ test('F03 wrong selected run identifiers, debt rows and missing evidence fail cl
  }
  const zero=synthetic();
  assert.match(m.render(zero),/Separate FC\/COD Senior draw · 0 kEUR/);
+ const digestMissing=synthetic();
+ digestMissing.studio.selected_run.view.repayment.available=false;
+ digestMissing.credit.data.runs[0].debt_metrics.available=false;
+ assert.equal(gate(digestMissing).showRun,false,'two unavailable sealed debt views are not verified');
  const absent=synthetic();absent.studio.selected_run.view.construction.fc_senior_draw.value=null;
  assert.match(m.render(absent),/Separate FC\/COD Senior draw · UNAVAILABLE/);
 });

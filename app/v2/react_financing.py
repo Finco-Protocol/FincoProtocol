@@ -162,6 +162,9 @@ def _selected_run(context, owner: str, record, requested: str | None) -> dict[st
         return {"available": False, "reason": "RUN_FRESHNESS_UNAVAILABLE"}
     try:
         view = build_f02_period_evidence(entry, state=state)
+        if not view["repayment"]["available"]:
+            # A missing/tampered digest cannot authorize any selected financial read.
+            return {"available": False, "reason": "SEALED_DEBT_EVIDENCE_UNAVAILABLE"}
     except F02PeriodEvidenceUnavailable as exc:
         # No partial figures from a rejected binding or an unsupported old Run.
         return {"available": False, "reason": str(exc)}

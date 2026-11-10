@@ -13,8 +13,8 @@ function runAnchor(r: Run | undefined): string { return JSON.stringify(r?.identi
 function sameDebtPeriods(e: Evidence, r: Run): boolean {
   const period = e.studio.selected_run?.view?.repayment;
   const dm = r.debt_metrics;
-  if (!period || !dm || period.available !== dm.available) return false;
-  if (!dm.available) return true;
+  // Two UNAVAILABLE debt views never prove a sealed digest; fail closed.
+  if (!period?.available || !dm?.available) return false;
   const keys = ['period_index','date','senior_opening_keur','principal_keur','interest_keur',
     'debt_service_keur','senior_closing_keur','dscr','shortfall_keur','cash_after_senior_keur'];
   const values = (rows: readonly object[]) => rows.map(row =>
