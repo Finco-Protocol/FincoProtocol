@@ -52,7 +52,9 @@ CURRENT_MAPS = frozenset((
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",
 ))
 MAP_KEYS = (REGISTRY, "static/react/finco-react.js")
-OWNED_PATHS = SOURCE_PATHS | TEST_PATHS | GOVERNANCE_PATHS | CURRENT_MAPS
+CI_WORKFLOW = ".github/workflows/finval_f01_acceptance.yml"
+CI_PATHS = frozenset((CI_WORKFLOW,))
+OWNED_PATHS = SOURCE_PATHS | TEST_PATHS | GOVERNANCE_PATHS | CURRENT_MAPS | CI_PATHS
 NEW = frozenset((
     "app/v2/f02_financing_period_evidence.py",
     "tests/test_f02_financing_period_evidence.py",
@@ -121,6 +123,39 @@ def reviewed_handoff_ok(root, ref, path, expected=None, actual=None):
     pins = manifest(root, ref).get("source_blobs", {})
     return actual_bytes == target.encode() and pins.get(path) == _blob(actual_bytes)
 
+# Exact, reviewed F01 workflow transformation. No broad workflow admission;
+# this predecessor is authenticated by the immutable BASE blob and byte-for-byte
+# transformation, in addition to the manifest source pin and Git mode checks.
+WORKFLOW_EDITS = (
+    ("    timeout-minutes: 25\n", "    timeout-minutes: 45\n"),
+    ("          python -m pytest tests/finval_f01_browser_acceptance.py", "          echo \"FINVAL_BROWSER_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n          python -m pytest tests/finval_f01_browser_acceptance.py"),
+    (" -q -rs --junitxml=evidence/financial-browser.xml", " -q -rs --durations=20 --junitxml=evidence/financial-browser.xml\n          echo \"FINVAL_BROWSER_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)\""),
+    ("        run: docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .\n", "        run: |\n          echo \"FINVAL_DOCKER_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n          docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .\n          echo \"FINVAL_DOCKER_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n"),
+    ("          mkdir -p evidence/native\n", "          echo \"FINVAL_NATIVE_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n          mkdir -p evidence/native\n"),
+    (" -q -rs --junitxml=evidence/native.xml", " -q -rs --durations=20 --junitxml=evidence/native.xml\n          echo \"FINVAL_NATIVE_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)\""),
+)
+
+
+def reviewed_workflow_ok(repo=None, ref=None, actual=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        baseline = _git(root, "show", BASE + ":" + CI_WORKFLOW)
+        # The original F01 guard must remain the exact historically reviewed blob.
+        if _blob(baseline) != "8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d":
+            return False
+        candidate = baseline.decode()
+        for old, new in WORKFLOW_EDITS:
+            if candidate.count(old) != 1:
+                return False
+            candidate = candidate.replace(old, new)
+        raw = _read(root, CI_WORKFLOW, ref) if actual is None else actual
+        if isinstance(raw, str):
+            raw = raw.encode()
+        pins = manifest(root, ref).get("source_blobs", {})
+        return raw == candidate.encode() and pins.get(CI_WORKFLOW) == _blob(raw)
+    except (OSError, ValueError, UnicodeError, subprocess.CalledProcessError):
+        return False
+
 _SCOPE = []
 
 @contextmanager
@@ -153,7 +188,7 @@ def _signature_ok(root, ref):
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
-        if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p for p in OWNED_PATHS | {MANIFEST}):
+        if not NEW.isdisjoint(base) or any((p.startswith(FORBIDDEN) and p not in CI_PATHS) or p.startswith("/") or ".." in p.split("/") or "*" in p for p in OWNED_PATHS | {MANIFEST}):
             return False
         _git(root, "merge-base", "--is-ancestor", BASE, ref or "HEAD")
         if _git(root, "rev-parse", BASE + "^{tree}").decode().strip() != BASE_TREE:
@@ -177,6 +212,8 @@ def _signature_ok(root, ref):
         if len(modes) != len(OWNED_PATHS | {MANIFEST}) or any(not x.startswith("100644 ") for x in modes):
             return False
         if not all(reviewed_handoff_ok(root, ref, p) for p in (REGISTRY, L_MODULE)):
+            return False
+        if not reviewed_workflow_ok(root, ref):
             return False
         for p in CURRENT_MAPS:
             if _read(root, p, ref) != expected_map(root, p):
