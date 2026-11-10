@@ -26,6 +26,8 @@ APPROVED_FOR_FINCO = False
 CAP_MODE = ("YEARLY_ABSOLUTE", "LIFE_ABSOLUTE", "YEARLY_INCREMENTAL", "LIFE_INCREMENTAL")
 CAP_APPLICATION = ("AFTER_SHARE", "BEFORE_SHARE")   # Q4 hypotheses; NO default
 ENERGY_UNIT = ("MWh", "GWh", "FLH")                 # FLH requires denominator_mw metadata
+PRICE_MODE = ("FIXED", "INDEXED", "DATED")
+PERIOD_AXIS_SUPPORTED = ("ANNUAL",)                 # v1 axis; anything else is typed NOT_SUPPORTED
 UNITS_TO_MWH = {"MWh": Decimal(1), "GWh": Decimal(1000)}
 _PRICE_Q = Decimal("0.000001")                      # EUR, half-even, once per component per period
 _PREC = 60
@@ -54,9 +56,15 @@ class TierIndex:
 
 @dataclass(frozen=True)
 class TierPrice:
-    mode: str                                   # FIXED | INDEXED
+    """Per-tier price.  Floor/cap are applied AFTER indexation and BEFORE EUR rounding
+    (documented order); DATED curves carry explicit per-year EUR/MWh points and refuse
+    a missing year (EVIDENCE_MISSING) and a non-monotonic curve (INVALID_DATA)."""
+    mode: str                                   # FIXED | INDEXED | DATED
     fixed_price_eur_mwh: Optional[Decimal] = None
     index: Optional[TierIndex] = None
+    dated_curve: Tuple[Tuple[int, Decimal], ...] = ()
+    price_floor: Optional[Decimal] = None
+    price_cap: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,7 @@ class CfdOverlay:
 @dataclass(frozen=True)
 class R03Input:
     contract_id: str
+    period_axis: str                            # explicit time basis; ANNUAL only in v1
     cap_mode: str
     cap_application: str                        # Q4 hypothesis; explicit, no default
     cap1: Quantity
@@ -159,8 +168,8 @@ def _tier_price(p: TierPrice, year: int, name) -> Decimal:
     if p.mode == "FIXED":
         if p.fixed_price_eur_mwh is None:
             raise ContractError(f"{name}: FIXED requires a price")
-        return _dec(p.fixed_price_eur_mwh, name)
-    if p.mode == "INDEXED":
+        price = _dec(p.fixed_price_eur_mwh, name)
+    elif p.mode == "INDEXED":
         ix = p.index
         if ix is None or p.fixed_price_eur_mwh is None:
             raise ContractError(f"{name}: INDEXED requires price + index")
@@ -169,10 +178,21 @@ def _tier_price(p: TierPrice, year: int, name) -> Decimal:
         if not (0 <= frac <= 1) or rate <= -1:
             raise ContractError(f"{name}: indexation parameters out of range")
         if ix.base_year > year:
-            return _dec(p.fixed_price_eur_mwh, name)      # before base year: unindexed
-        f = (1 - frac) + frac * (1 + rate) ** (year - ix.base_year)
-        return _dec(p.fixed_price_eur_mwh, name) * f
-    raise ContractError(f"{name}: mode must be FIXED or INDEXED")
+            price = _dec(p.fixed_price_eur_mwh, name)      # before base year: unindexed
+        else:
+            price = _dec(p.fixed_price_eur_mwh, name) * ((1 - frac) + frac * (1 + rate) ** (year - ix.base_year))
+    elif p.mode == "DATED":
+        curve = dict(p.dated_curve)
+        if year not in curve:
+            raise ContractError(f"{name}: dated curve has no point for {year} (EVIDENCE_MISSING)")
+        price = _dec(curve[year], name)
+    else:
+        raise ContractError(f"{name}: mode must be FIXED, INDEXED or DATED")
+    if p.price_floor is not None and price < _dec(p.price_floor, f"{name} floor"):
+        price = _dec(p.price_floor, f"{name} floor")
+    if p.price_cap is not None and price > _dec(p.price_cap, f"{name} cap"):
+        price = _dec(p.price_cap, f"{name} cap")
+    return price
 
 
 def compute_ppa_ledger(inp: R03Input) -> Tuple[PeriodResult, ...]:
@@ -183,6 +203,8 @@ def compute_ppa_ledger(inp: R03Input) -> Tuple[PeriodResult, ...]:
         raise ContractError(f"cap_mode must be one of {CAP_MODE}; got {inp.cap_mode!r}")
     if inp.cap_application not in CAP_APPLICATION:
         raise ContractError(f"cap_application must be chosen explicitly from {CAP_APPLICATION} (Q4 open); got {inp.cap_application!r}")
+    if inp.period_axis not in PERIOD_AXIS_SUPPORTED:
+        raise ContractError(f"period_axis {inp.period_axis!r}: NOT_SUPPORTED (this candidate implements only {PERIOD_AXIS_SUPPORTED}; ambiguous time basis refuses)")
     if not inp.contract_id:
         raise ContractError("contract_id required")
     try:
@@ -202,6 +224,19 @@ def compute_ppa_ledger(inp: R03Input) -> Tuple[PeriodResult, ...]:
             for name, p in (("base", inp.base_price), ("reduced", inp.reduced_price)):
                 if p.mode == "FIXED" and p.fixed_price_eur_mwh is not None and _dec(p.fixed_price_eur_mwh, name) < 0:
                     raise ContractError(f"{name} price negative")
+                if p.mode == "DATED":
+                    _check_years(p.dated_curve, f"{name} dated curve")
+                    prev = None
+                    for y, v in p.dated_curve:
+                        v = _dec(v, f"{name} curve {y}")
+                        if v < 0:
+                            raise ContractError(f"{name} curve negative at {year}")
+                        if prev is not None and v < prev:
+                            raise ContractError(f"{name} dated curve non-monotonic at {y} (INVALID_DATA)")
+                        prev = v
+                if p.price_floor is not None and p.price_cap is not None:
+                    if _dec(p.price_floor, f"{name} floor") > _dec(p.price_cap, f"{name} cap"):
+                        raise ContractError(f"{name}: floor above cap")
             c1, c2 = _energy(inp.cap1, "cap1"), _energy(inp.cap2, "cap2")
             if c1 < 0 or c2 < 0:
                 raise ContractError("caps must be >= 0")
@@ -295,3 +330,36 @@ def compute_ppa_ledger(inp: R03Input) -> Tuple[PeriodResult, ...]:
             return tuple(out)
     except InvalidOperation as e:
         raise ContractError("numeric failure") from e
+
+
+def validate_primary_windows(contracts) -> Tuple[str, ...]:
+    """Portfolio-level primary-window validation: overlapping PPA primary windows are a
+    HARD refusal (not a FinModels-style warning); disjoint sequential windows and
+    duplicate-free IDs pass.  Returns the contract ids in input order."""
+    ids = []
+    ordered = []
+    for c in contracts:
+        if not isinstance(c, R03Input):
+            raise ContractError("validate_primary_windows: R03Input required")
+        if c.contract_id in ids:
+            raise ContractError(f"duplicate contract id {c.contract_id!r}")
+        ids.append(c.contract_id)
+        ordered.append((c.ppa_start_year, c.ppa_end_year, c.contract_id))
+    ordered.sort()
+    for (s1, e1, id1), (s2, e2, id2) in zip(ordered, ordered[1:]):
+        if s2 <= e1:
+            raise ContractError(f"overlapping primary windows: {id1} [{s1}..{e1}] vs {id2} [{s2}..{e2}] "
+                                "(simultaneous primary allocation sum >100% is forbidden)")
+    return tuple(ids)
+
+
+def verify_provenance(periods, *, contract_id: str, contract_version: str = CONTRACT_VERSION) -> None:
+    """Refuse stale or foreign provenance on emitted periods (fail closed)."""
+    for p in periods:
+        prov = p.provenance
+        if prov.get("contract_id") != contract_id:
+            raise ContractError(f"foreign provenance: contract_id {prov.get('contract_id')!r} != {contract_id!r}")
+        if prov.get("contract_version") != contract_version:
+            raise ContractError(f"stale provenance: contract_version {prov.get('contract_version')!r} != {contract_version!r}")
+        if prov.get("approved_for_finco") != "False":
+            raise ContractError("provenance claims approval — forged record")

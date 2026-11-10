@@ -20,6 +20,7 @@ def D(x):
 def _input(**over):
     base = dict(
         contract_id="SYN-1",
+        period_axis="ANNUAL",
         cap_mode="LIFE_INCREMENTAL",
         cap_application="AFTER_SHARE",
         cap1=impl.Quantity(D(900), "MWh"),
