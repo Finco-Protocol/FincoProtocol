@@ -43,7 +43,7 @@ TEST_PATHS = frozenset((
     "tests/test_f02_financing_period_evidence.py",
     "tests/test_f03_financing_scope.py",
 ))
-GOVERNANCE_PATHS = frozenset((PREDECESSOR, L_MODULE, R02_TEST, REGISTRY, "tests/test_post432_l01_l02_scope.py", "tests/f03_financing_scope.py"))
+GOVERNANCE_PATHS = frozenset((PREDECESSOR, L_MODULE, R02_TEST, REGISTRY, "tests/test_post432_l01_l02_scope.py", "tests/f03_financing_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"))
 CURRENT_MAPS = frozenset((
     "docs/ci_v4/SOURCE_SUCCESSOR.json",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
@@ -159,6 +159,51 @@ def reviewed_workflow_ok(repo=None, ref=None, actual=None):
     except (OSError, ValueError, UnicodeError, subprocess.CalledProcessError):
         return False
 
+# Finite exact-source F01-CI handoffs: four literal edits of CI V4 plus
+# one admission each in PR2b/PR2c. They never import F03 in reverse, never
+# edit historical manifests, skip tests or allow arbitrary CI policy drift.
+REVIEWED_CI_HANDOFFS = {
+    "tests/ci_v4_scope.py": (
+        ("    return S.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():", "    if S.supersedes(path, value, root, ref):\n        return True\n    # One exact F03-reviewed successor of the CI V4 module; never a prefix.\n    if path != 'tests/ci_v4_scope.py':\n        return False\n    from tests import f03_financing_scope as F\n    return F.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():"),
+        ("    return B\n\n\ndef _git(root, *args):", "    return B\n\n\ndef _f03_ci_owns(path, root, ref):\n    \"\"\"Admit only the exact reviewed 45-minute F01 workflow; no CI wildcard.\"\"\"\n    if path != '.github/workflows/finval_f01_acceptance.yml':\n        return False\n    from tests import f03_financing_scope as F\n    return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)\n\n\ndef _git(root, *args):"),
+        ("    authorized_ci = successor.CI_PATHS if successor_ok else frozenset()\n    data = manifest(root, ref)", "    authorized_ci = successor.CI_PATHS if successor_ok else frozenset()\n    if _f03_ci_owns('.github/workflows/finval_f01_acceptance.yml', root, ref):\n        authorized_ci = authorized_ci | {'.github/workflows/finval_f01_acceptance.yml'}\n    data = manifest(root, ref)"),
+        ("    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)) and exact_blobs_ok(repo, ref)", "    root = Path(repo) if repo is not None else ROOT\n    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)\n            or _f03_ci_owns(path, root, ref)) and exact_blobs_ok(repo, ref)"),
+    ),
+    "tests/ux_pr2b_scope.py": (
+        ("def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    # One reviewed CI V4 module successor, proven by F03 without this cohort.\n    if path == 'tests/ci_v4_scope.py':\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
+    ),
+    "tests/ux_pr2c_scope.py": (
+        ("def _pr3b1_pin(path, blob, repo=None, ref=None):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None):\n    # Exact low-level F03 successor of only the CI V4 source file.\n    if path == 'tests/ci_v4_scope.py':\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
+    ),
+}
+
+
+def reviewed_ci_handoffs_ok(repo=None, ref=None, *, path=None, actual=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        if path is not None and path not in REVIEWED_CI_HANDOFFS:
+            return False
+        paths = (path,) if path is not None else tuple(sorted(REVIEWED_CI_HANDOFFS))
+        d = manifest(root, ref)
+        pins, predecessors = d.get("source_blobs", {}), d.get("base_blobs", {})
+        for p in paths:
+            original = _git(root, "show", BASE + ":" + p)
+            if _blob(original) != predecessors.get(p):
+                return False
+            current = original.decode()
+            for before, after in REVIEWED_CI_HANDOFFS[p]:
+                if current.count(before) != 1:
+                    return False
+                current = current.replace(before, after)
+            raw = _read(root, p, ref) if actual is None else actual
+            if isinstance(raw, str):
+                raw = raw.encode()
+            if raw != current.encode() or pins.get(p) != _blob(raw):
+                return False
+        return True
+    except (OSError, ValueError, UnicodeError, KeyError, TypeError, subprocess.CalledProcessError):
+        return False
+
 _SCOPE = []
 
 @contextmanager
@@ -217,6 +262,8 @@ def _signature_ok(root, ref):
         if not all(reviewed_handoff_ok(root, ref, p) for p in (REGISTRY, L_MODULE)):
             return False
         if not reviewed_workflow_ok(root, ref):
+            return False
+        if not reviewed_ci_handoffs_ok(root, ref):
             return False
         for p in CURRENT_MAPS:
             if _read(root, p, ref) != expected_map(root, p):

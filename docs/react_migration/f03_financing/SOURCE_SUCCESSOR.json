@@ -20,11 +20,14 @@
     "frontend/src/app/financing/pr3b1/termSheetModel.ts": "443da97b7acd1ec31515eca65758e748cb675dbf",
     "frontend/src/app/financing/pr3b1/types.ts": "1c7ec140295df51b287c1b702eaa45fbffaf0500",
     "static/react/finco-react.js": "a3c46991f7fd74499a12a9c57c5499570edcee06",
+    "tests/ci_v4_scope.py": "fe25a85088ee3525e4aba35822996b124af10a2e",
     "tests/fin_v2_cohorts.py": "c2a21f5b0499f9b41aa50ae6d0b207b2c301d386",
     "tests/post432_l01_l02_scope.py": "6a999cb228bdaf8de0b5b0d105dd3d02b3fa5782",
     "tests/r02_ppa_ux_scope.py": "8f210a89460847a13dcbd8151368508c56e21213",
     "tests/test_post432_l01_l02_scope.py": "5ee30b8de1e7eb8a7794c4357e0eef7c114afe9c",
-    "tests/test_r02_ppa_ux_scope.py": "0b0d9b9a5e85bfb81703dd53544e74bd377349a2"
+    "tests/test_r02_ppa_ux_scope.py": "0b0d9b9a5e85bfb81703dd53544e74bd377349a2",
+    "tests/ux_pr2b_scope.py": "d93a533b043cf2a0f9919d5c719f168d37971aef",
+    "tests/ux_pr2c_scope.py": "328e352b72381aee284344994d1150a949e5b44c"
   },
   "base_tree": "bd65189555850dca7982ce9f5e9314a73b923eef",
   "schema_version": "F03_FINANCING_PROVEN_READ_LAYER_EXACT_SOURCE_V1",
@@ -49,13 +52,16 @@
     "frontend/src/app/financing/pr3b1/termSheetModel.ts": "c45d2e794bf3d148f4a5515a889ea761a038341e",
     "frontend/src/app/financing/pr3b1/types.ts": "ab7516349fc7009cf445b188d55533e6fb54352e",
     "static/react/finco-react.js": "f6465c618580d8be9cdf8e988335a92b60dc4d0d",
-    "tests/f03_financing_scope.py": "467ecc9c87ecf69111d14b99819a6e0befc2bfd8",
+    "tests/ci_v4_scope.py": "65f9e1c519aac08ea3226833ef0c6a4bda64dcab",
+    "tests/f03_financing_scope.py": "c987dd652bb102c15495fce92c159c07992b32b2",
     "tests/fin_v2_cohorts.py": "d45a8cfe6fe1e1e04fe849f9beeedcfea752efed",
     "tests/post432_l01_l02_scope.py": "10ea013a1f0988b64eac4a3a31c7b4915d1d2152",
     "tests/r02_ppa_ux_scope.py": "55fb182e8995fbaa9f42d2ad68cf2da00f9d3f6b",
     "tests/test_f02_financing_period_evidence.py": "6f704bd57a19ff00cbcd49f0526c0e4c86be9a7c",
-    "tests/test_f03_financing_scope.py": "be239c6e58a0b58f1dc4d949d8ead05046b445a8",
+    "tests/test_f03_financing_scope.py": "0bd487c7e48225ab7ed8f24dd833f1057da49717",
     "tests/test_post432_l01_l02_scope.py": "9948a1193ab7a533ae3f1ad5bc3d731cb9f2ba2b",
-    "tests/test_r02_ppa_ux_scope.py": "8a3f69c32a2b38ba8d93546ff7ab0dc6dcc8466c"
+    "tests/test_r02_ppa_ux_scope.py": "8a3f69c32a2b38ba8d93546ff7ab0dc6dcc8466c",
+    "tests/ux_pr2b_scope.py": "97ad2efa1200648a9ff8c4abbf8fb22fbec134a4",
+    "tests/ux_pr2c_scope.py": "3900bab5f35d81cfdecfb637db525025b7dff7ff"
   }
 }

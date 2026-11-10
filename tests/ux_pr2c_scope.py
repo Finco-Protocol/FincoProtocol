@@ -293,6 +293,11 @@ def _pr3b1():
 
 
 def _pr3b1_pin(path, blob, repo=None, ref=None):
+    # Exact low-level F03 successor of only the CI V4 source file.
+    if path == 'tests/ci_v4_scope.py':
+        from tests import f03_financing_scope as F
+        if F.supersedes(path, blob, repo, ref):
+            return True
     S = _pr3b1()
     return S is not None and S.supersedes(path, blob, repo, ref)
 

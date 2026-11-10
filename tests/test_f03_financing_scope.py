@@ -65,3 +65,23 @@ def test_f03_f01_workflow_tamper_is_rejected_even_with_other_valid_sources():
     ):
         assert bad != current
         assert not F.reviewed_workflow_ok(actual=bad)
+
+
+def test_f03_only_exact_f01_ci_handoffs_are_admitted():
+    assert set(F.REVIEWED_CI_HANDOFFS) == {
+        "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"
+    }
+    assert F.reviewed_ci_handoffs_ok()
+    for p in sorted(F.REVIEWED_CI_HANDOFFS):
+        raw = (ROOT / p).read_bytes()
+        assert F.reviewed_ci_handoffs_ok(path=p, actual=raw)
+        assert not F.reviewed_ci_handoffs_ok(path=p, actual=raw + b"\\n# unreviewed\\n")
+    assert not F.reviewed_ci_handoffs_ok(path=".github/workflows/ci_v4_pr.yml")
+
+
+def test_f03_older_ci_guard_rejects_unreviewed_workflow_pins():
+    from tests import ci_v4_scope as V
+    current = (ROOT / F.CI_WORKFLOW).read_bytes()
+    assert F.reviewed_workflow_ok(actual=current)
+    assert not F.reviewed_workflow_ok(actual=current.replace(b"timeout-minutes: 45", b"timeout-minutes: 450"))
+    assert not V._f03_ci_owns(".github/workflows/ci_v4_pr.yml", F.ROOT, None)
