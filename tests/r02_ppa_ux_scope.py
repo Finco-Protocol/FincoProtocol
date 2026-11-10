@@ -205,13 +205,35 @@ def expected_handoff(root, path):
     return None if text is None else text.encode()
 
 
+def _f03():
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if "tests.f03_financing_scope" not in COHORT_MODULES:
+        return None
+    from tests import f03_financing_scope
+    return f03_financing_scope
+
+
+def _f03_valid(root, ref):
+    F = _f03()
+    return F if F is not None and F.signature_ok(root, ref) else None
+
+
+def closure_paths(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    F = _f03_valid(root, ref)
+    return OWNED_PATHS | {MANIFEST} | (F.OWNED_PATHS | {F.MANIFEST} if F else frozenset())
+
+
 def reviewed_edits_ok(repo=None, ref=None):
     """Both predecessor modules and the registry equal the literal reviewed substitutions over BASE; the frozen BESS module is byte-identical to BASE."""
     root = Path(repo) if repo is not None else ROOT
     try:
+        F = _f03_valid(root, ref)
         for path in sorted(HANDOFF_FILES | {REGISTRY}):
             expected = expected_handoff(root, path)
-            if expected is None or _read(root, path, ref) != expected:
+            actual = _read(root, path, ref)
+            if expected is None or (actual != expected and not
+                (F is not None and F.reviewed_handoff_ok(root, ref, path, expected, actual))):
                 return False
         for path in sorted(FROZEN):
             if _read(root, path, ref) != _object_fact(root, 'show', BASE + ':' + path):
@@ -233,6 +255,10 @@ def _exact(repo=None, ref=None, closure=True):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
+    F = _f03_valid(root, ref)
+    effective = dict(pins)
+    if F is not None:
+        effective.update({p: b for p, b in F.effective_pins(root, ref).items() if p in pins})
     if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
         return False
     try:
@@ -250,14 +276,14 @@ def _exact(repo=None, ref=None, closure=True):
             ordered = sorted(pins)
             hashed = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=root, input=''.join(str(root / p) + '\n' for p in ordered).encode(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout.decode().split()
             computed = dict(zip(ordered, hashed)) if len(hashed) == len(ordered) else None
-            if computed != pins:
+            if computed != effective:
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if listed != effective:
                 return False
         # 4. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -273,17 +299,20 @@ def _exact(repo=None, ref=None, closure=True):
         if not reviewed_edits_ok(root, ref):
             return False
         for path in sorted(CURRENT_MAPS):
-            expected = expected_map(root, path, pins)
-            if pins[path] != _blob(expected) or (closure and _read(root, path, ref) != expected):
+            historical = expected_map(root, path, pins)
+            if pins[path] != _blob(historical):
+                return False
+            expected = F.expected_map(root, path) if F is not None else historical
+            if effective[path] != _blob(expected) or (closure and _read(root, path, ref) != expected):
                 return False
         # 6. closed change set: since BASE nothing outside the literal owned set moved (full exactness only)
         if closure:
             changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
-            if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+            if any(p not in closure_paths(root, ref) for p in changed):
                 return False
             if ref is None:
                 extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
-                if any(p not in OWNED_PATHS and p != MANIFEST and not _evidence_only(root, p) for p in extra):
+                if any(p not in closure_paths(root, ref) and not _evidence_only(root, p) for p in extra):
                     return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
@@ -297,7 +326,7 @@ def _evidence_only(root, p):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    return path in closure_paths(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -306,11 +335,19 @@ def base_blob(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+        return True
+    F = _f03_valid(Path(repo) if repo is not None else ROOT, ref)
+    return F is not None and F.supersedes(path, value, repo, ref)
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get('source_blobs', {}))
+    root = Path(repo) if repo is not None else ROOT
+    pins = dict(manifest(root, ref).get('source_blobs', {}))
+    F = _f03_valid(root, ref)
+    if F is not None:
+        pins.update(F.effective_pins(root, ref, signature=signature))
+    return pins
 
 
 def valid(repo=None, ref=None):
@@ -334,6 +371,9 @@ def nontrust_scope_authorized(changed, repo=None):
     """The no-engine/writer/Radar scope obligation of the trust-readiness guard for THIS exact cohort: the real main merge-base diff."""
     root = Path(repo) if repo is not None else ROOT
     try:
+        F = _f03_valid(root, None)
+        if F is not None and F.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, 'merge-base', 'origin/main', 'HEAD').decode().strip() != BASE:
             return False
         actual = _git(root, 'diff', BASE, '--name-only').decode().splitlines()
