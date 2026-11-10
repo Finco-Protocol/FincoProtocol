@@ -196,10 +196,48 @@ def expected_handoff(root, path):
     return None if text is None else text.encode()
 
 
+def _next():
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.r02_ppa_ux_scope' not in COHORT_MODULES:
+        return None
+    from tests import r02_ppa_ux_scope
+    return r02_ppa_ux_scope
+
+
+def _next_pins(root, ref):
+    N = _next()
+    if N is None or not N.signature_ok(root, ref):
+        return {}
+    return {p: b for p, b in N.manifest(root, ref)['source_blobs'].items() if p in N.SUPERSEDED}
+
+
+def map_keys(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    N = _next()
+    return tuple(MAP_KEYS) + (tuple(N.MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ())
+
+
+def _next_moved(root, ref):
+    N = _next()
+    if N is None or not N.signature_ok(root, ref):
+        return {}
+    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
+
+
+def closure_paths(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    N = _next()
+    base = OWNED_PATHS | {MANIFEST}
+    return base | ((N.OWNED_PATHS | {N.MANIFEST}) if N is not None and N.signature_ok(root, ref) else frozenset())
+
+
 def reviewed_edits_ok(repo=None, ref=None):
     """Both predecessor modules and the registry equal the literal reviewed substitutions over BASE, byte for byte."""
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root, ref):
+            return N.reviewed_edits_ok(root, ref)
         for path in sorted(HANDOFF_FILES | {REGISTRY}):
             expected = expected_handoff(root, path)
             if expected is None or _read(root, path, ref) != expected:
@@ -209,11 +247,14 @@ def reviewed_edits_ok(repo=None, ref=None):
         return False
 
 
-def expected_map(root, path, pins):
+def expected_map(root, path, pins, moved=None):
     old = json.loads(_object_fact(root, 'show', BASE + ':' + path))
     for key in MAP_KEYS:
         if key in old['source_blobs']:
             old['source_blobs'][key] = pins[key]
+    for key, blob in (moved or {}).items():
+        if key in old['source_blobs']:
+            old['source_blobs'][key] = blob
     return (json.dumps(old, indent=2, sort_keys=True) + '\n').encode()
 
 
@@ -225,6 +266,8 @@ def _exact(repo=None, ref=None, closure=True):
         return False
     try:
         head = ref or 'HEAD'
+        nx = _next_pins(root, ref)
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
         # 1. immutable provenance: accepted post-#434 main and the two ORIGINAL L01/L02 commits are ancestors of the evaluated head
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         for original in ORIGINAL_PATCH:
@@ -242,14 +285,14 @@ def _exact(repo=None, ref=None, closure=True):
         # 4. one exact blob per owned path (git's own hashing, so LF and CRLF checkouts agree)
         if ref is None:
             computed = {p: _git(root, 'hash-object', root / p).decode().strip() for p in sorted(pins)}
-            if computed != pins:
+            if computed != cur:
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if listed != cur:
                 return False
         # 5. no owned file is executable or a link in the evaluated state
         if ref is None:
@@ -265,17 +308,18 @@ def _exact(repo=None, ref=None, closure=True):
         if not reviewed_edits_ok(root, ref):
             return False
         for path in sorted(CURRENT_MAPS):
-            expected = expected_map(root, path, pins)
-            if pins[path] != _blob(expected) or (closure and _read(root, path, ref) != expected):
+            expected = expected_map(root, path, cur, _next_moved(root, ref))
+            if cur[path] != _blob(expected) or (closure and _read(root, path, ref) != expected):
                 return False
         # 7. closed change set: since BASE nothing outside the literal owned set moved (full exactness only)
         if closure:
             changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
-            if any(p not in OWNED_PATHS and p != MANIFEST for p in changed):
+            allowed = closure_paths(root, ref)
+            if any(p not in allowed for p in changed):
                 return False
             if ref is None:
                 extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
-                if any(p not in OWNED_PATHS and p != MANIFEST and not _evidence_only(root, p) for p in extra):
+                if any(p not in allowed and not _evidence_only(root, p) for p in extra):
                     return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
@@ -289,7 +333,7 @@ def _evidence_only(root, p):
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS or path == MANIFEST
+    return path in closure_paths(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -298,11 +342,18 @@ def base_blob(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path in SUPERSEDED and exact_blobs_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+        return True
+    N = _next()
+    root = Path(repo) if repo is not None else ROOT
+    return N is not None and N.signature_ok(root, ref) and N.supersedes(path, value, root, ref)
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get('source_blobs', {}))
+    root = Path(repo) if repo is not None else ROOT
+    pins = dict(manifest(repo, ref).get('source_blobs', {}))
+    pins.update(_next_pins(root, ref))
+    return pins
 
 
 def valid(repo=None, ref=None):
@@ -326,6 +377,9 @@ def nontrust_scope_authorized(changed, repo=None):
     """The no-engine/writer/Radar scope obligation of the trust-readiness guard for THIS exact cohort: the real main merge-base diff, not an invented trigger."""
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, 'merge-base', 'origin/main', 'HEAD').decode().strip() != BASE:
             return False
         actual = _git(root, 'diff', BASE, '--name-only').decode().splitlines()
