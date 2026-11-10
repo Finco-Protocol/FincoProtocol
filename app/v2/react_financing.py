@@ -41,7 +41,7 @@ def _two_senior(f3: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/model-react/financing/studio")
-async def react_financing_studio(request: Request, project: str):
+async def react_financing_studio(request: Request, project: str, run: str | None = None):
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from app.auth import resolve_request_session
@@ -57,6 +57,8 @@ async def react_financing_studio(request: Request, project: str):
     record, owner = resolve_accessible_project(user.user_id, project)
     if record is None:
         return _json({"ok": False, "code": "PROJECT_NOT_FOUND"}, 404)
+    if len(request.query_params.getlist("run")) > 1:
+        return _json({"ok": False, "code": "TOO_MANY_RUNS"}, 422)
     try:
         import app.v2.router as legacy
 
@@ -66,10 +68,17 @@ async def react_financing_studio(request: Request, project: str):
         studio = {key: debt.get(key) for key in _STUDIO_KEYS}
         studio["multisenior"] = _two_senior(debt.get("multisenior") or {})
         studio["sources_uses"] = _sources_uses(context, owner, record)
+        studio["selected_run"] = _selected_run(context, owner, record, run)
         identity = {"content_hash": context.identity.composite_hash, "workbook_version": context.identity.workbook_version,
                     "scenario_id": context.workspace.active_scenario_id, "scenario_name": context.workspace.active_scenario_name}
         freshness = context.freshness.state.value
         context.validate_current()
+    except _InvalidSelectedRun:
+        return _json({"ok": False, "code": "INVALID_RUN_ID"}, 400)
+    except _SelectedRunNotFound:
+        return _json({"ok": False, "code": "RUN_NOT_FOUND"}, 404)
+    except _SelectedHistoryUnavailable:
+        return _json({"ok": False, "code": "RUN_HISTORY_UNAVAILABLE"}, 422)
     except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
         return _json({"ok": False, "code": "WORKSPACE_UNAVAILABLE",
                       "message": "The workspace changed while the financing view was assembled. Reload to refresh."}, 503)
@@ -101,4 +110,59 @@ def _sources_uses(context, owner: str, record) -> dict[str, Any]:
     except (FinancingEvidenceInvalid, ValueError, TypeError, AttributeError) as exc:
         return {"available": False, "reason": "Financing evidence for the last Run is unavailable or inconsistent.",
                 "code": type(exc).__name__}
+    return {"available": True, "view": view}
+
+
+class _InvalidSelectedRun(Exception):
+    pass
+
+
+class _SelectedRunNotFound(Exception):
+    pass
+
+
+class _SelectedHistoryUnavailable(Exception):
+    pass
+
+
+def _selected_run(context, owner: str, record, requested: str | None) -> dict[str, Any]:
+    """Bound selected Run, authorized by the same project access check as Studio.
+
+    The Studio's ordinary Sources & Uses remains LAST_RUN. This separate block
+    is selected by the actual history id and must be identity-matched in React
+    against independently fetched Credit Decision. Neither view is attested as
+    the other's snapshot by merely sharing a project or scenario name.
+    """
+    from app.persistence.run_history_repository import RunHistoryError, get_run_history, get_run_history_entry
+    from app.v2.credit_decision_router import HISTORY_LIMIT, MAX_ID
+    from app.v2.f02_financing_period_evidence import (
+        F02PeriodEvidenceUnavailable, build_f02_period_evidence,
+    )
+    from app.ui.protected_reference_service import is_protected_reference
+
+    if requested is not None and (not requested or len(requested) > MAX_ID):
+        raise _InvalidSelectedRun()
+    if is_protected_reference(record):
+        return {"available": False, "reason": "PROTECTED_REFERENCE"}
+    try:
+        history = get_run_history(owner, record.project_id, limit=HISTORY_LIMIT)
+        last_snapshot = str(getattr(context.workspace, "last_runtime_snapshot_id", "") or "")
+        last = next((e for e in history if last_snapshot and e.runtime_snapshot_id == last_snapshot), None)
+        history_id = requested or (last.history_id if last else history[0].history_id if history else None)
+        if history_id is None:
+            return {"available": False, "reason": "NO_COMMITTED_RUN"}
+        entry = get_run_history_entry(owner, record.project_id, history_id)
+    except RunHistoryError as exc:
+        raise _SelectedHistoryUnavailable() from exc
+    if entry is None:
+        raise _SelectedRunNotFound()
+    is_last = bool(last_snapshot) and entry.runtime_snapshot_id == last_snapshot
+    state = context.freshness.state.value if is_last else "HISTORICAL"
+    if is_last and state not in {"CURRENT", "STALE"}:
+        return {"available": False, "reason": "RUN_FRESHNESS_UNAVAILABLE"}
+    try:
+        view = build_f02_period_evidence(entry, state=state)
+    except F02PeriodEvidenceUnavailable as exc:
+        # No partial figures from a rejected binding or an unsupported old Run.
+        return {"available": False, "reason": str(exc)}
     return {"available": True, "view": view}
