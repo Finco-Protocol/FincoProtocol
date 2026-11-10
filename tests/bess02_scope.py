@@ -168,8 +168,6 @@ def _exact(repo=None, ref=None, closure=True):
                 return False
             if ref is None:
                 extra = set(_git(root, 'ls-files', '--others', '--exclude-standard').decode().splitlines())
-                if not extra <= allowed:
-                    return False
                 # Check all foreign accepted bytes AND modes directly; do not
                 # trust assume-unchanged index bits or a narrow diff alone.
                 for row in _base(root, 'ls-tree', '-r', BASE).decode().splitlines():
@@ -182,6 +180,12 @@ def _exact(repo=None, ref=None, closure=True):
                             or f.is_symlink() or _blob(f.read_bytes()) != pin
                             or bool(f.stat().st_mode & 0o111) != (mode == '100755')):
                         return False
+                # Generated F01 artifacts are inert evidence, never source
+                # authority. Reuse the accepted finite validator only AFTER
+                # every foreign accepted byte/mode above has been verified.
+                from tests.on_bess01_scope import _generated_evidence_ok
+                if any(not _generated_evidence_ok(root, p) for p in extra - allowed):
+                    return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False

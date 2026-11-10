@@ -102,3 +102,61 @@ def test_missing_registration_old_ref_and_dropped_pin_refuse(monkeypatch, candid
     finally:
         path.write_bytes(raw)
     assert B.exact_blobs_ok(root)
+
+
+def test_f01_generated_artifacts_are_inert_and_never_source_authority(candidate_tree, tmp_path):
+    """The existing finite F01 data validator admits outputs, never code or drift."""
+    root = candidate_tree
+    evidence = root/'evidence'
+    assert not evidence.exists()
+    financial = evidence/'financial'
+    financial.mkdir(parents=True)
+    attestation = evidence/'source.json'
+    data = financial/'solar-rate-5.6.json'
+    source = root/'app/services/bess_standalone_candidate.py'
+    source_bytes = source.read_bytes()
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=root, text=True).strip()
+    correct = json.dumps({'head': head, 'tree': tree}) + '\n'
+    try:
+        attestation.write_text(correct)
+        data.write_text('{"synthetic":true}\n')
+        assert B.exact_blobs_ok(root)
+        assert not B.allowed_path('evidence/source.json', root)
+        assert 'evidence/source.json' not in B.manifest(root)['source_blobs']
+        attestation.write_text(json.dumps({'head': '0'*40, 'tree': tree}) + '\n')
+        assert not B.exact_blobs_ok(root)
+        attestation.write_text(correct)
+        source.write_bytes(source_bytes + b'\n')
+        assert not B.exact_blobs_ok(root)
+        source.write_bytes(source_bytes)
+        for name in ('unreviewed.py', 'unreviewed.json'):
+            unknown = financial/name
+            unknown.write_text('{}\n')
+            assert not B.exact_blobs_ok(root)
+            unknown.unlink()
+        mode = data.stat().st_mode
+        data.chmod(mode | 0o111)
+        assert not B.exact_blobs_ok(root)
+        data.chmod(mode)
+        data.unlink()
+        data.symlink_to(source)
+        assert not B.exact_blobs_ok(root)
+        data.unlink()
+        data.write_text('{}\n')
+        # Even a finite artifact name may not escape through a directory link.
+        data.unlink()
+        financial.rmdir()
+        target = tmp_path/'outside'
+        target.mkdir()
+        (target/'solar-rate-5.6.json').write_text('{}\n')
+        financial.symlink_to(target, target_is_directory=True)
+        assert not B.exact_blobs_ok(root)
+        financial.unlink()
+        financial.mkdir()
+        data.write_text('{}\n')
+        assert B.exact_blobs_ok(root)
+    finally:
+        source.write_bytes(source_bytes)
+        shutil.rmtree(evidence)
+    assert B.exact_blobs_ok(root)
