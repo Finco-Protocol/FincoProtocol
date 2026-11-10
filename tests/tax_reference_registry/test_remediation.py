@@ -141,3 +141,50 @@ def test_report_tag_is_stable():
     from tax_reference_registry.remediation import generate_remediation_report as gen
     # Just verify the tag doesn't change between imports
     assert gen.__module__ == "tax_reference_registry.remediation"
+
+
+def test_rejected_row_preserves_tax_category_and_evidence_id(tmp_path):
+    """Rejected rows carry their original tax_category, subrule and evidence_id
+    from the CSV (not blank), so downstream remediation tools have context."""
+    p = tmp_path / "preserve.csv"
+    p.write_text(
+        rows_to_csv([
+            base_row(
+                rule_id="ZZ-WHT-001",
+                tax_category="WHT",
+                subrule="dividends WHT",
+                evidence_id="EV-SYNTH-ZZ-WHT",
+                source_status="PRIMARY_CONFIRMED",
+                primary_url="",
+            ),
+        ]),
+        encoding="utf-8",
+    )
+    report = generate_remediation_report(str(p))
+    rejected = [r for r in report["rows"] if r["admission"] == "rejected"]
+    assert len(rejected) == 1
+    assert rejected[0]["tax_category"] == "WHT"
+    assert rejected[0]["subrule"] == "dividends WHT"
+    assert rejected[0]["evidence_id"] == "EV-SYNTH-ZZ-WHT"
+    assert rejected[0]["row_number"] == 2
+
+
+def test_report_does_not_expose_private_disk_path(tmp_path):
+    """The report structure has no 'source' key with the private disk path."""
+    p = tmp_path / "nosource.csv"
+    p.write_text(rows_to_csv([base_row()]), encoding="utf-8")
+    report = generate_remediation_report(str(p))
+    assert "source" not in report or "private" not in str(report.get("source", "")).lower()
+
+
+def test_row_number_traces_to_csv_line(tmp_path):
+    """Rejected row_numbers are 2-based (header = line 1) for traceability."""
+    rows = [
+        base_row(),
+        base_row(rule_id="ZZ-BAD-001", source_status="PRIMARY_CONFIRMED", primary_url=""),
+    ]
+    p = tmp_path / "trace.csv"
+    p.write_text(rows_to_csv(rows), encoding="utf-8")
+    report = generate_remediation_report(str(p))
+    rejected = [r for r in report["rows"] if r["admission"] == "rejected"]
+    assert rejected[0]["row_number"] == 3  # row 1 = header, row 2 = ZZ-CIT-001, row 3 = ZZ-BAD-001

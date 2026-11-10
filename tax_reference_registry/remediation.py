@@ -6,6 +6,10 @@ remediation disposition candidate, and a stable evidence reference. The report
 is advisory only — it never mutates the source dataset, never promotes
 verification, and never activates a profile.
 
+The report does not expose the private disk path; callers who need source
+traceability should capture it separately. Rejected rows preserve their
+tax_category, subrule, and evidence_id from the CSV when parseable.
+
 Public API:
   generate_remediation_report(csv_path, *, private_markers=()) -> dict
 """
@@ -25,8 +29,9 @@ class RemediationRow:
     subrule: str
     admission: str  # "accepted" | "rejected"
     rejection_reason: str  # "" when accepted
-    disposition: str  # advisory: "OK" | "NEEDS_PRIMARY_URL" | "NEEDS_STRUCTURED_VALUE" | ...
+    disposition: str  # advisory: "OK" | "NEEDS_PRIMARY_URL" | ...
     evidence_id: str
+    row_number: int  # CSV line number (2-based; header is line 1)
 
 
 _DISPOSITION_BY_REASON = {
@@ -57,15 +62,32 @@ def generate_remediation_report(
     *,
     private_markers: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """Produce a sorted, deterministic remediation report from a 35-column CSV."""
+    """Produce a sorted, deterministic remediation report from a 35-column CSV.
+
+    The report omits the private disk path (``csv_path`` is used only for
+    reading; callers capture it separately for traceability).
+    """
     result: LoadResult = load_records(
         csv_path, source_path=csv_path, private_markers=private_markers
     )
-    error_index: dict[int, RowError] = {}
-    for err in result.errors:
-        error_index[err.row_number] = err
 
-    loaded_ids = {r.rule_id for r in result.records}
+    # Build a row-number → parsed-record index so rejected rows can recover
+    # their tax_category, subrule, and evidence_id from the CSV row even when
+    # the loader rejected them.
+    from tax_reference_registry.enums import SOURCE_STATUS_CANONICAL, TaxCategory
+    import csv as _csv
+    import io
+
+    raw_rows: dict[int, dict[str, str]] = {}
+    if hasattr(result, "source_path") and result.source_path:
+        try:
+            with open(result.source_path, "r", encoding="utf-8-sig", newline="") as fh:
+                reader = _csv.DictReader(fh)
+                for rn, row in enumerate(reader, start=2):
+                    raw_rows[rn] = {k: (v or "").strip() for k, v in row.items() if k}
+        except (OSError, ValueError):
+            pass
+
     rows: list[RemediationRow] = []
     for rec in result.records:
         rows.append(
@@ -78,20 +100,23 @@ def generate_remediation_report(
                 rejection_reason="",
                 disposition="OK",
                 evidence_id=rec.evidence_id or "",
+                row_number=0,
             )
         )
     for err in result.errors:
         disposition = _DISPOSITION_BY_REASON.get(err.reason, "MANUAL_REVIEW")
+        raw = raw_rows.get(err.row_number, {})
         rows.append(
             RemediationRow(
                 rule_id=err.rule_id,
                 jurisdiction_code=err.jurisdiction_code,
-                tax_category="",
-                subrule="",
+                tax_category=raw.get("tax_category", ""),
+                subrule=raw.get("subrule", ""),
                 admission="rejected",
                 rejection_reason=err.reason,
                 disposition=disposition,
-                evidence_id="",
+                evidence_id=raw.get("evidence_id", ""),
+                row_number=err.row_number,
             )
         )
     rows.sort(key=lambda r: (r.jurisdiction_code, r.rule_id, r.admission))
@@ -106,7 +131,6 @@ def generate_remediation_report(
 
     return {
         "tag": "T01E_REMEDIATION_REPORT_V1",
-        "source": csv_path,
         "rows_read": result.rows_read,
         "accepted": result.valid,
         "rejected": result.invalid,
