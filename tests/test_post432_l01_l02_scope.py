@@ -91,7 +91,13 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
     own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
-    assert now in (own, own.replace("'tests.post432_l01_l02_scope')", "'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope')"))      # a later cohort may only append itself
+    # The single additional accepted successor is the exact F03 read-only cohort.
+    # Reject any omitted, reordered or foreign registry module; F03 validates
+    # its own literal source pins, immutable BASE and finite closed change set.
+    r02 = own.replace("'tests.post432_l01_l02_scope')", "'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope')")
+    f03 = r02.replace("'tests.r02_ppa_ux_scope')", "'tests.r02_ppa_ux_scope', 'tests.f03_financing_scope')")
+    from tests import f03_financing_scope as F
+    assert now == f03 and F.signature_ok() and F.exact_blobs_ok()
     import ast
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
     i = C.COHORT_MODULES.index('tests.post432_l01_l02_scope')

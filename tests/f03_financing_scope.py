@@ -40,7 +40,7 @@ TEST_PATHS = frozenset((
     "tests/test_f02_financing_period_evidence.py",
     "tests/test_f03_financing_scope.py",
 ))
-GOVERNANCE_PATHS = frozenset((PREDECESSOR, L_MODULE, R02_TEST, REGISTRY, "tests/f03_financing_scope.py"))
+GOVERNANCE_PATHS = frozenset((PREDECESSOR, L_MODULE, R02_TEST, REGISTRY, "tests/test_post432_l01_l02_scope.py", "tests/f03_financing_scope.py"))
 CURRENT_MAPS = frozenset((
     "docs/ci_v4/SOURCE_SUCCESSOR.json",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
