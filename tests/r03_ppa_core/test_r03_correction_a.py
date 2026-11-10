@@ -148,7 +148,8 @@ def test_ab_indexed_mode_matches_accepted_engine_authority():
             cap1=impl.Quantity(D(5000), "MWh"), cap2=impl.Quantity(D(9000), "MWh"),
             merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=tuple((y, D(55)) for y in cal)),
             base_price=impl.TierPrice(mode="INDEXED", fixed_price_eur_mwh=D(70),
-                                      index=impl.TierIndex(rate=D("0.02"), base_year=start, indexed_fraction=D(1))),
+                                      index=impl.TierIndex(rate=D("0.02"), base_year=start, indexed_fraction=D(1),
+                                      indexation_timing="PER_CALENDAR_YEAR")),
         )
         res = impl.compute_ppa_ledger(inp)
         for p, op in zip(res, op_years):
@@ -169,3 +170,22 @@ def test_no_engine_or_product_imports_in_research_package():
             if stripped.startswith(("import ", "from ")):
                 for b in banned:
                     assert not stripped.split()[1].startswith(b), (f.name, line)
+
+
+def test_unapproved_indexation_timing_refused():
+    """Q3/Q6: per-anniversary and per-12-month variants are explicit owner hypotheses —
+    refused HYPOTHESIS_NOT_APPROVED, never silently chosen."""
+    with pytest.raises(impl.ContractError, match="HYPOTHESIS_NOT_APPROVED"):
+        impl.compute_ppa_ledger(_input(
+            base_price=impl.TierPrice(mode="INDEXED", fixed_price_eur_mwh=D(70),
+                                      index=impl.TierIndex(rate=D("0.02"), base_year=2030,
+                                                           indexed_fraction=D(1),
+                                                           indexation_timing="PER_ANNIVERSARY")),
+        ))
+    with pytest.raises(impl.ContractError, match="HYPOTHESIS_NOT_APPROVED"):
+        impl.compute_ppa_ledger(_input(
+            base_price=impl.TierPrice(mode="INDEXED", fixed_price_eur_mwh=D(70),
+                                      index=impl.TierIndex(rate=D("0.02"), base_year=2030,
+                                                           indexed_fraction=D(1),
+                                                           indexation_timing="PER_12_MONTHS")),
+        ))

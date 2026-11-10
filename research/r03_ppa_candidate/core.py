@@ -45,13 +45,20 @@ class Quantity:
     denominator_mw: Optional[Decimal] = None
 
 
+INDEXATION_TIMING_SUPPORTED = ("PER_CALENDAR_YEAR",)
+
+
 @dataclass(frozen=True)
 class TierIndex:
     """Per-tier independent indexation (Q3 hypothesis): the tier price is indexed by
-    (1 + rate) ** (year - base_year) on the ``indexed_fraction`` share of the price."""
+    (1 + rate) ** (year - base_year) on the ``indexed_fraction`` share of the price.
+    ``indexation_timing`` is an EXPLICIT hypothesis tag — per-anniversary, per-12-month
+    and monthly-proration variants are HYPOTHESIS_NOT_APPROVED and refused until an
+    owner decision (Q6)."""
     rate: Decimal
     base_year: int
     indexed_fraction: Decimal
+    indexation_timing: str = "PER_CALENDAR_YEAR"
 
 
 @dataclass(frozen=True)
@@ -177,6 +184,9 @@ def _tier_price(p: TierPrice, year: int, name) -> Decimal:
         frac = _dec(ix.indexed_fraction, f"{name} indexed_fraction")
         if not (0 <= frac <= 1) or rate <= -1:
             raise ContractError(f"{name}: indexation parameters out of range")
+        if ix.indexation_timing not in INDEXATION_TIMING_SUPPORTED:
+            raise ContractError(f"{name}: indexation_timing {ix.indexation_timing!r} HYPOTHESIS_NOT_APPROVED "
+                                f"(supported: {INDEXATION_TIMING_SUPPORTED}; owner decision Q6 pending)")
         if ix.base_year > year:
             price = _dec(p.fixed_price_eur_mwh, name)      # before base year: unindexed
         else:

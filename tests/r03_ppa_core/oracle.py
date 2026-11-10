@@ -27,6 +27,8 @@ def _round_half_even(f: Fraction, dp: int = EUR_DP) -> Fraction:
 
 
 def index_factor(rate: Fraction, base_year: int, fraction: Fraction, year: int) -> Fraction:
+    """PER_CALENDAR_YEAR hypothesis only (mirrors the implementation's explicit tag);
+    per-anniversary / per-12-month / monthly-proration variants are refused upstream."""
     if fraction == 0 or year < base_year:
         return Fraction(1)
     return (1 - fraction) + fraction * (1 + rate) ** (year - base_year)
