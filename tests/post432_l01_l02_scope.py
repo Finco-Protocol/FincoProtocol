@@ -167,14 +167,23 @@ def signature_ok(repo=None, ref=None):
     return _verdict(repo, ref, False)
 
 
+def _exact_next_scoped(repo, ref, closure):
+    # One evaluation of this cohort asks its successor for the same verdict many times; share one memo for exactly that evaluation.
+    N = _next()
+    if N is None:
+        return _exact(repo, ref, closure)
+    with N.scoped():
+        return _exact(repo, ref, closure)
+
+
 def _verdict(repo, ref, closure):
     if _SCOPE:
         key = (str(repo if repo is not None else ROOT), ref, closure)
         memo = _SCOPE[-1]
         if key not in memo:
-            memo[key] = _exact(repo, ref, closure)
+            memo[key] = _exact_next_scoped(repo, ref, closure)
         return memo[key]
-    return _exact(repo, ref, closure)
+    return _exact_next_scoped(repo, ref, closure)
 
 
 def _apply(base_text, substitutions):

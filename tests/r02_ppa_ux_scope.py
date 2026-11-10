@@ -82,6 +82,7 @@ HANDOFFS = {
          _L_HELPERS + 'def reviewed_edits_ok(repo=None, ref=None):\n    """Both predecessor modules and the registry equal the literal reviewed substitutions over BASE, byte for byte."""\n    root = Path(repo) if repo is not None else ROOT\n    try:\n        N = _next()\n        if N is not None and N.signature_ok(root, ref):\n            return N.reviewed_edits_ok(root, ref)\n        for path in sorted(HANDOFF_FILES | {REGISTRY}):\n'),
         ("        head = ref or 'HEAD'\n        # 1. immutable provenance: accepted post-#434 main",
          "        head = ref or 'HEAD'\n        nx = _next_pins(root, ref)\n        cur = {p: nx.get(p, b) for p, b in pins.items()}\n        # 1. immutable provenance: accepted post-#434 main"),
+        ("def _verdict(repo, ref, closure):\n    if _SCOPE:\n        key = (str(repo if repo is not None else ROOT), ref, closure)\n        memo = _SCOPE[-1]\n        if key not in memo:\n            memo[key] = _exact(repo, ref, closure)\n        return memo[key]\n    return _exact(repo, ref, closure)\n", "def _exact_next_scoped(repo, ref, closure):\n    # One evaluation of this cohort asks its successor for the same verdict many times; share one memo for exactly that evaluation.\n    N = _next()\n    if N is None:\n        return _exact(repo, ref, closure)\n    with N.scoped():\n        return _exact(repo, ref, closure)\n\n\ndef _verdict(repo, ref, closure):\n    if _SCOPE:\n        key = (str(repo if repo is not None else ROOT), ref, closure)\n        memo = _SCOPE[-1]\n        if key not in memo:\n            memo[key] = _exact_next_scoped(repo, ref, closure)\n        return memo[key]\n    return _exact_next_scoped(repo, ref, closure)\n"),
         ("            if computed != pins:\n                return False\n", "            if computed != cur:\n                return False\n"),
         ("            if listed != pins:\n                return False\n", "            if listed != cur:\n                return False\n"),
         ("            expected = expected_map(root, path, pins)\n            if pins[path] != _blob(expected) or (closure and _read(root, path, ref) != expected):\n",
@@ -246,7 +247,9 @@ def _exact(repo=None, ref=None, closure=True):
             return False
         # 3. one exact blob per owned path (git's own hashing, so LF and CRLF checkouts agree)
         if ref is None:
-            computed = {p: _git(root, 'hash-object', root / p).decode().strip() for p in sorted(pins)}
+            ordered = sorted(pins)
+            hashed = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=root, input=''.join(str(root / p) + '\n' for p in ordered).encode(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout.decode().split()
+            computed = dict(zip(ordered, hashed)) if len(hashed) == len(ordered) else None
             if computed != pins:
                 return False
         else:
