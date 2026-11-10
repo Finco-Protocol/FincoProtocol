@@ -38,7 +38,8 @@ def test_f03_current_maps_are_only_the_two_moved_pins():
 
 
 def test_f03_f01_workflow_is_exactly_the_reviewed_45_minute_successor():
-    old = _git("show", F.BASE + ":" + F.CI_WORKFLOW)
+    # Read raw git bytes without strip(): trailing LF is part of the governed blob.
+    old = subprocess.check_output(["git", "show", F.BASE + ":" + F.CI_WORKFLOW], cwd=ROOT).decode()
     current = (ROOT / F.CI_WORKFLOW).read_text()
     reviewed = old
     for before, after in F.WORKFLOW_EDITS:
