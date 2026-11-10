@@ -162,7 +162,14 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        yield
+        # All successor signature/pin/map reads within this SAME outer read
+        # share its memo; it is dropped with the scope, never kept globally.
+        N = _next()
+        if N is None:
+            yield
+        else:
+            with N.scoped():
+                yield
     finally:
         _SCOPE.pop()
 

@@ -173,3 +173,56 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
                     if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'COHORT_MODULES')
     assert C.COHORT_MODULES == accepted + ('tests.bess02_scope',)
     assert C.COHORT_MODULES[-3:] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
+
+
+def test_r02_outer_read_scope_shares_successor_memo_and_drops_it_before_mutation(candidate_tree, monkeypatch):
+    """Identical checks run once per outer read; later reads see every mutation."""
+    from tests import r02_ppa_ux_scope as R, post432_l01_l02_scope as L
+    root = candidate_tree
+    real = B._exact
+    evaluations = []
+    def counted(*args, **kwargs):
+        evaluations.append((args, kwargs))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(B, '_exact', counted)
+    with R.scoped():
+        for _ in range(3):
+            assert L.signature_ok(root) and R.signature_ok(root) and B.signature_ok(root)
+    assert len(evaluations) == 1
+    with R.scoped():
+        assert B.signature_ok(root)
+    assert len(evaluations) == 2  # a closed scope never attests a later read
+    path = root/'app/services/bess_standalone_candidate.py'
+    raw, mode = path.read_bytes(), path.stat().st_mode
+    evidence = root/'evidence'
+    try:
+        path.write_bytes(raw + b'\n')
+        with R.scoped():
+            assert not B.signature_ok(root) and not L.signature_ok(root)
+        path.write_bytes(raw)
+        path.chmod(mode | 0o111)
+        with R.scoped():
+            assert not B.signature_ok(root)
+        path.chmod(mode)
+        evidence.mkdir()
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+        tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=root, text=True).strip()
+        attestation = evidence/'source.json'
+        attestation.write_text(json.dumps({'head': head, 'tree': tree}) + '\n')
+        with R.scoped():
+            assert B.exact_blobs_ok(root)
+        attestation.write_text(json.dumps({'head': '0'*40, 'tree': tree}) + '\n')
+        with R.scoped():
+            assert not B.exact_blobs_ok(root)
+        attestation.unlink()
+        foreign = evidence/'unreviewed.py'
+        foreign.write_text('x=1\n')
+        with R.scoped():
+            assert not B.exact_blobs_ok(root)
+    finally:
+        path.write_bytes(raw)
+        path.chmod(mode)
+        if evidence.exists():
+            shutil.rmtree(evidence)
+    with R.scoped():
+        assert B.exact_blobs_ok(root)
