@@ -217,27 +217,27 @@ def _next_pins(root, ref):
     N = _next()
     if N is None or not N.signature_ok(root, ref):
         return {}
-    return {p: b for p, b in N.manifest(root, ref)['source_blobs'].items() if p in N.SUPERSEDED}
+    return dict(N.effective_pins(root, ref))
 
 
 def map_keys(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     N = _next()
-    return tuple(MAP_KEYS) + (tuple(N.MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ())
+    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
 
 
 def _next_moved(root, ref):
     N = _next()
     if N is None or not N.signature_ok(root, ref):
         return {}
-    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
+    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}
 
 
 def closure_paths(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     N = _next()
     base = OWNED_PATHS | {MANIFEST}
-    return base | ((N.OWNED_PATHS | {N.MANIFEST}) if N is not None and N.signature_ok(root, ref) else frozenset())
+    return base | (N.closure_paths(root, ref) if N is not None and N.signature_ok(root, ref) else frozenset())
 
 
 def reviewed_edits_ok(repo=None, ref=None):

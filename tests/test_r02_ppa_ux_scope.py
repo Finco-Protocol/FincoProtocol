@@ -17,6 +17,7 @@ from tests import on_bess01_scope as B
 from tests import onaccept01_scope as O
 from tests import post432_l01_l02_scope as L
 from tests import r02_ppa_ux_scope as X
+from tests import bess02_scope as N
 
 ROOT = Path(__file__).resolve().parents[1]
 TAIL = ('tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope')
@@ -73,9 +74,10 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     assert X.BASE == '64a0d5b7b1ec7c989908d5f288a9ae440c663009' and _git(ROOT, 'rev-parse', X.BASE + '^{tree}') == X.BASE_TREE
     subprocess.check_call(['git', 'merge-base', '--is-ancestor', X.BASE, 'HEAD'], cwd=ROOT)
     changed = set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines())
-    assert changed <= X.OWNED_PATHS | {X.MANIFEST}
+    assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
-    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))]
+    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
 
@@ -83,17 +85,17 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():
     import ast
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
-    assert (ROOT / 'tests/fin_v2_cohorts.py').read_text() == base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
+    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == N.expected_handoff(ROOT, X.REGISTRY)
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
-    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope',) and C.COHORT_MODULES[-5:] == TAIL and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
+    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') and C.COHORT_MODULES[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
 
 
 def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():
     from tests import tax_reference_registry_scope as T, ux_pr3b2_scope as U, u1_scope as U1
-    pins = X.manifest()['source_blobs']
+    pins = X.effective_pins()
     with C.call_scope():
         assert L.exact_blobs_ok() and O.exact_blobs_ok() and B.exact_blobs_ok() and T.exact_blobs_ok() and U.exact_blobs_ok() and C.valid()
-        assert X.reviewed_edits_ok() and L.closure_paths() == X.OWNED_PATHS | L.OWNED_PATHS | {X.MANIFEST, L.MANIFEST} and O.later_owned() == L.closure_paths()
+        assert X.reviewed_edits_ok() and L.closure_paths() == X.closure_paths() | L.OWNED_PATHS | {L.MANIFEST} and O.later_owned() == L.closure_paths()
         for path in sorted(X.SOURCE_PATHS - X.NEW_SOURCE_PATHS):
             assert B.supersedes(path, pins[path]) and U1.supersedes(path, pins[path]) and not B.supersedes(path, '0' * 40), path
         assert not B.supersedes('app/v2/router.py', pins['static/react/finco-react.js']) and not X.supersedes('app/v2/router.py', pins['static/react/finco-react.js'])
@@ -134,7 +136,9 @@ def test_handoff_registry_map_and_historical_pin_rewrites_fail_closed(tree):
     text = registry.read_text()
     cases.append(('missing_cohort', lambda: registry.write_text(text.replace(", 'tests.r02_ppa_ux_scope'", ''))))
     cases.append(('missing_l_cohort', lambda: registry.write_text(text.replace(", 'tests.post432_l01_l02_scope'", ''))))
-    cases.append(('extra_cohort', lambda: registry.write_text(text.replace("'tests.r02_ppa_ux_scope')", "'tests.r02_ppa_ux_scope', 'tests.fake_scope')"))))
+    last = C.COHORT_MODULES[-1]
+    assert text.count(f"'{last}')") == 1  # prove the negative mutation actually changes the current tail
+    cases.append(('extra_cohort', lambda: registry.write_text(text.replace(f"'{last}')", f"'{last}', 'tests.fake_scope')"))))
     cases.append(('reordered', lambda: registry.write_text(text.replace("'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope'", "'tests.r02_ppa_ux_scope', 'tests.post432_l01_l02_scope'"))))
     cases.append(('map_registry_pin', lambda: _json(tree, 'docs/ci_v4/SOURCE_SUCCESSOR.json', lambda d: d['source_blobs'].update({X.REGISTRY: '0' * 40}))))
     cases.append(('map_bundle_pin', lambda: _json(tree, 'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', lambda d: d['source_blobs'].update({'static/react/finco-react.js': '0' * 40}))))
