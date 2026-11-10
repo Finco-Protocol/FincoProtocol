@@ -239,10 +239,13 @@ def _next_moved(root, ref):
 
 
 def closure_paths(repo=None, ref=None):
+    """This cohort's closed path set, gated by its OWN signature, plus the successor's closure; one shared read scope evaluates each signature once."""
     root = Path(repo) if repo is not None else ROOT
-    N = _next()
-    own = OWNED_PATHS | {MANIFEST}
-    return own | (N.closure_paths(root, ref) if N is not None and N.signature_ok(root, ref) else frozenset())
+    with scoped():
+        if not signature_ok(root, ref):
+            return frozenset()
+        N = _next()
+        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def allowed_path(path, repo=None, ref=None):

@@ -9,6 +9,7 @@ semantic reinterpretation of a failed Run is permitted.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 import hashlib
 import json
@@ -89,10 +90,10 @@ def manifest(repo=None, ref=None):
     except (OSError, ValueError, TypeError, subprocess.CalledProcessError):
         return {}
 
-def expected_map(root, path):
+def expected_map(root, path, pins=None):
     """Only the two FINITE current-source keys may move; all history stays unchanged."""
-    d = json.loads(_git(root, "show", BASE + ":" + path))
-    pins = manifest(root).get("source_blobs", {})
+    d = json.loads(_base_bytes(str(root), path))
+    pins = manifest(root).get("source_blobs", {}) if pins is None else pins
     for key in MAP_KEYS:
         if key in d["source_blobs"]:
             d["source_blobs"][key] = pins[key]
@@ -186,10 +187,14 @@ HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n       
                             '\n'
                             '\n'
                             'def closure_paths(repo=None, ref=None):\n'
+                            '    """This cohort\'s closed path set, gated by its OWN signature, plus the successor\'s closure; one shared read scope '
+                            'evaluates each signature once."""\n'
                             '    root = Path(repo) if repo is not None else ROOT\n'
-                            '    N = _next()\n'
-                            '    own = OWNED_PATHS | {MANIFEST}\n'
-                            '    return own | (N.closure_paths(root, ref) if N is not None and N.signature_ok(root, ref) else frozenset())\n'
+                            '    with scoped():\n'
+                            '        if not signature_ok(root, ref):\n'
+                            '            return frozenset()\n'
+                            '        N = _next()\n'
+                            '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\n'
                             '\n'
                             '\n'
                             'def allowed_path(path, repo=None, ref=None):\n'
@@ -217,7 +222,7 @@ HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n       
                             "        if _git(root, 'merge-base', 'origin/main', 'HEAD')")],
  'tests/fin_v2_cohorts.py': [("'tests.bess02_scope')", "'tests.bess02_scope', 'tests.f03_financing_scope')")],
  'tests/r02_ppa_ux_scope.py': [('    return own | ((N.OWNED_PATHS | {N.MANIFEST}) if N is not None and N.signature_ok(root, ref) else frozenset())',
-                                '    return own | (N.closure_paths(root, ref) if N is not None and N.signature_ok(root, ref) else frozenset())')],
+                                '    return own | (N.closure_paths(root, ref) if N is not None else frozenset())')],
  'tests/test_bess02_scope.py': [("    assert C.COHORT_MODULES == accepted + ('tests.bess02_scope',)\n"
                                  "    assert C.COHORT_MODULES[-3:] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
                                  "'tests.bess02_scope')",
@@ -267,7 +272,7 @@ HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n       
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
-    raw = _git(root, "show", BASE + ":" + path).decode()
+    raw = _base_bytes(str(root), path).decode()          # immutable BASE object (cached)
     for old, new in HANDOFFS[path]:
         if raw.count(old) != 1:
             raise ValueError("reviewed handoff is missing or ambiguous")
@@ -389,7 +394,72 @@ def signature_ok(repo=None, ref=None):
         _SCOPE[-1][key] = value
     return value
 
+# Accepted BESS02/R02 product bytes and historical manifests that must stay byte-identical to BASE.
+FROZEN = ("docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json", "docs/bess_setup/SOURCE_SUCCESSOR.json", "docs/bess02/SOURCE_SUCCESSOR.json",
+          "app/services/bess_standalone_candidate.py", "app/services/bess_setup_preview.py", "app/workbook/bess_config.py")
+
+
+@lru_cache(maxsize=512)
+def _base_bytes(root, path):
+    """Bytes of an IMMUTABLE accepted-main (BASE) object. Never a working-tree or ref read, so a cached value can never go stale."""
+    return _git(Path(root), "show", BASE + ":" + path)
+
+
+@lru_cache(maxsize=8)
+def _base_tree(root):
+    return _git(Path(root), "rev-parse", BASE + "^{tree}").decode().strip()
+
+
+@lru_cache(maxsize=256)
+def _expected_blob(root, kind, path):
+    """Blob id of the literal reviewed transformation of an immutable BASE blob (a pure function of BASE and this module's literals)."""
+    if kind == "handoff":
+        edits = HANDOFFS[path]
+    elif kind == "ci":
+        edits = REVIEWED_CI_HANDOFFS[path]
+    else:
+        edits = WORKFLOW_EDITS
+        path = CI_WORKFLOW
+    raw = _base_bytes(root, path)
+    if kind == "workflow" and _blob(raw) != "8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d":
+        raise ValueError("the original F01 workflow is not the historically reviewed blob")
+    text = raw.decode()
+    for old, new in edits:
+        if text.count(old) != 1:
+            raise ValueError("reviewed edit is missing or ambiguous")
+        text = text.replace(old, new)
+    return _blob(text.encode())
+
+
+@lru_cache(maxsize=256)
+def _expected_map_blob(root, path, moved):
+    """Pure function of an immutable BASE map and the two literal moved pins."""
+    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))
+
+
+def _snapshot(root, ref, paths):
+    """One read of the evaluated state: {path: blob} and {path: mode}. A committed ref is read with ONE ls-tree; the working tree is read
+    directly (bytes hashed here, exactly like the sibling cohorts), a symlink / non-file / executable bit being reported as a bad mode."""
+    paths = sorted(paths)
+    if ref is None:
+        blobs, modes = {}, {}
+        for p in paths:
+            f = root / p
+            if f.is_symlink() or not f.is_file():
+                continue
+            blobs[p] = _blob(f.read_bytes())
+            modes[p] = "100755" if f.stat().st_mode & 0o111 else "100644"
+        return blobs, modes
+    blobs, modes = {}, {}
+    for line in _git(root, "ls-tree", "-r", ref, "--", *paths).decode().splitlines():
+        meta, name = line.split("\t", 1)
+        mode, _kind, blob = meta.split()
+        blobs[name], modes[name] = blob, mode
+    return blobs, modes
+
+
 def _signature_ok(root, ref):
+    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: O(1) git reads per verdict, nothing cached from mutable state."""
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
         if __name__ not in COHORT_MODULES:
@@ -401,39 +471,28 @@ def _signature_ok(root, ref):
         if not NEW.isdisjoint(base) or any((p.startswith(FORBIDDEN) and p not in CI_PATHS) or p.startswith("/") or ".." in p.split("/") or "*" in p for p in OWNED_PATHS | {MANIFEST}):
             return False
         _git(root, "merge-base", "--is-ancestor", BASE, ref or "HEAD")
-        if _git(root, "rev-parse", BASE + "^{tree}").decode().strip() != BASE_TREE:
+        key = str(root)
+        if _base_tree(key) != BASE_TREE:
             return False
-        paths = sorted(base)
-        historical = _git(root, "rev-parse", *[BASE + ":" + p for p in paths]).decode().split()
-        if historical != [base[p] for p in paths]:
+        if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds
             return False
-        if ref is None:
-            ordered = sorted(pins)
-            hashed = subprocess.run(["git", "hash-object", "--stdin-paths"], cwd=root,
-                input="".join(str(root / p) + "\n" for p in ordered).encode(),
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout.decode().split()
-            current = dict(zip(ordered, hashed)) if len(hashed) == len(ordered) else None
-        else:
-            lines = _git(root, "ls-tree", "-r", ref, "--", *sorted(pins)).decode().splitlines()
-            current = {line.split("\t", 1)[1]: line.split()[2] for line in lines}
-        if current != pins:
+        current, modes = _snapshot(root, ref, set(pins) | {MANIFEST} | set(FROZEN))
+        if {p: current.get(p) for p in pins} != pins:
             return False
-        modes = _git(root, "ls-tree", "-r", ref or "HEAD", "--", *sorted(OWNED_PATHS | {MANIFEST})).decode().splitlines()
-        if len(modes) != len(OWNED_PATHS | {MANIFEST}) or any(not x.startswith("100644 ") for x in modes):
+        owned = OWNED_PATHS | {MANIFEST}
+        if len(modes) < len(owned) or any(modes.get(p) != "100644" for p in owned):
             return False
-        if not reviewed_edits_ok(root, ref):
+        if any(pins[p] != _expected_blob(key, "handoff", p) for p in HANDOFFS):
             return False
-        if not reviewed_workflow_ok(root, ref):
+        if pins[CI_WORKFLOW] != _expected_blob(key, "workflow", CI_WORKFLOW):
             return False
-        if not reviewed_ci_handoffs_ok(root, ref):
+        if any(pins[p] != _expected_blob(key, "ci", p) for p in REVIEWED_CI_HANDOFFS):
             return False
         for p in CURRENT_MAPS:
-            if _read(root, p, ref) != expected_map(root, p):
+            if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
                 return False
-        for p in ("docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json", "docs/bess_setup/SOURCE_SUCCESSOR.json", "docs/bess02/SOURCE_SUCCESSOR.json",
-                  "app/services/bess_standalone_candidate.py", "app/services/bess_setup_preview.py", "app/workbook/bess_config.py"):
-            if _read(root, p, ref) != _git(root, "show", BASE + ":" + p):
-                return False
+        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
+            return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
