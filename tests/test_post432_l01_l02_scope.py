@@ -19,6 +19,7 @@ from tests import fin_v2_cohorts as C
 from tests import on_bess01_scope as B
 from tests import onaccept01_scope as O
 from tests import post432_l01_l02_scope as X
+from tests import bess02_scope as N
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCEPTED_ORDER_TAIL = ('tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope')
@@ -91,13 +92,7 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
     own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
-    # The single additional accepted successor is the exact F03 read-only cohort.
-    # Reject any omitted, reordered or foreign registry module; F03 validates
-    # its own literal source pins, immutable BASE and finite closed change set.
-    r02 = own.replace("'tests.post432_l01_l02_scope')", "'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope')")
-    f03 = r02.replace("'tests.r02_ppa_ux_scope')", "'tests.r02_ppa_ux_scope', 'tests.f03_financing_scope')")
-    from tests import f03_financing_scope as F
-    assert now == f03 and F.signature_ok() and F.exact_blobs_ok()
+    assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()
     import ast
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
     i = C.COHORT_MODULES.index('tests.post432_l01_l02_scope')
@@ -107,7 +102,12 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
 
 def test_the_accepted_runner_and_bess_preview_behaviour_is_unchanged():
     for path in sorted(O.SOURCE_PATHS | B.APP_PATHS):
-        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
+        if path == 'app/services/bess_setup_preview.py':
+            # One owner-approved nonpersisting preview source successor only.
+            assert N.exact_blobs_ok() and path in N.SOURCE_PATHS and path in N.SUPERSEDED_SOURCE_PATHS
+            assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == N.manifest()['source_blobs'][path]
+        else:
+            assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     assert 'tests.on_bess01_scope' in C.COHORT_MODULES and 'tests.onaccept01_scope' in C.COHORT_MODULES
     assert C.COHORT_MODULES.index('tests.on_bess01_scope') < C.COHORT_MODULES.index('tests.onaccept01_scope') < C.COHORT_MODULES.index(X.SELF_MODULE)
 

@@ -6,6 +6,7 @@ called here. An imported contract is explicit user input, never a seed model.
 from dataclasses import fields
 from decimal import Decimal
 import json
+import hashlib
 
 from domain.bess.contracts import Battery, BessInputError, number
 from finco_core.inputs.bess_native import parse_native_contract
@@ -97,7 +98,45 @@ def preview(native_json: str, edits: dict[str, str]):
         "start": config.start.isoformat(), "end": config.end.isoformat(),
         "dispatch_mode": config.mode.value, "dispatch_rows": len(config.points),
         "events": len(config.events),
+        "declared_terms": _declared_terms(contract),
         "validation_scope": "NATIVE_SCHEMA_ONLY",
         "physical_balance_verified": False, "financial_horizon_verified": False,
         "financial_calculation_count": 0, "persisted": False,
+    }
+
+
+
+def _declared_terms(contract):
+    """Bounded declared-input review, without settlement or financial inference."""
+    config = contract.configuration
+    price_fields = ("buy_price_eur_mwh", "sell_price_eur_mwh", "import_charge_eur_mwh", "export_charge_eur_mwh")
+    power_fields = ("charge_mw", "discharge_mw", "auxiliary_grid_mw")
+    rows = [{"coordinate": point.coordinate.isoformat() if hasattr(point.coordinate, "isoformat") else point.coordinate,
+             "available": point.available,
+             **{key: str(getattr(point, key)) for key in power_fields + price_fields}}
+            for point in config.points[:24]]
+    unavailable = {"status": "NOT_AVAILABLE", "value": None}
+    return {
+        "scope": "DECLARED_INPUTS_ONLY_NOT_FINANCIAL_RESULTS",
+        "native_input_sha256": hashlib.sha256(contract.canonical_json.encode()).hexdigest(),
+        "identity_scope": "CANDIDATE_CONTENT_ONLY_NOT_RUN_OR_WORKSPACE_IDENTITY",
+        "group_order": ["battery", "dispatch_and_prices", "costs", "financing", "review", "notes"],
+        "battery": {"values": {f.name: str(getattr(config.battery, f.name)) for f in fields(Battery)},
+                    "units": {**{name: unit for name, _label, unit in EDIT_FIELDS},
+                              "charge_power_mw": "MW", "grid_import_limit_mw": "MW", "grid_export_limit_mw": "MW",
+                              "duration_hours": "hours", "soc_min": "fraction", "soc_max": "fraction",
+                              "initial_energy_mwh": "MWh", "terminal_energy_mwh": "MWh", "useful_life_years": "years"}},
+        "dispatch_and_prices": {"mode": config.mode.value, "time_basis": "UTC", "rows": rows,
+                                "total_rows": len(config.points), "truncated": len(config.points) > len(rows),
+                                "units": {**dict.fromkeys(power_fields, "MW"), **dict.fromkeys(price_fields, "EUR/MWh")},
+                                "capacity": dict(unavailable), "ancillary": dict(unavailable), "tolling": dict(unavailable)},
+        "costs": {"variable_om": {"status": "DECLARED", "value": str(contract.variable_om_eur_per_dc_mwh),
+                                  "unit": "EUR/DC MWh"},
+                  "capex": dict(unavailable), "fixed_opex": dict(unavailable), "tax": dict(unavailable)},
+        "financing": {"funding": dict(unavailable), "debt": dict(unavailable), "dscr": dict(unavailable)},
+        "review": {"validation_scope": "NATIVE_SCHEMA_ONLY", "physical_balance_verified": False,
+                   "financial_horizon_verified": False, "financial_calculation_count": 0,
+                   "persisted": False, "create_supported": False, "save_supported": False, "run_supported": False},
+        "notes": ["Declared values are not dispatch, settlement or financial verification.",
+                  "Create, Save and Run remain unavailable."],
     }
