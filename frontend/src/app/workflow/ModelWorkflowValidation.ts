@@ -250,6 +250,74 @@ export function newPpaStream(existing: StreamDraft[], operatingWindow: { start: 
   };
 }
 
+// ───────────────────────────── PPA type choice, duplicate and summary (presentation only) ─────────────────────────────
+
+export type PpaTypeValue = "fixed" | "indexed" | "scheduled";
+
+/** The ONE `PPA type` dropdown.  Only types backed by the existing canonical v1/v2 scalar/curve authority are selectable; everything else is shown
+ *  disabled with its reason and is never serialised: no cap, tier, volume or other new economics exists behind this list. */
+export const PPA_TYPE_UNAVAILABLE: ReadonlyArray<{ label: string; reason: string }> = [
+  { label: "Base + Reduced (volume cap)", reason: "Awaiting approved volume-cap economics and numerical proof." },
+  { label: "Fixed MWh volume", reason: "Not available: no released FINCO contract authority for a fixed contracted volume." },
+  { label: "Payment cap / cap indexation", reason: "Not available: no released FINCO contract authority." },
+  { label: "Tiered / cumulative", reason: "Not available: awaiting approved volume-cap economics and numerical proof." },
+  { label: "Partially indexed", reason: "Not available: an indexed share of the price is not a released FINCO contract term." },
+];
+
+export interface PpaTypeState {
+  /** Current value of the dropdown (null for a non-PPA stream, which has no PPA type). */
+  value: PpaTypeValue | null;
+  /** False when the type is shown but cannot be changed here, with the reason. */
+  editable: boolean;
+  reason: string | null;
+  /** Whether each selectable option may be chosen from the current state (`scheduled` needs a version-2 book and no protected price terms). */
+  allowed: Record<PpaTypeValue, { ok: boolean; reason: string | null }>;
+}
+
+export function ppaTypeState(stream: StreamDraft, preserved: string[], version: number, indexedIntent = false): PpaTypeState {
+  const none = { ok: false, reason: null as string | null };
+  if (stream.type !== "ppa") return { value: null, editable: false, reason: null, allowed: { fixed: none, indexed: none, scheduled: none } };
+  const protectedTerms = preserved.filter((k) => k !== "reference_stream_id");
+  const klass = contractClass(stream, preserved);
+  const value: PpaTypeValue = stream.curve ? "scheduled" : indexedIntent || klass === "Indexed" ? "indexed" : "fixed";
+  if (stream.curve) {
+    return { value, editable: false, reason: "A scheduled price curve is edited in the table below; it is not flattened or converted to another type here.", allowed: { fixed: none, indexed: none, scheduled: { ok: true, reason: null } } };
+  }
+  if (protectedTerms.length > 0) {
+    return { value, editable: false, reason: `Protected price terms (${protectedTerms.map((k) => k.replace(/_/g, " ")).join(", ")}) are preserved read-only, so the type cannot be changed here.`, allowed: { fixed: none, indexed: none, scheduled: none } };
+  }
+  return {
+    value, editable: true, reason: null,
+    allowed: {
+      fixed: { ok: true, reason: null }, indexed: { ok: true, reason: null },
+      scheduled: version === 2 ? { ok: true, reason: null } : { ok: false, reason: "A scheduled price curve requires a version-2 contract book." },
+    },
+  };
+}
+
+/** The draft patch for choosing `choice`; null when the choice is not allowed.  `fixed` only zeroes the indexation rate, `scheduled` starts the
+ *  existing one-point curve from the current tariff; `indexed` changes nothing (the user must then enter a rate above 0). */
+export function applyPpaType(stream: StreamDraft, preserved: string[], version: number, choice: PpaTypeValue): Partial<StreamDraft> | null {
+  const state = ppaTypeState(stream, preserved, version);
+  if (!state.editable || !state.allowed[choice].ok) return null;
+  if (choice === "fixed") return { indexation_rate: "0" };
+  if (choice === "scheduled") return { curve: [{ period_start: stream.start_date, price_eur_mwh: stream.price_eur_mwh }], indexation_rate: "0" };
+  return {};
+}
+
+/** Copy of a plain PPA with a NEW identity; null when the contract carries protected terms, a curve or is not a PPA (nothing protected is cloned). */
+export function duplicatePpa(existing: StreamDraft[], source: StreamDraft, preserved: string[]): StreamDraft | null {
+  if (source.type !== "ppa" || source.curve || preserved.length > 0) return null;
+  return { ...source, id: nextUniqueId(existing.map((s) => s.id), `${source.id.trim() || "ppa"}-copy`), source_ref: "", isNew: true };
+}
+
+/** One-line numbers-first summary of a contract; every figure is the user's own typed text. */
+export function streamSummary(stream: StreamDraft, klass: ContractClass): string {
+  const share = stream.volume_share.trim() === "" ? "residual" : `${Math.round(Number(stream.volume_share) * 1e6) / 1e4}%`;
+  const price = stream.price_eur_mwh.trim() === "" ? "no tariff" : `${stream.price_eur_mwh} €/MWh`;
+  return `${klass} · ${share} · ${price} · ${stream.start_date || "?"} → ${stream.end_date || "?"}`;
+}
+
 /** Number of leaf edits between the persisted model and the draft. */
 export function countContractEdits(saved: ContractModel, draft: ContractModel): number {
   let count = Math.abs(saved.streams.length - draft.streams.length);
