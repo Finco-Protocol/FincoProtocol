@@ -228,3 +228,42 @@ def test_declaration_is_strict_and_has_no_missing_defaults(explicit_inputs, faul
     if fault == "over-size": serialized = " " * (candidate.MAX_DECLARATION_BYTES + 1)
     with pytest.raises(candidate.BessStandaloneCandidateError):
         candidate.prepare_candidate(explicit_inputs, json.dumps(raw), serialized)
+
+
+def test_private_document_roundtrip_preserves_identity_without_granting_capabilities(explicit_inputs):
+    raw = native_document()
+    doc = declaration(explicit_inputs, raw)
+    with patch("app.persistence.projects_repository.save_project", side_effect=AssertionError("write")), \
+         patch("app.services.production_financial_authority.run_clean_production", side_effect=AssertionError("Run")):
+        encoded = candidate.export_candidate_document(explicit_inputs, json.dumps(raw), json.dumps(doc))
+        restored = candidate.import_candidate_document(encoded)
+    assert restored.review() == prepare(explicit_inputs, raw, doc).review()
+    assert not restored.review()["capability"]["persisted"]
+    assert not restored.review()["capability"]["save_supported"]
+
+
+@pytest.mark.parametrize("mutation", ["unknown_root", "unknown_base", "missing_base", "identity", "version", "native"])
+def test_private_document_rejects_loss_tampering_and_approval(explicit_inputs, mutation):
+    raw = native_document()
+    obj = json.loads(candidate.export_candidate_document(explicit_inputs, json.dumps(raw), json.dumps(declaration(explicit_inputs, raw))))
+    if mutation == "unknown_root": obj["approved"] = True
+    elif mutation == "unknown_base": obj["base_inputs"]["approved"] = True
+    elif mutation == "missing_base": obj["base_inputs"].pop("info")
+    elif mutation == "identity": obj["identity"]["base_inputs_sha256"] = "0" * 64
+    elif mutation == "version": obj["version"] = True
+    elif mutation == "native": obj["native_json"] = obj["native_json"].replace('"variable_om_eur_per_dc_mwh":1', '"variable_om_eur_per_dc_mwh":2')
+    with pytest.raises(candidate.BessInputError):
+        candidate.import_candidate_document(json.dumps(obj))
+
+
+def test_private_document_rejects_duplicate_nonfinite_and_size():
+    for raw in ('{"version":1,"version":1}', '{"version":NaN}', ' ' * (candidate.MAX_DOCUMENT_BYTES + 1)):
+        with pytest.raises(candidate.BessInputError):
+            candidate.import_candidate_document(raw)
+
+
+def test_private_document_never_silently_drops_prepared_native_inputs(explicit_inputs):
+    raw = native_document()
+    prepared = prepare(explicit_inputs, raw)
+    with pytest.raises(candidate.BessInputError):
+        candidate.export_candidate_document(prepared.project_inputs, json.dumps(raw), json.dumps(declaration(explicit_inputs, raw)))

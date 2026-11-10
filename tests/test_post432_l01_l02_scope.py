@@ -102,7 +102,12 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
 
 def test_the_accepted_runner_and_bess_preview_behaviour_is_unchanged():
     for path in sorted(O.SOURCE_PATHS | B.APP_PATHS):
-        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
+        if path == 'app/services/bess_setup_preview.py':
+            # One owner-approved nonpersisting preview source successor only.
+            assert N.exact_blobs_ok() and path in N.SOURCE_PATHS and path in N.SUPERSEDED_SOURCE_PATHS
+            assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == N.manifest()['source_blobs'][path]
+        else:
+            assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     assert 'tests.on_bess01_scope' in C.COHORT_MODULES and 'tests.onaccept01_scope' in C.COHORT_MODULES
     assert C.COHORT_MODULES.index('tests.on_bess01_scope') < C.COHORT_MODULES.index('tests.onaccept01_scope') < C.COHORT_MODULES.index(X.SELF_MODULE)
 

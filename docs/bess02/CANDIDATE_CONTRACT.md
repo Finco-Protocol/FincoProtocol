@@ -3,7 +3,8 @@
 `app/services/bess_standalone_candidate.py` is an unmounted, pure preparation
 boundary for an independently reviewed native merchant BESS input. It does not
 create a user project, save a draft, invoke finance, publish a result or grant a
-capability. The shipped Storage preview and protected reference are unchanged.
+capability. The protected reference remains unchanged. The authenticated Storage preview
+now adds a bounded declared-input review without granting a lifecycle.
 The existing `app/workbook/bess_config.py` activation literal remains false.
 
 A caller must supply a complete typed `ProjectInputs`, a strict native battery
@@ -50,3 +51,32 @@ approve project-store authority, tax/depreciation/funding semantics, merchant
 case and reserve policy, then prove transactional ownership/CSRF/CAS/idempotency
 and immutable run identities. It must never enable the protected Storage
 reference or infer readiness from successful engine-only numerical tests.
+
+
+Private candidate document transport is an unmounted string-to-string API.
+`export_candidate_document` checks that every original base dataclass field and
+its complete fingerprint survive the existing core serializer. The native
+contract and declaration travel separately because the core serializer does
+not represent native technical subclasses. `import_candidate_document` refuses
+unknown or omitted serialized fields, duplicate keys, nonfinite numbers,
+oversized documents, changed content hashes and forged approval fields, then
+repeats the complete preparation checks. These content hashes are not signed
+approval: a new explicit declaration can describe a different candidate.
+This local document roundtrip is not canonical Save/Reload, project storage,
+workspace ownership or Run History evidence. Prepared native input cannot be
+silently flattened through the base serializer.
+
+The existing authenticated preview response now appends `declared_terms` with
+Battery, Dispatch & prices, Costs, Financing, Review and Notes groups. It shows
+at most 24 declared dispatch rows with total count, truncation and explicit
+units, omitting private source references. Variable O&M preserves a real zero;
+absent CAPEX, fixed OPEX, funding, debt, DSCR and tax remain null with
+NOT_AVAILABLE. No revenues or financial results are inferred. Schema review
+does not prove physics or the complete financial horizon. Existing validation
+and Create/Save/Run refusals remain in force.
+
+React rendering of these groups is deferred: concurrent PR #438 owns the
+shared Financing bundle. This PR changes no React source or compiled bundle;
+the new server response field is additive and the existing client ignores it.
+The declared-input response is a bounded backend handoff, not completion of the
+requested compact editor or viewport/keyboard acceptance for new controls.

@@ -268,3 +268,68 @@ def prepare_candidate(project_inputs: ProjectInputs, native_json: str, declarati
     return StandaloneCandidate(candidate_inputs, native_hash, base_hash,
                                hashlib.sha256(_canonical(declaration).encode()).hexdigest(), axis,
                                tuple(sorted(declaration["policy_references"].items())))
+
+
+MAX_DOCUMENT_BYTES = 6_000_000
+_DOCUMENT_KEYS = frozenset({"version", "scope", "base_inputs", "native_json", "declaration_json", "identity"})
+
+
+def _document_identity(candidate: StandaloneCandidate) -> dict:
+    return {"base_inputs_sha256": candidate.base_input_sha256,
+            "native_inputs_sha256": candidate.native_input_sha256,
+            "declaration_sha256": candidate.declaration_sha256}
+
+
+def export_candidate_document(project_inputs: ProjectInputs, native_json: str, declaration_json: str) -> str:
+    """Serialize explicit base inputs losslessly for private review, never Save.
+
+    The core serializer cannot carry native technical subclasses. Native JSON
+    therefore travels separately; any original field lost by that serializer
+    is refused rather than defaulted or silently omitted.
+    """
+    from finco_core.inputs.serialization import project_inputs_from_dict, project_inputs_to_dict
+    prepared = prepare_candidate(project_inputs, native_json, declaration_json)
+    try:
+        base = project_inputs_to_dict(project_inputs)
+        restored = project_inputs_from_dict(base)
+        if asdict(project_inputs) != asdict(restored) or input_fingerprint(project_inputs) != input_fingerprint(restored):
+            raise BessStandaloneCandidateError("BESS02_DOCUMENT_INPUT_LOSS")
+        result = _canonical({"version": 1, "scope": "CANDIDATE_REVIEW_ONLY", "base_inputs": base,
+                             "native_json": parse_native_contract(native_json).canonical_json,
+                             "declaration_json": _canonical(_declaration(declaration_json)),
+                             "identity": _document_identity(prepared)})
+        if len(result.encode("utf-8")) > MAX_DOCUMENT_BYTES:
+            raise BessStandaloneCandidateError("BESS02_DOCUMENT_SIZE")
+        return result
+    except BessInputError:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError) as exc:
+        raise BessStandaloneCandidateError("BESS02_DOCUMENT_INVALID") from exc
+
+
+def import_candidate_document(raw: str) -> StandaloneCandidate:
+    """Revalidate a bounded review document. Grants no lifecycle capability."""
+    from finco_core.inputs.serialization import project_inputs_from_dict, project_inputs_to_dict
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_DOCUMENT_BYTES:
+        raise BessStandaloneCandidateError("BESS02_DOCUMENT_SIZE")
+    try:
+        obj = json.loads(raw, object_pairs_hook=_unique)
+        if (not isinstance(obj, dict) or set(obj) != _DOCUMENT_KEYS
+                or type(obj["version"]) is not int or obj["version"] != 1
+                or obj["scope"] != "CANDIDATE_REVIEW_ONLY"
+                or not isinstance(obj["base_inputs"], dict)
+                or not isinstance(obj["native_json"], str)
+                or not isinstance(obj["declaration_json"], str)):
+            raise BessStandaloneCandidateError("BESS02_DOCUMENT_SCHEMA")
+        restored = project_inputs_from_dict(obj["base_inputs"])
+        # Refuse unknown fields, omitted defaults and type-changing coercions.
+        if _canonical(project_inputs_to_dict(restored)) != _canonical(obj["base_inputs"]):
+            raise BessStandaloneCandidateError("BESS02_DOCUMENT_INPUT_LOSS")
+        prepared = prepare_candidate(restored, obj["native_json"], obj["declaration_json"])
+        if obj["identity"] != _document_identity(prepared):
+            raise BessStandaloneCandidateError("BESS02_DOCUMENT_IDENTITY")
+        return prepared
+    except BessInputError:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError) as exc:
+        raise BessStandaloneCandidateError("BESS02_DOCUMENT_INVALID") from exc

@@ -1,6 +1,7 @@
 {
   "base": "c26b968683f1de63f73f92789dcef947e912822e",
   "base_blobs": {
+    "app/services/bess_setup_preview.py": "480abfdccb6c6cd2a57033a1c93904cf90fefa04",
     "docs/ci_v4/SOURCE_SUCCESSOR.json": "fcedb52f94f80992c660ff625f838ca742ca9c3e",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "61b94b0d99f7d6bb0e5935e084ad20f2410f8fa1",
     "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "f37e222d4109913fd8d686b5ec77f1855acb7542",
@@ -19,8 +20,9 @@
   "base_tree": "bd65189555850dca7982ce9f5e9314a73b923eef",
   "schema_version": "BESS02_DEFAULT_OFF_CANDIDATE_EXACT_SOURCE_V1",
   "source_blobs": {
-    "app/services/bess_standalone_candidate.py": "78e7ddd88d8cf98a5fb71e9b62eb404031b6b601",
-    "docs/bess02/CANDIDATE_CONTRACT.md": "19f6be59edb3ce866c33da9dcb7c4f1b37503c5d",
+    "app/services/bess_setup_preview.py": "9dd38b32fb84ffde398bd4f52fa93024e5283d6a",
+    "app/services/bess_standalone_candidate.py": "1d3e1796e07cf1803a5ef32cc3496e5b62676bee",
+    "docs/bess02/CANDIDATE_CONTRACT.md": "f392cc10c17ecb64e3df3be9ca9286c6975050da",
     "docs/ci_v4/SOURCE_SUCCESSOR.json": "92a344a942b705b570e96b7eb9a707893c4096f9",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "4d49c507de827c837d2f75e72d991900adb5e316",
     "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "257ebf4a4d9d9d2ad4a3481c7b9134a6cac9befc",
@@ -29,13 +31,14 @@
     "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "c7cc1b4dd491ee408ad93afb544389cb657887b8",
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "d2089e86f69e5a4c8f92b33e20eb2ce2990f0211",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "ed0eb08b4b301cf79e19289bdfe59b6bfaa6fa6f",
-    "tests/bess02_scope.py": "acb42196ca4f8b7733f75febeec40bda0ee8ca98",
+    "tests/bess02_scope.py": "323512b70fbf598258e4bc48dd04bdddaf53c439",
     "tests/fin_v2_cohorts.py": "54216cffd5ded691df80a5dc57c7cc7043059b06",
     "tests/post432_l01_l02_scope.py": "b3e71b166d66c44147fdbe06ad7374cfd2a9ca6f",
     "tests/r02_ppa_ux_scope.py": "9e22e0767e2360e3d09015f12b6e3b6c4c5560cb",
-    "tests/test_bess02_scope.py": "df1d994e7daa4b3e68ce0b7f65283463a96dccc8",
-    "tests/test_bess_standalone_candidate.py": "050d574ffbd7832de7b3ba7a15e67a6d5fcb28de",
-    "tests/test_post432_l01_l02_scope.py": "b8784c64a4b1b7172f5b50d1fd466b0cd6348bd7",
+    "tests/test_bess02_scope.py": "31d76093b3a0a0bc152338382b69a18513fd0f75",
+    "tests/test_bess_declared_preview.py": "98e5cdf008fa85abad0e633811666b49fe035d4e",
+    "tests/test_bess_standalone_candidate.py": "76886d329afb56b531e924356d1449597104beba",
+    "tests/test_post432_l01_l02_scope.py": "ba93b6b951b97aa594aa66337ebe4ae62bb2a3d2",
     "tests/test_r02_ppa_ux_scope.py": "c0b341c29aa70073e07efe3a1d4360bb4c666067",
     "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6"
   }

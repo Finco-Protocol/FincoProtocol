@@ -226,3 +226,24 @@ def test_r02_outer_read_scope_shares_successor_memo_and_drops_it_before_mutation
             shutil.rmtree(evidence)
     with R.scoped():
         assert B.exact_blobs_ok(root)
+
+
+def test_one_preview_service_successor_is_exact_and_all_routes_and_activation_stay_frozen():
+    from tests import on_bess01_scope as P
+    path = 'app/services/bess_setup_preview.py'
+    assert B.SUPERSEDED_SOURCE_PATHS == {path}
+    assert path in B.SOURCE_PATHS and path in B.SUPERSEDED
+    recorded = B.manifest()
+    assert recorded['base_blobs'][path] == subprocess.check_output(
+        ['git', 'rev-parse', B.BASE + ':' + path], cwd=B.ROOT, text=True).strip()
+    with C.call_scope():
+        assert P.exact_blobs_ok() and B.exact_blobs_ok() and C.valid()
+        assert P.supersedes(path, recorded['source_blobs'][path])
+        assert not P.supersedes(path, '0'*40)
+        assert C.matches(path, (B.ROOT/path).read_bytes())
+    for protected in ('app/v2/bess_setup_router.py', 'app/v2/react_poc_router.py',
+                      'app/workbook/bess_config.py', 'app/services/project_library_service.py',
+                      'app/services/reference_seed_service.py', 'app/product_capability.py'):
+        assert protected not in B.SOURCE_PATHS
+        assert (B.ROOT/protected).read_bytes() == subprocess.check_output(
+            ['git', 'show', B.BASE + ':' + protected], cwd=B.ROOT)
