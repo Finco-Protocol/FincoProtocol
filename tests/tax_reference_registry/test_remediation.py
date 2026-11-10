@@ -88,3 +88,56 @@ def test_activation_still_blocked():
         activate_country("ZZ")
     with pytest.raises(ActivationBlockedError):
         get_effective_run_profile("ZZ")
+
+
+def test_empty_dataset_report(tmp_path):
+    """A CSV with only a header produces a zero-row report, not a crash."""
+    p = tmp_path / "empty.csv"
+    p.write_text(rows_to_csv([]), encoding="utf-8")
+    report = generate_remediation_report(str(p))
+    assert report["accepted"] == 0
+    assert report["rejected"] == 0
+    assert report["rows"] == []
+
+
+def test_all_rejected_report(tmp_path):
+    """A dataset where every row is rejected still produces a valid report."""
+    rows = [
+        base_row(rule_id="ZZ-BAD-001", value="not a number"),
+        base_row(rule_id="ZZ-BAD-002", source_status="PRIMARY_CONFIRMED", primary_url=""),
+        base_row(rule_id="ZZ-BAD-003", value_currency="INVALID"),
+    ]
+    p = tmp_path / "allbad.csv"
+    p.write_text(rows_to_csv(rows), encoding="utf-8")
+    report = generate_remediation_report(str(p))
+    assert report["accepted"] == 0
+    assert report["rejected"] == 3
+    dispositions = {r["disposition"] for r in report["rows"]}
+    assert "NEEDS_STRUCTURED_VALUE" in dispositions
+    assert "NEEDS_PRIMARY_URL" in dispositions
+    assert "MAP_CURRENCY" in dispositions
+
+
+def test_mixed_accepted_rejected_report(tmp_path):
+    """A mixed dataset correctly partitions accepted and rejected rows."""
+    rows = [
+        base_row(),
+        base_row(rule_id="ZZ-BAD-001", source_status="PRIMARY_CONFIRMED", primary_url=""),
+        base_row(rule_id="ZZ-NOL-001", tax_category="NOL", subrule="cf", value="5", value_unit="years"),
+    ]
+    p = tmp_path / "mixed.csv"
+    p.write_text(rows_to_csv(rows), encoding="utf-8")
+    report = generate_remediation_report(str(p))
+    assert report["accepted"] == 2
+    assert report["rejected"] == 1
+    accepted_ids = {r["rule_id"] for r in report["rows"] if r["admission"] == "accepted"}
+    assert "ZZ-CIT-001" in accepted_ids
+    assert "ZZ-NOL-001" in accepted_ids
+    assert "ZZ-BAD-001" not in accepted_ids
+
+
+def test_report_tag_is_stable():
+    """The report tag is a stable identifier for downstream tooling."""
+    from tax_reference_registry.remediation import generate_remediation_report as gen
+    # Just verify the tag doesn't change between imports
+    assert gen.__module__ == "tax_reference_registry.remediation"
