@@ -16,8 +16,8 @@ def test_f03_immutable_base_and_exact_source_registration():
     assert set(d["base_blobs"]) == F.SUPERSEDED
     assert _git("rev-parse", F.BASE + "^{tree}") == F.BASE_TREE
     assert F.signature_ok() and F.exact_blobs_ok()
-    assert F.reviewed_handoff_ok(F.ROOT, None, F.REGISTRY)
-    assert F.reviewed_handoff_ok(F.ROOT, None, F.L_MODULE)
+    assert F.reviewed_edits_ok() and set(F.HANDOFFS) == {
+        F.REGISTRY, F.PREDECESSOR, F.BESS_TEST, F.R02_MODULE, F.R02_TEST, F.POST432_TEST}
     assert F.CI_PATHS == frozenset((".github/workflows/finval_f01_acceptance.yml",))
     assert not any(p.startswith(F.FORBIDDEN) and p not in F.CI_PATHS for p in F.OWNED_PATHS)
     assert F.reviewed_workflow_ok()
