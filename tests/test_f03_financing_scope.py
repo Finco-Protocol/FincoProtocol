@@ -85,3 +85,114 @@ def test_f03_older_ci_guard_rejects_unreviewed_workflow_pins():
     assert F.reviewed_workflow_ok(actual=current)
     assert not F.reviewed_workflow_ok(actual=current.replace(b"timeout-minutes: 45", b"timeout-minutes: 450"))
     assert not V._f03_ci_owns(".github/workflows/ci_v4_pr.yml", F.ROOT, None)
+
+
+# ---- BESS02 -> F03 finite forward successor: positive and adversarial controls (every variant is an isolated clone commit) ----
+import pytest
+from tests import bess02_scope as B, r02_ppa_ux_scope as R, fin_v2_cohorts as C
+
+BESS_ACCEPTED_MAIN = "01a26f9a87a12548c4f151caebe8ee933db7445c"
+
+
+@pytest.fixture(scope="module")
+def clone(tmp_path_factory):
+    root = tmp_path_factory.mktemp("f03-gov") / "repo"
+    subprocess.check_call(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(root)])
+    return root
+
+
+def _variant(root, edits=None, mode=None, remove=()):
+    """Commit one mutated copy of the evaluated HEAD in the isolated clone and return its sha; the clone is restored afterwards."""
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root).decode().strip()
+    g = lambda *a: subprocess.check_output(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *a], cwd=root)
+    try:
+        for path, fn in (edits or {}).items():
+            f = root / path
+            f.write_bytes(fn(f.read_bytes()))
+        for path in remove:
+            (root / path).unlink()
+        if mode:
+            (root / mode).chmod(0o755)
+        g("add", "-A")
+        g("update-index", "--chmod=+x", mode) if mode else None
+        g("commit", "-q", "--allow-empty", "-m", "variant")
+        return g("rev-parse", "HEAD").decode().strip()
+    finally:
+        g("checkout", "-q", "-f", base)
+        g("clean", "-fdxq")
+
+
+def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
+    ref = "HEAD"
+    assert F.signature_ok(clone, ref) and F.exact_blobs_ok(clone, ref)
+    assert B.signature_ok(clone, ref) and B.exact_blobs_ok(clone, ref) and R.signature_ok(clone, ref)
+    assert C.COHORT_MODULES[-2:] == ("tests.bess02_scope", "tests.f03_financing_scope")
+
+
+@pytest.mark.parametrize("name,fn", [
+    ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.f03_financing_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.fake_scope')")),
+    ("swapped_bess_f03", lambda b: b.replace(b"'tests.bess02_scope', 'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.bess02_scope')")),
+    ("bess_removed", lambda b: b.replace(b"'tests.bess02_scope', ", b"")),
+    ("f03_missing", lambda b: b.replace(b", 'tests.f03_financing_scope')", b")")),
+    ("r02_removed", lambda b: b.replace(b"'tests.r02_ppa_ux_scope', ", b"")),
+    ("earlier_reordered", lambda b: b.replace(b"'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope'", b"'tests.fin_v2_ci_scope', 'tests.fin_v2_3_scope'")),
+])
+def test_registry_mutations_are_rejected_by_f03_and_by_the_bess_chain(clone, name, fn):
+    ref = _variant(clone, {F.REGISTRY: fn})
+    assert not F.signature_ok(clone, ref), name
+    assert not B.exact_blobs_ok(clone, ref), name
+
+
+@pytest.mark.parametrize("path", sorted(F.HANDOFFS))
+def test_one_byte_in_any_reviewed_handoff_is_rejected_everywhere(clone, path):
+    ref = _variant(clone, {path: lambda b: b + b"\n"})
+    assert not F.signature_ok(clone, ref) and not B.signature_ok(clone, ref) and not B.exact_blobs_ok(clone, ref)
+
+
+@pytest.mark.parametrize("path", [
+    "app/services/bess_standalone_candidate.py", "app/services/bess_setup_preview.py", "app/workbook/bess_config.py",
+    "docs/bess02/SOURCE_SUCCESSOR.json", "docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json", "docs/bess_setup/SOURCE_SUCCESSOR.json"])
+def test_bess_product_default_off_flag_and_historical_manifests_must_stay_byte_identical(clone, path):
+    ref = _variant(clone, {path: lambda b: b + b"\n"})
+    assert not F.signature_ok(clone, ref) and not B.exact_blobs_ok(clone, ref)
+    assert b"ACTIVATION_ENABLED = False" in (ROOT / "app/workbook/bess_config.py").read_bytes()
+
+
+def test_wrong_ancestor_mode_and_tampered_pins_are_rejected(clone):
+    assert not F.signature_ok(clone, F.BASE)                              # BASE itself carries no successor manifest
+    assert not F.signature_ok(clone, "c26b968683f1de63f73f92789dcef947e912822e")   # a pre-BESS ancestor is the wrong parent
+    assert not F.signature_ok(clone, _variant(clone, mode="tests/bess02_scope.py"))
+    assert not F.signature_ok(clone, _variant(clone, {F.MANIFEST: lambda b: b.replace(b'"base_tree": "0f84439e', b'"base_tree": "1f84439e', 1)}))
+    forged = _variant(clone, {F.MANIFEST: lambda b: b.replace(b'"tests/bess02_scope.py": "', b'"tests/bess02_scope.py": "0000', 1)})
+    assert not F.signature_ok(clone, forged) and not B.signature_ok(clone, forged)
+
+
+def test_current_map_tamper_and_unknown_protected_path_are_rejected(clone):
+    ref = _variant(clone, {"docs/ci_v4/SOURCE_SUCCESSOR.json": lambda b: b.replace(b'"tests/fin_v2_cohorts.py": "', b'"tests/fin_v2_cohorts.py": "0000', 1)})
+    assert not F.signature_ok(clone, ref) and not B.exact_blobs_ok(clone, ref)
+    unknown = _variant(clone, {"app/v2/react_financing.py": lambda b: b + b"\n"})
+    assert not F.signature_ok(clone, unknown) and not F.exact_blobs_ok(clone, unknown)
+
+
+def test_ci_and_f01_policy_edits_are_rejected(clone):
+    for path in (F.CI_WORKFLOW, "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"):
+        assert not F.signature_ok(clone, _variant(clone, {path: lambda b: b + b"\n"})), path
+
+
+def test_bess_supersession_is_pin_exact_and_cross_path_safe():
+    pins = F.manifest()["source_blobs"]
+    reg = pins[F.REGISTRY]
+    assert B.supersedes(F.REGISTRY, reg) and B.effective_pins()[F.REGISTRY] == reg
+    assert not B.supersedes(F.REGISTRY, "0" * 40)
+    assert not B.supersedes(F.REGISTRY, pins[F.PREDECESSOR])           # a real blob pinned for another path
+    assert not B.supersedes("tests/not_superseded.py", reg)            # outside the closed set
+    assert not B.supersedes(F.REGISTRY, F.manifest()["base_blobs"][F.REGISTRY])       # the accepted BESS-only blob is no longer current under F03
+
+
+def test_no_verdict_is_cached_across_refs_or_mutations(clone):
+    bad = _variant(clone, {F.REGISTRY: lambda b: b.replace(b", 'tests.f03_financing_scope')", b")")})
+    with F.scoped(), B.scoped():
+        assert F.signature_ok(clone, "HEAD") and B.exact_blobs_ok(clone, "HEAD")
+        assert not F.signature_ok(clone, bad) and not B.exact_blobs_ok(clone, bad)    # same process, same scope, other ref
+    assert F.signature_ok(clone, "HEAD")                                             # and the positive verdict was never poisoned

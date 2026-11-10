@@ -227,7 +227,18 @@ HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n       
                                  'signature.\n'
                                  '    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())\n'
                                  "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
-                                 "'tests.bess02_scope')")],
+                                 "'tests.bess02_scope')"),
+                                ('    for path in sorted(paths):\n'
+                                 "        assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], "
+                                 'cwd=B.ROOT)\n',
+                                 '    from tests import f03_financing_scope as F\n'
+                                 '    for path in sorted(paths):\n'
+                                 '        if path in F.SOURCE_PATHS and F.signature_ok():     # one reviewed F03 successor of the shared bundle, '
+                                 'exactly at its pinned blob\n'
+                                 "            assert B._blob((B.ROOT/path).read_bytes()) == F.manifest()['source_blobs'][path]\n"
+                                 '            continue\n'
+                                 "        assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], "
+                                 'cwd=B.ROOT)\n')],
  'tests/test_post432_l01_l02_scope.py': [('    assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()\n',
                                           '    from tests import f03_financing_scope as F\n'
                                           "    nxt = 'tests.f03_financing_scope' in C.COHORT_MODULES\n"
@@ -244,7 +255,14 @@ HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n       
                                      'len(C.COHORT_MODULES)',
                                      '    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
                                      "    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == "
-                                     "TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)")]}
+                                     "TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)"),
+                                    ('                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]',
+                                     '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (F.signature_ok() and p in '
+                                     'F.SOURCE_PATHS)]'),
+                                    ('    assert X.exact_blobs_ok() and X.signature_ok()\n    data = X.manifest()\n',
+                                     '    from tests import f03_financing_scope as F\n'
+                                     '    assert X.exact_blobs_ok() and X.signature_ok()\n'
+                                     '    data = X.manifest()\n')]}
 
 
 def expected_handoff(root, path):

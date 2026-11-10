@@ -166,7 +166,11 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
     from tests import r02_ppa_ux_scope as R
     paths = R.SOURCE_PATHS | {R.MANIFEST, 'frontend/src/app/workflow/PPAEditorView.tsx',
                             'tests/onaccept01_scope.py', 'tests/tax_reference_registry_scope.py'}
+    from tests import f03_financing_scope as F
     for path in sorted(paths):
+        if path in F.SOURCE_PATHS and F.signature_ok():     # one reviewed F03 successor of the shared bundle, exactly at its pinned blob
+            assert B._blob((B.ROOT/path).read_bytes()) == F.manifest()['source_blobs'][path]
+            continue
         assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], cwd=B.ROOT)
     registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
     accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body

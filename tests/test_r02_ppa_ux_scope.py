@@ -67,6 +67,7 @@ def _bad(root):
 
 
 def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():
+    from tests import f03_financing_scope as F
     assert X.exact_blobs_ok() and X.signature_ok()
     data = X.manifest()
     assert set(data['source_blobs']) == X.OWNED_PATHS - {X.MANIFEST} and set(data['base_blobs']) == X.SUPERSEDED
@@ -77,7 +78,7 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
-                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (F.signature_ok() and p in F.SOURCE_PATHS)]
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
 
