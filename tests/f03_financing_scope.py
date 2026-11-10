@@ -35,6 +35,9 @@ SOURCE_PATHS = frozenset((
     "frontend/src/app/financing/pr3b1/termSheetModel.ts",
     "frontend/src/app/financing/pr3b1/types.ts",
     "static/react/finco-react.js",
+    # Already reviewed via CI_PATHS and WORKFLOW_EDITS; R02's exact-source
+    # acceptance must recognise precisely this protected successor path.
+    ".github/workflows/finval_f01_acceptance.yml",
 ))
 TEST_PATHS = frozenset((
     "tests/test_f02_financing_period_evidence.py",
