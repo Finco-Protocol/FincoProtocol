@@ -21,11 +21,11 @@ def candidate_tree(tmp_path_factory):
 
 
 def test_registered_candidate_and_full_predecessor_chain():
-    from tests import post432_l01_l02_scope as L, onaccept01_scope as A, on_bess01_scope as P
+    from tests import post432_l01_l02_scope as L, onaccept01_scope as A, on_bess01_scope as P, r02_ppa_ux_scope as R
     assert B.__name__ in C.COHORT_MODULES
     with C.call_scope():
         assert B.signature_ok() and B.exact_blobs_ok()
-        assert L.exact_blobs_ok() and A.exact_blobs_ok() and P.exact_blobs_ok()
+        assert L.exact_blobs_ok() and A.exact_blobs_ok() and P.exact_blobs_ok() and R.exact_blobs_ok()
         assert C.valid()
 
 
@@ -160,3 +160,16 @@ def test_f01_generated_artifacts_are_inert_and_never_source_authority(candidate_
         source.write_bytes(source_bytes)
         shutil.rmtree(evidence)
     assert B.exact_blobs_ok(root)
+
+
+def test_accepted_r02_product_and_historical_manifest_are_unchanged():
+    from tests import r02_ppa_ux_scope as R
+    paths = R.SOURCE_PATHS | {R.MANIFEST, 'frontend/src/app/workflow/PPAEditorView.tsx',
+                            'tests/onaccept01_scope.py', 'tests/tax_reference_registry_scope.py'}
+    for path in sorted(paths):
+        assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], cwd=B.ROOT)
+    registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
+    accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
+                    if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'COHORT_MODULES')
+    assert C.COHORT_MODULES == accepted + ('tests.bess02_scope',)
+    assert C.COHORT_MODULES[-3:] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')

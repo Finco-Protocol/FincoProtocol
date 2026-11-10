@@ -112,6 +112,35 @@ def test_existing_operating_engine_has_gross_revenue_and_every_cost_exactly_once
         run_clean_production(prepared.project_inputs, project_type="Storage")
 
 
+def test_review_reports_actual_unresolved_authorities_without_financial_execution(explicit_inputs):
+    prepared = prepare(explicit_inputs)
+    with patch("app.services.production_financial_authority.run_clean_production", side_effect=AssertionError("financial Run")), \
+         patch("app.persistence.workspace_repository.save_workspace_state", side_effect=AssertionError("draft write")):
+        review = prepared.review()
+    authority = review["financial_authority"]
+    assert authority["owner_approval"] == "NOT_PROVEN"
+    assert authority["accounting"]["book_capitalization_authority"]["value"] == "UNRESOLVED"
+    assert authority["tax_country_policy"]["value"] is None
+    assert authority["tax_country_policy"]["availability"] == "NOT_AVAILABLE"
+    assert all(not review["capability"][key] for key in ("create_supported", "save_supported", "run_supported"))
+
+
+def test_recorded_user_tax_policy_is_not_financial_owner_or_release_approval(explicit_inputs):
+    project = replace(explicit_inputs, tax=replace(explicit_inputs.tax, country_tax_policy_id="synthetic-user-policy"))
+    raw = native_document()
+    doc = declaration(project, raw)
+    doc["policy_references"] = {key: "user-says-approved" for key in candidate.POLICY_REFERENCES}
+    review = prepare(project, raw, doc).review()
+    authority = review["financial_authority"]
+    assert authority["tax_country_policy"]["value"] == "synthetic-user-policy"
+    assert authority["tax_country_policy"]["availability"] == "RECORDED"
+    assert authority["accounting"]["book_capitalization_authority"]["value"] == "UNRESOLVED"
+    assert authority["owner_approval"] == "NOT_PROVEN"
+    assert all(not review["capability"][key] for key in ("create_supported", "save_supported", "run_supported"))
+    with pytest.raises(candidate.BessStandaloneCandidateError, match="CANONICAL_CREATOR_RELEASE_CLOSED"):
+        candidate.create_standalone_project(review)
+
+
 @pytest.mark.parametrize("fault", ["native-edit", "source-cost-edit", "source-policy-edit", "power-cost-basis", "asset-cost-basis",
                                   "missing-zero-asset", "asset-class", "asset-spending", "forged-ready"])
 def test_changed_cost_power_policy_or_native_inputs_require_new_exact_declaration(explicit_inputs, fault):

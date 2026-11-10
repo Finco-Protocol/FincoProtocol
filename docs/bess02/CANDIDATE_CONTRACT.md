@@ -16,6 +16,13 @@ model, factory fallback, tax jurisdiction, depreciation policy or lender case is
 selected. User-provided policy references are provenance only. They cannot
 represent an owner's approval or a verified statutory tax opinion.
 
+The read-only review exposes the actual recorded capitalization, legal-reserve
+and cash-interest authorities, including `UNRESOLVED`, plus whether the supplied
+country tax policy ID is recorded or absent. A recorded ID or a user reference
+that says "approved" never changes `owner_approval=NOT_PROVEN` or grants a
+capability. These details locate the missing financial contracts; they do not
+choose or implement a policy and do not invoke a financial calculation.
+
 Preparation rejects legacy BESS economics, hybrid yield inputs, concurrent
 PPA/multistream/CO2 revenue, post-COD events, nonzero energy inventory, implicit
 or floating interest rates, incomplete cost declarations, changed cost/power

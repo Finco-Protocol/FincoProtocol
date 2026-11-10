@@ -111,13 +111,18 @@ def _tip_pins(root, ref):
     T = _tip()
     if T is None or not T.signature_ok(root, ref):
         return {}
-    return T.effective_pins(root, ref)
+    return dict(T.effective_pins(root, ref))
+
+
+def _tip_map_keys(root, ref):
+    T = _tip()
+    return tuple(T.map_keys(root, ref)) if T is not None and T.signature_ok(root, ref) else ()
 
 
 def later_owned(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     T = _tip()
-    return (T.OWNED_PATHS | {T.MANIFEST} | T.later_owned(root, ref)) if T is not None and T.signature_ok(root, ref) else frozenset()
+    return T.closure_paths(root, ref) if T is not None and T.signature_ok(root, ref) else frozenset()
 
 
 def later_supersedes(path, value, repo=None, ref=None):
@@ -154,7 +159,7 @@ def _reviewed_handoffs_ok(root, ref):
 def _maps_ok(root, ref, pins, closure=True):
     for path in CURRENT_MAPS:
         expected = json.loads(_base(root,'show',BASE+':'+path))
-        for key in ((SUPERSEDED - CURRENT_MAPS) | (set(_tip_pins(root,ref)) - CURRENT_MAPS)) & expected['source_blobs'].keys():
+        for key in ((SUPERSEDED - CURRENT_MAPS) | (set(_tip_pins(root,ref)) & set(_tip_map_keys(root,ref)))) & expected['source_blobs'].keys():
             expected['source_blobs'][key] = pins[key]
         raw = (json.dumps(expected,indent=2,sort_keys=True)+'\n').encode()
         if _blob(raw) != pins[path] or (closure and _read(root,path,ref) != raw):

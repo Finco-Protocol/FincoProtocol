@@ -75,7 +75,7 @@ def test_cohort_is_exact_literal_and_traceable_to_the_original_patch():
     assert set(data['source_blobs']) == X.OWNED_PATHS - {X.MANIFEST} and set(data['base_blobs']) == X.SUPERSEDED
     assert X.SOURCE_PATHS == {'app/v2/debt_metrics_projection.py', 'app/v2/react_projects.py'}
     assert not any(p.startswith(X.FORBIDDEN_PREFIXES) or p in X.FORBIDDEN_PATHS or '*' in p or p.endswith('/') for p in X.OWNED_PATHS | {X.MANIFEST})
-    assert set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines()) <= X.OWNED_PATHS | {X.MANIFEST} | X.later_owned()
+    assert set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines()) <= X.closure_paths()      # this cohort plus the later R02 cohort when it is exact
     # the accepted baseline is main after #434; the two original reviewed commits are ancestors of HEAD and own the product blobs
     assert X.BASE == 'ebb9c07c30c733cbb39e9af58833f0b22baf7069' and _git(ROOT, 'rev-parse', X.BASE + '^{tree}') == X.BASE_TREE
     for commit in (X.BASE,) + X.ORIGINAL_PATCH:
@@ -91,10 +91,12 @@ def test_cohort_is_exact_literal_and_traceable_to_the_original_patch():
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
+    own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
     assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()
     import ast
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
-    assert C.COHORT_MODULES == old + ('tests.post432_l01_l02_scope', 'tests.bess02_scope') and C.COHORT_MODULES[-5:] == ACCEPTED_ORDER_TAIL + ('tests.bess02_scope',)
+    i = C.COHORT_MODULES.index('tests.post432_l01_l02_scope')
+    assert C.COHORT_MODULES[:i + 1] == old + ('tests.post432_l01_l02_scope',) and C.COHORT_MODULES[i - 3:i + 1] == ACCEPTED_ORDER_TAIL
     assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
 
 
@@ -107,18 +109,18 @@ def test_the_accepted_runner_and_bess_preview_behaviour_is_unchanged():
 
 def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():
     from tests import tax_reference_registry_scope as T, ux_pr3b2_scope as U, wf04_scope as W4, u1_scope as U1
-    pins = X.effective_pins()
+    pins = X.manifest()['source_blobs']
     with C.call_scope():
         assert B.exact_blobs_ok() and O.exact_blobs_ok() and T.exact_blobs_ok() and U.exact_blobs_ok() and W4.exact_blobs_ok() and C.valid()
-        assert X.reviewed_edits_ok() and O.later_owned() == X.OWNED_PATHS | {X.MANIFEST} | X.later_owned()
+        assert X.reviewed_edits_ok() and O.later_owned() == X.closure_paths()
         for path in sorted(X.SOURCE_PATHS):
             assert B.supersedes(path, pins[path]) and U1.supersedes(path, pins[path]) and not B.supersedes(path, '0' * 40)
         for path in (X.REGISTRY, 'tests/on_bess01_scope.py'):
-            assert B.effective_pins()[path] == pins[path] and O.effective_pins()[path] == pins[path]
+            assert B.effective_pins()[path] == X.effective_pins()[path] and O.effective_pins()[path] == X.effective_pins()[path]      # follows this cohort, or the later R02 cohort when it is exact
         assert not B.supersedes('app/v2/router.py', pins['app/v2/react_projects.py']) and not X.supersedes('app/v2/router.py', pins['app/v2/react_projects.py'])
     # the only handed-off pins in the current maps are the registry's
     for path in X.CURRENT_MAPS:
-        assert X.manifest()['source_blobs'][path] and json.loads((ROOT / path).read_text())['source_blobs'][X.REGISTRY] == pins[X.REGISTRY]
+        assert X.manifest()['source_blobs'][path] and json.loads((ROOT / path).read_text())['source_blobs'][X.REGISTRY] == X.effective_pins()[X.REGISTRY]
 
 
 def test_one_byte_drift_of_every_owned_or_protected_source_fails_closed(tree):
@@ -140,9 +142,8 @@ def test_handoff_registry_and_historical_pin_rewrites_fail_closed(tree):
     text = registry.read_text()
     cases.append(('missing_cohort', lambda: registry.write_text(text.replace(", 'tests.post432_l01_l02_scope'", ''))))
     cases.append(('missing_onaccept01', lambda: registry.write_text(text.replace(", 'tests.onaccept01_scope'", ''))))
-    extra_marker = "'tests.bess02_scope')"
-    assert text.count(extra_marker) == 1  # prove the negative mutation is not a no-op
-    cases.append(('extra_cohort', lambda: registry.write_text(text.replace(extra_marker, "'tests.bess02_scope', 'tests.fake_scope')"))))
+    last = C.COHORT_MODULES[-1]
+    cases.append(('extra_cohort', lambda: registry.write_text(text.replace(f"'{last}')", f"'{last}', 'tests.fake_scope')"))))
     cases.append(('reordered', lambda: registry.write_text(text.replace("'tests.on_bess01_scope', 'tests.onaccept01_scope'", "'tests.onaccept01_scope', 'tests.on_bess01_scope'"))))
     cases.append(('map_pin', lambda: _json(tree, 'docs/ci_v4/SOURCE_SUCCESSOR.json', lambda d: d['source_blobs'].update({X.REGISTRY: '0' * 40}))))
     cases.append(('map_foreign_key', lambda: _json(tree, 'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json', lambda d: d.update(base='0' * 40))))

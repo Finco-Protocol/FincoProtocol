@@ -33,7 +33,7 @@ import { VerticalScopeBanner } from "./VerticalScope";
 import "../styles/rc-react-mvp.css";
 import "../styles/ux-pr1-workbench.css";
 import { ModelExportView } from "./workflow/ModelExportView";
-import { PPAEditorView } from "./workflow/PPAEditorView";
+import { PpaContractsEditor } from "./workflow/PpaContractsEditor";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
 import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
 import { WorkflowBar } from "./workflow/WorkflowBar";
@@ -646,7 +646,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                         <SheetFieldsEditor project={project} sheet="revenue" title="Revenue assumptions" reloadKey={dataVersion} onSaved={afterMutation} />
                       </div>
                       {revenuePayload && (
-                        <PPAEditorView
+                        <PpaContractsEditor
                           project={project}
                           protectedReference={protectedReference}
                           contracts={revenuePayload.contracts}

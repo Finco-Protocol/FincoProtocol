@@ -48,3 +48,17 @@
 .wf-jump { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 12px; padding: 6px 0; border-bottom: 1px solid var(--line, #dce3e9); }
 .wf-jump a { font-size: 12px; font-weight: 600; }
 [id^="wf-inputs-"] { min-width: 0; max-width: 100%; }
+
+/* R02 compact PPA contracts: numbers-first summary, one PPA type dropdown, collapsible bodies, notes last. Presentation only. */
+.wf-ppa-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.wf-stream-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.wf-stream-summary { margin: 0; font-size: .85rem; color: var(--muted, #55626e); overflow-wrap: anywhere; }
+.wf-stream-body { display: grid; gap: 10px; min-width: 0; }
+.wf-stream-body[hidden] { display: none; }
+.wf-ppa-type { display: grid; gap: 4px; max-width: 420px; min-width: 0; }
+.wf-ppa-type .wf-hint { overflow-wrap: anywhere; }
+.wf-ppa-notes { display: grid; gap: 8px; margin-top: 8px; justify-items: start; }
+@media (max-width: 420px) { .wf-stream-actions { width: 100%; } .wf-ppa-toolbar { justify-content: stretch; } .wf-ppa-toolbar .fm-btn { width: 100%; } }
+.wf-ppa-unavailable { font-size: .85rem; color: var(--muted, #55626e); margin-bottom: 8px; }
+.wf-ppa-unavailable ul { margin: 6px 0 0; padding-left: 18px; }
+.wf-ppa-unavailable li { overflow-wrap: anywhere; }

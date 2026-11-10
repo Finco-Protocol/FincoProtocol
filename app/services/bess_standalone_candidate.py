@@ -113,8 +113,39 @@ class StandaloneCandidate:
                             for i, start, end, hours in self.period_axis],
             "policy_reference_scope": "USER_DECLARED_PROVENANCE_NOT_FINANCIAL_OWNER_APPROVAL",
             "policy_references": dict(self.policy_references),
+            "financial_authority": _financial_authority_review(self.project_inputs),
             "capability": capability(),
         }
+
+
+def _financial_authority_review(project_inputs: ProjectInputs) -> dict:
+    """Read the supplied authority gaps without interpreting them as approval.
+
+    A country code or policy reference alone does not prove the missing
+    capitalization, reserve or tax contract. No absent field becomes zero or
+    an approved generic policy, even when another recorded field is present.
+    """
+    policy = project_inputs.accounting_policy_config
+    authorities = {}
+    for field in ("book_capitalization_authority", "legal_reserve_authority", "cash_interest_authority"):
+        authority = getattr(policy, field, None)
+        value = authority.value if isinstance(authority, Enum) else None
+        authorities[field] = {
+            "source": "ProjectInputs.accounting_policy_config." + field,
+            "value": value,
+            "availability": "RECORDED" if value is not None else "NOT_AVAILABLE",
+        }
+    tax_id = project_inputs.tax.country_tax_policy_id
+    return {
+        "owner_approval": "NOT_PROVEN",
+        "scope": "RECORDED_INPUT_AUTHORITY_ONLY_NOT_STATUTORY_OR_RELEASE_APPROVAL",
+        "accounting": authorities,
+        "tax_country_policy": {
+            "source": "ProjectInputs.tax.country_tax_policy_id",
+            "value": tax_id,
+            "availability": "RECORDED" if tax_id is not None else "NOT_AVAILABLE",
+        },
+    }
 
 
 def capability() -> dict:
