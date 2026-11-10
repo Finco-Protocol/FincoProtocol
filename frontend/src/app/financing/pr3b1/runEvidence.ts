@@ -28,7 +28,7 @@ function sameDebtPeriods(e: Evidence, r: Run): boolean {
  */
 export function checkRunEvidence(e: Evidence): Gate {
   const deny = (detail: string): Gate => ({state:'UNAVAILABLE',showRun:false,
-    reason:'Selected Run changed — reload. '+detail,assurance:'NOT_PROVEN'});
+    reason:'Last Run changed — reload. Selected Run changed or source identity mismatch. '+detail,assurance:'NOT_PROVEN'});
   const {scope,before,after,studio:s,credit:c,creditBefore:cb,fields}=e;
   if (!scope || !before?.project || !after?.project || !before.workbook || !after.workbook
       || !before.freshness || !after.freshness || !s?.identity || !s.project || !s.sources_uses
