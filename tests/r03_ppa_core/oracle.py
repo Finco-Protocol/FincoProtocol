@@ -54,6 +54,7 @@ def ledger(
     reduced_rate: Fraction,
     reduced_base_year: int,
     reduced_fraction: Fraction,
+    merchant_mode: str = "MERCHANT_PRICE",
     merchant_prices: Dict[int, Fraction],
     cfd_strike: Fraction = Fraction(0),
     cfd_reference: Dict[int, Fraction] = None,
@@ -88,9 +89,8 @@ def ledger(
             merchant = g - contracted
             a1, a2 = a1 * ppa_share, a2 * ppa_share
         counter += eligible if cap_application == "AFTER_SHARE" else g
-        if "UNSOLD" in merchant_prices and merchant_prices[y] is None:
-            m_mwh, m_price, m_eur = merchant, Fraction(0), Fraction(0)
-            unsold = merchant
+        if merchant_mode == "UNSOLD":
+            m_mwh, m_price, m_eur, unsold = Fraction(0), Fraction(0), Fraction(0), merchant
         else:
             m_mwh, m_price, m_eur, unsold = merchant, merchant_prices[y], _round_half_even(merchant * merchant_prices[y]), Fraction(0)
         if in_ppa:
@@ -112,3 +112,27 @@ def ledger(
             "cap_after": counter,
         })
     return out
+
+
+def ledger_from_fixture(fx: dict) -> List[dict]:
+    """Run the exact Fraction ledger from an INDEPENDENT fixture dict (fixtures.py).
+    The fixture carries inputs AND hand-derived expected rows; this function computes
+    the oracle's own ledger from the inputs alone."""
+    merchant_prices = fx["merchant_prices"]
+    merchant_mode = "UNSOLD" if "UNSOLD" in merchant_prices else "MERCHANT_PRICE"
+    if merchant_mode == "MERCHANT_PRICE":
+        prices = {y: merchant_prices[y] for y in sorted(k for k in merchant_prices if k != "UNSOLD")}
+    else:
+        prices = {}
+    cfd = fx.get("cfd") or {}
+    return ledger(
+        cap_mode=fx["cap_mode"], cap_application=fx["cap_application"],
+        cap1_mwh=fx["cap1_mwh"], cap2_mwh=fx["cap2_mwh"],
+        generation=fx["generation"], ppa_share=fx["ppa_share"],
+        ppa_start=fx["ppa_start"], ppa_end=fx["ppa_end"],
+        base_fixed=fx["base"][0], base_rate=fx["base"][1], base_base_year=fx["base"][2], base_fraction=fx["base"][3],
+        reduced_fixed=fx["reduced"][0], reduced_rate=fx["reduced"][1], reduced_base_year=fx["reduced"][2], reduced_fraction=fx["reduced"][3],
+        merchant_mode=merchant_mode, merchant_prices=prices,
+        cfd_strike=cfd.get("strike", Fraction(0)), cfd_reference=cfd.get("reference", {}),
+        years=sorted(fx["generation"]),
+    )
