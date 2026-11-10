@@ -1,0 +1,40 @@
+{
+  "base": "64a0d5b7b1ec7c989908d5f288a9ae440c663009",
+  "base_blobs": {
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "18da5fc6ecd65175d336268fe4a7d835d4b8de6c",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "2119f775840f6108967e97c3d8a17c0a7ee712f8",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "9f730e650889cbe4139ddf59b4aec7843f33aeb6",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json": "75e38a73d2d3b5fd2d9810ebbef8b73a479685af",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "6beba24ad3c1902e8dc0e427a755bea9a998df75",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "817726059610abfe683b3f2c5bd53be81d225e8b",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "83c18f9ef52da0b7da27c0053de043c2efc11e9f",
+    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "dc3844ae6afaf2abe1c7e4f04f23a87da314de43",
+    "tests/fin_v2_cohorts.py": "2bc40e38a496d41211cd9689b5812084590d9b7b",
+    "tests/onaccept01_scope.py": "b6dbb68073bf843e21e4004b0430d2aa8a9cb0fb",
+    "tests/post432_l01_l02_scope.py": "a1b9886a2d4e07b6cee32db1d508af4b6f92c3d8",
+    "tests/test_post432_l01_l02_scope.py": "c5935c5d161f7674d1aa4af31bb3f0174a3a9fb5",
+    "tests/test_ux_pr3b2_scope.py": "fa91ec33219685b5ad9e65ce08561641f9473544"
+  },
+  "base_tree": "3ddd816c643013f787804229776b60c6252ed7b9",
+  "schema_version": "BESS02_DEFAULT_OFF_CANDIDATE_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "app/services/bess_standalone_candidate.py": "5eaea0bc4624ea48c9d2d90c353ca82633e94820",
+    "docs/bess02/CANDIDATE_CONTRACT.md": "96cc5e73d7dcbf16bbd97c1c99e238892780b26b",
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "70c9ef93e0d8ace7228f50d8958382b27a70fa42",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "5b763232ec938ff176dab3d3ec2fdbb2e9cc4643",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "cdc3a8a5683eb96ada59df9d4dd3445184f78499",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json": "a6e565e9c90a83519a35f125d9eba7c9bec15ef6",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "15e3952842f137c1693ba4145744fa80252b63e4",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "f75a40a5e86291ed943bce4937f2bfb5da4b6c43",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "ef2402b1f25e5d5efe9f81ec24ad0e3a1eff0c40",
+    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "a78bec6dfb6fb4c170fb0f68fdaf14f90dd3a83f",
+    "tests/bess02_scope.py": "632d98a608fd6bd5cf7a417a1e7ff248ba09f353",
+    "tests/fin_v2_cohorts.py": "852bca53fbbb8a0699a70adaf7b098270f21a285",
+    "tests/onaccept01_scope.py": "608bceff21db0eb443cc2438db79a9301d16b50e",
+    "tests/post432_l01_l02_scope.py": "367c32d220e22232387e650f58195edc04a9011c",
+    "tests/test_bess02_scope.py": "23a3f17e4f4546b240c9cbfe05e7a49b9f0fec7f",
+    "tests/test_bess_standalone_candidate.py": "dd84e8910b35a396f84d80b78686d534bb1b1c1d",
+    "tests/test_post432_l01_l02_scope.py": "776bae5192023d034fa08d604375263873dde075",
+    "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6"
+  }
+}

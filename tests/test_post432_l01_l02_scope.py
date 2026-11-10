@@ -19,6 +19,7 @@ from tests import fin_v2_cohorts as C
 from tests import on_bess01_scope as B
 from tests import onaccept01_scope as O
 from tests import post432_l01_l02_scope as X
+from tests import bess02_scope as N
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCEPTED_ORDER_TAIL = ('tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope')
@@ -74,7 +75,7 @@ def test_cohort_is_exact_literal_and_traceable_to_the_original_patch():
     assert set(data['source_blobs']) == X.OWNED_PATHS - {X.MANIFEST} and set(data['base_blobs']) == X.SUPERSEDED
     assert X.SOURCE_PATHS == {'app/v2/debt_metrics_projection.py', 'app/v2/react_projects.py'}
     assert not any(p.startswith(X.FORBIDDEN_PREFIXES) or p in X.FORBIDDEN_PATHS or '*' in p or p.endswith('/') for p in X.OWNED_PATHS | {X.MANIFEST})
-    assert set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines()) <= X.OWNED_PATHS | {X.MANIFEST}
+    assert set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines()) <= X.OWNED_PATHS | {X.MANIFEST} | X.later_owned()
     # the accepted baseline is main after #434; the two original reviewed commits are ancestors of HEAD and own the product blobs
     assert X.BASE == 'ebb9c07c30c733cbb39e9af58833f0b22baf7069' and _git(ROOT, 'rev-parse', X.BASE + '^{tree}') == X.BASE_TREE
     for commit in (X.BASE,) + X.ORIGINAL_PATCH:
@@ -90,10 +91,10 @@ def test_cohort_is_exact_literal_and_traceable_to_the_original_patch():
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
-    assert now == base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
+    assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()
     import ast
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
-    assert C.COHORT_MODULES == old + ('tests.post432_l01_l02_scope',) and C.COHORT_MODULES[-4:] == ACCEPTED_ORDER_TAIL
+    assert C.COHORT_MODULES == old + ('tests.post432_l01_l02_scope', 'tests.bess02_scope') and C.COHORT_MODULES[-5:] == ACCEPTED_ORDER_TAIL + ('tests.bess02_scope',)
     assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
 
 
@@ -106,10 +107,10 @@ def test_the_accepted_runner_and_bess_preview_behaviour_is_unchanged():
 
 def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():
     from tests import tax_reference_registry_scope as T, ux_pr3b2_scope as U, wf04_scope as W4, u1_scope as U1
-    pins = X.manifest()['source_blobs']
+    pins = X.effective_pins()
     with C.call_scope():
         assert B.exact_blobs_ok() and O.exact_blobs_ok() and T.exact_blobs_ok() and U.exact_blobs_ok() and W4.exact_blobs_ok() and C.valid()
-        assert X.reviewed_edits_ok() and O.later_owned() == X.OWNED_PATHS | {X.MANIFEST}
+        assert X.reviewed_edits_ok() and O.later_owned() == X.OWNED_PATHS | {X.MANIFEST} | X.later_owned()
         for path in sorted(X.SOURCE_PATHS):
             assert B.supersedes(path, pins[path]) and U1.supersedes(path, pins[path]) and not B.supersedes(path, '0' * 40)
         for path in (X.REGISTRY, 'tests/on_bess01_scope.py'):

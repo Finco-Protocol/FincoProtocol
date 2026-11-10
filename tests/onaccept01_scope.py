@@ -111,13 +111,13 @@ def _tip_pins(root, ref):
     T = _tip()
     if T is None or not T.signature_ok(root, ref):
         return {}
-    return {p: b for p, b in T.manifest(root, ref)['source_blobs'].items() if p in T.SUPERSEDED}
+    return T.effective_pins(root, ref)
 
 
 def later_owned(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     T = _tip()
-    return (T.OWNED_PATHS | {T.MANIFEST}) if T is not None and T.signature_ok(root, ref) else frozenset()
+    return (T.OWNED_PATHS | {T.MANIFEST} | T.later_owned(root, ref)) if T is not None and T.signature_ok(root, ref) else frozenset()
 
 
 def later_supersedes(path, value, repo=None, ref=None):
