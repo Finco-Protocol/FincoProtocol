@@ -28,13 +28,13 @@
     "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "f75a40a5e86291ed943bce4937f2bfb5da4b6c43",
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "ef2402b1f25e5d5efe9f81ec24ad0e3a1eff0c40",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "a78bec6dfb6fb4c170fb0f68fdaf14f90dd3a83f",
-    "tests/bess02_scope.py": "632d98a608fd6bd5cf7a417a1e7ff248ba09f353",
+    "tests/bess02_scope.py": "03b41a27eb79a2e0f67799beac04f43fb0aa4ba5",
     "tests/fin_v2_cohorts.py": "852bca53fbbb8a0699a70adaf7b098270f21a285",
     "tests/onaccept01_scope.py": "608bceff21db0eb443cc2438db79a9301d16b50e",
     "tests/post432_l01_l02_scope.py": "367c32d220e22232387e650f58195edc04a9011c",
     "tests/test_bess02_scope.py": "23a3f17e4f4546b240c9cbfe05e7a49b9f0fec7f",
     "tests/test_bess_standalone_candidate.py": "dd84e8910b35a396f84d80b78686d534bb1b1c1d",
-    "tests/test_post432_l01_l02_scope.py": "776bae5192023d034fa08d604375263873dde075",
+    "tests/test_post432_l01_l02_scope.py": "feeb6f10cddbbaf0a64f19f2ee5b94d2ce6fb557",
     "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6"
   }
 }

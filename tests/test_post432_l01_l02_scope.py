@@ -140,7 +140,9 @@ def test_handoff_registry_and_historical_pin_rewrites_fail_closed(tree):
     text = registry.read_text()
     cases.append(('missing_cohort', lambda: registry.write_text(text.replace(", 'tests.post432_l01_l02_scope'", ''))))
     cases.append(('missing_onaccept01', lambda: registry.write_text(text.replace(", 'tests.onaccept01_scope'", ''))))
-    cases.append(('extra_cohort', lambda: registry.write_text(text.replace("'tests.post432_l01_l02_scope')", "'tests.post432_l01_l02_scope', 'tests.fake_scope')"))))
+    extra_marker = "'tests.bess02_scope')"
+    assert text.count(extra_marker) == 1  # prove the negative mutation is not a no-op
+    cases.append(('extra_cohort', lambda: registry.write_text(text.replace(extra_marker, "'tests.bess02_scope', 'tests.fake_scope')"))))
     cases.append(('reordered', lambda: registry.write_text(text.replace("'tests.on_bess01_scope', 'tests.onaccept01_scope'", "'tests.onaccept01_scope', 'tests.on_bess01_scope'"))))
     cases.append(('map_pin', lambda: _json(tree, 'docs/ci_v4/SOURCE_SUCCESSOR.json', lambda d: d['source_blobs'].update({X.REGISTRY: '0' * 40}))))
     cases.append(('map_foreign_key', lambda: _json(tree, 'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json', lambda d: d.update(base='0' * 40))))
