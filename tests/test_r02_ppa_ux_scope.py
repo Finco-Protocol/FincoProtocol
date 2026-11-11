@@ -78,8 +78,11 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
                 and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]
-    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):
+    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
+    # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
+    from tests import ci_v4_perf_scope as F
+    assert F.exact_blobs_ok() and (ROOT / 'tests/on_bess01_scope.py').read_bytes() == F.expected_handoff(ROOT, 'tests/on_bess01_scope.py')
 
 
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():

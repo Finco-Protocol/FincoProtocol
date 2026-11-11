@@ -239,6 +239,13 @@ def _next_moved(root, ref):
     return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
 
 
+def map_keys(repo=None, ref=None):
+    """Every current-map key a forward leaf may move, own keys first; low level, gated by the successor's signature only."""
+    root = Path(repo) if repo is not None else ROOT
+    N = _next()
+    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
+
+
 def closure_paths(repo=None, ref=None):
     """This cohort's closed path set, gated by its OWN signature, plus the successor's closure; one shared read scope evaluates each signature once."""
     root = Path(repo) if repo is not None else ROOT

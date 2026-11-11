@@ -23,7 +23,7 @@ BASE = '01a26f9a87a12548c4f151caebe8ee933db7445c'
 BASE_TREE = '0f84439efe6cb4ad920ea008eb739bbc7dbe07ab'
 MANIFEST = 'docs/ci_v4/correction_p/SOURCE_SUCCESSOR.json'
 SCHEMA = 'CI_V4_CORRECTION_P_PERFORMANCE_EXACT_SOURCE_V1'
-MAP_KEYS = ('tests/fin_v2_cohorts.py', 'docs/ci_v4/module_weights.json')
+MAP_KEYS = ('tests/fin_v2_cohorts.py', 'docs/ci_v4/module_weights.json', 'tests/ux_pr3b1_scope.py')
 FORBIDDEN_PREFIXES = ('financial_engine/', 'finco_core/', 'domain/', '.github/', 'frontend/', 'static/')
 
 # Files whose bytes this integration takes over from the accepted BESS02 leaf's frozen
@@ -77,6 +77,39 @@ HANDOFFS = {
     ],
 }
 
+# Correction R: the chain of older guards could not see this leaf's moved pins. Each addition below is
+# one more literal, exactly-once substitution over the SAME accepted BASE bytes (applied after the
+# substitutions above); none is a pattern and none widens a path set.
+HANDOFFS['tests/bess02_scope.py'].append((
+    "\n\ndef closure_paths(repo=None, ref=None):\n    \"\"\"This cohort's closed path set, gated by its OWN signature",
+    "\n\ndef map_keys(repo=None, ref=None):\n    \"\"\"Every current-map key a forward leaf may move, own keys first; low level, gated by the successor's signature only.\"\"\"\n    root = Path(repo) if repo is not None else ROOT\n    N = _next()\n    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())\n\n\ndef closure_paths(repo=None, ref=None):\n    \"\"\"This cohort's closed path set, gated by its OWN signature"))
+HANDOFFS['tests/r02_ppa_ux_scope.py'].extend([
+    ("\ndef map_keys(repo=None, ref=None):\n    root = Path(repo) if repo is not None else ROOT\n    N = _next()\n    return tuple(MAP_KEYS) + (tuple(N.MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ())\n",
+     "\ndef map_keys(repo=None, ref=None):\n    root = Path(repo) if repo is not None else ROOT\n    N = _next()\n    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())\n"),
+    ("\n    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}\n\n\ndef closure_paths",
+     "\n    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}\n\n\ndef closure_paths"),
+    ("\n                _read(root, p, ref) == _object_fact(root, 'show', BASE + ':' + p) for p in FROZEN))",
+     "\n                _read(root, p, ref) == _object_fact(root, 'show', BASE + ':' + p)\n                or N.supersedes(p, _blob(_read(root, p, ref)), root, ref) for p in FROZEN))"),
+])
+# The older BESS01 guard freezes three test files at its own BASE; a forward leaf's exact reviewed pin is the only other accepted value.
+HANDOFFS['tests/on_bess01_scope.py'] = [
+    ("        if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p) for p in FROZEN):\n            return False",
+     "        if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p)\n               and not (next_ok and S.later_supersedes(p, _blob(_read(root, p, ref)), root, ref)) for p in FROZEN):\n            return False"),
+    # A current map may also carry a pin the forward chain moved (the leaf's own map keys), exactly its reviewed pin and no other value.
+    ("        if any(b[p] != a[p] and (p not in SUPERSEDED - CURRENT_MAPS or b[p] != pins[p]) for p in a):",
+     "        S = _successor()\n        later = set(S._tip_map_keys(root, ref)) if S is not None and S.signature_ok(root, ref) else set()\n        if any(b[p] != a[p] and (p not in (SUPERSEDED - CURRENT_MAPS) | later or b[p] != pins[p]) for p in a):"),
+]
+# The PR2a/PR2b/PR2c/PR3b1 era guards judge every moved pin of the shared integration manifests through the PR3b1 guard's
+# supersession hook. That hook admits exactly one more path here: the module-weights pin this leaf moves, at the reviewed pin only.
+HANDOFFS['tests/ux_pr3b1_scope.py'] = [
+    ("def supersedes(path, value, repo=None, ref=None):\n    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value",
+     "def supersedes(path, value, repo=None, ref=None):\n    return (path in SUPERSEDED or path == 'docs/ci_v4/module_weights.json') and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value"),
+]
+
+HANDOFFS['tests/test_r02_ppa_ux_scope.py'].append((
+    "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):\n        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path",
+    "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):\n        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path\n    # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes\n    from tests import ci_v4_perf_scope as F\n    assert F.exact_blobs_ok() and (ROOT / 'tests/on_bess01_scope.py').read_bytes() == F.expected_handoff(ROOT, 'tests/on_bess01_scope.py')"))
+
 # The current-map manifests whose registry pin moves with this integration: they are re-pinned
 # to the NEW composite-registry blob in canonical form and owned literally by this leaf, exactly
 # as the BESS02 integration re-pinned them for its own registration append.
@@ -101,7 +134,9 @@ DIRECT_PATHS = frozenset((
     'docs/ci_v4/module_weights.json',
 ))
 
-SUPERSEDED = frozenset(HANDOFFS)
+#: pre-existing files this leaf edits directly (the other two DIRECT paths are new files with no BASE blob)
+DIRECT_EDITS = DIRECT_PATHS - {'tests/ci_v4_perf_scope.py', 'tests/test_ci_v4_perf_scope.py'}
+SUPERSEDED = frozenset(HANDOFFS) | DIRECT_EDITS
 OWNED_PATHS = frozenset(HANDOFFS) | DIRECT_PATHS | CURRENT_MAPS
 _SCOPE = []
 
@@ -232,6 +267,10 @@ def _exact(repo=None, ref=None, closure=True):
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False
+
+
+def map_keys(repo=None, ref=None):
+    return tuple(MAP_KEYS)
 
 
 def closure_paths(repo=None, ref=None):

@@ -236,14 +236,14 @@ def _next_pins(root, ref):
 def map_keys(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     N = _next()
-    return tuple(MAP_KEYS) + (tuple(N.MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ())
+    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
 
 
 def _next_moved(root, ref):
     N = _next()
     if N is None or not N.signature_ok(root, ref):
         return {}
-    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
+    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}
 
 
 def closure_paths(repo=None, ref=None):
@@ -260,7 +260,8 @@ def reviewed_edits_ok(repo=None, ref=None):
         N = _next()
         if N is not None and N.signature_ok(root, ref):
             return (N.reviewed_edits_ok(root, ref) and all(
-                _read(root, p, ref) == _object_fact(root, 'show', BASE + ':' + p) for p in FROZEN))
+                _read(root, p, ref) == _object_fact(root, 'show', BASE + ':' + p)
+                or N.supersedes(p, _blob(_read(root, p, ref)), root, ref) for p in FROZEN))
         for path in sorted(HANDOFF_FILES | {REGISTRY}):
             expected = expected_handoff(root, path)
             if expected is None or _read(root, path, ref) != expected:
