@@ -110,6 +110,21 @@ HANDOFFS['tests/test_r02_ppa_ux_scope.py'].append((
     "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):\n        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path",
     "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):\n        assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path\n    # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes\n    from tests import ci_v4_perf_scope as F\n    assert F.exact_blobs_ok() and (ROOT / 'tests/on_bess01_scope.py').read_bytes() == F.expected_handoff(ROOT, 'tests/on_bess01_scope.py')"))
 
+# The signature is source/base/mode authority only and never reads a foreign manifest (the accepted guard says so; the full
+# closure alone judges map bytes). R02 and the L01/L02 guard hashed EVERY pin in signature mode, current maps included, so one
+# forged foreign map made the whole signature chain false. Each substitution below excludes only the current maps from the
+# signature-mode byte hash and compares exactly the remaining pins; the closure still hashes and compares all of them.
+HANDOFFS['tests/r02_ppa_ux_scope.py'].extend([
+    ("\n            ordered = sorted(pins)\n",
+     "\n            ordered = sorted(p for p in pins if closure or p not in CURRENT_MAPS)\n"),
+    ("\n            if computed != cur:\n                return False\n        else:\n            listed = {}",
+     "\n            if computed != {p: cur[p] for p in ordered}:\n                return False\n        else:\n            listed = {}"),
+])
+HANDOFFS['tests/post432_l01_l02_scope.py'] = [
+    ("for p in sorted(pins)}\n            if computed != cur:\n                return False",
+     "for p in sorted(p for p in pins if closure or p not in CURRENT_MAPS)}\n            if computed != {p: cur[p] for p in computed}:\n                return False"),
+]
+
 # The current-map manifests whose registry pin moves with this integration: they are re-pinned
 # to the NEW composite-registry blob in canonical form and owned literally by this leaf, exactly
 # as the BESS02 integration re-pinned them for its own registration append.
@@ -245,7 +260,9 @@ def _exact(repo=None, ref=None, closure=True):
                 rows = _git(root, 'ls-tree', ref, '--', p).decode().splitlines()
                 if len(rows) != 1 or not rows[0].startswith('100644 blob '):
                     return False
-            if p != MANIFEST and _blob(_read(root, p, ref)) != pins[p]:
+            # A current map's BYTES are judged only by the full closure; the signature never reads a foreign manifest's content
+            # (the predecessor chain proves each map pin against its canonical derivation).
+            if p != MANIFEST and (closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != pins[p]:
                 return False
         # No safety authority ever joins this cohort: no engine, core, domain, workflow,
         # frontend or static byte is owned, so none can be admitted through it.

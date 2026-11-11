@@ -305,10 +305,10 @@ def _exact(repo=None, ref=None, closure=True):
             return False
         # 3. one exact blob per owned path (git's own hashing, so LF and CRLF checkouts agree)
         if ref is None:
-            ordered = sorted(pins)
+            ordered = sorted(p for p in pins if closure or p not in CURRENT_MAPS)
             hashed = subprocess.run(['git', 'hash-object', '--stdin-paths'], cwd=root, input=''.join(str(root / p) + '\n' for p in ordered).encode(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout.decode().split()
             computed = dict(zip(ordered, hashed)) if len(hashed) == len(ordered) else None
-            if computed != cur:
+            if computed != {p: cur[p] for p in ordered}:
                 return False
         else:
             listed = {}
