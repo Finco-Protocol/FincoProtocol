@@ -93,9 +93,11 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
     own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
     from tests import ci_v4_perf_scope as F
-    from tests import f03_financing_scope as G
+    from tests import f03_financing_scope as G, t01e_remediation_scope as Z
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if 'tests.f03_financing_scope' in C.COHORT_MODULES and G.signature_ok():
+    if 'tests.t01e_remediation_scope' in C.COHORT_MODULES and Z.signature_ok():
+        expected = Z.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.f03_financing_scope' in C.COHORT_MODULES and G.signature_ok():
         expected = G.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.ci_v4_perf_scope' in C.COHORT_MODULES and F.signature_ok():
         expected = F.expected_handoff(ROOT, X.REGISTRY)

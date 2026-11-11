@@ -175,12 +175,14 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
     registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
     accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
                     if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'COHORT_MODULES')
-    from tests import ci_v4_perf_scope as F, f03_financing_scope as G
+    from tests import ci_v4_perf_scope as F, f03_financing_scope as G, t01e_remediation_scope as Z
     own = accepted + ('tests.bess02_scope',)
-    # Exactly three states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one
-    # reviewed F03 successor, each behind a complete signature.
+    # Exactly four states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one
+    # reviewed F03 successor; that followed by exactly one reviewed T01-E successor, each behind a complete signature.
     assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())
-            or (C.COHORT_MODULES == own + (F.__name__, G.__name__) and F.signature_ok() and G.signature_ok()))
+            or (C.COHORT_MODULES == own + (F.__name__, G.__name__) and F.signature_ok() and G.signature_ok())
+            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__) and F.signature_ok() and G.signature_ok()
+                and Z.signature_ok()))
     assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
 
 

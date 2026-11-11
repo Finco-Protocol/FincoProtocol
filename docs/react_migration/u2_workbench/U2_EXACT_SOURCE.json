@@ -39,7 +39,7 @@
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
     "static/react/finco-react.css": "e3eec67e9e8556e0e3a0bb3892d1209eccffb670",
     "static/react/finco-react.js": "f6465c618580d8be9cdf8e988335a92b60dc4d0d",
-    "tests/fin_v2_cohorts.py": "8a485d8618efd89dc96c547901d50c178a90948a",
+    "tests/fin_v2_cohorts.py": "0528ea7b83a87fb5a7f39193544543ff24340d20",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
     "tests/test_u1_scope.py": "8f58878effa3d1d07fe630eea68b0e0c16c01d9b",
     "tests/test_u2_d13_profile_lifecycle.py": "e4df8bebb5bbf1fbbb909d31034ebb140c174229",
