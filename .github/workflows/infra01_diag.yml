@@ -7,81 +7,42 @@ permissions:
 jobs:
   diag:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
-      - name: Runner, resolver and apt source facts
+      - name: Host resolver path versus upstream (read-only)
         run: |
           set +e
-          date -u; uname -a; grep -E '^(NAME|VERSION)=' /etc/os-release; echo "image: $ImageOS $ImageVersion"
-          echo '--- resolv.conf'; cat /etc/resolv.conf
-          echo '--- resolvectl'; resolvectl status 2>&1 | head -n 30
-          echo '--- apt-mirrors.txt'; cat /etc/apt/apt-mirrors.txt 2>&1
-          echo '--- ubuntu.sources'; cat /etc/apt/sources.list.d/ubuntu.sources 2>&1 | head -n 30
-          echo '--- other sources'; ls /etc/apt/sources.list.d/
-      - name: DNS and HTTP reachability per host
+          date -u
+          echo '--- getaddrinfo families'; for h in archive.ubuntu.com github.com; do echo "$h v4:"; getent ahostsv4 $h | head -n 1; echo "$h v6:"; getent ahostsv6 $h | head -n 1; done
+          echo '--- resolvectl query'; resolvectl query archive.ubuntu.com 2>&1 | head -n 8; resolvectl query github.com 2>&1 | head -n 4
+          echo '--- resolvectl statistics'; resolvectl statistics 2>&1 | head -n 25
+          echo '--- systemd-resolved journal (last 30)'; sudo journalctl -u systemd-resolved --no-pager -n 30 2>&1 | cut -c1-220
+          echo '--- docker daemon dns config'; cat /etc/docker/daemon.json 2>&1; echo '--- container resolv.conf'; docker run --rm ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac cat /etc/resolv.conf 2>&1 | grep -v '^#'
+      - name: Raw DNS queries (A / AAAA / NS) straight to the upstream and to the local stub
         run: |
           set +e
-          for h in azure.archive.ubuntu.com archive.ubuntu.com security.ubuntu.com ports.ubuntu.com packages.microsoft.com cdn.playwright.dev playwright.download.prss.microsoft.com registry-1.docker.io pypi.org github.com; do
-            printf '%-46s getent: ' "$h"; getent hosts "$h" | head -n 1 | tr '\n' ' '; echo
-            printf '%-46s https : ' "$h"; curl -sS -o /dev/null -m 15 -w '%{http_code} ip=%{remote_ip} t=%{time_total}\n' "https://$h/" 2>&1 | tail -n 1
-          done
-          echo '--- official archive InRelease'
-          for u in http://azure.archive.ubuntu.com/ubuntu http://archive.ubuntu.com/ubuntu https://archive.ubuntu.com/ubuntu http://security.ubuntu.com/ubuntu; do
-            printf '%-48s ' "$u"; curl -sS -o /dev/null -m 20 -w '%{http_code}\n' "$u/dists/noble/InRelease" 2>&1 | tail -n 1
-          done
-      - name: apt-get update with the runner's default sources (reproduction)
-        run: |
-          set +e
-          sudo apt-get update -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 2>&1 | tail -n 40
-          echo "apt-get update exit=${PIPESTATUS[0]}"
-      - name: apt-get update against the OFFICIAL archive only (signed-by, isolated, non-destructive)
-        run: |
-          set +e
-          mkdir -p /tmp/diag-apt/lists/partial /tmp/diag-apt/sources.d
-          cat > /tmp/diag-apt/sources.d/ubuntu-official.sources <<'SRC'
-          Types: deb
-          URIs: http://archive.ubuntu.com/ubuntu/
-          Suites: noble noble-updates noble-backports
-          Components: main restricted universe multiverse
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-          Types: deb
-          URIs: http://security.ubuntu.com/ubuntu/
-          Suites: noble-security
-          Components: main restricted universe multiverse
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          SRC
-          sed -i 's/^          //' /tmp/diag-apt/sources.d/ubuntu-official.sources
-          ls -l /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          sudo apt-get update -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=/tmp/diag-apt/sources.d -o Dir::State::lists=/tmp/diag-apt/lists -o Acquire::Retries=0 -o Acquire::http::Timeout=15 2>&1 | tail -n 25
-          echo "official-only apt-get update exit=${PIPESTATUS[0]}"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12'
-      - name: Chromium OS dependency set Playwright 1.63.0 asks for, and what is already installed
-        run: |
-          set +e
-          python -m pip install -q playwright==1.63.0
-          echo '--- install-deps dry run'; python -m playwright install-deps --dry-run chromium 2>&1 | tail -n 12
-          echo '--- missing among requested packages'
-          python -m playwright install-deps --dry-run chromium 2>&1 | grep -o 'apt-get install.*' | tr ' ' '\n' | grep -vE '^(apt-get|install|-y|--no-install-recommends)$' | sort -u | while read p; do dpkg -s "$p" >/dev/null 2>&1 && echo "present  $p" || echo "MISSING  $p"; done
-          echo '--- fonts on image'; fc-list | wc -l; fc-list : family | sort -u | head -n 20
-      - name: Chromium download without OS packages, then real shared-library resolution
-        run: |
-          set +e
-          python -m playwright install chromium 2>&1 | tail -n 6
-          B=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -n 1); echo "chrome: $B"
-          [ -n "$B" ] && ldd "$B" | grep -c 'not found' | sed 's/^/ldd not-found count: /'
-          [ -n "$B" ] && ldd "$B" | grep 'not found'
-          python - <<'PY'
-          from playwright.sync_api import sync_playwright
-          try:
-              with sync_playwright() as p:
-                  b = p.chromium.launch(); pg = b.new_page(); pg.set_content("<p>x</p>"); print("chromium launch OK", b.version); b.close()
-          except Exception as e:
-              print("chromium launch FAILED:", str(e)[:300])
+          python3 - <<'PY'
+          import socket, struct, random
+          def q(server, name, qtype, timeout=5):
+              tid = random.randrange(65536)
+              hdr = struct.pack(">HHHHHH", tid, 0x0100, 1, 0, 0, 0)
+              body = b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0" + struct.pack(">HH", qtype, 1)
+              s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(timeout)
+              try:
+                  s.sendto(hdr + body, (server, 53)); d, _ = s.recvfrom(4096)
+              except Exception as e:
+                  return "no-answer (%s)" % type(e).__name__
+              finally:
+                  s.close()
+              rcode = d[3] & 0xF; an = struct.unpack(">H", d[6:8])[0]
+              return "rcode=%d answers=%d" % (rcode, an)
+          for server in ("168.63.129.16", "127.0.0.53"):
+              for name in ("archive.ubuntu.com", "azure.archive.ubuntu.com", "security.ubuntu.com", "ubuntu.com", "github.com"):
+                  print("%-14s %-26s A=%-26s AAAA=%-26s NS=%s" % (server, name, q(server, name, 1), q(server, name, 28), q(server, name, 2)))
           PY
-      - name: apt inside a Docker container (the native F01 image build path)
+      - name: Does restarting the LOCAL stub alone change anything (diagnostic only)
         run: |
           set +e
-          timeout 300 docker run --rm ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac bash -c 'apt-get update 2>&1 | tail -n 12; echo "docker apt-get update exit=$?"; apt-cache policy gcc-13 2>&1 | head -n 4'
+          getent hosts archive.ubuntu.com | head -n 1; echo "before flush rc=$?"
+          sudo resolvectl flush-caches; getent hosts archive.ubuntu.com | head -n 1; echo "after flush-caches rc=${PIPESTATUS[0]}"
+          sudo systemctl restart systemd-resolved; sleep 3; getent hosts archive.ubuntu.com | head -n 1; echo "after restart rc=${PIPESTATUS[0]}"
