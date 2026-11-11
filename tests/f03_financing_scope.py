@@ -377,7 +377,26 @@ HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
                                   "        assert not B.ci_owns('tools/ci_v4_unknown.py',wt) and not B.ci_owns('app/v2/react_opex_lines.py',wt)\n"),
                                  ('    assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)\n',
                                   '    with C.call_scope():\n'
-                                  '        assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)\n')]}
+                                  '        assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)\n'),
+                                 ('def test_one_byte_in_any_owned_blob_removes_ci_authority(path,wt):\n'
+                                  '    assert B.ci_authority_ok(wt)\n'
+                                  "    p=wt/path;p.write_bytes(p.read_bytes()+b'\\n')\n"
+                                  "    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n",
+                                  'def test_one_byte_in_any_owned_blob_removes_ci_authority(path,wt):\n'
+                                  '    with C.call_scope():\n'
+                                  '        assert B.ci_authority_ok(wt)\n'
+                                  "    p=wt/path;p.write_bytes(p.read_bytes()+b'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  "        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n"),
+                                 ('def test_forged_manifest_or_mode_removes_ci_authority(case,wt):\n    assert B.ci_authority_ok(wt)\n',
+                                  'def test_forged_manifest_or_mode_removes_ci_authority(case,wt):\n'
+                                  '    with C.call_scope():\n'
+                                  '        assert B.ci_authority_ok(wt)\n'),
+                                 ("    else:mp.write_text(json.dumps(d,indent=2)+'\\n')\n"
+                                  "    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n",
+                                  "    else:mp.write_text(json.dumps(d,indent=2)+'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  "        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n")]}
 
 
 def expected_handoff(root, path):

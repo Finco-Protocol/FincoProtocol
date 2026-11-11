@@ -171,13 +171,16 @@ def test_unrelated_cohort_drift_keeps_ci_authority_but_fails_closure_and_composi
 
 @pytest.mark.parametrize('path',sorted(B.OWNED_PATHS))
 def test_one_byte_in_any_owned_blob_removes_ci_authority(path,wt):
-    assert B.ci_authority_ok(wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt)
     p=wt/path;p.write_bytes(p.read_bytes()+b'\n')
-    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
+    with C.call_scope():
+        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
 
 @pytest.mark.parametrize('case',['base','tree','guard-pin','mode','extra-pin','base-blob'])
 def test_forged_manifest_or_mode_removes_ci_authority(case,wt):
-    assert B.ci_authority_ok(wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt)
     mp=wt/B.MANIFEST;d=json.loads(mp.read_text())
     if case=='base':d['base']='0'*40
     elif case=='tree':d['base_tree']='0'*40
@@ -186,7 +189,8 @@ def test_forged_manifest_or_mode_removes_ci_authority(case,wt):
     elif case=='base-blob':d['base_blobs'][next(iter(d['base_blobs']))]='0'*40
     if case=='mode':(wt/'tools/ci_merge_tree_guard.py').chmod(0o755)
     else:mp.write_text(json.dumps(d,indent=2)+'\n')
-    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
+    with C.call_scope():
+        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
 
 def test_forged_sibling_manifest_keeps_pr2b_ci_authority_but_fails_closure_and_composite(wt):
     mp=wt/'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json';d=json.loads(mp.read_text())
