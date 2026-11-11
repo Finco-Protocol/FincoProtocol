@@ -122,7 +122,8 @@ def test_one_byte_of_drift_in_any_owned_path_fails_closed_and_restores(path):
     try:
         target.write_bytes(original + b"\n# drift\n")
         assert F.exact_blobs_ok() is False
-        assert F.signature_ok() is False
+        # a current map's bytes belong to the full proof only: the signature never reads a foreign manifest, every other path is in it
+        assert F.signature_ok() is (path in F.CURRENT_MAPS)
         assert C.valid() is False
     finally:
         target.write_bytes(original)

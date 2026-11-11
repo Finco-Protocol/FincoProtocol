@@ -34,7 +34,7 @@
     "tests/post432_l01_l02_scope.py": "e8725081c5ddb7716e18e7f84403424564d5273c",
     "tests/r02_ppa_ux_scope.py": "2cf1e2d18d19e1d514913b6dc045955ac38c2349",
     "tests/test_bess02_scope.py": "1f4fdf28eea0db0da7c33d6f825e0b51ed5ee64b",
-    "tests/test_ci_v4_perf_scope.py": "fd26bfe7837ffa796df6f3d7131756dc3f3d8180",
+    "tests/test_ci_v4_perf_scope.py": "af741895915b8d63245183a70074a49906bc3f17",
     "tests/test_finval_f01_fixture_integrity.py": "d7da6e4a2317c31045155a03ebdb4c1f9244702c",
     "tests/test_post432_l01_l02_scope.py": "c62bc789ebcc9b1d122ead972667271bea497577",
     "tests/test_r02_ppa_ux_scope.py": "ed99908054ced8f2bc2273b5518a81292b0d460a",
