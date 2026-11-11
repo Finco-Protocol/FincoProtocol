@@ -56,7 +56,7 @@
     "frontend/src/styles/ux-pr1-workbench.css": "80c50f761e3aa9a51d450d226aac86870f752f43",
     "static/react/finco-react.css": "b944262b8e4093c63b7553836abba8bc293e8958",
     "static/react/finco-react.js": "57b1b21ae6ae0029058332ebd24baa7246f5835e",
-    "tests/fin_v2_cohorts.py": "299c4e9e51dca793e0a44921025ad6813c5e0549",
+    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
     "tests/model_mutation_cookie_policy_acceptance.py": "0289b09fcd515169563c309c5a73e6d39809e6fb",
     "tests/model_react_mvp_acceptance.py": "595dcea2cf7c264bce5a287264bd5e1b0468055f",
     "tests/model_react_overnight_b_acceptance.py": "7d80d978e68b77e73b810c2290ff6718bcad4297",

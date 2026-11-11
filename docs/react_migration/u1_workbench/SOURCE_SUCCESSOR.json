@@ -110,7 +110,7 @@
     "frontend/src/styles/compact-inputs.css": "7e43b683704870f162811ce989510cc8c9563a07",
     "static/react/finco-react.css": "f6fd36f014676bcf7c8cc076c963b587540f0bd9",
     "static/react/finco-react.js": "74e7b2d500956a940bfc1b6a88097f301e756495",
-    "tests/fin_v2_cohorts.py": "38aeac3b870e3f18e0ad583c07a763353b3d616a",
+    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
     "tests/model_mutation_security_successor.py": "f8862cb54ec29974d2c789707b0274fe5d94b23c",
     "tests/model_react_mvp_acceptance.py": "19878afd0fad6674e17c18607d71beb7ccf8891b",
     "tests/model_react_overnight_b_acceptance.py": "832884b14b9956bb16961a3957a302ffbc50846b",

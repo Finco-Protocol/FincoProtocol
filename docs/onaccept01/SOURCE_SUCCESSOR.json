@@ -39,7 +39,7 @@
     "scripts/finco_live_acceptance/runner.py": "5d7efe95c906083a256b8e56c530eced1b9f2bbb",
     "scripts/finco_live_acceptance/selfcheck.py": "2186321214bb9c1a9607d61c14c8748c58689f18",
     "scripts/finco_live_acceptance/selfcheck_scope.py": "b12f0b48a4e2dda29e2feca65b1d2e779a887989",
-    "tests/fin_v2_cohorts.py": "2c1f1ce9104ec2954bb80e29a80b5a831106b040",
+    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
     "tests/on_bess01_reviewed_successors.py": "282800d3ec90d3997acf7c0613ffd42f88897cdc",
     "tests/on_bess01_scope.py": "bc7a6906cdf87c444951557791aa28c0ce297591",
     "tests/onaccept01_scope.py": "926a8f6321ae065165a6065998590ce1fbff1501",

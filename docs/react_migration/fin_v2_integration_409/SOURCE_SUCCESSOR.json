@@ -1,7 +1,207 @@
 {
-  "schema_version": "FIN_V2_INTEGRATION_409_V1",
+  "authorization": "Financial Owner, PR #409 Correction A: limited exact-source integration seal for the literal union of PR #406, #407 and #408 over main ebf1f151; no financial engine, application, CI or security change.",
   "main": "ebf1f15113ec95d69d29e8aa4e4635686dd1f39a",
   "main_tree": "45e8efdd7e8b0fa8df6497c4e9510a7a27815f85",
+  "repin_ledger": [
+    {
+      "base_blob": null,
+      "integrated_blob": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
+      "owner_prs": [
+        "PR407"
+      ],
+      "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
+      "pr406_blob": null,
+      "pr407_blob": "2462d6735af5a9f998012802e7f115877a29666f",
+      "pr408_blob": null,
+      "resolution": "PR407 seal. Only its current source_blobs pin of tests/fin_truth_b1/test_source_successor.py moved (that test became composition-aware); historical_source_blobs, correction_b_history and the ledger are unchanged."
+    },
+    {
+      "base_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "integrated_blob": "8590ca406a0739da65de21bd069ea340a9ec5900",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "1eeefdeb7ce384629ef10dc9c2854fbb05703b74",
+      "pr407_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "pr408_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
+      "resolution": "PR406 manifest edit; its tests/fin_v2_cohorts.py pin follows the registry blob after this integration registers the PR #409 seal. Only that pin value moved."
+    },
+    {
+      "base_blob": "72df7f4166257e778da562cf826a8b33ba9dc812",
+      "integrated_blob": "1910e073d6be139791a1ff31cc5f687e7463291e",
+      "owner_prs": [
+        "PR407",
+        "PR408"
+      ],
+      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "72df7f4166257e778da562cf826a8b33ba9dc812",
+      "pr407_blob": "9794f49ca229926c35aa077e1cfb09e3f1d05b89",
+      "pr408_blob": "2ab7999b69169ba44a3f3f39388cf7c7cd4f3d03",
+      "resolution": "PR407 and PR408 each repin this predecessor manifest (router/test pins). Final = one pin per file at the merged blob; main identity keys, historical maps and ledger prefix unchanged (verified)."
+    },
+    {
+      "base_blob": "46a3935141ad287cf8b025f720b41c3f33f9ed01",
+      "integrated_blob": "808185f922fc88f238551eda81dfd8e312117515",
+      "owner_prs": [
+        "PR406",
+        "PR407",
+        "PR408"
+      ],
+      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "396941343261cba54281d5c181e08355d96f8a9d",
+      "pr407_blob": "53d62e4a0f01991018610e5c84c2f08128db1748",
+      "pr408_blob": "f2ac1a5d317dc016bafbf6793224504920fce26f",
+      "resolution": "PR406, PR407 and PR408 each follow the pin chain here. Final = merged blobs of the followed manifests/scope modules; history preserved."
+    },
+    {
+      "base_blob": "2bd6a5b0d3276c9c88877a662b5b2c2502c6e700",
+      "integrated_blob": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
+      "owner_prs": [
+        "PR406",
+        "PR407",
+        "PR408"
+      ],
+      "path": "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "2d35c169407859ce707a294f8f5a6b2976fa78b4",
+      "pr407_blob": "9ec28c4e86f4e0e555f24cadd01c613225197979",
+      "pr408_blob": "434adb89c94fbdc64f65d66bc4fe10f36a193ec8",
+      "resolution": "PR406 (WF-06A pins), PR407 (B1 layer pins/ledger rows) and PR408 (ON-08 owned paths) all edit it. Final = union of the three source_blobs additions with each file at its merged blob; B1 ledger rows kept."
+    },
+    {
+      "base_blob": null,
+      "integrated_blob": "9b704696bd2982ffd5888015df6edff5af14a777",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "98a9509880921285f2fe95e4edb65c29f475f026",
+      "pr407_blob": null,
+      "pr408_blob": null,
+      "resolution": "PR406 manifest; its source_blobs pin the live blobs of the overlapping WF-03/WF-04/WS-V2 files and the scope modules, which moved in the composition; only those pin values were recomputed."
+    },
+    {
+      "base_blob": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
+      "integrated_blob": "6af377244e85fea2d67dcc2675f42992417978cb",
+      "owner_prs": [
+        "PR406",
+        "PR407",
+        "PR408"
+      ],
+      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
+      "pr406_blob": "3cfd965627faa99d719f3ecd28b03f674f3825f6",
+      "pr407_blob": "1ca7285faa38a5da724d891a36134abc61a3041f",
+      "pr408_blob": "d8382ea78ec3a4ed12c3bfe5e79dbaa9035c92be",
+      "resolution": "Three-way pin chain (RunFailureNotice.tsx repin by PR406; manifest pins by PR407/PR408). Final = merged blobs; history preserved."
+    },
+    {
+      "base_blob": null,
+      "integrated_blob": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
+      "owner_prs": [
+        "PR407"
+      ],
+      "path": "tests/fin_truth_b1/test_source_successor.py",
+      "pr406_blob": null,
+      "pr407_blob": "488eb62c3cba3c2c25cc67816d345ed97d1095d7",
+      "pr408_blob": null,
+      "resolution": "PR407 test; its pin-set equality is kept for a stand-alone tree (extra set empty) and extra pins must be admitted by the exact seal."
+    },
+    {
+      "base_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "integrated_blob": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "tests/fin_v2_cohorts.py",
+      "pr406_blob": "17c97498d0cf95b98f22a98c6fea3e6998b2c2a7",
+      "pr407_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "pr408_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
+      "resolution": "PR406 registers the WF-06A cohort; this integration registers the PR #409 seal as a further cohort."
+    },
+    {
+      "base_blob": null,
+      "integrated_blob": "0497937b3ec08b45eee584931a32b24e7091b9b1",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "tests/fin_v2_wf06a_scope.py",
+      "pr406_blob": "62939bf662475e32521ed0f22de7f715b96575d1",
+      "pr407_blob": null,
+      "pr408_blob": null,
+      "resolution": "PR406 closed seal; this integration adds the bounded delegation: changed paths and followed-manifest pins that the PR #409 seal literally authorises, only while it is exact."
+    },
+    {
+      "base_blob": null,
+      "integrated_blob": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "tests/test_fin_v2_wf06a_scope.py",
+      "pr406_blob": "18e0c9603bcbe5facf59f7ad8f8f67490926e0a8",
+      "pr407_blob": null,
+      "pr408_blob": null,
+      "resolution": "PR406 test; its lineage test now separates this cohort's own moved pins (assertions unchanged) from foreign pins, which must be seal-admitted and never WF-06A-owned (empty on a stand-alone tree)."
+    },
+    {
+      "base_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
+      "integrated_blob": "6a237eddd48da4034de7165dd8ef60746f9e6214",
+      "owner_prs": [
+        "PR406",
+        "PR407",
+        "PR408"
+      ],
+      "path": "tests/wf03_lifecycle_scope.py",
+      "pr406_blob": "70606a7d5a0fa15320e0f7d6e60153df39b8ecb1",
+      "pr407_blob": "92f9cb88b48e56da3e40142b38750c6f56940b70",
+      "pr408_blob": "6131c2f395bf9e0d8c6cb06ba5a4a54137f4b77c",
+      "resolution": "PR406 adds the bounded WF-06A hooks, PR407 the B1 layer, PR408 the ON-08 owned paths; auto-merged without conflict; this integration adds only the bounded PR #409 seal delegation (_int409_*)."
+    },
+    {
+      "base_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "integrated_blob": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "tests/wf04_scope.py",
+      "pr406_blob": "4432d4ae2586d4d6c1f55fee27a1c5db6f3d836d",
+      "pr407_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "pr408_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
+      "resolution": "PR406 hook edit; this integration adds the bounded delegation to the PR #409 seal in _downstream_allows/_downstream_pin (only while the seal is exact)."
+    },
+    {
+      "base_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
+      "integrated_blob": "350cf35f262e79ffb6dd45283682160dca07f271",
+      "owner_prs": [
+        "PR406"
+      ],
+      "path": "tests/wsv2_core_scope.py",
+      "pr406_blob": "6ca3afa6771ac236fc9c518007a002fd5a17568e",
+      "pr407_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
+      "pr408_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
+      "resolution": "PR406 hook edit; this integration adds the bounded PR #409 seal delegation to the changed/untracked path checks (only while the seal is exact)."
+    }
+  ],
+  "rollback": "Revert the PR #409 integration branch; each source PR remains independently valid on its own branch.",
+  "schema_version": "FIN_V2_INTEGRATION_409_V1",
+  "source_blobs": {
+    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
+    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
+    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "1910e073d6be139791a1ff31cc5f687e7463291e",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
+    "docs/react_migration/fin_v2_integration_409/PR409_CORRECTION_A_EXACT_HEAD_REPORT.md": "39802f6428047a6881d60cc21775c8daf1708107",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
+    "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "9b704696bd2982ffd5888015df6edff5af14a777",
+    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
+    "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
+    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/fin_v2_integration_409_scope.py": "4c04642a41c0ab1506f69995bb0c966ae2c735e6",
+    "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
+    "tests/test_fin_v2_integration_409_scope.py": "ad3932151f00930125d0b5c838fcc97ece5c2080",
+    "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
+    "tests/wf03_lifecycle_scope.py": "6a237eddd48da4034de7165dd8ef60746f9e6214",
+    "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
+    "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
+  },
   "sources": {
     "PR406": {
       "head": "500772e0bc865283e86bce36b070ba51b77dcd0b",
@@ -16,205 +216,5 @@
       "tree": "f82ce5aef63b7f3560e61f7d2b8ee69f0ece6696"
     }
   },
-  "authorization": "Financial Owner, PR #409 Correction A: limited exact-source integration seal for the literal union of PR #406, #407 and #408 over main ebf1f151; no financial engine, application, CI or security change.",
-  "source_blobs": {
-    "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
-    "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
-    "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json": "1910e073d6be139791a1ff31cc5f687e7463291e",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
-    "docs/react_migration/fin_v2_integration_409/PR409_CORRECTION_A_EXACT_HEAD_REPORT.md": "39802f6428047a6881d60cc21775c8daf1708107",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
-    "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json": "9b704696bd2982ffd5888015df6edff5af14a777",
-    "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
-    "tests/fin_truth_b1/test_source_successor.py": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
-    "tests/fin_v2_cohorts.py": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
-    "tests/fin_v2_integration_409_scope.py": "4c04642a41c0ab1506f69995bb0c966ae2c735e6",
-    "tests/fin_v2_wf06a_scope.py": "0497937b3ec08b45eee584931a32b24e7091b9b1",
-    "tests/test_fin_v2_integration_409_scope.py": "ad3932151f00930125d0b5c838fcc97ece5c2080",
-    "tests/test_fin_v2_wf06a_scope.py": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
-    "tests/wf03_lifecycle_scope.py": "6a237eddd48da4034de7165dd8ef60746f9e6214",
-    "tests/wf04_scope.py": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
-    "tests/wsv2_core_scope.py": "350cf35f262e79ffb6dd45283682160dca07f271"
-  },
-  "repin_ledger": [
-    {
-      "path": "docs/financial_validation/fin_truth_b1/SOURCE_SUCCESSOR.json",
-      "base_blob": null,
-      "owner_prs": [
-        "PR407"
-      ],
-      "pr406_blob": null,
-      "pr407_blob": "2462d6735af5a9f998012802e7f115877a29666f",
-      "pr408_blob": null,
-      "integrated_blob": "1df974d7d4bb1dd9554fba563bb0def29318e1a6",
-      "resolution": "PR407 seal. Only its current source_blobs pin of tests/fin_truth_b1/test_source_successor.py moved (that test became composition-aware); historical_source_blobs, correction_b_history and the ledger are unchanged."
-    },
-    {
-      "path": "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json",
-      "base_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "1eeefdeb7ce384629ef10dc9c2854fbb05703b74",
-      "pr407_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
-      "pr408_blob": "430e09a4eb20216aeaf26271826a83d7d6e31c90",
-      "integrated_blob": "8590ca406a0739da65de21bd069ea340a9ec5900",
-      "resolution": "PR406 manifest edit; its tests/fin_v2_cohorts.py pin follows the registry blob after this integration registers the PR #409 seal. Only that pin value moved."
-    },
-    {
-      "path": "docs/financial_validation/finv2_d01_d02/SOURCE_SUCCESSOR.json",
-      "base_blob": "72df7f4166257e778da562cf826a8b33ba9dc812",
-      "owner_prs": [
-        "PR407",
-        "PR408"
-      ],
-      "pr406_blob": "72df7f4166257e778da562cf826a8b33ba9dc812",
-      "pr407_blob": "9794f49ca229926c35aa077e1cfb09e3f1d05b89",
-      "pr408_blob": "2ab7999b69169ba44a3f3f39388cf7c7cd4f3d03",
-      "integrated_blob": "1910e073d6be139791a1ff31cc5f687e7463291e",
-      "resolution": "PR407 and PR408 each repin this predecessor manifest (router/test pins). Final = one pin per file at the merged blob; main identity keys, historical maps and ledger prefix unchanged (verified)."
-    },
-    {
-      "path": "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json",
-      "base_blob": "46a3935141ad287cf8b025f720b41c3f33f9ed01",
-      "owner_prs": [
-        "PR406",
-        "PR407",
-        "PR408"
-      ],
-      "pr406_blob": "396941343261cba54281d5c181e08355d96f8a9d",
-      "pr407_blob": "53d62e4a0f01991018610e5c84c2f08128db1748",
-      "pr408_blob": "f2ac1a5d317dc016bafbf6793224504920fce26f",
-      "integrated_blob": "808185f922fc88f238551eda81dfd8e312117515",
-      "resolution": "PR406, PR407 and PR408 each follow the pin chain here. Final = merged blobs of the followed manifests/scope modules; history preserved."
-    },
-    {
-      "path": "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json",
-      "base_blob": "2bd6a5b0d3276c9c88877a662b5b2c2502c6e700",
-      "owner_prs": [
-        "PR406",
-        "PR407",
-        "PR408"
-      ],
-      "pr406_blob": "2d35c169407859ce707a294f8f5a6b2976fa78b4",
-      "pr407_blob": "9ec28c4e86f4e0e555f24cadd01c613225197979",
-      "pr408_blob": "434adb89c94fbdc64f65d66bc4fe10f36a193ec8",
-      "integrated_blob": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
-      "resolution": "PR406 (WF-06A pins), PR407 (B1 layer pins/ledger rows) and PR408 (ON-08 owned paths) all edit it. Final = union of the three source_blobs additions with each file at its merged blob; B1 ledger rows kept."
-    },
-    {
-      "path": "docs/react_migration/wf06a_ux/SOURCE_SUCCESSOR.json",
-      "base_blob": null,
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "98a9509880921285f2fe95e4edb65c29f475f026",
-      "pr407_blob": null,
-      "pr408_blob": null,
-      "integrated_blob": "9b704696bd2982ffd5888015df6edff5af14a777",
-      "resolution": "PR406 manifest; its source_blobs pin the live blobs of the overlapping WF-03/WF-04/WS-V2 files and the scope modules, which moved in the composition; only those pin values were recomputed."
-    },
-    {
-      "path": "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json",
-      "base_blob": "619ac4be6e5c07aec11c28c5c91c81a1b2e12d22",
-      "owner_prs": [
-        "PR406",
-        "PR407",
-        "PR408"
-      ],
-      "pr406_blob": "3cfd965627faa99d719f3ecd28b03f674f3825f6",
-      "pr407_blob": "1ca7285faa38a5da724d891a36134abc61a3041f",
-      "pr408_blob": "d8382ea78ec3a4ed12c3bfe5e79dbaa9035c92be",
-      "integrated_blob": "6af377244e85fea2d67dcc2675f42992417978cb",
-      "resolution": "Three-way pin chain (RunFailureNotice.tsx repin by PR406; manifest pins by PR407/PR408). Final = merged blobs; history preserved."
-    },
-    {
-      "path": "tests/fin_truth_b1/test_source_successor.py",
-      "base_blob": null,
-      "owner_prs": [
-        "PR407"
-      ],
-      "pr406_blob": null,
-      "pr407_blob": "488eb62c3cba3c2c25cc67816d345ed97d1095d7",
-      "pr408_blob": null,
-      "integrated_blob": "d53899e3bed6bef1d23871fc2bc0cbdeb2c19d59",
-      "resolution": "PR407 test; its pin-set equality is kept for a stand-alone tree (extra set empty) and extra pins must be admitted by the exact seal."
-    },
-    {
-      "path": "tests/fin_v2_cohorts.py",
-      "base_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "17c97498d0cf95b98f22a98c6fea3e6998b2c2a7",
-      "pr407_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
-      "pr408_blob": "baae671c7fd265c2afcc6bbbe53495bab376eb3d",
-      "integrated_blob": "5a0269576c211d0f6099783c4fbdc744084c8f2c",
-      "resolution": "PR406 registers the WF-06A cohort; this integration registers the PR #409 seal as a further cohort."
-    },
-    {
-      "path": "tests/fin_v2_wf06a_scope.py",
-      "base_blob": null,
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "62939bf662475e32521ed0f22de7f715b96575d1",
-      "pr407_blob": null,
-      "pr408_blob": null,
-      "integrated_blob": "0497937b3ec08b45eee584931a32b24e7091b9b1",
-      "resolution": "PR406 closed seal; this integration adds the bounded delegation: changed paths and followed-manifest pins that the PR #409 seal literally authorises, only while it is exact."
-    },
-    {
-      "path": "tests/test_fin_v2_wf06a_scope.py",
-      "base_blob": null,
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "18e0c9603bcbe5facf59f7ad8f8f67490926e0a8",
-      "pr407_blob": null,
-      "pr408_blob": null,
-      "integrated_blob": "efcaa9ec810de39756b9f4749d9c987e9f00b879",
-      "resolution": "PR406 test; its lineage test now separates this cohort's own moved pins (assertions unchanged) from foreign pins, which must be seal-admitted and never WF-06A-owned (empty on a stand-alone tree)."
-    },
-    {
-      "path": "tests/wf03_lifecycle_scope.py",
-      "base_blob": "9c767c3f87ee7196ff8a24d5624bf7989c11a7cd",
-      "owner_prs": [
-        "PR406",
-        "PR407",
-        "PR408"
-      ],
-      "pr406_blob": "70606a7d5a0fa15320e0f7d6e60153df39b8ecb1",
-      "pr407_blob": "92f9cb88b48e56da3e40142b38750c6f56940b70",
-      "pr408_blob": "6131c2f395bf9e0d8c6cb06ba5a4a54137f4b77c",
-      "integrated_blob": "6a237eddd48da4034de7165dd8ef60746f9e6214",
-      "resolution": "PR406 adds the bounded WF-06A hooks, PR407 the B1 layer, PR408 the ON-08 owned paths; auto-merged without conflict; this integration adds only the bounded PR #409 seal delegation (_int409_*)."
-    },
-    {
-      "path": "tests/wf04_scope.py",
-      "base_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "4432d4ae2586d4d6c1f55fee27a1c5db6f3d836d",
-      "pr407_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
-      "pr408_blob": "b96d4c27f921f6a474ea6308479d8d7dc77f8a45",
-      "integrated_blob": "6067ba1a8bb41f483db5941b37cbabdc593b7cc2",
-      "resolution": "PR406 hook edit; this integration adds the bounded delegation to the PR #409 seal in _downstream_allows/_downstream_pin (only while the seal is exact)."
-    },
-    {
-      "path": "tests/wsv2_core_scope.py",
-      "base_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
-      "owner_prs": [
-        "PR406"
-      ],
-      "pr406_blob": "6ca3afa6771ac236fc9c518007a002fd5a17568e",
-      "pr407_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
-      "pr408_blob": "9af504bbc5efdae602ea08e6eee3efe6dff7111a",
-      "integrated_blob": "350cf35f262e79ffb6dd45283682160dca07f271",
-      "resolution": "PR406 hook edit; this integration adds the bounded PR #409 seal delegation to the changed/untracked path checks (only while the seal is exact)."
-    }
-  ],
-  "rollback": "Revert the PR #409 integration branch; each source PR remains independently valid on its own branch.",
   "validation": "See PR409_CORRECTION_A_EXACT_HEAD_REPORT.md and exact-head CI; this manifest is a seal, not a PASS claim."
 }
