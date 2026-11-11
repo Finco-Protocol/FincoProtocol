@@ -1,0 +1,35 @@
+{
+  "base": "01a26f9a87a12548c4f151caebe8ee933db7445c",
+  "base_blobs": {
+    "tests/bess02_scope.py": "323512b70fbf598258e4bc48dd04bdddaf53c439",
+    "tests/fin_v2_cohorts.py": "54216cffd5ded691df80a5dc57c7cc7043059b06",
+    "tests/r02_ppa_ux_scope.py": "9e22e0767e2360e3d09015f12b6e3b6c4c5560cb",
+    "tests/test_bess02_scope.py": "31d76093b3a0a0bc152338382b69a18513fd0f75",
+    "tests/test_post432_l01_l02_scope.py": "ba93b6b951b97aa594aa66337ebe4ae62bb2a3d2",
+    "tests/test_r02_ppa_ux_scope.py": "c0b341c29aa70073e07efe3a1d4360bb4c666067"
+  },
+  "base_tree": "0f84439efe6cb4ad920ea008eb739bbc7dbe07ab",
+  "schema_version": "CI_V4_CORRECTION_P_PERFORMANCE_EXACT_SOURCE_V1",
+  "source_blobs": {
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "6f1e1bbed47fefb7b1d913ec5d549c60eb9d58f3",
+    "docs/ci_v4/module_weights.json": "f78508fec0cc2354331cdb64ec09ccf0193463b4",
+    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "d5b44cc428aa6205a11511c021b663709cab4867",
+    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json": "43bb5df06f492d108538ef823bf886d1cf2e840e",
+    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json": "f9f67e06a18d2210360baeed3572413e5c40c04b",
+    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json": "e82cbd727e683af71827d569cf7bc067d014a9d8",
+    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "0d2ab082c1d6a93bda53053c6b95877decfb0c84",
+    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "d7b751e208d6d628c3075188c3a8b30d846eda80",
+    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "031c6bd665ec5e3eb58530b04e32d81315595665",
+    "tests/bess02_scope.py": "100271c0ce32ce42e8f83afed1c7468644dff5eb",
+    "tests/ci_v4_perf_scope.py": "7af93a1f8218f019521c67679f84e50db3805fb0",
+    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/r02_ppa_ux_scope.py": "455a681660de8eb12eb77d0b5253695a3eea6fbf",
+    "tests/test_bess02_scope.py": "1f4fdf28eea0db0da7c33d6f825e0b51ed5ee64b",
+    "tests/test_ci_v4_perf_scope.py": "3986199e66d0174b0d83aeba83b3f7b1114cbf9e",
+    "tests/test_finval_f01_fixture_integrity.py": "d7da6e4a2317c31045155a03ebdb4c1f9244702c",
+    "tests/test_post432_l01_l02_scope.py": "c62bc789ebcc9b1d122ead972667271bea497577",
+    "tests/test_r02_ppa_ux_scope.py": "84a2a6b499555558a9527796cf000c34fa1b7a72",
+    "tests/test_rc_sec_csrf_successor.py": "fd4b0f8ad037da3868ce4f64455f6b8ff859c8fc",
+    "tests/test_trust_readiness_controls.py": "3d5d6cfe23cd4661f39af76ae7fb8022acb54c3b"
+  }
+}

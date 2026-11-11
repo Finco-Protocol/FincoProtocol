@@ -250,7 +250,7 @@ def closure_paths(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     N = _next()
     own = OWNED_PATHS | {MANIFEST}
-    return own | ((N.OWNED_PATHS | {N.MANIFEST}) if N is not None and N.signature_ok(root, ref) else frozenset())
+    return own | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def reviewed_edits_ok(repo=None, ref=None):

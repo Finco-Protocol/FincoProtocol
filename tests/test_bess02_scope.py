@@ -171,8 +171,11 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
     registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
     accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
                     if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'COHORT_MODULES')
-    assert C.COHORT_MODULES == accepted + ('tests.bess02_scope',)
-    assert C.COHORT_MODULES[-3:] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
+    from tests import ci_v4_perf_scope as F
+    own = accepted + ('tests.bess02_scope',)
+    # Exactly two states: the accepted BESS-only tail, or one reviewed CI-performance successor behind a complete signature.
+    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())
+    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
 
 
 def test_r02_outer_read_scope_shares_successor_memo_and_drops_it_before_mutation(candidate_tree, monkeypatch):

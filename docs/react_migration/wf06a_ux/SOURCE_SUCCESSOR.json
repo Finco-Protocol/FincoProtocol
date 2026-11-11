@@ -5,8 +5,8 @@
   "authorization": {},
   "source_blobs": {
     "docs/financial_validation/fin_v2_r1/SOURCE_SUCCESSOR.json": "8590ca406a0739da65de21bd069ea340a9ec5900",
-    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "869fbb388dd408eff47a5c97aba5e15f8b54ce68",
-    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "5bcce25b511ac0892c9870a7f81b51f7e80610d0",
+    "docs/financial_validation/wf04_debt_metrics/SOURCE_SUCCESSOR.json": "808185f922fc88f238551eda81dfd8e312117515",
+    "docs/react_migration/wf03_project_lifecycle/SOURCE_SUCCESSOR.json": "dd3d60f650599bfdf5b1436de0e0e13c4abf3845",
     "docs/react_migration/wf06a_ux/IMPLEMENTATION_EVIDENCE.md": "10c8b7fc20ff225deedba888d22fa0f9a8e856a5",
     "docs/react_migration/wsv2_core/SOURCE_SUCCESSOR.json": "6af377244e85fea2d67dcc2675f42992417978cb",
     "frontend/src/app/InputsGuide.tsx": "946efda60cefe21d67172eb99bbf58a9d3f4d504",
