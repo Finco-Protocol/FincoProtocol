@@ -32,7 +32,7 @@
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "d2089e86f69e5a4c8f92b33e20eb2ce2990f0211",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "ed0eb08b4b301cf79e19289bdfe59b6bfaa6fa6f",
     "tests/bess02_scope.py": "323512b70fbf598258e4bc48dd04bdddaf53c439",
-    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/fin_v2_cohorts.py": "54216cffd5ded691df80a5dc57c7cc7043059b06",
     "tests/post432_l01_l02_scope.py": "b3e71b166d66c44147fdbe06ad7374cfd2a9ca6f",
     "tests/r02_ppa_ux_scope.py": "9e22e0767e2360e3d09015f12b6e3b6c4c5560cb",
     "tests/test_bess02_scope.py": "31d76093b3a0a0bc152338382b69a18513fd0f75",

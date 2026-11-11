@@ -1,10 +1,13 @@
 {
   "authorization": "Financial Owner T01-D brief 2026-11-08: governed dormant integration of the offline tax reference registry; reference-only; NO country activation, NO FX defaults, NO engine hook, NO tax computation.",
-  "base": "69d68d4f6e45fdffc7e9e3800ceeca0ba26582b9",
+  "base": "785024c752bbd1700d6051cf15115d9980d0b4a1",
   "base_blobs": {
-    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168"
+    "tests/fin_v2_cohorts.py": "3d38dad0829cf8667f3498589723b435d5ca543a",
+    "tests/test_ux_pr3b2_scope.py": "f7ac957d768146b923b85614180f90236b003745",
+    "tests/ux_pr3b1_scope.py": "f269ba3d1785ca033874a766e8ab8f155f19c710",
+    "tests/ux_pr3b2_scope.py": "00270d57758883d5f88679e9980efe9c084ba1dd"
   },
-  "base_tree": "7f8335faa58a4c54b45d23837a625e85475a8c0c",
+  "base_tree": "063d27ce5ef6841ec641e377662cbda924d97667",
   "schema_version": "T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1",
   "source_blobs": {
     "docs/tax_reference_registry/FINAL_REPORT_HR.md": "069624c6e99b21341beafa56added55da17ff986",

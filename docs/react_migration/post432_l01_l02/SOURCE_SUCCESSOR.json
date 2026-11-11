@@ -29,7 +29,7 @@
     "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json": "817726059610abfe683b3f2c5bd53be81d225e8b",
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json": "83c18f9ef52da0b7da27c0053de043c2efc11e9f",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json": "dc3844ae6afaf2abe1c7e4f04f23a87da314de43",
-    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/fin_v2_cohorts.py": "2bc40e38a496d41211cd9689b5812084590d9b7b",
     "tests/on_bess01_scope.py": "bd3b07333a13c8cd02694a62cc1b6bfb4e43f496",
     "tests/onaccept01_scope.py": "b6dbb68073bf843e21e4004b0430d2aa8a9cb0fb",
     "tests/post432_l01_l02_scope.py": "a1b9886a2d4e07b6cee32db1d508af4b6f92c3d8",

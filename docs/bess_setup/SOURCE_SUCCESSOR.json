@@ -46,7 +46,7 @@
     "frontend/src/app/newProject/bess/types.ts": "491a1089ee8129d3596e559cd30e9ef7bb61c56f",
     "static/react/finco-react.css": "b75011e091aa95c17bc69de467996bae3de71c0b",
     "static/react/finco-react.js": "75913238175f3e582e455ec71a0d9a1b35793f77",
-    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/fin_v2_cohorts.py": "44555c917e7ebdddbfa66f33fe27214555c1d058",
     "tests/model_react_rcm_financing_acceptance.py": "f1fa4a7a4eb74f5dd316ece531ac025257b5f643",
     "tests/on_bess01_browser_checks.py": "28e7d730b1b6c641281e8a762997774f53510ca4",
     "tests/on_bess01_contract_checks.py": "c91c1ea4d0e66dd062b3db9b8d57364b195e6e3c",
