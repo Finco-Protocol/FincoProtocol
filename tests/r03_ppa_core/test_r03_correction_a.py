@@ -15,6 +15,8 @@ import pytest
 
 from research.r03_ppa_candidate import core as impl
 from tests.r03_ppa_core.test_r03_oracle import D, _input, _oracle_result
+from tests.r03_ppa_core import fixtures as FX
+from tests.r03_ppa_core.test_r03_fixtures import _assert_three_way
 
 
 # ── family: DATED curve mode ──
@@ -189,3 +191,56 @@ def test_unapproved_indexation_timing_refused():
                                                            indexed_fraction=D(1),
                                                            indexation_timing="PER_12_MONTHS")),
         ))
+
+
+def test_zero_caps_are_meaningful_per_mode():
+    """Correction D: cap=0 is defined per mode, not refused —
+    YEARLY_INCREMENTAL cap1=0 means tier1 is empty and tier2 starts immediately."""
+    res = impl.compute_ppa_ledger(_input(
+        cap_mode="YEARLY_INCREMENTAL",
+        cap1=impl.Quantity(D(0), "MWh"), cap2=impl.Quantity(D(500), "MWh"),
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(70)),
+        reduced_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(45)),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=((2030, D(55)),)),
+    ))
+    p = res[0]
+    assert p.tier1.mwh == D(0)                       # tier1 window [0, 0] is empty
+    assert p.tier2.mwh == D(500)                     # tier2 tranche 0..500 @ 45
+    assert p.merchant.mwh == D(1000)                 # full gen 1500 - contracted 500
+    # LIFE_ABSOLUTE with both caps 0: nothing contractable, everything merchant
+    zero_all = impl.compute_ppa_ledger(_input(
+        cap_mode="LIFE_ABSOLUTE",
+        cap1=impl.Quantity(D(0), "MWh"), cap2=impl.Quantity(D(0), "MWh"),
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(70)),
+        reduced_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(45)),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=((2030, D(55)),)),
+    ))
+    assert zero_all[0].tier1.mwh == D(0) and zero_all[0].tier2.mwh == D(0)
+    assert zero_all[0].merchant.mwh == D(1500)       # full generation is merchant (nothing contractable)
+    from tests.r03_ppa_core import fixtures as FX
+    _assert_three_way(FX.FIXTURE_8)
+    assert FX.FIXTURE_8["expected"][0]["t2_mwh"] == Fraction(500)
+
+
+def test_partial_first_and_last_operating_year_enter_through_generation_values():
+    """Correction D: the annual axis represents partial first/last PPA years through the
+    generation VALUES (no separate partial-year mechanism is invented).  The contract
+    window stays whole years; reduced first-year yield flows through eligible volume."""
+    res = impl.compute_ppa_ledger(_input(
+        generation=((2030, D(300)), (2031, D(1500)), (2032, D(400))),   # 300 = partial COD year, 400 = partial final year
+        ppa_start_year=2030,
+        ppa_end_year=2032,
+        cap1=impl.Quantity(D(2000), "MWh"), cap2=impl.Quantity(D(4000), "MWh"),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=tuple((y, D(55)) for y in (2030, 2031, 2032))),
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(70)),
+        reduced_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(45)),
+    ))
+    # LIFE_INCREMENTAL over eligible (share 0.8): 240 + 1200 + 320 = 1760 <= 2000+4000, all tier1
+    totals = [p.tier1.mwh + p.tier2.mwh + p.merchant.mwh + p.unsold_mwh for p in res]
+    assert totals == [D(300), D(1500), D(400)]        # conservation per year
+    # LIFE_INCREMENTAL cap1=2000 covers all eligible 1760: tier1 absorbs every year
+    assert [p.tier1.mwh for p in res] == [D(240), D(1200), D(320)]
+    assert [p.merchant.mwh for p in res] == [D(60), D(300), D(80)]   # gen - contracted
+    from tests.r03_ppa_core import fixtures as FX
+    _assert_three_way(FX.FIXTURE_9)
+    assert FX.FIXTURE_9["expected"][0]["t1_mwh"] == Fraction(240)

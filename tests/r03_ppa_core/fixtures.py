@@ -133,3 +133,32 @@ FIXTURE_7 = {
     "merchant_prices": {2030: F(55)},
     "expected": [_row(2030, 1200, 1200, 1200, F("55.123456789"), 0, 45, 0, 55)],
 }
+
+
+# ── FIXTURE 8: zero cap1 (Correction D) — YEARLY_INCREMENTAL cap1=0, cap2=500 ──
+# eligible 1200: t1 window [0,0] empty; t2 tranche 0..500 @45 = 22500; merchant 1000 @55.
+FIXTURE_8 = {
+    "cap_mode": "YEARLY_INCREMENTAL", "cap_application": "AFTER_SHARE",
+    "cap1_mwh": F(0), "cap2_mwh": F(500),
+    "generation": {2030: F(1500)},
+    "ppa_share": F(4, 5), "ppa_start": 2030, "ppa_end": 2030,
+    "base": (F(70), F(0), 2030, F(0)), "reduced": (F(45), F(0), 2030, F(0)),
+    "merchant_prices": {2030: F(55)},
+    "expected": [_row(2030, 1500, 1200, 0, 70, 500, 45, 1000, 55)],
+}
+
+# ── FIXTURE 9: partial first/last operating years (Correction D) ──
+# gen 300/1500/400 (partial COD year + partial final year), share 0.8 -> eligible
+# 240/1200/320; LIFE_INCREMENTAL cap1 2000 covers all (1760 cumulative) -> all tier1;
+# merchant = gen - contracted = 60/300/80.
+FIXTURE_9 = {
+    "cap_mode": "LIFE_INCREMENTAL", "cap_application": "AFTER_SHARE",
+    "cap1_mwh": F(2000), "cap2_mwh": F(4000),
+    "generation": {2030: F(300), 2031: F(1500), 2032: F(400)},
+    "ppa_share": F(4, 5), "ppa_start": 2030, "ppa_end": 2032,
+    "base": (F(70), F(0), 2030, F(0)), "reduced": (F(45), F(0), 2030, F(0)),
+    "merchant_prices": {2030: F(55), 2031: F(55), 2032: F(55)},
+    "expected": [_row(2030, 300, 240, 240, 70, 0, 45, 60, 55),
+                 _row(2031, 1500, 1200, 1200, 70, 0, 45, 300, 55),
+                 _row(2032, 400, 320, 320, 70, 0, 45, 80, 55)],
+}
