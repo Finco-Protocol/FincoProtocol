@@ -322,8 +322,9 @@ def _next_pins(root, ref):
 
 def map_keys(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
-    N = _next()
-    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
+    with scoped():
+        N = _next()
+        return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
 
 
 def closure_paths(repo=None, ref=None):
@@ -345,17 +346,19 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
-        return True
-    N = _next()
-    return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)
+    with scoped():      # one shared read scope per call: each successor signature is evaluated once, then dropped
+        if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+            return True
+        N = _next()
+        return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
     root = Path(repo) if repo is not None else ROOT
-    pins = dict(manifest(repo, ref).get('source_blobs', {}))
-    pins.update(_next_pins(root, ref))
-    return pins
+    with scoped():
+        pins = dict(manifest(repo, ref).get('source_blobs', {}))
+        pins.update(_next_pins(root, ref))
+        return pins
 
 
 def nontrust_scope_authorized(changed, repo=None):

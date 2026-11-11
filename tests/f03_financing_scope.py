@@ -178,8 +178,9 @@ HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
                                 '\n'
                                 'def map_keys(repo=None, ref=None):\n'
                                 '    root = Path(repo) if repo is not None else ROOT\n'
-                                '    N = _next()\n'
-                                '    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else '
+                                '    with scoped():\n'
+                                '        N = _next()\n'
+                                '        return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else '
                                 '())\n'),
                                ('    """This leaf\'s closed path set, gated by its OWN signature (no successor below it on this branch)."""\n'
                                 '    root = Path(repo) if repo is not None else ROOT\n'
@@ -198,17 +199,19 @@ HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
                                ('def supersedes(path, value, repo=None, ref=None):\n'
                                 '    return path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\n',
                                 'def supersedes(path, value, repo=None, ref=None):\n'
-                                '    if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:\n'
-                                '        return True\n'
-                                '    N = _next()\n'
-                                '    return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)\n'),
+                                '    with scoped():      # one shared read scope per call: each successor signature is evaluated once, then dropped\n'
+                                '        if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:\n'
+                                '            return True\n'
+                                '        N = _next()\n'
+                                '        return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)\n'),
                                ('def effective_pins(repo=None, ref=None, *, signature=False):\n'
                                 "    return dict(manifest(repo, ref).get('source_blobs', {}))",
                                 'def effective_pins(repo=None, ref=None, *, signature=False):\n'
                                 '    root = Path(repo) if repo is not None else ROOT\n'
-                                "    pins = dict(manifest(repo, ref).get('source_blobs', {}))\n"
-                                '    pins.update(_next_pins(root, ref))\n'
-                                '    return pins'),
+                                '    with scoped():\n'
+                                "        pins = dict(manifest(repo, ref).get('source_blobs', {}))\n"
+                                '        pins.update(_next_pins(root, ref))\n'
+                                '        return pins'),
                                ('    root = Path(repo) if repo is not None else ROOT\n'
                                 '    try:\n'
                                 "        if _git(root, 'merge-base', 'origin/main', 'HEAD')",
@@ -450,11 +453,18 @@ def scoped():
     finally:
         _SCOPE.pop()
 
+def _compute(root, ref, mode):
+    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""
+    if mode == "exact":
+        return _signature_ok(root, ref, True) and _diff_ok(root, ref)
+    return _signature_ok(root, ref, mode)
+
+
 def _verdict(root, ref, closure):
     key = (str(root), ref, closure)
     if _SCOPE and key in _SCOPE[-1]:
         return _SCOPE[-1][key]
-    value = _signature_ok(root, ref, closure)
+    value = _compute(root, ref, closure)
     if _SCOPE:
         _SCOPE[-1][key] = value
     return value
@@ -582,9 +592,10 @@ def _signature_ok(root, ref, closure=False):
         return False
 
 def exact_blobs_ok(repo=None, ref=None):
-    root = Path(repo) if repo is not None else ROOT
-    if not _verdict(root, ref, True):
-        return False
+    return _verdict(Path(repo) if repo is not None else ROOT, ref, "exact")
+
+
+def _diff_ok(root, ref):
     try:
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= OWNED_PATHS | {MANIFEST}:
@@ -607,7 +618,11 @@ def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+    if path not in SUPERSEDED:
+        return False
+    # Like the accepted BESS02 / performance leaves: the signature decides a supersession; the composite separately requires every
+    # cohort's FULL exactness (map bytes, changed set, untracked files), so a signature-only verdict never makes the tree valid.
+    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
 
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
