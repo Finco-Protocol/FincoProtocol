@@ -67,6 +67,7 @@ def _bad(root):
 
 
 def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():
+    from tests import f03_financing_scope as G
     assert X.exact_blobs_ok() and X.signature_ok()
     data = X.manifest()
     assert set(data['source_blobs']) == X.OWNED_PATHS - {X.MANIFEST} and set(data['base_blobs']) == X.SUPERSEDED
@@ -77,7 +78,7 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
-                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)]
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
@@ -89,9 +90,14 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     import ast
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     from tests import ci_v4_perf_scope as F
-    nxt = ('tests.ci_v4_perf_scope',) if 'tests.ci_v4_perf_scope' in C.COHORT_MODULES else ()
-    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == (
-        F.expected_handoff(ROOT, X.REGISTRY) if nxt and F.signature_ok() else N.expected_handoff(ROOT, X.REGISTRY))
+    from tests import f03_financing_scope as G
+    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope') if m in C.COHORT_MODULES)
+    expected = N.expected_handoff(ROOT, X.REGISTRY)
+    if len(nxt) == 2 and G.signature_ok():
+        expected = G.expected_handoff(ROOT, X.REGISTRY)
+    elif len(nxt) == 1 and F.signature_ok():
+        expected = F.expected_handoff(ROOT, X.REGISTRY)
+    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
     core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]
     assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)

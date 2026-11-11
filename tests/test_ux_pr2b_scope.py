@@ -72,11 +72,14 @@ def test_exact_root_closed_registration_and_immutable_predecessors():
 
 @pytest.mark.parametrize('path',sorted(B.OWNED_PATHS))
 def test_one_byte_in_every_owned_blob_fails_closed(path,wt):
-    assert B.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert B.exact_blobs_ok(wt)
     p=wt/path; old=p.read_bytes(); p.write_bytes(old+b'\n')
-    assert not B.exact_blobs_ok(wt) and not A.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not B.exact_blobs_ok(wt) and not A.exact_blobs_ok(wt) and not C.valid(wt)
     p.write_bytes(old)
-    assert B.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert B.exact_blobs_ok(wt)
 
 
 @pytest.mark.parametrize('case',['blob','missing','extra','base','tree','history','schema','key','foreign','executable','symlink','deregister','evidence-executable','evidence-source','evidence-symlink'])
@@ -102,14 +105,16 @@ def test_forgery_modes_unknown_paths_and_untrusted_evidence(case,wt):
         if case=='evidence-executable':f.chmod(0o755)
         if case=='evidence-symlink':f.unlink();f.symlink_to(target)
     manifest.write_text(json.dumps(d,indent=2)+'\n')
-    assert not B.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not B.exact_blobs_ok(wt) and not C.valid(wt)
 
 
 @pytest.mark.parametrize('path',[A.MANIFEST,P.MANIFEST,'tests/ux_pr2a_scope.py','tests/ux_pr1_scope.py'])
 def test_altered_predecessor_is_not_authority(path,wt):
     p=wt/path;p.write_bytes(p.read_bytes()+b'\n')
-    assert not B.exact_blobs_ok(wt) or not A.exact_blobs_ok(wt)
-    assert not C.valid(wt)
+    with C.call_scope():
+        assert not B.exact_blobs_ok(wt) or not A.exact_blobs_ok(wt)
+        assert not C.valid(wt)
 
 
 @pytest.mark.parametrize('path',sorted(B.INTEGRATION_MANIFESTS))
@@ -117,7 +122,8 @@ def test_sibling_only_current_owned_pins_may_move(path,wt):
     p=wt/path;d=json.loads(p.read_text())
     owned=next(k for k in d['source_blobs'] if k in B.OWNED_PATHS)
     d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\n')
-    assert not B.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not B.exact_blobs_ok(wt) and not C.valid(wt)
 
 
 def test_wrong_sha_ref_and_old_source_cannot_bypass_guard(wt):
@@ -125,18 +131,21 @@ def test_wrong_sha_ref_and_old_source_cannot_bypass_guard(wt):
     current=(wt/path).read_bytes()
     historical=subprocess.check_output(['git','show',B.BASE+':'+path],cwd=wt)
     assert current!=historical
-    assert C.matches(path,current,repo=wt) and not C.matches(path,historical,repo=wt)
-    assert not C.matches(path,b'forged',repo=wt) and not B.exact_blobs_ok(wt,B.BASE)
-    assert not B.exact_blobs_ok(wt,'0'*40)
-    assert B.exact_blobs_ok(wt,'HEAD')
+    with C.call_scope():
+        assert C.matches(path,current,repo=wt) and not C.matches(path,historical,repo=wt)
+        assert not C.matches(path,b'forged',repo=wt) and not B.exact_blobs_ok(wt,B.BASE)
+        assert not B.exact_blobs_ok(wt,'0'*40)
+        assert B.exact_blobs_ok(wt,'HEAD')
     (wt/path).write_bytes(current+b'\n')
-    assert not C.matches(path,current,repo=wt)
-    assert C.matches(path,current,repo=wt,ref='HEAD')
+    with C.call_scope():
+        assert not C.matches(path,current,repo=wt)
+        assert C.matches(path,current,repo=wt,ref='HEAD')
 
 
 def test_allowed_ci_artifact_is_not_source_and_verdict_does_not_survive_call(wt):
-    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')
-    assert B.exact_blobs_ok(wt) and C.valid(wt)
+    p=wt/'evidence/financial/data_center-history-False.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text('{}')    # a finite F01 workflow output the composite allows
+    with C.call_scope():
+        assert B.exact_blobs_ok(wt) and C.valid(wt)
     q=wt/'frontend/src/app/capex/profileDraft.ts';raw=q.read_bytes();q.write_bytes(raw+b'\n')
     assert not B.exact_blobs_ok(wt)
     q.write_bytes(raw);assert B.exact_blobs_ok(wt)
@@ -147,26 +156,31 @@ def test_committed_executable_is_ref_rejected_and_fixture_restores_original_head
     path='frontend/src/app/capex/profileDraft.ts'
     git(wt,'update-index','--chmod=+x',path)
     git(wt,'-c','user.name=FINCO synthetic validation','-c','user.email=noreply@users.noreply.github.com','commit','-m','Synthetic invalid mode negative')
-    assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')
+    with C.call_scope():
+        assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')
 
 
 # Correction E: CI authority (signature level) is isolated from the whole-tree closure; the closure and composite stay global fail-closed.
 def test_unrelated_cohort_drift_keeps_ci_authority_but_fails_closure_and_composite(wt):
     path=wt/'app/v2/react_opex_lines.py'
     path.write_bytes(path.read_bytes()+b'\n')
-    assert B.ci_authority_ok(wt) and B.ci_owns('tools/ci_merge_tree_guard.py',wt)
-    assert not B.exact_blobs_ok(wt) and not C.valid(wt)
-    assert not B.ci_owns('tools/ci_v4_unknown.py',wt) and not B.ci_owns('app/v2/react_opex_lines.py',wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt) and B.ci_owns('tools/ci_merge_tree_guard.py',wt)
+        assert not B.exact_blobs_ok(wt) and not C.valid(wt)
+        assert not B.ci_owns('tools/ci_v4_unknown.py',wt) and not B.ci_owns('app/v2/react_opex_lines.py',wt)
 
 @pytest.mark.parametrize('path',sorted(B.OWNED_PATHS))
 def test_one_byte_in_any_owned_blob_removes_ci_authority(path,wt):
-    assert B.ci_authority_ok(wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt)
     p=wt/path;p.write_bytes(p.read_bytes()+b'\n')
-    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
+    with C.call_scope():
+        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
 
 @pytest.mark.parametrize('case',['base','tree','guard-pin','mode','extra-pin','base-blob'])
 def test_forged_manifest_or_mode_removes_ci_authority(case,wt):
-    assert B.ci_authority_ok(wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt)
     mp=wt/B.MANIFEST;d=json.loads(mp.read_text())
     if case=='base':d['base']='0'*40
     elif case=='tree':d['base_tree']='0'*40
@@ -175,10 +189,12 @@ def test_forged_manifest_or_mode_removes_ci_authority(case,wt):
     elif case=='base-blob':d['base_blobs'][next(iter(d['base_blobs']))]='0'*40
     if case=='mode':(wt/'tools/ci_merge_tree_guard.py').chmod(0o755)
     else:mp.write_text(json.dumps(d,indent=2)+'\n')
-    assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
+    with C.call_scope():
+        assert not B.ci_authority_ok(wt) and not B.ci_owns('tools/ci_merge_tree_guard.py',wt)
 
 def test_forged_sibling_manifest_keeps_pr2b_ci_authority_but_fails_closure_and_composite(wt):
     mp=wt/'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json';d=json.loads(mp.read_text())
     d['source_blobs']['static/react/finco-react.js']='0'*40
     mp.write_text(json.dumps(d,indent=2)+'\n')
-    assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)

@@ -8,16 +8,17 @@ export const creditTerm = (label: string, c: CreditCell | undefined, source: str
 export const metricTerm = (m: EvidenceMetric): Term => ({ label: m.label, display: m.value == null ? 'NOT AVAILABLE' : m.display, source: m.source, reason: m.reason });
 export function termSheetModel(e: Evidence, gate: Gate): TermGroup[] {
   const s = e.studio, run = gate.showRun ? e.credit.data?.runs[0] : undefined;
+  const runLabel = gate.state === 'HISTORICAL' ? 'Historical Run' : 'Last Run';
   const detail = (names: string[]) => s.senior_detail_rows.filter(([k]) => names.includes(k)).map(([label, display]) => ({
     label, display: display ?? 'NOT AVAILABLE', source: 'Working Copy · model information; not new Run verification' }));
   const workingGearing = e.fields.fields.find(f => f.field_id === 'debt.senior.gearing_pct');
   const absent = (label: string, reason: string): Term => ({ label, display: 'NOT AVAILABLE', reason, source: 'Last Run' });
   return [
-    { label: 'Size', rows: [creditTerm('Requested gearing · Last Run', run?.structure.requested_gearing, 'Last Run · structure.requested_gearing'),
+    { label: 'Size', rows: [creditTerm(`Requested gearing · ${runLabel}`, run?.structure.requested_gearing, `${runLabel} · structure.requested_gearing`),
       { label: 'Requested gearing · Working Copy', display: workingGearing?.value == null ? 'NOT AVAILABLE' : workingGearing.display_value ?? 'NOT AVAILABLE', source: 'Working Copy · debt.senior.gearing_pct (%)' },
       creditTerm('Senior commitment (sized)', run?.capacity.final_commitment, 'Last Run · capacity.final_commitment (kEUR)'),
-      { label: 'Committed', display: s.multisenior.active ? 'NOT AVAILABLE — distinct commitment evidence' : 'N/A — sized commitment (single Senior)',
-        reason: 'No separate committed record. Sized is not a second Committed number.', source: 'Contract limitation' }] },
+      { label: 'Independently committed', display: 'UNAVAILABLE — no independently evidenced lender commitment',
+        reason: 'Sized aggregate is not a separately persisted individual lender commitment.', source: 'Contract limitation' }] },
     { label: 'Pricing', rows: detail(['All-in interest rate', 'Base rate', 'Margin']).concat([
       { label: 'Pricing authority', display: s.senior_pricing_mode, source: 'Working Copy · all-in rate authoritative; base/margin informational' }]) },
     { label: 'Tenor', rows: run ? [

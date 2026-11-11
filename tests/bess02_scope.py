@@ -236,7 +236,7 @@ def _next_moved(root, ref):
     N = _next()
     if N is None or not N.signature_ok(root, ref):
         return {}
-    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
+    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}
 
 
 def map_keys(repo=None, ref=None):

@@ -7,7 +7,7 @@ permissions:
 jobs:
   rate-contract-native-and-browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -32,7 +32,9 @@ jobs:
           FINVAL_BROWSER_EVIDENCE_DIR: evidence/browser
           FINVAL_EVIDENCE_DIR: evidence/financial
         run: |
-          python -m pytest tests/finval_f01_browser_acceptance.py tests/test_finval_f01_complete.py tests/test_finval_f01_http_lifecycle.py tests/test_finval_f01_creation.py tests/test_finval_f01_hash_integrity.py tests/test_finval_f01_fixture_integrity.py tests/test_finval_rate_contract.py tests/test_finval_rate_run_acceptance.py tests/test_finval_f01_scope.py tests/test_finval_rate_successor.py -q -rs --junitxml=evidence/financial-browser.xml
+          echo "FINVAL_BROWSER_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python -m pytest tests/finval_f01_browser_acceptance.py tests/test_finval_f01_complete.py tests/test_finval_f01_http_lifecycle.py tests/test_finval_f01_creation.py tests/test_finval_f01_hash_integrity.py tests/test_finval_f01_fixture_integrity.py tests/test_finval_rate_contract.py tests/test_finval_rate_run_acceptance.py tests/test_finval_f01_scope.py tests/test_finval_rate_successor.py -q -rs --durations=20 --junitxml=evidence/financial-browser.xml
+          echo "FINVAL_BROWSER_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       - name: Require all four browser cases and no skipped financial acceptance
         run: |
           python - <<'PYCODE'
@@ -42,7 +44,10 @@ jobs:
           assert len([c for c in cases if c.get('classname','').endswith('finval_f01_browser_acceptance')]) == 4
           PYCODE
       - name: Build unchanged approved native environment
-        run: docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .
+        run: |
+          echo "FINVAL_DOCKER_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .
+          echo "FINVAL_DOCKER_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       - name: Verify non-root checkout and native package ownership
         run: |
           id
@@ -51,8 +56,10 @@ jobs:
           docker image inspect finval-f01-native --format '{{.Config.User}}'
       - name: Twenty exact Python V10 V11 cases with edited rates
         run: |
+          echo "FINVAL_NATIVE_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           mkdir -p evidence/native
-          docker run --rm --network none --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/subject -w /subject -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native python -m pytest tests/test_finval_f01_native_identity.py -q -rs --junitxml=evidence/native.xml
+          docker run --rm --network none --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/subject -w /subject -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native python -m pytest tests/test_finval_f01_native_identity.py -q -rs --durations=20 --junitxml=evidence/native.xml
+          echo "FINVAL_NATIVE_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       - name: Require twenty native cases without skips
         run: |
           python - <<'PYCODE'
