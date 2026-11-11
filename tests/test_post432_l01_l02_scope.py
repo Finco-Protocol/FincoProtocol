@@ -92,7 +92,9 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
     now = (ROOT / 'tests/fin_v2_cohorts.py').read_text()
     own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
-    assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()
+    from tests import ci_v4_perf_scope as F
+    nxt = 'tests.ci_v4_perf_scope' in C.COHORT_MODULES
+    assert N.exact_blobs_ok() and now == (F.expected_handoff(ROOT, X.REGISTRY) if nxt and F.signature_ok() else N.expected_handoff(ROOT, X.REGISTRY)).decode()
     import ast
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
     i = C.COHORT_MODULES.index('tests.post432_l01_l02_scope')
