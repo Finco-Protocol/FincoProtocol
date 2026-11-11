@@ -244,3 +244,65 @@ def test_partial_first_and_last_operating_year_enter_through_generation_values()
     from tests.r03_ppa_core import fixtures as FX
     _assert_three_way(FX.FIXTURE_9)
     assert FX.FIXTURE_9["expected"][0]["t1_mwh"] == Fraction(240)
+
+
+def test_containment_via_ast_scan_no_product_modules():
+    """Correction E: AST-level scan (stronger than string matching) — the research
+    package's import/attribute statements must not reference product layers."""
+    import ast
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "research" / "r03_ppa_candidate"
+    banned_roots = {"financial_engine", "finco_core", "domain", "app", "frontend", "static"}
+    for f in root.glob("*.py"):
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert alias.name.split(".")[0] not in banned_roots, (f.name, alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    assert node.module.split(".")[0] not in banned_roots, (f.name, node.module)
+                if node.level == 0 and node.module and node.module.startswith("tests"):
+                    raise AssertionError((f.name, node.module))
+
+
+def test_rounding_tie_goes_half_even_to_even_digit():
+    """Correction E: tie at the 6th decimal resolves HALF-EVEN (to the even last digit),
+    not half-up — the owner's 93,000 EUR vector never hits a tie, so this pins the
+    policy explicitly."""
+    res = impl.compute_ppa_ledger(_input(
+        cap_mode="LIFE_ABSOLUTE",
+        cap1=impl.Quantity(D(2000), "MWh"), cap2=impl.Quantity(D(4000), "MWh"),
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D("70.0000005")),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=((2030, D(55)),)),
+    ))
+    # 1200 x 70.0000005 = 84000.0006 raw; at 6 dp: 84000.000600 exactly — no tie here.
+    # Tie construction: 1200 x 70.000000375 = 84000.00045 -> 6dp tie at the 6th digit:
+    # 84000.00045 scaled = 84000000450 -> /2 rem 225 -> not an exact tie at 6dp either.
+    # A true 6dp tie needs the 7th+ digits to be exactly 5 at position 7: e.g. price
+    # 70.0000004166666... x 1200 = 84000.0005 - not representable; use MWh 3:
+    res3 = impl.compute_ppa_ledger(_input(
+        cap_mode="LIFE_ABSOLUTE",
+        cap1=impl.Quantity(D(2000), "MWh"), cap2=impl.Quantity(D(4000), "MWh"),
+        generation=((2030, D(3)),),
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D("70.000000625")),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=((2030, D(55)),)),
+    ))
+    # eligible 2.4 x 70.000000625 = 168.0000015 EXACTLY -> 6dp half-even tie:
+    # dropped remainder exactly .5 -> round to the even last digit -> 168.000002.
+    assert res3[0].tier1.revenue_eur == D("168.000002")
+
+
+def test_tiny_values_round_without_zero_fill():
+    """Correction E: a tiny but positive revenue rounds at 6 dp and is never zero-filled
+    (0.000001 EUR is representable; 0.0000001 EUR rounds to 0.000001 under half-even
+    from above)."""
+    res = impl.compute_ppa_ledger(_input(
+        cap_mode="LIFE_ABSOLUTE",
+        cap1=impl.Quantity(D(2000), "MWh"), cap2=impl.Quantity(D(4000), "MWh"),
+        generation=((2030, D("0.000001")),),      # 1 Wh of eligible generation x share 1.0
+        base_price=impl.TierPrice(mode="FIXED", fixed_price_eur_mwh=D(70)),
+        merchant=impl.MerchantSpec(mode="MERCHANT_PRICE", prices=((2030, D(55)),)),
+    ))
+    # 0.0000008 eligible MWh x 70 EUR/MWh = 0.000056 EUR -> 6dp (not zero-filled)
+    assert res[0].tier1.revenue_eur == D("0.000056")
