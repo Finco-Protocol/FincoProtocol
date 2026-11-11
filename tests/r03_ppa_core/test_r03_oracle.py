@@ -38,23 +38,36 @@ def _input(**over):
     return impl.R03Input(**base)
 
 
-def _oracle_result(res):
-    """Compare implementation results to the independent oracle via exact Fractions."""
+def _oracle_result(inp, res):
+    """Compare implementation results to the independent oracle via exact Fractions.
+    Oracle parameters derive from the INPUT SPEC (inp — constructed independently by
+    the test from synthetic values), NEVER from implementation output or provenance:
+    Correction F removed the data dependency where cap sizes and prices were read
+    from res[0].provenance with hardcoded 900/300 defaults."""
     years = [p.year for p in res]
-    gen = {p.year: Fraction(p.generation_mwh) for p in res}
-    share = Fraction(res[0].ppa_share)
+    gen = {y: Fraction(g) for y, g in inp.generation}
+    share = Fraction(inp.ppa_share)
+    c1 = Fraction(inp.cap1.value) * (1000 if inp.cap1.unit == "GWh" else 1)
+    c2 = Fraction(inp.cap2.value) * (1000 if inp.cap2.unit == "GWh" else 1)
+    bp = inp.base_price
+    rp = inp.reduced_price
     o = frac_oracle.ledger(
-        cap_mode=res[0].provenance["cap_mode"],
-        cap_application=res[0].provenance["cap_application"],
-        cap1_mwh=Fraction(D(900)) if res[0].provenance["cap_mode"].startswith("LIFE") else Fraction(D(900)),
-        cap2_mwh=Fraction(D(300)),
+        cap_mode=inp.cap_mode,
+        cap_application=inp.cap_application,
+        cap1_mwh=c1, cap2_mwh=c2,
         generation=gen,
         ppa_share=share,
-        ppa_start=2030,
-        ppa_end=2030,
-        base_fixed=Fraction(D(70)), base_rate=Fraction(0), base_base_year=2030, base_fraction=Fraction(0),
-        reduced_fixed=Fraction(D(45)), reduced_rate=Fraction(0), reduced_base_year=2030, reduced_fraction=Fraction(0),
-        merchant_prices={y: Fraction(D(55)) for y in years},
+        ppa_start=inp.ppa_start_year,
+        ppa_end=inp.ppa_end_year,
+        base_fixed=Fraction(bp.fixed_price_eur_mwh) if bp.fixed_price_eur_mwh else Fraction(0),
+        base_rate=Fraction(bp.index.rate) if bp.index else Fraction(0),
+        base_base_year=bp.index.base_year if bp.index else inp.ppa_start_year,
+        base_fraction=Fraction(bp.index.indexed_fraction) if bp.index else Fraction(0),
+        reduced_fixed=Fraction(rp.fixed_price_eur_mwh) if rp.fixed_price_eur_mwh else Fraction(0),
+        reduced_rate=Fraction(rp.index.rate) if rp.index else Fraction(0),
+        reduced_base_year=rp.index.base_year if rp.index else inp.ppa_start_year,
+        reduced_fraction=Fraction(rp.index.indexed_fraction) if rp.index else Fraction(0),
+        merchant_prices={y: Fraction(mp) for y, mp in inp.merchant.prices} if inp.merchant.mode == "MERCHANT_PRICE" else {y: Fraction(0) for y, _ in inp.generation},
         years=years,
     )
     for p, orow in zip(res, o):
@@ -71,7 +84,8 @@ def _oracle_result(res):
 def test_owner_illustrative_vector_1500_80pct_life_incremental():
     """Prompt §4.3 vector: 1500 MWh, 80% share -> 1200; tier1 900 @70, tier2 300 @45,
     merchant 300 @55 => PPA 76,500 + merchant 16,500 = 93,000 EUR = 93 kEUR."""
-    res = impl.compute_ppa_ledger(_input())
+    inp = _input()
+    res = impl.compute_ppa_ledger(inp)
     p = res[0]
     assert p.tier1.mwh == D(900) and p.tier2.mwh == D(300)
     assert p.tier1.revenue_eur == D("63000.000000")
@@ -79,7 +93,7 @@ def test_owner_illustrative_vector_1500_80pct_life_incremental():
     assert p.tier1.revenue_eur + p.tier2.revenue_eur == D("76500.000000")
     assert p.merchant.mwh == D(300) and p.merchant.revenue_eur == D("16500.000000")
     assert p.revenue_eur == D("93000.000000") and p.revenue_keur == D("93.000000")
-    o = _oracle_result(res)
+    o = _oracle_result(inp, res)
     assert o[0]["total_eur"] == Fraction(93000)
 
 
@@ -146,12 +160,13 @@ def test_gwh_unit_converts():
 
 def test_cap_application_before_share_is_an_explicit_hypothesis():
     """Q4: BEFORE_SHARE caps on full generation, then the share scales the tiers."""
-    res = impl.compute_ppa_ledger(_input(cap_application="BEFORE_SHARE"))
+    inp = _input(cap_application="BEFORE_SHARE")
+    res = impl.compute_ppa_ledger(inp)
     p = res[0]
     # tiers filled against 1500: t1 = 900, t2 = 300 (t2_hi=1200), then x 0.8
     assert p.tier1.mwh == D(720) and p.tier2.mwh == D(240)
     assert p.merchant.mwh == D(1500 - 720 - 240)
-    o = _oracle_result(res)
+    o = _oracle_result(inp, res)
     assert o[0]["t1_mwh"] == Fraction(720)
 
 
