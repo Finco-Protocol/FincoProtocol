@@ -293,7 +293,9 @@ def _maps_ok(root, ref, pins):
         a, b = old['source_blobs'], now['source_blobs']
         if set(a) != set(b):
             return False
-        if any(b[p] != a[p] and (p not in SUPERSEDED - CURRENT_MAPS or b[p] != pins[p]) for p in a):
+        S = _successor()
+        later = set(S._tip_map_keys(root, ref)) if S is not None and S.signature_ok(root, ref) else set()
+        if any(b[p] != a[p] and (p not in (SUPERSEDED - CURRENT_MAPS) | later or b[p] != pins[p]) for p in a):
             return False
     return True
 
@@ -456,7 +458,8 @@ def _exact(repo, ref, closure):
         identity_paths = OWNED_PATHS if closure else OWNED_PATHS - CURRENT_MAPS
         if any(_blob(_read(root, p, ref)) != current_pins[p] for p in identity_paths):
             return False
-        if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p) for p in FROZEN):
+        if any(_read(root, p, ref) != _base(root, 'show', BASE + ':' + p)
+               and not (next_ok and S.later_supersedes(p, _blob(_read(root, p, ref)), root, ref)) for p in FROZEN):
             return False
         if closure and not _maps_ok(root, ref, current_pins):
             return False

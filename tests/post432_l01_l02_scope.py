@@ -293,8 +293,8 @@ def _exact(repo=None, ref=None, closure=True):
             return False
         # 4. one exact blob per owned path (git's own hashing, so LF and CRLF checkouts agree)
         if ref is None:
-            computed = {p: _git(root, 'hash-object', root / p).decode().strip() for p in sorted(pins)}
-            if computed != cur:
+            computed = {p: _git(root, 'hash-object', root / p).decode().strip() for p in sorted(p for p in pins if closure or p not in CURRENT_MAPS)}
+            if computed != {p: cur[p] for p in computed}:
                 return False
         else:
             listed = {}

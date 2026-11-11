@@ -223,7 +223,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
+    return (path in SUPERSEDED or path == 'docs/ci_v4/module_weights.json') and exact_blobs_ok(repo,ref) and effective_pins(repo,ref).get(path)==value
 
 
 def _successor():

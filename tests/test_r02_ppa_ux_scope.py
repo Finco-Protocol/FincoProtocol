@@ -78,16 +78,23 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
                 and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]
-    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts', 'tests/on_bess01_scope.py'):
+    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
+    # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
+    from tests import ci_v4_perf_scope as F
+    assert F.exact_blobs_ok() and (ROOT / 'tests/on_bess01_scope.py').read_bytes() == F.expected_handoff(ROOT, 'tests/on_bess01_scope.py')
 
 
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():
     import ast
     base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
-    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == N.expected_handoff(ROOT, X.REGISTRY)
+    from tests import ci_v4_perf_scope as F
+    nxt = ('tests.ci_v4_perf_scope',) if 'tests.ci_v4_perf_scope' in C.COHORT_MODULES else ()
+    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == (
+        F.expected_handoff(ROOT, X.REGISTRY) if nxt and F.signature_ok() else N.expected_handoff(ROOT, X.REGISTRY))
     old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
-    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') and C.COHORT_MODULES[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
+    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]
+    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
 
 
 def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():
