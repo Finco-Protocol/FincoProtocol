@@ -65,7 +65,7 @@
     "tests/test_bess02_scope.py": "06532898c78cd6b5f12d827d83f4368bfeb8e6d9",
     "tests/test_ci_v4_perf_scope.py": "1b6c98805c59e71c004f4b7b2340fbef8efd3b76",
     "tests/test_f02_financing_period_evidence.py": "6f704bd57a19ff00cbcd49f0526c0e4c86be9a7c",
-    "tests/test_f03_financing_scope.py": "fe716193dbb45db391fa1bc1c6fbc953c53ec6ee",
+    "tests/test_f03_financing_scope.py": "c749e2002f5511c087db148ede06abe28b8518df",
     "tests/test_post432_l01_l02_scope.py": "d2c02f0e35084d849c89b7f27f38398f9df83b2b",
     "tests/test_r02_ppa_ux_scope.py": "814710fd6d5971d6eae0a55c3246a6675276c578",
     "tests/test_ux_pr2b_scope.py": "3307c65b1b38e091fe5774d59c0629bd3b61c600",
