@@ -27,6 +27,7 @@ PERF_TEST = "tests/test_ci_v4_perf_scope.py"
 BESS_TEST = "tests/test_bess02_scope.py"
 R02_TEST = "tests/test_r02_ppa_ux_scope.py"
 POST432_TEST = "tests/test_post432_l01_l02_scope.py"
+PR2B_TEST = "tests/test_ux_pr2b_scope.py"
 SOURCE_PATHS = frozenset((
     "app/v2/f02_financing_period_evidence.py",
     "app/v2/react_financing.py",
@@ -49,7 +50,7 @@ TEST_PATHS = frozenset((
     "tests/test_f02_financing_period_evidence.py",
     "tests/test_f03_financing_scope.py",
 ))
-GOVERNANCE_PATHS = frozenset((PREDECESSOR, BESS_MODULE, PERF_TEST, BESS_TEST, R02_TEST, POST432_TEST, REGISTRY, "tests/f03_financing_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"))
+GOVERNANCE_PATHS = frozenset((PREDECESSOR, BESS_MODULE, PERF_TEST, BESS_TEST, R02_TEST, POST432_TEST, PR2B_TEST, REGISTRY, "tests/f03_financing_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"))
 CURRENT_MAPS = frozenset((
     "docs/ci_v4/SOURCE_SUCCESSOR.json",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
@@ -311,7 +312,70 @@ HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
                                      '    data = X.manifest()\n'),
                                     ('                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]',
                                      '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in '
-                                     'G.SOURCE_PATHS)]')]}
+                                     'G.SOURCE_PATHS)]')],
+ 'tests/test_ux_pr2b_scope.py': [('def test_one_byte_in_every_owned_blob_fails_closed(path,wt):\n'
+                                  '    assert B.exact_blobs_ok(wt)\n'
+                                  "    p=wt/path; old=p.read_bytes(); p.write_bytes(old+b'\\n')\n"
+                                  '    assert not B.exact_blobs_ok(wt) and not A.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                  '    p.write_bytes(old)\n'
+                                  '    assert B.exact_blobs_ok(wt)\n',
+                                  'def test_one_byte_in_every_owned_blob_fails_closed(path,wt):\n'
+                                  '    with C.call_scope():\n'
+                                  '        assert B.exact_blobs_ok(wt)\n'
+                                  "    p=wt/path; old=p.read_bytes(); p.write_bytes(old+b'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  '        assert not B.exact_blobs_ok(wt) and not A.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                  '    p.write_bytes(old)\n'
+                                  '    with C.call_scope():\n'
+                                  '        assert B.exact_blobs_ok(wt)\n'),
+                                 ("    manifest.write_text(json.dumps(d,indent=2)+'\\n')\n    assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n",
+                                  "    manifest.write_text(json.dumps(d,indent=2)+'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  '        assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n'),
+                                 ('    assert not B.exact_blobs_ok(wt) or not A.exact_blobs_ok(wt)\n    assert not C.valid(wt)\n',
+                                  '    with C.call_scope():\n'
+                                  '        assert not B.exact_blobs_ok(wt) or not A.exact_blobs_ok(wt)\n'
+                                  '        assert not C.valid(wt)\n'),
+                                 ("    d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                  '    assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n',
+                                  "    d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  '        assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n'),
+                                 ('    assert current!=historical\n'
+                                  '    assert C.matches(path,current,repo=wt) and not C.matches(path,historical,repo=wt)\n'
+                                  "    assert not C.matches(path,b'forged',repo=wt) and not B.exact_blobs_ok(wt,B.BASE)\n"
+                                  "    assert not B.exact_blobs_ok(wt,'0'*40)\n"
+                                  "    assert B.exact_blobs_ok(wt,'HEAD')\n"
+                                  "    (wt/path).write_bytes(current+b'\\n')\n"
+                                  '    assert not C.matches(path,current,repo=wt)\n'
+                                  "    assert C.matches(path,current,repo=wt,ref='HEAD')\n",
+                                  '    assert current!=historical\n'
+                                  '    with C.call_scope():\n'
+                                  '        assert C.matches(path,current,repo=wt) and not C.matches(path,historical,repo=wt)\n'
+                                  "        assert not C.matches(path,b'forged',repo=wt) and not B.exact_blobs_ok(wt,B.BASE)\n"
+                                  "        assert not B.exact_blobs_ok(wt,'0'*40)\n"
+                                  "        assert B.exact_blobs_ok(wt,'HEAD')\n"
+                                  "    (wt/path).write_bytes(current+b'\\n')\n"
+                                  '    with C.call_scope():\n'
+                                  '        assert not C.matches(path,current,repo=wt)\n'
+                                  "        assert C.matches(path,current,repo=wt,ref='HEAD')\n"),
+                                 ("    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')\n"
+                                  '    assert B.exact_blobs_ok(wt) and C.valid(wt)\n',
+                                  "    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')\n"
+                                  '    with C.call_scope():\n'
+                                  '        assert B.exact_blobs_ok(wt) and C.valid(wt)\n'),
+                                 ("    assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')\n",
+                                  "    with C.call_scope():\n        assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')\n"),
+                                 ("    assert B.ci_authority_ok(wt) and B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n"
+                                  '    assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                  "    assert not B.ci_owns('tools/ci_v4_unknown.py',wt) and not B.ci_owns('app/v2/react_opex_lines.py',wt)\n",
+                                  '    with C.call_scope():\n'
+                                  "        assert B.ci_authority_ok(wt) and B.ci_owns('tools/ci_merge_tree_guard.py',wt)\n"
+                                  '        assert not B.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                  "        assert not B.ci_owns('tools/ci_v4_unknown.py',wt) and not B.ci_owns('app/v2/react_opex_lines.py',wt)\n"),
+                                 ('    assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)\n',
+                                  '    with C.call_scope():\n'
+                                  '        assert B.ci_authority_ok(wt) and not B.exact_blobs_ok(wt) and not C.valid(wt)\n')]}
 
 
 def expected_handoff(root, path):
@@ -406,10 +470,10 @@ REVIEWED_CI_HANDOFFS = {
         ("    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)) and exact_blobs_ok(repo, ref)", "    root = Path(repo) if repo is not None else ROOT\n    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)\n            or _f03_ci_owns(path, root, ref)) and exact_blobs_ok(repo, ref)"),
     ),
     "tests/ux_pr2b_scope.py": (
-        ("def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    # One reviewed CI V4 module successor, proven by F03 without this cohort.\n    if path == 'tests/ci_v4_scope.py':\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
+        ("def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n    # Reviewed CI V4 module / pr2b-suite successors, proven by F03 without this cohort.\n    if path in ('tests/ci_v4_scope.py', 'tests/test_ux_pr2b_scope.py'):\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
     ),
     "tests/ux_pr2c_scope.py": (
-        ("def _pr3b1_pin(path, blob, repo=None, ref=None):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None):\n    # Exact low-level F03 successor of only the CI V4 source file.\n    if path == 'tests/ci_v4_scope.py':\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
+        ("def _pr3b1_pin(path, blob, repo=None, ref=None):\n    S = _pr3b1()", "def _pr3b1_pin(path, blob, repo=None, ref=None):\n    # Exact low-level F03 successor of only the CI V4 source file and the pr2b mutation-suite test file.\n    if path in ('tests/ci_v4_scope.py', 'tests/test_ux_pr2b_scope.py'):\n        from tests import f03_financing_scope as F\n        if F.supersedes(path, blob, repo, ref):\n            return True\n    S = _pr3b1()"),
     ),
 }
 
