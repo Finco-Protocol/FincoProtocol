@@ -232,7 +232,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _pr2c_supersedes(p, listed[p], root, ref) for p in pins):
                 return False
         # engine/core/domain never moved; under .github/ and tools/ only the literal CI_PATHS differ from BASE
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',

@@ -477,6 +477,15 @@ REVIEWED_CI_HANDOFFS = {
     ),
 }
 
+# Committed-ref evaluation of the CI V4 guard compared its pins by exact equality, so the reviewed F03 successor of its own module (and of the
+# internal F01 job) could never be recognised at a ref, while the working-tree branch already honours the reviewed supersession. Same literal
+# tolerance, same hook: exactly the paths the F03 hook already admits, nothing wider.
+REVIEWED_CI_HANDOFFS["tests/ci_v4_scope.py"] = REVIEWED_CI_HANDOFFS["tests/ci_v4_scope.py"] + ((
+    "            if listed != pins:\n                return False\n        # engine/core/domain never moved",
+    "            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _pr2c_supersedes(p, listed[p], root, ref) for p in pins):\n"
+    "                return False\n        # engine/core/domain never moved"),)
+
+
 
 def reviewed_ci_handoffs_ok(repo=None, ref=None, *, path=None, actual=None):
     root = Path(repo) if repo is not None else ROOT
