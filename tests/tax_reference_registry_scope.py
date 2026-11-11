@@ -40,8 +40,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = '785024c752bbd1700d6051cf15115d9980d0b4a1'
-BASE_TREE = '063d27ce5ef6841ec641e377662cbda924d97667'
+BASE = 'd17f46e5f3894dff59ff701c7b291bdf1e587891'
+BASE_TREE = '80c62e2328ce78dc954649638a73abe86aa56fa5'
 MANIFEST = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 SCHEMA = 'T01D_TAX_REFERENCE_REGISTRY_EXACT_SOURCE_V1'
 
