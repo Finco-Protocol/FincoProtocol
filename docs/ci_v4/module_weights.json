@@ -162,7 +162,7 @@
   "tests/test_finv2_d01_routes_and_matrix.py": 62.998,
   "tests/test_finval_f01_complete.py": 3.975,
   "tests/test_finval_f01_creation.py": 1.763,
-  "tests/test_finval_f01_fixture_integrity.py": 5.649,
+  "tests/test_finval_f01_fixture_integrity.py": 300.0,
   "tests/test_finval_f01_hash_integrity.py": 6.193,
   "tests/test_finval_f01_http_lifecycle.py": 56.666,
   "tests/test_finval_f01_native_identity.py": 105.383,
@@ -556,7 +556,7 @@
   "tests/test_rc7b_postmerge_successor.py": 13.942,
   "tests/test_rc7b_quarterly_axis_production.py": 0.231,
   "tests/test_rc7b_quarterly_candidate_authority.py": 1.68,
-  "tests/test_rc7b_quarterly_csrf_successor.py": 104.839,
+  "tests/test_rc7b_quarterly_csrf_successor.py": 500.0,
   "tests/test_rc7b_quarterly_funding_statements.py": 16.305,
   "tests/test_rc7b_quarterly_production_acceptance.py": 59.266,
   "tests/test_rc7b_quarterly_run_workspace.py": 7.147,
@@ -566,7 +566,7 @@
   "tests/test_rc7c_quarterly_run_acceptance.py": 8.223,
   "tests/test_rc_institutional_workspaces_integration.py": 10.063,
   "tests/test_rc_reporting_v3.py": 54.672,
-  "tests/test_rc_sec_csrf_successor.py": 179.444,
+  "tests/test_rc_sec_csrf_successor.py": 600.0,
   "tests/test_rcm_adapter_csrf_successor.py": 2.584,
   "tests/test_rcm_asset_version.py": 0.034,
   "tests/test_rcm_governance.py": 919.854,
@@ -699,7 +699,8 @@
   "tests/test_yield_staging_qa.py": 1.228,
   "tests/test_yield_v1.py": 0.042,
   "tests/test_yield_watchlist.py": 0.689,
-  "tests/test_yield_y0.py": 0.024
+  "tests/test_yield_y0.py": 0.024,
+  "tests/test_ux_pr2c_scope.py": 1980.0
  },
  "nodes": {
   "": 560,
@@ -1399,6 +1400,6 @@
   "tests/test_yield_watchlist.py": 31,
   "tests/test_yield_y0.py": 12
  },
- "source": "GitHub Actions run 41782498276 (head 800395fd25a9296baab6366719f09e92ea920ac1), CI V3 native.xml of all 8 workers (artifacts 13301027713,13301557025,13301809315,13302907177,13302108520,13302441866,13302584009,13302064367); JUnit testcase time summed per module (includes per-test setup/teardown; excludes runner/checkout/install overhead) | CI V4 rules v2: 167 modules replaced by measured plain-runner JUnit time of CI V4 run 41833710956 (head ad9fce94, shards 0-4,6).",
+ "source": "GitHub Actions run 41782498276 (head 800395fd25a9296baab6366719f09e92ea920ac1), CI V3 native.xml of all 8 workers (artifacts 13301027713,13301557025,13301809315,13302907177,13302108520,13302441866,13302584009,13302064367); JUnit testcase time summed per module (includes per-test setup/teardown; excludes runner/checkout/install overhead) | CI V4 rules v2: 167 modules replaced by measured plain-runner JUnit time of CI V4 run 41833710956 (head ad9fce94, shards 0-4,6). | Correction P (2026-11-11, CI V4 performance): 4 module weights recalibrated. tests/test_ux_pr2c_scope.py 1980 s = measured JUnit #438 run 42881247217 shard-0 (1881.013 s, 18 cases) +5% headroom; the module is NOT changed by Correction P (byte-pinned by the ux_pr2c cohort; restructure needs an owner-reviewed successor), so its measured floor is scheduled honestly instead of the old 30 s fallback. tests/test_rc_sec_csrf_successor.py 600 s, tests/test_rc7b_quarterly_csrf_successor.py 500 s, tests/test_finval_f01_fixture_integrity.py 300 s = CONSERVATIVE PREDICTIONS after the scoped-composite fix (measured baseline #438: 2603/1738/469 s; instrumented local trace: one unscoped inventory call ~8.3k git subprocesses vs ~332 inside one call_scope). PROJECTED, not hosted measurements: re-measure from the first hosted CI V4 run whose trusted base contains this file and replace the predictions; pre-Correction-P values (179.444/104.839/5.649) remain in git history at main 01a26f9a.",
  "total_nodes": 23770
 }

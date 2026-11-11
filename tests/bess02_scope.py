@@ -109,7 +109,8 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.
+        # All successor signature/pin/map reads within this SAME outer read
+        # share its memo; it is dropped with the scope, never kept globally.
         N = _next()
         if N is None:
             yield
@@ -218,12 +219,12 @@ def _exact(repo=None, ref=None, closure=True):
 
 
 def _next():
-    """The one finite forward successor (F03). Low-level only: its signature never calls this module or the composite."""
+    """The one finite forward successor (CI V4 Correction P performance leaf). Low-level only: its signature never calls this module or the composite."""
     from tests.fin_v2_cohorts import COHORT_MODULES
-    if 'tests.f03_financing_scope' not in COHORT_MODULES:
+    if 'tests.ci_v4_perf_scope' not in COHORT_MODULES:
         return None
-    from tests import f03_financing_scope
-    return f03_financing_scope
+    from tests import ci_v4_perf_scope
+    return ci_v4_perf_scope
 
 
 def _next_pins(root, ref):
@@ -235,7 +236,14 @@ def _next_moved(root, ref):
     N = _next()
     if N is None or not N.signature_ok(root, ref):
         return {}
-    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}
+    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}
+
+
+def map_keys(repo=None, ref=None):
+    """Every current-map key a forward leaf may move, own keys first; low level, gated by the successor's signature only."""
+    root = Path(repo) if repo is not None else ROOT
+    N = _next()
+    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
 
 
 def closure_paths(repo=None, ref=None):

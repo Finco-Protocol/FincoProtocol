@@ -97,8 +97,8 @@ def _pr2c_supersedes(path, value, root, ref):
         return False
     if S.supersedes(path, value, root, ref):
         return True
-    # One exact F03-reviewed successor of the CI V4 module; never a prefix.
-    if path != 'tests/ci_v4_scope.py':
+    # Exact F03-reviewed successors of two CI V4 source paths only (the module and the internal F01 job); never a prefix.
+    if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):
         return False
     from tests import f03_financing_scope as F
     return F.supersedes(path, value, root, ref)

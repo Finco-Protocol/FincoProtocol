@@ -264,7 +264,7 @@ def test_known_gap_readyz_discloses_server_paths(client, monkeypatch, tmp_path):
     assert "secret-location.db" in r.text
 
 
-def test_known_gap_state_changing_posts_have_no_csrf_token():
+def _csrf_inventory():
     users = set()
     for path in list(ROOT.joinpath("app").rglob("*.py")) + [ROOT / "main_web.py"]:
         rel = path.relative_to(ROOT).as_posix()
@@ -335,6 +335,24 @@ def test_known_gap_state_changing_posts_have_no_csrf_token():
                 and ast.unparse(node.test) == "field_id == 'debt.financing.instruments'")
     assert any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
                and call.func.id == "validate_csrf_token" for call in ast.walk(gate))
+
+
+def test_known_gap_state_changing_posts_have_no_csrf_token():
+    """Correction P (CI V4 performance): ONE outer governance call for this read-only inventory.
+
+    The sequence below only scans sources, parses ASTs and consults successor validators — it never
+    mutates the tree — so every registered cohort's exact verdict and the composite registry are
+    computed ONCE for this call and shared by every successor validation inside it, instead of the
+    full 33-cohort registry being re-evaluated once per successor (measured on CI V4 #438-style
+    heads: one unscoped invocation ran ~8.3k git subprocesses; the same verdicts inside one
+    ``call_scope`` run ~365). Nothing survives the call — the memo is dropped when the outermost
+    block exits — so a caller that mutates/restores the tree between two invocations (the rc_sec and
+    rc7b mutation-rejection tests) still fails closed: each invocation runs in its own fresh outer
+    scope and re-evaluates every successor against the tree as it is at that moment.
+    """
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():
+        _csrf_inventory()
 
 
 def test_other_public_pages_still_provision_demo_session(client):

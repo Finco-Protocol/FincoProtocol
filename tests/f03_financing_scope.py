@@ -1,4 +1,4 @@
-"""F03 Financing — finite exact-source successor after accepted BESS02 (#436, itself after R02 #437).
+"""F03 Financing — finite exact-source successor after the accepted CI V4 Correction P leaf (#441, itself after BESS02 #436 and R02 #437).
 
 Only one authorized read-only selected-Run evidence bridge. No financial-engine,
 writer, authentication, CSRF, reserve, BESS, tax or CI policy edits.
@@ -16,14 +16,15 @@ import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = "01a26f9a87a12548c4f151caebe8ee933db7445c"
-BASE_TREE = "0f84439efe6cb4ad920ea008eb739bbc7dbe07ab"
+BASE = "69d68d4f6e45fdffc7e9e3800ceeca0ba26582b9"
+BASE_TREE = "7f8335faa58a4c54b45d23837a625e85475a8c0c"
 MANIFEST = "docs/react_migration/f03_financing/SOURCE_SUCCESSOR.json"
 SCHEMA = "F03_FINANCING_PROVEN_READ_LAYER_EXACT_SOURCE_V1"
 REGISTRY = "tests/fin_v2_cohorts.py"
-PREDECESSOR = "tests/bess02_scope.py"
+PREDECESSOR = "tests/ci_v4_perf_scope.py"
+BESS_MODULE = "tests/bess02_scope.py"
+PERF_TEST = "tests/test_ci_v4_perf_scope.py"
 BESS_TEST = "tests/test_bess02_scope.py"
-R02_MODULE = "tests/r02_ppa_ux_scope.py"
 R02_TEST = "tests/test_r02_ppa_ux_scope.py"
 POST432_TEST = "tests/test_post432_l01_l02_scope.py"
 SOURCE_PATHS = frozenset((
@@ -41,12 +42,14 @@ SOURCE_PATHS = frozenset((
     # Already reviewed via CI_PATHS and WORKFLOW_EDITS; R02's exact-source
     # acceptance must recognise precisely this protected successor path.
     ".github/workflows/finval_f01_acceptance.yml",
+    # The CI V4 internal F01 job: the same steps as the standalone workflow, one reviewed timeout line (25 -> 45 minutes).
+    ".github/workflows/ci_v4_f01_job.yml",
 ))
 TEST_PATHS = frozenset((
     "tests/test_f02_financing_period_evidence.py",
     "tests/test_f03_financing_scope.py",
 ))
-GOVERNANCE_PATHS = frozenset((PREDECESSOR, BESS_TEST, R02_MODULE, R02_TEST, POST432_TEST, REGISTRY, "tests/f03_financing_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"))
+GOVERNANCE_PATHS = frozenset((PREDECESSOR, BESS_MODULE, PERF_TEST, BESS_TEST, R02_TEST, POST432_TEST, REGISTRY, "tests/f03_financing_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"))
 CURRENT_MAPS = frozenset((
     "docs/ci_v4/SOURCE_SUCCESSOR.json",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
@@ -59,7 +62,8 @@ CURRENT_MAPS = frozenset((
 ))
 MAP_KEYS = (REGISTRY, "static/react/finco-react.js")
 CI_WORKFLOW = ".github/workflows/finval_f01_acceptance.yml"
-CI_PATHS = frozenset((CI_WORKFLOW,))
+CI_JOB = ".github/workflows/ci_v4_f01_job.yml"
+CI_PATHS = frozenset((CI_WORKFLOW, CI_JOB))
 OWNED_PATHS = SOURCE_PATHS | TEST_PATHS | GOVERNANCE_PATHS | CURRENT_MAPS | CI_PATHS
 NEW = frozenset((
     "app/v2/f02_financing_period_evidence.py",
@@ -99,175 +103,212 @@ def expected_map(root, path, pins=None):
             d["source_blobs"][key] = pins[key]
     return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
 
-# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes of the BESS02 governance chain. BESS02 gains
-# one forward hook to this cohort (the same acyclic pattern BESS02 itself added to R02); the R02 closure delegates one line to BESS02; the
-# exact-tail tests become two-state (accepted BESS-only tail, or exactly one F03 append behind a complete F03 signature); the registry appends
-# this cohort once. This signature never calls BESS02, R02 or the composite: it reads Git objects and this manifest only.
-HANDOFFS = {'tests/bess02_scope.py': [('    _SCOPE.append({})\n    try:\n        yield\n    finally:\n        _SCOPE.pop()\n',
-                            '    _SCOPE.append({})\n'
-                            '    try:\n'
-                            '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\n'
-                            '        N = _next()\n'
-                            '        if N is None:\n'
-                            '            yield\n'
-                            '        else:\n'
-                            '            with N.scoped():\n'
-                            '                yield\n'
-                            '    finally:\n'
-                            '        _SCOPE.pop()\n'),
-                           ('def _verdict(repo, ref, closure):\n'
-                            '    key = (str(repo if repo is not None else ROOT), ref, closure)\n'
-                            '    if _SCOPE:\n'
-                            '        if key not in _SCOPE[-1]:\n'
-                            '            _SCOPE[-1][key] = _exact(repo, ref, closure)\n'
-                            '        return _SCOPE[-1][key]\n'
-                            '    return _exact(repo, ref, closure)\n',
-                            'def _exact_next_scoped(repo, ref, closure):\n'
-                            '    N = _next()\n'
-                            '    if N is None:\n'
-                            '        return _exact(repo, ref, closure)\n'
-                            '    with N.scoped():\n'
-                            '        return _exact(repo, ref, closure)\n'
-                            '\n'
-                            '\n'
-                            'def _verdict(repo, ref, closure):\n'
-                            '    key = (str(repo if repo is not None else ROOT), ref, closure)\n'
-                            '    if _SCOPE:\n'
-                            '        if key not in _SCOPE[-1]:\n'
-                            '            _SCOPE[-1][key] = _exact_next_scoped(repo, ref, closure)\n'
-                            '        return _SCOPE[-1][key]\n'
-                            '    return _exact_next_scoped(repo, ref, closure)\n'),
-                           ("        head = ref or 'HEAD'\n",
-                            "        head = ref or 'HEAD'\n"
-                            '        nx = _next_pins(root, ref)\n'
-                            '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'),
-                           ('            expected = expected_map(root, p, pins)\n'
-                            '            if pins[p] != _blob(expected) or (closure and _read(root, p, ref) != expected):',
-                            '            expected = expected_map(root, p, cur, _next_moved(root, ref))\n'
-                            '            if cur[p] != _blob(expected) or (closure and _read(root, p, ref) != expected):'),
-                           ('(closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != pins[p]:',
-                            '(closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != cur[p]:'),
-                           ('            allowed = OWNED_PATHS | {MANIFEST}\n', '            allowed = closure_paths(root, ref)\n'),
-                           ("def expected_map(root, path, pins):\n    d = json.loads(_base(root, 'show', BASE + ':' + path))",
-                            "def expected_map(root, path, pins, moved=None):\n    d = json.loads(_base(root, 'show', BASE + ':' + path))"),
-                           ("        d['source_blobs'][p] = pins[p]\n    return (json.dumps(d",
-                            "        d['source_blobs'][p] = pins[p]\n"
-                            '    for key, blob in (moved or {}).items():\n'
-                            "        if key in d['source_blobs']:\n"
-                            "            d['source_blobs'][key] = blob\n"
-                            '    return (json.dumps(d'),
-                           ('    try:\n        return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)',
-                            '    try:\n'
-                            '        N = _next()\n'
-                            '        if N is not None and N.signature_ok(root, ref):\n'
-                            '            return N.reviewed_edits_ok(root, ref) and all(\n'
-                            '                _read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS if p not in N.HANDOFFS)\n'
-                            '        return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)'),
-                           ('def allowed_path(path, repo=None, ref=None):\n    return path in OWNED_PATHS | {MANIFEST}\n',
-                            'def _next():\n'
-                            '    """The one finite forward successor (F03). Low-level only: its signature never calls this module or the '
-                            'composite."""\n'
-                            '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
-                            "    if 'tests.f03_financing_scope' not in COHORT_MODULES:\n"
-                            '        return None\n'
-                            '    from tests import f03_financing_scope\n'
-                            '    return f03_financing_scope\n'
-                            '\n'
-                            '\n'
-                            'def _next_pins(root, ref):\n'
-                            '    N = _next()\n'
-                            '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\n'
-                            '\n'
-                            '\n'
-                            'def _next_moved(root, ref):\n'
-                            '    N = _next()\n'
-                            '    if N is None or not N.signature_ok(root, ref):\n'
+# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes of the governance tail. The accepted CI V4
+# Correction P leaf gains one forward hook to this cohort (the same acyclic pattern BESS02 added toward that leaf); BESS02 reads its successor's
+# map keys dynamically (one literal); the exact-tail tests accept exactly one more reviewed state (this cohort appended once, behind a complete
+# signature); the registry appends this cohort once. This signature never calls BESS02, R02 or the composite: it reads Git objects and this manifest only.
+HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
+                            '    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}\n',
                             '        return {}\n'
-                            '    return {k: v for k, v in _next_pins(root, ref).items() if k in N.MAP_KEYS and k not in CURRENT_MAPS}\n'
-                            '\n'
-                            '\n'
-                            'def closure_paths(repo=None, ref=None):\n'
-                            '    """This cohort\'s closed path set, gated by its OWN signature, plus the successor\'s closure; one shared read scope '
-                            'evaluates each signature once."""\n'
-                            '    root = Path(repo) if repo is not None else ROOT\n'
-                            '    with scoped():\n'
-                            '        if not signature_ok(root, ref):\n'
-                            '            return frozenset()\n'
-                            '        N = _next()\n'
-                            '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\n'
-                            '\n'
-                            '\n'
-                            'def allowed_path(path, repo=None, ref=None):\n'
-                            '    return path in closure_paths(repo, ref)\n'),
-                           ("    return path in SUPERSEDED and signature_ok(repo, ref) and manifest(repo, ref)['source_blobs'].get(path) == value\n",
-                            '    if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:\n'
-                            '        return True\n'
-                            '    N = _next()\n'
-                            '    return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)\n'),
-                           ('def effective_pins(repo=None, ref=None, *, signature=False):\n'
-                            "    return dict(manifest(repo, ref).get('source_blobs', {}))",
-                            'def effective_pins(repo=None, ref=None, *, signature=False):\n'
-                            '    root = Path(repo) if repo is not None else ROOT\n'
-                            "    pins = dict(manifest(repo, ref).get('source_blobs', {}))\n"
-                            '    pins.update(_next_pins(root, ref))\n'
-                            '    return pins'),
-                           ('    root = Path(repo) if repo is not None else ROOT\n'
-                            '    try:\n'
-                            "        if _git(root, 'merge-base', 'origin/main', 'HEAD')",
-                            '    root = Path(repo) if repo is not None else ROOT\n'
-                            '    try:\n'
-                            '        N = _next()\n'
-                            '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\n'
-                            '            return True\n'
-                            "        if _git(root, 'merge-base', 'origin/main', 'HEAD')")],
- 'tests/fin_v2_cohorts.py': [("'tests.bess02_scope')", "'tests.bess02_scope', 'tests.f03_financing_scope')")],
- 'tests/r02_ppa_ux_scope.py': [('    return own | ((N.OWNED_PATHS | {N.MANIFEST}) if N is not None and N.signature_ok(root, ref) else frozenset())',
-                                '    return own | (N.closure_paths(root, ref) if N is not None else frozenset())')],
- 'tests/test_bess02_scope.py': [("    assert C.COHORT_MODULES == accepted + ('tests.bess02_scope',)\n"
-                                 "    assert C.COHORT_MODULES[-3:] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
-                                 "'tests.bess02_scope')",
-                                 '    from tests import f03_financing_scope as F\n'
+                            '    return {k: v for k, v in _next_pins(root, ref).items() if k in N.map_keys(root, ref) and k not in CURRENT_MAPS}\n')],
+ 'tests/ci_v4_perf_scope.py': [('    _SCOPE.append({})\n    try:\n        yield\n    finally:\n        _SCOPE.pop()\n',
+                                '    _SCOPE.append({})\n'
+                                '    try:\n'
+                                '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\n'
+                                '        N = _next()\n'
+                                '        if N is None:\n'
+                                '            yield\n'
+                                '        else:\n'
+                                '            with N.scoped():\n'
+                                '                yield\n'
+                                '    finally:\n'
+                                '        _SCOPE.pop()\n'),
+                               ('def _verdict(repo, ref, closure):\n'
+                                '    key = (str(repo if repo is not None else ROOT), ref, closure)\n'
+                                '    if _SCOPE:\n'
+                                '        if key not in _SCOPE[-1]:\n'
+                                '            _SCOPE[-1][key] = _exact(repo, ref, closure)\n'
+                                '        return _SCOPE[-1][key]\n'
+                                '    return _exact(repo, ref, closure)\n',
+                                'def _exact_next_scoped(repo, ref, closure):\n'
+                                '    N = _next()\n'
+                                '    if N is None:\n'
+                                '        return _exact(repo, ref, closure)\n'
+                                '    with N.scoped():\n'
+                                '        return _exact(repo, ref, closure)\n'
+                                '\n'
+                                '\n'
+                                'def _verdict(repo, ref, closure):\n'
+                                '    key = (str(repo if repo is not None else ROOT), ref, closure)\n'
+                                '    if _SCOPE:\n'
+                                '        if key not in _SCOPE[-1]:\n'
+                                '            _SCOPE[-1][key] = _exact_next_scoped(repo, ref, closure)\n'
+                                '        return _SCOPE[-1][key]\n'
+                                '    return _exact_next_scoped(repo, ref, closure)\n'),
+                               ("        head = ref or 'HEAD'\n",
+                                "        head = ref or 'HEAD'\n"
+                                '        nx = _next_pins(root, ref)\n'
+                                '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'),
+                               ('\n            if p != MANIFEST and (closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != pins[p]:',
+                                '\n            if p != MANIFEST and (closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != cur[p]:'),
+                               ('            allowed = OWNED_PATHS | {MANIFEST}\n            if not changed <= allowed:',
+                                '            allowed = closure_paths(root, ref)\n            if not changed <= allowed:'),
+                               ('    try:\n        return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)',
+                                '    try:\n'
+                                '        N = _next()\n'
+                                '        if N is not None and N.signature_ok(root, ref):\n'
+                                '            return N.reviewed_edits_ok(root, ref) and all(\n'
+                                '                _read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS if p not in N.HANDOFFS)\n'
+                                '        return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)'),
+                               ('def map_keys(repo=None, ref=None):\n    return tuple(MAP_KEYS)\n',
+                                'def _next():\n'
+                                '    """The one finite forward successor (F03). Low-level only: its signature never calls this module or the '
+                                'composite."""\n'
+                                '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                "    if 'tests.f03_financing_scope' not in COHORT_MODULES:\n"
+                                '        return None\n'
+                                '    from tests import f03_financing_scope\n'
+                                '    return f03_financing_scope\n'
+                                '\n'
+                                '\n'
+                                'def _next_pins(root, ref):\n'
+                                '    N = _next()\n'
+                                '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\n'
+                                '\n'
+                                '\n'
+                                'def map_keys(repo=None, ref=None):\n'
+                                '    root = Path(repo) if repo is not None else ROOT\n'
+                                '    N = _next()\n'
+                                '    return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else '
+                                '())\n'),
+                               ('    """This leaf\'s closed path set, gated by its OWN signature (no successor below it on this branch)."""\n'
+                                '    root = Path(repo) if repo is not None else ROOT\n'
+                                '    with scoped():\n'
+                                '        if not signature_ok(root, ref):\n'
+                                '            return frozenset()\n'
+                                '        return OWNED_PATHS | {MANIFEST}',
+                                '    """This leaf\'s closed path set, gated by its OWN signature, plus the successor\'s closure; one shared read '
+                                'scope evaluates each signature once."""\n'
+                                '    root = Path(repo) if repo is not None else ROOT\n'
+                                '    with scoped():\n'
+                                '        if not signature_ok(root, ref):\n'
+                                '            return frozenset()\n'
+                                '        N = _next()\n'
+                                '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())'),
+                               ('def supersedes(path, value, repo=None, ref=None):\n'
+                                '    return path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\n',
+                                'def supersedes(path, value, repo=None, ref=None):\n'
+                                '    if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:\n'
+                                '        return True\n'
+                                '    N = _next()\n'
+                                '    return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)\n'),
+                               ('def effective_pins(repo=None, ref=None, *, signature=False):\n'
+                                "    return dict(manifest(repo, ref).get('source_blobs', {}))",
+                                'def effective_pins(repo=None, ref=None, *, signature=False):\n'
+                                '    root = Path(repo) if repo is not None else ROOT\n'
+                                "    pins = dict(manifest(repo, ref).get('source_blobs', {}))\n"
+                                '    pins.update(_next_pins(root, ref))\n'
+                                '    return pins'),
+                               ('    root = Path(repo) if repo is not None else ROOT\n'
+                                '    try:\n'
+                                "        if _git(root, 'merge-base', 'origin/main', 'HEAD')",
+                                '    root = Path(repo) if repo is not None else ROOT\n'
+                                '    try:\n'
+                                '        N = _next()\n'
+                                '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\n'
+                                '            return True\n'
+                                "        if _git(root, 'merge-base', 'origin/main', 'HEAD')")],
+ 'tests/fin_v2_cohorts.py': [("'tests.ci_v4_perf_scope')", "'tests.ci_v4_perf_scope', 'tests.f03_financing_scope')")],
+ 'tests/test_bess02_scope.py': [('    from tests import ci_v4_perf_scope as F\n'
                                  "    own = accepted + ('tests.bess02_scope',)\n"
-                                 '    # Exactly two states: the accepted BESS-only tail, or one reviewed F03 successor behind a complete F03 '
+                                 '    # Exactly two states: the accepted BESS-only tail, or one reviewed CI-performance successor behind a complete '
                                  'signature.\n'
-                                 '    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())\n'
-                                 "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
-                                 "'tests.bess02_scope')"),
+                                 '    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())',
+                                 '    from tests import ci_v4_perf_scope as F, f03_financing_scope as G\n'
+                                 "    own = accepted + ('tests.bess02_scope',)\n"
+                                 '    # Exactly three states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor '
+                                 'followed by exactly one\n'
+                                 '    # reviewed F03 successor, each behind a complete signature.\n'
+                                 '    assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())\n'
+                                 '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__) and F.signature_ok() and G.signature_ok()))'),
                                 ('    for path in sorted(paths):\n'
                                  "        assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], "
                                  'cwd=B.ROOT)\n',
-                                 '    from tests import f03_financing_scope as F\n'
+                                 '    from tests import f03_financing_scope as G\n'
                                  '    for path in sorted(paths):\n'
-                                 '        if path in F.SOURCE_PATHS and F.signature_ok():     # one reviewed F03 successor of the shared bundle, '
+                                 '        if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared bundle, '
                                  'exactly at its pinned blob\n'
-                                 "            assert B._blob((B.ROOT/path).read_bytes()) == F.manifest()['source_blobs'][path]\n"
+                                 "            assert B._blob((B.ROOT/path).read_bytes()) == G.manifest()['source_blobs'][path]\n"
                                  '            continue\n'
                                  "        assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], "
                                  'cwd=B.ROOT)\n')],
- 'tests/test_post432_l01_l02_scope.py': [('    assert N.exact_blobs_ok() and now == N.expected_handoff(ROOT, X.REGISTRY).decode()\n',
-                                          '    from tests import f03_financing_scope as F\n'
-                                          "    nxt = 'tests.f03_financing_scope' in C.COHORT_MODULES\n"
+ 'tests/test_ci_v4_perf_scope.py': [('    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope"\n',
+                                     '    # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete '
+                                     'signature\n'
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (\n'
+                                     '        C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and '
+                                     'G.signature_ok())\n'),
+                                    ('    assert C.COHORT_MODULES == accepted + ("tests.ci_v4_perf_scope",)\n',
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    own = accepted + ("tests.ci_v4_perf_scope",)\n'
+                                     '    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and '
+                                     'G.signature_ok())\n'),
+                                    ('    for p in sorted(F.HANDOFFS):\n        assert (ROOT / p).read_bytes() == F.expected_handoff(ROOT, p), p\n',
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    for p in sorted(F.HANDOFFS):\n'
+                                     '        want = G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else '
+                                     'F.expected_handoff(ROOT, p)\n'
+                                     '        assert (ROOT / p).read_bytes() == want, p\n'),
+                                    ('    assert moved == new and F.effective_pins() == {**F.effective_pins(), **new}\n'
+                                     '    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **new}\n',
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}\n'
+                                     '    assert set(moved) - set(new) <= set(G.MAP_KEYS)                       # the only other moved key is the '
+                                     "reviewed F03 successor's\n"
+                                     '    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if '
+                                     'k not in G.manifest()["source_blobs"]}}\n'),
+                                    ('    marker = "\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\')"\n',
+                                     '    marker = "\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', '
+                                     '\'tests.f03_financing_scope\')"\n'),
+                                    ('        forged = text.replace(", \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\')", ", '
+                                     '\'tests.ci_v4_perf_scope\')")\n',
+                                     '        forged = text.replace(", \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\'", ", '
+                                     '\'tests.ci_v4_perf_scope\'")\n'),
+                                    ('        assert F.expected_handoff(ROOT, p) == now         # and equals exactly the reviewed substitution\n',
+                                     '        from tests import f03_financing_scope as G\n'
+                                     '        want = G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else '
+                                     'F.expected_handoff(ROOT, p)\n'
+                                     '        assert want == now                                # and equals exactly the reviewed substitution\n')],
+ 'tests/test_post432_l01_l02_scope.py': [("    nxt = 'tests.ci_v4_perf_scope' in C.COHORT_MODULES\n"
                                           '    assert N.exact_blobs_ok() and now == (F.expected_handoff(ROOT, X.REGISTRY) if nxt and '
-                                          'F.signature_ok() else N.expected_handoff(ROOT, X.REGISTRY)).decode()\n')],
- 'tests/test_r02_ppa_ux_scope.py': [('    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == N.expected_handoff(ROOT, X.REGISTRY)\n',
-                                     '    from tests import f03_financing_scope as F\n'
-                                     "    nxt = ('tests.f03_financing_scope',) if 'tests.f03_financing_scope' in C.COHORT_MODULES else ()\n"
+                                          'F.signature_ok() else N.expected_handoff(ROOT, X.REGISTRY)).decode()',
+                                          '    from tests import f03_financing_scope as G\n'
+                                          '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                          "    if 'tests.f03_financing_scope' in C.COHORT_MODULES and G.signature_ok():\n"
+                                          '        expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                          "    elif 'tests.ci_v4_perf_scope' in C.COHORT_MODULES and F.signature_ok():\n"
+                                          '        expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                          '    assert N.exact_blobs_ok() and now == expected.decode()')],
+ 'tests/test_r02_ppa_ux_scope.py': [("    nxt = ('tests.ci_v4_perf_scope',) if 'tests.ci_v4_perf_scope' in C.COHORT_MODULES else ()\n"
                                      '    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == (\n'
                                      '        F.expected_handoff(ROOT, X.REGISTRY) if nxt and F.signature_ok() else N.expected_handoff(ROOT, '
-                                     'X.REGISTRY))\n'),
-                                    ("    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') and "
-                                     "C.COHORT_MODULES[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == "
-                                     'len(C.COHORT_MODULES)',
-                                     '    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
-                                     "    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == "
-                                     "TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)"),
-                                    ('                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]',
-                                     '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (F.signature_ok() and p in '
-                                     'F.SOURCE_PATHS)]'),
+                                     'X.REGISTRY))',
+                                     '    from tests import f03_financing_scope as G\n'
+                                     "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope') if m in C.COHORT_MODULES)\n"
+                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    if len(nxt) == 2 and G.signature_ok():\n'
+                                     '        expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 1 and F.signature_ok():\n'
+                                     '        expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected'),
                                     ('    assert X.exact_blobs_ok() and X.signature_ok()\n    data = X.manifest()\n',
-                                     '    from tests import f03_financing_scope as F\n'
+                                     '    from tests import f03_financing_scope as G\n'
                                      '    assert X.exact_blobs_ok() and X.signature_ok()\n'
-                                     '    data = X.manifest()\n')]}
+                                     '    data = X.manifest()\n'),
+                                    ('                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS)]',
+                                     '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in '
+                                     'G.SOURCE_PATHS)]')]}
 
 
 def expected_handoff(root, path):
@@ -306,6 +347,31 @@ WORKFLOW_EDITS = (
 )
 
 
+# The CI V4 internal F01 job (``ci_v4_f01_job.yml``) runs the same four-browser plus twenty-native steps as the standalone workflow but kept
+# the original 25-minute limit: a selected F01 on #438 was cancelled at exactly that limit. ONE literal line moves; every step, selection,
+# evidence, non-root and 20/20 no-skip assertion is byte-identical to the accepted blob.
+JOB_BASE_BLOB = "99ca73daefbca15bd1642520efb4f26db00430be"
+JOB_EDITS = (("    timeout-minutes: 25\n", "    timeout-minutes: 45\n"),)
+
+
+def reviewed_job_ok(repo=None, ref=None, actual=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        candidate = _base_bytes(str(root), CI_JOB).decode()
+        if _blob(candidate.encode()) != JOB_BASE_BLOB:
+            return False
+        for old, new in JOB_EDITS:
+            if candidate.count(old) != 1:
+                return False
+            candidate = candidate.replace(old, new)
+        raw = _read(root, CI_JOB, ref) if actual is None else actual
+        if isinstance(raw, str):
+            raw = raw.encode()
+        return raw == candidate.encode() and manifest(root, ref).get("source_blobs", {}).get(CI_JOB) == _blob(raw)
+    except (OSError, ValueError, UnicodeError, subprocess.CalledProcessError):
+        return False
+
+
 def reviewed_workflow_ok(repo=None, ref=None, actual=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -331,7 +397,7 @@ def reviewed_workflow_ok(repo=None, ref=None, actual=None):
 # edit historical manifests, skip tests or allow arbitrary CI policy drift.
 REVIEWED_CI_HANDOFFS = {
     "tests/ci_v4_scope.py": (
-        ("    return S.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():", "    if S.supersedes(path, value, root, ref):\n        return True\n    # One exact F03-reviewed successor of the CI V4 module; never a prefix.\n    if path != 'tests/ci_v4_scope.py':\n        return False\n    from tests import f03_financing_scope as F\n    return F.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():"),
+        ("    return S.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():", "    if S.supersedes(path, value, root, ref):\n        return True\n    # Exact F03-reviewed successors of two CI V4 source paths only (the module and the internal F01 job); never a prefix.\n    if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):\n        return False\n    from tests import f03_financing_scope as F\n    return F.supersedes(path, value, root, ref)\n\n\ndef _merge_event_successor():"),
         ("    return B\n\n\ndef _git(root, *args):", "    return B\n\n\ndef _f03_ci_owns(path, root, ref):\n    \"\"\"Admit only the exact reviewed 45-minute F01 workflow; no CI wildcard.\"\"\"\n    if path != '.github/workflows/finval_f01_acceptance.yml':\n        return False\n    from tests import f03_financing_scope as F\n    return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)\n\n\ndef _git(root, *args):"),
         ("    authorized_ci = successor.CI_PATHS if successor_ok else frozenset()\n    data = manifest(root, ref)", "    authorized_ci = successor.CI_PATHS if successor_ok else frozenset()\n    if _f03_ci_owns('.github/workflows/finval_f01_acceptance.yml', root, ref):\n        authorized_ci = authorized_ci | {'.github/workflows/finval_f01_acceptance.yml'}\n    data = manifest(root, ref)"),
         ("    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)) and exact_blobs_ok(repo, ref)", "    root = Path(repo) if repo is not None else ROOT\n    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)\n            or _f03_ci_owns(path, root, ref)) and exact_blobs_ok(repo, ref)"),
@@ -384,18 +450,27 @@ def scoped():
     finally:
         _SCOPE.pop()
 
-def signature_ok(repo=None, ref=None):
-    root = Path(repo) if repo is not None else ROOT
-    key = (str(root), ref)
+def _verdict(root, ref, closure):
+    key = (str(root), ref, closure)
     if _SCOPE and key in _SCOPE[-1]:
         return _SCOPE[-1][key]
-    value = _signature_ok(root, ref)
+    value = _signature_ok(root, ref, closure)
     if _SCOPE:
         _SCOPE[-1][key] = value
     return value
 
+
+def signature_ok(repo=None, ref=None):
+    """Source/base/mode authority only: it never reads a foreign current map's bytes (the full closure alone judges those)."""
+    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)
+
+
+def map_keys(repo=None, ref=None):
+    return tuple(MAP_KEYS)
+
 # Accepted BESS02/R02 product bytes and historical manifests that must stay byte-identical to BASE.
 FROZEN = ("docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json", "docs/bess_setup/SOURCE_SUCCESSOR.json", "docs/bess02/SOURCE_SUCCESSOR.json",
+          "docs/ci_v4/correction_p/SOURCE_SUCCESSOR.json", "docs/ci_v4/module_weights.json",
           "app/services/bess_standalone_candidate.py", "app/services/bess_setup_preview.py", "app/workbook/bess_config.py")
 
 
@@ -417,12 +492,17 @@ def _expected_blob(root, kind, path):
         edits = HANDOFFS[path]
     elif kind == "ci":
         edits = REVIEWED_CI_HANDOFFS[path]
+    elif kind == "job":
+        edits = JOB_EDITS
+        path = CI_JOB
     else:
         edits = WORKFLOW_EDITS
         path = CI_WORKFLOW
     raw = _base_bytes(root, path)
     if kind == "workflow" and _blob(raw) != "8b7b49a49583fc33c48d60cc55bd88ea9e88ef8d":
         raise ValueError("the original F01 workflow is not the historically reviewed blob")
+    if kind == "job" and _blob(raw) != JOB_BASE_BLOB:
+        raise ValueError("the original CI V4 F01 job is not the accepted blob")
     text = raw.decode()
     for old, new in edits:
         if text.count(old) != 1:
@@ -458,7 +538,7 @@ def _snapshot(root, ref, paths):
     return blobs, modes
 
 
-def _signature_ok(root, ref):
+def _signature_ok(root, ref, closure=False):
     """Pure comparison of one batched snapshot against immutable BASE-derived expectations: O(1) git reads per verdict, nothing cached from mutable state."""
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
@@ -476,21 +556,25 @@ def _signature_ok(root, ref):
             return False
         if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds
             return False
-        current, modes = _snapshot(root, ref, set(pins) | {MANIFEST} | set(FROZEN))
-        if {p: current.get(p) for p in pins} != pins:
+        judged = {p for p in pins if closure or p not in CURRENT_MAPS}
+        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
+        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
             return False
-        owned = OWNED_PATHS | {MANIFEST}
-        if len(modes) < len(owned) or any(modes.get(p) != "100644" for p in owned):
+        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
+        if any(modes.get(p) != "100644" for p in owned):
             return False
         if any(pins[p] != _expected_blob(key, "handoff", p) for p in HANDOFFS):
             return False
         if pins[CI_WORKFLOW] != _expected_blob(key, "workflow", CI_WORKFLOW):
             return False
+        if pins[CI_JOB] != _expected_blob(key, "job", CI_JOB):
+            return False
         if any(pins[p] != _expected_blob(key, "ci", p) for p in REVIEWED_CI_HANDOFFS):
             return False
-        for p in CURRENT_MAPS:
-            if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
-                return False
+        if closure:
+            for p in CURRENT_MAPS:
+                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                    return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
             return False
         return True
@@ -499,7 +583,7 @@ def _signature_ok(root, ref):
 
 def exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
-    if not signature_ok(root, ref):
+    if not _verdict(root, ref, True):
         return False
     try:
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())

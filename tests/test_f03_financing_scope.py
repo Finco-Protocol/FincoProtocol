@@ -17,8 +17,8 @@ def test_f03_immutable_base_and_exact_source_registration():
     assert _git("rev-parse", F.BASE + "^{tree}") == F.BASE_TREE
     assert F.signature_ok() and F.exact_blobs_ok()
     assert F.reviewed_edits_ok() and set(F.HANDOFFS) == {
-        F.REGISTRY, F.PREDECESSOR, F.BESS_TEST, F.R02_MODULE, F.R02_TEST, F.POST432_TEST}
-    assert F.CI_PATHS == frozenset((".github/workflows/finval_f01_acceptance.yml",))
+        F.REGISTRY, F.PREDECESSOR, F.BESS_MODULE, F.PERF_TEST, F.BESS_TEST, F.R02_TEST, F.POST432_TEST}
+    assert F.CI_PATHS == frozenset((".github/workflows/finval_f01_acceptance.yml", ".github/workflows/ci_v4_f01_job.yml"))
     assert not any(p.startswith(F.FORBIDDEN) and p not in F.CI_PATHS for p in F.OWNED_PATHS)
     assert F.reviewed_workflow_ok()
     assert F.MAP_KEYS == (F.REGISTRY, "static/react/finco-react.js")
@@ -126,13 +126,15 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
     ref = "HEAD"
     assert F.signature_ok(clone, ref) and F.exact_blobs_ok(clone, ref)
     assert B.signature_ok(clone, ref) and B.exact_blobs_ok(clone, ref) and R.signature_ok(clone, ref)
-    assert C.COHORT_MODULES[-2:] == ("tests.bess02_scope", "tests.f03_financing_scope")
+    assert C.COHORT_MODULES[-3:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope")
 
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.f03_financing_scope')")),
     ("fake_extra", lambda b: b.replace(b"'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.fake_scope')")),
-    ("swapped_bess_f03", lambda b: b.replace(b"'tests.bess02_scope', 'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.bess02_scope')")),
+    ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope')", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope')")),
+    ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
+    ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),
     ("bess_removed", lambda b: b.replace(b"'tests.bess02_scope', ", b"")),
     ("f03_missing", lambda b: b.replace(b", 'tests.f03_financing_scope')", b")")),
     ("r02_removed", lambda b: b.replace(b"'tests.r02_ppa_ux_scope', ", b"")),
@@ -163,14 +165,15 @@ def test_wrong_ancestor_mode_and_tampered_pins_are_rejected(clone):
     assert not F.signature_ok(clone, F.BASE)                              # BASE itself carries no successor manifest
     assert not F.signature_ok(clone, "c26b968683f1de63f73f92789dcef947e912822e")   # a pre-BESS ancestor is the wrong parent
     assert not F.signature_ok(clone, _variant(clone, mode="tests/bess02_scope.py"))
-    assert not F.signature_ok(clone, _variant(clone, {F.MANIFEST: lambda b: b.replace(b'"base_tree": "0f84439e', b'"base_tree": "1f84439e', 1)}))
+    assert not F.signature_ok(clone, _variant(clone, {F.MANIFEST: lambda b: b.replace(b'"base_tree": "7f8335fa', b'"base_tree": "1f8335fa', 1)}))
     forged = _variant(clone, {F.MANIFEST: lambda b: b.replace(b'"tests/bess02_scope.py": "', b'"tests/bess02_scope.py": "0000', 1)})
     assert not F.signature_ok(clone, forged) and not B.signature_ok(clone, forged)
 
 
 def test_current_map_tamper_and_unknown_protected_path_are_rejected(clone):
     ref = _variant(clone, {"docs/ci_v4/SOURCE_SUCCESSOR.json": lambda b: b.replace(b'"tests/fin_v2_cohorts.py": "', b'"tests/fin_v2_cohorts.py": "0000', 1)})
-    assert not F.signature_ok(clone, ref) and not B.exact_blobs_ok(clone, ref)
+    # a foreign map's bytes are judged only by the full closure (the accepted leaf rule): the signature survives, the exactness does not
+    assert F.signature_ok(clone, ref) and not F.exact_blobs_ok(clone, ref) and not B.exact_blobs_ok(clone, ref)
     unknown = _variant(clone, {"app/v2/react_financing.py": lambda b: b + b"\n"})
     assert not F.signature_ok(clone, unknown) and not F.exact_blobs_ok(clone, unknown)
 
@@ -196,3 +199,46 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
         assert F.signature_ok(clone, "HEAD") and B.exact_blobs_ok(clone, "HEAD")
         assert not F.signature_ok(clone, bad) and not B.exact_blobs_ok(clone, bad)    # same process, same scope, other ref
     assert F.signature_ok(clone, "HEAD")                                             # and the positive verdict was never poisoned
+
+
+# ---- CI V4 internal F01 job: exactly one reviewed line (25 -> 45 minutes), nothing else under .github/ ----
+def test_ci_v4_internal_f01_job_is_exactly_the_one_line_timeout_successor():
+    old = subprocess.check_output(["git", "show", F.BASE + ":" + F.CI_JOB], cwd=ROOT).decode()
+    current = (ROOT / F.CI_JOB).read_text()
+    assert "    timeout-minutes: 25\n" in old and "    timeout-minutes: 45\n" in current
+    assert old.replace("    timeout-minutes: 25\n", "    timeout-minutes: 45\n", 1) == current          # no other byte moved
+    # every acceptance assertion the standalone workflow keeps is still in the internal job, untouched
+    for needle in ("== 4", "assert len(cases)==20", "test \"$(id -u)\" -ne 0", "--network none", "run-native"):
+        assert needle in current
+    assert F.reviewed_job_ok() and F.reviewed_job_ok(actual=current.encode())
+
+
+def test_ci_v4_internal_f01_job_drift_is_rejected():
+    current = (ROOT / F.CI_JOB).read_bytes()
+    for bad in (
+        current.replace(b"timeout-minutes: 45", b"timeout-minutes: 450", 1),
+        current.replace(b"timeout-minutes: 45", b"timeout-minutes: 25", 1),
+        current.replace(b"assert len(cases)==20", b"assert len(cases)>=0", 1),
+        current.replace(b"--network none", b"--network host", 1),
+        current + b"\n# extra\n",
+    ):
+        assert bad != current and not F.reviewed_job_ok(actual=bad)
+
+
+def test_ci_v4_f01_job_edit_is_rejected_by_f03_and_by_the_ci_v4_guard(clone):
+    from tests import ci_v4_scope as V
+    good = _variant(clone)
+    assert F.signature_ok(clone, good)
+    bad = _variant(clone, {F.CI_JOB: lambda b: b.replace(b"timeout-minutes: 45", b"timeout-minutes: 90", 1)})
+    assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)
+    other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\n# unreviewed\n"})
+    assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)
+
+
+def test_ci_v4_hook_admits_only_two_literal_source_paths():
+    from tests import ci_v4_scope as V
+    pins = F.manifest()["source_blobs"]
+    assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)
+    assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)
+    assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, None)
+    assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)

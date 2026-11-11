@@ -14,7 +14,7 @@ from tests.test_trust_readiness_controls import (
 SOURCES = {path: (S.ROOT / path).read_text(encoding="utf-8") for path in S.BLOBS}
 
 
-def test_exact_reviewed_run_clone_and_helper_contract():
+def _exact_reviewed_run_clone_and_helper_contract():
     historical = {name: subprocess.check_output(["git", "show", f"{S.SOURCE_HEAD}:{name}"], cwd=S.ROOT).decode("utf-8") for name in S.BLOBS}
     for name, source in historical.items():
         assert S.git_blob(source) == S.BLOBS[name], name
@@ -25,11 +25,27 @@ def test_exact_reviewed_run_clone_and_helper_contract():
     inventory_test()
 
 
+def test_exact_reviewed_run_clone_and_helper_contract():
+    """Correction P (CI V4 performance): this positive sequence is read-only, so ONE outer governance
+    call shares one composite verdict across the mutation-security successor, the RC-SEC successor
+    and the inventory probe (whose own nested call scope joins the outermost memo by design).
+    Nothing survives the call, so the mutation negatives below stay fail-closed."""
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():
+        _exact_reviewed_run_clone_and_helper_contract()
+
+
 def test_inventory_rejects_unproven_rc_sec_while_preserving_other_successors(monkeypatch):
-    inventory_test()
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():
+        inventory_test()
     monkeypatch.setattr(S, "current_rc_sec_csrf_successor_valid", lambda: False)
     with pytest.raises(AssertionError):
-        inventory_test()
+        # A FRESH outer call after the tamper: no verdict crosses the tamper boundary, so the
+        # inventory still re-evaluates every successor against the tree and rejects the unproven
+        # RC-SEC Clone router while preserving all other successors.
+        with call_scope():
+            inventory_test()
 
 
 @pytest.mark.parametrize("path,old,new", [
