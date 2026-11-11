@@ -127,17 +127,19 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
     assert F.signature_ok(clone, ref) and F.exact_blobs_ok(clone, ref)
     assert B.signature_ok(clone, ref) and B.exact_blobs_ok(clone, ref) and R.signature_ok(clone, ref)
     assert C.COHORT_MODULES[-3:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope") or (
-        C.COHORT_MODULES[-4:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope"))
+        C.COHORT_MODULES[-4:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")) or (
+        C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
+                                  "tests.r03_ppa_scope"))
 
 
 @pytest.mark.parametrize("name,fn", [
-    ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope')", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope')")),
-    ("fake_extra", lambda b: b.replace(b"'tests.t01e_remediation_scope')", b"'tests.t01e_remediation_scope', 'tests.fake_scope')")),
+    ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),
     ("bess_removed", lambda b: b.replace(b"'tests.bess02_scope', ", b"")),
-    ("f03_missing", lambda b: b.replace(b", 'tests.f03_financing_scope', 'tests.t01e_remediation_scope')", b", 'tests.t01e_remediation_scope')")),
+    ("f03_missing", lambda b: b.replace(b", 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b", 'tests.t01e_remediation_scope'")),
     ("r02_removed", lambda b: b.replace(b"'tests.r02_ppa_ux_scope', ", b"")),
     ("earlier_reordered", lambda b: b.replace(b"'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope'", b"'tests.fin_v2_ci_scope', 'tests.fin_v2_3_scope'")),
 ])
@@ -195,7 +197,7 @@ def test_bess_supersession_is_pin_exact_and_cross_path_safe():
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
-    bad = _variant(clone, {F.REGISTRY: lambda b: b.replace(b", 'tests.f03_financing_scope', 'tests.t01e_remediation_scope')", b", 'tests.t01e_remediation_scope')")})
+    bad = _variant(clone, {F.REGISTRY: lambda b: b.replace(b", 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b", 'tests.t01e_remediation_scope'")})
     with F.scoped(), B.scoped():
         assert F.signature_ok(clone, "HEAD") and B.exact_blobs_ok(clone, "HEAD")
         assert not F.signature_ok(clone, bad) and not B.exact_blobs_ok(clone, bad)    # same process, same scope, other ref

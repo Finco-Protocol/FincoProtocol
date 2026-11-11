@@ -100,18 +100,25 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
 
 def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    from tests import r03_ppa_scope as Y
     for p in T.HANDOFFS:
+        if Y.signature_ok() and p in Y.HANDOFFS:            # the further reviewed R03 substitution of this shared path
+            assert (ROOT / p).read_bytes() == Y.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]
 
 
-def test_registered_exactly_once_as_the_terminal_cohort_after_f03():
-    assert C.COHORT_MODULES[-2:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
+def test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_successor_behind_it():
+    i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")
+    assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"
+    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",))
     assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1
 
 
 def test_current_maps_move_only_the_registry_key():
-    pins = T.manifest()["source_blobs"]
+    pins = T.effective_pins()                  # the CURRENT pins: a reviewed successor's overlay wins while its signature holds
     for p in T.CURRENT_MAPS:
         old = json.loads(_git("show", T.BASE + ":" + p))
         cur = json.loads((ROOT / p).read_text())
@@ -201,10 +208,10 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 
 @pytest.mark.parametrize("name,fn", [
-    ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope')", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope')")),
-    ("fake_extra", lambda b: b.replace(b"'tests.t01e_remediation_scope')", b"'tests.t01e_remediation_scope', 'tests.fake_scope')")),
-    ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope')", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope')")),
-    ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope')", b")")),
+    ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope'")),
+    ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')", b", 'tests.r03_ppa_scope')")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),
     ("earlier_reordered", lambda b: b.replace(b"'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope'", b"'tests.fin_v2_ci_scope', 'tests.fin_v2_3_scope'")),
 ])
@@ -281,7 +288,7 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]                   # the CURRENT registry pin (the reviewed R03 successor's while its signature holds)
     assert F.supersedes(T.REGISTRY, reg) and F.effective_pins()[T.REGISTRY] == reg
     assert not F.supersedes(T.REGISTRY, "0" * 40)
     assert not F.supersedes(T.REGISTRY, pins[T.PREDECESSOR])        # a real blob pinned for another path
@@ -290,7 +297,7 @@ def test_supersession_is_pin_exact_and_cross_path_safe():
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
-    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.t01e_remediation_scope')", b")")})
+    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')", b", 'tests.r03_ppa_scope')")})
     with T.scoped(), F.scoped():
         assert T.signature_ok(clone, "HEAD") and F.exact_blobs_ok(clone, "HEAD")
         assert not T.signature_ok(clone, bad) and not F.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
