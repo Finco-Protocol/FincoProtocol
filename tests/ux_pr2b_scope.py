@@ -209,6 +209,11 @@ def _pr3b1():
 
 
 def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):
+    # Reviewed CI V4 module / pr2b-suite successors, proven by F03 without this cohort.
+    if path in ('tests/ci_v4_scope.py', 'tests/test_ux_pr2b_scope.py'):
+        from tests import f03_financing_scope as F
+        if F.supersedes(path, blob, repo, ref):
+            return True
     S = _pr3b1()
     if S is None:
         return False

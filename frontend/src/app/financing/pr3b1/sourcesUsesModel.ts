@@ -2,7 +2,7 @@ import type { SuRow } from '../types';
 import type { Evidence, Gate } from './types';
 export function sourcesUsesModel(e: Evidence, gate: Gate) {
   if (!gate.showRun) return null;
-  const su = e.studio.sources_uses.view!;
+  const su = e.studio.selected_run!.view!.sources_uses;
   const total = (label: string, row: unknown): SuRow => {
     if (row && typeof row === 'object' && 'value' in row) return row as SuRow;
     return { label, value: typeof row === 'number' && Number.isFinite(row) ? row : null,

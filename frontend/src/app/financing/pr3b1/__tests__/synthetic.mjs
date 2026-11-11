@@ -25,6 +25,15 @@ export function synthetic(state = 'CURRENT') {
       sources: [amount('Actual sized Senior debt',70),amount('Share capital and other equity',30),amount('SHL cash contributed',0)],
       uses: [amount('Hard project CAPEX',100),amount('Other project uses',null)], total_sources: amount('Total Sources',100),total_uses: amount('Total Uses',100),residual: amount('Funding Residual',0),balance_status:'BALANCED',integrity:'PASS',
       construction_rows:[{ period:1,date:'2026-06-30',fields:[amount('Senior draw',50),amount('Project uses',60)] },{period:2,date:'2026-12-31',fields:[amount('Senior draw',20)]}] } } };
+  const selected_run = {available:state!=='NOT_RUN',view:{
+    schema:'F02_PERIOD_EVIDENCE_PHASE_A_V1',
+    identity:{history_id:run.identity.history_id,snapshot_id:run.identity.snapshot_id,composite_hash:run.identity.composite_hash,scenario_id:run.identity.scenario_id,state},
+    sources_uses:studio.sources_uses.view,
+    construction:{rows:studio.sources_uses.view.construction_rows.map(p=>({period_index:p.period,date:p.date,fields:p.fields})),fc_senior_draw:{value:0,unit:'kEUR',source:'Synthetic committed source'}},
+    repayment:{available:true,reason:'',rows:run.debt_metrics.periods.map(p=>({...p,axis:'RUN_DEBT_SERVICE_PERIOD'}))},
+    source_authority:'ONE_COMMITTED_RUN_HISTORY_ENTRY',internal_run_binding:'PROVEN_BACKEND_ENTRY',studio_credit_cross_view:'MITIGATED_NOT_PROVEN'
+  }};
+  studio.selected_run=selected_run;
   const fields = { ok:true,project:{code:'synthetic-project'},save:{content_hash:hash,workbook_version:'v1'},fields:[{field_id:'debt.senior.gearing_pct',value:85,display_value:'85.0%'}] };
   return structuredClone({scope:{project:'synthetic-project',scenarioId:null},before:workspace,after:workspace,studio,creditBefore:credit,credit,fields});
 }

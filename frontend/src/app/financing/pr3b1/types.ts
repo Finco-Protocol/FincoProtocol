@@ -7,6 +7,7 @@ export type Run = Omit<CreditRunView, 'structure'> & {
   structure: {
     requested_gearing?: CreditCell; total_sources?: CreditCell; total_uses?: CreditCell;
     tenor?: { first_debt_service_date?: CreditCell; last_debt_service_date?: CreditCell; contractual_maturity_date?: CreditCell };
+    interest?: { annual_rate_min?: CreditCell; annual_rate_max?: CreditCell };
   };
   debt_metrics?: DebtMetricsView;
 };
@@ -15,7 +16,15 @@ export type SourcesUses = SourcesUsesView & {
   construction_rows?: Array<{ period: number; date: string | null; fields: SuRow[] }>;
   su_authority_gap?: string; funding_waterfall_reason?: string;
 };
-export type Studio = FinancingStudioPayload & { sources_uses: FinancingStudioPayload['sources_uses'] & { view?: SourcesUses } };
+export interface SelectedRun {
+  identity: {history_id:string; snapshot_id:string; composite_hash:string; scenario_id:string|null; state:'CURRENT'|'STALE'|'HISTORICAL'};
+  sources_uses: SourcesUses;
+  construction:{rows:Array<{period_index:number;date:string|null;fields:SuRow[]}>;fc_senior_draw:{value:number|null;unit:string;source:string}};
+  repayment:{available:boolean;reason:string;rows:Array<Record<string, unknown>>};
+  source_authority:string;internal_run_binding:string;studio_credit_cross_view:string;
+}
+export type Studio = FinancingStudioPayload & { sources_uses: FinancingStudioPayload['sources_uses'] & { view?: SourcesUses };
+  selected_run?:{available:boolean;reason?:string;view?:SelectedRun} };
 export interface Workspace {
   ok: true; project: { code: string };
   workbook: { version: string; composite_hash: string; scenario_id: string | null; scenario_name: string | null };
@@ -32,6 +41,6 @@ export interface Evidence {
   scope: Scope; before: Workspace; after: Workspace; creditBefore: Credit; credit: Credit; studio: Studio; fields: Fields;
 }
 export interface Gate {
-  state: 'NOT_RUN' | 'CURRENT' | 'STALE' | 'UNAVAILABLE'; showRun: boolean; reason: string;
+  state: 'NOT_RUN' | 'CURRENT' | 'STALE' | 'HISTORICAL' | 'UNAVAILABLE'; showRun: boolean; reason: string;
   assurance: 'MITIGATED_NOT_PROVEN' | 'NOT_PROVEN';
 }

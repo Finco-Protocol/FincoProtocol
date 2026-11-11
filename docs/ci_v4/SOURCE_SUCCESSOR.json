@@ -25,7 +25,7 @@
     "docs/ci_v4/node_split_policy.json": "2075e0f17fabe1742c3335de57e01b8729171a66",
     "docs/ci_v4/node_weights.json": "77b5891a674ad450c07884893e9341742100a286",
     "tests/ci_v4_scope.py": "fe25a85088ee3525e4aba35822996b124af10a2e",
-    "tests/fin_v2_cohorts.py": "ce55dc861e8ebd719bc51ccf4a1fa57c18982168",
+    "tests/fin_v2_cohorts.py": "8a485d8618efd89dc96c547901d50c178a90948a",
     "tests/fin_v2_integration_409_scope.py": "f4e3b602e386920b7ac46a977f19375d54a38afc",
     "tests/post413_r17_scope.py": "3ce053786d3cc693c21ba1641966fec381bd2dc9",
     "tests/post413_r18_scope.py": "51e6b7410340a3717dc44909ba8b3e44796a4c19",

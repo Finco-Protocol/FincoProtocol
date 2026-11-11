@@ -95,13 +95,27 @@ def _pr2c_supersedes(path, value, root, ref):
         from tests import ux_pr2c_scope as S
     except ImportError:
         return False
-    return S.supersedes(path, value, root, ref)
+    if S.supersedes(path, value, root, ref):
+        return True
+    # Exact F03-reviewed successors of two CI V4 source paths only (the module and the internal F01 job); never a prefix.
+    if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):
+        return False
+    from tests import f03_financing_scope as F
+    return F.supersedes(path, value, root, ref)
 
 
 def _merge_event_successor():
     # One-way low-level proof: PR2b reads git + its own manifest, never this cohort.
     from tests import ux_pr2b_scope as B
     return B
+
+
+def _f03_ci_owns(path, root, ref):
+    """Admit only the exact reviewed 45-minute F01 workflow; no CI wildcard."""
+    if path != '.github/workflows/finval_f01_acceptance.yml':
+        return False
+    from tests import f03_financing_scope as F
+    return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)
 
 
 def _git(root, *args):
@@ -196,6 +210,8 @@ def _exact_blobs_ok(repo=None, ref=None):
     successor = _merge_event_successor()
     successor_ok = successor.ci_authority_ok(root, ref)
     authorized_ci = successor.CI_PATHS if successor_ok else frozenset()
+    if _f03_ci_owns('.github/workflows/finval_f01_acceptance.yml', root, ref):
+        authorized_ci = authorized_ci | {'.github/workflows/finval_f01_acceptance.yml'}
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
     if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
@@ -216,7 +232,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _pr2c_supersedes(p, listed[p], root, ref) for p in pins):
                 return False
         # engine/core/domain never moved; under .github/ and tools/ only the literal CI_PATHS differ from BASE
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--',
@@ -246,7 +262,9 @@ def allowed_path(path, repo=None, ref=None):
 
 def ci_owns(path, repo=None, ref=None):
     """A literal CI V4 path or the exact owner-authorized merge-guard successor; never a wildcard CI admission."""
-    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)) and exact_blobs_ok(repo, ref)
+    root = Path(repo) if repo is not None else ROOT
+    return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)
+            or _f03_ci_owns(path, root, ref)) and exact_blobs_ok(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
