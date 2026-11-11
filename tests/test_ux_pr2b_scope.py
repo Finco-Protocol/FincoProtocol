@@ -143,7 +143,7 @@ def test_wrong_sha_ref_and_old_source_cannot_bypass_guard(wt):
 
 
 def test_allowed_ci_artifact_is_not_source_and_verdict_does_not_survive_call(wt):
-    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')
+    p=wt/'evidence/financial/data_center-history-False.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text('{}')    # a finite F01 workflow output the composite allows
     with C.call_scope():
         assert B.exact_blobs_ok(wt) and C.valid(wt)
     q=wt/'frontend/src/app/capex/profileDraft.ts';raw=q.read_bytes();q.write_bytes(raw+b'\n')

@@ -361,7 +361,9 @@ HANDOFFS = {'tests/bess02_scope.py': [('        return {}\n'
                                   "        assert C.matches(path,current,repo=wt,ref='HEAD')\n"),
                                  ("    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')\n"
                                   '    assert B.exact_blobs_ok(wt) and C.valid(wt)\n',
-                                  "    p=wt/'evidence/pr2b.json';p.parent.mkdir(exist_ok=True);p.write_text('{}')\n"
+                                  '    '
+                                  "p=wt/'evidence/financial/data_center-history-False.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text('{}')    "
+                                  '# a finite F01 workflow output the composite allows\n'
                                   '    with C.call_scope():\n'
                                   '        assert B.exact_blobs_ok(wt) and C.valid(wt)\n'),
                                  ("    assert not B.exact_blobs_ok(wt,'HEAD') and not C.valid(wt,'HEAD')\n",

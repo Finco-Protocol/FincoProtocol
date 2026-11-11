@@ -60,7 +60,7 @@
     "tests/bess02_scope.py": "7ae8165f07ff2d321bf3906ad125ad17ab135255",
     "tests/ci_v4_perf_scope.py": "4bc2a98e79eaa7928bd93695e24d82934c1a2509",
     "tests/ci_v4_scope.py": "5549c6f5ccb36222824024addfdcf30397d0674f",
-    "tests/f03_financing_scope.py": "fe7d97c0a400cbe390b4e0bb895776bdc15e706b",
+    "tests/f03_financing_scope.py": "56d72fdda8745c22bfd177d805cb01a62a5a7686",
     "tests/fin_v2_cohorts.py": "8a485d8618efd89dc96c547901d50c178a90948a",
     "tests/test_bess02_scope.py": "06532898c78cd6b5f12d827d83f4368bfeb8e6d9",
     "tests/test_ci_v4_perf_scope.py": "1b6c98805c59e71c004f4b7b2340fbef8efd3b76",
@@ -68,7 +68,7 @@
     "tests/test_f03_financing_scope.py": "fe716193dbb45db391fa1bc1c6fbc953c53ec6ee",
     "tests/test_post432_l01_l02_scope.py": "d2c02f0e35084d849c89b7f27f38398f9df83b2b",
     "tests/test_r02_ppa_ux_scope.py": "814710fd6d5971d6eae0a55c3246a6675276c578",
-    "tests/test_ux_pr2b_scope.py": "400544a14aa8b1ff90c3fcfcc8ab0aa0f5852953",
+    "tests/test_ux_pr2b_scope.py": "e88877cac8f28a20272f994c2de1e2e3bd3365fe",
     "tests/ux_pr2b_scope.py": "a98ec1e8ca7a59017ce2b5d1425ecafa5781645a",
     "tests/ux_pr2c_scope.py": "cb27d7fadbf3eb7d32934892cb5763879ca45ef7"
   }
