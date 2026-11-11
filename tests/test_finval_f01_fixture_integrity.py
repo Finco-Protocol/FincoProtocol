@@ -54,22 +54,29 @@ def test_authority_mock_has_only_its_missing_unit_added():
     new='ws=SimpleNamespace(user_id="u", project_id="p", draft_snapshot={"_finval_interest_rate_unit": "human_percent_v1"}),\n                field_id="debt.senior.interest_rate_pct"'
     assert baseline(path).count(old)==1
     original = baseline(path).replace(old,new)
-    from tests.fin_v2_cohorts import matches
-    actual = (ROOT/path).read_text()
-    assert matches(path, actual)
-    historical = '        assert set(actual) == set(golden["hashes"]) | financing_additions\n'
-    assert original.count(historical)==1
-    approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_cohorts import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
-    extended = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)\n'
-    fin_v2_3_state = original.replace(historical, approved_valuation_extension + extended)
-    if actual == fin_v2_3_state:
-        return
-    # WF-04 successor lineage (tests/wf04_scope.py, Owner Correction B): the file is the FIN-V2-3 state with ONLY the reviewed macro-identity guard
-    # change - (1) the closed literal sets of reviewed additions (financing / valuation / the four WF-04 contract presentations, each with its own
-    # sha256) and the pure judge, (2) the body of the one macro node (same node id) now delegating to them, (3) the new fail-closed negatives class.
-    # Every other line - the F01 mock, _ADDED_ATTRS, _historical_macro_dom, every other test - must be untouched, and the exact blob is pinned.
-    from tests import wf04_scope as WF04
-    assert WF04.matches(path, actual)
+    # Correction P (CI V4 performance): both exact-source recognitions below are read-only, so ONE
+    # outer governance call shares a single composite registry verdict between them instead of
+    # re-evaluating the full 33-cohort registry for each ``matches``. Every distinct check in this
+    # test still runs; only the duplicate computation of the same composite on the same unchanged
+    # tree is eliminated, and nothing survives the call scope.
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():
+        from tests.fin_v2_cohorts import matches
+        actual = (ROOT/path).read_text()
+        assert matches(path, actual)
+        historical = '        assert set(actual) == set(golden["hashes"]) | financing_additions\n'
+        assert original.count(historical)==1
+        approved_valuation_extension = "        # FIN-V2-3 adds one explicitly configured policy field. Its two\n        # presentations are separately hash-locked; all historical DOM hashes\n        # and the exact CSRF/read-only checks above remain unchanged.\n        from tests.fin_v2_cohorts import matches\n        assert matches(\"app/workbook/registry.py\")\n        valuation_additions = {\n            \"project_setup|editable|debt.valuation.configuration\": \"74353aad956d330f773a01b553ca95e637aab18c1d949b9fe3f6b206bd84660b\",\n            \"project_setup|protected|debt.valuation.configuration\": \"4ed792d9787c2a2dbf1edf084be7524e8e5608626014f5ee5f4ecbed00b73186\",\n        }\n        assert {key: actual[key] for key in valuation_additions} == valuation_additions\n"
+        extended = '        assert set(actual) == set(golden["hashes"]) | financing_additions | set(valuation_additions)\n'
+        fin_v2_3_state = original.replace(historical, approved_valuation_extension + extended)
+        if actual == fin_v2_3_state:
+            return
+        # WF-04 successor lineage (tests/wf04_scope.py, Owner Correction B): the file is the FIN-V2-3 state with ONLY the reviewed macro-identity guard
+        # change - (1) the closed literal sets of reviewed additions (financing / valuation / the four WF-04 contract presentations, each with its own
+        # sha256) and the pure judge, (2) the body of the one macro node (same node id) now delegating to them, (3) the new fail-closed negatives class.
+        # Every other line - the F01 mock, _ADDED_ATTRS, _historical_macro_dom, every other test - must be untouched, and the exact blob is pinned.
+        from tests import wf04_scope as WF04
+        assert WF04.matches(path, actual)
     import difflib
     before, after = fin_v2_3_state.splitlines(), actual.splitlines()
     start = before.index('    def test_macro_output_matches_the_base_commit_except_three_additive_attributes(self):')
