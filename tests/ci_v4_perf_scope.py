@@ -196,6 +196,10 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root, ref):
+            return N.reviewed_edits_ok(root, ref) and all(
+                _read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS if p not in N.HANDOFFS)
         return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
         return False
@@ -208,18 +212,32 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        yield
+        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.
+        N = _next()
+        if N is None:
+            yield
+        else:
+            with N.scoped():
+                yield
     finally:
         _SCOPE.pop()
+
+
+def _exact_next_scoped(repo, ref, closure):
+    N = _next()
+    if N is None:
+        return _exact(repo, ref, closure)
+    with N.scoped():
+        return _exact(repo, ref, closure)
 
 
 def _verdict(repo, ref, closure):
     key = (str(repo if repo is not None else ROOT), ref, closure)
     if _SCOPE:
         if key not in _SCOPE[-1]:
-            _SCOPE[-1][key] = _exact(repo, ref, closure)
+            _SCOPE[-1][key] = _exact_next_scoped(repo, ref, closure)
         return _SCOPE[-1][key]
-    return _exact(repo, ref, closure)
+    return _exact_next_scoped(repo, ref, closure)
 
 
 def signature_ok(repo=None, ref=None):
@@ -241,6 +259,8 @@ def _exact(repo=None, ref=None, closure=True):
         if set(pins) != OWNED_PATHS or set(d.get('base_blobs', {})) != SUPERSEDED:
             return False
         head = ref or 'HEAD'
+        nx = _next_pins(root, ref)
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
         _git(root, 'merge-base', '--is-ancestor', BASE, head)
         if _base(root, 'rev-parse', BASE + '^{tree}').decode().strip() != BASE_TREE:
             return False
@@ -262,7 +282,7 @@ def _exact(repo=None, ref=None, closure=True):
                     return False
             # A current map's BYTES are judged only by the full closure; the signature never reads a foreign manifest's content
             # (the predecessor chain proves each map pin against its canonical derivation).
-            if p != MANIFEST and (closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != pins[p]:
+            if p != MANIFEST and (closure or p not in CURRENT_MAPS) and _blob(_read(root, p, ref)) != cur[p]:
                 return False
         # No safety authority ever joins this cohort: no engine, core, domain, workflow,
         # frontend or static byte is owned, so none can be admitted through it.
@@ -270,7 +290,7 @@ def _exact(repo=None, ref=None, closure=True):
             return False
         if closure:
             changed = set(_git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines())
-            allowed = OWNED_PATHS | {MANIFEST}
+            allowed = closure_paths(root, ref)
             if not changed <= allowed:
                 return False
             # Foreign accepted bytes/modes are re-verified against BASE by the BESS02 root leaf's
@@ -286,17 +306,35 @@ def _exact(repo=None, ref=None, closure=True):
         return False
 
 
+def _next():
+    """The one finite forward successor (F03). Low-level only: its signature never calls this module or the composite."""
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.f03_financing_scope' not in COHORT_MODULES:
+        return None
+    from tests import f03_financing_scope
+    return f03_financing_scope
+
+
+def _next_pins(root, ref):
+    N = _next()
+    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}
+
+
 def map_keys(repo=None, ref=None):
-    return tuple(MAP_KEYS)
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        N = _next()
+        return tuple(MAP_KEYS) + (tuple(N.map_keys(root, ref)) if N is not None and N.signature_ok(root, ref) else ())
 
 
 def closure_paths(repo=None, ref=None):
-    """This leaf's closed path set, gated by its OWN signature (no successor below it on this branch)."""
+    """This leaf's closed path set, gated by its OWN signature, plus the successor's closure; one shared read scope evaluates each signature once."""
     root = Path(repo) if repo is not None else ROOT
     with scoped():
         if not signature_ok(root, ref):
             return frozenset()
-        return OWNED_PATHS | {MANIFEST}
+        N = _next()
+        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def allowed_path(path, repo=None, ref=None):
@@ -308,16 +346,27 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    return path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
+    with scoped():      # one shared read scope per call: each successor signature is evaluated once, then dropped
+        if path in SUPERSEDED and signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value:
+            return True
+        N = _next()
+        return N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref)
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get('source_blobs', {}))
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        pins = dict(manifest(repo, ref).get('source_blobs', {}))
+        pins.update(_next_pins(root, ref))
+        return pins
 
 
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, 'merge-base', 'origin/main', 'HEAD').decode().strip() != BASE:
             return False
         actual = _git(root, 'diff', BASE, '--name-only').decode().splitlines()

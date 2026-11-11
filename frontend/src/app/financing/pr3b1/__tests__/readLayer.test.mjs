@@ -36,12 +36,12 @@ const negatives={
  'field read race':e=>{e.fields.save.content_hash='other'},
  'stale missing workspace last-run anchor':e=>{e.before.identity=null;e.after.identity=null},
 };
-for(const [name,mutate] of Object.entries(negatives))test(`fail closed: ${name}`,()=>{const e=synthetic(name.startsWith('stale')?'STALE':'CURRENT');mutate(e);const g=gate(e);assert.equal(g.showRun,false,g.reason);assert.equal(m.sourcesUsesModel(e,g),null);assert.equal(m.coverageModel(e,g),null);const html=m.render(e);assert.ok(html.includes('Last Run changed'));assert.ok(!html.includes('aria-label="Sources &amp; Uses Last Run"'));assert.ok(!html.includes('aria-label="Coverage Last Run"'));});
-test('five debt concepts keep raw source units and never sum draws',()=>{const e=synthetic(),g=gate(e),terms=m.termSheetModel(e,g)[0].rows;assert.equal(terms[0].display,'80.0%');assert.equal(terms[1].display,'85.0%');assert.equal(terms[2].label,'Senior commitment (sized)');assert.equal(terms[2].display,'70 kEUR');assert.equal(terms[3].display,'N/A — sized commitment (single Senior)');assert.deepEqual(m.sourcesUsesModel(e,g).drawn.map(x=>x.seniorDraw.value),[50,20]);assert.deepEqual(m.coverageModel(e,g).outstanding,[{period:1,date:'2027-06-30',opening:70,closing:65}]);});
+for(const [name,mutate] of Object.entries(negatives))test(`fail closed: ${name}`,()=>{const e=synthetic(name.startsWith('stale')?'STALE':'CURRENT');mutate(e);const g=gate(e);assert.equal(g.showRun,false,g.reason);assert.equal(m.sourcesUsesModel(e,g),null);assert.equal(m.coverageModel(e,g),null);const html=m.render(e);assert.ok(html.includes('Selected Run changed'));assert.ok(!html.includes('aria-label="Sources &amp; Uses selected Run"'));assert.ok(!html.includes('aria-label="Coverage selected Run"'));});
+test('five debt concepts keep raw source units and never sum draws',()=>{const e=synthetic(),g=gate(e),terms=m.termSheetModel(e,g)[0].rows;assert.equal(terms[0].display,'80.0%');assert.equal(terms[1].display,'85.0%');assert.equal(terms[2].label,'Senior commitment (sized)');assert.equal(terms[2].display,'70 kEUR');assert.equal(terms[3].display,'UNAVAILABLE — no independently evidenced lender commitment');assert.deepEqual(m.sourcesUsesModel(e,g).drawn.map(x=>x.seniorDraw.value),[50,20]);assert.deepEqual(m.coverageModel(e,g).outstanding,[{period:1,date:'2027-06-30',opening:70,closing:65}]);});
 test('S&U passes through zero, null, total sources and server balance independently',()=>{const e=synthetic(),su=m.sourcesUsesModel(e,gate(e));assert.equal(su.sources[2].value,0);assert.equal(su.uses[1].value,null);assert.equal(su.totals[0].value,100);assert.equal(su.sources[0].value,70);const html=m.render(e);assert.match(html,/NOT AVAILABLE/);assert.match(html,/BALANCED/);});
 test('below-one server warning does not turn model Integrity into FAIL',()=>{const e=synthetic(),c=m.coverageModel(e,gate(e));assert.equal(c.integrity.status,'PASS');assert.equal(c.debtMetrics.evaluation.coverage.status,'WARN');assert.equal(c.debtMetrics.evaluation.covenant.status,'BREACH');assert.equal(c.integrityFindings[0].classification,'PROVENANCE');assert.equal(c.bankabilityFindings[0].classification,'SENIOR_DEBT');assert.equal(c.periods[0].below_one,true);});
 test('all eight categories, seven legacy paths, edit lock, fee restriction and unsupported status visible',()=>{const e=synthetic(),html=m.render(e);for(const g of ['Size','Pricing','Tenor','Repayment','Fees','Covenants','Reserves','Sponsor','Model Integrity','Financial Bankability','Covenant Compliance'])assert.ok(html.includes(g),g);for(const path of ['terms','overview','debt-metrics','bankability','facilities','sources-uses','investors'])assert.ok(html.includes('financing='+path),path);assert.match(html,/Locked: Synthetic calibrated schedule/);assert.match(html,/Fees read-only/);assert.match(html,/Junior unsupported/);assert.ok(!html.includes('<option value="senior2"'));assert.ok(!html.includes('type="submit"'));});
-test('two-Senior does not masquerade as single-Senior commitment',()=>{const e=synthetic();e.studio.multisenior.active=true;const rows=m.termSheetModel(e,gate(e))[0].rows;assert.match(rows[3].display,/NOT AVAILABLE/);assert.ok(!rows[3].display.includes('70'));});
+test('two-Senior does not masquerade as single-Senior commitment',()=>{const e=synthetic();e.studio.multisenior.active=true;const rows=m.termSheetModel(e,gate(e))[0].rows;assert.match(rows[3].display,/UNAVAILABLE/);assert.ok(!rows[3].display.includes('70'));});
 test('read orchestration bookends all calls; no writes and abort signal retained',async()=>{const e=synthetic();let calls=[];const signal=new AbortController().signal;const fake=async(url,opts)=>{calls.push([url,opts]);let b=url.includes('workspace')?e.before:url.includes('credit-decision')?e.credit:url.includes('studio')?e.studio:e.fields;return {ok:true,json:async()=>b}};const out=await m.readEvidence(e.scope,signal,fake);assert.equal(gate(out).showRun,true);assert.equal(calls.length,6);assert.match(calls[0][0],/workspace/);assert.match(calls[1][0],/credit-decision/);assert.match(calls[4][0],/credit-decision/);assert.match(calls[5][0],/workspace/);for(const [url,opts] of calls){assert.equal(opts.method,'GET');assert.equal(opts.cache,'no-store');assert.equal(opts.signal,signal);assert.ok(!('body' in opts));assert.ok(url.includes('project=synthetic-project'));}});
 test('failed endpoint never returns partial evidence',async()=>{await assert.rejects(m.readEvidence(synthetic().scope,new AbortController().signal,async()=>({ok:false,status:503})),/503/);});
 test('relative GET URLs preserve special project and selected Run characters without query injection',async()=>{
@@ -59,7 +59,7 @@ test('relative GET URLs preserve special project and selected Run characters wit
  const paths=['/v2/model-react/workspace','/v2/model-react/analysis/credit-decision','/v2/model-react/financing/studio','/v2/model-react/fields/debt','/v2/model-react/analysis/credit-decision','/v2/model-react/workspace'];
  assert.equal(calls.length,paths.length);
  calls.forEach(([url,options],i)=>{
-  const selected=paths[i].endsWith('credit-decision');
+  const selected=paths[i].endsWith('credit-decision') || paths[i].endsWith('financing/studio');
   const query=new URLSearchParams({project});if(selected)query.append('run',history);
   assert.equal(url,`${paths[i]}?${query.toString()}`);
   assert.deepEqual([...new URLSearchParams(url.slice(url.indexOf('?')+1))],selected?[['project',project],['run',history]]:[['project',project]]);
@@ -94,7 +94,7 @@ for (const technology of ['Solar','Wind','Battery (synthetic wire only; release 
   assert.deepEqual(m.sourcesUsesModel(e,g).drawn.map(r=>r.seniorDraw.value),[50,20]);
   assert.equal(m.coverageModel(e,g).outstanding[0].opening,70);
   e.studio.capital_stack.rows=[];assert.match(m.render(e),/no configured facility terms supplied/);
-  e.studio.multisenior.active=true;assert.match(m.termSheetModel(e,gate(e))[0].rows[3].display,/NOT AVAILABLE/);
+  e.studio.multisenior.active=true;assert.match(m.termSheetModel(e,gate(e))[0].rows[3].display,/UNAVAILABLE/);
   e.credit.data.runs[0].integrity={status:'FAIL',failures:[{id:'SYNTHETIC_INVALIDITY',reason:'Server-supplied failure'}]};
   assert.match(m.render(e),/Server-supplied failure/);
  });
@@ -119,4 +119,45 @@ test('real tenor wire cells render their server display; missing maturity stays 
  const e=synthetic(),tenor=m.termSheetModel(e,gate(e)).find(g=>g.label==='Tenor').rows;
  assert.equal(tenor[0].display,'2027-06-30');assert.equal(tenor[1].display,'2030-12-31');assert.equal(tenor[2].display,'NOT AVAILABLE');
  assert.doesNotThrow(()=>m.render(e));
+});
+
+test('F03 selected HISTORICAL binds its own persisted Sources & Uses, not Studio Last Run',()=>{
+ const e=synthetic();
+ for (const c of [e.credit,e.creditBefore]) {
+   c.history_rows[0].is_last=false;
+   c.data.runs[0].identity.state='HISTORICAL';
+ }
+ e.scope.historyId='synthetic-history';
+ e.studio.selected_run.view.identity.state='HISTORICAL';
+ e.studio.selected_run.view.sources_uses={...structuredClone(e.studio.sources_uses.view),run_kind:'HISTORICAL_RUN',freshness:'HISTORICAL'};
+ e.studio.sources_uses.view.total_sources.value=999;
+ const g=gate(e);
+ assert.equal(g.state,'HISTORICAL',g.reason);
+ assert.equal(g.showRun,true,g.reason);
+ assert.equal(m.sourcesUsesModel(e,g).totals[0].value,100);
+ assert.match(m.render(e),/HISTORICAL — selected committed Run/);
+});
+test('F03 wrong selected run identifiers, debt rows and missing evidence fail closed',()=>{
+ const cases={
+  history:e=>e.studio.selected_run.view.identity.history_id='other',
+  snapshot:e=>e.studio.selected_run.view.identity.snapshot_id='other',
+  hash:e=>e.studio.selected_run.view.identity.composite_hash='other',
+  debt:e=>e.studio.selected_run.view.repayment.rows[0].senior_opening_keur=999,
+  totals:e=>e.studio.selected_run.view.sources_uses.total_sources.value=99,
+  authority:e=>e.studio.selected_run.view.internal_run_binding='NOT_PROVEN',
+  missing:e=>delete e.studio.selected_run,
+ };
+ for(const [name,mutate] of Object.entries(cases)){
+  const e=synthetic();mutate(e);
+  assert.equal(gate(e).showRun,false,name);
+  assert.equal(m.sourcesUsesModel(e,gate(e)),null,name);
+ }
+ const zero=synthetic();
+ assert.match(m.render(zero),/Separate FC\/COD Senior draw · 0 kEUR/);
+ const digestMissing=synthetic();
+ digestMissing.studio.selected_run.view.repayment.available=false;
+ digestMissing.credit.data.runs[0].debt_metrics.available=false;
+ assert.equal(gate(digestMissing).showRun,false,'two unavailable sealed debt views are not verified');
+ const absent=synthetic();absent.studio.selected_run.view.construction.fc_senior_draw.value=null;
+ assert.match(m.render(absent),/Separate FC\/COD Senior draw · UNAVAILABLE/);
 });

@@ -27,7 +27,10 @@ def _git(*args):
 
 def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
     assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES
-    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope"
+    # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete signature
+    from tests import f03_financing_scope as G
+    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
+        C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok())
     assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
     assert F.exact_blobs_ok() is True
     assert F.signature_ok() is True
@@ -35,8 +38,10 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
 
 
 def test_every_handoff_file_equals_its_reviewed_literal_substitution():
+    from tests import f03_financing_scope as G
     for p in sorted(F.HANDOFFS):
-        assert (ROOT / p).read_bytes() == F.expected_handoff(ROOT, p), p
+        want = G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else F.expected_handoff(ROOT, p)
+        assert (ROOT / p).read_bytes() == want, p
 
 
 def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():
@@ -55,7 +60,9 @@ def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tai
                     if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
                     and n.targets[0].id == "COHORT_MODULES")
     assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact
-    assert C.COHORT_MODULES == accepted + ("tests.ci_v4_perf_scope",)
+    from tests import f03_financing_scope as G
+    own = accepted + ("tests.ci_v4_perf_scope",)
+    assert C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
     assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1
 
 
@@ -82,8 +89,10 @@ def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_can
     new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}
     old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}
     assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
-    assert moved == new and F.effective_pins() == {**F.effective_pins(), **new}
-    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **new}
+    from tests import f03_financing_scope as G
+    assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
+    assert set(moved) - set(new) <= set(G.MAP_KEYS)                       # the only other moved key is the reviewed F03 successor's
+    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.manifest()["source_blobs"]}}
     for p in sorted(B.CURRENT_MAPS):
         disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
         base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
@@ -148,7 +157,7 @@ def test_a_forged_pin_in_the_leaf_manifest_fails_closed_and_restores():
 def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
-    marker = "'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope')"
+    marker = "'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope')"
     assert text.count(marker) == 1
     try:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())
@@ -164,7 +173,7 @@ def test_a_registry_deletion_of_the_accepted_bess_tail_fails_closed():
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
     try:
-        forged = text.replace(", 'tests.bess02_scope', 'tests.ci_v4_perf_scope')", ", 'tests.ci_v4_perf_scope')")
+        forged = text.replace(", 'tests.bess02_scope', 'tests.ci_v4_perf_scope'", ", 'tests.ci_v4_perf_scope'")
         assert forged != text
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())
         assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False
@@ -214,7 +223,9 @@ def test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_dist
         base_bytes = _git("show", F.BASE + ":" + p)
         now = (ROOT / p).read_bytes()
         assert base_bytes != now, p                       # the takeover is real, not a no-op
-        assert F.expected_handoff(ROOT, p) == now         # and equals exactly the reviewed substitution
+        from tests import f03_financing_scope as G
+        want = G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else F.expected_handoff(ROOT, p)
+        assert want == now                                # and equals exactly the reviewed substitution
 
 
 # ---------------------------------------------------------------------------------------------

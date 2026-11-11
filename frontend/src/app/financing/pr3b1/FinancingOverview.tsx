@@ -28,6 +28,8 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
 }) {
   const gate = checkRunEvidence(e), groups = termSheetModel(e, gate), su = sourcesUsesModel(e, gate), cov = coverageModel(e, gate);
   const s = e.studio, r = gate.showRun ? e.credit.data?.runs[0] : undefined, dm = cov?.debtMetrics;
+  const selected = gate.showRun ? s.selected_run?.view : undefined;
+  const runName = gate.state === 'HISTORICAL' ? 'Historical selected Run' : 'Last Run';
   const facilities = (s.capital_stack.rows ?? []).filter(f => !isUnconfiguredFacility(f));
   const [facilityId, setFacilityId] = useState('');
   const facility = facilities.find(f => f.instrument_id === facilityId) ?? facilities[0];
@@ -44,8 +46,8 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
     {e.credit.history_rows.length > 0 && <label className="pr3b1-history">Run history <select aria-label="Run history" value={e.credit.data?.runs[0]?.identity?.history_id ?? ''}
       disabled={!onHistoryChange} onChange={ev => onHistoryChange?.(ev.target.value)}>{e.credit.history_rows.map(h => <option key={h.history_id} value={h.history_id}>{h.is_last ? 'Last Run' : 'Historical'} · {h.scenario} · {h.ran_at}</option>)}</select></label>}
     <div className={`pr3b1-state pr3b1-state-${gate.state.toLowerCase()}`} role="status"><strong>{gate.state}</strong> · {gate.reason}
-      {r && <small>Last Run · {r.identity.scenario} · {r.identity.ran_at} · snapshot {r.identity.snapshot_id}</small>}
-      {gate.showRun && <small>Totals and read identities agree; Sources & Uses snapshot identity is not proven.</small>}
+      {r && <small>{runName} · {r.identity.scenario} · {r.identity.ran_at} · snapshot {r.identity.snapshot_id}</small>}
+      {gate.showRun && <small>Selected committed history source identity verified; Studio/credit cross-view assurance remains MITIGATED_NOT_PROVEN.</small>}
     </div>
     <div className="pr3b1-main">
       <article className="pr3b1-sheet" id="pr3b1-terms"><h3>Structure &amp; Terms <small>Working Copy</small></h3><details open={!embedded}><summary>Saved terms and source notes</summary><h4>Term Sheet</h4><small>Working Copy model values are informational.</small>
@@ -57,17 +59,20 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
       </article>
       <div id="pr3b1-run" className="pr3b1-run-zones" data-run-zones={gate.showRun ? 'visible' : 'hidden'}>
         {!gate.showRun ? <div className="pr3b1-card"><h3>Last Run evidence</h3><p>{gate.reason}</p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="debt-metrics" href={link('debt-metrics')}>Open Debt metrics / historical evidence</a></div> : <>
-          <article className="pr3b1-card" aria-label="Sources & Uses Last Run"><h3>Sources & Uses <small>Last Run · kEUR</small></h3>
+          <article className="pr3b1-card" aria-label="Sources & Uses selected Run"><h3>Sources & Uses <small>{runName} · kEUR</small></h3>
             <div className="pr3b1-su-scroll" tabIndex={0} role="region" aria-label="Sources and Uses rows"><h4>Sources</h4><Terms rows={su!.sources.map(amount)} /><h4>Uses</h4><Terms rows={su!.uses.map(amount)} />
             <div className="pr3b1-totals"><Terms rows={su!.totals.map(amount)} /></div></div><p>Balance · {su!.balance} · Integrity · {su!.integrity}</p><small>{su!.note} {su!.reason}</small>
             <p>Saved Sources &amp; Uses: NOT AVAILABLE. No Working Copy reconstruction.</p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="sources-uses" href={link('sources-uses')}>Existing Sources &amp; Uses detail</a>
           </article>
-          <article className="pr3b1-card" aria-label="Coverage Last Run"><h3>Repayment, Coverage &amp; Covenants <small>Last Run</small></h3>
+          <article className="pr3b1-card" aria-label="Coverage selected Run"><h3>Repayment, Coverage &amp; Covenants <small>{runName}</small></h3>
             <Terms rows={[creditTerm('Minimum DSCR', cov!.capacity.min_dscr, 'Last Run · capacity.min_dscr'),creditTerm('Average DSCR', cov!.capacity.avg_dscr, 'Last Run · capacity.avg_dscr'),
-              creditTerm('Sizing target DSCR', cov!.capacity.target_dscr, 'Last Run · capacity.target_dscr'),creditTerm('Binding constraint', cov!.capacity.binding_constraint, cov!.bindingScope)]} />
+              creditTerm('Sizing target DSCR', cov!.capacity.target_dscr, 'Last Run · capacity.target_dscr'),creditTerm('Binding constraint', cov!.capacity.binding_constraint, cov!.bindingScope),
+              creditTerm('DSCR debt capacity', cov!.capacity.dscr_debt_capacity, runName + ' · capacity.dscr_debt_capacity (kEUR)'),
+              creditTerm('Gearing debt capacity', cov!.capacity.gearing_debt_capacity, runName + ' · capacity.gearing_debt_capacity (kEUR)'),
+              creditTerm('Observed annual all-in rate · min', r?.structure.interest?.annual_rate_min, runName + ' · sealed annual rate displayed as %')]} />
             <p>Coverage · {dm?.evaluation?.coverage.status || 'UNAVAILABLE'} · {dm?.evaluation?.coverage.message || dm?.evaluation?.coverage.reason || dm?.reason}</p>
             <p>DSRA · {dm?.reserves?.dsra.available ? `Initial funding ${number(dm.reserves.dsra.initial_funding_keur)} kEUR` : dm?.reserves?.dsra.reason || 'NOT AVAILABLE'}</p>
-            <p>Run execution, Model Integrity and coverage are independent server verdicts.</p>
+            <p>Run execution, Model Integrity and coverage are independent server verdicts.</p><p>Reserve draw / required target / top-up ledger · UNAVAILABLE — not persisted in this selected Run.</p>
           </article>
         </>}
       </div>
@@ -102,14 +107,16 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
       </div>
       {cov.otherFindings.length > 0 && <details><summary>Other server findings · original classifications</summary><Findings rows={cov.otherFindings} /></details>}
       <details open><summary>Outstanding and coverage · native period schedule · Last Run</summary><p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="debt-metrics" href={link('debt-metrics')}>Open existing debt schedule / history</a></p><p>{dm?.axis?.frequency} · {dm?.axis?.note} {dm?.basis_note}</p>
-        {cov.periods.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Native debt period schedule"><table><thead><tr>{['Period','Opening kEUR','Closing kEUR','DSCR (x)','Sizing target (x)','Shortfall kEUR','Below one','EoD breach','Covenant breach','Lock-up'].map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
-          <tbody>{cov.periods.map(p => <tr key={p.period_index}><th scope="row">{p.label} · {p.date}</th><td>{number(p.senior_opening_keur)}</td><td>{number(p.senior_closing_keur)}</td><td>{number(p.dscr)}</td><td>{number(p.sizing_target_dscr)}</td><td>{number(p.shortfall_keur)}</td>{[p.below_one,p.eod_breach,p.covenant_breach,p.lockup_active].map((v,i) => <td key={i}>{v == null ? 'NOT AVAILABLE' : v ? 'Yes' : 'No'}</td>)}</tr>)}</tbody></table></div> : <p>NOT AVAILABLE · {dm?.reason || 'No native period evidence.'}</p>}
+        {cov.periods.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Native debt period schedule"><table><thead><tr>{['Period','Opening kEUR','Principal kEUR','Interest kEUR','Service kEUR','Closing kEUR','DSCR (x)','Cash before reserves kEUR','Sizing target (x)','Shortfall kEUR','Below one','EoD breach','Covenant breach','Lock-up'].map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
+          <tbody>{cov.periods.map(p => <tr key={p.period_index}><th scope="row">{p.label} · {p.date}</th><td>{number(p.senior_opening_keur)}</td><td>{number(p.principal_keur)}</td><td>{number(p.interest_keur)}</td><td>{number(p.debt_service_keur)}</td><td>{number(p.senior_closing_keur)}</td><td>{number(p.dscr)}</td><td>{number(p.cash_after_senior_keur)}</td><td>{number(p.sizing_target_dscr)}</td><td>{number(p.shortfall_keur)}</td>{[p.below_one,p.eod_breach,p.covenant_breach,p.lockup_active].map((v,i) => <td key={i}>{v == null ? 'NOT AVAILABLE' : v ? 'Yes' : 'No'}</td>)}</tr>)}</tbody></table></div> : <p>NOT AVAILABLE · {dm?.reason || 'No native period evidence.'}</p>}
       </details>
-      <details><summary>Construction sources, draws and uses · Last Run · kEUR</summary><p>Senior draw is period-specific. No browser aggregate or per-facility allocation.</p>
+      <details><summary>Construction sources, draws and uses · {runName} · kEUR</summary><p>Senior draw is period-specific. No browser aggregate or per-facility allocation.</p>
+        <p>Separate FC/COD Senior draw · {selected?.construction.fc_senior_draw.value == null ? 'UNAVAILABLE' : number(selected.construction.fc_senior_draw.value) + ' kEUR'}.</p>
+        <p>Construction opening/closing outstanding · UNAVAILABLE — no persisted construction roll-forward.</p>
         {su!.construction.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Construction period evidence"><table><thead><tr><th scope="col">Period</th><th scope="col">Server field</th><th scope="col">kEUR</th><th scope="col">Authority / reason</th></tr></thead><tbody>{su!.construction.flatMap(p => p.fields.map((f,i) => <tr key={`${p.period}-${i}`}><th scope="row">{p.period} · {p.date}</th><td>{f.label}</td><td>{f.value == null ? 'NOT AVAILABLE' : f.display}</td><td>{f.authority} · {f.reason}</td></tr>))}</tbody></table></div> : <p>NOT AVAILABLE — no construction rows supplied.</p>}
       </details>
     </>}
-    <details><summary>Evidence and limitations</summary><p>The Sources &amp; Uses API has no snapshot ID. Consistency assurance: {gate.assurance}.</p><Terms rows={groups.flatMap(g => g.rows).map(t => ({ ...t, display: t.source, source: 'Contract limitation', reason: undefined }))} /></details>
+    <details><summary>Evidence and limitations</summary><p>The Studio Last Run Sources &amp; Uses API has no independent snapshot ID. Selected history was bound by a separate backend read, but Studio/credit cross-view assurance stays {gate.assurance}. Individual lender commitments, construction outstanding, reserve draws and benchmark resets are UNAVAILABLE/ENGINE_ONLY.</p><Terms rows={groups.flatMap(g => g.rows).map(t => ({ ...t, display: t.source, source: 'Contract limitation', reason: undefined }))} /></details>
     <details><summary>Additional existing evidence · transition</summary><p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="overview" href={link('overview')}>Open existing detailed financing evidence</a>. Existing editors and output links remain available until the destination coverage is accepted.</p></details>
   </section>;
 }
