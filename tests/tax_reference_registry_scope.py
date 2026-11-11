@@ -55,6 +55,7 @@ SOURCE_PATHS = frozenset((
     'tax_reference_registry/loader.py',
     'tax_reference_registry/records.py',
     'tax_reference_registry/registry.py',
+    'tax_reference_registry/remediation.py',
 ))
 TEST_AND_DOC_PATHS = frozenset((
     'docs/tax_reference_registry/FINAL_REPORT_HR.md',
@@ -62,6 +63,7 @@ TEST_AND_DOC_PATHS = frozenset((
     'tests/tax_reference_registry/conftest.py',
     'tests/tax_reference_registry/test_loader_errors.py',
     'tests/tax_reference_registry/test_private_dataset.py',
+    'tests/tax_reference_registry/test_remediation.py',
     'tests/tax_reference_registry/test_registry_compare_activation.py',
     'tests/tax_reference_registry/test_schema_and_currency.py',
     'tests/test_tax_reference_registry_scope.py',
