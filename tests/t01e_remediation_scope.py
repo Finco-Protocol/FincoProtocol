@@ -104,7 +104,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         if ref is None:
             listed = {}
-            for line in _git(root, 'ls-files', '-s', '--', *sorted(pins)).decode().splitlines():
+            for line in _git(root, 'ls-tree', '-r', 'HEAD', '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
             if listed != pins:
