@@ -8,41 +8,24 @@ jobs:
   diag:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        probe: [a, b, c]
     steps:
-      - name: Host resolver path versus upstream (read-only)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unchanged production command (as in the three workflows)
         run: |
-          set +e
-          date -u
-          echo '--- getaddrinfo families'; for h in archive.ubuntu.com github.com; do echo "$h v4:"; getent ahostsv4 $h | head -n 1; echo "$h v6:"; getent ahostsv6 $h | head -n 1; done
-          echo '--- resolvectl query'; resolvectl query archive.ubuntu.com 2>&1 | head -n 8; resolvectl query github.com 2>&1 | head -n 4
-          echo '--- resolvectl statistics'; resolvectl statistics 2>&1 | head -n 25
-          echo '--- systemd-resolved journal (last 30)'; sudo journalctl -u systemd-resolved --no-pager -n 30 2>&1 | cut -c1-220
-          echo '--- docker daemon dns config'; cat /etc/docker/daemon.json 2>&1; echo '--- container resolv.conf'; docker run --rm ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac cat /etc/resolv.conf 2>&1 | grep -v '^#'
-      - name: Raw DNS queries (A / AAAA / NS) straight to the upstream and to the local stub
+          date -u; getent hosts azure.archive.ubuntu.com | head -n 1 || echo "NO RESOLUTION"
+          python -m pip install playwright==1.63.0
+          time playwright install chromium --with-deps
+      - name: Real Chromium launch
         run: |
-          set +e
-          python3 - <<'PY'
-          import socket, struct, random
-          def q(server, name, qtype, timeout=5):
-              tid = random.randrange(65536)
-              hdr = struct.pack(">HHHHHH", tid, 0x0100, 1, 0, 0, 0)
-              body = b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0" + struct.pack(">HH", qtype, 1)
-              s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(timeout)
-              try:
-                  s.sendto(hdr + body, (server, 53)); d, _ = s.recvfrom(4096)
-              except Exception as e:
-                  return "no-answer (%s)" % type(e).__name__
-              finally:
-                  s.close()
-              rcode = d[3] & 0xF; an = struct.unpack(">H", d[6:8])[0]
-              return "rcode=%d answers=%d" % (rcode, an)
-          for server in ("168.63.129.16", "127.0.0.53"):
-              for name in ("archive.ubuntu.com", "azure.archive.ubuntu.com", "security.ubuntu.com", "ubuntu.com", "github.com"):
-                  print("%-14s %-26s A=%-26s AAAA=%-26s NS=%s" % (server, name, q(server, name, 1), q(server, name, 28), q(server, name, 2)))
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              b = p.chromium.launch(); pg = b.new_page(); pg.set_content("<h1>ok</h1>"); print(pg.inner_text("h1"), b.version); b.close()
           PY
-      - name: Does restarting the LOCAL stub alone change anything (diagnostic only)
-        run: |
-          set +e
-          getent hosts archive.ubuntu.com | head -n 1; echo "before flush rc=$?"
-          sudo resolvectl flush-caches; getent hosts archive.ubuntu.com | head -n 1; echo "after flush-caches rc=${PIPESTATUS[0]}"
-          sudo systemctl restart systemd-resolved; sleep 3; getent hosts archive.ubuntu.com | head -n 1; echo "after restart rc=${PIPESTATUS[0]}"
