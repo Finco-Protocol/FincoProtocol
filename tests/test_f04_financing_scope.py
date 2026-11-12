@@ -45,7 +45,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:
-        authority=V if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
+        authority=C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     for path in F.FROZEN:
         if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
@@ -58,7 +58,7 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
     for path in F.CURRENT_MAPS:
         original=json.loads(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT))
         current=json.loads((ROOT/path).read_text())
-        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')

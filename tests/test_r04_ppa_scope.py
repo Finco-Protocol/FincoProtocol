@@ -108,7 +108,7 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
 def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     for p in T.HANDOFFS:
-        authority = V if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T
+        authority = C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T
         assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
 
@@ -330,7 +330,7 @@ def test_baseline_table_is_exactly_the_accepted_base_state_and_authorizes_no_cha
         line = _git("ls-tree", T.BASE, "--", p).split()
         assert (line[0], line[2]) == (mode, blob) and mode == "100644", p
         assert (ROOT / p).is_file() and not (ROOT / p).is_symlink()
-        expected = V.effective_pins()[p] if p == "static/react/finco-react.js" and C06_APPROVAL.signature_ok() else blob
+        expected = C06_APPROVAL.effective_pins()[p] if p == "static/react/finco-react.js" and C06_APPROVAL.signature_ok() else blob
         assert T._blob((ROOT / p).read_bytes()) == expected, p
         assert p not in T.OWNED_PATHS and p not in T.SUPERSEDED and p not in T.HANDOFFS and not T.allowed_path(p), p   # asserted, never pre-authorized
         assert p not in T.manifest()["source_blobs"] and p not in T.manifest()["base_blobs"]

@@ -1,4 +1,4 @@
-# C06 Correction A — cost workspace profile presentation
+# C06 Correction B — cost workspace profile presentation
 
 Accepted base: main `b1c08e2d00fe9933565d253d5cee6e5849b143e1`, tree `5b25c1f245d3d53d9bbe24060c13dc936e06b8d7`.
 Existing Draft #444 is retained. Accepted main was merged normally into its existing branch; no rebase or replacement PR.
@@ -29,8 +29,8 @@ C06 JS output is recorded exactly in `SOURCE_SUCCESSOR.json`; CSS is frozen to t
 
 `tests/c06_cost_workspace_scope.py` binds the accepted base/tree, finite literal path set, source/base blobs and Git modes.
 It registers once after R04 and never calls predecessors from its low-level signature. One-occurrence literal transformations give R04 its single forward hook,
-append the registry tail and extend historical positive tail assertions by exactly one signed state. Historical manifests remain byte-identical.
-Eight current maps change only existing registry and JS keys. R04's immutable production baseline remains intact; only its evaluated JS pin can follow the signed C06 successor.
+append the registry tail and extend historical positive tail assertions by exactly one signed state. Historical manifests remain byte-identical. Correction B explicitly authorizes finite current frozen-guard handoffs, each derived by one-occurrence literal substitutions from the accepted base.
+Eight current maps move only four existing keys: registry, JS, U2 guard and PR3b1 guard. Key sets and historical metadata are unchanged. R04's immutable production baseline remains intact; only its evaluated JS pin can follow the signed C06 successor.
 
 Additional correction paths have specific purposes: generated JS fixes served-source drift; the C06 scope/manifest/negative suite establish closure;
 the browser acceptance tests the added-line journey; historical tail tests recognise the one successor and continue exercising real tamper mutations.
@@ -53,14 +53,16 @@ No earlier HEAD's green is substituted for this evidence. Staging acceptance rem
 Independent source review found no financial/security authority expansion; the two replay assertion weaknesses were tightened.
 The unrelated `editing.test.mjs` staging old/new assertion is compared on clean main and C06 in the private report; it is not weakened here.
 
-## Correction checkpoint — governance contract blocked
+## Correction B frozen guard ownership
 
-The regenerated served bundle and real added-line browser journey pass locally. The proposed C06 leaf itself is exact,
-but the full composite remains invalid. In particular, UX-PR2c cannot supersede `ProfileDraftProvider.tsx` through
-UX-PR3b1's own finite superseded set. UX-PR2b's signature-level authority separately requires membership in that same set
-for the changed provider/row editor. CI V4 calls this signature-level authority.
+UX-PR2b accepts only exact signed C06 Provider, RowEditor and CostLinesGrid pins; UX-PR2c accepts only the Provider pin.
+The current PR3b1 guard carries exactly CostLinesGrid and its own reviewed map key; the original PR1/PR2a guards remain byte-identical.
+U2 carries its finite current C06 source/guard pins so the original U1 base-blob lineage remains checked.
+T01-E/R03/F04/R04 preserve each immutable historical freeze and permit only literal signed C06 guard paths at mode 100644.
+CI-performance/F03 and later literal edit validators keep their immediate successor checks and exact byte/pin assertions for every non-superseded path.
+No old manifest is repinned, no arbitrary hash accepted, no auth/CSRF inventory changed.
 
-Both UX-PR2b and UX-PR2c scope files are frozen byte-for-byte by accepted T01-E/R03/F04/R04. Their historical manifests
-cannot be repinned under Correction A. No frozen guard or manifest was edited to conceal this missing handoff.
-This local candidate has not been pushed; no final-head hosted rerun or green verdict is claimed.
-A reviewed governance contract change is needed before the candidate can become eligible for push.
+Product/test sources have independent literal approved blobs; the evaluated C06 module is bound to the imported reviewed module bytes.
+Paired source+manifest/map forgery, one-sided handoffs, old-ref checks, original historical-code execution and altered-history refusal are required negatives.
+The exact source graph, old/new blobs and modes, paired test totals, performance counts, screenshots and final-head hosted run IDs are in the private Correction B evidence.
+All 40 cohort checks and zero mutation violations are required before push. The PR stays Draft; no merge/deploy is authorized.

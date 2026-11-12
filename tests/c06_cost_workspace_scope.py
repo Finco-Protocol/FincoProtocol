@@ -1,6 +1,6 @@
 """C06: finite presentation, served bundle and provenance closure after accepted isolated R04.
 
-No financial, security or CI authority changes. Low-level signatures never call predecessors or the composite.
+No runtime financial or authentication changes; Correction B authorizes only this finite governance handoff. Low-level signatures never call predecessors or the composite.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ SCHEMA = "C06_COST_WORKSPACE_EXACT_SOURCE_V1"
 AUTHORIZATION = "Owner-directed C06 Correction B: finite frozen UX handoff on existing Draft PR444; no financial policy, merge or deployment authorization."
 REGISTRY = "tests/fin_v2_cohorts.py"
 PREDECESSOR = "tests/r04_ppa_scope.py"
-APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md': '53f37d270480c3e21da0c6964c1b2d63b5226707',
+APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md': 'c0dd54b0f7f2cce82bb29ea9c14fe0210f4f517b',
  'frontend/src/app/capex/ProfileDraftProvider.tsx': '4edb311cf680aa156f2d2b8e81861a7738829e63',
  'frontend/src/app/capex/ProfileRowEditor.tsx': '47d48f7892200c001d29b66cdb8c09089e634420',
  'frontend/src/app/capex/__tests__/userLineProfile.test.mjs': '9f4905a7a74bc03d96c9432b7c91759608d13199',
@@ -28,6 +28,7 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'frontend/src/app/editing/CostLinesGridView.tsx': '65cba98fcd82e6080816860b56b2808a7e82d142',
  'static/react/finco-react.js': '36b69ce99f2b28ce2b6cae0d4cc785c753eae37b',
  'tests/test_c06_cost_workspace_browser.py': 'ae25712fd913927e8500952fe4a83d3d79dc40ef',
+ 'tests/test_c06_cost_workspace_scope.py': '5ddc8af3593e97a1bfd8c5e2b17339853da53cdf',
  'tests/test_c06_custom_capex_profile_replay.py': 'fcfbd6365b0d013de60de7d6423e57ce6808803d'}
 SOURCE_PATHS = frozenset(('docs/react_migration/c06_cost_workspace/C06_LEDGER.md',
  'frontend/src/app/capex/ProfileDraftProvider.tsx',
@@ -131,7 +132,7 @@ def manifest(repo=None, ref=None):
 
 
 def expected_map(root, path, pins=None):
-    """Only the one FINITE current-source key (the registry pin) may move; all history stays unchanged."""
+    """Only four existing finite current-map keys may move; historical metadata and all other pins stay unchanged."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
     for key in MAP_KEYS:
@@ -1305,9 +1306,9 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                         '    for path in F.SUPERSEDED:assert '
                                         "data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
                                         '    for path in F.HANDOFFS:\n'
-                                        '        authority=V if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if '
-                                        'W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this '
-                                        'shared path\n'
+                                        '        authority=C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS '
+                                        'else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution '
+                                        'of this shared path\n'
                                         '        assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)\n'
                                         '    for path in F.FROZEN:\n'
                                         '        if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
@@ -1332,8 +1333,9 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                         '    for path in F.CURRENT_MAPS:\n'
                                         "        original=json.loads(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT))\n"
                                         '        current=json.loads((ROOT/path).read_text())\n'
-                                        '        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins '
-                                        "(a reviewed successor's registry pin wins)\n"
+                                        '        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if '
+                                        'C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT '
+                                        "pins (a reviewed successor's registry pin wins)\n"
                                         '        assert current==expected and set(original)==set(current)\n'
                                         "        assert set(original['source_blobs'])==set(current['source_blobs'])\n"
                                         "        assert all(original[k]==current[k] for k in original if k!='source_blobs')\n"
@@ -1523,8 +1525,8 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                   'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
                                   '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
                                   '    for p in T.HANDOFFS:\n'
-                                  '        authority = V if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if '
-                                  'W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n'
+                                  '        authority = C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W '
+                                  'if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n'
                                   '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
                                   '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]'),
                                  ('def test_registered_exactly_once_as_the_terminal_cohort_after_t01e():\n'
@@ -1609,7 +1611,7 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                   'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
                                   '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
                                   '    for p in T.HANDOFFS:\n'
-                                  '        authority = V if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T\n'
+                                  '        authority = C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T\n'
                                   '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
                                   '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]'),
                                  ('def test_registered_exactly_once_as_the_terminal_cohort_after_f04():\n'
@@ -1754,7 +1756,7 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                   '        line = _git("ls-tree", T.BASE, "--", p).split()\n'
                                   '        assert (line[0], line[2]) == (mode, blob) and mode == "100644", p\n'
                                   '        assert (ROOT / p).is_file() and not (ROOT / p).is_symlink()\n'
-                                  '        expected = V.effective_pins()[p] if p == "static/react/finco-react.js" and '
+                                  '        expected = C06_APPROVAL.effective_pins()[p] if p == "static/react/finco-react.js" and '
                                   'C06_APPROVAL.signature_ok() else blob\n'
                                   '        assert T._blob((ROOT / p).read_bytes()) == expected, p\n'
                                   '        assert p not in T.OWNED_PATHS and p not in T.SUPERSEDED and p not in T.HANDOFFS and not '
@@ -2066,6 +2068,8 @@ def _signature_ok(root, ref, closure=False):
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
         if pins.get("tests/c06_cost_workspace_scope.py") != _MODULE_BLOB:
+            return False
+        if set(APPROVED_SOURCE_BLOBS) != (SOURCE_PATHS | NEW) - {"tests/c06_cost_workspace_scope.py"}:
             return False
         if any(pins.get(p) != b for p, b in APPROVED_SOURCE_BLOBS.items()):
             return False

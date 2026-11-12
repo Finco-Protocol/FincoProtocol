@@ -111,7 +111,7 @@ def test_committed_tamper_is_rejected_in_separate_ref(clone,path):
             assert not F.exact_blobs_ok(clone,bad) and not C.valid(clone,bad)
             assert F.exact_blobs_ok(clone,'HEAD')
 
-@pytest.mark.parametrize('path', sorted(F.SOURCE_PATHS))
+@pytest.mark.parametrize('path', sorted(F.APPROVED_SOURCE_BLOBS))
 def test_paired_source_and_manifest_pin_forgery_is_not_authorization(clone, path):
     with Mutation(clone):
         f=clone/path;f.write_bytes(f.read_bytes()+b'\n')
@@ -186,3 +186,11 @@ def test_direct_reviewed_edits_rejects_a_forged_historical_manifest(clone):
         p.write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
         with C.call_scope():
             assert not P.reviewed_edits_ok(clone) and not F.signature_ok(clone) and not C.valid(clone)
+
+
+def test_paired_scope_module_and_pin_forgery_is_rejected(clone):
+    with Mutation(clone):
+        p=clone/'tests/c06_cost_workspace_scope.py';p.write_bytes(p.read_bytes()+b'\n')
+        f=clone/F.MANIFEST;d=json.loads(f.read_text());d['source_blobs']['tests/c06_cost_workspace_scope.py']=F._blob(p.read_bytes())
+        f.write_text(json.dumps(d,sort_keys=True,indent=2)+'\n')
+        assert not F.signature_ok(clone) and not F.exact_blobs_ok(clone)
