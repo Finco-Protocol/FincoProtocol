@@ -89,6 +89,7 @@ def test_f03_older_ci_guard_rejects_unreviewed_workflow_pins():
 
 # ---- BESS02 -> F03 finite forward successor: positive and adversarial controls (every variant is an isolated clone commit) ----
 import pytest
+from tests import f04_financing_scope as Q
 from tests import bess02_scope as B, r02_ppa_ux_scope as R, fin_v2_cohorts as C
 
 BESS_ACCEPTED_MAIN = "01a26f9a87a12548c4f151caebe8ee933db7445c"
@@ -129,12 +130,13 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
     assert C.COHORT_MODULES[-3:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope") or (
         C.COHORT_MODULES[-4:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")) or (
         C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
-                                  "tests.r03_ppa_scope"))
+                                  "tests.r03_ppa_scope")) or (
+        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok())
 
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),
@@ -145,6 +147,7 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
 ])
 def test_registry_mutations_are_rejected_by_f03_and_by_the_bess_chain(clone, name, fn):
     ref = _variant(clone, {F.REGISTRY: fn})
+    assert F.REGISTRY in subprocess.check_output(["git", "diff", "--name-only", "HEAD", ref], cwd=clone).decode().splitlines()
     assert not F.signature_ok(clone, ref), name
     assert not B.exact_blobs_ok(clone, ref), name
 
@@ -230,18 +233,22 @@ def test_ci_v4_internal_f01_job_drift_is_rejected():
 
 def test_ci_v4_f01_job_edit_is_rejected_by_f03_and_by_the_ci_v4_guard(clone):
     from tests import ci_v4_scope as V
-    good = _variant(clone)
-    assert F.signature_ok(clone, good)
-    bad = _variant(clone, {F.CI_JOB: lambda b: b.replace(b"timeout-minutes: 45", b"timeout-minutes: 90", 1)})
-    assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)
-    other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\n# unreviewed\n"})
-    assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)
+    # One read of immutable explicit refs; dropped before any later test or mutation.
+    with C.call_scope():
+        good = _variant(clone)
+        assert F.signature_ok(clone, good)
+        bad = _variant(clone, {F.CI_JOB: lambda b: b.replace(b"timeout-minutes: 45", b"timeout-minutes: 90", 1)})
+        assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)
+        other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\n# unreviewed\n"})
+        assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)
 
 
 def test_ci_v4_hook_admits_only_two_literal_source_paths():
     from tests import ci_v4_scope as V
-    pins = F.manifest()["source_blobs"]
-    assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)
-    assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)
-    assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, None)
-    assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)
+    # Same unmodified tree throughout this bounded read.
+    with C.call_scope():
+        pins = F.manifest()["source_blobs"]
+        assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)
+        assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)
+        assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, None)
+        assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)

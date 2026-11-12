@@ -418,11 +418,15 @@ def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
         pins = manifest(root, ref).get("source_blobs", {})
+        N = _next()
+        nxt = N is not None and N.signature_ok(root, ref)
         for path in HANDOFFS:
+            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+                continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
                 return False
-        return True
+        return N.reviewed_edits_ok(root, ref) if nxt else True
     except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):
         return False
 
@@ -437,16 +441,25 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        yield
+        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.
+        N = _next()
+        if N is None:
+            yield
+        else:
+            with N.scoped():
+                yield
     finally:
         _SCOPE.pop()
 
 
 def _compute(root, ref, mode):
     """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""
-    if mode == "exact":
-        return _signature_ok(root, ref, True) and _diff_ok(root, ref)
-    return _signature_ok(root, ref, mode)
+    from contextlib import nullcontext
+    N = _next()
+    with (N.scoped() if N is not None else nullcontext()):
+        if mode == "exact":
+            return _signature_ok(root, ref, True) and _diff_ok(root, ref)
+        return _signature_ok(root, ref, mode)
 
 
 def _verdict(root, ref, closure):
@@ -464,8 +477,26 @@ def signature_ok(repo=None, ref=None):
     return _verdict(Path(repo) if repo is not None else ROOT, ref, False)
 
 
+def _next():
+    """The one finite forward successor (F04). Low-level only: its signature never calls this module or the composite."""
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.f04_financing_scope' not in COHORT_MODULES:
+        return None
+    from tests import f04_financing_scope
+    return f04_financing_scope
+
+
+def _next_pins(root, ref):
+    N = _next()
+    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}
+
+
 def map_keys(repo=None, ref=None):
-    return tuple(MAP_KEYS)
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        N = _next()
+        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()
+        return tuple(MAP_KEYS) + more
 
 
 @lru_cache(maxsize=512)
@@ -538,8 +569,10 @@ def _signature_ok(root, ref, closure=False):
         if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds
             return False
         judged = {p for p in pins if closure or p not in CURRENT_MAPS}
+        nx = _next_pins(root, ref)
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
         current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
-        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
+        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:
             return False
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
@@ -550,7 +583,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
             return False
@@ -565,7 +598,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def _diff_ok(root, ref):
     try:
-        allowed = OWNED_PATHS | {MANIFEST}
+        allowed = closure_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= allowed:
             return False
@@ -580,11 +613,20 @@ def _diff_ok(root, ref):
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get("source_blobs", {}))
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        pins = dict(manifest(repo, ref).get("source_blobs", {}))
+        pins.update(_next_pins(root, ref))
+        return pins
 
 
 def closure_paths(repo=None, ref=None):
-    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        if not signature_ok(root, ref):
+            return frozenset()
+        N = _next()
+        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def allowed_path(path, repo=None, ref=None):
@@ -592,16 +634,22 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path not in SUPERSEDED:
-        return False
-    # Like the accepted F03 / performance leaves: the signature decides a supersession; the composite separately requires every cohort's FULL
-    # exactness (map bytes, changed set, untracked files), so a signature-only verdict never makes the tree valid.
-    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped
+        N = _next()
+        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):
+            return True
+        if path not in SUPERSEDED:
+            return False
+        # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line
+        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
 
 
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
             return False
         actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())

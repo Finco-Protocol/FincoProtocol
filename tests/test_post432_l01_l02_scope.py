@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests import f04_financing_scope as Q
 
 from tests import fin_v2_cohorts as C
 from tests import on_bess01_scope as B
@@ -95,7 +96,9 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import ci_v4_perf_scope as F
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if 'tests.r03_ppa_scope' in C.COHORT_MODULES and Y.signature_ok():
+    if 'tests.f04_financing_scope' in C.COHORT_MODULES and Q.signature_ok():
+        expected = Q.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.r03_ppa_scope' in C.COHORT_MODULES and Y.signature_ok():
         expected = Y.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.t01e_remediation_scope' in C.COHORT_MODULES and Z.signature_ok():
         expected = Z.expected_handoff(ROOT, X.REGISTRY)
