@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from tests import f04_financing_scope as Q
+from tests import r04_ppa_scope as W
 
 from tests import fin_v2_cohorts as C
 from tests import on_bess01_scope as B
@@ -93,10 +94,12 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import ci_v4_perf_scope as F
     from tests import f03_financing_scope as G
     from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
-    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')
-                if m in C.COHORT_MODULES)
+    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
+                            'tests.r04_ppa_scope') if m in C.COHORT_MODULES)
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if len(nxt) == 5 and Q.signature_ok():
+    if len(nxt) == 6 and W.signature_ok():
+        expected = W.expected_handoff(ROOT, X.REGISTRY)
+    elif len(nxt) == 5 and Q.signature_ok():
         expected = Q.expected_handoff(ROOT, X.REGISTRY)
     elif len(nxt) == 4 and Y.signature_ok():
         expected = Y.expected_handoff(ROOT, X.REGISTRY)
