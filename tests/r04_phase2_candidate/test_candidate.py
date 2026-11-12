@@ -134,3 +134,18 @@ def test_source_adapter_uses_selected_case_axis_and_content_identity_without_run
 def test_unknown_case_never_becomes_p50(case):
     with pytest.raises(CandidateError,match="SELECTED_CASE_UNSUPPORTED"):
         source_from_inputs(explicit_inputs(case),technology="solar",project_id="p",scenario_id="s",input_revision="v")
+
+
+@pytest.mark.parametrize("requested", [[], {}, False, 123, ""])
+def test_malformed_requested_identity_is_a_typed_refusal(requested):
+    book=parse_annual_document(json.dumps(document()));s=source()
+    with pytest.raises(CandidateError):
+        review_declared_deliveries(book,s,[D("ppa-0",2,F(80000)),D("ppa-1",2,F(20000))],
+                                  expected_source_sha256=s.identity_sha256,requested_contract_id=requested)
+
+
+@pytest.mark.parametrize("field", ["capacity_mw","operating_hours_p50","operating_hours_p90_10y","plant_availability","grid_availability","pv_degradation"])
+def test_bool_is_not_a_technical_number_even_in_a_manually_constructed_dataclass(field):
+    p=explicit_inputs();p=replace(p,technical=replace(p.technical,**{field:True}))
+    with pytest.raises(CandidateError,match="GENERATION_INVALID"):
+        source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")

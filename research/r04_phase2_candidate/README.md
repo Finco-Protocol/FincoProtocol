@@ -49,3 +49,11 @@ successor, close required policy, connect the same canonical final effective
 candidate validation to Direct Save/atomic Save All/Run, and prove actual sealed
 History and browser behavior. Do not use this preparatory branch as a completed
 production feature or a reason to weaken the parent's red governance checks.
+
+The separate `frontend/src/app/workflow/r04Candidate/` component is unmounted.
+It edits decimal text and unit only, displays supplied server period facts, and
+always explains the closed annual-production gate. It has no Save/Run controls,
+forecast, unit conversion or cap calculation. Its isolated render/syntax checks
+run via `node src/app/workflow/r04Candidate/candidate.test.mjs` from frontend;
+these are not real-browser, served-bundle or final UI acceptance. Typechecking
+must pass; final build/wiring waits for accepted parent source and policy.
