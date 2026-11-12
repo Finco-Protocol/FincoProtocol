@@ -120,15 +120,16 @@ def test_custom_line_profile_replay_save_reload_run_and_binding(env, solar):
                                amount_keur=0, row_version=_fresh(solar, b.sub_line_id).updated_at, workbook_version=WORKBOOK.version,
                                expected_content_hash=_hash(solar))
     zero = _run(env, solar)
-    assert zero.status_code == 200 or "CAPEX_" in zero.text
+    assert zero.status_code == 200, zero.text
     _step("7 profiled line amount set to zero", "RUN_OK" if zero.status_code == 200 and "CAPEX_PROFILE" not in zero.text else "RUN_REFUSED",
           http=zero.status_code, refusal=next((c for c in ("CAPEX_BINDING_ZERO_CATEGORY", "CAPEX_PROFILE_LEAF_UNKNOWN") if c in zero.text), None))
 
+    before_stale = (_ws(solar).draft_snapshot, _hash(solar))
     stale = before                                                              # an identity from before the save
     with pytest.raises(CapexProfileConflict):
         save_profiles(owner=OWNER, project_id=solar.project_id, expected_hash=stale, expected_scenario_id=_ws(solar).active_scenario_id or "",
                       raw=_doc([_row(a.business_code, "UNIFORM")]))
-    assert json.loads(_ws(solar).draft_snapshot[config.SNAPSHOT_KEY])["profiles"][0]["item_key"] in {a.business_code, b.business_code}
+    assert (_ws(solar).draft_snapshot, _hash(solar)) == before_stale
     _step("8 stale CAS save", "REFUSED_CONFLICT_NOTHING_WRITTEN")
 
     saved_before_retire = _ws(solar).draft_snapshot[config.SNAPSHOT_KEY]
