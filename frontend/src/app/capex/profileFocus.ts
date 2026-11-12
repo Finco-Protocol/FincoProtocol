@@ -11,7 +11,8 @@ export function takeProfileFocus(): string | null {
   return key;
 }
 
-/** Lines a user added carry a `C.NN.U###` code; the saved profile document does not accept that key yet (contract gap G-U2-1). */
+/** Lines a user added carry a `C.NN.U###` code. The server accepts that key in the saved profile document only while it names an active line of THIS
+ *  project's ledger (G-U2-1); the browser merely labels such a line, it never decides eligibility (the server's item list does). */
 export function isUserLineKey(itemKey: string): boolean {
   return /^C\.\d{2}\.U\d{3}$/.test(itemKey);
 }

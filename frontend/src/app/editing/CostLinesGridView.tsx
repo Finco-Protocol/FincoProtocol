@@ -28,7 +28,7 @@ import { useDensity } from "../uiDensity";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
-import { isUserLineKey, requestProfileFocus } from "../capex/profileFocus";
+import { requestProfileFocus } from "../capex/profileFocus";
 import { useOptionalCapexProfileDraft } from "../capex/ProfileDraftProvider";
 import { ProfileDraftActions, ProfileDraftNotice, ProfileRowEditor, ProfileShapeSelect } from "../capex/ProfileRowEditor";
 import { useCapexSavedTimeline } from "../capex/savedTimeline";
@@ -208,7 +208,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
   const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
   const profileKey = (line: CostLinePayload) => lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
-  const profileEligible = (line: CostLinePayload) => line.active && !isUserLineKey(profileKey(line)) && Boolean(profileDraft?.data?.items.some(i => i.item_key === profileKey(line)));
+  const profileEligible = (line: CostLinePayload) => line.active && Boolean(profileDraft?.data?.items.some(i => i.item_key === profileKey(line)));
   const openInlineProfile = (line: CostLinePayload) => {
     setProfileLine(line.sub_line_id);
     if (narrow) { setProfileInspector(true); setInspector({ project, sheet, line: line.sub_line_id }); }
@@ -482,11 +482,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             {profileEligible(line) ? <><ProfileShapeSelect itemKey={profileKey(line)} label={line.label} />
               <button type="button" className="ci-link" data-pr2b-open={line.sub_line_id} aria-label={`Edit profile percentages or milestone for ${line.label}`}
                 aria-expanded={profileLine === line.sub_line_id} onClick={() => profileLine === line.sub_line_id && !narrow ? setProfileLine(null) : openInlineProfile(line)}>Edit % / month</button></>
-              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? profileDraft.loadError ? "Not available — profile eligibility could not be loaded" : "Loading profile eligibility…" : "Not available — inactive, added or unsupported line"}</span>}
-          </div> : profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
-            <span className="rx-note" data-profile-user-line={line.sub_line_id} title="The saved profile document does not accept lines you added yet; this line keeps the model default timing.">
-              Model default (added line)</span>
-          ) : (
+              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? profileDraft.loadError ? "Not available — profile eligibility could not be loaded" : "Loading profile eligibility…" : "Not available — inactive or unsupported line"}</span>}
+          </div> : profiles === null ? "—" : (
             <button type="button" className="ci-link ci-profile" title="The saved spending profile of this line. Opens CAPEX · Monthly schedule on this line." data-profile-link={line.sub_line_id}
                     onClick={() => openProfileEditor(info?.finco_display_code ?? "", onOpenProfile)}>
               {profileText(profiles, info?.finco_display_code ?? "")} ▸
@@ -520,7 +517,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     if (sheet === "capex") {
       const key = lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
       const row = line.active && tlCapex ? tlCapex.rows[key] : undefined;
-      const reason = !line.active ? "Inactive line" : isUserLineKey(key) ? "Added line: model default timing (profiles on added lines are not released)"
+      const reason = !line.active ? "Inactive line"
         : !row ? "Model default timing — monthly values unavailable in this view" : row.status !== "valid" ? (row.detail ?? "Server preview unavailable") : "";
       const value = row?.status === "valid" ? row.cells?.[n - 1] : undefined;
       return <td key={id} className="ci-num ci-col-tl" data-timeline-cell={`${line.sub_line_id}:M${n}`} data-timeline-state={value !== undefined ? "server" : "unavailable"} title={value !== undefined ? undefined : reason}>{value !== undefined ? value : "—"}</td>;
@@ -601,7 +598,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           {sheet === "capex"
             ? <>Months M1…M{(tl as { months: number }).months} are the server preview of the <strong>saved</strong> payment profile (read-only; edit it in Monthly schedule, which has its own Save). Lines without a saved profile use the model default timing and show —.
                 {!(tl as { bound: boolean }).bound && (tl as { bindingCode: string }).bindingCode ? <> Saved profile is not Run-compatible: {(tl as { bindingCode: string }).bindingCode}.</> : null}</>
-            : <>Years Y1…Yn are the server projection of the <strong>saved</strong> lines (full-year basis, read-only). This is not Last Run all-in OPEX.</>}
+            : <span data-opex-years-edit="canonical-writer-missing">Years Y1…Yn are the server projection of the <strong>saved</strong> lines (full-year basis, read-only): the Year-1 amount carried forward with the line's own escalation. This is not Last Run all-in OPEX. Individual years cannot be edited here because a saved line holds only a Year-1 amount and one escalation rate; change those to change the series.</span>}
           {stagedLines > 0 ? <> Unsaved changes on {stagedLines} line(s) are <strong>not</strong> reflected here until you save.</> : null}
         </div>;
       })()}
