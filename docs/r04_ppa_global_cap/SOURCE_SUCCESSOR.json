@@ -42,7 +42,7 @@
     "tests/r04_ppa_global_cap/test_r04_allocation.py": "cf666a9b48b0fa6b295cb32cf2942b5aeb0b71be",
     "tests/r04_ppa_global_cap/test_r04_canonical_reconciliation.py": "bb5e15a0f7e16224f4170fd8539fd648bd475309",
     "tests/r04_ppa_global_cap/test_r04_production_acceptance.py": "de25869a77bb1221c59df0261decc93bd862ead9",
-    "tests/r04_ppa_scope.py": "89880cdf6117e4d73c28f0126342b95a7707870c",
+    "tests/r04_ppa_scope.py": "f38e32154893e6e191788e7981a2d241bf65d03a",
     "tests/test_bess02_scope.py": "99e85cc69cfca6f597c7071f7115760f2999a885",
     "tests/test_ci_v4_perf_scope.py": "4a23f276dcf58f66699d68974d7dabfe17c48baa",
     "tests/test_f03_financing_scope.py": "0f04ed77dd3a496c01c50eb885ff021269324388",

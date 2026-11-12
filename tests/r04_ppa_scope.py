@@ -106,10 +106,17 @@ BASELINE = {
 }
 
 
+@lru_cache(maxsize=512)
 def _base_mode(root, path):
-    """Git mode of an IMMUTABLE accepted-main (BASE) entry."""
+    """Git mode of an IMMUTABLE accepted-main (BASE) entry (cached: BASE never changes, so a cached value can never go stale)."""
     line = _git(Path(root), "ls-tree", BASE, "--", path).decode().strip()
     return line.split()[0] if line else None
+
+
+@lru_cache(maxsize=512)
+def _base_blob(root, path):
+    """Blob id of an IMMUTABLE accepted-main (BASE) object, hashed once."""
+    return _blob(_base_bytes(root, path))
 
 
 def _git(root, *args):
@@ -574,10 +581,10 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
+        if any(current.get(p) != _base_blob(key, p) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
         for p, (mode, blob) in BASELINE.items():          # literal table == immutable BASE object == evaluated tree/ref, blob AND Git mode
-            if _blob(_base_bytes(key, p)) != blob or _base_mode(key, p) != mode or current.get(p) != blob or modes.get(p) != mode:
+            if _base_blob(key, p) != blob or _base_mode(key, p) != mode or current.get(p) != blob or modes.get(p) != mode:
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
