@@ -136,7 +136,7 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),
@@ -233,12 +233,14 @@ def test_ci_v4_internal_f01_job_drift_is_rejected():
 
 def test_ci_v4_f01_job_edit_is_rejected_by_f03_and_by_the_ci_v4_guard(clone):
     from tests import ci_v4_scope as V
-    good = _variant(clone)
-    assert F.signature_ok(clone, good)
-    bad = _variant(clone, {F.CI_JOB: lambda b: b.replace(b"timeout-minutes: 45", b"timeout-minutes: 90", 1)})
-    assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)
-    other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\n# unreviewed\n"})
-    assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)
+    # One read of immutable explicit refs; dropped before any later test or mutation.
+    with C.call_scope():
+        good = _variant(clone)
+        assert F.signature_ok(clone, good)
+        bad = _variant(clone, {F.CI_JOB: lambda b: b.replace(b"timeout-minutes: 45", b"timeout-minutes: 90", 1)})
+        assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)
+        other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\n# unreviewed\n"})
+        assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)
 
 
 def test_ci_v4_hook_admits_only_two_literal_source_paths():

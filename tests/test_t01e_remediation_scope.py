@@ -214,7 +214,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.fake_scope')")),
     ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope'")),
     ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b", 'tests.r03_ppa_scope', 'tests.f04_financing_scope')")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),

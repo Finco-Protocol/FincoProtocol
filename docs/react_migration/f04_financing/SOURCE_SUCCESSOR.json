@@ -44,18 +44,18 @@
     "frontend/src/app/financing/pr3b1/debtProvenanceModel.ts": "7de34bc2d7f766ece532f8326f1d184730044dd7",
     "frontend/src/app/financing/pr3b1/types.ts": "b955f501c238074a779f5a51dff7169884693b12",
     "static/react/finco-react.js": "6a27300af4d4f818c3f30800b6b8ae634c50224b",
-    "tests/f04_financing_scope.py": "a37503e2c380f722864ffb742d3b2a2e4d431e1f",
+    "tests/f04_financing_scope.py": "53cdfa69d8659acb2490b924fdf4a5dfa66d0b2c",
     "tests/fin_v2_cohorts.py": "ac41b4167f038fe28b3a272aa0a5e7c177085935",
     "tests/r03_ppa_scope.py": "e83e0de1e03717ad94154e0b55a2d2ebfce003be",
     "tests/t01e_remediation_scope.py": "4b4fc6b3ff289e7adb1ba53e8befa61eaf8df072",
     "tests/test_bess02_scope.py": "37a21c52eeaa471c1c019b4d49809cb021ee6fa6",
     "tests/test_ci_v4_perf_scope.py": "87544da9ee0e27527a44a89a6c401bce9be90ec7",
-    "tests/test_f03_financing_scope.py": "8ecfbb0d25466f1a67791e86fd9c8a2b2234c329",
+    "tests/test_f03_financing_scope.py": "a8b52ef2b990966c41a9eeffd8e5127e147d057c",
     "tests/test_f04_financing_browser.py": "70d28bba2a815f26d61feca52b863afd13acd6be",
     "tests/test_f04_financing_scope.py": "74d56731ef2204a739f0df47da789e3c88f6cd11",
     "tests/test_post432_l01_l02_scope.py": "0547d342456ade22ad1e8dc2256a9ecb34951721",
     "tests/test_r02_ppa_ux_scope.py": "2fc449f1ba9da8122157c05ced49469a60309b1c",
-    "tests/test_r03_ppa_scope.py": "b4f7bc7ed0f43c1e5f0202e59096e09803a6e1dd",
-    "tests/test_t01e_remediation_scope.py": "1340fdc425c71b2067b222ea85bfb6895c61cb39"
+    "tests/test_r03_ppa_scope.py": "a304ae9f24637fae61b09e86e2e1c054a200d3ab",
+    "tests/test_t01e_remediation_scope.py": "55754d68ddceb34dc323f06034e4025940d20a6c"
   }
 }
