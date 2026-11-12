@@ -129,12 +129,14 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
     assert C.COHORT_MODULES[-3:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope") or (
         C.COHORT_MODULES[-4:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")) or (
         C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
-                                  "tests.r03_ppa_scope"))
+                                  "tests.r03_ppa_scope")) or (
+        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
+                                  "tests.r03_ppa_scope", "tests.r04_ppa_scope"))
 
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),

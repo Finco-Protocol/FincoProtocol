@@ -21,7 +21,7 @@
     "tax_reference_registry/loader.py": "2146fe00d71045b2c7731cedf522672afbe8233e",
     "tax_reference_registry/records.py": "3e42f3ed36794e459490dd9c92171b98c557977f",
     "tax_reference_registry/registry.py": "6e7bce70dbdfc03c09df63d881cdf328dbb462fa",
-    "tests/fin_v2_cohorts.py": "106dc9b096bef8ca6ea99b1892545adab6d5665f",
+    "tests/fin_v2_cohorts.py": "632d27794e5c2a706572f34884b9e1d699d186e3",
     "tests/tax_reference_registry/conftest.py": "396c5751b86b04ff6092ed217aeea1a803716658",
     "tests/tax_reference_registry/test_loader_errors.py": "25ef6f5de8fd64137f232d13c473fa5565ce3069",
     "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
