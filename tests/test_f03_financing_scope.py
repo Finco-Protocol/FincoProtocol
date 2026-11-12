@@ -245,8 +245,10 @@ def test_ci_v4_f01_job_edit_is_rejected_by_f03_and_by_the_ci_v4_guard(clone):
 
 def test_ci_v4_hook_admits_only_two_literal_source_paths():
     from tests import ci_v4_scope as V
-    pins = F.manifest()["source_blobs"]
-    assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)
-    assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)
-    assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, None)
-    assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)
+    # Same unmodified tree throughout this bounded read.
+    with C.call_scope():
+        pins = F.manifest()["source_blobs"]
+        assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)
+        assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)
+        assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, None)
+        assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)

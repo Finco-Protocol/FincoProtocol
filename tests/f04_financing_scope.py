@@ -535,7 +535,25 @@ HANDOFFS = {'tests/fin_v2_cohorts.py': [("'tests.r03_ppa_scope')", "'tests.r03_p
                                         '        assert not F.signature_ok(clone, bad) and not V.exact_blobs_ok(clone, bad)\n'
                                         '        other = _variant(clone, {".github/workflows/ci_v4_pr.yml": lambda b: b + b"\\n# '
                                         'unreviewed\\n"})\n'
-                                        '        assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)')],
+                                        '        assert not F.exact_blobs_ok(clone, other) and not V.exact_blobs_ok(clone, other)'),
+                                       ('def test_ci_v4_hook_admits_only_two_literal_source_paths():\n'
+                                        '    from tests import ci_v4_scope as V\n'
+                                        '    pins = F.manifest()["source_blobs"]\n'
+                                        '    assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)\n'
+                                        '    assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)\n'
+                                        '    assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, '
+                                        'None)\n'
+                                        '    assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)',
+                                        'def test_ci_v4_hook_admits_only_two_literal_source_paths():\n'
+                                        '    from tests import ci_v4_scope as V\n'
+                                        '    # Same unmodified tree throughout this bounded read.\n'
+                                        '    with C.call_scope():\n'
+                                        '        pins = F.manifest()["source_blobs"]\n'
+                                        '        assert V._pr2c_supersedes(F.CI_JOB, pins[F.CI_JOB], F.ROOT, None)\n'
+                                        '        assert not V._pr2c_supersedes(F.CI_JOB, "0" * 40, F.ROOT, None)\n'
+                                        '        assert not V._pr2c_supersedes(".github/workflows/ci_v4_pr.yml", pins[F.CI_JOB], F.ROOT, '
+                                        'None)\n'
+                                        '        assert not V._pr2c_supersedes(F.CI_WORKFLOW, pins[F.CI_JOB], F.ROOT, None)')],
  'tests/test_post432_l01_l02_scope.py': [('import pytest\n', 'import pytest\nfrom tests import f04_financing_scope as Q\n'),
                                          ('def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():\n'
                                           "    base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], "
