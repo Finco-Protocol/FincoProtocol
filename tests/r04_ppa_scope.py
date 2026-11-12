@@ -1,4 +1,4 @@
-"""R04 isolated global PPA technical ceiling: finite exact-source successor after the accepted R03 (#440) leaf.
+"""R04 isolated global PPA technical ceiling: finite exact-source successor after the accepted F04 (#443) leaf.
 
 BASE is accepted main (the merged #440). The candidate lives ONLY in ``research/r04_ppa_global_cap/`` with its independent oracle and tests in
 ``tests/r04_ppa_global_cap/``; nothing in production imports it, it is not wired into the contract writer, Save All or Run, and it is not an
@@ -22,12 +22,12 @@ import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = "7584149f9334ac058cd986188b571c7dd48d538e"
-BASE_TREE = "f997cfbc398a0afb4ae93c967d99554b01c89d47"
+BASE = "2cce0343d55dd8865fe8bf5a59f5beebc40b5b9c"
+BASE_TREE = "3047a090a670548c2caa63a87d0d84a6ddbf882d"
 MANIFEST = "docs/r04_ppa_global_cap/SOURCE_SUCCESSOR.json"
 SCHEMA = "R04_PPA_GLOBAL_CAP_ISOLATED_EXACT_SOURCE_V1"
 REGISTRY = "tests/fin_v2_cohorts.py"
-PREDECESSOR = "tests/r03_ppa_scope.py"
+PREDECESSOR = "tests/f04_financing_scope.py"
 SOURCE_PATHS = frozenset((
     "research/r04_ppa_global_cap/README.md",
     "research/r04_ppa_global_cap/__init__.py",
@@ -72,6 +72,7 @@ FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/"
              "main_web.py")
 # Accepted historical manifests, products and CI that must stay byte-identical to BASE (a successor never rewrites them).
 FROZEN = (
+    "docs/react_migration/f04_financing/SOURCE_SUCCESSOR.json", "tests/r03_ppa_scope.py",
     "docs/r03_ppa_candidate/SOURCE_SUCCESSOR.json", "research/r03_ppa_candidate/core.py", "tests/r03_ppa_core/oracle.py",
     "docs/tax_reference_registry/t01e/SOURCE_SUCCESSOR.json", "tax_reference_registry/remediation.py",
     "tests/t01e_remediation_scope.py", "tests/f03_financing_scope.py",
@@ -82,6 +83,32 @@ FROZEN = (
     ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/ci_v4_f01_job.yml",
     "tests/ci_v4_perf_scope.py", "tests/bess02_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py",
 )
+# PHASE 1 (governance preparation, no runtime behavior): the production PPA / revenue authorities a LATER reviewed R04 change would touch.
+# They are NOT owned and NOT pre-authorized to change: each (Git mode, blob) is the accepted state at BASE, asserted three ways (this literal table,
+# the immutable BASE object, the evaluated tree/ref). Any byte, mode, symlink or deletion drift of one of them fails this cohort and therefore the
+# composite; a future paired change must move a path out of this table, with its new blob, inside a reviewed successor.
+BASELINE = {
+    "domain/revenue/multistream_runtime.py": ("100644", "b1896bdb156a53c8371286bb4198381d0c7904fe"),
+    "domain/revenue/plan.py": ("100644", "4d135f2d95a198ab42af4d42ae9db36afe41178d"),
+    "domain/revenue/plan_engine.py": ("100644", "26ea4addc99dbd2d8c6d2f8675140bcc7cb8b4f0"),
+    "app/workbook/revenue_multistream.py": ("100644", "f9f1db8136a343f810e6931571e3a6c2dcc626a3"),
+    "app/workbook/revenue_contracts_service.py": ("100644", "ddbddee0bfae5c9907e7c3adffd103a6b74fa3a7"),
+    "finco_core/revenue/generation.py": ("100644", "8e23a949e72acc6422a6c7cd46f034b31f81fdfb"),
+    "finco_core/engine/period_engine.py": ("100644", "d72de84d082962d9c49a840178211602495c027a"),
+    "finco_core/inputs/revenue_multistream.py": ("100644", "09e223529d6c4c63fc2b23950b2d337263c06ff2"),
+    "financial_engine/revenue_multistream.py": ("100644", "3788be8b6628f555124d8ce15f998b6771fc1a88"),
+    "financial_engine/ppa_indexation.py": ("100644", "ede1a19abad4741c5053f6d63f62bffd21acbc14"),
+    "app/v2/router.py": ("100644", "58bdeaff5d511ffa62b077120871239ae4e6afa9"),
+    "frontend/src/app/workflow/PpaContractsEditor.tsx": ("100644", "e9fc09fd0cbdcd8b1817cc04f98cbb7678513620"),
+    "frontend/src/app/workflow/ModelWorkflowValidation.ts": ("100644", "8dc2e83a76472f2945b9eb8b5b0bf422d0adb769"),
+    "static/react/finco-react.js": ("100644", "6a27300af4d4f818c3f30800b6b8ae634c50224b"),
+}
+
+
+def _base_mode(root, path):
+    """Git mode of an IMMUTABLE accepted-main (BASE) entry."""
+    line = _git(Path(root), "ls-tree", BASE, "--", path).decode().strip()
+    return line.split()[0] if line else None
 
 
 def _git(root, *args):
@@ -125,10 +152,10 @@ def expected_map(root, path, pins=None):
 # to this cohort (the same acyclic pattern F03, T01-E and R03 used); the registry appends this cohort exactly once; the exact-tail tests accept one more state.
 HANDOFFS = {
     'tests/fin_v2_cohorts.py': [
-        ("'tests.r03_ppa_scope')",
-         "'tests.r03_ppa_scope', 'tests.r04_ppa_scope')"),
+        ("'tests.f04_financing_scope')",
+         "'tests.f04_financing_scope', 'tests.r04_ppa_scope')"),
     ],
-    'tests/r03_ppa_scope.py': [
+    'tests/f04_financing_scope.py': [
         ('    _SCOPE.append({})\n'
          '    try:\n'
          '        yield\n'
@@ -249,161 +276,130 @@ HANDOFFS = {
          '        return N.reviewed_edits_ok(root, ref) if nxt else True\n'),
     ],
     'tests/test_bess02_scope.py': [
-        ('    from tests import ci_v4_perf_scope as F, f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         "    own = accepted + ('tests.bess02_scope',)\n"
-         '    # Exactly five states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one\n'
-         '    # reviewed F03 successor; then exactly one reviewed T01-E successor; then exactly one reviewed R03 successor, each behind a complete signature.\n',
-         '    from tests import ci_v4_perf_scope as F, f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
-         "    own = accepted + ('tests.bess02_scope',)\n"
-         '    # Exactly six states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one\n'
-         '    # reviewed F03 successor; then exactly one reviewed T01-E successor; then one R03 successor; then one R04 successor, each behind a complete signature.\n'),
-        ('            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__) and F.signature_ok() and G.signature_ok()\n'
-         '                and Z.signature_ok() and Y.signature_ok()))\n',
-         '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__) and F.signature_ok() and G.signature_ok()\n'
-         '                and Z.signature_ok() and Y.signature_ok())\n'
-         '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, W.__name__) and F.signature_ok() and G.signature_ok()\n'
-         '                and Z.signature_ok() and Y.signature_ok() and W.signature_ok()))\n'),
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ('            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)\n'
+         '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()))\n',
+         '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)\n'
+         '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())\n'
+         '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, W.__name__)\n'
+         '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok()))\n'),
     ],
     'tests/test_ci_v4_perf_scope.py': [
-        ('    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         '    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (',
-         '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
-         '    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or ('),
-        ('        C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '        and G.signature_ok() and Z.signature_ok() and Y.signature_ok())\n',
-         '        C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '        and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (\n'
-         '        C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope",\n'
-         '                                  "tests.r04_ppa_scope")\n'
-         '        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and W.signature_ok())\n'),
-        ('    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         '    for p in sorted(F.HANDOFFS):\n'
-         '        want = (Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n',
-         '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ('            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())\n'
+         '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n',
+         '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or (\n'
+         '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+         '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())\n'
+         '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'),
+        ('    for p in sorted(F.HANDOFFS):\n'
+         '        want = (Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS\n',
          '    for p in sorted(F.HANDOFFS):\n'
          '        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n'
-         '                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n'),
-        ('    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         '    own = accepted + ("tests.ci_v4_perf_scope",)\n',
-         '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
-         '    own = accepted + ("tests.ci_v4_perf_scope",)\n'),
-        ('            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok()))\n',
-         '            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok())\n'
-         '            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.r04_ppa_scope")\n'
-         '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and W.signature_ok()))\n'),
-        ('    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', \'tests.f03_financing_scope\', "\n'
-         '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')")\n',
-         '    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', \'tests.f03_financing_scope\', "\n'
-         '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.r04_ppa_scope\')")\n'),
+         '                else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS\n'),
+        ('                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+         '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()))\n',
+         '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+         '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())\n'
+         '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+         '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok()))\n'),
+        ('              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')")\n',
+         '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')")\n'),
         ('        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         '        want = (Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n',
-         '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
+         '        want = (Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS\n',
+         '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
          '        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n'
-         '                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n'),
+         '                else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS\n'),
     ],
     'tests/test_r02_ppa_ux_scope.py': [
-        ('    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')\n"
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ("    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')\n"
          '                if m in C.COHORT_MODULES)\n'
          '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
-         '    if len(nxt) == 4 and Y.signature_ok():\n'
-         '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n',
-         '    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
-         "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope',\n"
+         '    if len(nxt) == 5 and Q.signature_ok():\n'
+         '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n',
+         "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',\n"
          "                            'tests.r04_ppa_scope') if m in C.COHORT_MODULES)\n"
          '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
-         '    if len(nxt) == 5 and W.signature_ok():\n'
+         '    if len(nxt) == 6 and W.signature_ok():\n'
          '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
-         '    elif len(nxt) == 4 and Y.signature_ok():\n'
-         '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'),
+         '    elif len(nxt) == 5 and Q.signature_ok():\n'
+         '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'),
     ],
     'tests/test_post432_l01_l02_scope.py': [
-        ('    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-         '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
-         "    if 'tests.r03_ppa_scope' in C.COHORT_MODULES and Y.signature_ok():\n"
-         '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n',
-         '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W\n'
-         '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ("    if 'tests.f04_financing_scope' in C.COHORT_MODULES and Q.signature_ok():\n"
+         '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n',
          "    if 'tests.r04_ppa_scope' in C.COHORT_MODULES and W.signature_ok():\n"
          '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
-         "    elif 'tests.r03_ppa_scope' in C.COHORT_MODULES and Y.signature_ok():\n"
-         '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'),
+         "    elif 'tests.f04_financing_scope' in C.COHORT_MODULES and Q.signature_ok():\n"
+         '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'),
     ],
     'tests/test_f03_financing_scope.py': [
-        ('        C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",\n'
-         '                                  "tests.r03_ppa_scope"))\n',
-         '        C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",\n'
-         '                                  "tests.r03_ppa_scope")) or (\n'
-         '        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",\n'
-         '                                  "tests.r03_ppa_scope", "tests.r04_ppa_scope"))\n'),
-        ('    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.fake_scope\')")),\n',
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ('        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok())\n',
+         '        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+         '        C.COHORT_MODULES[-7:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+         '        and Q.signature_ok() and W.signature_ok())\n'),
+        ('    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.fake_scope\')")),\n',
          '    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', \'tests.fake_scope\')")),\n'),
-        ('    ("duplicate_f03", lambda b: b.replace(b"\'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'", b"\'tests.f03_financing_scope\', \'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'")),\n',
-         '    ("duplicate_f03", lambda b: b.replace(b"\'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'", b"\'tests.f03_financing_scope\', \'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'")),\n'),
     ],
     'tests/test_t01e_remediation_scope.py': [
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
         ('    from tests import r03_ppa_scope as Y\n'
          '    for p in T.HANDOFFS:\n'
-         '        if Y.signature_ok() and p in Y.HANDOFFS:            # the further reviewed R03 substitution of this shared path\n'
-         '            assert (ROOT / p).read_bytes() == Y.expected_handoff(ROOT, p)\n',
-         '    from tests import r03_ppa_scope as Y, r04_ppa_scope as W\n'
+         '        if Q.signature_ok() and p in Q.HANDOFFS:\n',
+         '    from tests import r03_ppa_scope as Y\n'
          '    for p in T.HANDOFFS:\n'
-         '        later = next((N for N in (W, Y) if N.signature_ok() and p in N.HANDOFFS), None)      # the latest reviewed substitution of this shared path\n'
-         '        if later is not None:\n'
-         '            assert (ROOT / p).read_bytes() == later.expected_handoff(ROOT, p)\n'),
-        ('    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",))\n',
-         '    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.r04_ppa_scope"))\n'),
-        ('    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')", b"\'tests.t01e_remediation_scope\', \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')")),\n'
-         '    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.fake_scope\')")),\n',
-         '    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b"\'tests.t01e_remediation_scope\', \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'")),\n'
-         '    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', \'tests.fake_scope\')")),\n'),
-        ('    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')", b", \'tests.r03_ppa_scope\')")),\n',
-         '    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")),\n'),
-        ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')", b", \'tests.r03_ppa_scope\')")})\n',
-         '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")})\n'),
-    ],
-    'tests/test_r03_ppa_scope.py': [
-        ('    for p in T.HANDOFFS:\n'
-         '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
-         '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n',
-         '    from tests import r04_ppa_scope as W\n'
-         '    for p in T.HANDOFFS:\n'
-         '        if W.signature_ok() and p in W.HANDOFFS:            # the further reviewed R04 substitution of this shared path\n'
+         '        if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 substitution of this shared path\n'
          '            assert (ROOT / p).read_bytes() == W.expected_handoff(ROOT, p)\n'
          '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
          '            continue\n'
-         '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
-         '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n'),
-        ('    pins = T.manifest()["source_blobs"]\n'
-         '    for p in T.CURRENT_MAPS:\n',
-         "    pins = T.effective_pins()                  # the CURRENT pins: a reviewed successor's overlay wins while its signature holds\n"
-         '    for p in T.CURRENT_MAPS:\n'),
-        ('    pins = T.manifest()["source_blobs"]\n'
-         '    reg = pins[T.REGISTRY]\n'
-         '    assert P.supersedes(T.REGISTRY, reg) and F.supersedes(T.REGISTRY, reg) and F.effective_pins()[T.REGISTRY] == reg\n',
-         '    pins = T.manifest()["source_blobs"]\n'
-         "    reg = T.effective_pins()[T.REGISTRY]                   # the CURRENT registry pin (the reviewed R04 successor's while its signature holds)\n"
-         '    assert P.supersedes(T.REGISTRY, reg) and F.supersedes(T.REGISTRY, reg) and F.effective_pins()[T.REGISTRY] == reg\n'),
-        ('def test_registered_exactly_once_as_the_terminal_cohort_after_t01e():\n'
-         '    assert C.COHORT_MODULES[-3:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n',
-         'def test_registered_exactly_once_directly_after_t01e_with_only_the_reviewed_r04_successor_behind_it():\n'
-         '    i = C.COHORT_MODULES.index("tests.r03_ppa_scope")\n'
-         '    assert C.COHORT_MODULES[i - 2:i + 1] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
-         '    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r04_ppa_scope",))\n'
-         '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n'),
-        ('    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\')")),\n'
-         '    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.fake_scope\')")),\n'
-         '    ("swapped_t01e_r03", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.t01e_remediation_scope\')")),\n'
-         '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\')", b")")),\n',
-         '    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.r04_ppa_scope\')", b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\', \'tests.r04_ppa_scope\')")),\n'
+         '        if Q.signature_ok() and p in Q.HANDOFFS:\n'),
+        ('    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"))\n',
+         '    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"),\n'
+         '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))\n'),
+        ('    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.t01e_remediation_scope\', \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')")),\n'
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.fake_scope\')")),\n',
+         '    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b"\'tests.t01e_remediation_scope\', \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'")),\n'
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', \'tests.fake_scope\')")),\n'),
+        ('    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')")),\n',
+         '    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")),\n'),
+        ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')")})\n',
+         '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")})\n'),
+    ],
+    'tests/test_r03_ppa_scope.py': [
+        ('from tests import f04_financing_scope as Q\n',
+         'from tests import f04_financing_scope as Q\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ('        authority = Q if Q.signature_ok() and p in Q.HANDOFFS else T\n',
+         '        authority = W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n'),
+        ('        C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok())\n',
+         '        C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+         '        C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+         '        and Q.signature_ok() and W.signature_ok())\n'),
+        ('    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')")),\n'
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.fake_scope\')")),\n'
+         '    ("swapped_t01e_r03", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b"\'tests.r03_ppa_scope\', \'tests.t01e_remediation_scope\', \'tests.f04_financing_scope\')")),\n'
+         '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b", \'tests.f04_financing_scope\')")),\n',
+         '    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'")),\n'
          '    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', \'tests.fake_scope\')")),\n'
          '    ("swapped_t01e_r03", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'", b"\'tests.r03_ppa_scope\', \'tests.t01e_remediation_scope\'")),\n'
-         '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.r04_ppa_scope\')", b", \'tests.r04_ppa_scope\')")),\n'),
-        ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\')", b")")})\n',
-         '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.r04_ppa_scope\')", b", \'tests.r04_ppa_scope\')")})\n'),
+         '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", b", \'tests.f04_financing_scope\'")),\n'),
+        ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b", \'tests.f04_financing_scope\')")})\n',
+         '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", b", \'tests.f04_financing_scope\'")})\n'),
     ],
 }
 
@@ -542,7 +538,7 @@ def _signature_ok(root, ref, closure=False):
         if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds
             return False
         judged = {p for p in pins if closure or p not in CURRENT_MAPS}
-        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
+        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN) | set(BASELINE))
         if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
             return False
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
@@ -552,12 +548,18 @@ def _signature_ok(root, ref, closure=False):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
+        for p in CURRENT_MAPS:
+            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                return False
         if closure:
             for p in CURRENT_MAPS:
                 if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
+        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
+        for p, (mode, blob) in BASELINE.items():          # literal table == immutable BASE object == evaluated tree/ref, blob AND Git mode
+            if _blob(_base_bytes(key, p)) != blob or _base_mode(key, p) != mode or current.get(p) != blob or modes.get(p) != mode:
+                return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False

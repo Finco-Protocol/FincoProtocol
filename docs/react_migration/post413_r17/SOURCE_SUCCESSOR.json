@@ -14,7 +14,7 @@
     "app/persistence/_helpers.py": "862c0b6aacaf25527334f0fd9807e64480b402b5",
     "app/persistence/scenarios_repository.py": "dd36b21ca367a24ca24796cc925bdc89098df76c",
     "docs/react_migration/post413_r17/P00.md": "8b50126d6a5005eb7d0554f71871ca97a7687347",
-    "tests/fin_v2_cohorts.py": "632d27794e5c2a706572f34884b9e1d699d186e3",
+    "tests/fin_v2_cohorts.py": "f74e16ca2f9378db0582813d818fd72c6e4180b8",
     "tests/post413_r17_scope.py": "3ce053786d3cc693c21ba1641966fec381bd2dc9",
     "tests/test_post413_r17_scope.py": "2507899c0b2964fb8b41ea092b474849f00ba0a5",
     "tests/test_r17_base_case_scope.py": "8717567f0d07ce4de291225d56684f07361c1336",

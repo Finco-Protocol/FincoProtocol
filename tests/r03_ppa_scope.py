@@ -478,12 +478,12 @@ def signature_ok(repo=None, ref=None):
 
 
 def _next():
-    """The one finite forward successor (R04). Low-level only: its signature never calls this module or the composite."""
+    """The one finite forward successor (F04). Low-level only: its signature never calls this module or the composite."""
     from tests.fin_v2_cohorts import COHORT_MODULES
-    if 'tests.r04_ppa_scope' not in COHORT_MODULES:
+    if 'tests.f04_financing_scope' not in COHORT_MODULES:
         return None
-    from tests import r04_ppa_scope
-    return r04_ppa_scope
+    from tests import f04_financing_scope
+    return f04_financing_scope
 
 
 def _next_pins(root, ref):
@@ -583,7 +583,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
             return False

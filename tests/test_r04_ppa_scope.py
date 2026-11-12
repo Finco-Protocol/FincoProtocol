@@ -15,7 +15,7 @@ import pytest
 from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
 from tests import r04_ppa_scope as T
-from tests import r03_ppa_scope as P
+from tests import f04_financing_scope as P
 
 ROOT = Path(__file__).resolve().parents[1]
 REMEDIATION = "research/r04_ppa_global_cap/core.py"
@@ -96,12 +96,12 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
     assert all(p.startswith(("research/r04_ppa_global_cap/", "tests/r04_ppa_global_cap/")) or p in ("tests/r04_ppa_scope.py", "tests/test_r04_ppa_scope.py")
                for p in T.NEW)
     assert T.HANDOFF_PATHS == frozenset((
-        "tests/r03_ppa_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_ci_v4_perf_scope.py",
+        "tests/f04_financing_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_ci_v4_perf_scope.py",
         "tests/test_r02_ppa_ux_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_f03_financing_scope.py",
         "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py"))
     assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS and T.MAP_KEYS == ("tests/fin_v2_cohorts.py",)
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") for p in T.OWNED_PATHS | {T.MANIFEST})
-    assert T.PREDECESSOR == "tests/r03_ppa_scope.py"
+    assert T.PREDECESSOR == "tests/f04_financing_scope.py"
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold():
@@ -111,8 +111,8 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
         assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]
 
 
-def test_registered_exactly_once_as_the_terminal_cohort_after_r03():
-    assert C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.r04_ppa_scope")
+def test_registered_exactly_once_as_the_terminal_cohort_after_f04():
+    assert C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
     assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1
 
 
@@ -213,8 +213,9 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_r04", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.r04_ppa_scope')")),
     ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
-    ("swapped_r03_r04", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.r03_ppa_scope')")),
+    ("swapped_f04_r04", lambda b: b.replace(b"'tests.f04_financing_scope', 'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.f04_financing_scope')")),
     ("r04_missing", lambda b: b.replace(b", 'tests.r04_ppa_scope')", b")")),
+    ("f04_removed", lambda b: b.replace(b"'tests.f04_financing_scope', ", b"")),
     ("r03_removed", lambda b: b.replace(b"'tests.r03_ppa_scope', ", b"")),
     ("t01e_removed", lambda b: b.replace(b"'tests.t01e_remediation_scope', ", b"")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),
@@ -252,8 +253,8 @@ def test_partially_applied_handoff_is_rejected(clone):
 
 
 def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
-    for fn in (lambda b: b.replace(b'"base_tree": "f997cfbc', b'"base_tree": "1997cfbc', 1),
-               lambda b: b.replace(b'"base": "7584149f', b'"base": "8584149f', 1),
+    for fn in (lambda b: b.replace(b'"base_tree": "3047a090', b'"base_tree": "1047a090', 1),
+               lambda b: b.replace(b'"base": "2cce0343', b'"base": "3cce0343', 1),
                lambda b: b.replace(REMEDIATION.encode() + b'": "', REMEDIATION.encode() + b'": "0000', 1),
                lambda b: b.replace(b'"tests/fin_v2_cohorts.py": "', b'"tests/fin_v2_cohorts.py": "0000', 1)):
         ref = _variant(clone, {T.MANIFEST: fn})
@@ -287,7 +288,7 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
     for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "tax_reference_registry/other.py"):
         assert not T.allowed_path(p)
     assert T.allowed_path(REMEDIATION) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
-    bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "f997cfbc', b'"base_tree": "1997cfbc', 1)})
+    bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "3047a090', b'"base_tree": "1047a090', 1)})
     assert not T.allowed_path(REMEDIATION, clone, bad)             # with a false signature even an owned path confers no authority
 
 
@@ -308,3 +309,76 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
         assert T.signature_ok(clone, "HEAD") and F.exact_blobs_ok(clone, "HEAD")
         assert not T.signature_ok(clone, bad) and not F.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
     assert T.signature_ok(clone, "HEAD")                                                # and the positive verdict was never poisoned
+
+
+# ---------------------------------------------------------------- PHASE 1: baseline ownership of the production revenue paths (no runtime change)
+KEY_PRODUCTION_PATHS = ("domain/revenue/multistream_runtime.py", "domain/revenue/plan.py", "domain/revenue/plan_engine.py",
+                        "app/workbook/revenue_multistream.py", "app/workbook/revenue_contracts_service.py", "finco_core/revenue/generation.py",
+                        "finco_core/engine/period_engine.py", "frontend/src/app/workflow/PpaContractsEditor.tsx",
+                        "frontend/src/app/workflow/ModelWorkflowValidation.ts", "static/react/finco-react.js")
+
+
+def test_baseline_table_is_exactly_the_accepted_base_state_and_authorizes_no_change():
+    assert set(KEY_PRODUCTION_PATHS) <= set(T.BASELINE)
+    for p, (mode, blob) in T.BASELINE.items():
+        line = _git("ls-tree", T.BASE, "--", p).split()
+        assert (line[0], line[2]) == (mode, blob) and mode == "100644", p
+        assert (ROOT / p).is_file() and not (ROOT / p).is_symlink()
+        assert T._blob((ROOT / p).read_bytes()) == blob, p
+        assert p not in T.OWNED_PATHS and p not in T.SUPERSEDED and p not in T.HANDOFFS and not T.allowed_path(p), p   # asserted, never pre-authorized
+        assert p not in T.manifest()["source_blobs"] and p not in T.manifest()["base_blobs"]
+    assert not set(T.BASELINE) & set(T.FROZEN)
+
+
+@pytest.mark.parametrize("path", sorted(T.BASELINE))
+def test_one_byte_in_any_baseline_production_path_fails_closed_in_the_cohort_and_the_composite(clone, path):
+    ref = _variant(clone, {path: lambda b: b + b"\n"})
+    with C.call_scope():
+        assert not T.signature_ok(clone, ref) and not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+
+
+@pytest.mark.parametrize("path", sorted(T.BASELINE))
+def test_mode_symlink_and_deletion_of_a_baseline_production_path_fail_closed(clone, path):
+    assert not T.signature_ok(clone, _variant(clone, mode=path)), path
+    assert not T.signature_ok(clone, _variant(clone, symlink=path)), path
+    assert not T.signature_ok(clone, _variant(clone, remove=(path,))), path
+
+
+@pytest.mark.parametrize("path", KEY_PRODUCTION_PATHS)
+def test_working_tree_drift_of_a_baseline_path_is_judged_on_disk(clone, path):
+    with _WorkingTree(clone):
+        assert T.exact_blobs_ok(clone)
+        _tamper(clone, path, lambda b: b + b"\n# drift\n")
+        assert T.exact_blobs_ok(clone) is False and T.signature_ok(clone) is False
+    with _WorkingTree(clone):
+        (clone / path).chmod(0o755)
+        assert T.exact_blobs_ok(clone) is False
+    assert T.exact_blobs_ok(clone)
+
+
+def test_mode_drift_of_a_frozen_accepted_chain_file_is_now_rejected_too(clone):
+    for p in T.FROZEN[:6]:
+        assert not T.signature_ok(clone, _variant(clone, mode=p)), p
+
+
+def test_an_unowned_new_revenue_or_foreign_path_is_outside_the_closed_set(clone):
+    for path in ("domain/revenue/r04_unowned.py", "app/workbook/r04_unowned.py", "finco_core/revenue/r04_unowned.py"):
+        f = clone / path
+        f.write_text("x = 1\n")
+        _g(clone, "add", "-A")
+        _g(clone, "commit", "-q", "-m", "unowned")
+        ref = _g(clone, "rev-parse", "HEAD").decode().strip()
+        _g(clone, "checkout", "-q", "-f", "HEAD~1")
+        _g(clone, "clean", "-fdxq")
+        with C.call_scope():
+            assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+        assert not T.allowed_path(path, clone, ref)
+
+
+def test_a_future_paired_change_cannot_be_smuggled_through_this_cohort(clone):
+    # Moving a baseline path without moving its table entry, or adding it to the manifest without a reviewed successor, is refused.
+    p = "domain/revenue/multistream_runtime.py"
+    new = _variant(clone, {p: lambda b: b + b"\n"})
+    assert not T.signature_ok(clone, new)
+    forged = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_blobs": {', b'"base_blobs": {\n    "' + p.encode() + b'": "' + b"0" * 40 + b'",', 1)})
+    assert not T.signature_ok(clone, forged) and not T.exact_blobs_ok(clone, forged)

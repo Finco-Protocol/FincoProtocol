@@ -6,6 +6,8 @@ import subprocess
 import shutil
 
 import pytest
+from tests import f04_financing_scope as Q
+from tests import r04_ppa_scope as W
 from tests import bess02_scope as B, fin_v2_cohorts as C
 
 
@@ -169,24 +171,26 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
     from tests import f03_financing_scope as G
     for path in sorted(paths):
         if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared bundle, exactly at its pinned blob
-            assert B._blob((B.ROOT/path).read_bytes()) == G.manifest()['source_blobs'][path]
+            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]
             continue
         assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], cwd=B.ROOT)
     registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
     accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
                     if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'COHORT_MODULES')
-    from tests import ci_v4_perf_scope as F, f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y, r04_ppa_scope as W
+    from tests import ci_v4_perf_scope as F, f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     own = accepted + ('tests.bess02_scope',)
-    # Exactly six states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one
-    # reviewed F03 successor; then exactly one reviewed T01-E successor; then one R03 successor; then one R04 successor, each behind a complete signature.
+    # Exactly five states: the accepted BESS-only tail; one reviewed CI-performance successor; that successor followed by exactly one
+    # reviewed F03 successor; then exactly one reviewed T01-E successor; then exactly one reviewed R03 successor, each behind a complete signature.
     assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + (F.__name__,) and F.signature_ok())
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__) and F.signature_ok() and G.signature_ok())
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__) and F.signature_ok() and G.signature_ok()
                 and Z.signature_ok())
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__) and F.signature_ok() and G.signature_ok()
                 and Z.signature_ok() and Y.signature_ok())
-            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, W.__name__) and F.signature_ok() and G.signature_ok()
-                and Z.signature_ok() and Y.signature_ok() and W.signature_ok()))
+            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)
+                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
+            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, W.__name__)
+                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok()))
     assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
 
 

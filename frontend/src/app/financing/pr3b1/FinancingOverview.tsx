@@ -6,6 +6,8 @@ import { checkRunEvidence } from './runEvidence';
 import { termSheetModel, creditTerm, type Term } from './termSheetModel';
 import { sourcesUsesModel } from './sourcesUsesModel';
 import { coverageModel } from './coverageModel';
+import { DebtProvenance } from './DebtProvenance';
+import { debtProvenance } from './debtProvenanceModel';
 import type { Evidence } from './types';
 import './financingOverview.css';
 
@@ -29,6 +31,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
   const gate = checkRunEvidence(e), groups = termSheetModel(e, gate), su = sourcesUsesModel(e, gate), cov = coverageModel(e, gate);
   const s = e.studio, r = gate.showRun ? e.credit.data?.runs[0] : undefined, dm = cov?.debtMetrics;
   const selected = gate.showRun ? s.selected_run?.view : undefined;
+  const debt = debtProvenance(e);
   const runName = gate.state === 'HISTORICAL' ? 'Historical selected Run' : 'Last Run';
   const facilities = (s.capital_stack.rows ?? []).filter(f => !isUnconfiguredFacility(f));
   const [facilityId, setFacilityId] = useState('');
@@ -77,6 +80,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
         </>}
       </div>
     </div>
+    <DebtProvenance evidence={e} />
         <details id="pr3b1-funding"><summary>Facilities / Funding · Working Copy</summary>
           <p>Facility terms are read-only. Sponsor assumptions below are Working Copy; actual cash sources remain in Last Run.</p>
           <p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="facilities" href={link('facilities')}>Open existing facility details</a> · <a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="investors" href={link('investors')}>Open existing investor agreement</a></p>
@@ -90,6 +94,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
             { label: 'Repayment', display: facility.repayment || 'NOT AVAILABLE', source: 'Working Copy · facility' },
             { label: 'Maturity', display: facility.maturity_date || 'NOT AVAILABLE', source: 'Working Copy · facility' },
           ]} /></> : <p>NOT AVAILABLE — no configured facility terms supplied.</p>}
+          <p>Instrument repayment schedule · UNAVAILABLE — selected Run evidence supplies aggregate Senior periods only. Facility currency and recorded terms are Working Copy; no allocation is inferred.</p>
           <p>Two-Senior is read-only / release gated. Junior unsupported; VAT code-only. No per-tier sizing, draws or binding claim.</p>
           {(s.capital_stack.unsupported ?? []).map((u, i) => <p key={i}>{u.name} · {u.status} · {unsupportedReason(u)}</p>)}
         </details>
@@ -106,9 +111,10 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
         </article>
       </div>
       {cov.otherFindings.length > 0 && <details><summary>Other server findings · original classifications</summary><Findings rows={cov.otherFindings} /></details>}
-      <details open><summary>Outstanding and coverage · native period schedule · Last Run</summary><p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="debt-metrics" href={link('debt-metrics')}>Open existing debt schedule / history</a></p><p>{dm?.axis?.frequency} · {dm?.axis?.note} {dm?.basis_note}</p>
-        {cov.periods.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Native debt period schedule"><table><thead><tr>{['Period','Opening kEUR','Principal kEUR','Interest kEUR','Service kEUR','Closing kEUR','DSCR (x)','Cash before reserves kEUR','Sizing target (x)','Shortfall kEUR','Below one','EoD breach','Covenant breach','Lock-up'].map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
-          <tbody>{cov.periods.map(p => <tr key={p.period_index}><th scope="row">{p.label} · {p.date}</th><td>{number(p.senior_opening_keur)}</td><td>{number(p.principal_keur)}</td><td>{number(p.interest_keur)}</td><td>{number(p.debt_service_keur)}</td><td>{number(p.senior_closing_keur)}</td><td>{number(p.dscr)}</td><td>{number(p.cash_after_senior_keur)}</td><td>{number(p.sizing_target_dscr)}</td><td>{number(p.shortfall_keur)}</td>{[p.below_one,p.eod_breach,p.covenant_breach,p.lockup_active].map((v,i) => <td key={i}>{v == null ? 'NOT AVAILABLE' : v ? 'Yes' : 'No'}</td>)}</tr>)}</tbody></table></div> : <p>NOT AVAILABLE · {dm?.reason || 'No native period evidence.'}</p>}
+      <details open><summary>Outstanding and coverage · native period schedule · {runName}</summary><p><a data-financing-read-link={onOpenExisting ? "true" : undefined} data-financing-tab-button="debt-metrics" href={link('debt-metrics')}>Open existing debt schedule / history</a></p><p>{dm?.axis?.frequency} · {dm?.axis?.note} {dm?.basis_note}</p>
+        <small>{debt.source} · {gate.state} · Run {debt.identity?.history_id} · fingerprint {debt.identity?.composite_hash}. Dates are persisted period ends; period starts are unavailable.</small>
+        {debt.periods.length ? <div className="pr3b1-scroll" tabIndex={0} role="region" aria-label="Native debt period schedule"><table><thead><tr>{['Period','Opening kEUR','Principal kEUR','Interest kEUR','Service kEUR','Closing kEUR','DSCR (x)','Cash before reserves kEUR','Sizing target (x)','Shortfall kEUR','Below one','EoD breach','Covenant breach','Lock-up'].map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
+          <tbody>{debt.periods.map(p => <tr key={p.period_index} title={`${debt.source} · period ${p.period_index} · ${p.date}`}><th scope="row">{p.label} · {p.date}</th><td>{number(p.senior_opening_keur)}</td><td>{number(p.principal_keur)}</td><td>{number(p.interest_keur)}</td><td>{number(p.debt_service_keur)}</td><td>{number(p.senior_closing_keur)}</td><td>{number(p.dscr)}</td><td>{number(p.cash_after_senior_keur)}</td><td>{number(p.sizing_target_dscr)}</td><td>{number(p.shortfall_keur)}</td>{[p.below_one,p.eod_breach,p.covenant_breach,p.lockup_active].map((v,i) => <td key={i}>{v == null ? 'NOT AVAILABLE' : v ? 'Yes' : 'No'}</td>)}</tr>)}</tbody></table></div> : <p>UNAVAILABLE · {debt.reason || dm?.reason || 'No native period evidence.'}</p>}
       </details>
       <details><summary>Construction sources, draws and uses · {runName} · kEUR</summary><p>Senior draw is period-specific. No browser aggregate or per-facility allocation.</p>
         <p>Separate FC/COD Senior draw · {selected?.construction.fc_senior_draw.value == null ? 'UNAVAILABLE' : number(selected.construction.fc_senior_draw.value) + ' kEUR'}.</p>
