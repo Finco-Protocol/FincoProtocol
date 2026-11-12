@@ -6,6 +6,7 @@ import subprocess
 import shutil
 
 import pytest
+from tests import f04_financing_scope as Q
 from tests import bess02_scope as B, fin_v2_cohorts as C
 
 
@@ -169,7 +170,7 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
     from tests import f03_financing_scope as G
     for path in sorted(paths):
         if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared bundle, exactly at its pinned blob
-            assert B._blob((B.ROOT/path).read_bytes()) == G.manifest()['source_blobs'][path]
+            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]
             continue
         assert (B.ROOT/path).read_bytes() == subprocess.check_output(['git', 'show', B.BASE + ':' + path], cwd=B.ROOT)
     registry = subprocess.check_output(['git', 'show', B.BASE + ':tests/fin_v2_cohorts.py'], cwd=B.ROOT)
@@ -184,7 +185,9 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__) and F.signature_ok() and G.signature_ok()
                 and Z.signature_ok())
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__) and F.signature_ok() and G.signature_ok()
-                and Z.signature_ok() and Y.signature_ok()))
+                and Z.signature_ok() and Y.signature_ok())
+            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)
+                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()))
     assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
 
 

@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests import f04_financing_scope as Q
 
 from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
@@ -102,6 +103,10 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     from tests import r03_ppa_scope as Y
     for p in T.HANDOFFS:
+        if Q.signature_ok() and p in Q.HANDOFFS:
+            assert (ROOT / p).read_bytes() == Q.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if Y.signature_ok() and p in Y.HANDOFFS:            # the further reviewed R03 substitution of this shared path
             assert (ROOT / p).read_bytes() == Y.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
@@ -113,7 +118,7 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
 def test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_successor_behind_it():
     i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")
     assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"
-    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",))
+    assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"))
     assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1
 
 
@@ -124,7 +129,7 @@ def test_current_maps_move_only_the_registry_key():
         cur = json.loads((ROOT / p).read_text())
         assert set(old) == set(cur) and all(old[k] == cur[k] for k in old if k != "source_blobs")
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
-        assert changed <= set(T.MAP_KEYS)
+        assert changed <= set(T.map_keys())
         for k in changed:
             assert cur["source_blobs"][k] == pins[k]
 

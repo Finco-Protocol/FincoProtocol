@@ -512,7 +512,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
             return False

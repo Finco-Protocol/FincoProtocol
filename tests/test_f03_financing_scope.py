@@ -89,6 +89,7 @@ def test_f03_older_ci_guard_rejects_unreviewed_workflow_pins():
 
 # ---- BESS02 -> F03 finite forward successor: positive and adversarial controls (every variant is an isolated clone commit) ----
 import pytest
+from tests import f04_financing_scope as Q
 from tests import bess02_scope as B, r02_ppa_ux_scope as R, fin_v2_cohorts as C
 
 BESS_ACCEPTED_MAIN = "01a26f9a87a12548c4f151caebe8ee933db7445c"
@@ -129,7 +130,8 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
     assert C.COHORT_MODULES[-3:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope") or (
         C.COHORT_MODULES[-4:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")) or (
         C.COHORT_MODULES[-5:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
-                                  "tests.r03_ppa_scope"))
+                                  "tests.r03_ppa_scope")) or (
+        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok())
 
 
 @pytest.mark.parametrize("name,fn", [
