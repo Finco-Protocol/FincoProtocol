@@ -40,14 +40,15 @@
     "tests/r04_ppa_global_cap/oracle.py": "5ba2eb7f70f4e4a3bbfef5160a033d2d4b620035",
     "tests/r04_ppa_global_cap/test_r04_allocation.py": "cf666a9b48b0fa6b295cb32cf2942b5aeb0b71be",
     "tests/r04_ppa_global_cap/test_r04_canonical_reconciliation.py": "bb5e15a0f7e16224f4170fd8539fd648bd475309",
-    "tests/r04_ppa_scope.py": "3276231ecbaab480d86d2c4dad9a525a26b89cdd",
+    "tests/r04_ppa_global_cap/test_r04_production_acceptance.py": "de25869a77bb1221c59df0261decc93bd862ead9",
+    "tests/r04_ppa_scope.py": "ecf611b5ec4019dea35bfcc2e992dea50cbafc3e",
     "tests/test_bess02_scope.py": "fe36780c7a7b1d11c0d195a910d8ca3e976bec93",
     "tests/test_ci_v4_perf_scope.py": "40eab8da53ad055fafa2923dfe2c05f594d2b619",
     "tests/test_f03_financing_scope.py": "14932a8fb71b069cd92c4132240c3fe8732928a9",
     "tests/test_post432_l01_l02_scope.py": "e12794e45baf5365defc435345f7142ccaa50424",
     "tests/test_r02_ppa_ux_scope.py": "bcc6c0436df9b135a531e57e07d3c550c64a6533",
     "tests/test_r03_ppa_scope.py": "1ee3795801114fea603ebac5aee8b256f684cc81",
-    "tests/test_r04_ppa_scope.py": "8118109a3dafdf0b2738690a16f177b6cbcbc11b",
+    "tests/test_r04_ppa_scope.py": "66b1d4c681fd9741e503354b3b1a93faed888f22",
     "tests/test_t01e_remediation_scope.py": "431986560e2961d7b088ae827bc9b7781a4b341a"
   }
 }

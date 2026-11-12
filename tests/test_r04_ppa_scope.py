@@ -92,7 +92,7 @@ def test_manifest_schema_pins_and_immutable_base():
 def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
     assert T.SOURCE_PATHS == frozenset(("research/r04_ppa_global_cap/README.md", "research/r04_ppa_global_cap/__init__.py",
                                         "research/r04_ppa_global_cap/core.py"))
-    assert len(T.NEW) == 9 and "tests/r04_ppa_scope.py" in T.NEW and "tests/test_r04_ppa_scope.py" in T.NEW
+    assert len(T.NEW) == 10 and "tests/r04_ppa_scope.py" in T.NEW and "tests/test_r04_ppa_scope.py" in T.NEW
     assert all(p.startswith(("research/r04_ppa_global_cap/", "tests/r04_ppa_global_cap/")) or p in ("tests/r04_ppa_scope.py", "tests/test_r04_ppa_scope.py")
                for p in T.NEW)
     assert T.HANDOFF_PATHS == frozenset((

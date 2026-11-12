@@ -38,6 +38,7 @@ NEW = SOURCE_PATHS | frozenset((
     "tests/r04_ppa_global_cap/oracle.py",
     "tests/r04_ppa_global_cap/test_r04_allocation.py",
     "tests/r04_ppa_global_cap/test_r04_canonical_reconciliation.py",
+    "tests/r04_ppa_global_cap/test_r04_production_acceptance.py",
     "tests/r04_ppa_scope.py",
     "tests/test_r04_ppa_scope.py",
 ))
