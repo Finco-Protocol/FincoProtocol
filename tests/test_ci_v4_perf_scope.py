@@ -124,7 +124,7 @@ def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_can
     from tests import f03_financing_scope as G
     assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
     assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
-    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.manifest()["source_blobs"]}}
+    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
     for p in sorted(B.CURRENT_MAPS):
         disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
         base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]

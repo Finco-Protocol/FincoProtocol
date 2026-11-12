@@ -1053,7 +1053,7 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                      '    assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved '
                                      "key is the reviewed F03 successor's\n"
                                      '    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in '
-                                     'new.items() if k not in G.manifest()["source_blobs"]}}\n'
+                                     'new.items() if k not in G.effective_pins()}}\n'
                                      '    for p in sorted(B.CURRENT_MAPS):\n'
                                      '        disk = json.loads((ROOT / p).read_bytes())["source_blobs"]\n'
                                      '        base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]\n'
