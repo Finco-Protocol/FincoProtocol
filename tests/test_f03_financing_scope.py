@@ -136,7 +136,7 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),
@@ -147,6 +147,7 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
 ])
 def test_registry_mutations_are_rejected_by_f03_and_by_the_bess_chain(clone, name, fn):
     ref = _variant(clone, {F.REGISTRY: fn})
+    assert F.REGISTRY in subprocess.check_output(["git", "diff", "--name-only", "HEAD", ref], cwd=clone).decode().splitlines()
     assert not F.signature_ok(clone, ref), name
     assert not B.exact_blobs_ok(clone, ref), name
 

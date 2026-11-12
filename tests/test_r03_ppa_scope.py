@@ -213,16 +213,17 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 
 @pytest.mark.parametrize("name,fn", [
-    ("duplicate_r03", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.r03_ppa_scope')")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
-    ("swapped_t01e_r03", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')", b"'tests.r03_ppa_scope', 'tests.t01e_remediation_scope')")),
-    ("r03_missing", lambda b: b.replace(b", 'tests.r03_ppa_scope')", b")")),
+    ("duplicate_r03", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.fake_scope')")),
+    ("swapped_t01e_r03", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b"'tests.r03_ppa_scope', 'tests.t01e_remediation_scope')")),
+    ("r03_missing", lambda b: b.replace(b", 'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b")")),
     ("t01e_removed", lambda b: b.replace(b"'tests.t01e_remediation_scope', ", b"")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),
     ("earlier_reordered", lambda b: b.replace(b"'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope'", b"'tests.fin_v2_ci_scope', 'tests.fin_v2_3_scope'")),
 ])
 def test_registry_mutations_are_rejected(clone, name, fn):
     ref = _variant(clone, {T.REGISTRY: fn})
+    assert T.REGISTRY in subprocess.check_output(["git", "diff", "--name-only", "HEAD", ref], cwd=clone).decode().splitlines()
     with C.call_scope():
         assert not T.signature_ok(clone, ref) and not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), name
 
@@ -304,7 +305,7 @@ def test_supersession_is_pin_exact_and_cross_path_safe():
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
-    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.r03_ppa_scope')", b")")})
+    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.r03_ppa_scope', 'tests.f04_financing_scope')", b")")})
     with T.scoped(), F.scoped():
         assert T.signature_ok(clone, "HEAD") and F.exact_blobs_ok(clone, "HEAD")
         assert not T.signature_ok(clone, bad) and not F.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
