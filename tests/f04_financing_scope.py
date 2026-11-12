@@ -1326,6 +1326,13 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(root, ref):
+            N = _next()
+            pins = manifest(root, ref).get("source_blobs", {})
+            return N is not None and N.signature_ok(root, ref) and N.reviewed_edits_ok(root, ref) and all(
+                _read(root, p, ref) == expected_handoff(root, p) and pins.get(p) == _blob(_read(root, p, ref))
+                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS)
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
@@ -1495,10 +1502,17 @@ def _signature_ok(root, ref, closure=False):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
-            return False
+        from tests import c06_cost_workspace_scope as C06
+        c06 = C06.signature_ok(root, ref)
+        for p in FROZEN:
+            if current.get(p) == _blob(_base_bytes(key, p)):
+                continue
+            # The historical BASE pin stays immutable. Only the owner-approved literal C06 handoff may supersede current bytes.
+            if not (c06 and p in ('tests/ci_v4_perf_scope.py', 'tests/f03_financing_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py')
+                    and modes.get(p) == "100644" and C06.supersedes(p, current.get(p), root, ref)):
+                return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         return False

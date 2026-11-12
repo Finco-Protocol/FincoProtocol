@@ -263,6 +263,14 @@ def _exact_blobs_ok(repo=None, ref=None):
         return _exact_blobs_ok_inner(repo, ref)
 
 
+def _c06_pin(path, blob, root, ref):
+    """Only the finite Correction B successor may move these exact U2 pins; history remains untouched."""
+    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', 'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/u2_scope.py'):
+        return False
+    from tests import c06_cost_workspace_scope as C06
+    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
+
+
 def _exact_blobs_ok_inner(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
@@ -286,14 +294,14 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha and not _c06_pin(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _c06_pin(p, listed[p], root, ref) for p in pins):
                 return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes and R1 files can never move
         changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -330,6 +338,8 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
+    if path == "frontend/src/app/editing/CostLinesGridView.tsx" and _c06_pin(path, value, ROOT if repo is None else Path(repo), ref):
+        return True
     """Bounded supersession for U1: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
     return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
 

@@ -38,7 +38,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     data=F.manifest()
     assert set(data['source_blobs'])==F.OWNED_PATHS
     assert set(data['base_blobs'])==F.SUPERSEDED
-    assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js')
+    assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','tests/u2_scope.py','tests/ux_pr3b1_scope.py')
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)
@@ -110,3 +110,79 @@ def test_committed_tamper_is_rejected_in_separate_ref(clone,path):
             assert F.exact_blobs_ok(clone,'HEAD')
             assert not F.exact_blobs_ok(clone,bad) and not C.valid(clone,bad)
             assert F.exact_blobs_ok(clone,'HEAD')
+
+@pytest.mark.parametrize('path', sorted(F.SOURCE_PATHS))
+def test_paired_source_and_manifest_pin_forgery_is_not_authorization(clone, path):
+    with Mutation(clone):
+        f=clone/path;f.write_bytes(f.read_bytes()+b'\n')
+        mp=clone/F.MANIFEST;data=json.loads(mp.read_text())
+        data['source_blobs'][path]=F._blob(f.read_bytes())
+        # Even recomputing every dependent current map and its pin cannot authorize new product bytes.
+        for p in F.CURRENT_MAPS:
+            raw=F.expected_map(clone,p,data['source_blobs'])
+            (clone/p).write_bytes(raw);data['source_blobs'][p]=F._blob(raw)
+        mp.write_text(json.dumps(data,sort_keys=True,indent=2)+'\n')
+        with C.call_scope():
+            assert not F.signature_ok(clone) and not C.valid(clone)
+
+@pytest.mark.parametrize('path', sorted(F.HANDOFF_PATHS))
+def test_one_sided_current_guard_handoff_fails_closed(clone,path):
+    with Mutation(clone):
+        (clone/path).write_bytes(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=clone))
+        with C.call_scope():
+            assert not F.signature_ok(clone) and not C.valid(clone)
+
+
+def test_accepted_ref_preserves_all_preexisting_exact_guards_and_original_code(clone):
+    from tests import ux_pr2b_scope as B, ux_pr2c_scope as D, ux_pr3b1_scope as U
+    provider='frontend/src/app/capex/ProfileDraftProvider.tsx'
+    editor='frontend/src/app/capex/ProfileRowEditor.tsx'
+    with C.call_scope():
+        assert not F.signature_ok(clone,F.BASE)
+        for m in C.cohorts():
+            if m.__name__!=F.__name__:
+                assert m.exact_blobs_ok(clone,F.BASE),m.__name__
+        assert B.ci_authority_ok(clone,F.BASE)
+        for path in (provider,editor):
+            old=git(clone,'rev-parse',F.BASE+':'+path)
+            # Original accepted source remains accepted, new source cannot attest the old ref.
+            assert B._pr3b1_pin(path,old,clone,F.BASE) or D.manifest(clone,F.BASE)['source_blobs'].get(path)==old or B.manifest(clone,F.BASE)['source_blobs'][path]==old
+            assert not B._pr3b1_pin(path,F.manifest()['source_blobs'][path],clone,F.BASE,signature=True)
+        assert not U.supersedes('tests/ux_pr3b1_scope.py', F.manifest()['source_blobs']['tests/ux_pr3b1_scope.py'],clone,F.BASE)
+    # Execute the historical registry and code too: the new current-head registry must not stand in for old code.
+    original=git(clone,'rev-parse','HEAD')
+    try:
+        git(clone,'checkout','-q','--detach',F.BASE)
+        script='from tests import fin_v2_cohorts as C\nwith C.call_scope():\n assert C.valid()\n assert all(m.exact_blobs_ok() for m in C.cohorts())\nprint("ACCEPTED_HISTORICAL_COMPOSITE_PASS")'
+        import sys
+        result=subprocess.run([sys.executable,'-c',script],cwd=clone,capture_output=True,text=True,check=True)
+        assert 'ACCEPTED_HISTORICAL_COMPOSITE_PASS' in result.stdout
+    finally:
+        git(clone,'checkout','-q',original)
+
+
+def test_altered_accepted_history_is_rejected_by_old_and_current_guards(clone):
+    original=git(clone,'rev-parse','HEAD')
+    try:
+        git(clone,'checkout','-q','--detach',F.BASE)
+        path=clone/'tests/ux_pr2b_scope.py';path.write_bytes(path.read_bytes()+b'\n')
+        git(clone,'add','tests/ux_pr2b_scope.py');git(clone,'commit','-qm','altered accepted history')
+        bad=git(clone,'rev-parse','HEAD')
+        import sys
+        script='from tests import fin_v2_cohorts as C, r04_ppa_scope as W\nwith C.call_scope():\n assert not W.signature_ok()\n assert not C.valid()\nprint("ALTERED_HISTORY_REJECTED")'
+        result=subprocess.run([sys.executable,'-c',script],cwd=clone,capture_output=True,text=True,check=True)
+        assert 'ALTERED_HISTORY_REJECTED' in result.stdout
+        git(clone,'checkout','-q',original)
+        with C.call_scope():
+            assert not R.signature_ok(clone,bad) and not C.valid(clone,bad)
+    finally:
+        git(clone,'reset','--hard','HEAD');git(clone,'checkout','-q',original)
+
+
+def test_direct_reviewed_edits_rejects_a_forged_historical_manifest(clone):
+    from tests import f03_financing_scope as P
+    with Mutation(clone):
+        p=clone/P.MANIFEST;d=json.loads(p.read_text());d['source_blobs'][P.REGISTRY]='0'*40
+        p.write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
+        with C.call_scope():
+            assert not P.reviewed_edits_ok(clone) and not F.signature_ok(clone) and not C.valid(clone)

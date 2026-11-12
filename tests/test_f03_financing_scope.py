@@ -32,7 +32,7 @@ def test_f03_current_maps_are_only_the_two_moved_pins():
         assert all(old[k] == current[k] for k in old if k != "source_blobs")
         assert set(old["source_blobs"]) == set(current["source_blobs"])
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != current["source_blobs"][k]}
-        assert changed <= set(F.MAP_KEYS)
+        assert changed <= set(F.map_keys())
         for k in changed:
             assert current["source_blobs"][k] == F.effective_pins()[k]      # a key a reviewed successor moved again follows its pin
 
@@ -89,7 +89,7 @@ def test_f03_older_ci_guard_rejects_unreviewed_workflow_pins():
 
 # ---- BESS02 -> F03 finite forward successor: positive and adversarial controls (every variant is an isolated clone commit) ----
 import pytest
-from tests import c06_cost_workspace_scope as V
+from tests import c06_cost_workspace_scope as C06_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 from tests import bess02_scope as B, r02_ppa_ux_scope as R, fin_v2_cohorts as C
@@ -135,12 +135,12 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
                                   "tests.r03_ppa_scope")) or (
         C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (
         C.COHORT_MODULES[-7:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == V.BASE_COHORTS + (V.__name__,) and V.signature_ok())
+        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
 
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')", b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),

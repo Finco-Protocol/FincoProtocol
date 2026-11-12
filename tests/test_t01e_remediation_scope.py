@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from tests import c06_cost_workspace_scope as V
+from tests import c06_cost_workspace_scope as C06_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -105,8 +105,8 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     from tests import r03_ppa_scope as Y
     for p in T.HANDOFFS:
-        if V.signature_ok() and p in V.HANDOFFS:
-            assert (ROOT / p).read_bytes() == V.expected_handoff(ROOT, p)
+        if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS:
+            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
             continue
         if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 substitution of this shared path
@@ -129,7 +129,7 @@ def test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_s
     i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")
     assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"
     assert (C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"),
-                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES == V.BASE_COHORTS + (V.__name__,) and V.signature_ok())
+                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1
 
 
@@ -147,7 +147,11 @@ def test_current_maps_move_only_the_registry_key():
 
 def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():
     for p in T.FROZEN:
-        assert (ROOT / p).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + p], cwd=ROOT), p
+        if p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
+            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == C06_APPROVAL.manifest()["source_blobs"][p]
+        else:
+            assert (ROOT / p).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + p], cwd=ROOT), p
 
 
 def test_the_whole_chain_is_exact_and_the_composite_is_valid_on_the_committed_head(clone):
@@ -225,7 +229,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')", b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.fake_scope')")),
     ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope'")),
     ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b", 'tests.r03_ppa_scope'")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),

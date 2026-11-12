@@ -209,6 +209,11 @@ def _pr3b1():
 
 
 def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):
+    # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.
+    if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', 'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(repo, ref) and C06.supersedes(path, blob, repo, ref):
+            return True
     # Reviewed CI V4 module / pr2b-suite successors, proven by F03 without this cohort.
     if path in ('tests/ci_v4_scope.py', 'tests/test_ux_pr2b_scope.py'):
         from tests import f03_financing_scope as F

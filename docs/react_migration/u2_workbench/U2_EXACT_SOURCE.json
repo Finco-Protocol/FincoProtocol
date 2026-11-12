@@ -50,6 +50,6 @@
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "288b77d945d329f44bfe4db556ed8dd7af6d381d",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
-    "tests/u2_scope.py": "fa1b1cfcd264c971b6898a0932941a516d1c4198"
+    "tests/u2_scope.py": "b062eb09d0f5c68337bcf727765eec74931508c9"
   }
 }
