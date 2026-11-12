@@ -20,7 +20,7 @@ export interface SelectedRun {
   identity: {history_id:string; snapshot_id:string; composite_hash:string; scenario_id:string|null; state:'CURRENT'|'STALE'|'HISTORICAL'};
   sources_uses: SourcesUses;
   construction:{rows:Array<{period_index:number;date:string|null;fields:SuRow[]}>;fc_senior_draw:{value:number|null;unit:string;source:string}};
-  repayment:{available:boolean;reason:string;rows:Array<Record<string, unknown>>};
+  repayment:{available:boolean;reason:string;rows:Array<Record<string, unknown>>;axis?:{frequency:string;periods_per_year:number|null;period_count:number}};
   source_authority:string;internal_run_binding:string;studio_credit_cross_view:string;
 }
 export type Studio = FinancingStudioPayload & { sources_uses: FinancingStudioPayload['sources_uses'] & { view?: SourcesUses };

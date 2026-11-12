@@ -150,6 +150,9 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
               <option value="">Existing project method (no override)</option>
               <option value="flat_dscr_sculpted">DSCR sculpting with gearing cap</option>
               <option value="gearing_cap">Gearing cap / level principal</option>
+              {draft.sizingMode && !['flat_dscr_sculpted', 'gearing_cap', 'minimum_dscr_sculpted', 'frozen_excel_schedule'].includes(draft.sizingMode) && <option value={draft.sizingMode} disabled>Stored method · {draft.sizingMode} · read-only</option>}
+              <option value="minimum_dscr_sculpted" disabled>Minimum-DSCR solver · unavailable</option>
+              <option value="frozen_excel_schedule" disabled>Frozen schedule · read-only reference</option>
             </select></label>
           {view.renewable
             ? <label className="rcm-field">Lender production case
@@ -160,6 +163,7 @@ export function BankabilityEditor({ project, view, editable, identityHash, onSav
             : <p className="rx-note">Renewable production-yield cases do not apply to this project.</p>}
         </div>
         <p className="rx-note">Lender sizing does not replace the operating production case. Requested gearing is a cap, not funded debt. Frozen schedules and minimum-DSCR mode are not executable here.</p>
+        <p className="rx-note">Repayment profile follows this saved sizing selection: DSCR sculpting with gearing cap, or level principal. There is no independent facility repayment override here. Inherit preserves the existing strategy; Save does not Run.</p>
       </fieldset>
 
       <fieldset className="rcm-fieldset" disabled={disabled}>
