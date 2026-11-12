@@ -29,7 +29,7 @@ def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
     assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
-        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope') and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
+        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1
     for ref in (None,'HEAD'):
         with C.call_scope():

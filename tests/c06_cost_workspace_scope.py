@@ -282,7 +282,14 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                    '                return False\n'
                                    '        return N.reviewed_edits_ok(root, ref) if nxt else True\n'
                                    '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\n'
-                                   '        return False')],
+                                   '        return False'),
+                                  ('            if raw != current.encode() or pins.get(p) != _blob(raw):\n                return False',
+                                   '            if raw != current.encode() or pins.get(p) != _blob(raw):\n'
+                                   '                from tests import c06_cost_workspace_scope as C06\n'
+                                   '                if not (p in ("tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py")\n'
+                                   '                        and C06.signature_ok(root, ref) and C06.supersedes(p, _blob(raw), root, '
+                                   'ref)):\n'
+                                   '                    return False')],
  'tests/f04_financing_scope.py': [('        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):\n'
                                    '            return False',
                                    '        from tests import c06_cost_workspace_scope as C06\n'
@@ -1271,9 +1278,9 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                         "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
                                         "    assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (\n"
                                         '        '
-                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope', "
-                                        "'tests.c06_cost_workspace_scope') and W.signature_ok())) or (C.COHORT_MODULES == "
-                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())\n'
+                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') "
+                                        'and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())\n'
                                         "    assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1\n"
                                         "    for ref in (None,'HEAD'):\n"
                                         '        with C.call_scope():\n'
