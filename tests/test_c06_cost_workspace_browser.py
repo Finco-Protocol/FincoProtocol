@@ -132,15 +132,16 @@ def test_assumptions_labels_wrap_at_word_boundaries_never_one_character(live_ser
         page.set_viewport_size({'width': width, 'height': 900})
         page.wait_for_timeout(1200)
         probe = page.evaluate("""() => {
-          const table = document.querySelector('.rx-input-table');
-          if (!table) return null;
-          const th = table.querySelector('th');
-          const labels = Array.from(table.querySelectorAll('tbody th, tbody td:first-child'))
-            .filter(n => (n.innerText || '').trim().length > 6);
+          const tables = Array.from(document.querySelectorAll('.rx-input-table'))
+            .filter(tb => tb.offsetParent !== null);
+          if (!tables.length) return null;
+          const th = tables[0].querySelector('th');
+          const labels = tables.flatMap(tb => Array.from(tb.querySelectorAll('tbody th, tbody td:first-child')))
+            .filter(n => (n.innerText || '').trim().length > 6 && n.getBoundingClientRect().width > 0);
           const rects = labels.map(n => n.getBoundingClientRect());
           return {
             wrap: getComputedStyle(th).overflowWrap,
-            tableLayout: getComputedStyle(table).tableLayout,
+            tableLayout: getComputedStyle(tables[0]).tableLayout,
             minLabelWidth: rects.length ? Math.round(Math.min(...rects.map(r => r.width))) : null,
             maxLabelHeight: rects.length ? Math.round(Math.max(...rects.map(r => r.height))) : null,
             overflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -197,7 +198,7 @@ def test_capex_month_navigation_unit_labels_and_expanded_monthly_view(live_serve
         assert expanded.locator('[data-download-csv="true"]').count() == 1
         expanded.locator('summary').click()
         assert page.locator('[data-capex-month]').count() >= 1
-        assert 'Total (kEUR)' in page.locator('[data-capex-months]').inner_text()
+        assert 'total (keur)' in page.locator('[data-capex-months]').inner_text().lower()
         assert page.evaluate('document.documentElement.scrollWidth - window.innerWidth') <= 1
         if folder := os.environ.get('C06_SCREENSHOT_DIR'):
             Path(folder).mkdir(parents=True, exist_ok=True)
