@@ -30,18 +30,22 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
     assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES
     # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete signature
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-    assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
-        C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok()) or (
-        C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")
-        and G.signature_ok() and Z.signature_ok()) or (
-        C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
-        and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (
-        C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
-        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
+    with C.call_scope():
+        assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
+            C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok()) or (
+            C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")
+            and G.signature_ok() and Z.signature_ok()) or (
+            C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
+            and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (
+            C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
+            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
     assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
-    assert F.exact_blobs_ok() is True
-    assert F.signature_ok() is True
-    assert C.valid() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True
+    with C.call_scope():
+        assert F.signature_ok() is True
+    with C.call_scope():
+        assert C.valid() is True
 
 
 def test_every_handoff_file_equals_its_reviewed_literal_substitution():
@@ -55,9 +59,12 @@ def test_every_handoff_file_equals_its_reviewed_literal_substitution():
 
 
 def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():
-    assert B.signature_ok() is True
-    assert B.reviewed_edits_ok() is True
-    assert B.exact_blobs_ok() is True
+    with C.call_scope():
+        assert B.signature_ok() is True
+    with C.call_scope():
+        assert B.reviewed_edits_ok() is True
+    with C.call_scope():
+        assert B.exact_blobs_ok() is True
     assert B._next() is F
     # the BESS02 closure now covers exactly its own paths plus this leaf's
     assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()
@@ -72,13 +79,14 @@ def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tai
     assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     own = accepted + ("tests.ci_v4_perf_scope",)
-    assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
-            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
-                and G.signature_ok() and Z.signature_ok())
-            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
-                and G.signature_ok() and Z.signature_ok() and Y.signature_ok())
-            or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
-                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()))
+    with C.call_scope():
+        assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
+                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
+                    and G.signature_ok() and Z.signature_ok())
+                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
+                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok())
+                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
+                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()))
     assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1
 
 
@@ -146,15 +154,20 @@ def test_one_byte_of_drift_in_any_owned_path_fails_closed_and_restores(path):
     original = target.read_bytes()
     try:
         target.write_bytes(original + b"\n# drift\n")
-        assert F.exact_blobs_ok() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False
         # a current map's bytes belong to the full proof only: the signature never reads a foreign manifest, every other path is in it
-        assert F.signature_ok() is (path in F.CURRENT_MAPS)
-        assert C.valid() is False
+        with C.call_scope():
+            assert F.signature_ok() is (path in F.CURRENT_MAPS)
+        with C.call_scope():
+            assert C.valid() is False
     finally:
         target.write_bytes(original)
     # a FRESH evaluation after the restore passes again; nothing was cached across the boundary
-    assert F.exact_blobs_ok() is True
-    assert C.valid() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True
+    with C.call_scope():
+        assert C.valid() is True
 
 
 def test_a_forged_pin_in_the_leaf_manifest_fails_closed_and_restores():
@@ -164,26 +177,32 @@ def test_a_forged_pin_in_the_leaf_manifest_fails_closed_and_restores():
         key = "tests/test_trust_readiness_controls.py"
         d["source_blobs"][key] = "0" * 40
         (ROOT / F.MANIFEST).write_bytes((json.dumps(d, indent=2, sort_keys=True) + "\n").encode())
-        assert F.exact_blobs_ok() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False
     finally:
         (ROOT / F.MANIFEST).write_bytes(original)
-    assert F.exact_blobs_ok() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True
 
 
 def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
     marker = ("'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
-              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope')")
+              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope')")
     assert text.count(marker) == 1
     try:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())
-        assert F.reviewed_edits_ok() is False
-        assert F.exact_blobs_ok() is False
-        assert C.valid() is False
+        with C.call_scope():
+            assert F.reviewed_edits_ok() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False
+        with C.call_scope():
+            assert C.valid() is False
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
-    assert F.exact_blobs_ok() is True and C.valid() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True and C.valid() is True
 
 
 def test_a_registry_deletion_of_the_accepted_bess_tail_fails_closed():
@@ -193,22 +212,28 @@ def test_a_registry_deletion_of_the_accepted_bess_tail_fails_closed():
         forged = text.replace(", 'tests.bess02_scope', 'tests.ci_v4_perf_scope'", ", 'tests.ci_v4_perf_scope'")
         assert forged != text
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())
-        assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False
-        assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased
+        with C.call_scope():
+            assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False
+        with C.call_scope():
+            assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
-    assert F.exact_blobs_ok() is True and B.signature_ok() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True and B.signature_ok() is True
 
 
 def test_a_foreign_new_source_file_fails_the_closure_and_restores():
     extra = ROOT / "app/v2/react_unreviewed_correction_p.py"
     try:
         extra.write_text('"""unreviewed"""\n', encoding="utf-8")
-        assert F.exact_blobs_ok() is False
-        assert C.valid() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False
+        with C.call_scope():
+            assert C.valid() is False
     finally:
         extra.unlink()
-    assert F.exact_blobs_ok() is True and C.valid() is True
+    with C.call_scope():
+        assert F.exact_blobs_ok() is True and C.valid() is True
 
 
 def test_the_scope_memo_never_survives_a_mutation_between_two_calls():
@@ -217,16 +242,19 @@ def test_the_scope_memo_never_survives_a_mutation_between_two_calls():
     path = ROOT / rel
     original = path.read_bytes()
     with K.call_scope():
-        assert F.exact_blobs_ok() is True and K.valid() is True
+        with C.call_scope():
+            assert F.exact_blobs_ok() is True and K.valid() is True
     try:
         path.write_bytes(original + b"\n")
         with K.call_scope():                       # fresh outer call AFTER the mutation
-            assert F.exact_blobs_ok() is False and K.valid() is False
+            with C.call_scope():
+                assert F.exact_blobs_ok() is False and K.valid() is False
         assert K._CALL == [] and F._SCOPE == []
     finally:
         path.write_bytes(original)
     with K.call_scope():
-        assert K.valid() is True
+        with C.call_scope():
+            assert K.valid() is True
 
 
 def test_no_forbidden_authority_joins_the_leaf():
@@ -270,15 +298,20 @@ def test_every_older_guard_reaches_the_reviewed_pins_through_one_hook_each():
     for p in FROZEN_EDITS:
         pin = F.manifest()["source_blobs"][p]
         assert p in OB1.FROZEN and p not in OB1.SUPERSEDED
-        assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
+        with C.call_scope():
+            assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
         assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin
     # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own superseded set
     pin = F.manifest()["source_blobs"][WEIGHTS]
-    assert U31.supersedes(WEIGHTS, pin) is True
-    assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
-    assert U31.supersedes(WEIGHTS, "0" * 40) is False
+    with C.call_scope():
+        assert U31.supersedes(WEIGHTS, pin) is True
+    with C.call_scope():
+        assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
+    with C.call_scope():
+        assert U31.supersedes(WEIGHTS, "0" * 40) is False
     for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/node_weights.json"):
-        assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
+        with C.call_scope():
+            assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
 
 
 @pytest.mark.parametrize("path", FROZEN_EDITS)
@@ -287,9 +320,11 @@ def test_a_frozen_bess01_test_with_any_other_bytes_than_the_reviewed_pin_fails_c
     original = target.read_bytes()
     try:
         target.write_bytes(_git("show", F.BASE + ":" + path))            # the ACCEPTED BASE bytes are no longer this leaf's reviewed bytes
-        assert F.exact_blobs_ok() is False and C.valid() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False and C.valid() is False
         target.write_bytes(original.replace(b"call_scope", b"call_scope_x", 1) if b"call_scope" in original else original + b"\n")
-        assert F.exact_blobs_ok() is False and OB1.exact_blobs_ok() is False and C.valid() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False and OB1.exact_blobs_ok() is False and C.valid() is False
     finally:
         target.write_bytes(original)
     assert _fresh_ok()
@@ -302,7 +337,8 @@ def test_a_frozen_bess01_path_this_leaf_does_not_own_stays_frozen():
     original = target.read_bytes()
     try:
         target.write_bytes(original + b"\n# unreviewed\n")
-        assert OB1.exact_blobs_ok() is False and C.valid() is False
+        with C.call_scope():
+            assert OB1.exact_blobs_ok() is False and C.valid() is False
     finally:
         target.write_bytes(original)
     assert _fresh_ok()
@@ -322,7 +358,8 @@ def test_a_current_map_carrying_the_old_or_a_forged_value_for_a_moved_key_fails_
             assert key in d["source_blobs"] and d["source_blobs"][key] != wrong
             d["source_blobs"][key] = wrong
             target.write_bytes((json.dumps(d, indent=2, sort_keys=True) + "\n").encode())
-            assert B.exact_blobs_ok() is False and F.exact_blobs_ok() is False and C.valid() is False
+            with C.call_scope():
+                assert B.exact_blobs_ok() is False and F.exact_blobs_ok() is False and C.valid() is False
     finally:
         target.write_bytes(original)
     assert _fresh_ok()
@@ -334,7 +371,8 @@ def test_an_executable_mode_on_any_handed_off_or_directly_edited_path_fails_clos
     mode = target.stat().st_mode
     try:
         target.chmod(0o755)
-        assert F.exact_blobs_ok() is False and C.valid() is False
+        with C.call_scope():
+            assert F.exact_blobs_ok() is False and C.valid() is False
     finally:
         target.chmod(mode & 0o777)
     assert _fresh_ok()
@@ -350,7 +388,8 @@ def test_a_forged_base_blob_or_an_extra_manifest_key_fails_closed():
             d = json.loads(original)
             edit(d)
             (ROOT / F.MANIFEST).write_bytes((json.dumps(d, indent=2, sort_keys=True) + "\n").encode())
-            assert F.exact_blobs_ok() is False and C.valid() is False
+            with C.call_scope():
+                assert F.exact_blobs_ok() is False and C.valid() is False
     finally:
         (ROOT / F.MANIFEST).write_bytes(original)
     assert _fresh_ok()
