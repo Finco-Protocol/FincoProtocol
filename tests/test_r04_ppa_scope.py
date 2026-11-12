@@ -98,7 +98,7 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
     assert T.HANDOFF_PATHS == frozenset((
         "tests/f04_financing_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_ci_v4_perf_scope.py",
         "tests/test_r02_ppa_ux_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_f03_financing_scope.py",
-        "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py"))
+        "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_f04_financing_scope.py"))
     assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS and T.MAP_KEYS == ("tests/fin_v2_cohorts.py",)
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") for p in T.OWNED_PATHS | {T.MANIFEST})
     assert T.PREDECESSOR == "tests/f04_financing_scope.py"

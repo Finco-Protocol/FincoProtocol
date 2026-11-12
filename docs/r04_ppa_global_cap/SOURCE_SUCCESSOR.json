@@ -15,6 +15,7 @@
     "tests/test_bess02_scope.py": "37a21c52eeaa471c1c019b4d49809cb021ee6fa6",
     "tests/test_ci_v4_perf_scope.py": "59d006d2316baca2eae889b86ce068676cb4ac44",
     "tests/test_f03_financing_scope.py": "44fbee278a3d76602eff17cd2b3bf14d8ade88f4",
+    "tests/test_f04_financing_scope.py": "74d56731ef2204a739f0df47da789e3c88f6cd11",
     "tests/test_post432_l01_l02_scope.py": "0547d342456ade22ad1e8dc2256a9ecb34951721",
     "tests/test_r02_ppa_ux_scope.py": "2fc449f1ba9da8122157c05ced49469a60309b1c",
     "tests/test_r03_ppa_scope.py": "a304ae9f24637fae61b09e86e2e1c054a200d3ab",
@@ -41,14 +42,15 @@
     "tests/r04_ppa_global_cap/test_r04_allocation.py": "cf666a9b48b0fa6b295cb32cf2942b5aeb0b71be",
     "tests/r04_ppa_global_cap/test_r04_canonical_reconciliation.py": "bb5e15a0f7e16224f4170fd8539fd648bd475309",
     "tests/r04_ppa_global_cap/test_r04_production_acceptance.py": "de25869a77bb1221c59df0261decc93bd862ead9",
-    "tests/r04_ppa_scope.py": "eed429ab7745629b1e6c48ce826d91119a458a40",
+    "tests/r04_ppa_scope.py": "89880cdf6117e4d73c28f0126342b95a7707870c",
     "tests/test_bess02_scope.py": "99e85cc69cfca6f597c7071f7115760f2999a885",
     "tests/test_ci_v4_perf_scope.py": "4a23f276dcf58f66699d68974d7dabfe17c48baa",
     "tests/test_f03_financing_scope.py": "0f04ed77dd3a496c01c50eb885ff021269324388",
+    "tests/test_f04_financing_scope.py": "991dd184ac3bdc66506ff63a7b08b77b550e3a6b",
     "tests/test_post432_l01_l02_scope.py": "84052401b8fc171b172f13a3dbdedc21f870d473",
     "tests/test_r02_ppa_ux_scope.py": "570bb108cac87cba23faae8cc61e6e6b89ed4ce3",
     "tests/test_r03_ppa_scope.py": "c967fa1bcb4e494148282eac7795d038e2df1887",
-    "tests/test_r04_ppa_scope.py": "715754fdee904a0ad2d9920442c6f0011729cdb5",
+    "tests/test_r04_ppa_scope.py": "34794f328d2279fe07d3bdd901823dbaa7fa3322",
     "tests/test_t01e_remediation_scope.py": "521715fbec25c4158f71b9a66d8ed0c25eb4f4d4"
   }
 }

@@ -53,6 +53,7 @@ HANDOFF_PATHS = frozenset((
     "tests/test_f03_financing_scope.py",
     "tests/test_t01e_remediation_scope.py",
     "tests/test_r03_ppa_scope.py",
+    "tests/test_f04_financing_scope.py",
 ))
 # ... and the eight current maps, of which only the registry key moves (the same bounded handoff F03, T01-E and R03 made).
 CURRENT_MAPS = frozenset((
@@ -400,6 +401,24 @@ HANDOFFS = {
          '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", b", \'tests.f04_financing_scope\'")),\n'),
         ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\')", b", \'tests.f04_financing_scope\')")})\n',
          '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", b", \'tests.f04_financing_scope\'")})\n'),
+    ],
+    'tests/test_f04_financing_scope.py': [
+        ('from tests import r03_ppa_scope as R, f03_financing_scope as P\n',
+         'from tests import r03_ppa_scope as R, f03_financing_scope as P\n'
+         'from tests import r04_ppa_scope as W\n'),
+        ("    assert C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope')\n",
+         "    assert C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (\n"
+         "        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())\n"),
+        ('    for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)\n',
+         '    for path in F.HANDOFFS:\n'
+         '        authority=W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\n'
+         '        assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)\n'),
+        ('        expected=json.loads(F.expected_map(ROOT,path))\n',
+         "        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)\n"),
+        ('            if kind==\'missing_registration\':text=text.replace(", \'tests.f04_financing_scope\')",\')\')\n',
+         '            if kind==\'missing_registration\':text=text.replace(", \'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')",", \'tests.r04_ppa_scope\')")\n'),
+        ('            elif kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\')","\'tests.f04_financing_scope\', \'tests.f04_financing_scope\')")\n',
+         '            elif kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')","\'tests.f04_financing_scope\', \'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')")\n'),
     ],
 }
 
