@@ -25,12 +25,26 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'frontend/src/app/capex/ProfileRowEditor.tsx': '47d48f7892200c001d29b66cdb8c09089e634420',
  'frontend/src/app/capex/__tests__/userLineProfile.test.mjs': '9f4905a7a74bc03d96c9432b7c91759608d13199',
  'frontend/src/app/capex/profileFocus.ts': '3f564d8c248f36aa1f526dc1b34298fb13db068a',
- 'frontend/src/app/editing/CostLinesGridView.tsx': '65cba98fcd82e6080816860b56b2808a7e82d142',
- 'static/react/finco-react.js': '36b69ce99f2b28ce2b6cae0d4cc785c753eae37b',
- 'tests/test_c06_cost_workspace_browser.py': 'ae25712fd913927e8500952fe4a83d3d79dc40ef',
+ 'frontend/src/app/editing/CostLinesGridView.tsx': '3a94c00610a56b76943ac4a0c78f0780513b9584',
+ 'frontend/src/app/plainCopy.ts': '035db98be8c4620a0c38eb0919d2cff8df81a266',
+ 'frontend/src/app/capex/CapexStudio.tsx': '14fa8e80201b34e9ee3e70ac1dbb9b6b0023ad4b',
+ 'frontend/src/app/CostWorkbench.tsx': 'fb0e1adf5e40e2567ecd0c89d4058e0e47343f21',
+ 'frontend/src/styles/rx-mvp-correction.css': '9a48b7ed70ac16bd0c2c26e8dd35749593eb4b53',
+ 'frontend/src/styles/compact-inputs.css': '53a1bb1dfc843df34235b3228a0f1f0580d2aea6',
+ 'static/react/finco-react.css': 'f3aa0c988a28b7b310c970ffa33993c026d11eb8',
+ 'tests/model_react_rcux_capex_acceptance.py': 'f31c875cb1ce78cb1cf1b10d8faafc7b24c1b716',
+ 'static/react/finco-react.js': '7cc73a4c432a41b82cb4f0ef2674def1ce5ea8b9',
+ 'tests/test_c06_cost_workspace_browser.py': '1048c182fb6e9726b9e9150e580694e420e3fbaa',
  'tests/test_c06_cost_workspace_scope.py': '5ddc8af3593e97a1bfd8c5e2b17339853da53cdf',
  'tests/test_c06_custom_capex_profile_replay.py': 'fcfbd6365b0d013de60de7d6423e57ce6808803d'}
 SOURCE_PATHS = frozenset(('docs/react_migration/c06_cost_workspace/C06_LEDGER.md',
+ 'frontend/src/app/plainCopy.ts',
+ 'frontend/src/app/capex/CapexStudio.tsx',
+ 'frontend/src/app/CostWorkbench.tsx',
+ 'frontend/src/styles/rx-mvp-correction.css',
+ 'frontend/src/styles/compact-inputs.css',
+ 'static/react/finco-react.css',
+ 'tests/model_react_rcux_capex_acceptance.py',
  'frontend/src/app/capex/ProfileDraftProvider.tsx',
  'frontend/src/app/capex/ProfileRowEditor.tsx',
  'frontend/src/app/capex/__tests__/userLineProfile.test.mjs',
@@ -62,6 +76,7 @@ HANDOFF_PATHS = frozenset(('tests/ci_v4_perf_scope.py',
  'tests/test_r04_ppa_scope.py',
  'tests/test_t01e_remediation_scope.py',
  'tests/u2_scope.py',
+ 'tests/u1_scope.py',
  'tests/ux_pr2b_scope.py',
  'tests/ux_pr2c_scope.py',
  'tests/ux_pr3b1_scope.py'))
@@ -91,7 +106,6 @@ FROZEN = ('.github/workflows/ci_v4_f01_job.yml',
  'docs/tax_reference_registry/t01e/SOURCE_SUCCESSOR.json',
  'research/r03_ppa_candidate/core.py',
  'research/r04_ppa_global_cap/core.py',
- 'static/react/finco-react.css',
  'tax_reference_registry/__init__.py',
  'tax_reference_registry/remediation.py',
  'tests/bess02_scope.py',
@@ -1897,9 +1911,9 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                            'C.valid(clone, ref), name')],
  'tests/u2_scope.py': [('def _exact_blobs_ok_inner(repo=None, ref=None):',
                         'def _c06_pin(path, blob, root, ref):\n'
-                        '    """Only the finite Correction B successor may move these exact U2 pins; history remains untouched."""\n'
+                        '    """Only the finite signed C06 successor (Correction B, then Correction C) may move these exact U2 pins; history remains untouched."""\n'
                         "    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', "
-                        "'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/u2_scope.py'):\n"
+                        "'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/u2_scope.py', 'frontend/src/app/CostWorkbench.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/u1_scope.py'):\n"
                         '        return False\n'
                         '    from tests import c06_cost_workspace_scope as C06\n'
                         '    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
@@ -1915,9 +1929,16 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                         '                return False'),
                        ('def supersedes(path, value, repo=None, ref=None):\n',
                         'def supersedes(path, value, repo=None, ref=None):\n'
-                        '    if path == "frontend/src/app/editing/CostLinesGridView.tsx" and _c06_pin(path, value, ROOT if repo is None '
+                        '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "frontend/src/app/CostWorkbench.tsx", "static/react/finco-react.js", '
+                        '"frontend/src/app/capex/CapexStudio.tsx", "frontend/src/styles/compact-inputs.css", '
+                        '"static/react/finco-react.css", "tests/u1_scope.py") and _c06_pin(path, value, ROOT if repo is None '
                         'else Path(repo), ref):\n'
                         '        return True\n')],
+  'tests/u1_scope.py': [('        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):\n',
+                        '        # C06 Correction C: the finite signed successor may move these exact U1 pins (bounded, like the PR2c hook below);\n        # history remains untouched and the tip cohort\'s own signature proves the extent of every moved pin.\n        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref)\n               and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):\n'),
+                        ('def base_blob(path, repo=None, ref=None):',
+                        'def _c06_correction_c_pin(path, blob, root, ref):\n    """Only the finite signed Correction C successor may move these exact U1 pins; history remains untouched."""\n    if path not in (\'frontend/src/app/capex/CapexStudio.tsx\', \'frontend/src/styles/compact-inputs.css\', \'static/react/finco-react.css\', \'tests/model_react_rcux_capex_acceptance.py\'):\n        return False\n    try:\n        from tests import c06_cost_workspace_scope as C06\n    except ImportError:\n        return False\n    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n\n\ndef base_blob(path, repo=None, ref=None):')],
+ 
  'tests/ux_pr2b_scope.py': [('def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n',
                              'def _pr3b1_pin(path, blob, repo=None, ref=None, *, signature=False):\n'
                              '    # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.\n'

@@ -264,8 +264,8 @@ def _exact_blobs_ok(repo=None, ref=None):
 
 
 def _c06_pin(path, blob, root, ref):
-    """Only the finite Correction B successor may move these exact U2 pins; history remains untouched."""
-    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', 'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/u2_scope.py'):
+    """Only the finite signed C06 successor (Correction B, then Correction C) may move these exact U2 pins; history remains untouched."""
+    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx', 'static/react/finco-react.js', 'tests/fin_v2_cohorts.py', 'tests/u2_scope.py', 'frontend/src/app/CostWorkbench.tsx', 'frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/u1_scope.py'):
         return False
     from tests import c06_cost_workspace_scope as C06
     return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
@@ -338,7 +338,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path == "frontend/src/app/editing/CostLinesGridView.tsx" and _c06_pin(path, value, ROOT if repo is None else Path(repo), ref):
+    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "frontend/src/app/CostWorkbench.tsx", "static/react/finco-react.js", "frontend/src/app/capex/CapexStudio.tsx", "frontend/src/styles/compact-inputs.css", "static/react/finco-react.css", "tests/u1_scope.py") and _c06_pin(path, value, ROOT if repo is None else Path(repo), ref):
         return True
     """Bounded supersession for U1: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
     return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value

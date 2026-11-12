@@ -46,7 +46,7 @@ export function CostWorkbench({ project, sheet, view, protectedReference, reload
         <div data-capex-monthly="true">
           <p className="rx-note" data-capex-monthly-note="true">
             When each CAPEX line is paid. The monthly profile is one document with its own <strong>Save profile</strong>; it is separate from the line amounts, which are saved on the
-            Lines view. Neither saves the other and neither runs the model.
+            Lines view. Neither saves the other and neither runs the model. The detailed per-month table with Copy / CSV lives under <strong>Expanded monthly view</strong> below — the same canonical server preview, not a second copy.
           </p>
           {protectedReference
             ? <p className="rx-empty" role="status" data-capex-unavailable="true">Templates are read-only. Start a project from this template to plan a CAPEX spending profile.</p>

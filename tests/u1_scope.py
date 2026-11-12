@@ -323,7 +323,10 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
                 current[name] = meta.split()[2]
             if set(current) != set(pins):
                 return False
-        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
+        # C06 Correction C: the finite signed successor may move these exact U1 pins (bounded, like the PR2c hook below);
+        # history remains untouched and the tip cohort's own signature proves the extent of every moved pin.
+        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref)
+               and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -355,6 +358,17 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
 @scoped()
 def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS or path == MANIFEST or _later_owns(path, repo, ref)
+
+
+def _c06_correction_c_pin(path, blob, root, ref):
+    """Only the finite signed Correction C successor may move these exact U1 pins; history remains untouched."""
+    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/model_react_rcux_capex_acceptance.py'):
+        return False
+    try:
+        from tests import c06_cost_workspace_scope as C06
+    except ImportError:
+        return False
+    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
 
 
 def base_blob(path, repo=None, ref=None):

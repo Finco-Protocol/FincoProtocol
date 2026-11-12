@@ -89,3 +89,119 @@ def test_added_active_line_profile_save_reload_run(live_server, browser, rcm_rea
         assert not errors, errors
     finally:
         context.close()
+
+
+# ── C06 Correction C + Addenda C1/C2: product truth, label geometry, CAPEX month navigation ──────────
+
+def test_inputs_product_truth_holds_in_both_editor_timing_orders(live_server, browser, rcm_react_flag):
+    # Correction C: the revenue-assumptions fields editor mounts asynchronously, so the product-truth scan must
+    # hold in BOTH timing orders (before and after it lands). Registry provenance wording (e.g. "…reference
+    # assumption") stays available behind the Technical-note disclosure and is never the visible hint of a field.
+    context, page, record, errors = session(browser, live_server, 'c06-correction-c-truth', 'solar')
+    code = record.project_code
+    try:
+        run_canonical(context, live_server, code)
+        page.goto(f'{live_server}/v2/model-react/{code}#inputs')
+        page.reload()
+        page.wait_for_selector('[data-react-workspace-version]')
+        page.wait_for_function("() => !document.body.innerText.includes('Loading the persisted') && "
+                               "!document.body.innerText.includes('Loading the canonical input grid')")
+        early = page.inner_text('body').lower()
+        page.wait_for_selector("[data-sheet-editor='revenue']", timeout=30000)          # the async editor landed
+        page.wait_for_timeout(500)                                                      # its own fields render
+        late = page.inner_text('body').lower()
+        for body in (early, late):
+            for token in ('synthetic', 'prototype', 'demo-fixed', 'fictional'):
+                assert token not in body, f'{token!r} visible in the inputs section body'
+        assert page.locator("[data-sheet-editor='revenue'] details.rx-tech").count() >= 1   # provenance kept, disclosed on demand
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_assumptions_labels_wrap_at_word_boundaries_never_one_character(live_server, browser, rcm_react_flag, width):
+    # Addendum C1: `.rx-input-table` keeps `overflow-wrap: break-word` (not `anywhere`), so no narrow ancestor can
+    # collapse a label column to one character per line; labels keep a readable minimum width at 1440 and 390.
+    context, page, record, errors = session(browser, live_server, f'c06-c1-{width}', 'solar')
+    code = record.project_code
+    try:
+        page.goto(f'{live_server}/v2/model-react/{code}#inputs')
+        page.reload()
+        page.wait_for_selector("[data-input-grid='canonical']")
+        page.set_viewport_size({'width': width, 'height': 900})
+        page.wait_for_timeout(1200)
+        probe = page.evaluate("""() => {
+          const table = document.querySelector('.rx-input-table');
+          if (!table) return null;
+          const th = table.querySelector('th');
+          const labels = Array.from(table.querySelectorAll('tbody th, tbody td:first-child'))
+            .filter(n => (n.innerText || '').trim().length > 6);
+          const rects = labels.map(n => n.getBoundingClientRect());
+          return {
+            wrap: getComputedStyle(th).overflowWrap,
+            tableLayout: getComputedStyle(table).tableLayout,
+            minLabelWidth: rects.length ? Math.round(Math.min(...rects.map(r => r.width))) : null,
+            maxLabelHeight: rects.length ? Math.round(Math.max(...rects.map(r => r.height))) : null,
+            overflow: document.documentElement.scrollWidth - window.innerWidth,
+          };
+        }""")
+        assert probe is not None and probe['wrap'] == 'break-word', probe
+        assert probe['tableLayout'] == 'fixed', probe
+        assert probe['minLabelWidth'] >= 100, probe            # no letter-per-line collapse
+        assert probe['maxLabelHeight'] <= 90, probe            # no runaway vertical stacking
+        assert probe['overflow'] <= 1, probe                   # no page-level horizontal overflow
+        if folder := os.environ.get('C06_SCREENSHOT_DIR'):
+            Path(folder).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(folder) / f'c06-c1-inputs-{width}.png'), full_page=True)
+        assert not errors, errors
+    finally:
+        context.close()
+
+
+def test_capex_month_navigation_unit_labels_and_expanded_monthly_view(live_server, browser, rcm_react_flag):
+    # Addendum C2: the Lines grid keeps native horizontal scroll with sticky Line/Amount columns, a live
+    # M-range indicator and Previous/Next controls; month headers and the note name the unit; month cells stay
+    # the exact server text (never re-rounded). The Monthly schedule keeps ONE canonical preview whose large
+    # per-month table with Copy / CSV moves under the collapsed Expanded monthly view.
+    context, page, record, errors = session(browser, live_server, 'c06-correction-c2-capex', 'solar')
+    code = record.project_code
+    try:
+        page.goto(f'{live_server}/v2/model-react/{code}#inputs/capex')
+        page.wait_for_selector('[data-cost-grid="capex"] [data-saved-total]')
+        page.locator('[data-cost-timeline-toggle="capex"]').click()
+        page.wait_for_selector('[data-timeline-note="ready"]')
+        note = page.locator('[data-timeline-note="ready"]').inner_text()
+        assert 'kEUR' in note and 'never re-rounds' in note, note
+        nav = page.locator('[data-tl-nav="true"]')
+        assert nav.count() == 1
+        assert 'kEUR' in page.locator('th.ci-h-tl').first.get_attribute('title'), 'month header names the unit'
+        before = page.evaluate("document.querySelector('.rx-lines-scroll').scrollLeft")
+        nav.locator('[data-tl-next="true"]').click()
+        page.wait_for_timeout(700)
+        after = page.evaluate("document.querySelector('.rx-lines-scroll').scrollLeft")
+        assert after > before, (before, after)
+        assert 'M' in nav.locator('[data-tl-range="true"]').inner_text()
+        line_cell = page.locator('td.ci-col-line').first
+        assert page.evaluate("getComputedStyle(document.querySelector('td.ci-col-line')).position") == 'sticky'
+        # Monthly schedule: the duplicated large table is opt-in under Expanded monthly view.
+        page.goto(f'{live_server}/v2/model-react/{code}#inputs/capex/monthly')
+        page.wait_for_selector("[data-capex-studio='ready']")
+        key = page.locator('[data-capex-item]').first.get_attribute('data-capex-item')
+        page.locator(f"[data-capex-shape='{key}']").select_option('FRONT_LOADED')
+        page.locator('[data-capex-preview]').click()
+        page.wait_for_selector("[data-capex-plan='current']")
+        expanded = page.locator("[data-capex-expanded-monthly='true']")
+        assert expanded.count() == 1 and expanded.get_attribute('open') is None
+        assert expanded.locator('[data-copy-table="true"]').count() == 1
+        assert expanded.locator('[data-download-csv="true"]').count() == 1
+        expanded.locator('summary').click()
+        assert page.locator('[data-capex-month]').count() >= 1
+        assert 'Total (kEUR)' in page.locator('[data-capex-months]').inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth - window.innerWidth') <= 1
+        if folder := os.environ.get('C06_SCREENSHOT_DIR'):
+            Path(folder).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(folder) / 'c06-c2-capex-months.png'), full_page=True)
+        assert not errors, errors
+    finally:
+        context.close()

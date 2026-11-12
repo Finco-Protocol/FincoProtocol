@@ -57,6 +57,9 @@ def test_rcux_capex_studio_lists_the_canonical_items_and_previews_without_writin
     assert "1 item changed" in page.locator("[data-capex-save]").inner_text()
     page.locator("[data-capex-preview]").click()
     page.wait_for_selector("[data-capex-plan='current']", timeout=30000)
+    expanded = page.locator("[data-capex-expanded-monthly='true']")
+    assert expanded.count() == 1 and expanded.get_attribute("open") is None          # C2: the duplicated large table is opt-in, not a default page
+    expanded.locator("summary").click()                                             # open the Expanded monthly view for the per-month checks
     assert page.locator("[data-capex-month]").count() == api["months"]
     assert page.locator("[data-capex-reconciles]").get_attribute("data-capex-reconciles") == "true"
     assert page.locator("[data-capex-unallocated]").inner_text() == "0"                          # PR-U1: report precision (default 0 decimals)
@@ -175,6 +178,10 @@ def test_rcux_capex_studio_fits_every_viewport(live_server, an_session, width):
     page.select_option(f"[data-capex-shape='{key}']", "FRONT_LOADED")
     page.locator("[data-capex-preview]").click()
     page.wait_for_selector("[data-capex-months]", timeout=30000)
+    expanded = page.locator("[data-capex-expanded-monthly='true']")
+    if expanded.count():
+        assert expanded.get_attribute("open") is None                                # C2: collapsed by default
+        expanded.locator("summary").click()
     assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), "horizontal page scroll"
     box = page.locator("[data-capex-months]").locator("xpath=ancestor::div[contains(@class,'rcm-scroll')][1]").bounding_box()
     assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1

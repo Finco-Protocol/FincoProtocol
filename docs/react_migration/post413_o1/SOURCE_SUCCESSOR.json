@@ -50,7 +50,7 @@
     "frontend/src/app/editing/pendingEdits.ts": "c70748b5de42237816bb6240d74f3c415c281f97",
     "frontend/src/app/editing/saveAll.ts": "6ccafbcc3794a8ca07b5e23a01a74ef5c6b6ee24",
     "frontend/src/app/workflow/PPAEditorView.tsx": "5de1df8aee8ebe10a7cbdbca4260ace01abe9d6f",
-    "static/react/finco-react.js": "36b69ce99f2b28ce2b6cae0d4cc785c753eae37b",
+    "static/react/finco-react.js": "7cc73a4c432a41b82cb4f0ef2674def1ce5ea8b9",
     "tests/fin_v2_cohorts.py": "516177b4f9d03b9accae6e2d5640e06ea9456e95",
     "tests/post413_o1_scope.py": "684a6a5e810db39b9fb74f10d038006ba12db5ab",
     "tests/test_d7_save_all_profile_atomic.py": "552db96af6b9406d22b730e9b45c7554d84674f4",
@@ -67,6 +67,6 @@
     "tests/test_u2_scope.py": "b19776c30bb04943ac7dd590d6575a43a5589b6a",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "288b77d945d329f44bfe4db556ed8dd7af6d381d",
-    "tests/u2_scope.py": "b062eb09d0f5c68337bcf727765eec74931508c9"
+    "tests/u2_scope.py": "596305c4fff829f8f64a18ce2cef7ed0a5966300"
   }
 }
