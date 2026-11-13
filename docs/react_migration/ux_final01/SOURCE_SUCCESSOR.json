@@ -80,7 +80,7 @@
     "tests/test_r04_ppa_scope.py": "f5ee4fdc5db13e384aaf2f8acd343a3c849c455e",
     "tests/test_t01e_remediation_scope.py": "720b8d656ed5092d0b403eb301f2ecc4c9a00f80",
     "tests/test_ux_final01_browser.py": "3d9c11b7a7c2660f7fe70accae56419511796a12",
-    "tests/test_ux_final01_scope.py": "a46f959cc5c0bdd25034eaafaef270f2335daff5",
+    "tests/test_ux_final01_scope.py": "27cfc8007b4852cc8da0a5c30a616e6a204a87e3",
     "tests/u1_scope.py": "794ed4300a05d817d1a23a57ee553606bfa239d8",
     "tests/u2_scope.py": "9c66a13cfcf4d7f3edd0c0e98fd708672711592b",
     "tests/ux_final01_scope.py": "79f02cfaf7a4335d1b9031c6674fe83c3885cb44",

@@ -416,22 +416,23 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
-    pins = T.manifest()["source_blobs"]
-    bundle, reg, style = pins[BUNDLE], pins[T.REGISTRY], pins[STYLE_BUNDLE]
-    assert T.supersedes(BUNDLE, bundle) and T.supersedes(T.REGISTRY, reg) and T.supersedes(STYLE_BUNDLE, style)
-    # C06 supersedes these paths ONLY by forwarding to this successor, and only for the exact current pin; the older cohorts reach it through their
-    # bounded C06 hooks (U2 and the PR3b1 leaf), never through a blanket allowance.
-    for link in (K, U2, U3):
-        assert link.supersedes(BUNDLE, bundle) is True and link.supersedes(STYLE_BUNDLE, style) is True, link.__name__
-    stale = T.manifest()["base_blobs"][BUNDLE]                        # the bundle accepted on main (C06) is no longer current anywhere in the chain
-    stale_css = T.manifest()["base_blobs"][STYLE_BUNDLE]
-    for link in (K, U2, U3):
-        assert link.supersedes(BUNDLE, stale) is False and link.supersedes(BUNDLE, "0" * 40) is False and link.supersedes(BUNDLE, reg) is False
-        assert link.supersedes(STYLE_BUNDLE, stale_css) is False and link.supersedes(STYLE_BUNDLE, bundle) is False
-    assert not T.supersedes(BUNDLE, "0" * 40)
-    assert not T.supersedes(BUNDLE, reg)                              # a real blob pinned for another path
-    assert not T.supersedes(BUNDLE, stale) and not T.supersedes(STYLE_BUNDLE, stale_css)      # the accepted C06 bundles are no longer current
-    assert not T.supersedes("tests/not_superseded.py", reg)
+    with C.call_scope():      # ONE registry-wide read for this call: every link's verdict is evaluated once, not once per assertion (was 589 s)
+        pins = T.manifest()["source_blobs"]
+        bundle, reg, style = pins[BUNDLE], pins[T.REGISTRY], pins[STYLE_BUNDLE]
+        assert T.supersedes(BUNDLE, bundle) and T.supersedes(T.REGISTRY, reg) and T.supersedes(STYLE_BUNDLE, style)
+        # C06 supersedes these paths ONLY by forwarding to this successor, and only for the exact current pin; the older cohorts reach it through their
+        # bounded C06 hooks (U2 and the PR3b1 leaf), never through a blanket allowance.
+        for link in (K, U2, U3):
+            assert link.supersedes(BUNDLE, bundle) is True and link.supersedes(STYLE_BUNDLE, style) is True, link.__name__
+        stale = T.manifest()["base_blobs"][BUNDLE]                        # the bundle accepted on main (C06) is no longer current anywhere in the chain
+        stale_css = T.manifest()["base_blobs"][STYLE_BUNDLE]
+        for link in (K, U2, U3):
+            assert link.supersedes(BUNDLE, stale) is False and link.supersedes(BUNDLE, "0" * 40) is False and link.supersedes(BUNDLE, reg) is False
+            assert link.supersedes(STYLE_BUNDLE, stale_css) is False and link.supersedes(STYLE_BUNDLE, bundle) is False
+        assert not T.supersedes(BUNDLE, "0" * 40)
+        assert not T.supersedes(BUNDLE, reg)                              # a real blob pinned for another path
+        assert not T.supersedes(BUNDLE, stale) and not T.supersedes(STYLE_BUNDLE, stale_css)      # the accepted C06 bundles are no longer current
+        assert not T.supersedes("tests/not_superseded.py", reg)
 
 
 def test_forwarded_bundle_supersession_needs_a_valid_successor_signature(clone):
