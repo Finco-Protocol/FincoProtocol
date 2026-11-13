@@ -422,7 +422,26 @@ HANDOFFS = {'tests/fin_v2_cohorts.py': [("'tests.r04_ppa_scope')", "'tests.r04_p
                                  ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\')", b")")})\n',
                                   '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\'", b"")})\n'),
                                  ('"frontend/src/app/workflow/ModelWorkflowValidation.ts", "static/react/finco-react.js")\n',
-                                  '"frontend/src/app/workflow/ModelWorkflowValidation.ts")\n')],
+                                  '"frontend/src/app/workflow/ModelWorkflowValidation.ts")\n'),
+                                 ('    for p in T.HANDOFFS:\n'
+                                  '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                  '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n',
+                                  '    for p in T.HANDOFFS:\n'
+                                  '        authority = V if V.signature_ok() and p in V.HANDOFFS else T      # the latest reviewed '
+                                  'substitution of a shared path\n'
+                                  '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
+                                  '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'),
+                                 ('def test_current_maps_move_only_the_registry_key():\n    pins = T.manifest()["source_blobs"]\n',
+                                  'def test_current_maps_move_only_the_registry_key():\n'
+                                  '    pins = T.effective_pins()          # the CURRENT pins: the reviewed UX-FINAL-01 overlay wins while '
+                                  'its signature holds\n'),
+                                 ('        assert changed <= set(T.MAP_KEYS)\n',
+                                  '        assert changed <= set(T.MAP_KEYS) | set(V.MAP_KEYS)          # the registry (R04) plus the '
+                                  'registry and JS bundle keys the successor moves\n'),
+                                 ('    pins = T.manifest()["source_blobs"]\n    reg = pins[T.REGISTRY]\n',
+                                  '    pins = T.manifest()["source_blobs"]\n'
+                                  '    reg = T.effective_pins()[T.REGISTRY]          # the CURRENT registry pin (the reviewed successor '
+                                  'overlay wins)\n')],
  'tests/test_t01e_remediation_scope.py': [('from tests import r04_ppa_scope as W\n',
                                            'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
                                           ('    for p in T.HANDOFFS:\n'

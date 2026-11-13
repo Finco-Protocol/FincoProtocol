@@ -50,10 +50,10 @@
     "tests/test_post432_l01_l02_scope.py": "faf285a1a496890ade0114e84efc80471cfd812f",
     "tests/test_r02_ppa_ux_scope.py": "f512b41ccf8895e7560c7968ad642c2450b1e07f",
     "tests/test_r03_ppa_scope.py": "ad21d5ac9da2b413a4a1514922ced3c9dfb640f4",
-    "tests/test_r04_ppa_scope.py": "9028ad648b3215332de4a4930767c952bb8832bd",
+    "tests/test_r04_ppa_scope.py": "a5f42a6b87c46a3019bc4816f03202d6dae88574",
     "tests/test_t01e_remediation_scope.py": "a3dad3a427a7fcba879dfb55e4bb1b012240a3ce",
     "tests/test_ux_final01_browser.py": "d8d7b4e931915eab0ee0ff2d980afa79f9b6db3f",
     "tests/test_ux_final01_scope.py": "5aa1c826715249f1c3786050d82b790736d39f43",
-    "tests/ux_final01_scope.py": "2d148604b600c13302cb67f8b114303d4da9e4a8"
+    "tests/ux_final01_scope.py": "adb438dec11ef94f910931cdffd3249952bf4900"
   }
 }

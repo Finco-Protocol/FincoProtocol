@@ -108,8 +108,9 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
 def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
-        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]
+        authority = V if V.signature_ok() and p in V.HANDOFFS else T      # the latest reviewed substitution of a shared path
+        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
+        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_f04():
@@ -120,13 +121,13 @@ def test_registered_exactly_once_as_the_terminal_cohort_after_f04():
 
 
 def test_current_maps_move_only_the_registry_key():
-    pins = T.manifest()["source_blobs"]
+    pins = T.effective_pins()          # the CURRENT pins: the reviewed UX-FINAL-01 overlay wins while its signature holds
     for p in T.CURRENT_MAPS:
         old = json.loads(_git("show", T.BASE + ":" + p))
         cur = json.loads((ROOT / p).read_text())
         assert set(old) == set(cur) and all(old[k] == cur[k] for k in old if k != "source_blobs")
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
-        assert changed <= set(T.MAP_KEYS)
+        assert changed <= set(T.MAP_KEYS) | set(V.MAP_KEYS)          # the registry (R04) plus the registry and JS bundle keys the successor moves
         for k in changed:
             assert cur["source_blobs"][k] == pins[k]
 
@@ -297,7 +298,7 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]          # the CURRENT registry pin (the reviewed successor overlay wins)
     assert P.supersedes(T.REGISTRY, reg) and F.supersedes(T.REGISTRY, reg) and F.effective_pins()[T.REGISTRY] == reg
     assert not F.supersedes(T.REGISTRY, "0" * 40)
     assert not F.supersedes(T.REGISTRY, pins[T.PREDECESSOR])        # a real blob pinned for another path
