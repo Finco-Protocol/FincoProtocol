@@ -1,0 +1,29 @@
+/* UX-FINAL-01 — Excel-first consolidation. Presentation only; no value, writer, flag or route is touched.
+   Scoped by existing data attributes / component classes; no !important; theme tokens are used where they exist. */
+
+/* Inputs: one status row (status sentence + "Input shortcuts and import" + "Last Run results") instead of four stacked lines. */
+.ux-intro { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2px 16px; margin: 0 0 6px; }
+.ux-intro .ci-source { flex: 1 1 340px; min-width: 0; margin: 2px 0; }
+.ux-intro-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2px 16px; }
+.ux-intro-tools details { font-size: 12.5px; }
+.ux-intro-tools details[open] { flex-basis: 100%; }
+.ux-intro-tools summary { cursor: pointer; color: var(--muted, #526374); white-space: nowrap; padding: 2px 0; }
+
+/* Sheet editors (Revenue assumptions, Assumptions grid): a two-column "label | input" row needs a cell wide enough for both; the 190px auto-fill cell
+   left ~10px for the label and broke it one character per line. */
+[data-ux-pr1] [data-sheet-editor] .wf-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); }
+
+/* Financing inputs block: the unit sits beside its label; as many field columns as fit. */
+.pr3b2-cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .4rem; font-weight: 600; color: #203247; }
+.pr3b2-cap small { font-weight: 400; }
+.pr3b2 fieldset { padding: .45rem .6rem; }
+.pr3b2-fields { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .45rem .8rem; }
+
+/* Phone project bar: the same controls and data attributes in less height. Touch targets stay 44px (rc-react-mvp.css). */
+@media (max-width: 560px) {
+  .wsv2-content .wf-bar.ci-bar { gap: 4px 8px; padding: 4px 8px; }
+  .ci-bar .ci-bar-scenario { flex: 1 1 auto; min-width: 0; }
+  .ci-bar .wf-bar-actions { margin-left: 0; flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .ci-bar .wf-bar-actions .fm-btn { padding-inline: 4px; white-space: nowrap; }
+  .ci-bar .ux-project-actions { display: inline-flex; gap: 12px; align-items: center; }
+}

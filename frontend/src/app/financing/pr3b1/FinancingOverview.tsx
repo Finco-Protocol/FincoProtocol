@@ -48,7 +48,7 @@ export function FinancingOverview({ evidence: e, onReload, onHistoryChange, onOp
     <nav className="pr3b1-jumps" aria-label="Financing workspace sections"><a href="#pr3b1-terms">Structure &amp; Terms</a><a href="#pr3b1-funding">Facilities / Funding</a><a href="#pr3b1-run">Last Run</a><a href="#pr3b1-quality">Quality / diagnostics</a></nav>
     {e.credit.history_rows.length > 0 && <label className="pr3b1-history">Run history <select aria-label="Run history" value={e.credit.data?.runs[0]?.identity?.history_id ?? ''}
       disabled={!onHistoryChange} onChange={ev => onHistoryChange?.(ev.target.value)}>{e.credit.history_rows.map(h => <option key={h.history_id} value={h.history_id}>{h.is_last ? 'Last Run' : 'Historical'} · {h.scenario} · {h.ran_at}</option>)}</select></label>}
-    <div className={`pr3b1-state pr3b1-state-${gate.state.toLowerCase()}`} role="status"><strong>{gate.state}</strong> · {gate.reason}
+    <div className={`pr3b1-state pr3b1-state-${gate.state.toLowerCase()}`} role="status"><strong>{gate.state}</strong> · {gate.reason.replace(/^(CURRENT|STALE|HISTORICAL|NOT_RUN)\s+—\s+/, '')}
       {r && <small>{runName} · {r.identity.scenario} · {r.identity.ran_at} · snapshot {r.identity.snapshot_id}</small>}
       {gate.showRun && <small>Selected committed history source identity verified; Studio/credit cross-view assurance remains MITIGATED_NOT_PROVEN.</small>}
     </div>
