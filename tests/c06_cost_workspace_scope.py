@@ -2040,6 +2040,22 @@ HANDOFFS['tests/test_u2_scope.py'] = [(
      "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n"
      "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
 
+HANDOFFS['tests/test_u2_scope.py'] += [
+    ("    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}\n",
+     "    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}\n"
+     "    # Correction H: a literal protected path owned by a registered, EXACT cohort of the finite reviewed successor list (e.g. the accepted F03 FIN-VAL workflow)\n"
+     "    ci |= {p for m in registered_exact if m.__name__ in U1.RECONCILED_SUCCESSORS for p in m.OWNED_PATHS if p.startswith(('.github/', 'tools/'))}\n"),
+    ("        assert got == _signed([m for n, m in four.items() if n not in (name, U2.__name__)]), name\n",
+     "        # Correction H: the registered later chain closes globally - ONE drifted owned source revokes every signed sibling (nothing admitted), and exact\n"
+     "        # restoration restores the exact union (no stale verdict survives the call).  Identical behaviour on accepted main (verified).\n"
+     "        assert got == set(), name\n"
+     "        assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all, name\n"),
+    ("    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == _signed([m for n, m in four.items() if n not in ('tests.post413_r1_scope', U2.__name__)])\n"
+     "    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))\n",
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()                       # a forged sibling manifest revokes the whole signed chain\n"
+     "    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
+
 U1_RECONCILED_SUCCESSORS = (
     'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope',
     'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope',

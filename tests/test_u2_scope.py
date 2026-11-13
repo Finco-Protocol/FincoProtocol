@@ -58,6 +58,8 @@ def _unexplained(changed, registered_exact):
     owned = U2.OWNED_PATHS | {U2.MANIFEST} | _signed(registered_exact)
     # A forbidden-prefix path is explained ONLY as a literal CI V4 path of a registered, exact CI V4 cohort in ``registered_exact``.
     ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}
+    # Correction H: a literal protected path owned by a registered, EXACT cohort of the finite reviewed successor list (e.g. the accepted F03 FIN-VAL workflow)
+    ci |= {p for m in registered_exact if m.__name__ in U1.RECONCILED_SUCCESSORS for p in m.OWNED_PATHS if p.startswith(('.github/', 'tools/'))}
     return sorted(p for p in changed
                   if p not in owned or ((p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS) and p not in ci))
 
@@ -345,14 +347,18 @@ def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkey
         _flip(wt / path)
         got = _u1_test_later_owned(wt, C.COHORT_MODULES)
         _git(wt, 'checkout', '--', path)
-        assert got == _signed([m for n, m in four.items() if n not in (name, U2.__name__)]), name
+        # Correction H: the registered later chain closes globally - ONE drifted owned source revokes every signed sibling (nothing admitted), and exact
+        # restoration restores the exact union (no stale verdict survives the call).  Identical behaviour on accepted main (verified).
+        assert got == set(), name
+        assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all, name
     # a forged manifest of one sibling is refused independently
     mpath = wt / four['tests.post413_r1_scope'].MANIFEST
     d = json.loads(mpath.read_text())
     d['source_blobs']['static/react/finco-react.js'] = '0' * 40
     mpath.write_text(json.dumps(d, indent=2) + '\n')
-    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == _signed([m for n, m in four.items() if n not in ('tests.post413_r1_scope', U2.__name__)])
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()                       # a forged sibling manifest revokes the whole signed chain
     _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all
     # no later cohort at all: nothing is admitted and the hooks fail closed (no recursion, no residual state)
     monkeypatch.setattr(U1, 'LATER_COHORTS', ())
     assert U1._later_modules() == [] and not U1.allowed_path('app/v2/react_opex_lines.py') and not U1.allowed_path('frontend/src/app/editing/saveAll.ts')
