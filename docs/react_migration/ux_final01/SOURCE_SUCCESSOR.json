@@ -54,6 +54,6 @@
     "tests/test_t01e_remediation_scope.py": "a3dad3a427a7fcba879dfb55e4bb1b012240a3ce",
     "tests/test_ux_final01_browser.py": "d8d7b4e931915eab0ee0ff2d980afa79f9b6db3f",
     "tests/test_ux_final01_scope.py": "5aa1c826715249f1c3786050d82b790736d39f43",
-    "tests/ux_final01_scope.py": "707e2911928a87e23773c16e71995a365372ac49"
+    "tests/ux_final01_scope.py": "2d148604b600c13302cb67f8b114303d4da9e4a8"
   }
 }

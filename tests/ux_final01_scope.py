@@ -318,15 +318,14 @@ HANDOFFS = {'tests/fin_v2_cohorts.py': [("'tests.r04_ppa_scope')", "'tests.r04_p
                                      '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.ux_final01_scope\')")\n')],
  'tests/test_f03_financing_scope.py': [('from tests import r04_ppa_scope as W\n',
                                         'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                       ('        and Q.signature_ok() and W.signature_ok())\n\n\n@pytest.mark.parametrize("name,fn", [\n',
+                                       ('"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                                        '        and Q.signature_ok() and W.signature_ok())\n',
+                                        '"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
                                         '        and Q.signature_ok() and W.signature_ok()) or (\n'
                                         '        C.COHORT_MODULES[-8:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
                                         '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
                                         '"tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                        '        and Q.signature_ok() and W.signature_ok() and V.signature_ok())\n'
-                                        '\n'
-                                        '\n'
-                                        '@pytest.mark.parametrize("name,fn", [\n'),
+                                        '        and Q.signature_ok() and W.signature_ok() and V.signature_ok())\n'),
                                        ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
                                         '\'tests.fake_scope\')")),\n',
                                         '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
