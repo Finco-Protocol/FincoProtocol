@@ -13,6 +13,7 @@ export function FinancingReadLayer({ scope, reloadKey = 0, onOpenExisting, onSav
 function ScopedRead({ scope, reloadKey, onOpenExisting, onSaved }: { scope: Scope; reloadKey: number; onOpenExisting?: (view: string) => void; onSaved?: () => void }) {
   const [historyId, setHistoryId] = useState(scope.historyId);
   const [nonce, setNonce] = useState(0);
+  const [focusBlock, setFocusBlock] = useState<string>('');
   const [loaded, setLoaded] = useState<{ key: string; evidence?: Evidence; error?: string } | null>(null);
   const key = JSON.stringify([scope, historyId, reloadKey, nonce]);
   useEffect(() => setHistoryId(scope.historyId), [scope.historyId]);
@@ -43,9 +44,16 @@ function ScopedRead({ scope, reloadKey, onOpenExisting, onSaved }: { scope: Scop
   const current = loaded?.key === key ? loaded.evidence : undefined;
   const gate = current ? checkRunEvidence(current) : null;
   const run = gate?.showRun ? current?.credit.data?.runs[0] : undefined;
-  return <>{onSaved && <><h2>Financing</h2>
+  // UX-FINAL-01: contextual evidence inspector. Editors (left) and the existing server-sourced evidence (right, sticky on wide screens, stacked elsewhere) share one
+  // workspace. Presentation only: same elements, same data, same handlers; the evidence pane is read-only and the block that has focus highlights its evidence.
+  if (!onSaved) return <>{content}</>;
+  return <div className="ux-fin-split" data-financing-inspector="true" data-focus-block={focusBlock || undefined}
+    onFocusCapture={event => { const b = (event.target as HTMLElement).closest('[data-financing-block]')?.getAttribute('data-financing-block'); if (b) setFocusBlock(b); }}>
+    <div className="ux-fin-editors"><><h2>Financing</h2>
     <div className="pr3b1-state" role="status" aria-label="Financing Run status"><strong>{gate?.state ?? (loaded?.key === key ? 'UNAVAILABLE' : 'Loading evidence')}</strong> · {gate?.reason?.replace(/^(CURRENT|STALE|HISTORICAL|NOT_RUN)\s+—\s+/, '')}
       {run && <><span> · Integrity {run.integrity?.status}</span><span> · Coverage {run.debt_metrics?.evaluation?.coverage.status} {run.debt_metrics?.evaluation?.coverage.message}</span></>}
     </div><FinancingEditing project={scope.project} scenarioId={scope.scenarioId} reloadKey={reloadKey}
-    onSaved={() => { setNonce(n => n + 1);onSaved(); }} /></>}{content}</>;
+    onSaved={() => { setNonce(n => n + 1);onSaved(); }} /></></div>
+    <aside className="ux-fin-evidence" tabIndex={0} aria-label="Financing evidence inspector (read-only; server Run and saved records)">{content}</aside>
+  </div>;
 }

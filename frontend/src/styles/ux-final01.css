@@ -89,3 +89,19 @@
   .rx-live-kpi-value { margin-top: 3px; font-size: 19px; }
   .rx-live-kpi-unavailable .rx-live-kpi-value { font-size: 13px; }
 }
+
+/* Financing contextual evidence inspector: editors on the left, the existing read-only server evidence on the right (sticky, scrolls inside itself) on wide screens;
+   stacked (editors, then evidence) elsewhere. The block that has focus highlights the evidence that belongs to it. */
+.ux-fin-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.ux-fin-evidence { min-width: 0; }
+@media (min-width: 1360px) {
+  .ux-fin-split { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
+  .ux-fin-evidence { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow-y: auto; border-left: 1px solid var(--line, #dce3e9); padding-left: 12px; }
+  .ux-fin-evidence .pr3b1-main { grid-template-columns: minmax(0, 1fr); }
+}
+.ux-fin-evidence:focus-visible { outline: 2px solid var(--fo-brand-500, #3b6ff6); outline-offset: 2px; }
+.ux-fin-split[data-focus-block="terms"] #pr3b1-terms,
+.ux-fin-split[data-focus-block="terms"] [aria-label="Sources & Uses selected Run"],
+.ux-fin-split[data-focus-block="repayment"] [aria-label="Coverage selected Run"],
+.ux-fin-split[data-focus-block="repayment"] #pr3b1-quality,
+.ux-fin-split[data-focus-block="funding"] #pr3b1-funding { box-shadow: 0 0 0 2px var(--fo-brand-500, #3b6ff6); }
