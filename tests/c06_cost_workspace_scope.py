@@ -75,6 +75,8 @@ HANDOFF_PATHS = frozenset(('tests/ci_v4_perf_scope.py',
  'tests/test_r03_ppa_scope.py',
  'tests/test_r04_ppa_scope.py',
  'tests/test_t01e_remediation_scope.py',
+ 'tests/test_u2_scope.py',
+ 'tests/test_ux_pr3b1_scope.py',
  'tests/u2_scope.py',
  'tests/u1_scope.py',
  'tests/ux_pr2b_scope.py',
@@ -88,7 +90,7 @@ CURRENT_MAPS = frozenset(('docs/ci_v4/SOURCE_SUCCESSOR.json',
  'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
  'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
  'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py", "tests/test_ux_pr3b1_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
@@ -2004,6 +2006,40 @@ for _path, _names in (('tests/ux_pr2c_scope.py', ('exact_blobs_ok',)), ('tests/u
 # literal manifest, owned paths and (for the test) their own exact verdict, and NOTHING else - they supersede nothing, admit no path, own no CI path and
 # own no custody blob, so no older guard (U1 hooks, WF-06B, WS-v2 core, RC-M governance) gains any admission.  The tuple is closed: a later cohort
 # is not discovered until ITS reviewed handoff extends it.  Unregistered or reordered entries are ignored by the tests' own ``COHORT_MODULES`` check.
+# Correction D, shard 2: two legacy scope tests whose literal expectations predate the registered cohorts / the accepted C06 successor.  Reviewed, literal,
+# one-occurrence substitutions over their immutable BASE bytes (the same mechanism as every other handoff here); no test is skipped or deselected.
+HANDOFFS['tests/test_ux_pr3b1_scope.py'] = [(
+    "        assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)\n",
+    "        if p=='frontend/src/app/capex/ProfileDraftProvider.tsx':     # C06: the one accepted source the exact, signed C06 successor supersedes\n"
+    "            from tests import c06_cost_workspace_scope as C06_SUCCESSOR\n"
+    "            if C06_SUCCESSOR.supersedes(p,C06_SUCCESSOR._blob((ROOT/p).read_bytes())): continue\n"
+    "        assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)\n")]
+HANDOFFS['tests/test_u2_scope.py'] = [(
+    "'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}",
+    "'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope'} | set(U1.RECONCILED_SUCCESSORS) "
+    "and 'tests.u2_scope' in {m.__name__ for m in registered_exact}"),
+    ("    registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]\n",
+     "    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)\n"
+     "        registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]\n"),
+    ("    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()\n"
+     "                         if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))\n",
+     "    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)\n"
+     "        return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()\n"
+     "                             if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))\n"),
+    ("    # U2 source drifted: U2 stops being exact -> only the siblings remain\n"
+     "    _flip(wt / 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_siblings\n"
+     "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n",
+     "    # U2 source drifted (Correction H): the registered later chain (CI V4 ownership, WS-B, on-accept) closes GLOBALLY, so one drifted owned source\n"
+     "    # revokes EVERY signed sibling as well as U2 - nothing is admitted, the drifted writer is not owned by anyone, and restoring the exact byte\n"
+     "    # restores the exact union (no stale verdict survives the call).  This is the same behaviour on accepted main (verified).\n"
+     "    _flip(wt / 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()\n"
+     "    with C.call_scope():\n"
+     "        assert not any(m.exact_blobs_ok(wt) for m in four.values()) and not U1.allowed_path('app/v2/react_opex_lines.py', wt)\n"
+     "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
+
 U1_RECONCILED_SUCCESSORS = (
     'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope',
     'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope',

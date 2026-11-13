@@ -95,10 +95,11 @@ def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
         assert _git(U2.ROOT, 'rev-parse', f'{U2.BASE}:{path}').strip() == blob
         assert u1_pins.get(path) == blob, path                                                    # U2 supersedes exactly what U1 signed
     changed = set(_git(U2.ROOT, 'diff', '--name-only', U2.BASE, '--').split())
-    registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
+    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)
+        registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]
     # the four post-#413 cohorts, the registered CI V4 cohort (Owner CI policy 2026-11-04), the registered
     # G10/D8 OPEX-completion cohort and the registered Workstream-B cohort - no other later cohort
-    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
+    assert {m.__name__ for m in registered_exact} <= set(FOUR) | {'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope'} | set(U1.RECONCILED_SUCCESSORS) and 'tests.u2_scope' in {m.__name__ for m in registered_exact}
     own_manifests = {m.MANIFEST for m in registered_exact}
     # no OLDER manifest edited: the only SOURCE_SUCCESSOR.json files in the diff are the registered exact sibling cohorts' OWN manifests
     assert not any(p.endswith('SOURCE_SUCCESSOR.json') and p not in own_manifests for p in changed)
@@ -293,8 +294,9 @@ def test_an_unrelated_committed_extra_file_fails_closed(wt):
 
 def _u1_test_later_owned(repo, modules):
     # The four post-#413 data-integrity cohorts only; the CI V4 cohort (also a registered later cohort) is proven by tests/test_ci_v4_scope.py.
-    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()
-                         if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))
+    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)
+        return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()
+                             if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))
 
 
 # Reviewed governance/bundle paths that more than one of the four cohorts owns. Closed, literal; Correction J changed tests/test_wf06b_scope.py
@@ -326,10 +328,15 @@ def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkey
     for name, module in four.items():
         rest = _signed([m for n, m in four.items() if n != name])
         assert _u1_test_later_owned(wt, tuple(n for n in C.COHORT_MODULES if n != name)) == rest, name
-    # U2 source drifted: U2 stops being exact -> only the siblings remain
+    # U2 source drifted (Correction H): the registered later chain (CI V4 ownership, WS-B, on-accept) closes GLOBALLY, so one drifted owned source
+    # revokes EVERY signed sibling as well as U2 - nothing is admitted, the drifted writer is not owned by anyone, and restoring the exact byte
+    # restores the exact union (no stale verdict survives the call).  This is the same behaviour on accepted main (verified).
     _flip(wt / 'app/v2/react_opex_lines.py')
-    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_siblings
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()
+    with C.call_scope():
+        assert not any(m.exact_blobs_ok(wt) for m in four.values()) and not U1.allowed_path('app/v2/react_opex_lines.py', wt)
     _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')
+    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all
     # each sibling drifted independently: that sibling stops being exact AND U2 stops being exact (a changed path of a drifted sibling is no longer
     # explained for U2); the other two siblings are unaffected
     drift = {'tests.post413_r17_scope': 'tests/test_r17_base_case_scope.py', 'tests.post413_r18_scope': 'tests/test_r18_atomic_reference_clone.py',

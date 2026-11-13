@@ -82,6 +82,9 @@ def test_profile_flag_and_accepted_pr429_sources_unchanged():
     from app.v2.save_all_commands import profile_enabled
     assert profile_enabled() is False
     for p in ['app/v2/react_capex.py','frontend/src/app/capex/ProfileDraftProvider.tsx','frontend/src/app/editing/pendingEdits.ts','frontend/src/app/editing/saveAll.ts']:
+        if p=='frontend/src/app/capex/ProfileDraftProvider.tsx':     # C06: the one accepted source the exact, signed C06 successor supersedes
+            from tests import c06_cost_workspace_scope as C06_SUCCESSOR
+            if C06_SUCCESSOR.supersedes(p,C06_SUCCESSOR._blob((ROOT/p).read_bytes())): continue
         assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)
 
 
