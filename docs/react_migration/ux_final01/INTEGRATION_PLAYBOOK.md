@@ -36,5 +36,5 @@ F04 browser (`tests/test_f04_financing_browser.py`), mandatory consolidation rol
 `tests/ux_final01_screens.py`, node unit tests, governance gate (`python -m tools.ci_v4_governance_gate --output <file>`), scope suites.
 
 ## Open product/policy items (do not invent)
-OPEX annual writer absent; P90 writer absent; Base rate + Margin not a persisted writer; the server-supplied OPEX escalation label "uniform across lines"
-(`app/v2/router.py`) is wrong only if verified and may be corrected as a bounded label change.
+OPEX annual writer absent; P90 writer absent; Base rate + Margin not a persisted writer; the server-supplied OPEX escalation label "uniform across lines" was VERIFIED CORRECT
+(it is conditional on all lines sharing one rate; otherwise "mixed / varies by line"); no router change is needed.
