@@ -46,6 +46,15 @@ or HOSTED-CI-VERIFIED (governance/bundle red by design until consolidation).
 | Financing single navigation row | `app/financing/FinancingStudio.tsx`, `styles/ux-final01.css` | yes | NO (pending acceptance regression) | contracts preserved, see screen_contract.csv |
 | Financing run banner shows state once | `app/financing/pr3b1/FinancingReadLayer.tsx` | yes | NO | |
 | Results KPI tile density (>=700px) | `styles/ux-final01.css` | yes | NO | |
+### 2026-11-13 — verification of the checkpoint above (third commit group)
+- Full matrix `tests/ux_final01_screens.py` (11 routes x 1440/1024/768/390/320 x NOT_RUN and Run, synthetic): **10 passed** in 241 s, no page overflow, no one-character text, no collapsed table cell, no script error.
+  Earlier runs reported 5 failures that were harness issues (screen-reader-only `fm-sr-only` labels over icon columns: "Row actions", "Download"); the check now measures VISIBLE text only.
+- Financing writer/nav regression on the NEW code (new bundle served temporarily, then `git checkout -- static/react`): `tests/test_model_workspace_consolidation_browser.py -k "financ or pr3b"` + `tests/test_f04_financing_browser.py` = **43 passed** in 174 s.
+- Phone chrome (CSS): offset above content 410 -> 386 px at 390, 438 -> 414 px at 320. Measured with `UX_FINAL01_EVAL` (see harness), not estimated.
+- Node unit tests: 90 passed; `npm run typecheck` clean.
+- OPEX "uniform across lines" label VERIFIED CORRECT (conditional on all lines sharing one rate); no router change.
+Still NOT SOURCE-BYTE-INTEGRATED and NOT HOSTED-CI-VERIFIED: `static/react/finco-react.{js,css}` is not rebuilt; governance successor, bundle identity and CSS pin are red by design until consolidation.
+
 Observation (not a defect of this PR): Debt metrics shows `1.19999999999x` / `-0.000000000007x` for the sculpted sizing target. `app/debtmetrics/format.ts` deliberately refuses to
 display a value as exactly equal to its reference when it is not ("never a trailing-zero look-alike"); left unchanged.
 Harness lessons (keep): (1) `tests/ux_final01_screens.py` exclusion of hidden elements must match only the absolutely-positioned, 1x1, overflow-clipped sr-only pattern; an earlier

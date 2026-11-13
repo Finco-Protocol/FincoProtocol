@@ -26,6 +26,11 @@
   .ci-bar .wf-bar-actions { margin-left: 0; flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .ci-bar .wf-bar-actions .fm-btn { padding-inline: 4px; white-space: nowrap; }
   .ci-bar .ux-project-actions { display: inline-flex; gap: 12px; align-items: center; }
+  /* Chrome above the content: smaller theme select; the disabled scenario select is read-only information, shown as plain text (still a labelled control). */
+  .finco-root .fm-topbar { padding-block: 4px; }
+  .finco-root .fm-top-right { gap: 6px; }
+  .finco-root .fm-top-right select { min-height: 32px; font-size: 12px; max-width: 9rem; }
+  .ci-bar .ci-bar-scenario select[disabled] { appearance: none; -webkit-appearance: none; min-height: 0; height: auto; border: 0; background: transparent; padding: 0; color: inherit; font-weight: 600; opacity: 1; }
 }
 
 /* CAPEX monthly profile / other .rcm-table data tables: the nowrap label column made the sticky first column as wide as the longest label (278px, 85% of a
