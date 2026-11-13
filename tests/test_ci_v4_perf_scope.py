@@ -201,7 +201,7 @@ def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_compos
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
     marker = ("'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
-              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
+              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')")
     assert text.count(marker) == 1
     try:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())

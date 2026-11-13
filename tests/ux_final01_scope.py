@@ -328,7 +328,21 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                  'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
                                  'UX_APPROVAL.__name__)\n'
                                  '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok()))\n')],
- 'tests/test_c06_cost_workspace_scope.py': [('            if kind==\'missing_registration\':text=text.replace(", '
+ 'tests/test_c06_cost_workspace_scope.py': [('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
+                                             '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
+                                             "(F.__name__, 'tests.ux_final01_scope'))\n"),
+                                            ('    for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)\n',
+                                             '    from tests import ux_final01_scope as UX\n'
+                                             '    for path in F.HANDOFFS:\n'
+                                             '        want=UX.expected_handoff(ROOT,path) if UX.signature_ok() and path in UX.HANDOFFS '
+                                             'else F.expected_handoff(ROOT,path)\n'
+                                             '        assert (ROOT/path).read_bytes()==want\n'),
+                                            ('            if m.__name__!=F.__name__:\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n',
+                                             "            if m.__name__ not in (F.__name__,'tests.ux_final01_scope'):      # the later "
+                                             'reviewed UX successor does not exist at the accepted base\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'),
+                                            ('            if kind==\'missing_registration\':text=text.replace(", '
                                              '\'tests.c06_cost_workspace_scope\')",\')\')\n',
                                              '            if kind==\'missing_registration\':text=text.replace(", '
                                              '\'tests.c06_cost_workspace_scope\', \'tests.ux_final01_scope\')", ", '
@@ -370,7 +384,9 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                      '        want = (UX_APPROVAL.expected_handoff(ROOT, p) if UX_APPROVAL.signature_ok() and p in '
                                      'UX_APPROVAL.HANDOFFS\n'
                                      '                else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
-                                     'C06_APPROVAL.HANDOFFS\n')],
+                                     'C06_APPROVAL.HANDOFFS\n'),
+                                    ('\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')")\n',
+                                     '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ux_final01_scope\')")\n')],
  'tests/test_f03_financing_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                         'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                         'from tests import ux_final01_scope as UX_APPROVAL\n'),
