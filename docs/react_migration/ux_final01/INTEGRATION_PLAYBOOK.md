@@ -2,7 +2,7 @@
 
 ## Upstream state (re-read live before every integration; these are observations, not authority)
 - Accepted `main`: `b1c08e2d00fe9933565d253d5cee6e5849b143e1` (tree `5b25c1f245d3d53d9bbe24060c13dc936e06b8d7`), observed 2026-11-13.
-- #444 (C06): Draft, head `48a81c2f9b6a6f0cbd36caf4f6e701d0335ee065`, base = the same `main`. Its PR body mentions another head; the API head is authoritative.
+- #444 (C06): Draft, head `4e6cc4552780ae83474d2f5fb6c7331bdf9aca80` (re-read 2026-11-13; it was `48a81c2f` earlier the same day), base = the same `main`. The PR body may name another head; the API head is authoritative.
 - R04 Phase 1 (#442): merged, ISOLATED (not wired into Save/Run). R04 Phase 2: no PR observed.
 - #446 (this work): Draft, branch `claude/new-session-awc9gz`, base `main`.
 
@@ -38,3 +38,14 @@ F04 browser (`tests/test_f04_financing_browser.py`), mandatory consolidation rol
 ## Open product/policy items (do not invent)
 OPEX annual writer absent; P90 writer absent; Base rate + Margin not a persisted writer; the server-supplied OPEX escalation label "uniform across lines" was VERIFIED CORRECT
 (it is conditional on all lines sharing one rate; otherwise "mixed / varies by line"); no router change is needed.
+
+## CI triage of #446 head `6c04befa` (2026-11-13) — classification, not acceptance
+Six mandatory workflows: PASS Governance Full History, Dependency Security Audit, Protocol UI Browser Acceptance; FAIL CI V4 PR, PR Compile and Safety Gate, FIN-VAL F01.
+The public-safety step PASSED on this head (the earlier "forbidden identifier" finding was a false semantic collision in one ledger line and is reworded; scanner/denylist untouched).
+- PR Compile and Safety Gate: fails ONLY the served-bundle identity step (`git diff --exit-code static/react`): sources and stylesheet changed, the committed bundle is deliberately not rebuilt yet. Class: expected exact-source/bundle drift.
+- FIN-VAL F01 (137 passed / 3 failed): all three are exact-source governance checks (cohort composite invalid; mutation-security inventory lists the changed pinned files as unreviewed blobs). No numeric F01 assertion failed. Class: expected exact-source drift (not a proof of numeric safety either).
+- CI V4 shards (per-test JUnit): shard-0 78 failed / 421 passed (R04 scope 38, UX scope 29, post432 7, CI V4 scope 2, rc_sec 2); shard-1 37 / 472 (T01-E 19, F03 8, R02 6, 4 chain-dependent); shard-2 148 / 589 (perf 58, F04 45, R03 28, BESS02 15, 2 chain-dependent).
+  Every failing test belongs to the governance / exact-source family; zero numeric, financial or UI-behaviour failures; zero unresolved. Class: expected exact-source drift until ONE consolidation.
+- Timing: all three shards finished in <= 6m08s and nothing timed out. The earlier 15-25+ minute shards were the governance chain PASSING (long exact-source work); with invalid pins the cohorts exit early. Do not read the short runtime as health.
+- CI V4 `f01` browser job (separate from the F01 workflow) fails its "Four-vertical real browser rate round-trip" step; classification pending a log read at consolidation (likely the same exact-source dependency; not assumed).
+The owner-flagged stale status vocabulary in `tests/test_ux_final01_scope.py` is fixed: one closed vocabulary (CURRENT, CODED, BROWSER_VERIFIED, SOURCE_BYTE_INTEGRATED, HOSTED_CI_VERIFIED, PARTIAL, DEPENDENCY_PENDING, BLOCKED, DO_NOT_CHANGE, MISSING) with a validator and negative tests (PASS/DONE/COMPLETE, case/padding variants, structural forgeries).

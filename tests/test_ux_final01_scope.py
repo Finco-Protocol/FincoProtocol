@@ -182,12 +182,62 @@ def test_not_run_stays_a_distinct_gate_with_no_run_values():
     assert m and m.group(1).startswith("No committed Run for this project yet.") and "NOT_RUN" not in m.group(1)
 
 
-def test_the_screen_contract_lists_every_status_with_no_pass_claim_for_pending_work():
-    rows = (ROOT / "docs/react_migration/ux_final01/screen_contract.csv").read_text().splitlines()
-    assert rows[0].split(",")[:2] == ["screen", "status"]
-    statuses = {r.split(",")[1] for r in rows[1:]}
-    assert statuses <= {"CURRENT", "IMPLEMENTED_SLICE_1", "DEPENDENCY_PENDING", "BLOCKED", "DO_NOT_CHANGE", "MISSING"}
-    assert "PASS" not in statuses
+CONTRACT = "docs/react_migration/ux_final01/screen_contract.csv"
+CONTRACT_HEADER = ["screen", "status", "workstream", "acceptance", "source_path", "note"]
+# One CLOSED, explicit vocabulary. CODED / BROWSER_VERIFIED / SOURCE_BYTE_INTEGRATED / HOSTED_CI_VERIFIED are verification levels (a row states the highest one it has
+# evidence for); PARTIAL, DEPENDENCY_PENDING, BLOCKED and MISSING are open states; CURRENT is pre-existing behaviour kept; DO_NOT_CHANGE is a boundary.
+# Anything else (PASS, DONE, COMPLETE, a lower-case or padded variant, an empty cell) is refused: widening this set needs a reviewed change to this test.
+CLOSED_STATUSES = frozenset(("CURRENT", "CODED", "BROWSER_VERIFIED", "SOURCE_BYTE_INTEGRATED", "HOSTED_CI_VERIFIED", "PARTIAL", "DEPENDENCY_PENDING", "BLOCKED",
+                             "DO_NOT_CHANGE", "MISSING"))
+
+
+def contract_problems(text):
+    """Every structural or vocabulary problem of a screen contract (empty list = valid)."""
+    import csv as _csv
+    import io as _io
+    problems = []
+    rows = list(_csv.reader(_io.StringIO(text)))
+    if not rows or rows[0] != CONTRACT_HEADER:
+        return ["header is not exactly " + ",".join(CONTRACT_HEADER)]
+    seen = set()
+    for n, row in enumerate(rows[1:], 2):
+        if len(row) != len(CONTRACT_HEADER):
+            problems.append("row %d has %d columns" % (n, len(row)))
+            continue
+        screen, status = row[0], row[1]
+        if not screen.strip() or screen != screen.strip():
+            problems.append("row %d screen is empty or padded" % n)
+        if status not in CLOSED_STATUSES:
+            problems.append("row %d status %r is outside the closed vocabulary" % (n, status))
+        if screen in seen:
+            problems.append("row %d duplicates screen %r" % (n, screen))
+        seen.add(screen)
+    return problems
+
+
+def test_the_screen_contract_is_valid_and_uses_only_the_closed_status_vocabulary():
+    text = (ROOT / CONTRACT).read_text()
+    assert contract_problems(text) == []
+    used = {r[1] for r in __import__("csv").reader(__import__("io").StringIO(text))} - {"status"}
+    assert used <= CLOSED_STATUSES and "PARTIAL" in used and "DEPENDENCY_PENDING" in used      # the honest open states are really used
+    assert not used & {"PASS", "DONE", "COMPLETE", "IMPLEMENTED", "IMPLEMENTED_SLICE_1"}
+
+
+@pytest.mark.parametrize("bad", ["PASS", "DONE", "COMPLETE", "IMPLEMENTED", "partial", "PARTIAL ", "", "CURRENT|CODED"])
+def test_the_status_validator_rejects_anything_outside_the_closed_vocabulary(bad):
+    good = ",".join(CONTRACT_HEADER) + "\nscreen one,PARTIAL,UX-01,AC-01,path,note\n"
+    assert contract_problems(good) == []
+    forged = ",".join(CONTRACT_HEADER) + "\nscreen one,%s,UX-01,AC-01,path,note\n" % bad
+    assert contract_problems(forged), bad
+
+
+def test_the_contract_validator_rejects_structural_forgeries():
+    h = ",".join(CONTRACT_HEADER)
+    assert contract_problems("screen,status\nx,PARTIAL\n")                                     # wrong header
+    assert contract_problems(h + "\nonly,PARTIAL,UX-01\n")                                     # missing columns
+    assert contract_problems(h + "\ndup,PARTIAL,a,b,c,d\ndup,CURRENT,a,b,c,d\n")              # duplicate screen
+    assert contract_problems(h + "\n ,PARTIAL,a,b,c,d\n")                                      # empty screen
+    assert contract_problems("")                                                              # empty file
 
 
 # ---------------------------------------------------------------- working-tree tamper is detected

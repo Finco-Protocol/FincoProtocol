@@ -91,6 +91,25 @@ def no_overlapping_controls(page, where=''):
     assert not bad, (where, bad)
 
 
+def no_unnamed_controls(page, where=''):
+    """Every visible control has an accessible name (aria-label, aria-labelledby, an associated or wrapping label, visible text, title, alt or value)."""
+    bad = page.evaluate("""() => { """ + HIDDEN_JS + """ const out = [];
+      const name = (e) => {
+        const al = e.getAttribute('aria-label'); if (al && al.trim()) return al.trim();
+        const lb = e.getAttribute('aria-labelledby'); if (lb) { const s = lb.split(/\\s+/).map((id) => (document.getElementById(id) || {}).textContent || '').join(' ').trim(); if (s) return s; }
+        if (e.labels && e.labels.length) { const s = Array.from(e.labels).map((l) => l.textContent).join(' ').trim(); if (s) return s; }
+        const tx = (e.textContent || '').trim(); if (tx) return tx;
+        for (const a of ['title', 'alt', 'value', 'placeholder']) { const v = e.getAttribute(a); if (v && v.trim()) return v.trim(); }
+        const im = e.querySelector('img[alt], svg[aria-label], svg title'); if (im) return 'img';
+        return '';
+      };
+      for (const e of document.querySelectorAll('a[href], button, select, textarea, input:not([type=hidden]), summary, [role=button], [role=tab]')) {
+        const r = e.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1 || hidden(e)) continue;
+        if (!name(e)) out.push(e.tagName.toLowerCase() + '.' + String(e.className).split(' ')[0] + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+      } return Array.from(new Set(out)).slice(0, 6); }""")
+    assert not bad, (where, bad)
+
+
 @pytest.mark.parametrize("mode", ["norun", "run"])
 @pytest.mark.parametrize("width", WIDTHS)
 def test_screens(live_server, fin_session, ux_build, mode, width):  # noqa: F811
@@ -116,9 +135,103 @@ def test_screens(live_server, fin_session, ux_build, mode, width):  # noqa: F811
             no_vertical_wrap(page, f'{mode} {width} #{route}')
             no_collapsed_table_cells(page, f'{mode} {width} #{route}')
             no_overlapping_controls(page, f'{mode} {width} #{route}')
+            no_unnamed_controls(page, f'{mode} {width} #{route}')
         except AssertionError as exc:          # keep capturing every route; report all offenders at the end
             failures.append(str(exc)[:300])
         all_failures.extend(failures)
     assert not all_failures, all_failures
     # HTTP status lines are expected (e.g. 404 of the OPEX run projection while FINCO_G10_RUN_OPEX_PANEL is OFF); any script error is a failure
     assert not unexpected(errors, allow=(404,))
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_keyboard_tab_order_reaches_the_primary_actions_with_visible_focus(live_server, fin_session, ux_build, width):  # noqa: F811
+    """Tab from the top of the page: every stop is a visible element inside the viewport (nothing focused off-screen or clipped) and Reload and Run are reached."""
+    context, page, record, errors = fin_session(f"ux-screens-tab-{width}", width=width, height=900)
+    _assets(context, ux_build)
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+    page.reload()
+    page.wait_for_selector("[data-react-workspace-version]", timeout=30000)
+    page.wait_for_timeout(1500)
+    page.evaluate("() => { document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0); }")
+    reached, problems = set(), []
+    for step in range(80):
+        page.keyboard.press("Tab")
+        info = page.evaluate("""() => { const e = document.activeElement; if (!e || e === document.body) return null;
+            const r = e.getBoundingClientRect(); const cs = getComputedStyle(e);
+            return { tag: e.tagName.toLowerCase(), cls: String(e.className).split(' ')[0], run: e.hasAttribute('data-wf-run'), reload: e.hasAttribute('data-wf-reload'),
+                     w: Math.round(r.width), h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), vw: innerWidth, vis: cs.visibility, name: (e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 24) }; }""")
+        if not info:
+            continue
+        if info["run"]:
+            reached.add("run")
+        if info["reload"]:
+            reached.add("reload")
+        if info["w"] <= 1 or info["h"] <= 1 or info["vis"] == "hidden":
+            problems.append(("invisible focus stop", info))
+        elif info["left"] < -1 or info["right"] > info["vw"] + 1:
+            problems.append(("focused element outside the viewport", info))
+        if {"run", "reload"} <= reached:
+            break
+    assert {"run", "reload"} <= reached, ("primary actions not reached by Tab", reached)
+    assert not problems, problems[:4]
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_high_contrast_theme_keeps_the_layout_checks(live_server, fin_session, ux_build, width):  # noqa: F811
+    """The supported high-contrast appearance keeps the same layout guarantees on the screens that changed most (Financing, Inputs)."""
+    context, page, record, errors = fin_session(f"ux-screens-hc-{width}", width=width, height=900)
+    _assets(context, ux_build)
+    page.goto(f"{live_server}/v2/model-react/{record.project_code}#financing")
+    page.reload()
+    page.wait_for_selector("[data-react-workspace-version]", timeout=30000)
+    page.select_option('[data-testid="finco-theme-select"]', "d-high-contrast")
+    assert page.locator(".finco-root").first.get_attribute("data-fm-theme") == "d-high-contrast" or page.locator('[data-fm-theme="d-high-contrast"]').count() >= 1
+    out, failures = os.environ.get("UX_FINAL01_SCREENSHOT_DIR"), []
+    for route in ("financing", "inputs"):
+        page.goto(f"{live_server}/v2/model-react/{record.project_code}#{route}")
+        page.wait_for_selector("[data-react-workspace-version]", timeout=30000)
+        page.wait_for_timeout(1500)
+        if out:
+            Path(out).mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(Path(out) / f"highcontrast_{route}_{width}.png"), full_page=False)
+        try:
+            no_page_overflow(page)
+            no_vertical_wrap(page, f"hc {width} #{route}")
+            no_collapsed_table_cells(page, f"hc {width} #{route}")
+            no_overlapping_controls(page, f"hc {width} #{route}")
+            no_unnamed_controls(page, f"hc {width} #{route}")
+        except AssertionError as exc:
+            failures.append(str(exc)[:300])
+    assert not failures, failures
+
+
+def test_the_checks_themselves_detect_known_bad_markup_and_accept_clean_markup(browser):  # noqa: F811
+    """Bug-detection power of the harness, kept permanently: each check must FAIL on a deliberately broken page and PASS on a clean one."""
+    page = browser.new_page(viewport={"width": 390, "height": 700})
+    try:
+        clean = ("<main><label for='a'>Amount in kEUR</label><input id='a'>"
+                 "<table><tr><th>Line item</th><td>Total amount</td></tr></table><button>Save changes</button></main>")
+        page.set_content(clean)
+        no_page_overflow(page)
+        for check in (no_vertical_wrap, no_collapsed_table_cells, no_overlapping_controls, no_unnamed_controls):
+            check(page, "clean")                                                       # no AssertionError on clean markup
+        broken = {
+            no_page_overflow: "<div style='width:900px;height:20px'>wide</div>",
+            no_vertical_wrap: "<label style='display:block;width:14px;overflow-wrap:anywhere'>Basis and periods</label>",
+            no_collapsed_table_cells: "<table style='width:60px'><tr><td style='width:20px;overflow-wrap:anywhere'>2031-06-30</td><td>x</td></tr></table>",
+            no_overlapping_controls: "<button style='position:absolute;left:10px;top:10px;width:120px;height:40px'>First</button>"
+                                     "<button style='position:absolute;left:60px;top:20px;width:120px;height:40px'>Second</button>",
+            no_unnamed_controls: "<button style='width:40px;height:30px'></button>",
+        }
+        for check, html in broken.items():
+            page.set_content(html)
+            with pytest.raises(AssertionError):
+                check(page) if check is no_page_overflow else check(page, "broken")
+        # the narrow, sanctioned exclusions must NOT hide a real defect: a visually clipped sr-only label is ignored, a closed <details> body is ignored
+        page.set_content("<button><span style='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)'>Row actions</span>...</button>"
+                         "<details><summary>More</summary><button style='position:absolute;left:0;top:0;width:100px;height:40px'>Hidden body</button></details>")
+        no_vertical_wrap(page, "sr-only")
+        no_overlapping_controls(page, "closed-details")
+    finally:
+        page.close()
