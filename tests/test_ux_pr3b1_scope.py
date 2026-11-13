@@ -89,7 +89,11 @@ def test_profile_flag_and_accepted_pr429_sources_unchanged():
 
 
 def test_ux1_mvp_historical_recognition_is_also_exact_and_registered(monkeypatch):
-    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as accept
+    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as _accept
+
+    def accept(*args, **kwargs):      # one registry read per call (dropped on exit; nothing is kept across calls)
+        with registry.call_scope():
+            return _accept(*args, **kwargs)
     path='tests/model_react_mvp_acceptance.py';raw=(ROOT/path).read_text()
     assert accept(path,raw)
     assert not accept(path,raw+'\n')

@@ -35,7 +35,7 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'tests/model_react_rcux_capex_acceptance.py': '8502c1d1e288f0f6982f3cdac36ebbc3e449c19f',
  'static/react/finco-react.js': 'f6d1b85518bf7097f883ed693ba86e41503c52c6',
  'tests/test_c06_cost_workspace_browser.py': 'd53d26ea78224e36f45c99601e0c78336432c991',
- 'tests/test_c06_cost_workspace_scope.py': '5aa7785486fac105ceb855eeb18d073279e76152',
+ 'tests/test_c06_cost_workspace_scope.py': '60219083452c10eee7c7b52cb7cec6672d7994b0',
  'tests/test_c06_custom_capex_profile_replay.py': 'fcfbd6365b0d013de60de7d6423e57ce6808803d'}
 SOURCE_PATHS = frozenset(('docs/react_migration/c06_cost_workspace/C06_LEDGER.md',
  'frontend/src/app/plainCopy.ts',
@@ -2039,6 +2039,14 @@ HANDOFFS['tests/test_u2_scope.py'] = [(
      "        assert not any(m.exact_blobs_ok(wt) for m in four.values()) and not U1.allowed_path('app/v2/react_opex_lines.py', wt)\n"
      "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n"
      "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
+
+HANDOFFS['tests/test_ux_pr3b1_scope.py'] += [(
+    "    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as accept\n",
+    "    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as _accept\n"
+    "\n"
+    "    def accept(*args, **kwargs):      # one registry read per call (dropped on exit; nothing is kept across calls)\n"
+    "        with registry.call_scope():\n"
+    "            return _accept(*args, **kwargs)\n")]
 
 HANDOFFS['tests/test_u2_scope.py'] += [
     ("    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}\n",
