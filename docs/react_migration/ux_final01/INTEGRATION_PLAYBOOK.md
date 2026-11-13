@@ -1,16 +1,15 @@
 # UX-FINAL-01 — integration playbook (public-safe)
 
 ## Upstream state (re-read live before every integration; these are observations, not authority)
-- Accepted `main`: `b1c08e2d00fe9933565d253d5cee6e5849b143e1` (tree `5b25c1f245d3d53d9bbe24060c13dc936e06b8d7`), observed 2026-11-13.
-- #444 (C06): Draft, head `4e6cc4552780ae83474d2f5fb6c7331bdf9aca80` (re-read 2026-11-13; it was `48a81c2f` earlier the same day), base = the same `main`. The PR body may name another head; the API head is authoritative.
-- R04 Phase 1 (#442): merged, ISOLATED (not wired into Save/Run). R04 Phase 2: no PR observed.
-- #446 (this work): Draft, branch `claude/new-session-awc9gz`, base `main`.
+- Accepted `main`: `07f558461dc13c1a8c623064360dee0b4ba42cd0` (tree `d3c7bcf2c24f8557b7977cb3dea85816ac15ed2a`), after "Merge PR #444" (C06, head `0a9f4fe41a1d3e88114eeef5cb2a1bc01a69a95d`); observed 2026-11-13. Previous main: `b1c08e2d00fe9933565d253d5cee6e5849b143e1`.
+- #444 (C06): MERGED. R04 Phase 1 (#442): merged, ISOLATED. R04 Phase 2: not in `main`, no PR observed.
+- #446 (this work): Draft, branch `claude/new-session-awc9gz`; merge commit `fdb2616b` = ordinary merge of `07f55846` into `abffe583`.
 
 ## What must NOT be merged or copied from a Draft
-Nothing from #444 (writers, profile routes, successor pins) may be copied into #446 while #444 is a Draft. R04 Phase 2 semantics (annual absolute quantities,
+#444 is now merged: its accepted code arrives only through the ordinary merge of `main`; nothing was copied from a Draft. R04 Phase 2 semantics (annual absolute quantities,
 global caps, CfD behaviour, selected-case calculations, Save All/Run) must not be shown as active before the server route exists and is proven.
 
-## #444 (C06) integration, after it is genuinely accepted into main
+## #444 (C06) integration - DONE on this branch (kept as the procedure; see the ledger for evidence)
 1. `git fetch origin && git merge origin/main` into the #446 branch (ordinary merge; no rebase, squash or force push). Resolve conflicts by hand.
 2. Expected overlap: `frontend/src/app/capex/*`, `editing/CostLinesGridView.tsx`, `WorkspaceView.tsx`, `static/react/finco-react.{js,css}`, `tests/fin_v2_cohorts.py`
    and the eight current maps. #444 and #446 currently carry competing finite successors on the SAME accepted R04 base: the #446 successor must be re-derived as a
@@ -49,3 +48,11 @@ The public-safety step PASSED on this head (the earlier "forbidden identifier" f
 - Timing: all three shards finished in <= 6m08s and nothing timed out. The earlier 15-25+ minute shards were the governance chain PASSING (long exact-source work); with invalid pins the cohorts exit early. Do not read the short runtime as health.
 - CI V4 `f01` browser job (separate from the F01 workflow) fails its "Four-vertical real browser rate round-trip" step; classification pending a log read at consolidation (likely the same exact-source dependency; not assumed).
 The owner-flagged stale status vocabulary in `tests/test_ux_final01_scope.py` is fixed: one closed vocabulary (CURRENT, CODED, BROWSER_VERIFIED, SOURCE_BYTE_INTEGRATED, HOSTED_CI_VERIFIED, PARTIAL, DEPENDENCY_PENDING, BLOCKED, DO_NOT_CHANGE, MISSING) with a validator and negative tests (PASS/DONE/COMPLETE, case/padding variants, structural forgeries).
+
+## Post-#444 integration record (2026-11-13) - how the successor chain is wired (public-safe)
+1. `git merge origin/main` (ordinary). Conflicts were only governance/generated files; resolved to the accepted `main` bytes, then the UX successor was re-derived over BASE = `main` by `git show BASE:path` + literal one-occurrence substitutions (the module refuses an ambiguous or missing anchor).
+2. Chain: ... -> R04 -> C06 -> UX-FINAL-01. C06 has one forward hook; U1/U2/PR1/PR2b/PR2c/PR3b1 have one bounded deferral each; the registry appends this cohort once; exact-tail tests and C06's own mutation tests accept one more state.
+   The C06 module is stored with CRLF line endings: its substitutions are CRLF literals.
+3. Re-derivation checklist after ANY change to a pinned file: rebuild the bundle from a clean install, regenerate the successor, run `python -m tools.ci_v4_governance_gate`, then the scope modules; never hand-edit a pin.
+4. Cost: see the ledger. A rebalanced `docs/ci_v4/module_weights.json` is the proper fix for shard imbalance and is an owner/CI decision (frozen by C06).
+5. Workflow run identifiers belong to the pull request description and the final report (a pinned file cannot name its own commit's runs); the two living documents may change without a pin.
