@@ -327,7 +327,15 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                  '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
                                  'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
                                  'UX_APPROVAL.__name__)\n'
-                                 '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok()))\n')],
+                                 '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok()))\n'),
+                                ('        if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared '
+                                 'bundle, exactly at its pinned blob\n',
+                                 '        if path in UX_APPROVAL.SUPERSEDED and UX_APPROVAL.signature_ok():     # the one reviewed '
+                                 'UX-FINAL-01 successor of the shared presentation sources\n'
+                                 '            assert B._blob((B.ROOT/path).read_bytes()) == UX_APPROVAL.effective_pins()[path]\n'
+                                 '            continue\n'
+                                 '        if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared '
+                                 'bundle, exactly at its pinned blob\n')],
  'tests/test_c06_cost_workspace_scope.py': [('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
                                              '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
                                              "(F.__name__, 'tests.ux_final01_scope'))\n"),

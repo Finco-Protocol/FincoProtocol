@@ -172,6 +172,9 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
                             'tests/onaccept01_scope.py', 'tests/tax_reference_registry_scope.py'}
     from tests import f03_financing_scope as G
     for path in sorted(paths):
+        if path in UX_APPROVAL.SUPERSEDED and UX_APPROVAL.signature_ok():     # the one reviewed UX-FINAL-01 successor of the shared presentation sources
+            assert B._blob((B.ROOT/path).read_bytes()) == UX_APPROVAL.effective_pins()[path]
+            continue
         if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared bundle, exactly at its pinned blob
             assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]
             continue
