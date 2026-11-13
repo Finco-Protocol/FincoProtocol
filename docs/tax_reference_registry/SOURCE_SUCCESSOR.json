@@ -30,7 +30,7 @@
     "tests/tax_reference_registry_scope.py": "83e48df7db1eafacc5907e51934cb35a5e8b9893",
     "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
     "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6",
-    "tests/ux_pr3b1_scope.py": "b9c23ce55868fe77fead782006e6ac9c815cd5b1",
+    "tests/ux_pr3b1_scope.py": "68e0c01509e981cd32aecc8ebedbc6b3be5ae557",
     "tests/ux_pr3b2_scope.py": "ff91b0a5fd3a000c4f68b51abcc395d58d3f071a"
   }
 }

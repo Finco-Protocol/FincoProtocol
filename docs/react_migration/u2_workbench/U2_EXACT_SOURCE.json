@@ -37,7 +37,7 @@
     "frontend/src/app/editing/CostLinesGridView.tsx": "860a531019b7f6ecaf63e4225cdbf477f3cfe49c",
     "frontend/src/app/projection/OpexLineYears.tsx": "49f3c322a6659e48c8023bdaee71b04eea05e6ba",
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
-    "static/react/finco-react.css": "e3eec67e9e8556e0e3a0bb3892d1209eccffb670",
+    "static/react/finco-react.css": "f3aa0c988a28b7b310c970ffa33993c026d11eb8",
     "static/react/finco-react.js": "f6d1b85518bf7097f883ed693ba86e41503c52c6",
     "tests/fin_v2_cohorts.py": "516177b4f9d03b9accae6e2d5640e06ea9456e95",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
@@ -48,7 +48,7 @@
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
     "tests/test_u2_scope.py": "b19776c30bb04943ac7dd590d6575a43a5589b6a",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
-    "tests/u1_scope.py": "288b77d945d329f44bfe4db556ed8dd7af6d381d",
+    "tests/u1_scope.py": "9f4e6cf21eedec50f84aa3d46369abc9a5185aa3",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
     "tests/u2_scope.py": "596305c4fff829f8f64a18ce2cef7ed0a5966300"
   }

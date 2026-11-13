@@ -32,7 +32,7 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'frontend/src/styles/rx-mvp-correction.css': '9a48b7ed70ac16bd0c2c26e8dd35749593eb4b53',
  'frontend/src/styles/compact-inputs.css': '53a1bb1dfc843df34235b3228a0f1f0580d2aea6',
  'static/react/finco-react.css': 'f3aa0c988a28b7b310c970ffa33993c026d11eb8',
- 'tests/model_react_rcux_capex_acceptance.py': 'f31c875cb1ce78cb1cf1b10d8faafc7b24c1b716',
+ 'tests/model_react_rcux_capex_acceptance.py': '8502c1d1e288f0f6982f3cdac36ebbc3e449c19f',
  'static/react/finco-react.js': 'f6d1b85518bf7097f883ed693ba86e41503c52c6',
  'tests/test_c06_cost_workspace_browser.py': 'd53d26ea78224e36f45c99601e0c78336432c991',
  'tests/test_c06_cost_workspace_scope.py': '5ddc8af3593e97a1bfd8c5e2b17339853da53cdf',
@@ -88,7 +88,7 @@ CURRENT_MAPS = frozenset(('docs/ci_v4/SOURCE_SUCCESSOR.json',
  'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
  'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
  'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
@@ -1950,7 +1950,10 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                             ("if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
                              "'frontend/src/app/capex/ProfileRowEditor.tsx'):",
                              "if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
-                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):")],
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):"),
+                            ("'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):",
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx', "
+                             "'frontend/src/app/capex/CapexStudio.tsx'):")],
  'tests/ux_pr2c_scope.py': [('def _pr3b1_pin(path, blob, repo=None, ref=None):\n',
                              'def _pr3b1_pin(path, blob, repo=None, ref=None):\n'
                              '    # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.\n'
@@ -1965,7 +1968,9 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                               '        if C06.signature_ok(repo, ref) and C06.supersedes(path, value, repo, ref):\n'
                               '            return True\n'),
                              ('    if path == "frontend/src/app/editing/CostLinesGridView.tsx":',
-                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):')]}
+                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):'),
+                             ('    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):',
+                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):')]}
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
