@@ -1998,6 +1998,46 @@ for _path, _names in (('tests/ux_pr2c_scope.py', ('exact_blobs_ok',)), ('tests/u
     _anchor = "\n@scoped()\ndef matches(" if _path == 'tests/u1_scope.py' else "\ndef matches("      # u1 decorates matches; the wrapper goes above the decorator
     HANDOFFS[_path].append((_anchor, "\n" + "".join(_SCOPE_WRAPPER % {'n': _n} for _n in _names) + _anchor.lstrip("\n")))
 
+# Correction D (legacy U1 scope reconciliation): U1's two historical provenance tests (``test_u1_scope.py``) discover "every closed later cohort" through
+# ``U._later_modules()``.  Eleven REGISTERED cohorts (ten accepted on main + this one) were never added to U1's list, so their own manifests and owned
+# paths read as foreign edits.  The reviewed handoff below appends exactly these cohorts, in registry order, as DISCOVERY-ONLY views: they contribute their
+# literal manifest, owned paths and (for the test) their own exact verdict, and NOTHING else - they supersede nothing, admit no path, own no CI path and
+# own no custody blob, so no older guard (U1 hooks, WF-06B, WS-v2 core, RC-M governance) gains any admission.  The tuple is closed: a later cohort
+# is not discovered until ITS reviewed handoff extends it.  Unregistered or reordered entries are ignored by the tests' own ``COHORT_MODULES`` check.
+U1_RECONCILED_SUCCESSORS = (
+    'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope',
+    'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope',
+    'tests.c06_cost_workspace_scope')
+_U1_DISCOVERY = (
+    "RECONCILED_SUCCESSORS = %r\n\n\n"
+    "class _Discovered:\n"
+    "    \"\"\"Contract-test view of a registered later cohort (Correction D): manifest, owned paths and its OWN exact verdict only.\n"
+    "    It supersedes nothing, admits no path, owns no CI path and holds no custody blob: it never widens an older guard.\"\"\"\n"
+    "    SUPERSEDED = frozenset()\n\n"
+    "    def __init__(self, module):\n"
+    "        self._module = module\n"
+    "        self.__name__ = module.__name__\n"
+    "        self.MANIFEST = module.MANIFEST\n"
+    "        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)\n\n"
+    "    def exact_blobs_ok(self, repo=None, ref=None):\n"
+    "        return self._module.exact_blobs_ok(repo, ref)\n\n"
+    "    def scoped(self):\n"
+    "        from contextlib import nullcontext\n        return nullcontext()\n\n"
+    "    def allowed_path(self, path, repo=None, ref=None):\n"
+    "        return False\n\n"
+    "    def supersedes(self, path, value, repo=None, ref=None):\n"
+    "        return False\n\n\n"
+    "def _later_modules():\n    import importlib\n") % (U1_RECONCILED_SUCCESSORS,)
+HANDOFFS['tests/u1_scope.py'].append(("def _later_modules():\n    import importlib\n", _U1_DISCOVERY))
+HANDOFFS['tests/u1_scope.py'].append((
+    "            if exc.name != name:\n                raise\n    return loaded\n",
+    "            if exc.name != name:\n                raise\n"
+    "    if loaded:      # a closed later list exists (an emptied list stays empty): the reconciled registered successors follow it, in order\n"
+    "        for name in RECONCILED_SUCCESSORS:\n"
+    "            try:\n                loaded.append(_Discovered(importlib.import_module(name)))\n"
+    "            except ModuleNotFoundError as exc:\n                if exc.name != name:\n                    raise\n"
+    "    return loaded\n"))
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
