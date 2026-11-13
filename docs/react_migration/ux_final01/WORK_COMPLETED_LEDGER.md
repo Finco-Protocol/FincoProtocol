@@ -69,4 +69,4 @@ extending those frozen modules (see INTEGRATION_PLAYBOOK.md). `static/react/finc
 
 ## Not done / pending (see screen_contract.csv)
 Financing one-workspace layout; CAPEX/OPEX presentation work; OPEX "uniform across lines" label: VERIFIED CORRECT (conditional on all lines sharing one rate), no router change made (see screen_contract.csv);
-Revenue read structure (R04 Phase 2 gated); Overview/Results compact KPI consistency; five-viewport QA of the new CSS; private continuation ZIP; Croatian report.
+Revenue read structure (R04 Phase 2 gated); Overview/Results compact KPI consistency; five-viewport QA of the new CSS; private continuation ZIP; final owner report (written in the owner's language).
