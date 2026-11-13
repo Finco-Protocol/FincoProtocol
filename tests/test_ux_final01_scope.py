@@ -28,6 +28,13 @@ CHANGED_SOURCE = "frontend/src/app/financing/pr3b2/FinancingEditing.tsx"
 SECOND_SOURCE = "frontend/src/app/financing/pr3b1/runEvidence.ts"
 BUNDLE = "static/react/finco-react.js"
 STYLE_BUNDLE = "static/react/finco-react.css"
+# The composite ``C.valid`` is a conjunction over every registered cohort's exact verdict, this one included, so each tamper below asserts THIS cohort's verdict
+# for every path (cheap) and the whole composite for one representative of each kind (a source, a bundle, the registry, a handoff, a map, a frozen file).
+COMPOSITE_PATHS = frozenset((
+    "frontend/src/app/WorkspaceView.tsx", "static/react/finco-react.js", "static/react/finco-react.css", "tests/fin_v2_cohorts.py",
+    "tests/c06_cost_workspace_scope.py", "tests/u1_scope.py", "tests/ux_final01_scope.py", "docs/ci_v4/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/c06_cost_workspace/SOURCE_SUCCESSOR.json", "docs/react_migration/ux_final01/SOURCE_SUCCESSOR.json",
+    "tests/ux_pr3b1_scope.py", "docs/react_migration/ux_final01/screen_contract.csv"))
 TAIL = ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope",
         "tests.c06_cost_workspace_scope", "tests.ux_final01_scope")
 
@@ -259,7 +266,9 @@ def test_one_byte_in_the_working_tree_of_any_owned_blob_fails_closed(clone, path
     with _WorkingTree(clone):
         assert T.exact_blobs_ok(clone) and T.signature_ok(clone)
         _tamper(clone, path, lambda b: b + b"\n# tampered\n")
-        assert T.exact_blobs_ok(clone) is False and not C.valid(clone), path
+        assert T.exact_blobs_ok(clone) is False, path
+        if path in COMPOSITE_PATHS:
+            assert not C.valid(clone), path
     assert T.exact_blobs_ok(clone)                               # restored: the verdict is not poisoned
 
 
@@ -303,14 +312,18 @@ def test_the_served_bundle_bytes_match_their_manifest_pin():
 def test_one_byte_in_any_owned_committed_blob_is_rejected_by_the_chain_and_the_composite(clone, path):
     ref = _variant(clone, {path: lambda b: b + b"\n"})
     with C.call_scope():
-        assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+        assert not T.exact_blobs_ok(clone, ref), path
+        if path in COMPOSITE_PATHS:
+            assert not C.valid(clone, ref), path
 
 
 @pytest.mark.parametrize("path", sorted(T.CURRENT_MAPS))
 def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
     ref = _variant(clone, {path: lambda b: b + b"\n"})
     with C.call_scope():
-        assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+        assert not T.exact_blobs_ok(clone, ref), path
+        if path in COMPOSITE_PATHS:
+            assert not C.valid(clone, ref), path
 
 
 @pytest.mark.parametrize("name,fn", [
@@ -335,7 +348,9 @@ def test_registry_mutations_are_rejected(clone, name, fn):
 def test_historical_and_accepted_chain_files_must_stay_byte_identical(clone, path):
     ref = _variant(clone, {path: lambda b: b + b"\n"})
     with C.call_scope():
-        assert not T.signature_ok(clone, ref) and not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+        assert not T.signature_ok(clone, ref) and not T.exact_blobs_ok(clone, ref), path
+        if path in COMPOSITE_PATHS:
+            assert not C.valid(clone, ref), path
 
 
 def test_predecessor_c06_scope_tamper_is_rejected_everywhere(clone):

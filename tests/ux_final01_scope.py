@@ -575,7 +575,12 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                            '\'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                            '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
                                            'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')],
- 'tests/u1_scope.py': [("    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css',",
+ 'tests/u1_scope.py': [("'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')\n\n\nclass _Discovered:",
+                        "'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')\n\n\nclass _Discovered:"),
+                       ('        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)\n',
+                        "        self.OWNED_PATHS = frozenset(module.OWNED_PATHS) | frozenset(getattr(module, 'LIVE_DOCS', ()))      # "
+                        'living documents a cohort may change without a pin\n'),
+                       ("    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css',",
                         '    from tests import ux_final01_scope as UX\n'
                         '    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may '
                         'move these exact pins too\n'
