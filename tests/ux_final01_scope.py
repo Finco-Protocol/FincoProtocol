@@ -460,6 +460,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
  'tests/test_r02_ppa_ux_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                      'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                      'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                    ("                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope') if m in "
+                                     'C.COHORT_MODULES)\n',
+                                     "                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "'tests.ux_final01_scope') if m in C.COHORT_MODULES)\n"),
                                     ('    if len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
                                      '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n',
                                      "    if 'tests.ux_final01_scope' in C.COHORT_MODULES and UX_APPROVAL.signature_ok():\n"
