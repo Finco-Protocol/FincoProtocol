@@ -38,7 +38,8 @@ def _assets(context, build):
                       route.fulfill(path=str(build / f"finco-react.{ext}"), content_type=mime))
 
 
-HIDDEN_JS = """const hidden = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { const q = n.getBoundingClientRect(), cs = getComputedStyle(n); if (q.width <= 2 && q.height <= 2 && cs.position === 'absolute' && (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.clip !== 'auto')) return true; } return false; };"""
+HIDDEN_JS = """const hidden = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { const q = n.getBoundingClientRect(), cs = getComputedStyle(n); if (q.width <= 2 && q.height <= 2 && cs.position === 'absolute' && (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.clip !== 'auto')) return true; } return false; };
+const vtext = (root) => { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let s = ''; while (w.nextNode()) { const n = w.currentNode; if (n.parentElement && !hidden(n.parentElement)) s += n.textContent; } return s.replace(/\\s+/g, ' ').trim(); };"""
 # An element inside an ABSOLUTELY positioned, 1x1px, overflow-clipped ancestor (not merely a 0x0 display:contents wrapper) is the deliberate screen-reader-only pattern (e.g. the covenant table's header row on phones, where the
 # table becomes labelled cards); it is not a layout defect and is the ONLY exclusion the checks below make.
 
@@ -62,7 +63,7 @@ def no_collapsed_table_cells(page, where=''):
     bad = page.evaluate("""() => { """ + HIDDEN_JS + """ const out = [];
       for (const cell of document.querySelectorAll('table td, table th')) {
         const r = cell.getBoundingClientRect(); if (!r.width || !r.height || hidden(cell)) continue;
-        const t = (cell.textContent || '').replace(/\\s+/g, ' ').trim();
+        const t = vtext(cell);          // VISIBLE text only: screen-reader-only labels over icon columns are not layout defects
         if (t.length >= 8 && r.width < 48) out.push('collapsed ' + cell.tagName.toLowerCase() + ' "' + t.slice(0, 28) + '" ' + Math.round(r.width) + 'px');
         if (cell.tagName === 'TH' && /\\brcm-sticky\\b/.test(cell.className)) {
           const sc = cell.closest('.rcm-scroll, .dm-scroll, .fm-table-wrap'); if (!sc || sc.scrollWidth <= sc.clientWidth + 1) continue;
