@@ -149,3 +149,76 @@ def test_bool_is_not_a_technical_number_even_in_a_manually_constructed_dataclass
     p=explicit_inputs();p=replace(p,technical=replace(p.technical,**{field:True}))
     with pytest.raises(CandidateError,match="GENERATION_INVALID"):
         source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")
+
+
+@pytest.mark.parametrize("changes", [
+    {"capacity_mw":-100,"operating_hours_p50":-1000},
+    {"capacity_mw":-1}, {"operating_hours_p50":-1}, {"operating_hours_p90_10y":-1},
+    {"plant_availability":-1,"grid_availability":-1},
+    {"plant_availability":1.01}, {"grid_availability":1.01},
+    {"pv_degradation":-.01}, {"pv_degradation":1.01},
+])
+def test_invalid_input_factors_cannot_cancel_into_a_positive_technical_source(changes):
+    p=explicit_inputs();p=replace(p,technical=replace(p.technical,**changes))
+    with pytest.raises(CandidateError,match="GENERATION_INVALID"):
+        source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")
+
+
+@pytest.mark.parametrize("field", ["capacity_mw","operating_hours_p50","operating_hours_p90_10y","plant_availability","grid_availability","pv_degradation"])
+@pytest.mark.parametrize("value", [float("nan"),float("inf"),float("-inf")])
+def test_nonfinite_source_facts_refuse_even_when_the_selected_case_does_not_use_them(field,value):
+    p=explicit_inputs();p=replace(p,technical=replace(p.technical,**{field:value}))
+    with pytest.raises(CandidateError):
+        source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")
+
+
+def test_selected_p90_requires_its_existing_positive_source_contract():
+    p=explicit_inputs("P90-10y");p=replace(p,technical=replace(p.technical,operating_hours_p90_10y=0))
+    with pytest.raises(CandidateError,match="GENERATION_INVALID"):
+        source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")
+
+
+@pytest.mark.parametrize("changes", [{"capacity_mw":0},{"operating_hours_p50":0},{"plant_availability":0},{"grid_availability":0},{"pv_degradation":1}])
+def test_zero_generation_source_bounds_never_promote_financial_or_annual_readiness(changes):
+    p=explicit_inputs();p=replace(p,technical=replace(p.technical,**changes))
+    s=source_from_inputs(p,technology="solar",project_id="p",scenario_id="s",input_revision="v")
+    assert any(row.mwh==0 for row in s.periods)
+    # This is the existing operating generator's bounded source domain, not
+    # full project-input admission or an approved annual delivery policy.
+    with pytest.raises(CandidateError,match="POLICY_AND_PRODUCTION_ADMISSION_REQUIRED"):
+        require_production_contract(parse_annual_document(json.dumps(document())))
+
+
+def test_canonical_boundary_labels_are_not_presented_as_half_open_calendar_delivery_dates():
+    s=source_from_inputs(explicit_inputs(),technology="solar",project_id="p",scenario_id="s",input_revision="v")
+    obj=document()
+    for c in obj["contracts"]:
+        c["start_date"]=s.periods[0].start.isoformat();c["end_date"]=s.periods[-1].end.isoformat()
+    book=parse_annual_document(json.dumps(obj))
+    explicit_zeros=[D(c.contract_id,p.index,F(0)) for c in book.contracts for p in s.periods]
+    result=review_declared_deliveries(book,s,explicit_zeros,expected_source_sha256=s.identity_sha256)
+    first=result["periods"][0]
+    assert first["start_boundary_label"]=="2028-01-01" and first["end_boundary_label"]=="2028-06-30"
+    assert first["days_in_period"]==182
+    assert (s.periods[0].end-s.periods[0].start).days==181
+    assert first["day_fraction"]==str(182/366)
+    assert "end_exclusive" not in first and not result["calendar_delivery_interval_verified"]
+    assert not result["annual_semantics_verified"] and not result["production_supported"]
+
+
+@pytest.mark.parametrize("days,fraction", [(True,"1"),(0,"1"),(-1,"1"),(366,None),(None,"1"),(366,"NaN"),(366,"Infinity"),(366,"0"),(366,"-1"),(366,True),(366,"invalid")])
+def test_malformed_period_metadata_cannot_be_mistaken_for_source_facts(days,fraction):
+    s=source();s=replace(s,periods=(replace(s.periods[0],days_in_period=days,day_fraction=fraction),))
+    book=parse_annual_document(json.dumps(document()))
+    with pytest.raises(CandidateError,match="PERIOD_AXIS"):
+        review_declared_deliveries(book,s,[D("ppa-0",2,F(80000)),D("ppa-1",2,F(20000))],expected_source_sha256=s.identity_sha256)
+
+
+def test_period_metadata_and_axis_scope_are_in_the_stale_source_identity():
+    s=source_from_inputs(explicit_inputs(),technology="solar",project_id="p",scenario_id="s",input_revision="v")
+    expected=s.identity_sha256
+    for changed in (replace(s,axis_scope="EXPLICIT_DECLARED_PERIOD_ROWS"),
+                    replace(s,periods=(replace(s.periods[0],days_in_period=s.periods[0].days_in_period+1),*s.periods[1:]))):
+        assert changed.identity_sha256!=expected
+        with pytest.raises(CandidateError,match="SOURCE_IDENTITY"):
+            review_declared_deliveries(parse_annual_document(json.dumps(document())),changed,[],expected_source_sha256=expected)

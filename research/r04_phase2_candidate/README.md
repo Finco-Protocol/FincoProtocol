@@ -1,7 +1,7 @@
-# R04 Phase 2 preparatory candidate — parent unaccepted, not wired
+# R04 Phase 2 preparatory candidate — accepted C06, UI dependency pending
 
-This isolated package is staged on a separate branch inheriting the open C06
-parent. It changes no accepted writer, engine, governance map, UI or bundle.
+This isolated package continues on the existing branch after the ordinary
+accepted C06 #444 main sync. Shared UI integration awaits accepted #446. It changes no accepted writer, engine, governance map, UI or bundle.
 There is no production Save/Run admission or completed annual contract policy.
 
 `contracts.parse_annual_document` defines bounded, strict annual-quantity syntax:
@@ -43,8 +43,8 @@ MWh/GWh business tolerance. HTTP tests against the unchanged canonical stack
 must distinguish legacy successes and new-format fail-closed rollback from
 future absolute-quantity positive endpoint/Run/History acceptance.
 
-Before final production integration: accept and ordinarily merge the C06 parent,
-verify current main/source/bundle/flags, complete a reviewed finite production
+Before final production integration: verify and ordinarily merge accepted #446
+main/source/bundle/flags, preserving accepted C06, complete a reviewed finite production
 successor, close required policy, connect the same canonical final effective
 candidate validation to Direct Save/atomic Save All/Run, and prove actual sealed
 History and browser behavior. Do not use this preparatory branch as a completed
@@ -57,3 +57,20 @@ forecast, unit conversion or cap calculation. Its isolated render/syntax checks
 run via `node src/app/workflow/r04Candidate/candidate.test.mjs` from frontend;
 these are not real-browser, served-bundle or final UI acceptance. Typechecking
 must pass; final build/wiring waits for accepted parent source and policy.
+
+Source scalar admission follows the existing operating engine's finite,
+nonnegative capacity/hour and [0,1] availability domains, selected P90 positive
+hours, and core [0,1] degradation constraint. Negative factors cannot cancel
+into an apparently valid positive forecast. Zero source generation can be
+reviewed without claiming full financial-input validity or annual delivery
+approval; a full financial validator has additional independent conditions.
+This does not modify technical, pricing or accounting policy in the engines.
+
+
+Period reports use start_boundary_label/end_boundary_label, never an unsupported
+end_exclusive claim. Canonical source records also preserve actual engine
+days_in_period/day_fraction and bind them into content identity. The released
+semiannual axis has an inclusive-day exception; quarterly axes can differ. No
+calendar normalization, day shift or owner annual convention is chosen here.
+calendar_delivery_interval_verified remains false even when boundary labels
+match. The unmounted frontend is unchanged until the #446 integration phase.

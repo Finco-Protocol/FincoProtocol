@@ -86,3 +86,15 @@ def test_legacy_share_combined_forecast_save_all_and_replay_keep_existing_semant
     replay=world.owner.post(URL,json=body)
     assert replay.status_code==200 and replay.json()["replayed"] and digest()==after,replay.text
     evidence("R04P2-LEGACY-IDEMPOTENT-REPLAY",replay,after,digest(),"EXISTING_SAVEALL_IDEMPOTENCY")
+
+
+def test_candidate_cannot_smuggle_an_undeclared_p90_writer_through_save_all(world):
+    rec=_project()
+    body=_body(rec,world.owner,contracts_json=None,cost_lines=[],
+        cells=[{"field_id":"project_setup.technical.yield_scenario","value":"P90-10y"}])
+    before=digest()
+    response=world.owner.post(URL,json=body)
+    after=digest()
+    assert response.status_code==422 and before==after,response.text
+    evidence("R04P2-P90-WRITER-REFUSAL",response,before,after,
+             "UNDECLARED_FIELD_REFUSAL_NOT_A_NEW_P90_PERSISTENCE_FEATURE")

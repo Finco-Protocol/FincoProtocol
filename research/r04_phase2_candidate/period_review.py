@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from .contracts import AnnualBook, CandidateError, _text, parse_annual_document
 
@@ -43,6 +43,9 @@ class GenerationPeriod:
     start: date
     end: date
     mwh: Fraction
+    # Raw engine row labels are not universally half-open calendar dates.
+    days_in_period: int | None = None
+    day_fraction: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,12 +55,14 @@ class TechnicalSource:
     input_sha256: str
     context_sha256: str
     periods: tuple[GenerationPeriod, ...]
+    axis_scope: str = "EXPLICIT_DECLARED_PERIOD_ROWS"
 
     @property
     def identity_sha256(self):
         return _hash({"inputs": self.input_sha256, "context": self.context_sha256,
-                      "technology": self.technology, "case": self.case,
-                      "periods": [(p.index, p.start, p.end, exact(p.mwh)) for p in self.periods]})
+                      "technology": self.technology, "case": self.case, "axis_scope": self.axis_scope,
+                      "periods": [(p.index, p.start, p.end, exact(p.mwh), p.days_in_period, p.day_fraction)
+                                  for p in self.periods]})
 
 
 def source_from_inputs(inputs, *, technology, project_id, scenario_id, input_revision):
@@ -85,7 +90,16 @@ def source_from_inputs(inputs, *, technology, project_id, scenario_id, input_rev
         numeric = (inputs.technical.capacity_mw, inputs.technical.operating_hours_p50,
                    inputs.technical.operating_hours_p90_10y, inputs.technical.plant_availability,
                    inputs.technical.grid_availability, inputs.technical.pv_degradation)
-        if any(isinstance(v, bool) for v in numeric):
+        # Match the existing engine's TECH001/2/3/4/6/7 domains before
+        # multiplication: invalid negative factors can otherwise cancel, and
+        # a finite nonnegative output would falsely look like usable source.
+        # Degradation [0,1] is already the core input-validator contract.
+        if (any(isinstance(v, bool) or not math.isfinite(v) for v in numeric)
+                or any(v < 0 for v in numeric[:3])
+                or not 0 <= inputs.technical.plant_availability <= 1
+                or not 0 <= inputs.technical.grid_availability <= 1
+                or not 0 <= inputs.technical.pv_degradation <= 1
+                or (case == "P90-10y" and inputs.technical.operating_hours_p90_10y <= 0)):
             raise CandidateError("R04_P2_GENERATION_INVALID")
         typed_hash = _hash(asdict(inputs))
         engine = _build_period_engine(from_project_inputs(inputs))
@@ -97,11 +111,13 @@ def source_from_inputs(inputs, *, technology, project_id, scenario_id, input_rev
             value = schedule[p.index]
             if isinstance(value, bool) or not math.isfinite(value) or value < 0:
                 raise CandidateError("R04_P2_GENERATION_INVALID")
-            rows.append(GenerationPeriod(p.index, p.start_date, p.end_date, Fraction(str(value))))
+            rows.append(GenerationPeriod(p.index, p.start_date, p.end_date, Fraction(str(value)),
+                                         p.days_in_period, str(p.day_fraction)))
         periods = tuple(rows)
         _validate_periods(periods)
         context_hash = _hash({"project": project_id, "scenario": scenario_id, "revision": input_revision})
-        return TechnicalSource(technology, case, typed_hash, context_hash, periods)
+        return TechnicalSource(technology, case, typed_hash, context_hash, periods,
+                               "CANONICAL_PERIOD_ENGINE_ROW_LABELS")
     except CandidateError:
         raise
     except (ValueError, TypeError, AttributeError, KeyError, UnicodeError, OverflowError, RecursionError):
@@ -117,6 +133,16 @@ def _validate_periods(periods):
                 or p.index < 0 or p.end <= p.start or type(p.mwh) is not Fraction or p.mwh < 0
                 or (previous is not None and (p.index <= previous.index or p.start != previous.end))):
             raise CandidateError("R04_P2_PERIOD_AXIS")
+        if p.days_in_period is not None or p.day_fraction is not None:
+            if (type(p.days_in_period) is not int or p.days_in_period <= 0
+                    or not isinstance(p.day_fraction, str) or len(p.day_fraction) > 128):
+                raise CandidateError("R04_P2_PERIOD_AXIS")
+            try:
+                fraction = Decimal(p.day_fraction)
+                if not fraction.is_finite() or fraction <= 0:
+                    raise CandidateError("R04_P2_PERIOD_AXIS")
+            except InvalidOperation:
+                raise CandidateError("R04_P2_PERIOD_AXIS") from None
         previous = p
 
 
@@ -138,7 +164,7 @@ def review_declared_deliveries(book: AnnualBook, source: TechnicalSource, delive
     """Check explicit aligned period quantities, never validate an annual deal.
 
     No absent delivery becomes zero. No daily/seasonal or anniversary curve is
-    inferred. A WITHIN_LIMIT result remains closed to production Save and Run.
+    inferred. Matching engine boundary labels is not calendar-window validation. A WITHIN_LIMIT result remains closed to production Save and Run.
     """
     if type(book) is not AnnualBook or type(source) is not TechnicalSource:
         raise CandidateError("R04_P2_TYPED_CANDIDATE_REQUIRED")
@@ -150,6 +176,11 @@ def review_declared_deliveries(book: AnnualBook, source: TechnicalSource, delive
         raise CandidateError("R04_P2_SOURCE_IDENTITY")
     if source.identity_sha256 != expected_source_sha256 or book.technology != source.technology:
         raise CandidateError("R04_P2_SOURCE_IDENTITY")
+    if source.axis_scope not in ("EXPLICIT_DECLARED_PERIOD_ROWS", "CANONICAL_PERIOD_ENGINE_ROW_LABELS"):
+        raise CandidateError("R04_P2_PERIOD_AXIS")
+    if (source.axis_scope == "CANONICAL_PERIOD_ENGINE_ROW_LABELS"
+            and any(p.days_in_period is None or p.day_fraction is None for p in source.periods)):
+        raise CandidateError("R04_P2_PERIOD_AXIS")
     if source.case not in ("P_50", "P90-10y"):
         raise CandidateError("R04_P2_SELECTED_CASE_UNSUPPORTED")
     _validate_periods(source.periods)
@@ -186,13 +217,14 @@ def review_declared_deliveries(book: AnnualBook, source: TechnicalSource, delive
         committed = sum(per_contract.values(), Fraction(0))
         requested = per_contract.get(requested_contract_id, Fraction(0))
         existing = committed - requested
-        row = {"period_index": p.index, "start": p.start.isoformat(), "end_exclusive": p.end.isoformat(),
+        row = {"period_index": p.index, "start_boundary_label": p.start.isoformat(), "end_boundary_label": p.end.isoformat(),
+               "days_in_period": p.days_in_period, "day_fraction": p.day_fraction,
                "available_mwh": exact(p.mwh), "committed_mwh": exact(committed),
                "uncontracted_mwh": exact(p.mwh - committed),
                "per_contract_mwh": {cid: exact(v) for cid, v in sorted(per_contract.items())}}
         rows.append(row)
         if committed > p.mwh:
-            violations.append({"case": source.case, "start": row["start"], "end_exclusive": row["end_exclusive"],
+            violations.append({"case": source.case, "start_boundary_label": row["start_boundary_label"], "end_boundary_label": row["end_boundary_label"],
                                **{key + "_gwh": exact(v / 1000) for key, v in {
                                    "available": p.mwh, "existing": existing, "requested": requested,
                                    "remaining": p.mwh - existing, "excess": committed - p.mwh,
@@ -200,6 +232,7 @@ def review_declared_deliveries(book: AnnualBook, source: TechnicalSource, delive
     report = {"scope": "DECLARED_PERIOD_DELIVERY_CAP_ONLY", "source_identity_sha256": source.identity_sha256,
               "identity_scope": "CONTENT_ONLY_NOT_AUTHORIZATION_OR_COMMITTED_RUN", "case": source.case,
               "status": "EXCEEDED" if violations else "WITHIN_LIMIT_NOT_ANNUAL_CONTRACT_ACCEPTANCE",
+              "axis_scope": source.axis_scope, "calendar_delivery_interval_verified": False,
               "annual_semantics_verified": False, "pricing_verified": False,
               "production_supported": False, "persisted": False, "run_executed": False,
               "periods": rows, "violations": violations}
