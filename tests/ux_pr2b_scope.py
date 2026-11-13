@@ -189,6 +189,28 @@ def supersedes(path,value,repo=None,ref=None):
 def valid(repo=None,ref=None):
     from tests.fin_v2_cohorts import valid as composite_valid
     return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)
+_unshared_exact_blobs_ok = exact_blobs_ok
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_exact_blobs_ok(repo, ref)
+    return _unshared_exact_blobs_ok(repo, ref)
+
+
+_unshared_ci_authority_ok = ci_authority_ok
+
+
+def ci_authority_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_ci_authority_ok(repo, ref)
+    return _unshared_ci_authority_ok(repo, ref)
+
+
 def matches(path,source=None,*,repo=None,ref=None):
     pins=manifest(repo,ref).get('source_blobs',{})
     raw=source.encode() if isinstance(source,str) else source

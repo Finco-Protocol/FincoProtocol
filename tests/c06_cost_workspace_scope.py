@@ -1979,6 +1979,25 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                              ('    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):',
                               '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):')]}
 
+# CI V4 performance (Correction C): measured on accepted #444 HEAD, an UNSCOPED top-level call of an older guard re-verifies its whole successor chain
+# without sharing (ux_pr2b.exact_blobs_ok: 528 s / 74,750 git processes) while the same verdict inside one registry call scope takes ~10 s / ~1,800.
+# Each public entry point below is rebound AFTER the module's ``valid`` (the registry-aware part of the module; the low-level signature source above it
+# stays registry-free, as the PR2b design contract requires): a top-level call (no registry scope open) runs the UNCHANGED body inside ONE
+# fin_v2_cohorts.call_scope(), whose memos every cohort drops when that outermost block exits. Nothing is cached across calls, refs, worktrees or
+# mutations; a nested call (scope already open) is untouched; the verdicts are the ones the central gate already computes this way.
+_SCOPE_WRAPPER = ("_unshared_%(n)s = %(n)s\n\n\n"
+                  "def %(n)s(repo=None, ref=None):\n"
+                  "    from tests import fin_v2_cohorts as K\n"
+                  "    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)\n"
+                  "        with K.call_scope():\n"
+                  "            return _unshared_%(n)s(repo, ref)\n"
+                  "    return _unshared_%(n)s(repo, ref)\n\n\n")
+for _path, _names in (('tests/ux_pr2c_scope.py', ('exact_blobs_ok',)), ('tests/ux_pr2b_scope.py', ('exact_blobs_ok', 'ci_authority_ok')),
+                      ('tests/ux_pr3b1_scope.py', ('exact_blobs_ok', 'signature_ok')), ('tests/u1_scope.py', ('exact_blobs_ok',)),
+                      ('tests/u2_scope.py', ('exact_blobs_ok',))):
+    _anchor = "\n@scoped()\ndef matches(" if _path == 'tests/u1_scope.py' else "\ndef matches("      # u1 decorates matches; the wrapper goes above the decorator
+    HANDOFFS[_path].append((_anchor, "\n" + "".join(_SCOPE_WRAPPER % {'n': _n} for _n in _names) + _anchor.lstrip("\n")))
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
