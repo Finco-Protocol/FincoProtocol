@@ -105,3 +105,10 @@
 .ux-fin-split[data-focus-block="repayment"] [aria-label="Coverage selected Run"],
 .ux-fin-split[data-focus-block="repayment"] #pr3b1-quality,
 .ux-fin-split[data-focus-block="funding"] #pr3b1-funding { box-shadow: 0 0 0 2px var(--fo-brand-500, #3b6ff6); }
+
+/* CAPEX/OPEX group rows: the expand/collapse twisty is absolutely positioned (compact-inputs.css), so its cell must be its containing block. At <=900px an earlier rule
+   made the cell position:static, which stacked every group's twisty at the page's top-left corner (found by the harness overlap check). */
+@media (max-width: 900px) {
+  [data-ux-pr1] [data-dense-workbench][data-density] .ws2-grid .ws2-group-row th.ci-col-line,
+  [data-ux-pr1] [data-dense-workbench][data-density] .ws2-grid .ws2-group-row td.ci-col-line { position: relative; }
+}

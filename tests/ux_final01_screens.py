@@ -124,6 +124,7 @@ def test_screens(live_server, fin_session, ux_build, mode, width):  # noqa: F811
         page.reload()
         page.wait_for_selector("[data-react-workspace-version]", timeout=30000)
         page.wait_for_timeout(1500)
+        page.evaluate("window.scrollTo(0, 0)")          # the browser restores the previous route's scroll offset; every route is judged from its top, where the sticky project bar sits over nothing
         if os.environ.get("UX_FINAL01_EVAL"):          # diagnostics: print a JS expression's value per route (pytest -s)
             print(f"EVAL {mode} {width} #{route}:", page.evaluate(os.environ["UX_FINAL01_EVAL"]))
         if out:

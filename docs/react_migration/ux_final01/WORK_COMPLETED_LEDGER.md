@@ -70,3 +70,12 @@ extending those frozen modules (see INTEGRATION_PLAYBOOK.md). `static/react/finc
 ## Not done / pending (see screen_contract.csv)
 Financing one-workspace layout; CAPEX/OPEX presentation work; OPEX "uniform across lines" label: VERIFIED CORRECT (conditional on all lines sharing one rate), no router change made (see screen_contract.csv);
 Revenue read structure (R04 Phase 2 gated); Overview/Results compact KPI consistency; five-viewport QA of the new CSS; private continuation ZIP; final owner report (written in the owner's language).
+
+## 2026-11-13 — final polish checkpoint (fourth commit group)
+- Mobile header (CSS only): 390px project bar field 819 -> 703 px, title block 539 -> 407 px, top bar 83 -> 51 px; 320px 902 -> 748, 604 -> 433, 112 -> 51. Measured by the harness, before = pushed head 6c04befa.
+- Financing evidence inspector: read-only; two panes at >=1360px, stacked below; focus-follows-block; no new write path; Financing regression suites unchanged.
+- Results duplicate status removed; status vocabulary of screen_contract.csv is closed and checked by the governance scope test with negative tests.
+- Harness gained two checks (overlapping controls, unnamed controls) plus keyboard and high-contrast probes and a self-test. The first run of the new checks reported 9 of 10 failing: one REAL defect (group
+  twisty controls stacked at the corner at <=900px; fixed in ux-final01.css) and one harness artefact (the browser restored the previous route's scroll offset, so the sticky project bar sat over scrolled content;
+  every route is now judged from scrollTo(0,0)). Thresholds were not loosened. Final matrix: **10 passed** (11 routes x 5 widths x NOT_RUN/Run); other harness tests 5 passed.
+- Still NOT SOURCE-BYTE-INTEGRATED and NOT HOSTED-CI-VERIFIED: bundle, successor and CSS pin move only at the single consolidation step.
