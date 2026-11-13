@@ -35,7 +35,7 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'tests/model_react_rcux_capex_acceptance.py': '8502c1d1e288f0f6982f3cdac36ebbc3e449c19f',
  'static/react/finco-react.js': 'f6d1b85518bf7097f883ed693ba86e41503c52c6',
  'tests/test_c06_cost_workspace_browser.py': 'd53d26ea78224e36f45c99601e0c78336432c991',
- 'tests/test_c06_cost_workspace_scope.py': '5ddc8af3593e97a1bfd8c5e2b17339853da53cdf',
+ 'tests/test_c06_cost_workspace_scope.py': '5aa7785486fac105ceb855eeb18d073279e76152',
  'tests/test_c06_custom_capex_profile_replay.py': 'fcfbd6365b0d013de60de7d6423e57ce6808803d'}
 SOURCE_PATHS = frozenset(('docs/react_migration/c06_cost_workspace/C06_LEDGER.md',
  'frontend/src/app/plainCopy.ts',

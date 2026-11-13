@@ -38,7 +38,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     data=F.manifest()
     assert set(data['source_blobs'])==F.OWNED_PATHS
     assert set(data['base_blobs'])==F.SUPERSEDED
-    assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','tests/u2_scope.py','tests/ux_pr3b1_scope.py')
+    assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','static/react/finco-react.css','tests/u1_scope.py','tests/u2_scope.py','tests/ux_pr3b1_scope.py')
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)
