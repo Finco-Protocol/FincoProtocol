@@ -34,7 +34,23 @@ agent can resume without re-investigation. Draft PR: #446 (branch `claude/new-se
 | Revenue assumptions labels | broke one character per line | sheet-editor grid cells >= 360px | `styles/ux-final01.css` | no value/writer touched |
 | Phone project bar | ~340px before content | compact grid of the three actions (CSS) | `styles/ux-final01.css` | all controls and data attributes; 44px touch targets |
 
-Open defects found by the harness (NOT fixed yet): Debt metrics Covenant monitor "Metric" column crushed at 1024px; CAPEX Monthly ~206px tall items at <=768px (maybe heuristic false positive).
+(The two open defects listed here earlier are now fixed; see the second checkpoint below.)
+
+### 2026-11-13 — checkpoint UI A/B/C (second commit after a651a229)
+Status vocabulary per item: CODED / BROWSER-VERIFIED / SOURCE-BYTE-INTEGRATED / HOSTED-CI-VERIFIED. Nothing below is SOURCE-BYTE-INTEGRATED (the bundle is not rebuilt)
+or HOSTED-CI-VERIFIED (governance/bundle red by design until consolidation).
+| Item | Paths | CODED | BROWSER-VERIFIED | Evidence / note |
+|---|---|---|---|---|
+| CAPEX Monthly rows 206px tall at <=768px (REAL defect) | `styles/ux-final01.css` | yes | yes (harness: pre-fix 7/8 probes fail, post-fix 8/8 pass; visual before/after) | sticky label 278px/85% of phone viewport + editor cell 116px; page height 390px 4037 -> 2799px; root cause: `.rcm-table th,td{white-space:nowrap}` + `.pr2b-editor` min-width 0 + `overflow-wrap:anywhere` |
+| Debt metrics Covenant monitor Metric column crushed (REAL defect) | `styles/ux-final01.css` | yes | yes (same proof, 1024/768/390/320, NOT_RUN and Run) | row-header cell now min 11rem; "No value is configured..." note wraps at words; chart data table cells nowrap, scroll inside `.dm-scroll`; >640px card layout untouched |
+| Financing single navigation row | `app/financing/FinancingStudio.tsx`, `styles/ux-final01.css` | yes | NO (pending acceptance regression) | contracts preserved, see screen_contract.csv |
+| Financing run banner shows state once | `app/financing/pr3b1/FinancingReadLayer.tsx` | yes | NO | |
+| Results KPI tile density (>=700px) | `styles/ux-final01.css` | yes | NO | |
+Observation (not a defect of this PR): Debt metrics shows `1.19999999999x` / `-0.000000000007x` for the sculpted sizing target. `app/debtmetrics/format.ts` deliberately refuses to
+display a value as exactly equal to its reference when it is not ("never a trailing-zero look-alike"); left unchanged.
+Harness lessons (keep): (1) `tests/ux_final01_screens.py` exclusion of hidden elements must match only the absolutely-positioned, 1x1, overflow-clipped sr-only pattern; an earlier
+broad version treated a 0x0 `display:contents` wrapper as hidden and silently PASSED the pre-fix broken layout. (2) Always re-prove "fails pre-fix, passes post-fix" after changing the harness:
+temporarily drop the fix block from `ux-final01.css`, run `-k "not 1440"` on `UX_FINAL01_ROUTES=inputs/capex/monthly,debt-metrics`, restore.
 
 ## Governance state (read before pushing more)
 `tests/ux_final01_scope.py` pins slice-1 bytes. This checkpoint changes pinned files and the CSS, so the governance gate, the served-bundle identity step and the

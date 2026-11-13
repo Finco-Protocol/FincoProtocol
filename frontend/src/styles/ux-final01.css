@@ -27,3 +27,34 @@
   .ci-bar .wf-bar-actions .fm-btn { padding-inline: 4px; white-space: nowrap; }
   .ci-bar .ux-project-actions { display: inline-flex; gap: 12px; align-items: center; }
 }
+
+/* CAPEX monthly profile / other .rcm-table data tables: the nowrap label column made the sticky first column as wide as the longest label (278px, 85% of a
+   phone viewport) and the editor cell could shrink to ~116px, so its text wrapped and stretched every row to ~206px. On narrow screens the label wraps at word
+   boundaries inside a capped sticky column and the editor keeps a usable width; the table scrolls INSIDE its own scroller, never the page. */
+.rcm-table .pr2b-editor { min-width: 13rem; }
+@media (max-width: 768px) {
+  .rcm-table .rcm-sticky { white-space: normal; overflow-wrap: break-word; max-width: min(44vw, 11rem); }
+}
+
+/* Debt metrics: Covenant monitor. The row-header (Metric) cell was squeezed to one character (overflow-wrap:anywhere gives every cell a 1-character
+   minimum) while a long nowrap "not configured" note widened the Required column. */
+.dm-table th[scope="row"] { min-width: 11rem; overflow-wrap: normal; }
+.dm-table td.dm-num .dm-na { display: inline-block; white-space: normal; overflow-wrap: normal; min-width: 13rem; max-width: 20rem; text-align: right; }
+
+/* Debt metrics chart data table (details.dm-more > .dm-table): the inherited overflow-wrap:anywhere let date/number columns shrink to ~27px on phones.
+   Its cells do not wrap; the table scrolls inside its own .dm-scroll. Scoped so the covenant monitor card layout (<=640px) is untouched. */
+.dm-more .dm-table th, .dm-more .dm-table td { overflow-wrap: normal; white-space: nowrap; }
+
+/* Financing: one always-visible navigation row for the workspace and its seven views. */
+.ux-fin-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 0 0 8px; border-bottom: 1px solid var(--line, #dce3e9); }
+.ux-fin-nav .rx-button { min-height: 30px; padding: 3px 12px; font-size: 13px; }
+.ux-fin-nav .rx-button[aria-current="page"] { background: var(--fo-brand-700, #1f43a8); border-color: var(--fo-brand-700, #1f43a8); color: #fff; }
+
+/* Results / Overview KPI tiles: denser on tablet and desktop (more tiles per row, tighter padding). Values, units, meanings and the NOT_RUN / "Not available"
+   semantics are untouched; phone layouts keep the existing rules in finco-live.css. */
+@media (min-width: 700px) {
+  .rx-live-kpis { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 6px; }
+  .rx-live-kpi { padding: 8px 10px; }
+  .rx-live-kpi-value { margin-top: 3px; font-size: 19px; }
+  .rx-live-kpi-unavailable .rx-live-kpi-value { font-size: 13px; }
+}

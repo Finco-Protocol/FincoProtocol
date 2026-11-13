@@ -44,7 +44,7 @@ function ScopedRead({ scope, reloadKey, onOpenExisting, onSaved }: { scope: Scop
   const gate = current ? checkRunEvidence(current) : null;
   const run = gate?.showRun ? current?.credit.data?.runs[0] : undefined;
   return <>{onSaved && <><h2>Financing</h2>
-    <div className="pr3b1-state" role="status" aria-label="Financing Run status"><strong>{gate?.state ?? (loaded?.key === key ? 'UNAVAILABLE' : 'Loading evidence')}</strong> · {gate?.reason}
+    <div className="pr3b1-state" role="status" aria-label="Financing Run status"><strong>{gate?.state ?? (loaded?.key === key ? 'UNAVAILABLE' : 'Loading evidence')}</strong> · {gate?.reason?.replace(/^(CURRENT|STALE|HISTORICAL|NOT_RUN)\s+—\s+/, '')}
       {run && <><span> · Integrity {run.integrity?.status}</span><span> · Coverage {run.debt_metrics?.evaluation?.coverage.status} {run.debt_metrics?.evaluation?.coverage.message}</span></>}
     </div><FinancingEditing project={scope.project} scenarioId={scope.scenarioId} reloadKey={reloadKey}
     onSaved={() => { setNonce(n => n + 1);onSaved(); }} /></>}{content}</>;
