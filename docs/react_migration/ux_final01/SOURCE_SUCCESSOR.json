@@ -53,7 +53,7 @@
     "tests/test_r04_ppa_scope.py": "a5f42a6b87c46a3019bc4816f03202d6dae88574",
     "tests/test_t01e_remediation_scope.py": "a3dad3a427a7fcba879dfb55e4bb1b012240a3ce",
     "tests/test_ux_final01_browser.py": "d8d7b4e931915eab0ee0ff2d980afa79f9b6db3f",
-    "tests/test_ux_final01_scope.py": "5aa1c826715249f1c3786050d82b790736d39f43",
+    "tests/test_ux_final01_scope.py": "c2477e9c2ea5beeec5f471a4f3a89275e274b9e7",
     "tests/ux_final01_scope.py": "adb438dec11ef94f910931cdffd3249952bf4900"
   }
 }

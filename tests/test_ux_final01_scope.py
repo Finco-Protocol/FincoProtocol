@@ -228,8 +228,9 @@ def test_untracked_foreign_file_in_the_working_tree_fails_closed(clone):
         assert not T.exact_blobs_ok(clone)
 
 
-def test_the_served_bundle_is_the_reproducible_build_of_the_pinned_sources():
-    """The pinned bundle blob is what the committed sources build to (CI repeats this with a clean install)."""
+def test_the_served_bundle_bytes_match_their_manifest_pin():
+    """PINNED IDENTITY only: the committed bundle bytes hash to the manifest pin. Build REPRODUCIBILITY (sources -> bundle) is NOT proven here; the
+    separate CI step `npm ci && npm run build && git diff --exit-code static/react` proves it, and neither gate substitutes for the other."""
     pin = T.manifest()["source_blobs"][BUNDLE]
     assert T._blob((ROOT / BUNDLE).read_bytes()) == pin
 
@@ -339,11 +340,30 @@ def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
     bundle, reg = pins[BUNDLE], pins[T.REGISTRY]
     assert T.supersedes(BUNDLE, bundle) and T.supersedes(T.REGISTRY, reg)
-    assert P.supersedes(BUNDLE, bundle) is False or P.supersedes(BUNDLE, bundle) is True    # chain-forwarded, never raising
+    # R04 owns NO bundle pin (not in its manifest, its SUPERSEDED set or, after the reviewed handoff, its BASELINE): it supersedes the bundle ONLY by
+    # forwarding to this successor, and then only for the exact current pin. The same holds through the F04 and F03 links of the chain.
+    assert BUNDLE not in P.SUPERSEDED and BUNDLE not in P.BASELINE and BUNDLE not in P.manifest()["source_blobs"]
+    assert P.supersedes(BUNDLE, bundle) is True and Q.supersedes(BUNDLE, bundle) is True and F.supersedes(BUNDLE, bundle) is True
+    stale = T.manifest()["base_blobs"][BUNDLE]                        # the bundle accepted on main (F04) is no longer current anywhere in the chain
+    for link in (P, Q, F):
+        assert link.supersedes(BUNDLE, stale) is False and link.supersedes(BUNDLE, "0" * 40) is False and link.supersedes(BUNDLE, reg) is False
     assert not T.supersedes(BUNDLE, "0" * 40)
     assert not T.supersedes(BUNDLE, reg)                              # a real blob pinned for another path
     assert not T.supersedes(BUNDLE, T.manifest()["base_blobs"][BUNDLE])      # the accepted F04 bundle is no longer current
     assert not T.supersedes("tests/not_superseded.py", reg)
+
+
+def test_forwarded_bundle_supersession_needs_a_valid_successor_signature(clone):
+    """The R04/F04/F03 answer for the bundle is the successor's alone: a committed variant whose successor signature is false confers nothing."""
+    pin = T.manifest(clone, "HEAD")["source_blobs"][BUNDLE]
+    with T.scoped(), P.scoped():
+        assert P.supersedes(BUNDLE, pin, clone, "HEAD") is True and Q.supersedes(BUNDLE, pin, clone, "HEAD") is True
+    tree = T.BASE_TREE.encode()
+    for edit in (lambda b: b.replace(b'"base_tree": "' + tree[:8], b'"base_tree": "1' + tree[1:8], 1),          # forged base tree
+                 lambda b: b.replace(b'"' + BUNDLE.encode() + b'": "', b'"' + BUNDLE.encode() + b'": "0000', 1)):   # forged bundle pin
+        bad = _variant(clone, {T.MANIFEST: edit})
+        with T.scoped(), P.scoped():
+            assert P.supersedes(BUNDLE, pin, clone, bad) is False and Q.supersedes(BUNDLE, pin, clone, bad) is False
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
