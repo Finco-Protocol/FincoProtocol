@@ -25,17 +25,17 @@ APPROVED_SOURCE_BLOBS = {'docs/react_migration/c06_cost_workspace/C06_LEDGER.md'
  'frontend/src/app/capex/ProfileRowEditor.tsx': '47d48f7892200c001d29b66cdb8c09089e634420',
  'frontend/src/app/capex/__tests__/userLineProfile.test.mjs': '9f4905a7a74bc03d96c9432b7c91759608d13199',
  'frontend/src/app/capex/profileFocus.ts': '3f564d8c248f36aa1f526dc1b34298fb13db068a',
- 'frontend/src/app/editing/CostLinesGridView.tsx': '3a94c00610a56b76943ac4a0c78f0780513b9584',
+ 'frontend/src/app/editing/CostLinesGridView.tsx': '3127e696cad88f7e60240b77de0b791c06673f69',
  'frontend/src/app/plainCopy.ts': '035db98be8c4620a0c38eb0919d2cff8df81a266',
  'frontend/src/app/capex/CapexStudio.tsx': '14fa8e80201b34e9ee3e70ac1dbb9b6b0023ad4b',
  'frontend/src/app/CostWorkbench.tsx': 'fb0e1adf5e40e2567ecd0c89d4058e0e47343f21',
  'frontend/src/styles/rx-mvp-correction.css': '9a48b7ed70ac16bd0c2c26e8dd35749593eb4b53',
  'frontend/src/styles/compact-inputs.css': '53a1bb1dfc843df34235b3228a0f1f0580d2aea6',
  'static/react/finco-react.css': 'f3aa0c988a28b7b310c970ffa33993c026d11eb8',
- 'tests/model_react_rcux_capex_acceptance.py': 'f31c875cb1ce78cb1cf1b10d8faafc7b24c1b716',
- 'static/react/finco-react.js': '7cc73a4c432a41b82cb4f0ef2674def1ce5ea8b9',
- 'tests/test_c06_cost_workspace_browser.py': '1048c182fb6e9726b9e9150e580694e420e3fbaa',
- 'tests/test_c06_cost_workspace_scope.py': '5ddc8af3593e97a1bfd8c5e2b17339853da53cdf',
+ 'tests/model_react_rcux_capex_acceptance.py': '8502c1d1e288f0f6982f3cdac36ebbc3e449c19f',
+ 'static/react/finco-react.js': 'f6d1b85518bf7097f883ed693ba86e41503c52c6',
+ 'tests/test_c06_cost_workspace_browser.py': 'd53d26ea78224e36f45c99601e0c78336432c991',
+ 'tests/test_c06_cost_workspace_scope.py': '60219083452c10eee7c7b52cb7cec6672d7994b0',
  'tests/test_c06_custom_capex_profile_replay.py': 'fcfbd6365b0d013de60de7d6423e57ce6808803d'}
 SOURCE_PATHS = frozenset(('docs/react_migration/c06_cost_workspace/C06_LEDGER.md',
  'frontend/src/app/plainCopy.ts',
@@ -75,6 +75,8 @@ HANDOFF_PATHS = frozenset(('tests/ci_v4_perf_scope.py',
  'tests/test_r03_ppa_scope.py',
  'tests/test_r04_ppa_scope.py',
  'tests/test_t01e_remediation_scope.py',
+ 'tests/test_u2_scope.py',
+ 'tests/test_ux_pr3b1_scope.py',
  'tests/u2_scope.py',
  'tests/u1_scope.py',
  'tests/ux_pr2b_scope.py',
@@ -88,7 +90,7 @@ CURRENT_MAPS = frozenset(('docs/ci_v4/SOURCE_SUCCESSOR.json',
  'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
  'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
  'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py", "tests/test_ux_pr3b1_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
@@ -875,7 +877,14 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                  'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
                                  '(C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok()))\n'
                                  "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', "
-                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')")],
+                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')"),
+                                ('            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]\n'
+                                 '            continue\n',
+                                 '            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]\n'
+                                 '            continue\n'
+                                 '        if path in C06_APPROVAL.SOURCE_PATHS and C06_APPROVAL.signature_ok():     # the one reviewed C06 successor of the shared presentation CSS\n'
+                                 '            assert B._blob((B.ROOT/path).read_bytes()) == C06_APPROVAL.effective_pins()[path]\n'
+                                 '            continue\n')],
  'tests/test_ci_v4_perf_scope.py': [('import pytest\n', 'import pytest\nfrom tests import c06_cost_workspace_scope as C06_APPROVAL\n'),
                                     ('def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():\n'
                                      '    assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES\n'
@@ -1950,7 +1959,10 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                             ("if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
                              "'frontend/src/app/capex/ProfileRowEditor.tsx'):",
                              "if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
-                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):")],
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):"),
+                            ("'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx'):",
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', 'frontend/src/app/editing/CostLinesGridView.tsx', "
+                             "'frontend/src/app/capex/CapexStudio.tsx'):")],
  'tests/ux_pr2c_scope.py': [('def _pr3b1_pin(path, blob, repo=None, ref=None):\n',
                              'def _pr3b1_pin(path, blob, repo=None, ref=None):\n'
                              '    # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.\n'
@@ -1965,7 +1977,126 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                               '        if C06.signature_ok(repo, ref) and C06.supersedes(path, value, repo, ref):\n'
                               '            return True\n'),
                              ('    if path == "frontend/src/app/editing/CostLinesGridView.tsx":',
-                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):')]}
+                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):'),
+                             ('    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):',
+                              '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):')]}
+
+# CI V4 performance (Correction C): measured on accepted #444 HEAD, an UNSCOPED top-level call of an older guard re-verifies its whole successor chain
+# without sharing (ux_pr2b.exact_blobs_ok: 528 s / 74,750 git processes) while the same verdict inside one registry call scope takes ~10 s / ~1,800.
+# Each public entry point below is rebound AFTER the module's ``valid`` (the registry-aware part of the module; the low-level signature source above it
+# stays registry-free, as the PR2b design contract requires): a top-level call (no registry scope open) runs the UNCHANGED body inside ONE
+# fin_v2_cohorts.call_scope(), whose memos every cohort drops when that outermost block exits. Nothing is cached across calls, refs, worktrees or
+# mutations; a nested call (scope already open) is untouched; the verdicts are the ones the central gate already computes this way.
+_SCOPE_WRAPPER = ("_unshared_%(n)s = %(n)s\n\n\n"
+                  "def %(n)s(repo=None, ref=None):\n"
+                  "    from tests import fin_v2_cohorts as K\n"
+                  "    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)\n"
+                  "        with K.call_scope():\n"
+                  "            return _unshared_%(n)s(repo, ref)\n"
+                  "    return _unshared_%(n)s(repo, ref)\n\n\n")
+for _path, _names in (('tests/ux_pr2c_scope.py', ('exact_blobs_ok',)), ('tests/ux_pr2b_scope.py', ('exact_blobs_ok', 'ci_authority_ok')),
+                      ('tests/ux_pr3b1_scope.py', ('exact_blobs_ok', 'signature_ok')), ('tests/u1_scope.py', ('exact_blobs_ok',)),
+                      ('tests/u2_scope.py', ('exact_blobs_ok',))):
+    _anchor = "\n@scoped()\ndef matches(" if _path == 'tests/u1_scope.py' else "\ndef matches("      # u1 decorates matches; the wrapper goes above the decorator
+    HANDOFFS[_path].append((_anchor, "\n" + "".join(_SCOPE_WRAPPER % {'n': _n} for _n in _names) + _anchor.lstrip("\n")))
+
+# Correction D (legacy U1 scope reconciliation): U1's two historical provenance tests (``test_u1_scope.py``) discover "every closed later cohort" through
+# ``U._later_modules()``.  Eleven REGISTERED cohorts (ten accepted on main + this one) were never added to U1's list, so their own manifests and owned
+# paths read as foreign edits.  The reviewed handoff below appends exactly these cohorts, in registry order, as DISCOVERY-ONLY views: they contribute their
+# literal manifest, owned paths and (for the test) their own exact verdict, and NOTHING else - they supersede nothing, admit no path, own no CI path and
+# own no custody blob, so no older guard (U1 hooks, WF-06B, WS-v2 core, RC-M governance) gains any admission.  The tuple is closed: a later cohort
+# is not discovered until ITS reviewed handoff extends it.  Unregistered or reordered entries are ignored by the tests' own ``COHORT_MODULES`` check.
+# Correction D, shard 2: two legacy scope tests whose literal expectations predate the registered cohorts / the accepted C06 successor.  Reviewed, literal,
+# one-occurrence substitutions over their immutable BASE bytes (the same mechanism as every other handoff here); no test is skipped or deselected.
+HANDOFFS['tests/test_ux_pr3b1_scope.py'] = [(
+    "        assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)\n",
+    "        if p=='frontend/src/app/capex/ProfileDraftProvider.tsx':     # C06: the one accepted source the exact, signed C06 successor supersedes\n"
+    "            from tests import c06_cost_workspace_scope as C06_SUCCESSOR\n"
+    "            if C06_SUCCESSOR.supersedes(p,C06_SUCCESSOR._blob((ROOT/p).read_bytes())): continue\n"
+    "        assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)\n")]
+HANDOFFS['tests/test_u2_scope.py'] = [(
+    "'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope'} and 'tests.u2_scope' in {m.__name__ for m in registered_exact}",
+    "'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope'} | set(U1.RECONCILED_SUCCESSORS) "
+    "and 'tests.u2_scope' in {m.__name__ for m in registered_exact}"),
+    ("    registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]\n",
+     "    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)\n"
+     "        registered_exact = [m for m in _later() if m.__name__ in C.COHORT_MODULES and m.exact_blobs_ok()]\n"),
+    ("    return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()\n"
+     "                         if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))\n",
+     "    with C.call_scope():      # one registry read for this call only (dropped on exit; nothing is kept across calls)\n"
+     "        return set().union(*(set(m.OWNED_PATHS) | {m.MANIFEST} for m in U1._later_modules()\n"
+     "                             if m.__name__ in modules and m.__name__ in FOUR and m.exact_blobs_ok(repo)))\n"),
+    ("    # U2 source drifted: U2 stops being exact -> only the siblings remain\n"
+     "    _flip(wt / 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_siblings\n"
+     "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n",
+     "    # U2 source drifted (Correction H): the registered later chain (CI V4 ownership, WS-B, on-accept) closes GLOBALLY, so one drifted owned source\n"
+     "    # revokes EVERY signed sibling as well as U2 - nothing is admitted, the drifted writer is not owned by anyone, and restoring the exact byte\n"
+     "    # restores the exact union (no stale verdict survives the call).  This is the same behaviour on accepted main (verified).\n"
+     "    _flip(wt / 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()\n"
+     "    with C.call_scope():\n"
+     "        assert not any(m.exact_blobs_ok(wt) for m in four.values()) and not U1.allowed_path('app/v2/react_opex_lines.py', wt)\n"
+     "    _git(wt, 'checkout', '--', 'app/v2/react_opex_lines.py')\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
+
+HANDOFFS['tests/test_ux_pr3b1_scope.py'] += [(
+    "    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as accept\n",
+    "    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as _accept\n"
+    "\n"
+    "    def accept(*args, **kwargs):      # one registry read per call (dropped on exit; nothing is kept across calls)\n"
+    "        with registry.call_scope():\n"
+    "            return _accept(*args, **kwargs)\n")]
+
+HANDOFFS['tests/test_u2_scope.py'] += [
+    ("    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}\n",
+     "    ci = {p for m in registered_exact if hasattr(m, 'CI_PATHS') for p in m.CI_PATHS}\n"
+     "    # Correction H: a literal protected path owned by a registered, EXACT cohort of the finite reviewed successor list (e.g. the accepted F03 FIN-VAL workflow)\n"
+     "    ci |= {p for m in registered_exact if m.__name__ in U1.RECONCILED_SUCCESSORS for p in m.OWNED_PATHS if p.startswith(('.github/', 'tools/'))}\n"),
+    ("        assert got == _signed([m for n, m in four.items() if n not in (name, U2.__name__)]), name\n",
+     "        # Correction H: the registered later chain closes globally - ONE drifted owned source revokes every signed sibling (nothing admitted), and exact\n"
+     "        # restoration restores the exact union (no stale verdict survives the call).  Identical behaviour on accepted main (verified).\n"
+     "        assert got == set(), name\n"
+     "        assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all, name\n"),
+    ("    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == _signed([m for n, m in four.items() if n not in ('tests.post413_r1_scope', U2.__name__)])\n"
+     "    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))\n",
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == set()                       # a forged sibling manifest revokes the whole signed chain\n"
+     "    _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))\n"
+     "    assert _u1_test_later_owned(wt, C.COHORT_MODULES) == union_all\n")]
+
+U1_RECONCILED_SUCCESSORS = (
+    'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope',
+    'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope',
+    'tests.c06_cost_workspace_scope')
+_U1_DISCOVERY = (
+    "RECONCILED_SUCCESSORS = %r\n\n\n"
+    "class _Discovered:\n"
+    "    \"\"\"Contract-test view of a registered later cohort (Correction D): manifest, owned paths and its OWN exact verdict only.\n"
+    "    It supersedes nothing, admits no path, owns no CI path and holds no custody blob: it never widens an older guard.\"\"\"\n"
+    "    SUPERSEDED = frozenset()\n\n"
+    "    def __init__(self, module):\n"
+    "        self._module = module\n"
+    "        self.__name__ = module.__name__\n"
+    "        self.MANIFEST = module.MANIFEST\n"
+    "        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)\n\n"
+    "    def exact_blobs_ok(self, repo=None, ref=None):\n"
+    "        return self._module.exact_blobs_ok(repo, ref)\n\n"
+    "    def scoped(self):\n"
+    "        from contextlib import nullcontext\n        return nullcontext()\n\n"
+    "    def allowed_path(self, path, repo=None, ref=None):\n"
+    "        return False\n\n"
+    "    def supersedes(self, path, value, repo=None, ref=None):\n"
+    "        return False\n\n\n"
+    "def _later_modules():\n    import importlib\n") % (U1_RECONCILED_SUCCESSORS,)
+HANDOFFS['tests/u1_scope.py'].append(("def _later_modules():\n    import importlib\n", _U1_DISCOVERY))
+HANDOFFS['tests/u1_scope.py'].append((
+    "            if exc.name != name:\n                raise\n    return loaded\n",
+    "            if exc.name != name:\n                raise\n"
+    "    if loaded:      # a closed later list exists (an emptied list stays empty): the reconciled registered successors follow it, in order\n"
+    "        for name in RECONCILED_SUCCESSORS:\n"
+    "            try:\n                loaded.append(_Discovered(importlib.import_module(name)))\n"
+    "            except ModuleNotFoundError as exc:\n                if exc.name != name:\n                    raise\n"
+    "    return loaded\n"))
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

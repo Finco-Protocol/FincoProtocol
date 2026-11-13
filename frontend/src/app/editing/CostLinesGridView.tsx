@@ -141,6 +141,17 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [tlWindow, setTlWindow] = useState({ first: 1, last: 0 });
   const capexMonths = capexTl.kind === "ready" ? capexTl.months : 0;
   const tlNavVisible = denseWorkbench && !narrow && timelineOn && sheet === "capex" && capexMonths > 0;
+  useEffect(() => {
+    if (!tlNavVisible) return;
+    updateTlWindow();
+    const wrap = container.current;
+    if (!wrap) return;
+    const onScroll = () => updateTlWindow();
+    wrap.addEventListener("scroll", onScroll, { passive: true });
+    const onResize = () => updateTlWindow();
+    window.addEventListener("resize", onResize);
+    return () => { wrap.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); };
+  }, [tlNavVisible, capexMonths, timelineOn, narrow, reloadKey]);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -390,17 +401,6 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     if (!wrap) return;
     wrap.scrollTo({ left: edge === "start" ? 0 : wrap.scrollWidth, behavior: "smooth" });
   };
-  useEffect(() => {
-    if (!tlNavVisible) return;
-    updateTlWindow();
-    const wrap = container.current;
-    if (!wrap) return;
-    const onScroll = () => updateTlWindow();
-    wrap.addEventListener("scroll", onScroll, { passive: true });
-    const onResize = () => updateTlWindow();
-    window.addEventListener("resize", onResize);
-    return () => { wrap.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); };
-  }, [tlNavVisible, capexMonths, timelineOn, narrow, reloadKey]);
   // Totals follow the chosen unit; the amount inputs are always kEUR. Whenever the unit is not kEUR the totals say which unit they are in.
   const unitTag = unit === "kEUR" ? null : <small className="ci-preview"> {unit}</small>;
   const title = sheet === "capex" ? "CAPEX" : "OPEX";

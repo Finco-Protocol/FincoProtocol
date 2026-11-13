@@ -223,7 +223,7 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py"):
+    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):
         from tests import c06_cost_workspace_scope as C06
         if C06.signature_ok(repo, ref) and C06.supersedes(path, value, repo, ref):
             return True
@@ -249,6 +249,28 @@ def effective_pins(repo=None, ref=None, *, signature=False):
 def valid(repo=None, ref=None):
     from tests.fin_v2_cohorts import valid as composite
     return exact_blobs_ok(repo,ref) and composite(repo,ref)
+
+
+_unshared_exact_blobs_ok = exact_blobs_ok
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_exact_blobs_ok(repo, ref)
+    return _unshared_exact_blobs_ok(repo, ref)
+
+
+_unshared_signature_ok = signature_ok
+
+
+def signature_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_signature_ok(repo, ref)
+    return _unshared_signature_ok(repo, ref)
 
 
 def matches(path, source=None, *, repo=None, ref=None):
