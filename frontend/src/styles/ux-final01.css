@@ -31,6 +31,32 @@
   .finco-root .fm-top-right { gap: 6px; }
   .finco-root .fm-top-right select { min-height: 32px; font-size: 12px; max-width: 9rem; }
   .ci-bar .ci-bar-scenario select[disabled] { appearance: none; -webkit-appearance: none; min-height: 0; height: auto; border: 0; background: transparent; padding: 0; color: inherit; font-weight: 600; opacity: 1; }
+
+  /* Top chrome in ONE row: mark + origin chip + theme select + currency. The product name stays available to assistive technology (visually clipped). */
+  .finco-root:has([data-ux-pr1]) > header.fm-topbar { height: auto; min-height: 0; flex-wrap: nowrap; gap: 6px; padding: 3px 8px; }   /* beats ux-pr1-workbench.css (min-height:64px; flex-wrap:wrap) */
+  .finco-root header.fm-topbar .fm-brand { flex: 0 0 auto; gap: 0; }
+  .finco-root header.fm-topbar .fm-brand-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .finco-root header.fm-topbar .fm-top-right { flex: 1 1 auto; min-width: 0; justify-content: flex-end; flex-wrap: nowrap; gap: 6px; }
+  .finco-root header.fm-topbar .fm-top-right [data-origin-chip] { font-size: 9px; letter-spacing: 0; padding: 2px 6px; white-space: nowrap; }
+  .finco-root header.fm-topbar .fm-top-right select { flex: 0 1 7.5rem; min-width: 0; max-width: 7.5rem; }
+
+  /* Project bar: identity and the Saved / Run-state chips share a row; the last-Run provenance (id, time, scenario) is SHOWN on phones (it was hidden). */
+  .wf-bar.ci-bar .ci-bar-id { flex-basis: auto; }
+  .wf-bar.ci-bar .ci-lastrun { display: inline; flex: 1 1 100%; font-size: 11px; line-height: 1.3; }
+  .wf-bar.ci-bar .ci-help { flex-basis: auto; }
+
+  /* Financing navigation: a single scrolling row (every view stays a real, focusable button) instead of a five-row wrap. */
+  nav.ux-fin-nav.pr3b1-compat { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; }
+  nav.ux-fin-nav.pr3b1-compat .rx-button { flex: 0 0 auto; scroll-snap-align: start; white-space: nowrap; }
+
+  /* Secondary bar controls share a row: Report precision (compact) beside My Projects / New Project. */
+  .wf-bar.ci-bar .wsv2-precision { flex: 0 0 auto; font-size: 12px; gap: 4px; }
+  .wf-bar.ci-bar .wsv2-precision select { width: 5.6rem; }
+  .wf-bar.ci-bar .ux-project-actions { flex: 1 1 auto; justify-content: flex-end; gap: 8px; font-size: 12px; white-space: nowrap; }   /* min-content = the links: wraps to its own row instead of overlapping */
+
+  /* Financing inputs header: the reload control stays one line instead of wrapping into a tall button. */
+  .pr3b2 header { flex-wrap: wrap; }
+  .pr3b2 header button { white-space: nowrap; padding: .3rem .6rem; }
 }
 
 /* CAPEX monthly profile / other .rcm-table data tables: the nowrap label column made the sticky first column as wide as the longest label (278px, 85% of a

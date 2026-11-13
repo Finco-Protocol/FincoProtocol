@@ -38,7 +38,8 @@ def _assets(context, build):
                       route.fulfill(path=str(build / f"finco-react.{ext}"), content_type=mime))
 
 
-HIDDEN_JS = """const hidden = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { const q = n.getBoundingClientRect(), cs = getComputedStyle(n); if (q.width <= 2 && q.height <= 2 && cs.position === 'absolute' && (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.clip !== 'auto')) return true; } return false; };
+HIDDEN_JS = """const hidden = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { if (n.tagName === 'DETAILS' && !n.open && el !== n && !(el.tagName === 'SUMMARY' && el.parentElement === n)) return true;     /* content of a CLOSED details is not on screen (only its summary is) */
+      const q = n.getBoundingClientRect(), cs = getComputedStyle(n); if (q.width <= 2 && q.height <= 2 && cs.position === 'absolute' && (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.clip !== 'auto')) return true; } return false; };
 const vtext = (root) => { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let s = ''; while (w.nextNode()) { const n = w.currentNode; if (n.parentElement && !hidden(n.parentElement)) s += n.textContent; } return s.replace(/\\s+/g, ' ').trim(); };"""
 # An element inside an ABSOLUTELY positioned, 1x1px, overflow-clipped ancestor (not merely a 0x0 display:contents wrapper) is the deliberate screen-reader-only pattern (e.g. the covenant table's header row on phones, where the
 # table becomes labelled cards); it is not a layout defect and is the ONLY exclusion the checks below make.
@@ -73,6 +74,23 @@ def no_collapsed_table_cells(page, where=''):
     assert not bad, (where, bad)
 
 
+def no_overlapping_controls(page, where=''):
+    """No two visible interactive controls overlap (a shrinking nowrap row once drew a link over a select). Nested controls and clipped sr-only ones are ignored."""
+    bad = page.evaluate("""() => { """ + HIDDEN_JS + """ const els = [...document.querySelectorAll('a[href], button, select, input:not([type=hidden]), textarea, summary')]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2 && !hidden(e); });
+      const out = [];
+      const lines = (e) => Array.from(e.getClientRects()).filter((r) => r.width > 2 && r.height > 2);
+      for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
+        const a = els[i], b = els[j]; if (a.contains(b) || b.contains(a)) continue;
+        let hit = null;
+        for (const r of lines(a)) { for (const q of lines(b)) {          // compare LINE boxes: a wrapped inline link's union box is not an overlap
+          const w = Math.min(r.right, q.right) - Math.max(r.left, q.left), h = Math.min(r.bottom, q.bottom) - Math.max(r.top, q.top);
+          if (w > 4 && h > 4) { hit = Math.round(w) + 'x' + Math.round(h); break; } } if (hit) break; }
+        if (hit) out.push((a.textContent || a.getAttribute('aria-label') || a.tagName).trim().slice(0, 18) + ' x ' + (b.textContent || b.getAttribute('aria-label') || b.tagName).trim().slice(0, 18) + ' ' + hit);
+      } return out.slice(0, 5); }""")
+    assert not bad, (where, bad)
+
+
 @pytest.mark.parametrize("mode", ["norun", "run"])
 @pytest.mark.parametrize("width", WIDTHS)
 def test_screens(live_server, fin_session, ux_build, mode, width):  # noqa: F811
@@ -97,6 +115,7 @@ def test_screens(live_server, fin_session, ux_build, mode, width):  # noqa: F811
             no_page_overflow(page)
             no_vertical_wrap(page, f'{mode} {width} #{route}')
             no_collapsed_table_cells(page, f'{mode} {width} #{route}')
+            no_overlapping_controls(page, f'{mode} {width} #{route}')
         except AssertionError as exc:          # keep capturing every route; report all offenders at the end
             failures.append(str(exc)[:300])
         all_failures.extend(failures)
