@@ -875,7 +875,14 @@ HANDOFFS = {'tests/ci_v4_perf_scope.py': [('def reviewed_edits_ok(repo=None, ref
                                  'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
                                  '(C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok()))\n'
                                  "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', "
-                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')")],
+                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')"),
+                                ('            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]\n'
+                                 '            continue\n',
+                                 '            assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]\n'
+                                 '            continue\n'
+                                 '        if path in C06_APPROVAL.SOURCE_PATHS and C06_APPROVAL.signature_ok():     # the one reviewed C06 successor of the shared presentation CSS\n'
+                                 '            assert B._blob((B.ROOT/path).read_bytes()) == C06_APPROVAL.effective_pins()[path]\n'
+                                 '            continue\n')],
  'tests/test_ci_v4_perf_scope.py': [('import pytest\n', 'import pytest\nfrom tests import c06_cost_workspace_scope as C06_APPROVAL\n'),
                                     ('def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():\n'
                                      '    assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES\n'
