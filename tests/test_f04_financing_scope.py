@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import pytest
+from tests import c06_cost_workspace_scope as C06_APPROVAL
 from tests import f04_financing_scope as F, fin_v2_cohorts as C
 from tests import r03_ppa_scope as R, f03_financing_scope as P
 from tests import r04_ppa_scope as W
@@ -27,8 +28,8 @@ class Mutation:
 def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
-    assert C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
-        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())
+    assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
+        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1
     for ref in (None,'HEAD'):
         with C.call_scope():
@@ -44,19 +45,24 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:
-        authority=W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
+        authority=C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
-    for path in F.FROZEN:assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT)
+    for path in F.FROZEN:
+        if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
+            assert (ROOT/path).read_bytes()==C06_APPROVAL.expected_handoff(ROOT,path)
+            assert F._blob((ROOT/path).read_bytes())==C06_APPROVAL.manifest()['source_blobs'][path]
+        else:
+            assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT)
 
 def test_current_maps_change_only_their_existing_registry_and_js_keys():
     for path in F.CURRENT_MAPS:
         original=json.loads(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT))
         current=json.loads((ROOT/path).read_text())
-        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')
-        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)
+        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys())
 
 @pytest.mark.parametrize('path',sorted(F.OWNED_PATHS|{F.MANIFEST}))
 def test_worktree_byte_tamper_fails_without_changing_head(clone,path):
@@ -80,8 +86,8 @@ def test_modes_registry_and_closed_diff_are_enforced(clone,kind):
             path=clone/F.PREDECESSOR;path.write_bytes(subprocess.check_output(['git','show',F.BASE+':'+F.PREDECESSOR],cwd=clone))
         else:
             path=clone/F.REGISTRY;text=path.read_text()
-            if kind=='missing_registration':text=text.replace(", 'tests.f04_financing_scope', 'tests.r04_ppa_scope')",", 'tests.r04_ppa_scope')")
-            elif kind=='duplicate_registration':text=text.replace("'tests.f04_financing_scope', 'tests.r04_ppa_scope')","'tests.f04_financing_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope')")
+            if kind=='missing_registration':text=text.replace(", 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')",", 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
+            elif kind=='duplicate_registration':text=text.replace("'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')","'tests.f04_financing_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
             else:text=text.replace("'tests.r03_ppa_scope', 'tests.f04_financing_scope'","'tests.f04_financing_scope', 'tests.r03_ppa_scope'")
             path.write_text(text)
         with C.call_scope():assert not F.exact_blobs_ok(clone) and not C.valid(clone)

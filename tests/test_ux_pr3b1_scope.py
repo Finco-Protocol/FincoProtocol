@@ -82,11 +82,18 @@ def test_profile_flag_and_accepted_pr429_sources_unchanged():
     from app.v2.save_all_commands import profile_enabled
     assert profile_enabled() is False
     for p in ['app/v2/react_capex.py','frontend/src/app/capex/ProfileDraftProvider.tsx','frontend/src/app/editing/pendingEdits.ts','frontend/src/app/editing/saveAll.ts']:
+        if p=='frontend/src/app/capex/ProfileDraftProvider.tsx':     # C06: the one accepted source the exact, signed C06 successor supersedes
+            from tests import c06_cost_workspace_scope as C06_SUCCESSOR
+            if C06_SUCCESSOR.supersedes(p,C06_SUCCESSOR._blob((ROOT/p).read_bytes())): continue
         assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show',C.BASE+':'+p],cwd=ROOT)
 
 
 def test_ux1_mvp_historical_recognition_is_also_exact_and_registered(monkeypatch):
-    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as accept
+    from tests.test_rcux_governance import _authenticated_ux1_mvp_successor as _accept
+
+    def accept(*args, **kwargs):      # one registry read per call (dropped on exit; nothing is kept across calls)
+        with registry.call_scope():
+            return _accept(*args, **kwargs)
     path='tests/model_react_mvp_acceptance.py';raw=(ROOT/path).read_text()
     assert accept(path,raw)
     assert not accept(path,raw+'\n')

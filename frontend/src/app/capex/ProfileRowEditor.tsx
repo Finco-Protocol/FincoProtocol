@@ -80,7 +80,7 @@ export function ProfileRowEditor({ itemKey, label, showShape = true, monthsIniti
     }} onPaste={e => e.stopPropagation()}>
     <div className="pr2b-row-heading">{showShape && <label>Payment profile <ProfileShapeSelect itemKey={itemKey} label={label} /></label>}
       <span className="rcm-badge">{changed ? "UNSAVED PROFILE" : "SAVED PROFILE INPUTS"}</span></div>
-    {isUserLineKey(itemKey) && <p data-capex-user-line={itemKey}>A line you added keeps the model default timing: profile editing for added lines is not available.</p>}
+    {isUserLineKey(itemKey) && <p className="rx-note" data-capex-user-line={itemKey}>A line you added: its profile is kept under the line's code. If you retire the line while it still has a profile, the next Run stops until that profile is cleared.</p>}
     {row.shape === "EXPLICIT" && <div data-capex-explicit-tools={itemKey}>
       <label className="rcm-field">Weights, % per month ({values.length} of {c.data.months} entered)
         <textarea rows={2} value={explicitInputText(row.explicit)} disabled={disabled} data-capex-explicit={itemKey}

@@ -79,7 +79,10 @@
 .rx-input-table .rx-col-value { width: 20%; }
 .rx-input-table .rx-col-unit { width: 11%; }
 .rx-input-table .rx-col-status { width: 31%; }
-.rx-card .rx-input-table th, .rx-card .rx-input-table td { padding: 3px 8px; white-space: normal; overflow-wrap: anywhere; }
+/* Labels and notes wrap at word boundaries first. `overflow-wrap: anywhere` would collapse the table's
+   min-content width to one character, so any narrow ancestor turns every label into a letter-per-line
+   column (C1). `break-word` keeps word-boundary wrapping and preserves a readable minimum width. */
+.rx-card .rx-input-table th, .rx-card .rx-input-table td { padding: 3px 8px; white-space: normal; overflow-wrap: break-word; }
 .rx-card .rx-input-table td:nth-child(2) { text-align: right; }
 .rx-card .rx-input-table td:nth-child(3), .rx-card .rx-input-table .rx-status-cell { text-align: left; }
 .rx-input-table .rx-cat-row th { text-align: left; background: var(--surface-blue, #edf3f8); color: var(--ink-soft, #40536a); font-size: 12px; font-weight: 600; }

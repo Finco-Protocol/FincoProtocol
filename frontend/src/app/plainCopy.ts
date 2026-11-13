@@ -8,7 +8,11 @@
 /** What to show for one field: a visible plain hint and, when different, the raw registry note. */
 export interface FieldHelp { hint?: string; technical?: string }
 
-const TECHNICAL_SIGNS = /\b(R\d+\/N\d+|PARTIAL|CAS|inputs_section|data-grid-source|input_adapter|adapter|ProjectInputs|ScenarioRunner|typed|period-rate|snapshot|authority|serializ\w*|canonical (adapter|Run)|scalar IS|workspace-draft)\b/i;
+// C06 Correction C: "Excel CF row NN" markers are canonical provenance citations (engineer-oriented), like the
+// adapter and ticket markers below — they belong behind the Technical-note disclosure, never as a visible hint.
+// This keeps provenance and caveats available (the disclosure is user-reachable) while a saved project's visible
+// field hints stay plain-language product text (no prototype/demo/synthetic wording on screen).
+const TECHNICAL_SIGNS = /\b(R\d+\/N\d+|PARTIAL|CAS|inputs_section|data-grid-source|input_adapter|adapter|ProjectInputs|ScenarioRunner|typed|period-rate|snapshot|authority|serializ\w*|canonical (adapter|Run)|scalar IS|workspace-draft|Excel CF row)\b/i;
 
 const PLAIN_BY_FIELD: Record<string, string> = {
   "project_setup.identity.country_market": "Market code: XA, XB or XC for the generic reference markets, or the two-letter ISO country code of a real market.",
@@ -24,10 +28,16 @@ const PLAIN_BY_FIELD: Record<string, string> = {
   "debt.financing.instruments": "Senior facility structure, including a second senior facility. Editing it is not available yet; the Run uses only the selected scenario's scope.",
 };
 
+/** C06 Correction C product-truth rule: a field hint is product text shown on a saved, canonical project. Any help
+ *  copy carrying prototype/demo/synthetic wording (registry provenance meta-language) is by definition engineer-oriented:
+ *  it stays available behind the Technical-note disclosure and is never presented as the visible hint of a live field. */
+const PRODUCT_TRUTH_SIGNS = /\b(synthetic|prototype|fictional|illustrative|DEMO-FIXED|demo)\b/i;
+
 export function plainFieldHelp(fieldId: string, helpText: string | null | undefined): FieldHelp {
   const raw = (helpText ?? "").trim();
   const plain = PLAIN_BY_FIELD[fieldId];
   if (plain) return { hint: plain, technical: raw && raw !== plain ? raw : undefined };
+  if (raw && PRODUCT_TRUTH_SIGNS.test(raw)) return { technical: raw };
   if (raw && TECHNICAL_SIGNS.test(raw)) return { technical: raw };
   return { hint: raw || undefined };
 }

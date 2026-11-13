@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests import c06_cost_workspace_scope as C06_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -32,7 +33,7 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
     # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete signature
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     with C.call_scope():
-        assert C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
+        assert (C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
             C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok()) or (
             C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")
             and G.signature_ok() and Z.signature_ok()) or (
@@ -41,7 +42,7 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
             C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
             and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or (
             C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())
+            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
     assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
     with C.call_scope():
         assert F.exact_blobs_ok() is True
@@ -54,7 +55,8 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
 def test_every_handoff_file_equals_its_reviewed_literal_substitution():
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     for p in sorted(F.HANDOFFS):
-        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
+        want = (C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS
+                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
                 else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS
                 else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS
                 else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS
@@ -84,7 +86,7 @@ def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tai
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     own = accepted + ("tests.ci_v4_perf_scope",)
     with C.call_scope():
-        assert (C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
+        assert ((C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
                 or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
                     and G.signature_ok() and Z.signature_ok())
                 or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
@@ -92,7 +94,7 @@ def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tai
                 or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
                     and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
                 or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok()))
+                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok()))
     assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1
 
 
@@ -121,8 +123,8 @@ def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_can
     assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
     from tests import f03_financing_scope as G
     assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
-    assert set(moved) - set(new) <= set(G.MAP_KEYS)                       # the only other moved key is the reviewed F03 successor's
-    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.manifest()["source_blobs"]}}
+    assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
+    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
     for p in sorted(B.CURRENT_MAPS):
         disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
         base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
@@ -195,7 +197,7 @@ def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_compos
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
     marker = ("'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
-              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope')")
+              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
     assert text.count(marker) == 1
     try:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())
@@ -275,7 +277,8 @@ def test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_dist
         now = (ROOT / p).read_bytes()
         assert base_bytes != now, p                       # the takeover is real, not a no-op
         from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
+        want = (C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS
+                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
                 else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS
                 else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS
                 else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS
