@@ -76,8 +76,8 @@ def test_modes_registry_and_closed_diff_are_enforced(clone,kind):
             path=clone/F.PREDECESSOR;path.write_bytes(subprocess.check_output(['git','show',F.BASE+':'+F.PREDECESSOR],cwd=clone))
         else:
             path=clone/F.REGISTRY;text=path.read_text()
-            if kind=='missing_registration':text=text.replace(", 'tests.c06_cost_workspace_scope')",')')
-            elif kind=='duplicate_registration':text=text.replace("'tests.c06_cost_workspace_scope')","'tests.c06_cost_workspace_scope', 'tests.c06_cost_workspace_scope')")
+            if kind=='missing_registration':text=text.replace(", 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')", ", 'tests.ux_final01_scope')")
+            elif kind=='duplicate_registration':text=text.replace("'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')","'tests.c06_cost_workspace_scope', 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')")
             else:text=text.replace("'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'","'tests.c06_cost_workspace_scope', 'tests.r04_ppa_scope'")
             path.write_text(text)
         with C.call_scope():assert not F.exact_blobs_ok(clone) and not C.valid(clone)

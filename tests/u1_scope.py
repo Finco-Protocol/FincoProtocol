@@ -397,6 +397,10 @@ def allowed_path(path, repo=None, ref=None):
 
 def _c06_correction_c_pin(path, blob, root, ref):
     """Only the finite signed Correction C successor may move these exact U1 pins; history remains untouched."""
+    from tests import ux_final01_scope as UX
+    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move these exact pins too
+        from tests import c06_cost_workspace_scope as C06
+        return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
     if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/model_react_rcux_capex_acceptance.py'):
         return False
     try:

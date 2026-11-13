@@ -1,13 +1,14 @@
-"""UX-FINAL-01 (Excel-first React UX, slice 1): finite exact-source successor after the accepted R04 isolated leaf.
+"""UX-FINAL-01 (Excel-first React UX consolidation): finite exact-source successor after the accepted C06 added-line CAPEX profile successor.
 
-Frontend presentation only: no engine, schema, writer, API, flag or financial-policy change. The Financing inputs block shows units beside labels,
-the NOT_RUN banner is plain, and the CSS bundle is intentionally unchanged. Every changed byte and Git mode, and the immutable BASE tree, are bound to this
-module's manifest. The shared governance paths it really changes are SUPERSEDED paths carrying their accepted BASE blob, the literal one-occurrence
-substitutions that produce the new blob, and the exact new blob. R04 hands the shared bundle to this successor by one reviewed substitution
-(its Phase-1 baseline asked for exactly that paired move). Previous manifests are never rewritten except the current-map keys (registry, JS and CSS bundle).
+Frontend presentation only: no engine, schema, writer, API, flag or financial-policy change. It pins every source, test, document and the single
+reproducible JS/CSS bundle this PR changes, and the immutable BASE tree (accepted main with C06). The shared governance paths it really changes are
+SUPERSEDED paths carrying their accepted BASE blob, the literal one-occurrence substitutions that produce the new blob, and the exact new blob.
+C06 hands the shared bundle, the registry and its own forward hook to this successor by reviewed substitution; C06's manifest and every other historical
+manifest stay byte-identical. Only the current-map keys of the registry and the two bundles move. Two living documents (LIVE_DOCS) may change without a
+pin: they carry no behaviour and cannot name the commit that contains them.
 
-Termination: the signature reads Git objects, this manifest and the registry tuple only. It never calls R04, an older cohort or the composite;
-the R04 leaf calls this module through one forward hook (the acyclic pattern F04 and R04 used).
+Termination: the signature reads Git objects, this manifest and the registry tuple only. It never calls C06, an older cohort or the composite;
+the C06 leaf calls this module through one forward hook (the acyclic pattern F04 and R04 used).
 """
 from __future__ import annotations
 
@@ -19,29 +20,46 @@ import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = "b1c08e2d00fe9933565d253d5cee6e5849b143e1"
-BASE_TREE = "5b25c1f245d3d53d9bbe24060c13dc936e06b8d7"
+BASE = "07f558461dc13c1a8c623064360dee0b4ba42cd0"
+BASE_TREE = "d3c7bcf2c24f8557b7977cb3dea85816ac15ed2a"
 MANIFEST = "docs/react_migration/ux_final01/SOURCE_SUCCESSOR.json"
 SCHEMA = "UX_FINAL01_EXACT_SOURCE_V1"
 REGISTRY = "tests/fin_v2_cohorts.py"
-PREDECESSOR = "tests/r04_ppa_scope.py"
+PREDECESSOR = "tests/c06_cost_workspace_scope.py"
 SOURCE_PATHS = frozenset((
+    "frontend/src/App.tsx",
+    "frontend/src/app/FinancialResults.tsx",
+    "frontend/src/app/InputsOverview.tsx",
+    "frontend/src/app/WorkspaceView.tsx",
+    "frontend/src/app/financing/FinancingStudio.tsx",
+    "frontend/src/app/financing/pr3b1/FinancingOverview.tsx",
+    "frontend/src/app/financing/pr3b1/FinancingReadLayer.tsx",
+    "frontend/src/app/financing/pr3b1/__tests__/readLayer.test.mjs",
     "frontend/src/app/financing/pr3b1/runEvidence.ts",
     "frontend/src/app/financing/pr3b2/FinancingEditing.tsx",
+    "static/react/finco-react.css",
     "static/react/finco-react.js",
 ))
 NEW = frozenset((
     "docs/react_migration/ux_final01/screen_contract.csv",
     "frontend/src/app/financing/pr3b1/__tests__/uxFinal01.test.mjs",
+    "frontend/src/styles/ux-final01.css",
     "tests/test_ux_final01_browser.py",
     "tests/test_ux_final01_scope.py",
     "tests/ux_final01_scope.py",
+    "tests/ux_final01_screens.py",
+))
+# Living documentation: may change without a pin (no behaviour; run identifiers cannot be pinned inside the commit they describe).
+LIVE_DOCS = frozenset((
+    "docs/react_migration/ux_final01/INTEGRATION_PLAYBOOK.md",
+    "docs/react_migration/ux_final01/WORK_COMPLETED_LEDGER.md",
 ))
 # Accepted governance paths whose bytes move by one reviewed literal substitution (HANDOFFS) ...
 HANDOFF_PATHS = frozenset((
-    PREDECESSOR,
-    REGISTRY,
+    "tests/c06_cost_workspace_scope.py",
+    "tests/fin_v2_cohorts.py",
     "tests/test_bess02_scope.py",
+    "tests/test_c06_cost_workspace_scope.py",
     "tests/test_ci_v4_perf_scope.py",
     "tests/test_f03_financing_scope.py",
     "tests/test_f04_financing_scope.py",
@@ -50,8 +68,14 @@ HANDOFF_PATHS = frozenset((
     "tests/test_r03_ppa_scope.py",
     "tests/test_r04_ppa_scope.py",
     "tests/test_t01e_remediation_scope.py",
+    "tests/u1_scope.py",
+    "tests/u2_scope.py",
+    "tests/ux_pr1_scope.py",
+    "tests/ux_pr2b_scope.py",
+    "tests/ux_pr2c_scope.py",
+    "tests/ux_pr3b1_scope.py",
 ))
-# ... and the eight current maps, of which only the registry and JS-bundle keys move (the same bounded handoff F03, T01-E, R03, F04 and R04 made).
+# ... and the eight current maps, of which only the registry and the two bundle keys move (the bounded handoff C06 made, one step further).
 CURRENT_MAPS = frozenset((
     "docs/ci_v4/SOURCE_SUCCESSOR.json",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",
@@ -62,34 +86,48 @@ CURRENT_MAPS = frozenset((
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",
 ))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
 # Accepted historical manifests, products and CI that must stay byte-identical to BASE (a successor never rewrites them).
 FROZEN = (
-    "docs/react_migration/f04_financing/SOURCE_SUCCESSOR.json", "tests/r03_ppa_scope.py",
-    "tests/f04_financing_scope.py",
+    ".github/workflows/ci_v4_f01_job.yml",
+    ".github/workflows/finval_f01_acceptance.yml",
+    "docs/bess02/SOURCE_SUCCESSOR.json",
+    "docs/bess_setup/SOURCE_SUCCESSOR.json",
+    "docs/ci_v4/correction_p/SOURCE_SUCCESSOR.json",
+    "docs/ci_v4/module_weights.json",
+    "docs/r03_ppa_candidate/SOURCE_SUCCESSOR.json",
     "docs/r04_ppa_global_cap/SOURCE_SUCCESSOR.json",
-    "research/r04_ppa_global_cap/README.md",
-    "research/r04_ppa_global_cap/__init__.py",
-    "research/r04_ppa_global_cap/core.py",
-    "tests/r04_ppa_global_cap/__init__.py",
-    "tests/r04_ppa_global_cap/oracle.py",
-    "tests/r04_ppa_global_cap/test_r04_allocation.py",
-    "tests/r04_ppa_global_cap/test_r04_canonical_reconciliation.py",
-    "tests/r04_ppa_global_cap/test_r04_production_acceptance.py",
-    "docs/r03_ppa_candidate/SOURCE_SUCCESSOR.json", "research/r03_ppa_candidate/core.py", "tests/r03_ppa_core/oracle.py",
-    "docs/tax_reference_registry/t01e/SOURCE_SUCCESSOR.json", "tax_reference_registry/remediation.py",
-    "tests/t01e_remediation_scope.py", "tests/f03_financing_scope.py",
+    "docs/react_migration/c06_cost_workspace/C06_LEDGER.md",
+    "docs/react_migration/c06_cost_workspace/SOURCE_SUCCESSOR.json",
     "docs/react_migration/f03_financing/SOURCE_SUCCESSOR.json",
-    "docs/ci_v4/correction_p/SOURCE_SUCCESSOR.json", "docs/ci_v4/module_weights.json",
-    "docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json", "docs/bess_setup/SOURCE_SUCCESSOR.json", "docs/bess02/SOURCE_SUCCESSOR.json",
-    "tax_reference_registry/__init__.py", "tests/tax_reference_registry_scope.py",
-    ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/ci_v4_f01_job.yml",
-    "tests/ci_v4_perf_scope.py", "tests/bess02_scope.py", "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py",
+    "docs/react_migration/f04_financing/SOURCE_SUCCESSOR.json",
+    "docs/react_migration/r02_ppa_ux/SOURCE_SUCCESSOR.json",
+    "docs/tax_reference_registry/t01e/SOURCE_SUCCESSOR.json",
+    "research/r03_ppa_candidate/core.py",
+    "research/r04_ppa_global_cap/core.py",
+    "tax_reference_registry/__init__.py",
+    "tax_reference_registry/remediation.py",
+    "tests/bess02_scope.py",
+    "tests/ci_v4_perf_scope.py",
+    "tests/ci_v4_scope.py",
+    "tests/f03_financing_scope.py",
+    "tests/f04_financing_scope.py",
+    "tests/model_react_rcux_capex_acceptance.py",
+    "tests/r03_ppa_core/oracle.py",
+    "tests/r03_ppa_scope.py",
+    "tests/r04_ppa_global_cap/oracle.py",
+    "tests/r04_ppa_scope.py",
+    "tests/t01e_remediation_scope.py",
+    "tests/tax_reference_registry_scope.py",
+    "tests/test_c06_cost_workspace_browser.py",
+    "tests/test_c06_custom_capex_profile_replay.py",
+    "tests/test_u2_scope.py",
+    "tests/test_ux_pr3b1_scope.py",
 )
-# The R04 leaf keeps owning the Phase-1 production PPA baseline; this successor owns no revenue path.
+# C06 and R04 keep owning their own production baselines; this successor owns no revenue or CAPEX engine path.
 BASELINE = {}
 
 
@@ -143,328 +181,426 @@ def expected_map(root, path, pins=None):
     return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
 
 
-# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes. The accepted R04 leaf gains one forward hook to this
-# cohort (the same acyclic pattern F04 and R04 used) and hands over its bundle baseline; the registry appends this cohort exactly once; the exact-tail
-# tests accept one more state.
-HANDOFFS = {'tests/fin_v2_cohorts.py': [("'tests.r04_ppa_scope')", "'tests.r04_ppa_scope', 'tests.ux_final01_scope')")],
- 'tests/r04_ppa_scope.py': [('    _SCOPE.append({})\n    try:\n        yield\n    finally:\n        _SCOPE.pop()\n',
-                             '    _SCOPE.append({})\n'
-                             '    try:\n'
-                             '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept '
-                             'globally.\n'
-                             '        N = _next()\n'
-                             '        if N is None:\n'
-                             '            yield\n'
-                             '        else:\n'
-                             '            with N.scoped():\n'
-                             '                yield\n'
-                             '    finally:\n'
-                             '        _SCOPE.pop()\n'),
-                            ('    if mode == "exact":\n'
-                             '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
-                             '    return _signature_ok(root, ref, mode)\n',
-                             '    from contextlib import nullcontext\n'
-                             '    N = _next()\n'
-                             '    with (N.scoped() if N is not None else nullcontext()):\n'
-                             '        if mode == "exact":\n'
-                             '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
-                             '        return _signature_ok(root, ref, mode)\n'),
-                            ('        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
-                             '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN) | set(BASELINE))\n'
-                             '        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\n',
-                             '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
-                             '        nx = _next_pins(root, ref)\n'
-                             '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'
-                             '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN) | set(BASELINE))\n'
-                             '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\n'),
-                            ('                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\n',
-                             '                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):\n'),
-                            ('        allowed = OWNED_PATHS | {MANIFEST}\n        changed = set(',
-                             '        allowed = closure_paths(root, ref)\n        changed = set('),
-                            ('def map_keys(repo=None, ref=None):\n    return tuple(MAP_KEYS)\n',
-                             'def _next():\n'
-                             '    """The one finite forward successor (UX-FINAL-01). Low-level only: its signature never calls this module '
-                             'or the composite."""\n'
-                             '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
-                             "    if 'tests.ux_final01_scope' not in COHORT_MODULES:\n"
-                             '        return None\n'
-                             '    from tests import ux_final01_scope\n'
-                             '    return ux_final01_scope\n'
-                             '\n'
-                             '\n'
-                             'def _next_pins(root, ref):\n'
-                             '    N = _next()\n'
-                             '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\n'
-                             '\n'
-                             '\n'
-                             'def map_keys(repo=None, ref=None):\n'
-                             '    root = Path(repo) if repo is not None else ROOT\n'
-                             '    with scoped():\n'
-                             '        N = _next()\n'
-                             '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and '
-                             'N.signature_ok(root, ref) else ()\n'
-                             '        return tuple(MAP_KEYS) + more\n'),
-                            ('def effective_pins(repo=None, ref=None, *, signature=False):\n'
-                             '    return dict(manifest(repo, ref).get("source_blobs", {}))\n',
-                             'def effective_pins(repo=None, ref=None, *, signature=False):\n'
-                             '    root = Path(repo) if repo is not None else ROOT\n'
-                             '    with scoped():\n'
-                             '        pins = dict(manifest(repo, ref).get("source_blobs", {}))\n'
-                             '        pins.update(_next_pins(root, ref))\n'
-                             '        return pins\n'),
-                            ('def closure_paths(repo=None, ref=None):\n'
-                             '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\n',
-                             'def closure_paths(repo=None, ref=None):\n'
-                             '    root = Path(repo) if repo is not None else ROOT\n'
-                             '    with scoped():\n'
-                             '        if not signature_ok(root, ref):\n'
-                             '            return frozenset()\n'
-                             '        N = _next()\n'
-                             '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\n'),
-                            ('def supersedes(path, value, repo=None, ref=None):\n'
-                             '    if path not in SUPERSEDED:\n'
-                             '        return False\n'
-                             '    # Like the accepted F03 / performance leaves: the signature decides a supersession; the composite '
-                             "separately requires every cohort's FULL\n"
-                             '    # exactness (map bytes, changed set, untracked files), so a signature-only verdict never makes the tree '
-                             'valid.\n'
-                             '    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value\n',
-                             'def supersedes(path, value, repo=None, ref=None):\n'
-                             '    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then '
-                             'dropped\n'
-                             '        N = _next()\n'
-                             '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):\n'
-                             '            return True\n'
-                             '        if path not in SUPERSEDED:\n'
-                             '            return False\n'
-                             '        # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw '
-                             'superseded manifest line\n'
-                             '        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\n'),
-                            ('    root = Path(repo) if repo is not None else ROOT\n'
-                             '    try:\n'
-                             '        if _git(root, "merge-base", "origin/main", "HEAD")',
-                             '    root = Path(repo) if repo is not None else ROOT\n'
-                             '    try:\n'
-                             '        N = _next()\n'
-                             '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\n'
-                             '            return True\n'
-                             '        if _git(root, "merge-base", "origin/main", "HEAD")'),
-                            ('        pins = manifest(root, ref).get("source_blobs", {})\n'
-                             '        for path in HANDOFFS:\n'
-                             '            actual = _read(root, path, ref)\n'
-                             '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\n'
-                             '                return False\n'
-                             '        return True\n',
-                             '        pins = manifest(root, ref).get("source_blobs", {})\n'
-                             '        N = _next()\n'
-                             '        nxt = N is not None and N.signature_ok(root, ref)\n'
-                             '        for path in HANDOFFS:\n'
-                             '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution '
-                             'of this shared path\n'
-                             '                continue\n'
-                             '            actual = _read(root, path, ref)\n'
-                             '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\n'
-                             '                return False\n'
-                             '        return N.reviewed_edits_ok(root, ref) if nxt else True\n'),
-                            ('    "static/react/finco-react.js": ("100644", "6a27300af4d4f818c3f30800b6b8ae634c50224b"),\n', '')],
- 'tests/test_bess02_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                 'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                ('                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                 'Q.signature_ok() and W.signature_ok()))\n',
-                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                 'Q.signature_ok() and W.signature_ok())\n'
-                                 '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, '
-                                 'W.__name__, V.__name__)\n'
-                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                 'Q.signature_ok() and W.signature_ok()\n'
-                                 '                and V.signature_ok()))\n')],
- 'tests/test_ci_v4_perf_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                     'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                    ('            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
-                                     'W.signature_ok())\n'
-                                     '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n',
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
-                                     'W.signature_ok()) or (\n'
-                                     '            C.COHORT_MODULES[-7:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
-                                     'W.signature_ok() and V.signature_ok())\n'
-                                     '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'),
+# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes. The accepted C06 leaf gains one forward hook to this
+# cohort (the same acyclic pattern F04 and R04 used); the registry appends this cohort exactly once; the exact-tail tests accept one more state.
+HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n    try:\r\n        yield\r\n    finally:\r\n        _SCOPE.pop()\r\n',
+                                        '    _SCOPE.append({})\r\n'
+                                        '    try:\r\n'
+                                        '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, '
+                                        'never kept globally.\r\n'
+                                        '        N = _next()\r\n'
+                                        '        if N is None:\r\n'
+                                        '            yield\r\n'
+                                        '        else:\r\n'
+                                        '            with N.scoped():\r\n'
+                                        '                yield\r\n'
+                                        '    finally:\r\n'
+                                        '        _SCOPE.pop()\r\n'),
+                                       ('    if mode == "exact":\r\n'
+                                        '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\r\n'
+                                        '    return _signature_ok(root, ref, mode)\r\n',
+                                        '    from contextlib import nullcontext\r\n'
+                                        '    N = _next()\r\n'
+                                        '    with (N.scoped() if N is not None else nullcontext()):\r\n'
+                                        '        if mode == "exact":\r\n'
+                                        '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\r\n'
+                                        '        return _signature_ok(root, ref, mode)\r\n'),
+                                       ('        if COHORT_MODULES != BASE_COHORTS + (__name__,):\r\n            return False\r\n',
+                                        '        if COHORT_MODULES != BASE_COHORTS + (__name__,) and COHORT_MODULES != BASE_COHORTS + '
+                                        "(__name__, 'tests.ux_final01_scope'):\r\n"
+                                        '            return False\r\n'),
+                                       ('        if pins.get("tests/c06_cost_workspace_scope.py") != _MODULE_BLOB:\r\n'
+                                        '            return False\r\n',
+                                        '        nx = _next_pins(root, ref)\r\n'
+                                        '        if pins.get("tests/c06_cost_workspace_scope.py") != _MODULE_BLOB and '
+                                        'nx.get("tests/c06_cost_workspace_scope.py") != _MODULE_BLOB:\r\n'
+                                        '            return False\r\n'),
+                                       ('        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\r\n'
+                                        '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\r\n'
+                                        '        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\r\n',
+                                        '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\r\n'
+                                        '        cur = {p: nx.get(p, b) for p, b in pins.items()}\r\n'
+                                        '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\r\n'
+                                        '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\r\n'),
+                                       ('                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in '
+                                        'MAP_KEYS)):\r\n',
+                                        '                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in '
+                                        'MAP_KEYS))):\r\n'),
+                                       ('        allowed = OWNED_PATHS | {MANIFEST}\r\n        changed = set(',
+                                        '        allowed = closure_paths(root, ref)\r\n        changed = set('),
+                                       ('def map_keys(repo=None, ref=None):\r\n    return tuple(MAP_KEYS)\r\n',
+                                        'def _next():\r\n'
+                                        '    """The one finite forward successor (UX-FINAL-01). Low-level only: its signature never calls '
+                                        'this module or the composite."""\r\n'
+                                        '    from tests.fin_v2_cohorts import COHORT_MODULES\r\n'
+                                        "    if 'tests.ux_final01_scope' not in COHORT_MODULES:\r\n"
+                                        '        return None\r\n'
+                                        '    from tests import ux_final01_scope\r\n'
+                                        '    return ux_final01_scope\r\n'
+                                        '\r\n'
+                                        '\r\n'
+                                        'def _next_pins(root, ref):\r\n'
+                                        '    N = _next()\r\n'
+                                        '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else '
+                                        '{}\r\n'
+                                        '\r\n'
+                                        '\r\n'
+                                        'def map_keys(repo=None, ref=None):\r\n'
+                                        '    root = Path(repo) if repo is not None else ROOT\r\n'
+                                        '    with scoped():\r\n'
+                                        '        N = _next()\r\n'
+                                        '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and '
+                                        'N.signature_ok(root, ref) else ()\r\n'
+                                        '        return tuple(MAP_KEYS) + more\r\n'),
+                                       ('def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
+                                        '    return dict(manifest(repo, ref).get("source_blobs", {}))\r\n',
+                                        'def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
+                                        '    root = Path(repo) if repo is not None else ROOT\r\n'
+                                        '    with scoped():\r\n'
+                                        '        pins = dict(manifest(repo, ref).get("source_blobs", {}))\r\n'
+                                        '        pins.update(_next_pins(root, ref))\r\n'
+                                        '        return pins\r\n'),
+                                       ('def closure_paths(repo=None, ref=None):\r\n'
+                                        '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\r\n',
+                                        'def closure_paths(repo=None, ref=None):\r\n'
+                                        '    root = Path(repo) if repo is not None else ROOT\r\n'
+                                        '    with scoped():\r\n'
+                                        '        if not signature_ok(root, ref):\r\n'
+                                        '            return frozenset()\r\n'
+                                        '        N = _next()\r\n'
+                                        '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else '
+                                        'frozenset())\r\n'),
+                                       ('def supersedes(path, value, repo=None, ref=None):\r\n'
+                                        '    if path not in SUPERSEDED:\r\n'
+                                        '        return False\r\n'
+                                        '    # Like the accepted F03 / performance leaves: the signature decides a supersession; the '
+                                        "composite separately requires every cohort's FULL\r\n"
+                                        '    # exactness (map bytes, changed set, untracked files), so a signature-only verdict never '
+                                        'makes the tree valid.\r\n'
+                                        '    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == '
+                                        'value\r\n',
+                                        'def supersedes(path, value, repo=None, ref=None):\r\n'
+                                        '    with scoped():      # one shared read scope per call: the successor signature is evaluated '
+                                        'once, then dropped\r\n'
+                                        '        N = _next()\r\n'
+                                        '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, '
+                                        'ref):\r\n'
+                                        '            return True\r\n'
+                                        '        if path not in SUPERSEDED:\r\n'
+                                        '            return False\r\n'
+                                        '        # the CURRENT pin of this path (the successor overlay wins while its signature holds), '
+                                        'never a raw superseded manifest line\r\n'
+                                        '        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\r\n'),
+                                       ('    root = Path(repo) if repo is not None else ROOT\r\n'
+                                        '    try:\r\n'
+                                        '        if _git(root, "merge-base", "origin/main", "HEAD")',
+                                        '    root = Path(repo) if repo is not None else ROOT\r\n'
+                                        '    try:\r\n'
+                                        '        N = _next()\r\n'
+                                        '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, '
+                                        'root):\r\n'
+                                        '            return True\r\n'
+                                        '        if _git(root, "merge-base", "origin/main", "HEAD")'),
+                                       ('        pins = manifest(root, ref).get("source_blobs", {})\r\n'
+                                        '        for path in HANDOFFS:\r\n'
+                                        '            actual = _read(root, path, ref)\r\n'
+                                        '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\r\n'
+                                        '                return False\r\n'
+                                        '        return True\r\n',
+                                        '        pins = manifest(root, ref).get("source_blobs", {})\r\n'
+                                        '        N = _next()\r\n'
+                                        '        nxt = N is not None and N.signature_ok(root, ref)\r\n'
+                                        '        for path in HANDOFFS:\r\n'
+                                        '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further '
+                                        'substitution of this shared path\r\n'
+                                        '                continue\r\n'
+                                        '            actual = _read(root, path, ref)\r\n'
+                                        '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\r\n'
+                                        '                return False\r\n'
+                                        '        return N.reviewed_edits_ok(root, ref) if nxt else True\r\n')],
+ 'tests/fin_v2_cohorts.py': [("'tests.c06_cost_workspace_scope')", "'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')")],
+ 'tests/test_bess02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                 'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                 'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                 'C06_APPROVAL.signature_ok()))\n',
+                                 '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                 'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                 'UX_APPROVAL.__name__)\n'
+                                 '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok()))\n')],
+ 'tests/test_c06_cost_workspace_scope.py': [('            if kind==\'missing_registration\':text=text.replace(", '
+                                             '\'tests.c06_cost_workspace_scope\')",\')\')\n',
+                                             '            if kind==\'missing_registration\':text=text.replace(", '
+                                             '\'tests.c06_cost_workspace_scope\', \'tests.ux_final01_scope\')", ", '
+                                             '\'tests.ux_final01_scope\')")\n'),
+                                            ('            elif '
+                                             'kind==\'duplicate_registration\':text=text.replace("\'tests.c06_cost_workspace_scope\')","\'tests.c06_cost_workspace_scope\', '
+                                             '\'tests.c06_cost_workspace_scope\')")\n',
+                                             '            elif '
+                                             'kind==\'duplicate_registration\':text=text.replace("\'tests.c06_cost_workspace_scope\', '
+                                             '\'tests.ux_final01_scope\')","\'tests.c06_cost_workspace_scope\', '
+                                             '\'tests.c06_cost_workspace_scope\', \'tests.ux_final01_scope\')")\n')],
+ 'tests/test_ci_v4_perf_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                     'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                     'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                    ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                     'C06_APPROVAL.signature_ok())\n',
+                                     '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                     'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                     '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                     '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                    ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                     'C06_APPROVAL.signature_ok()))\n',
+                                     '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                     'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                     '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                     '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok()))\n'),
                                     ('    for p in sorted(F.HANDOFFS):\n'
-                                     '        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n',
+                                     '        want = (C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
+                                     'C06_APPROVAL.HANDOFFS\n',
                                      '    for p in sorted(F.HANDOFFS):\n'
-                                     '        want = (V.expected_handoff(ROOT, p) if V.signature_ok() and p in V.HANDOFFS\n'
-                                     '                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n'),
+                                     '        want = (UX_APPROVAL.expected_handoff(ROOT, p) if UX_APPROVAL.signature_ok() and p in '
+                                     'UX_APPROVAL.HANDOFFS\n'
+                                     '                else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
+                                     'C06_APPROVAL.HANDOFFS\n'),
                                     ('        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-                                     '        want = (W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n',
+                                     '        want = (C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
+                                     'C06_APPROVAL.HANDOFFS\n',
                                      '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-                                     '        want = (V.expected_handoff(ROOT, p) if V.signature_ok() and p in V.HANDOFFS\n'
-                                     '                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n'),
-                                    ('                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok() and W.signature_ok()))\n'
-                                     '    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n',
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok() and W.signature_ok())\n'
-                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok() and W.signature_ok() and V.signature_ok()))\n'
-                                     '    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n'),
-                                    ('              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', '
-                                     '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')")\n',
-                                     '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', '
-                                     '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.ux_final01_scope\')")\n')],
- 'tests/test_f03_financing_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                        'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                       ('"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
-                                        '        and Q.signature_ok() and W.signature_ok())\n',
-                                        '"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
-                                        '        and Q.signature_ok() and W.signature_ok()) or (\n'
-                                        '        C.COHORT_MODULES[-8:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
-                                        '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
-                                        '"tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                        '        and Q.signature_ok() and W.signature_ok() and V.signature_ok())\n'),
-                                       ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
-                                        '\'tests.fake_scope\')")),\n',
+                                     '        want = (UX_APPROVAL.expected_handoff(ROOT, p) if UX_APPROVAL.signature_ok() and p in '
+                                     'UX_APPROVAL.HANDOFFS\n'
+                                     '                else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
+                                     'C06_APPROVAL.HANDOFFS\n')],
+ 'tests/test_f03_financing_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                        'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                        'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                       ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                        'C06_APPROVAL.signature_ok())\n',
+                                        '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                        'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                        '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                       ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                        '\'tests.c06_cost_workspace_scope\')", b"\'tests.r04_ppa_scope\', '
+                                        '\'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                         '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
                                         'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')],
- 'tests/test_f04_financing_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                        'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                       ('        '
-                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') "
-                                        'and W.signature_ok())\n',
-                                        '        '
-                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') "
-                                        'and W.signature_ok()) or (\n'
-                                        '        '
-                                        "C.COHORT_MODULES[-4:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope','tests.ux_final01_scope')\n"
-                                        '        and W.signature_ok() and V.signature_ok())\n'),
-                                       ('        authority=W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed '
-                                        'substitution of this shared path\n',
-                                        '        authority=(V if V.signature_ok() and path in V.HANDOFFS else W if W.signature_ok() and '
-                                        'path in W.HANDOFFS else F)      # the latest reviewed substitution of this shared path\n'),
+ 'tests/test_f04_financing_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                        'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                        'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                       ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                        'C06_APPROVAL.signature_ok())\n',
+                                        '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                        'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                        '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                       ('        authority=C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS '
+                                        'else W if',
+                                        '        authority=UX_APPROVAL if UX_APPROVAL.signature_ok() and path in UX_APPROVAL.HANDOFFS else '
+                                        'C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if'),
+                                       ('        if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                        '            assert (ROOT/path).read_bytes()==C06_APPROVAL.expected_handoff(ROOT,path)\n'
+                                        '            assert '
+                                        "F._blob((ROOT/path).read_bytes())==C06_APPROVAL.manifest()['source_blobs'][path]\n",
+                                        '        if path in UX_APPROVAL.HANDOFFS and UX_APPROVAL.signature_ok():\n'
+                                        '            assert (ROOT/path).read_bytes()==UX_APPROVAL.expected_handoff(ROOT,path)\n'
+                                        '            assert '
+                                        "F._blob((ROOT/path).read_bytes())==UX_APPROVAL.manifest()['source_blobs'][path]\n"
+                                        '        elif path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                        '            assert (ROOT/path).read_bytes()==C06_APPROVAL.expected_handoff(ROOT,path)\n'
+                                        '            assert '
+                                        "F._blob((ROOT/path).read_bytes())==C06_APPROVAL.manifest()['source_blobs'][path]\n"),
                                        ('            if kind==\'missing_registration\':text=text.replace(", \'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\')",", \'tests.r04_ppa_scope\')")\n',
+                                        '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')",", \'tests.r04_ppa_scope\', '
+                                        '\'tests.c06_cost_workspace_scope\')")\n',
                                         '            if kind==\'missing_registration\':text=text.replace(", \'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\'",", \'tests.r04_ppa_scope\'")\n'),
+                                        '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'",", \'tests.r04_ppa_scope\', '
+                                        '\'tests.c06_cost_workspace_scope\'")\n'),
                                        ('            elif '
                                         'kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\')","\'tests.f04_financing_scope\', \'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\')")\n',
+                                        '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')","\'tests.f04_financing_scope\', '
+                                        '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')")\n',
                                         '            elif '
                                         'kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\'","\'tests.f04_financing_scope\', \'tests.f04_financing_scope\', '
-                                        '\'tests.r04_ppa_scope\'")\n')],
- 'tests/test_post432_l01_l02_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                          'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                         ("    if 'tests.r04_ppa_scope' in C.COHORT_MODULES and W.signature_ok():\n"
-                                          '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n',
-                                          "    if 'tests.ux_final01_scope' in C.COHORT_MODULES and V.signature_ok():\n"
-                                          '        expected = V.expected_handoff(ROOT, X.REGISTRY)\n'
-                                          "    elif 'tests.r04_ppa_scope' in C.COHORT_MODULES and W.signature_ok():\n"
-                                          '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n')],
- 'tests/test_r02_ppa_ux_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                     'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                    ("                            'tests.r04_ppa_scope') if m in C.COHORT_MODULES)\n"
-                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
-                                     '    if len(nxt) == 6 and W.signature_ok():\n'
-                                     '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n',
-                                     "                            'tests.r04_ppa_scope', 'tests.ux_final01_scope') if m in "
-                                     'C.COHORT_MODULES)\n'
-                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
-                                     '    if len(nxt) == 7 and V.signature_ok():\n'
-                                     '        expected = V.expected_handoff(ROOT, X.REGISTRY)\n'
-                                     '    elif len(nxt) == 6 and W.signature_ok():\n'
-                                     '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n')],
- 'tests/test_r03_ppa_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                  'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                 ('        authority = W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in '
-                                  'Q.HANDOFFS else T\n',
-                                  '        authority = (V if V.signature_ok() and p in V.HANDOFFS else W if W.signature_ok() and p in '
-                                  'W.HANDOFFS\n'
-                                  '                     else Q if Q.signature_ok() and p in Q.HANDOFFS else T)\n'),
-                                 ('        and Q.signature_ok() and W.signature_ok())\n'
-                                  '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n',
-                                  '        and Q.signature_ok() and W.signature_ok()) or (\n'
-                                  '        C.COHORT_MODULES[-6:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
-                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                  '        and Q.signature_ok() and W.signature_ok() and V.signature_ok())\n'
-                                  '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n'),
-                                 ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
-                                  '\'tests.fake_scope\')")),\n',
+                                        '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'","\'tests.f04_financing_scope\', '
+                                        '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'")\n')],
+ 'tests/test_post432_l01_l02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                          'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                          'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                         ("    if 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():\n"
+                                          '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n',
+                                          "    if 'tests.ux_final01_scope' in C.COHORT_MODULES and UX_APPROVAL.signature_ok():\n"
+                                          '        expected = UX_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                          "    elif 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():\n"
+                                          '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n')],
+ 'tests/test_r02_ppa_ux_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                     'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                     'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                    ('    if len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n',
+                                     "    if 'tests.ux_final01_scope' in C.COHORT_MODULES and UX_APPROVAL.signature_ok():\n"
+                                     '        expected = UX_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n')],
+ 'tests/test_r03_ppa_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                  'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                  'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                 ('        authority = C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W '
+                                  'if',
+                                  '        authority = UX_APPROVAL if UX_APPROVAL.signature_ok() and p in UX_APPROVAL.HANDOFFS else '
+                                  'C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if'),
+                                 ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                  'C06_APPROVAL.signature_ok())\n',
+                                  '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                  'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                  '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                  '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                 ('        if p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == C06_APPROVAL.manifest()["source_blobs"][p]\n',
+                                  '        if p in UX_APPROVAL.HANDOFFS and UX_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == UX_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == UX_APPROVAL.manifest()["source_blobs"][p]\n'
+                                  '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == C06_APPROVAL.manifest()["source_blobs"][p]\n'),
+                                 ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')", '
+                                  'b"\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                   '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", b"\'tests.ux_final01_scope\', '
                                   '\'tests.fake_scope\')")),\n')],
- 'tests/test_r04_ppa_scope.py': [('from tests import f04_financing_scope as P\n',
-                                  'from tests import f04_financing_scope as P\nfrom tests import ux_final01_scope as V\n'),
-                                 ('    assert C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
-                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n',
-                                  '    assert C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
-                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope") or (\n'
-                                  '        C.COHORT_MODULES[-6:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
-                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")\n'
-                                  '        and V.signature_ok())\n'),
-                                 ('    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
-                                  '\'tests.r04_ppa_scope\')")),\n'
-                                  '    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
-                                  '\'tests.fake_scope\')")),\n'
-                                  '    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\')", '
-                                  'b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\')")),\n'
-                                  '    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\')", b")")),\n',
-                                  '    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\', \'tests.ux_final01_scope\')", '
-                                  'b"\'tests.r04_ppa_scope\', \'tests.r04_ppa_scope\', \'tests.ux_final01_scope\')")),\n'
+ 'tests/test_r04_ppa_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                  'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                  'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                 ('        authority = C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T\n',
+                                  '        authority = UX_APPROVAL if UX_APPROVAL.signature_ok() and p in UX_APPROVAL.HANDOFFS else '
+                                  'C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T\n'),
+                                 ('or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                  'C06_APPROVAL.signature_ok())\n',
+                                  'or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                  'C06_APPROVAL.signature_ok()) or (\n'
+                                  '        C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                  '        and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                 ('        if p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == C06_APPROVAL.manifest()["source_blobs"][p]\n',
+                                  '        if p in UX_APPROVAL.HANDOFFS and UX_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == UX_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == UX_APPROVAL.manifest()["source_blobs"][p]\n'
+                                  '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                  '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == C06_APPROVAL.manifest()["source_blobs"][p]\n'),
+                                 ('    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')", b"\'tests.r04_ppa_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')")),\n',
+                                  '    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'),
+                                 ('    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')", b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')")),\n',
+                                  '    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'),
+                                 ('    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')", b", \'tests.c06_cost_workspace_scope\')")),\n',
+                                  '    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b", \'tests.c06_cost_workspace_scope\'")),\n'),
+                                 ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\')", '
+                                  'b"\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                   '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", b"\'tests.ux_final01_scope\', '
-                                  '\'tests.fake_scope\')")),\n'
-                                  '    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\'", '
-                                  'b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\'")),\n'
-                                  '    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\'", b"")),\n'),
-                                 ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\')", b")")})\n',
-                                  '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\'", b"")})\n'),
-                                 ('"frontend/src/app/workflow/ModelWorkflowValidation.ts", "static/react/finco-react.js")\n',
-                                  '"frontend/src/app/workflow/ModelWorkflowValidation.ts")\n'),
-                                 ('    for p in T.HANDOFFS:\n'
-                                  '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
-                                  '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n',
-                                  '    for p in T.HANDOFFS:\n'
-                                  '        authority = V if V.signature_ok() and p in V.HANDOFFS else T      # the latest reviewed '
-                                  'substitution of a shared path\n'
-                                  '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
-                                  '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'),
-                                 ('def test_current_maps_move_only_the_registry_key():\n    pins = T.manifest()["source_blobs"]\n',
-                                  'def test_current_maps_move_only_the_registry_key():\n'
-                                  '    pins = T.effective_pins()          # the CURRENT pins: the reviewed UX-FINAL-01 overlay wins while '
-                                  'its signature holds\n'),
-                                 ('        assert changed <= set(T.MAP_KEYS)\n',
-                                  '        assert changed <= set(T.MAP_KEYS) | set(V.MAP_KEYS)          # the registry (R04) plus the '
-                                  'registry and JS bundle keys the successor moves\n'),
-                                 ('    pins = T.manifest()["source_blobs"]\n    reg = pins[T.REGISTRY]\n',
-                                  '    pins = T.manifest()["source_blobs"]\n'
-                                  '    reg = T.effective_pins()[T.REGISTRY]          # the CURRENT registry pin (the reviewed successor '
-                                  'overlay wins)\n')],
- 'tests/test_t01e_remediation_scope.py': [('from tests import r04_ppa_scope as W\n',
-                                           'from tests import r04_ppa_scope as W\nfrom tests import ux_final01_scope as V\n'),
-                                          ('    for p in T.HANDOFFS:\n'
-                                           '        if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 '
-                                           'substitution of this shared path\n',
-                                           '    for p in T.HANDOFFS:\n'
-                                           '        if V.signature_ok() and p in V.HANDOFFS:            # the latest reviewed UX-FINAL-01 '
-                                           'substitution of this shared path\n'
-                                           '            assert (ROOT / p).read_bytes() == V.expected_handoff(ROOT, p)\n'
+                                  '\'tests.fake_scope\')")),\n'),
+                                 ('    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\')", b", \'tests.c06_cost_workspace_scope\')")})\n',
+                                  '    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b", \'tests.c06_cost_workspace_scope\'")})\n'),
+                                 ('        expected = C06_APPROVAL.effective_pins()[p] if p == "static/react/finco-react.js" and '
+                                  'C06_APPROVAL.signature_ok() else blob\n',
+                                  '        expected = C06_APPROVAL.effective_pins()[p] if p == "static/react/finco-react.js" and '
+                                  'C06_APPROVAL.signature_ok() else blob\n')],
+ 'tests/test_t01e_remediation_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
+                                           'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
+                                           'from tests import ux_final01_scope as UX_APPROVAL\n'),
+                                          ('        if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS:\n'
+                                           '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n',
+                                           '        if UX_APPROVAL.signature_ok() and p in UX_APPROVAL.HANDOFFS:\n'
+                                           '            assert (ROOT / p).read_bytes() == UX_APPROVAL.expected_handoff(ROOT, p)\n'
                                            '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
                                            '            continue\n'
-                                           '        if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 '
-                                           'substitution of this shared path\n'),
-                                          ('                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                           '"tests.r04_ppa_scope"))\n',
-                                           '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                           '"tests.r04_ppa_scope"),\n'
-                                           '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                           '"tests.r04_ppa_scope", "tests.ux_final01_scope"))\n'),
-                                          ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\')", b"\'tests.r04_ppa_scope\', '
-                                           '\'tests.fake_scope\')")),\n',
+                                           '        if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS:\n'
+                                           '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'),
+                                          ('(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                           'C06_APPROVAL.signature_ok())\n',
+                                           '(C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and '
+                                           'C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + '
+                                           '(C06_APPROVAL.__name__, UX_APPROVAL.__name__)\n'
+                                           '            and C06_APPROVAL.signature_ok() and UX_APPROVAL.signature_ok())\n'),
+                                          ('        if p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                           '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == '
+                                           'C06_APPROVAL.manifest()["source_blobs"][p]\n',
+                                           '        if p in UX_APPROVAL.HANDOFFS and UX_APPROVAL.signature_ok():\n'
+                                           '            assert (ROOT / p).read_bytes() == UX_APPROVAL.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == '
+                                           'UX_APPROVAL.manifest()["source_blobs"][p]\n'
+                                           '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+                                           '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == '
+                                           'C06_APPROVAL.manifest()["source_blobs"][p]\n'),
+                                          ('    ("fake_extra", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                           '\'tests.c06_cost_workspace_scope\')", b"\'tests.r04_ppa_scope\', '
+                                           '\'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                            '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
-                                           'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')]}
+                                           'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')],
+ 'tests/u1_scope.py': [("    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css',",
+                        '    from tests import ux_final01_scope as UX\n'
+                        '    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may '
+                        'move these exact pins too\n'
+                        '        from tests import c06_cost_workspace_scope as C06\n'
+                        '        return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
+                        "    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css',")],
+ 'tests/u2_scope.py': [("    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx',",
+                        '    from tests import ux_final01_scope as UX\n'
+                        '    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may '
+                        'move these exact pins too\n'
+                        '        from tests import c06_cost_workspace_scope as C06\n'
+                        '        return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
+                        "    if path not in ('frontend/src/app/capex/profileFocus.ts', 'frontend/src/app/editing/CostLinesGridView.tsx',"),
+                       ('def supersedes(path, value, repo=None, ref=None):\n'
+                        '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "frontend/src/app/CostWorkbench.tsx",',
+                        'def supersedes(path, value, repo=None, ref=None):\n'
+                        '    from tests import ux_final01_scope as UX\n'
+                        '    if path in UX.SUPERSEDED and _c06_pin(path, value, ROOT if repo is None else Path(repo), ref):\n'
+                        '        return True\n'
+                        '    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "frontend/src/app/CostWorkbench.tsx",')],
+ 'tests/ux_pr1_scope.py': [('def supersedes(path,value,repo=None,ref=None):\n'
+                            '    S=_pr2a()\n'
+                            '    if path not in SUPERSEDED or not exact_blobs_ok(repo,ref):\n'
+                            '        return False\n',
+                            'def supersedes(path,value,repo=None,ref=None):\n'
+                            '    S=_pr2a()\n'
+                            '    if path not in SUPERSEDED or not exact_blobs_ok(repo,ref):\n'
+                            '        return False\n'
+                            '    from tests import ux_final01_scope as UX\n'
+                            '    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) '
+                            'follows this pin\n'
+                            '        from tests import c06_cost_workspace_scope as C06\n'
+                            '        if C06.signature_ok(repo,ref) and C06.supersedes(path,value,repo,ref):\n'
+                            '            return True\n')],
+ 'tests/ux_pr2b_scope.py': [("    if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', ",
+                             '    from tests import ux_final01_scope as UX\n'
+                             "    if path in UX.SUPERSEDED or path in ('frontend/src/app/capex/ProfileDraftProvider.tsx', "
+                             "'frontend/src/app/capex/ProfileRowEditor.tsx', ")],
+ 'tests/ux_pr2c_scope.py': [("    if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx',):\n"
+                             '        from tests import c06_cost_workspace_scope as C06\n',
+                             '    from tests import ux_final01_scope as UX\n'
+                             "    if path in UX.SUPERSEDED or path in ('frontend/src/app/capex/ProfileDraftProvider.tsx',):\n"
+                             '        from tests import c06_cost_workspace_scope as C06\n')],
+ 'tests/ux_pr3b1_scope.py': [('    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", '
+                              '"frontend/src/app/CostWorkbench.tsx"):\n',
+                              '    from tests import ux_final01_scope as UX\n'
+                              '    if path in UX.SUPERSEDED or path in ("frontend/src/app/editing/CostLinesGridView.tsx", '
+                              '"tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):\n')]}
 
 
 def expected_handoff(root, path):
@@ -634,7 +770,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def _diff_ok(root, ref):
     try:
-        allowed = OWNED_PATHS | {MANIFEST}
+        allowed = OWNED_PATHS | {MANIFEST} | LIVE_DOCS
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= allowed:
             return False
@@ -653,11 +789,11 @@ def effective_pins(repo=None, ref=None, *, signature=False):
 
 
 def closure_paths(repo=None, ref=None):
-    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()
+    return OWNED_PATHS | {MANIFEST} | LIVE_DOCS if signature_ok(repo, ref) else frozenset()
 
 
 def allowed_path(path, repo=None, ref=None):
-    return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)
+    return path in OWNED_PATHS | {MANIFEST} | LIVE_DOCS and signature_ok(repo, ref)
 
 
 def supersedes(path, value, repo=None, ref=None):
@@ -674,7 +810,7 @@ def nontrust_scope_authorized(changed, repo=None):
         if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
             return False
         actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())
-        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} and exact_blobs_ok(root)
+        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} | LIVE_DOCS and exact_blobs_ok(root)
     except (OSError, subprocess.CalledProcessError):
         return False
 

@@ -1,8 +1,8 @@
-"""UX-FINAL-01 exact-source successor (after the accepted R04 leaf): positive identity and adversarial fail-closed controls.
+"""UX-FINAL-01 exact-source successor (after the accepted C06 added-line CAPEX profile successor): positive identity and adversarial fail-closed controls.
 
 Every negative runs in an ISOLATED clone (a committed variant, or a mutated working tree that is restored afterwards); the evaluated checkout is
-never edited and no verdict is cached across mutations. A UX-specific block proves the change is presentation only: no backend, engine, workflow,
-flag or stylesheet path moves, the CSS bundle stays byte-identical to accepted main, and the sources add no request.
+never edited and no verdict is cached across mutations. A UX-specific block proves the change is presentation only: no backend, engine, workflow or
+flag path moves, the packaging files stay byte-identical to accepted main, C06's historical manifest and ledger are untouched, and the sources add no request.
 """
 from __future__ import annotations
 
@@ -18,14 +18,18 @@ from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as P
+from tests import c06_cost_workspace_scope as K
+from tests import u2_scope as U2
+from tests import ux_pr3b1_scope as U3
 from tests import ux_final01_scope as T
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGED_SOURCE = "frontend/src/app/financing/pr3b2/FinancingEditing.tsx"
 SECOND_SOURCE = "frontend/src/app/financing/pr3b1/runEvidence.ts"
 BUNDLE = "static/react/finco-react.js"
+STYLE_BUNDLE = "static/react/finco-react.css"
 TAIL = ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope",
-        "tests.ux_final01_scope")
+        "tests.c06_cost_workspace_scope", "tests.ux_final01_scope")
 
 
 def _git(*args, cwd=ROOT):
@@ -97,17 +101,26 @@ def test_manifest_schema_pins_and_immutable_base():
 
 def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
     assert T.SOURCE_PATHS == frozenset((
-        "frontend/src/app/financing/pr3b1/runEvidence.ts", "frontend/src/app/financing/pr3b2/FinancingEditing.tsx", BUNDLE))
+        "frontend/src/App.tsx", "frontend/src/app/FinancialResults.tsx", "frontend/src/app/InputsOverview.tsx", "frontend/src/app/WorkspaceView.tsx",
+        "frontend/src/app/financing/FinancingStudio.tsx", "frontend/src/app/financing/pr3b1/FinancingOverview.tsx",
+        "frontend/src/app/financing/pr3b1/FinancingReadLayer.tsx", "frontend/src/app/financing/pr3b1/__tests__/readLayer.test.mjs",
+        "frontend/src/app/financing/pr3b1/runEvidence.ts", "frontend/src/app/financing/pr3b2/FinancingEditing.tsx", BUNDLE, STYLE_BUNDLE))
     assert T.NEW == frozenset((
         "docs/react_migration/ux_final01/screen_contract.csv", "frontend/src/app/financing/pr3b1/__tests__/uxFinal01.test.mjs",
-        "tests/test_ux_final01_browser.py", "tests/test_ux_final01_scope.py", "tests/ux_final01_scope.py"))
+        "frontend/src/styles/ux-final01.css", "tests/test_ux_final01_browser.py", "tests/test_ux_final01_scope.py", "tests/ux_final01_scope.py",
+        "tests/ux_final01_screens.py"))
+    assert T.LIVE_DOCS == frozenset(("docs/react_migration/ux_final01/INTEGRATION_PLAYBOOK.md", "docs/react_migration/ux_final01/WORK_COMPLETED_LEDGER.md"))
     assert T.HANDOFF_PATHS == frozenset((
-        "tests/r04_ppa_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_ci_v4_perf_scope.py",
+        "tests/c06_cost_workspace_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_ci_v4_perf_scope.py",
         "tests/test_r02_ppa_ux_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_f03_financing_scope.py",
-        "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_f04_financing_scope.py", "tests/test_r04_ppa_scope.py"))
-    assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS and T.MAP_KEYS == ("tests/fin_v2_cohorts.py", BUNDLE)
-    assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") for p in T.OWNED_PATHS | {T.MANIFEST})
-    assert T.PREDECESSOR == "tests/r04_ppa_scope.py"
+        "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_f04_financing_scope.py", "tests/test_r04_ppa_scope.py",
+        "tests/test_c06_cost_workspace_scope.py", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr1_scope.py", "tests/ux_pr2b_scope.py",
+        "tests/ux_pr2c_scope.py", "tests/ux_pr3b1_scope.py"))
+    assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS
+    assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", BUNDLE, STYLE_BUNDLE, "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+    assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") for p in T.OWNED_PATHS | {T.MANIFEST} | T.LIVE_DOCS)
+    assert not T.LIVE_DOCS & T.OWNED_PATHS and all(p.endswith(".md") for p in T.LIVE_DOCS)      # unpinned documentation only, never code
+    assert T.PREDECESSOR == "tests/c06_cost_workspace_scope.py"
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold():
@@ -117,8 +130,8 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
         assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]
 
 
-def test_registered_exactly_once_as_the_terminal_cohort_after_r04():
-    assert C.COHORT_MODULES[-6:] == TAIL
+def test_registered_exactly_once_as_the_terminal_cohort_after_c06():
+    assert C.COHORT_MODULES[-7:] == TAIL
     assert C.COHORT_MODULES.count("tests.ux_final01_scope") == 1
 
 
@@ -141,7 +154,7 @@ def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the
 
 def test_the_whole_chain_is_exact_and_the_composite_is_valid_on_the_committed_head(clone):
     with C.call_scope():
-        assert T.exact_blobs_ok(clone, "HEAD") and P.exact_blobs_ok(clone, "HEAD") and Q.exact_blobs_ok(clone, "HEAD")
+        assert T.exact_blobs_ok(clone, "HEAD") and K.exact_blobs_ok(clone, "HEAD") and P.exact_blobs_ok(clone, "HEAD") and Q.exact_blobs_ok(clone, "HEAD")
         assert F.exact_blobs_ok(clone, "HEAD") and C.valid(clone, "HEAD")
 
 
@@ -156,14 +169,14 @@ def _changed_vs_base():
     return set(_git("diff", "--name-only", "--no-renames", T.BASE).splitlines())
 
 
-def test_the_change_set_is_the_owned_set_and_touches_no_backend_engine_workflow_or_stylesheet_path():
+def test_the_change_set_is_the_owned_set_and_touches_no_backend_engine_workflow_or_packaging_path():
     changed = _changed_vs_base()
-    assert changed <= T.OWNED_PATHS | {T.MANIFEST}
+    assert changed <= T.OWNED_PATHS | {T.MANIFEST} | T.LIVE_DOCS
     for p in changed:
         assert not p.startswith(("app/", "financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "research/", "main_web.py")), p
-        assert not p.endswith(".css") and p != "static/react/finco-react.css", p
     assert "frontend/src/app/workflow/PpaContractsEditor.tsx" not in changed     # R04 Phase 1 stays isolated: no revenue wiring
-    for p in ("static/react/finco-react.css", "frontend/package.json", "frontend/package-lock.json", "frontend/vite.config.ts", "constraints.txt"):
+    for p in ("frontend/package.json", "frontend/package-lock.json", "frontend/vite.config.ts", "constraints.txt",
+              "docs/react_migration/c06_cost_workspace/SOURCE_SUCCESSOR.json", "docs/react_migration/c06_cost_workspace/C06_LEDGER.md"):
         assert (ROOT / p).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + p], cwd=ROOT), p
 
 
@@ -301,9 +314,10 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 
 @pytest.mark.parametrize("name,fn", [
-    ("duplicate_ux", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.ux_final01_scope')", b"'tests.r04_ppa_scope', 'tests.ux_final01_scope', 'tests.ux_final01_scope')")),
+    ("duplicate_ux", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')", b"'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope', 'tests.ux_final01_scope')")),
     ("fake_extra", lambda b: b.replace(b"'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.fake_scope')")),
-    ("swapped_r04_ux", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.r04_ppa_scope')")),
+    ("swapped_c06_ux", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.c06_cost_workspace_scope')")),
+    ("c06_removed", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', ", b"")),
     ("ux_missing", lambda b: b.replace(b", 'tests.ux_final01_scope')", b")")),
     ("r04_removed", lambda b: b.replace(b"'tests.r04_ppa_scope', ", b"")),
     ("f04_removed", lambda b: b.replace(b"'tests.f04_financing_scope', ", b"")),
@@ -324,14 +338,14 @@ def test_historical_and_accepted_chain_files_must_stay_byte_identical(clone, pat
         assert not T.signature_ok(clone, ref) and not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
 
 
-def test_predecessor_r04_scope_tamper_is_rejected_everywhere(clone):
+def test_predecessor_c06_scope_tamper_is_rejected_everywhere(clone):
     ref = _variant(clone, {T.PREDECESSOR: lambda b: b + b"\n"})
     with C.call_scope():
-        assert not T.signature_ok(clone, ref) and not P.exact_blobs_ok(clone, ref) and not C.valid(clone, ref)
+        assert not T.signature_ok(clone, ref) and not K.exact_blobs_ok(clone, ref) and not C.valid(clone, ref)
 
 
 def test_partially_applied_handoff_is_rejected(clone):
-    # registry registered but the R04 forward hook reverted to the accepted BASE bytes (and vice versa)
+    # registry registered but the C06 forward hook reverted to the accepted BASE bytes (and vice versa)
     old = subprocess.check_output(["git", "show", T.BASE + ":" + T.PREDECESSOR], cwd=ROOT)
     ref = _variant(clone, {T.PREDECESSOR: lambda b: old})
     with C.call_scope():
@@ -378,7 +392,7 @@ def test_wrong_ancestor_and_unknown_protected_paths_are_rejected(clone):
 
 
 def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_paths(clone):
-    for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "static/react/finco-react.css"):
+    for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "frontend/src/app/CostWorkbench.tsx", "frontend/src/app/capex/CapexStudio.tsx"):
         assert not T.allowed_path(p)
     assert T.allowed_path(CHANGED_SOURCE) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
     tree = T.BASE_TREE.encode()
@@ -388,37 +402,89 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    bundle, reg = pins[BUNDLE], pins[T.REGISTRY]
-    assert T.supersedes(BUNDLE, bundle) and T.supersedes(T.REGISTRY, reg)
-    # R04 owns NO bundle pin (not in its manifest, its SUPERSEDED set or, after the reviewed handoff, its BASELINE): it supersedes the bundle ONLY by
-    # forwarding to this successor, and then only for the exact current pin. The same holds through the F04 and F03 links of the chain.
-    assert BUNDLE not in P.SUPERSEDED and BUNDLE not in P.BASELINE and BUNDLE not in P.manifest()["source_blobs"]
-    assert P.supersedes(BUNDLE, bundle) is True and Q.supersedes(BUNDLE, bundle) is True and F.supersedes(BUNDLE, bundle) is True
-    stale = T.manifest()["base_blobs"][BUNDLE]                        # the bundle accepted on main (F04) is no longer current anywhere in the chain
-    for link in (P, Q, F):
+    bundle, reg, style = pins[BUNDLE], pins[T.REGISTRY], pins[STYLE_BUNDLE]
+    assert T.supersedes(BUNDLE, bundle) and T.supersedes(T.REGISTRY, reg) and T.supersedes(STYLE_BUNDLE, style)
+    # C06 supersedes these paths ONLY by forwarding to this successor, and only for the exact current pin; the older cohorts reach it through their
+    # bounded C06 hooks (U2 and the PR3b1 leaf), never through a blanket allowance.
+    for link in (K, U2, U3):
+        assert link.supersedes(BUNDLE, bundle) is True and link.supersedes(STYLE_BUNDLE, style) is True, link.__name__
+    stale = T.manifest()["base_blobs"][BUNDLE]                        # the bundle accepted on main (C06) is no longer current anywhere in the chain
+    stale_css = T.manifest()["base_blobs"][STYLE_BUNDLE]
+    for link in (K, U2, U3):
         assert link.supersedes(BUNDLE, stale) is False and link.supersedes(BUNDLE, "0" * 40) is False and link.supersedes(BUNDLE, reg) is False
+        assert link.supersedes(STYLE_BUNDLE, stale_css) is False and link.supersedes(STYLE_BUNDLE, bundle) is False
     assert not T.supersedes(BUNDLE, "0" * 40)
     assert not T.supersedes(BUNDLE, reg)                              # a real blob pinned for another path
-    assert not T.supersedes(BUNDLE, T.manifest()["base_blobs"][BUNDLE])      # the accepted F04 bundle is no longer current
+    assert not T.supersedes(BUNDLE, stale) and not T.supersedes(STYLE_BUNDLE, stale_css)      # the accepted C06 bundles are no longer current
     assert not T.supersedes("tests/not_superseded.py", reg)
 
 
 def test_forwarded_bundle_supersession_needs_a_valid_successor_signature(clone):
-    """The R04/F04/F03 answer for the bundle is the successor's alone: a committed variant whose successor signature is false confers nothing."""
+    """The C06/U2/PR3b1 answer for the bundles is the successor's alone: a committed variant whose successor signature is false confers nothing."""
     pin = T.manifest(clone, "HEAD")["source_blobs"][BUNDLE]
-    with T.scoped(), P.scoped():
-        assert P.supersedes(BUNDLE, pin, clone, "HEAD") is True and Q.supersedes(BUNDLE, pin, clone, "HEAD") is True
+    with T.scoped(), K.scoped():
+        assert K.supersedes(BUNDLE, pin, clone, "HEAD") is True and U2.supersedes(BUNDLE, pin, clone, "HEAD") is True
     tree = T.BASE_TREE.encode()
     for edit in (lambda b: b.replace(b'"base_tree": "' + tree[:8], b'"base_tree": "1' + tree[1:8], 1),          # forged base tree
                  lambda b: b.replace(b'"' + BUNDLE.encode() + b'": "', b'"' + BUNDLE.encode() + b'": "0000', 1)):   # forged bundle pin
         bad = _variant(clone, {T.MANIFEST: edit})
-        with T.scoped(), P.scoped():
-            assert P.supersedes(BUNDLE, pin, clone, bad) is False and Q.supersedes(BUNDLE, pin, clone, bad) is False
+        with T.scoped(), K.scoped():
+            assert K.supersedes(BUNDLE, pin, clone, bad) is False and U2.supersedes(BUNDLE, pin, clone, bad) is False
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
     bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.ux_final01_scope')", b")")})
-    with T.scoped(), P.scoped():
-        assert T.signature_ok(clone, "HEAD") and P.exact_blobs_ok(clone, "HEAD")
-        assert not T.signature_ok(clone, bad) and not P.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
+    with T.scoped(), K.scoped():
+        assert T.signature_ok(clone, "HEAD") and K.exact_blobs_ok(clone, "HEAD")
+        assert not T.signature_ok(clone, bad) and not K.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
     assert T.signature_ok(clone, "HEAD")                                                # and the positive verdict was never poisoned
+
+
+# ---------------------------------------------------------------- additional controls required by the final integration
+def test_stale_bundle_wrong_css_and_forged_current_map_key_are_rejected(clone):
+    base_js = subprocess.check_output(["git", "show", T.BASE + ":" + BUNDLE], cwd=ROOT)
+    base_css = subprocess.check_output(["git", "show", T.BASE + ":" + STYLE_BUNDLE], cwd=ROOT)
+    for path, old in ((BUNDLE, base_js), (STYLE_BUNDLE, base_css)):          # the accepted C06 bundle bytes served while this manifest pins the new ones
+        ref = _variant(clone, {path: lambda b, old=old: old})
+        with C.call_scope():
+            assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), path
+    css_key = STYLE_BUNDLE.encode()
+    for mp in sorted(T.CURRENT_MAPS):                                          # a forged current-map key (right path, wrong blob) in every map that carries it
+        if css_key not in (ROOT / mp).read_bytes():
+            continue
+        ref = _variant(clone, {mp: lambda b: b.replace(css_key + b'": "', css_key + b'": "0000', 1)})
+        with C.call_scope():
+            assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), mp
+
+
+def test_c06_historical_manifest_and_ledger_stay_byte_identical_and_c06_itself_stays_valid():
+    for p in ("docs/react_migration/c06_cost_workspace/SOURCE_SUCCESSOR.json", "docs/react_migration/c06_cost_workspace/C06_LEDGER.md"):
+        assert (ROOT / p).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + p], cwd=ROOT), p
+    with C.call_scope():
+        assert K.signature_ok() and K.exact_blobs_ok() and K.reviewed_edits_ok()
+
+
+def test_live_docs_change_without_a_pin_but_no_other_unpinned_path_is_admitted(clone):
+    doc = sorted(T.LIVE_DOCS)[0]
+    ref = _variant(clone, {doc: lambda b: b + b"\nrun identifiers are recorded here.\n"})
+    with C.call_scope():
+        assert T.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
+    for extra in ("docs/react_migration/ux_final01/UNREVIEWED_NOTES.md", "docs/react_migration/ux_final01/INTEGRATION_PLAYBOOK.txt"):
+        f = clone / extra
+        f.write_text("not a reviewed document\n")
+        _g(clone, "add", "-A"); _g(clone, "commit", "-q", "-m", "extra")
+        ref = _g(clone, "rev-parse", "HEAD").decode().strip()
+        _g(clone, "checkout", "-q", "-f", "HEAD~1"); _g(clone, "clean", "-fdxq")
+        with C.call_scope():
+            assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), extra
+
+
+def test_older_cohort_hooks_only_follow_this_successor_while_its_signature_holds(clone):
+    """The bounded hooks added to the older cohorts (U1, U2, PR1, PR2b, PR2c, PR3b1) confer nothing for a path of this successor when its signature is false."""
+    tree = T.BASE_TREE.encode()
+    bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "' + tree[:8], b'"base_tree": "1' + tree[1:8], 1)})
+    with C.call_scope():
+        assert not T.signature_ok(clone, bad)
+        for path in ("frontend/src/app/WorkspaceView.tsx", "frontend/src/app/InputsOverview.tsx", BUNDLE):
+            value = T.manifest(clone, "HEAD")["source_blobs"][path]
+            assert U2.supersedes(path, value, clone, bad) is False and U3.supersedes(path, value, clone, bad) is False, path
