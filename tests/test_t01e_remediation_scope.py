@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
+from tests import ux_final01_scope as V
 
 from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
@@ -104,6 +105,10 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     from tests import r03_ppa_scope as Y
     for p in T.HANDOFFS:
+        if V.signature_ok() and p in V.HANDOFFS:            # the latest reviewed UX-FINAL-01 substitution of this shared path
+            assert (ROOT / p).read_bytes() == V.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 substitution of this shared path
             assert (ROOT / p).read_bytes() == W.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
@@ -124,7 +129,8 @@ def test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_s
     i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")
     assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"
     assert C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"),
-                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))
+                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"),
+                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope"))
     assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1
 
 
@@ -220,7 +226,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.fake_scope')")),
     ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope'")),
     ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b", 'tests.r03_ppa_scope'")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),

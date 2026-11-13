@@ -12,6 +12,9 @@ import { BLOCKS, blockOf, buildBlockRequest, canEdit, structured, type Block, ty
 import './financingEditing.css';
 import { validateSheetField } from '../../workflow/SheetFieldsEditor';
 import type { SheetFieldPayload } from '../../types';
+// UX-FINAL-01: unit beside its label, and as many field columns as fit (4 at desktop, 1 on a phone) — presentation only, no stylesheet change.
+const CAPTION = { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '.1rem .4rem', fontWeight: 600 } as const;
+const FIELD_GRID = { gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))', gap: '.45rem .8rem' } as const;
 
 type SavedRead = { workspace: EditingWorkspace; fields: SheetFieldsPayload; studio: FinancingStudioPayload };
 type Phase = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'stale';
@@ -110,11 +113,11 @@ export function FinancingEditing({ project, scenarioId, reloadKey, onSaved }: {
       const state = phase[block.id] === 'saving' || phase[block.id] === 'stale' || phase[block.id] === 'error' ? phase[block.id] : pending.length ? 'dirty' : phase[block.id] ?? 'clean';
       return <fieldset key={block.id} data-financing-block={block.id} data-state={state} disabled={disabled}>
         <legend>{block.label} <small role="status">{state}</small></legend>
-        <div className="pr3b2-fields">{fs.map(f => {
+        <div className="pr3b2-fields" style={FIELD_GRID}>{fs.map(f => {
           const e = store?.get('financing', f.field_id), persisted = String(f.value ?? '');
           const foreign = !!e && (e.conflict?.code === 'SCOPE_CHANGED' || store?.identity?.projectId !== project || store.identity.activeScenario !== scenarioId);
           const value = foreign ? persisted : e?.value ?? persisted;
-          return <label key={f.field_id}>{f.label} <small id={`pr3b2-unit-${f.field_id}`}>{f.unit}</small>{canEdit(f, w, fields) && store ? <>
+          return <label key={f.field_id}><span className="pr3b2-cap" style={CAPTION}>{f.label} <small id={`pr3b2-unit-${f.field_id}`}>{f.unit}</small></span>{canEdit(f, w, fields) && store ? <>
             {f.field_type === 'select' && f.options?.length ? <select disabled={foreign} aria-label={f.label} aria-describedby={`pr3b2-unit-${f.field_id}`} aria-invalid={!!e?.error} value={value} onChange={ev => stage(f, ev.target.value)}>
               {!f.options.includes(value) && <option value={value}>{value || '—'}</option>}{f.options.map(o => <option key={o} value={o}>{f.option_labels?.[o] ?? o}</option>)}</select>
               : <input disabled={foreign} aria-label={f.label} aria-describedby={`pr3b2-unit-${f.field_id}`} aria-invalid={!!e?.error} autoComplete="off" value={value} onChange={ev => stage(f, ev.target.value)} />}

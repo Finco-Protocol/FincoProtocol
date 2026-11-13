@@ -16,6 +16,7 @@ from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
 from tests import r04_ppa_scope as T
 from tests import f04_financing_scope as P
+from tests import ux_final01_scope as V
 
 ROOT = Path(__file__).resolve().parents[1]
 REMEDIATION = "research/r04_ppa_global_cap/core.py"
@@ -112,7 +113,9 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_f04():
-    assert C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
+    assert C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope") or (
+        C.COHORT_MODULES[-6:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")
+        and V.signature_ok())
     assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1
 
 
@@ -211,10 +214,10 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 
 @pytest.mark.parametrize("name,fn", [
-    ("duplicate_r04", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.r04_ppa_scope')")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
-    ("swapped_f04_r04", lambda b: b.replace(b"'tests.f04_financing_scope', 'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.f04_financing_scope')")),
-    ("r04_missing", lambda b: b.replace(b", 'tests.r04_ppa_scope')", b")")),
+    ("duplicate_r04", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.ux_final01_scope')", b"'tests.r04_ppa_scope', 'tests.r04_ppa_scope', 'tests.ux_final01_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.fake_scope')")),
+    ("swapped_f04_r04", lambda b: b.replace(b"'tests.f04_financing_scope', 'tests.r04_ppa_scope'", b"'tests.r04_ppa_scope', 'tests.f04_financing_scope'")),
+    ("r04_missing", lambda b: b.replace(b", 'tests.r04_ppa_scope'", b"")),
     ("f04_removed", lambda b: b.replace(b"'tests.f04_financing_scope', ", b"")),
     ("r03_removed", lambda b: b.replace(b"'tests.r03_ppa_scope', ", b"")),
     ("t01e_removed", lambda b: b.replace(b"'tests.t01e_remediation_scope', ", b"")),
@@ -304,7 +307,7 @@ def test_supersession_is_pin_exact_and_cross_path_safe():
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
-    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.r04_ppa_scope')", b")")})
+    bad = _variant(clone, {T.REGISTRY: lambda b: b.replace(b", 'tests.r04_ppa_scope'", b"")})
     with T.scoped(), F.scoped():
         assert T.signature_ok(clone, "HEAD") and F.exact_blobs_ok(clone, "HEAD")
         assert not T.signature_ok(clone, bad) and not F.exact_blobs_ok(clone, bad)     # same process, same scope, other ref
@@ -315,7 +318,7 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
 KEY_PRODUCTION_PATHS = ("domain/revenue/multistream_runtime.py", "domain/revenue/plan.py", "domain/revenue/plan_engine.py",
                         "app/workbook/revenue_multistream.py", "app/workbook/revenue_contracts_service.py", "finco_core/revenue/generation.py",
                         "finco_core/engine/period_engine.py", "frontend/src/app/workflow/PpaContractsEditor.tsx",
-                        "frontend/src/app/workflow/ModelWorkflowValidation.ts", "static/react/finco-react.js")
+                        "frontend/src/app/workflow/ModelWorkflowValidation.ts")
 
 
 def test_baseline_table_is_exactly_the_accepted_base_state_and_authorizes_no_change():

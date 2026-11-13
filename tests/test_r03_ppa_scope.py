@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
+from tests import ux_final01_scope as V
 
 from tests import f03_financing_scope as F
 from tests import fin_v2_cohorts as C
@@ -109,7 +110,8 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
 def test_signature_exactness_and_reviewed_substitutions_hold():
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     for p in T.HANDOFFS:
-        authority = W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T
+        authority = (V if V.signature_ok() and p in V.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS
+                     else Q if Q.signature_ok() and p in Q.HANDOFFS else T)
         assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
 
@@ -118,7 +120,9 @@ def test_registered_exactly_once_as_the_terminal_cohort_after_t01e():
     assert C.COHORT_MODULES[-3:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope") or (
         C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (
         C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-        and Q.signature_ok() and W.signature_ok())
+        and Q.signature_ok() and W.signature_ok()) or (
+        C.COHORT_MODULES[-6:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope", "tests.ux_final01_scope")
+        and Q.signature_ok() and W.signature_ok() and V.signature_ok())
     assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1
 
 
@@ -217,7 +221,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_r03", lambda b: b.replace(b"'tests.r03_ppa_scope', 'tests.f04_financing_scope'", b"'tests.r03_ppa_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.r04_ppa_scope')", b"'tests.r04_ppa_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ux_final01_scope')", b"'tests.ux_final01_scope', 'tests.fake_scope')")),
     ("swapped_t01e_r03", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b"'tests.r03_ppa_scope', 'tests.t01e_remediation_scope'")),
     ("r03_missing", lambda b: b.replace(b", 'tests.r03_ppa_scope', 'tests.f04_financing_scope'", b", 'tests.f04_financing_scope'")),
     ("t01e_removed", lambda b: b.replace(b"'tests.t01e_remediation_scope', ", b"")),
