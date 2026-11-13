@@ -196,6 +196,13 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(root, ref):
+            N = _next()
+            pins = manifest(root, ref).get("source_blobs", {})
+            return N is not None and N.signature_ok(root, ref) and N.reviewed_edits_ok(root, ref) and all(
+                _read(root, p, ref) == expected_handoff(root, p) and pins.get(p) == _blob(_read(root, p, ref))
+                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS)
         N = _next()
         if N is not None and N.signature_ok(root, ref):
             return N.reviewed_edits_ok(root, ref) and all(

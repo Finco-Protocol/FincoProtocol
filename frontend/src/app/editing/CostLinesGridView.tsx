@@ -28,7 +28,7 @@ import { useDensity } from "../uiDensity";
 import { numberValidator, type CellValidator, type GridModel, type PasteAssignment } from "./grid";
 import type { EditSection, StageInput } from "./pendingEdits";
 import { useGridKeys } from "./useGridKeys";
-import { isUserLineKey, requestProfileFocus } from "../capex/profileFocus";
+import { requestProfileFocus } from "../capex/profileFocus";
 import { useOptionalCapexProfileDraft } from "../capex/ProfileDraftProvider";
 import { ProfileDraftActions, ProfileDraftNotice, ProfileRowEditor, ProfileShapeSelect } from "../capex/ProfileRowEditor";
 import { useCapexSavedTimeline } from "../capex/savedTimeline";
@@ -136,6 +136,22 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const [timelineOn, setTimelineOn] = useState(false);
   const capexTl = useCapexSavedTimeline(project, denseWorkbench && timelineOn && sheet === "capex", reloadKey);
   const opexTl = useOpexLineTimeline(project, denseWorkbench && timelineOn && sheet === "opex", reloadKey);
+  // C2 addendum: a wide CAPEX timeline keeps its native horizontal scroll; the sticky Line/Amount columns (ux-pr1) keep row identity while the
+  // month window indicator and the Previous/Next controls move M1..Mn without ever re-rendering a second grid from different data.
+  const [tlWindow, setTlWindow] = useState({ first: 1, last: 0 });
+  const capexMonths = capexTl.kind === "ready" ? capexTl.months : 0;
+  const tlNavVisible = denseWorkbench && !narrow && timelineOn && sheet === "capex" && capexMonths > 0;
+  useEffect(() => {
+    if (!tlNavVisible) return;
+    updateTlWindow();
+    const wrap = container.current;
+    if (!wrap) return;
+    const onScroll = () => updateTlWindow();
+    wrap.addEventListener("scroll", onScroll, { passive: true });
+    const onResize = () => updateTlWindow();
+    window.addEventListener("resize", onResize);
+    return () => { wrap.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); };
+  }, [tlNavVisible, capexMonths, timelineOn, narrow, reloadKey]);
   const [unknownBatch, setUnknownBatch] = useState<CostLineEditWire[] | null>(null);
   const changes = useChanges();
   const confirmIfDirty = useLeaveGuard();
@@ -208,7 +224,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const groupInfo = new Map((projection?.groups ?? []).map((g) => [g.code, g]));
   const lineInfo = new Map((projection?.lines ?? []).map((l) => [l.sub_line_id, l]));
   const profileKey = (line: CostLinePayload) => lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
-  const profileEligible = (line: CostLinePayload) => line.active && !isUserLineKey(profileKey(line)) && Boolean(profileDraft?.data?.items.some(i => i.item_key === profileKey(line)));
+  const profileEligible = (line: CostLinePayload) => line.active && Boolean(profileDraft?.data?.items.some(i => i.item_key === profileKey(line)));
   const openInlineProfile = (line: CostLinePayload) => {
     setProfileLine(line.sub_line_id);
     if (narrow) { setProfileInspector(true); setInspector({ project, sheet, line: line.sub_line_id }); }
@@ -363,6 +379,28 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
   const total = sumDecimals(allLines.filter((l) => l.active).map((l) => valueOf(l, "amount")));
   const fmtKeur = (n: number | string | null) => showKeur(n, unit, precision);
   const fmtPerMw = (n: number | string | null) => denseWorkbench ? showPerMwKeur(n, unit, precision) : fmtKeur(n);
+  // C2: which month columns are on screen right now (measured from the header cells themselves, so the indicator always
+  // matches what the user sees). The sticky Line/Amount columns cover the scrolled-under months, hence the content offset.
+  const updateTlWindow = () => {
+    const wrap = container.current;
+    if (!wrap) return;
+    const ths = Array.from(wrap.querySelectorAll<HTMLTableCellElement>("thead th.ci-h-tl"));
+    if (!ths.length) { setTlWindow({ first: 1, last: 0 }); return; }
+    const wrapR = wrap.getBoundingClientRect();
+    const contentLeft = denseWorkbench ? wrapR.left + 410 : wrapR.left;      // sticky Line (288) + Amount (112) columns
+    let first = 0, last = 0;
+    ths.forEach((th, i) => {
+      const r = th.getBoundingClientRect();
+      if (r.right > contentLeft + 1 && r.left < wrapR.right - 1) { if (!first) first = i + 1; last = i + 1; }
+    });
+    setTlWindow({ first, last });
+  };
+  const scrollTl = (dir: number) => container.current?.scrollBy({ left: dir * 6 * 88, behavior: "smooth" });
+  const jumpTl = (edge: "start" | "end") => {
+    const wrap = container.current;
+    if (!wrap) return;
+    wrap.scrollTo({ left: edge === "start" ? 0 : wrap.scrollWidth, behavior: "smooth" });
+  };
   // Totals follow the chosen unit; the amount inputs are always kEUR. Whenever the unit is not kEUR the totals say which unit they are in.
   const unitTag = unit === "kEUR" ? null : <small className="ci-preview"> {unit}</small>;
   const title = sheet === "capex" ? "CAPEX" : "OPEX";
@@ -482,11 +520,8 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
             {profileEligible(line) ? <><ProfileShapeSelect itemKey={profileKey(line)} label={line.label} />
               <button type="button" className="ci-link" data-pr2b-open={line.sub_line_id} aria-label={`Edit profile percentages or milestone for ${line.label}`}
                 aria-expanded={profileLine === line.sub_line_id} onClick={() => profileLine === line.sub_line_id && !narrow ? setProfileLine(null) : openInlineProfile(line)}>Edit % / month</button></>
-              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? profileDraft.loadError ? "Not available — profile eligibility could not be loaded" : "Loading profile eligibility…" : "Not available — inactive, added or unsupported line"}</span>}
-          </div> : profiles === null ? "—" : isUserLineKey(info?.finco_display_code ?? "") ? (
-            <span className="rx-note" data-profile-user-line={line.sub_line_id} title="The saved profile document does not accept lines you added yet; this line keeps the model default timing.">
-              Model default (added line)</span>
-          ) : (
+              : <span data-pr2b-unavailable={line.sub_line_id}>{!profileDraft.data ? profileDraft.loadError ? "Not available — profile eligibility could not be loaded" : "Loading profile eligibility…" : "Not available — inactive or unsupported line"}</span>}
+          </div> : profiles === null ? "—" : (
             <button type="button" className="ci-link ci-profile" title="The saved spending profile of this line. Opens CAPEX · Monthly schedule on this line." data-profile-link={line.sub_line_id}
                     onClick={() => openProfileEditor(info?.finco_display_code ?? "", onOpenProfile)}>
               {profileText(profiles, info?.finco_display_code ?? "")} ▸
@@ -520,7 +555,7 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
     if (sheet === "capex") {
       const key = lineInfo.get(line.sub_line_id)?.finco_display_code ?? "";
       const row = line.active && tlCapex ? tlCapex.rows[key] : undefined;
-      const reason = !line.active ? "Inactive line" : isUserLineKey(key) ? "Added line: model default timing (profiles on added lines are not released)"
+      const reason = !line.active ? "Inactive line"
         : !row ? "Model default timing — monthly values unavailable in this view" : row.status !== "valid" ? (row.detail ?? "Server preview unavailable") : "";
       const value = row?.status === "valid" ? row.cells?.[n - 1] : undefined;
       return <td key={id} className="ci-num ci-col-tl" data-timeline-cell={`${line.sub_line_id}:M${n}`} data-timeline-state={value !== undefined ? "server" : "unavailable"} title={value !== undefined ? undefined : reason}>{value !== undefined ? value : "—"}</td>;
@@ -599,9 +634,9 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
         if (tl.kind === "error") return <div className="fm-info-note" role="alert" data-timeline-note="error">{tl.message} Line amounts are unaffected.</div>;
         return <div className="fm-info-note" role="status" data-timeline-note="ready">
           {sheet === "capex"
-            ? <>Months M1…M{(tl as { months: number }).months} are the server preview of the <strong>saved</strong> payment profile (read-only; edit it in Monthly schedule, which has its own Save). Lines without a saved profile use the model default timing and show —.
+            ? <>Monthly cash outflow in <strong>kEUR</strong> — months M1…M{(tl as { months: number }).months}, exact server text that the browser never re-rounds — are the server preview of the <strong>saved</strong> payment profile (read-only; edit it in Monthly schedule, which has its own Save). Lines without a saved profile use the model default timing and show —.
                 {!(tl as { bound: boolean }).bound && (tl as { bindingCode: string }).bindingCode ? <> Saved profile is not Run-compatible: {(tl as { bindingCode: string }).bindingCode}.</> : null}</>
-            : <>Years Y1…Yn are the server projection of the <strong>saved</strong> lines (full-year basis, read-only). This is not Last Run all-in OPEX.</>}
+            : <span data-opex-years-edit="canonical-writer-missing">Yearly amounts in <strong>{unit}</strong> — years Y1…Yn — are the server projection of the <strong>saved</strong> lines (full-year basis, read-only): the Year-1 amount carried forward with the line's own escalation. This is not Last Run all-in OPEX. Individual years cannot be edited here because a saved line holds only a Year-1 amount and one escalation rate; change those to change the series.</span>}
           {stagedLines > 0 ? <> Unsaved changes on {stagedLines} line(s) are <strong>not</strong> reflected here until you save.</> : null}
         </div>;
       })()}
@@ -653,13 +688,25 @@ function CostLinesGrid({ project, sheet, reloadKey = 0, onMutated, query = "", s
           </button>
         </>}
       </dialog>}
+      {tlNavVisible && (
+        <div className="ci-tl-nav" data-tl-nav="true" role="group" aria-label="Month columns navigation">
+          <button type="button" className="fm-btn" data-tl-start="true" aria-label="Show the first months" onClick={() => jumpTl("start")}>⇤ First</button>
+          <button type="button" className="fm-btn" data-tl-prev="true" aria-label="Previous months" onClick={() => scrollTl(-1)}>‹ Previous months</button>
+          <span className="ci-tl-range" data-tl-range="true" aria-live="polite">
+            {tlWindow.last ? `M${tlWindow.first}–M${tlWindow.last} of M${capexMonths}` : `M1 of M${capexMonths}`}
+          </span>
+          <button type="button" className="fm-btn" data-tl-next="true" aria-label="Next months" onClick={() => scrollTl(1)}>Next months ›</button>
+          <button type="button" className="fm-btn" data-tl-end="true" aria-label="Show the last months" onClick={() => jumpTl("end")}>Last ⇥</button>
+        </div>)}
       <div ref={container} className="fm-table-wrap rx-lines-scroll" role="region" tabIndex={0} aria-label={`${title} line items, scrollable`} data-lines-scroll={sheet}>
         <table className="fm-table ws2-grid" data-pr2b-editing={profileEditing && sheet === "capex" || undefined}>
           {denseWorkbench && !narrow && <colgroup>{cols.map(id => <col key={id} style={{width: ({line: 288, amount:112, perMw:120, menu:32, notes:240, infl:96, sigma:72, ...(profileEditing ? {profile:280} : {})} as Partial<Record<ColId,number>>)[id] ?? (id.startsWith("tl:") ? 88 : undefined)}} />)}</colgroup>}
           <caption className="fm-sr-only">{title} line items. Amounts are entered in kEUR; totals and per-MW figures are shown in {unit}.</caption>
           <thead><tr>{cols.map((id) => (
             <th key={id} scope="col" className={`ci-h-${id.startsWith("tl:") ? "tl" : id}${id === "amount" || id === "perMw" || id === "sigma" || id.startsWith("tl:") ? " ci-num" : ""}`}
-                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity" : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : id === "profile" && denseWorkbench && profileDraft ? null : headOf(id)}{id === "profile" && denseWorkbench && profileDraft && <button type="button" className="ci-link pr2b-edit-toggle" data-pr2b-toggle="desktop" aria-label="Edit payment profiles" aria-pressed={profileEditing} onClick={toggleProfileEditing}>{profileEditing ? "Close profiles" : "Payment profile · edit"}</button>}</th>))}</tr></thead>
+                title={id === "perMw" ? "Read-only: amount divided by the saved installed capacity"
+                  : id.startsWith("tl:") ? (sheet === "capex" ? `Month ${id.slice(3)} cash outflow — exact server value in kEUR` : `Year ${id.slice(3)} amount in ${unit}`)
+                  : undefined}>{id === "menu" ? <span className="fm-sr-only">Row actions</span> : id === "profile" && denseWorkbench && profileDraft ? null : headOf(id)}{id === "profile" && denseWorkbench && profileDraft && <button type="button" className="ci-link pr2b-edit-toggle" data-pr2b-toggle="desktop" aria-label="Edit payment profiles" aria-pressed={profileEditing} onClick={toggleProfileEditing}>{profileEditing ? "Close profiles" : "Payment profile · edit"}</button>}</th>))}</tr></thead>
           <tbody>
             {groupOrder.map((cat) => {
               const g = groupInfo.get(cat);

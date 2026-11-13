@@ -21,7 +21,7 @@
     "tax_reference_registry/loader.py": "2146fe00d71045b2c7731cedf522672afbe8233e",
     "tax_reference_registry/records.py": "3e42f3ed36794e459490dd9c92171b98c557977f",
     "tax_reference_registry/registry.py": "6e7bce70dbdfc03c09df63d881cdf328dbb462fa",
-    "tests/fin_v2_cohorts.py": "c54ed44d2ffb56b930a312d58ceee83f5702357a",
+    "tests/fin_v2_cohorts.py": "516177b4f9d03b9accae6e2d5640e06ea9456e95",
     "tests/tax_reference_registry/conftest.py": "396c5751b86b04ff6092ed217aeea1a803716658",
     "tests/tax_reference_registry/test_loader_errors.py": "25ef6f5de8fd64137f232d13c473fa5565ce3069",
     "tests/tax_reference_registry/test_private_dataset.py": "bc92f175862e9e24178347b9f5094bc7bc313583",
@@ -30,7 +30,7 @@
     "tests/tax_reference_registry_scope.py": "83e48df7db1eafacc5907e51934cb35a5e8b9893",
     "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
     "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6",
-    "tests/ux_pr3b1_scope.py": "73666586d26e48ac91845ffeb603783a9884928d",
+    "tests/ux_pr3b1_scope.py": "c65810ff2bba8177ba2b17f4d253b6b47d23c934",
     "tests/ux_pr3b2_scope.py": "ff91b0a5fd3a000c4f68b51abcc395d58d3f071a"
   }
 }

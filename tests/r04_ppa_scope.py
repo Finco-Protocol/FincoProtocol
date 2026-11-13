@@ -102,6 +102,7 @@ BASELINE = {
     "app/v2/router.py": ("100644", "58bdeaff5d511ffa62b077120871239ae4e6afa9"),
     "frontend/src/app/workflow/PpaContractsEditor.tsx": ("100644", "e9fc09fd0cbdcd8b1817cc04f98cbb7678513620"),
     "frontend/src/app/workflow/ModelWorkflowValidation.ts": ("100644", "8dc2e83a76472f2945b9eb8b5b0bf422d0adb769"),
+    "static/react/finco-react.js": ("100644", "6a27300af4d4f818c3f30800b6b8ae634c50224b"),
 }
 
 
@@ -442,6 +443,13 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(root, ref):
+            N = _next()
+            pins = manifest(root, ref).get("source_blobs", {})
+            return N is not None and N.signature_ok(root, ref) and N.reviewed_edits_ok(root, ref) and all(
+                _read(root, p, ref) == expected_handoff(root, p) and pins.get(p) == _blob(_read(root, p, ref))
+                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS)
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
@@ -503,12 +511,12 @@ def signature_ok(repo=None, ref=None):
 
 
 def _next():
-    """The one finite forward successor (UX-FINAL-01). Low-level only: its signature never calls this module or the composite."""
+    """The one finite forward successor (C06). Low-level only: its signature never calls this module or the composite."""
     from tests.fin_v2_cohorts import COHORT_MODULES
-    if 'tests.ux_final01_scope' not in COHORT_MODULES:
+    if 'tests.c06_cost_workspace_scope' not in COHORT_MODULES:
         return None
-    from tests import ux_final01_scope
-    return ux_final01_scope
+    from tests import c06_cost_workspace_scope
+    return c06_cost_workspace_scope
 
 
 def _next_pins(root, ref):
@@ -613,10 +621,19 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _base_blob(key, p) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
-            return False
-        for p, (mode, blob) in BASELINE.items():          # literal table == immutable BASE object == evaluated tree/ref, blob AND Git mode
-            if _base_blob(key, p) != blob or _base_mode(key, p) != mode or current.get(p) != blob or modes.get(p) != mode:
+        from tests import c06_cost_workspace_scope as C06
+        c06 = C06.signature_ok(root, ref)
+        for p in FROZEN:
+            if current.get(p) == _base_blob(key, p) and modes.get(p) == _base_mode(key, p):
+                continue
+            # The historical BASE pin stays immutable. Only the owner-approved literal C06 handoff may supersede current bytes.
+            if not (c06 and p in ('tests/ci_v4_perf_scope.py', 'tests/f03_financing_scope.py', 'tests/r03_ppa_scope.py', 'tests/t01e_remediation_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py')
+                    and modes.get(p) == "100644" and C06.supersedes(p, current.get(p), root, ref)):
+                return False
+        for p, (mode, blob) in BASELINE.items():
+            # Immutable table and BASE stay exact. Only this finite successor's signed served JS may move.
+            expected = nx.get(p, blob) if p == "static/react/finco-react.js" else blob
+            if _base_blob(key, p) != blob or _base_mode(key, p) != mode or current.get(p) != expected or modes.get(p) != mode:
                 return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

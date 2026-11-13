@@ -145,24 +145,28 @@ function CapexStudioView({ project }: { project: string }) {
                   <td>{fmt(r.unallocated_display)}</td></tr>))}</tbody>
             </table>
           </div>
-          {plan.plan.item_order.length > 0 && (<>
-            <div className="rcm-table-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="rx-button rx-button-secondary" data-copy-table="true" onClick={() => void copyTsv(rowsExport(plan.plan))}>Copy table</button>
-              <button type="button" className="rx-button rx-button-secondary" data-download-csv="true" onClick={() => downloadCsv("capex-monthly-profile.csv", rowsExport(plan.plan))}>Download CSV</button>
-            </div>
-            <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Monthly uses of the profiled items (scrolls)">
-              <table className="rcm-table" data-capex-months="true">
-                <thead><tr><th scope="col" className="rcm-sticky">Month</th><th scope="col" className="rcm-left">Start</th><th scope="col">Period</th>
-                  {plan.plan.item_order.map((k) => <th scope="col" key={k}>{k}</th>)}<th scope="col">Total</th><th scope="col">Cumulative</th><th scope="col">Remaining</th></tr></thead>
-                <tbody>{plan.plan.months.map((m) => (
-                  <tr key={m.month} data-capex-month={m.month}><th scope="row" className="rcm-sticky">{m.month}</th><td className="rcm-left">{m.start ?? "—"}</td><td>{m.period === null ? "—" : `P${m.period}`}</td>
-                    {plan.plan.item_order.map((k) => <td key={k}>{fmt(m.items[k])}</td>)}<td>{fmt(m.total)}</td><td>{fmt(m.cumulative)}</td><td>{fmt(m.remaining)}</td></tr>))}</tbody>
-              </table>
-            </div>
-          </>)}
-          {plan.plan.period_equivalent_total.length > 0 && (
-            <p className="rx-note" data-capex-period-equivalent="true">Equivalent on the existing construction periods (end-of-period payment convention; intra-period timing is not represented there):{" "}
-              {plan.plan.period_equivalent_total.map((v, i) => `P${i} ${data.timeline.period_starts[i] ?? ""}–${data.timeline.period_ends[i] ?? ""}: ${fmt(v)}`).join(" · ")} kEUR.</p>
+          {plan.plan.item_order.length > 0 && (
+            <details className="rx-card ci-expanded-monthly" data-capex-expanded-monthly="true">
+              <summary>Expanded monthly view — per-month table with Copy / CSV ({plan.plan.months.length} months, kEUR)</summary>
+              <p className="rx-note" data-capex-expanded-note="true">The same canonical server preview as above, full-width. Amounts in kEUR are exact server text; the browser never re-rounds them. With Report precision at 0 decimals the sum of the rounded visible cells can differ slightly from the unrounded canonical total — stored values are never changed for display.</p>
+              <div className="rcm-table-actions" style={{ marginTop: 10 }}>
+                <button type="button" className="rx-button rx-button-secondary" data-copy-table="true" onClick={() => void copyTsv(rowsExport(plan.plan))}>Copy table</button>
+                <button type="button" className="rx-button rx-button-secondary" data-download-csv="true" onClick={() => downloadCsv("capex-monthly-profile.csv", rowsExport(plan.plan))}>Download CSV</button>
+              </div>
+              <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Monthly uses of the profiled items (scrolls)">
+                <table className="rcm-table" data-capex-months="true">
+                  <thead><tr><th scope="col" className="rcm-sticky">Month</th><th scope="col" className="rcm-left">Start</th><th scope="col">Period</th>
+                    {plan.plan.item_order.map((k) => <th scope="col" key={k} title={`${k} — exact server value in kEUR`}>{k}</th>)}<th scope="col">Total (kEUR)</th><th scope="col">Cumulative (kEUR)</th><th scope="col">Remaining (kEUR)</th></tr></thead>
+                  <tbody>{plan.plan.months.map((m) => (
+                    <tr key={m.month} data-capex-month={m.month}><th scope="row" className="rcm-sticky">{m.month}</th><td className="rcm-left">{m.start ?? "—"}</td><td>{m.period === null ? "—" : `P${m.period}`}</td>
+                      {plan.plan.item_order.map((k) => <td key={k}>{fmt(m.items[k])}</td>)}<td>{fmt(m.total)}</td><td>{fmt(m.cumulative)}</td><td>{fmt(m.remaining)}</td></tr>))}</tbody>
+                </table>
+              </div>
+              {plan.plan.period_equivalent_total.length > 0 && (
+                <p className="rx-note" data-capex-period-equivalent="true">Equivalent on the existing construction periods (end-of-period payment convention; intra-period timing is not represented there):{" "}
+                  {plan.plan.period_equivalent_total.map((v, i) => `P${i} ${data.timeline.period_starts[i] ?? ""}–${data.timeline.period_ends[i] ?? ""}: ${fmt(v)}`).join(" · ")} kEUR.</p>
+              )}
+            </details>
           )}
         </div>
       )}

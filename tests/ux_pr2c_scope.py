@@ -272,6 +272,17 @@ def valid(repo=None, ref=None):
     return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
 
 
+_unshared_exact_blobs_ok = exact_blobs_ok
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_exact_blobs_ok(repo, ref)
+    return _unshared_exact_blobs_ok(repo, ref)
+
+
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
     raw = source.encode() if isinstance(source, str) else source
@@ -293,6 +304,11 @@ def _pr3b1():
 
 
 def _pr3b1_pin(path, blob, repo=None, ref=None):
+    # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.
+    if path in ('frontend/src/app/capex/ProfileDraftProvider.tsx',):
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(repo, ref) and C06.supersedes(path, blob, repo, ref):
+            return True
     # Exact low-level F03 successor of only the CI V4 source file and the pr2b mutation-suite test file.
     if path in ('tests/ci_v4_scope.py', 'tests/test_ux_pr2b_scope.py'):
         from tests import f03_financing_scope as F

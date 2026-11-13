@@ -412,6 +412,13 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(root, ref):
+            N = _next()
+            pins = manifest(root, ref).get("source_blobs", {})
+            return N is not None and N.signature_ok(root, ref) and N.reviewed_edits_ok(root, ref) and all(
+                _read(root, p, ref) == expected_handoff(root, p) and pins.get(p) == _blob(_read(root, p, ref))
+                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS)
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
@@ -533,7 +540,10 @@ def reviewed_ci_handoffs_ok(repo=None, ref=None, *, path=None, actual=None):
             if isinstance(raw, str):
                 raw = raw.encode()
             if raw != current.encode() or pins.get(p) != _blob(raw):
-                return False
+                from tests import c06_cost_workspace_scope as C06
+                if not (p in ("tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py")
+                        and C06.signature_ok(root, ref) and C06.supersedes(p, _blob(raw), root, ref)):
+                    return False
         return True
     except (OSError, ValueError, UnicodeError, KeyError, TypeError, subprocess.CalledProcessError):
         return False
@@ -710,7 +720,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
             return False

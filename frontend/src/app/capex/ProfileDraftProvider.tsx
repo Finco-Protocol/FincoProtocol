@@ -3,7 +3,6 @@ import { encodeSpec, fetchCapexPreview, fetchCapexProfiles, saveCapexProfile } f
 import type { CapexPlan, CapexProfiles, SavedRow } from "./types";
 import { emptyProfileRow, profileD7Document, profileDraftFromSaved, profileDocument, rowProblems, sameDraftRow, sameProfileDocument,
   wireProfileDraft, type ProfileDraft, type ProfileDraftRow } from "./profileDraft";
-import { isUserLineKey } from "./profileFocus";
 import { decideDisappearance, type AuthoredSession } from "./profilePublish";
 import { useOptionalChanges } from "../editing/ChangesProvider";
 import { useDirtyTotal, useRegisterDiscard, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock } from "../workflow/workflowShared";
@@ -122,7 +121,7 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   const keys = data?.items.map(i => i.item_key) ?? [];
   const saved = data ? profileDraftFromSaved(data) : {};
   const readOnly = !data?.edit.allowed || scopeMismatch || locked || state.busy !== "";
-  const editable = (key: string) => Boolean(data?.items.some(i => i.item_key === key) && !isUserLineKey(key) && !readOnly);
+  const editable = (key: string) => Boolean(data?.items.some(i => i.item_key === key) && !readOnly);
   const problems = data ? keys.flatMap(key => rowProblems(state.draft[key] ?? emptyProfileRow(), data.months, data.shapes).map(message => ({ key, message }))) : [];
   const orphans = data ? [...new Set([...Object.keys(data.saved.rows), ...Object.keys(state.draft).filter(k => state.draft[k]?.shape)])].filter(k => !keys.includes(k)) : [];
   const change = (key: string, patch: Partial<ProfileDraftRow>) => {
@@ -157,12 +156,12 @@ function useController(project: string, reloadKey = 0, onSaved?: () => void) {
   const applyBulk = (shape: string) => {
     if (readOnly || !data?.shapes.includes(shape) || ["EXPLICIT", "MILESTONE"].includes(shape)) return;
     update(s => ({ ...s, history: [...s.history.slice(-19), s.draft], future: [], draft: { ...s.draft,
-      ...Object.fromEntries(keys.filter(k => !isUserLineKey(k)).map(k => [k, { ...emptyProfileRow(), shape }])) }, status: null }));
+      ...Object.fromEntries(keys.map(k => [k, { ...emptyProfileRow(), shape }])) }, status: null }));
   };
   const clearAll = () => {
     if (readOnly) return;
     update(s => ({ ...s, history: [...s.history.slice(-19), s.draft], future: [], draft: { ...s.draft,
-      ...Object.fromEntries(keys.filter(k => !isUserLineKey(k)).map(k => [k, emptyProfileRow()])) }, status: null }));
+      ...Object.fromEntries(keys.map(k => [k, emptyProfileRow()])) }, status: null }));
   };
   let specNow = "";
   try { specNow = encodeSpec(keys, wireProfileDraft(keys, state.draft)); } catch { /* Ambiguous/invalid lexical input cannot be sent as a spec. */ }

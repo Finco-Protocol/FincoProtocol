@@ -94,7 +94,8 @@
 }
 .ci-source .ci-sourcenote { color: var(--muted, #526374); }
 .ci-summary-scroll { overflow-x: auto; max-width: 100%; }
-.ci-summary-table th[scope="row"] { overflow-wrap: anywhere; }
+/* break-word (not anywhere): a squeezed ancestor must not collapse row labels to one character per line (C1). */
+.ci-summary-table th[scope="row"] { overflow-wrap: break-word; }
 @media (max-width: 560px) { .ci-summary-table { font-size: 12.5px; } .ci-summary-table th, .ci-summary-table td { padding: 3px 4px; } }
 .ci-summaries { display: block; margin: 0 0 10px; }
 .ci-summaries-title { cursor: pointer; font-weight: 600; padding: 4px 0; }
@@ -185,6 +186,13 @@
 /* ───────── Inputs layout with the details panel (wide screens only) ───────── */
 .ci-layout { display: block; }
 .ci-layout .ci-main { min-width: 0; }
+
+/* C2 addendum: month-window navigation above the CAPEX grid timeline (native horizontal scroll retained;
+   the sticky Line/Amount columns come from ux-pr1-workbench.css). */
+.ci-tl-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 6px; }
+.ci-tl-range { font-size: 12.5px; color: var(--muted, #526374); font-variant-numeric: tabular-nums; }
+.ci-expanded-monthly { margin: 10px 0 0; }
+.ci-expanded-monthly > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .ci-rail { display: none; }
 @media (min-width: 1280px) {
   .ci-layout[data-ci-layout="rail"] { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; align-items: start; }

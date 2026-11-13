@@ -200,6 +200,34 @@ _SCOPE = []
 LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')
 
 
+RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')
+
+
+class _Discovered:
+    """Contract-test view of a registered later cohort (Correction D): manifest, owned paths and its OWN exact verdict only.
+    It supersedes nothing, admits no path, owns no CI path and holds no custody blob: it never widens an older guard."""
+    SUPERSEDED = frozenset()
+
+    def __init__(self, module):
+        self._module = module
+        self.__name__ = module.__name__
+        self.MANIFEST = module.MANIFEST
+        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)
+
+    def exact_blobs_ok(self, repo=None, ref=None):
+        return self._module.exact_blobs_ok(repo, ref)
+
+    def scoped(self):
+        from contextlib import nullcontext
+        return nullcontext()
+
+    def allowed_path(self, path, repo=None, ref=None):
+        return False
+
+    def supersedes(self, path, value, repo=None, ref=None):
+        return False
+
+
 def _later_modules():
     import importlib
     loaded = []
@@ -209,6 +237,13 @@ def _later_modules():
         except ModuleNotFoundError as exc:
             if exc.name != name:
                 raise
+    if loaded:      # a closed later list exists (an emptied list stays empty): the reconciled registered successors follow it, in order
+        for name in RECONCILED_SUCCESSORS:
+            try:
+                loaded.append(_Discovered(importlib.import_module(name)))
+            except ModuleNotFoundError as exc:
+                if exc.name != name:
+                    raise
     return loaded
 
 
@@ -323,7 +358,10 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
                 current[name] = meta.split()[2]
             if set(current) != set(pins):
                 return False
-        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref) for p, sha in pins.items()):
+        # C06 Correction C: the finite signed successor may move these exact U1 pins (bounded, like the PR2c hook below);
+        # history remains untouched and the tip cohort's own signature proves the extent of every moved pin.
+        if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref)
+               and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -355,6 +393,17 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
 @scoped()
 def allowed_path(path, repo=None, ref=None):
     return path in OWNED_PATHS or path == MANIFEST or _later_owns(path, repo, ref)
+
+
+def _c06_correction_c_pin(path, blob, root, ref):
+    """Only the finite signed Correction C successor may move these exact U1 pins; history remains untouched."""
+    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/model_react_rcux_capex_acceptance.py'):
+        return False
+    try:
+        from tests import c06_cost_workspace_scope as C06
+    except ImportError:
+        return False
+    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
 
 
 def base_blob(path, repo=None, ref=None):
@@ -403,6 +452,17 @@ def supersedes(path, value, repo=None, ref=None):
 def valid(repo=None, ref=None):
     from tests.fin_v2_cohorts import valid as composite_valid
     return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+
+
+_unshared_exact_blobs_ok = exact_blobs_ok
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    from tests import fin_v2_cohorts as K
+    if not K._CALL:      # top-level call: ONE registry-wide read for THIS call only (dropped on exit; never kept across calls)
+        with K.call_scope():
+            return _unshared_exact_blobs_ok(repo, ref)
+    return _unshared_exact_blobs_ok(repo, ref)
 
 
 @scoped()
