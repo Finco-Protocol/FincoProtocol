@@ -25,13 +25,26 @@ from tools.ci_v3_pytest_config import plugin_args
 
 # Stall forensics (2026-11-14, PR #446 shard-2: a single governance node hung for 2h19m at 83% with no evidence and no
 # artifact). One verbose flag per test (the last COMPLETED node id is always in the log, so the deterministic collection
-# order of the sealed plan names the next, hung node) plus an explicit faulthandler arming (PYTEST_DISABLE_PLUGIN_AUTOLOAD
-# is set above, so the builtin plugin must be requested by name): a node stuck for DIAGNOSTIC_DUMP_AFTER_S dumps the stack
-# of every thread and keeps running - a timed-out test stays CANCELLED/INCOMPLETE, never PASS, and the job timeout of the
-# workflow remains the hard ceiling. 2400 s stays above the heaviest measured legitimate node (1990.5 s, run 43569255310
-# shard-1) so known-heavy nodes do not trigger noise dumps.
+# order of the sealed plan names the next, hung node) plus a stdlib faulthandler watchdog armed around the whole pytest
+# process: every DIAGNOSTIC_DUMP_AFTER_S seconds of process lifetime it dumps the stack of every thread and keeps running
+# (repeat=True; no pytest plugin is involved, so PYTEST_DISABLE_PLUGIN_AUTOLOAD cannot break it). A hung or timed-out test
+# stays CANCELLED/INCOMPLETE, never PASS, and the job timeout of the workflow remains the hard ceiling. 2400 s stays above
+# the heaviest measured legitimate node (1990.5 s, run 43569255310 shard-1) so a healthy post-split shard (~38 min) never
+# triggers a dump; a 150-min stall dumps three times and names the exact stuck frames.
 DIAGNOSTIC_DUMP_AFTER_S = 2400
-DIAGNOSTIC_ARGS = ("-v", "-p", "faulthandler", "--faulthandler-timeout=%d" % DIAGNOSTIC_DUMP_AFTER_S)
+DIAGNOSTIC_ARGS = ("-v",)
+# The wrapper arms the watchdog, then hands over to pytest's own main (same argument list; sys.argv[0] is "-c").
+_DIAGNOSTIC_WRAPPER_CODE = (
+    "import faulthandler, sys\n"
+    "faulthandler.dump_traceback_later(%d, repeat=True)\n"
+    "import pytest\n"
+    "sys.exit(pytest.main(sys.argv[1:]))\n" % DIAGNOSTIC_DUMP_AFTER_S
+)
+
+
+def pytest_command(extra):
+    """Full argv for one shard pytest run: the diagnostic watchdog wrapper + the given pytest arguments."""
+    return [sys.executable, "-c", _DIAGNOSTIC_WRAPPER_CODE, *extra]
 
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE = 2 * 1024 ** 3
@@ -125,12 +138,12 @@ def main(argv=None):
             evidence = out / ("nodes-shard-%d.json" % a.index)
             env.update(FINCO_CI_V4_NODE_ASSIGN=str(out / ("assign-shard-%d.json" % a.index)), FINCO_CI_V4_NODE_EVIDENCE=str(evidence))
             targets = sorted(set(assign["whole"]) | set(assign["split"]))
-            rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
-                                  "--junitxml", str(junit), *targets], env=env)
+            rc = subprocess.call(pytest_command(["-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
+                                  "--junitxml", str(junit), *targets]), env=env)
             record.update({"units": plan["schedule"]["units"][a.index], "node_evidence": evidence.name})
         elif mods:
-            rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(),
-                                  "--junitxml", str(junit), *mods], env=env)
+            rc = subprocess.call(pytest_command(["-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(),
+                                  "--junitxml", str(junit), *mods]), env=env)
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)
