@@ -431,31 +431,43 @@ def test_watchdog_names_the_running_node_and_dumps_the_stack_repeatedly_without_
     secret = "SYNTH-SECRET-VALUE-448"
     rc, out = _run_wrapped(tmp_path, WRAP, "test_wrap.py", FINCO_SYNTH_TOKEN=secret)
     assert rc == 0, out
-    first_dump = out.index("most recent call first")
+    first_dump = out.index("stall dump")
     running = out.index("test_wrap.py::test_slow_node")
     assert running < first_dump                                              # the stuck node id is already in the log when the first dump is written
     assert "PASSED" not in out[running:first_dump].split("\\n", 1)[0]          # ... and it had not completed yet
-    assert out.count("most recent call first") >= 2                          # repeat=True: a longer stall dumps again
+    assert out.count("stall dump") >= 2                          # repeat=True: a longer stall dumps again
     assert "in _hang_here" in out and "test_wrap.py" in out[first_dump:]     # the concrete currently-running frame
-    assert out.count("Timeout (0:00:02)!") >= 2
+    assert out.count("Timeout (2 s of process lifetime)") == 1 and "Timeout (4 s of process lifetime)" in out
     assert "test_wrap.py::test_after" in out and "3 passed" in out
     assert secret not in out and "FINCO_SYNTH_TOKEN" not in out              # a dump shows frames only, never the environment
 
 
 def test_watchdog_keeps_a_failing_run_failing_and_adds_no_dump_to_a_fast_run(tmp_path):
     rc, out = _run_wrapped(tmp_path, WRAP_FAIL, "test_fail.py", dump_after_s=30)
-    assert rc == 1 and "1 failed" in out and "most recent call first" not in out      # failure stays failure; nothing is dumped before the interval
+    assert rc == 1 and "1 failed" in out and "stall dump" not in out      # failure stays failure; nothing is dumped before the interval
     rc, out = _run_wrapped(tmp_path, "def test_ok():\n    assert True\n", "test_ok.py", dump_after_s=30)
-    assert rc == 0 and "1 passed" in out and "most recent call first" not in out
+    assert rc == 0 and "1 passed" in out and "stall dump" not in out
 
 
 def test_watchdog_is_an_in_process_stdlib_wrapper_not_a_pytest_option():
     """Hosted run 43590299354: with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 the pytest option form (-p faulthandler / --faulthandler-timeout) was rejected. The
     shard command must stay the stdlib wrapper, with the unchanged default interval above the heaviest measured legitimate node."""
     argv = SH.pytest_command(["-rs", "x"])
-    assert argv[:2] == [sys.executable, "-c"] and argv[3:] == ["-rs", "x"] and "dump_traceback_later(2400, repeat=True, file=_real_stderr)" in argv[2]
-    assert "os.dup(2)" in argv[2] and "cancel_dump_traceback_later" in argv[2]            # the dump survives pytest's fd capture and never fires after the run
+    assert argv[:2] == [sys.executable, "-c"] and argv[3:] == ["-rs", "x"] and "args=(2400,)" in argv[2] and "daemon=True" in argv[2]
+    assert "os.dup(2)" in argv[2]                                                         # the dump survives pytest's fd-level capture
+    assert "faulthandler" not in argv[2] and "sys._current_frames()" in argv[2]            # no C-level dump: it segfaulted the run it was diagnosing (-11)
     assert not any(a == "faulthandler" or a.startswith("--faulthandler") for a in argv)
     assert SH.DIAGNOSTIC_DUMP_AFTER_S == 2400 and SH.DIAGNOSTIC_ARGS == ("-v",)
     weights = json.loads((ROOT / "docs/ci_v4/node_weights.json").read_text())["nodes"]
     assert SH.DIAGNOSTIC_DUMP_AFTER_S > max(weights.values())            # a healthy measured node never triggers a dump
+
+
+def test_watchdog_survives_a_busy_deep_python_stack_and_a_clean_exit(tmp_path):
+    """Regression for hosted run 43619391821 (shard-1 exit -11, three seconds after the first faulthandler dump of a deep, busy stack): dumps are taken
+    repeatedly from a deep recursion with allocation churn while the run finishes with pytest's own exit code, and the watchdog never outlives the run."""
+    body = ("import json\n\n\ndef _deep(n, acc):\n    if n == 0:\n        end = __import__('time').monotonic() + 6\n"
+            "        while __import__('time').monotonic() < end:\n            acc.append(json.dumps({'k': list(range(50))}))\n            if len(acc) > 2000:\n                acc.clear()\n"
+            "        return len(acc)\n    return _deep(n - 1, acc)\n\n\ndef test_deep_and_busy():\n    assert _deep(700, []) >= 0\n")
+    rc, out = _run_wrapped(tmp_path, body, "test_deep.py", dump_after_s=1)
+    assert rc == 0 and "1 passed" in out, out[-400:]
+    assert out.count("stall dump") >= 3 and "in _deep" in out and "Segmentation" not in out

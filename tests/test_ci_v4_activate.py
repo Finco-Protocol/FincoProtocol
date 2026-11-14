@@ -336,8 +336,8 @@ def test_node_plan_shard_names_the_running_node_dumps_its_stack_and_keeps_failur
     text = log.out + log.err
     owner = [i for i, units in enumerate(node_plan["schedule"]["units"]) for u in units if u["kind"] == "nodes" and MODULE + "::test_slow" in u["node_ids"]]
     assert owner and len(owner) == 1
-    assert MODULE + "::test_slow" in text and "most recent call first" in text and "in _stuck_here" in text
-    assert text.index(MODULE + "::test_slow") < text.index("most recent call first")                 # the node id is already in the log when the stack is dumped
+    assert MODULE + "::test_slow" in text and "stall dump" in text and "in _stuck_here" in text
+    assert text.index(MODULE + "::test_slow") < text.index("stall dump")                 # the node id is already in the log when the stack is dumped
     assert MODULE + "::test_boom FAILED" in text
     boom_owner = [i for i, units in enumerate(node_plan["schedule"]["units"]) for u in units if u["kind"] == "nodes" and MODULE + "::test_boom" in u["node_ids"]]
     assert all(rcs[i] == 1 for i in boom_owner) and any(rc == 1 for rc in rcs.values())               # a failure is never turned into success

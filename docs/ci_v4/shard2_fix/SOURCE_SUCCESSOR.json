@@ -80,7 +80,7 @@
   "base_tree": "d3c7bcf2c24f8557b7977cb3dea85816ac15ed2a",
   "schema_version": "CI_V4_SHARD2_FIX_EXACT_SOURCE_V1",
   "source_blobs": {
-    "docs/ci_v4/SOURCE_SUCCESSOR.json": "0d6aef3e3a2708cc137ce51f182fbf4348a73ce0",
+    "docs/ci_v4/SOURCE_SUCCESSOR.json": "3eb680d98413e5d02037c6523c1cf935ef87fd97",
     "docs/ci_v4/node_split_policy.json": "787785c8e7a085fe4bf3e6ff8905bc91261dd4a6",
     "docs/ci_v4/node_weights.json": "f2299a086f9b295195bff730e7aa614758a0bfed",
     "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json": "ddc2f9ae6f214efdddea6e80f05899921f17e7e7",
@@ -95,8 +95,8 @@
     "tests/fin_v2_cohorts.py": "2d56fd9a6f15442255b2922ec1a3d7e81be936e8",
     "tests/test_bess02_scope.py": "e48c91adb5a0d6dc4627f5b2c0addf64cd7d5714",
     "tests/test_c06_cost_workspace_scope.py": "d0fb403651e27040574f430d32f8a84fbc73cc16",
-    "tests/test_ci_v4_activate.py": "1935fb151870e3d28d1bcc72279e5f91f7e183c4",
-    "tests/test_ci_v4_nodes.py": "2afda1879f6055e9de1cdc6b00f8488dec4363db",
+    "tests/test_ci_v4_activate.py": "ad1943d4aa85921f54b9e3eb9f1c2602bb1ef719",
+    "tests/test_ci_v4_nodes.py": "b5a6860dcd42c858d797c65bd7866cbc3dc6037c",
     "tests/test_ci_v4_perf_scope.py": "c3b681fee04e0ef7b49bc498f568378b137c5120",
     "tests/test_ci_v4_schedule.py": "b38f3c1ca3496ff461adb30c9d36485852854549",
     "tests/test_ci_v4_shard2_fix_scope.py": "cc6fd913c1b7b2d3df0063c07a128d483d777ac2",
@@ -117,7 +117,7 @@
     "tests/ux_pr3b1_scope.py": "2f5794117fd3a52f654fc0944c6ea2520b6c299b",
     "tools/ci_v4_activate.py": "6a48cc6acb3a0ab0207708de98074a563a266fa8",
     "tools/ci_v4_schedule.py": "0525185b1d36617d097fdcaae5b5d4b136d97a4e",
-    "tools/ci_v4_shard.py": "b8a4490e589f0b2d95add9c2127ddec9de2197cf"
+    "tools/ci_v4_shard.py": "c0d50c11d18f0517b13e0a30a67fb0f106005ae6"
   },
   "source_modes": {
     "docs/ci_v4/SOURCE_SUCCESSOR.json": "100644",
