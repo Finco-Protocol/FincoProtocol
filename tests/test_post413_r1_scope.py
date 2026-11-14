@@ -43,6 +43,13 @@ def _flip(path):
 
 
 def test_positive_cohort_is_exact_registered_and_closed():
+    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across calls or mutations) instead of one full
+    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that proves the no-memo contract are NOT scoped. Assertions unchanged.
+    with C.call_scope():
+        _positive_cohort_checks()
+
+
+def _positive_cohort_checks():
     assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()
     assert R.__name__ in C.COHORT_MODULES and R in C.cohorts() and R.protected_blobs() == {}
     data = R.manifest()
@@ -63,6 +70,13 @@ def test_base_is_the_merged_413_main_and_history_is_recorded_not_rewritten():
 
 
 def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
+    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across calls or mutations) instead of one full
+    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that proves the no-memo contract are NOT scoped. Assertions unchanged.
+    with C.call_scope():
+        _supersession_bounded_checks()
+
+
+def _supersession_bounded_checks():
     pins = R.manifest()['source_blobs']
     for path in (EDITOR, BUNDLE, ROLE):
         assert R.supersedes(path, pins[path]) and U.supersedes(path, pins[path]) and not R.supersedes(path, '0' * 40) and not U.supersedes(path, '0' * 40)

@@ -67,6 +67,9 @@ HANDOFF_PATHS = frozenset((
     "tests/test_ci_v4_perf_scope.py",
     "tests/test_f03_financing_scope.py",
     "tests/test_f04_financing_scope.py",
+    "tests/test_post413_r17_scope.py",
+    "tests/test_post413_r18_scope.py",
+    "tests/test_post413_r1_scope.py",
     "tests/test_post432_l01_l02_scope.py",
     "tests/test_r02_ppa_ux_scope.py",
     "tests/test_r03_ppa_scope.py",
@@ -545,6 +548,72 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         'kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\', '
                                         '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'","\'tests.f04_financing_scope\', '
                                         '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'")\n')],
+ 'tests/test_post413_r17_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
+                                      'def test_positive_cohort_is_exact_registered_and_closed():\n'
+                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                      'across calls or mutations) instead of one full\n'
+                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                      '    with C.call_scope():\n'
+                                      '        _positive_cohort_checks()\n'
+                                      '\n'
+                                      '\n'
+                                      'def _positive_cohort_checks():\n'),
+                                     ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+                                      'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
+                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                      'across calls or mutations) instead of one full\n'
+                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                      '    with C.call_scope():\n'
+                                      '        _supersession_bounded_checks()\n'
+                                      '\n'
+                                      '\n'
+                                      'def _supersession_bounded_checks():\n')],
+ 'tests/test_post413_r18_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
+                                      'def test_positive_cohort_is_exact_registered_and_closed():\n'
+                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                      'across calls or mutations) instead of one full\n'
+                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                      '    with C.call_scope():\n'
+                                      '        _positive_cohort_checks()\n'
+                                      '\n'
+                                      '\n'
+                                      'def _positive_cohort_checks():\n'),
+                                     ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+                                      'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
+                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                      'across calls or mutations) instead of one full\n'
+                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                      '    with C.call_scope():\n'
+                                      '        _supersession_bounded_checks()\n'
+                                      '\n'
+                                      '\n'
+                                      'def _supersession_bounded_checks():\n')],
+ 'tests/test_post413_r1_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
+                                     'def test_positive_cohort_is_exact_registered_and_closed():\n'
+                                     '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                     'across calls or mutations) instead of one full\n'
+                                     '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                     'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                     '    with C.call_scope():\n'
+                                     '        _positive_cohort_checks()\n'
+                                     '\n'
+                                     '\n'
+                                     'def _positive_cohort_checks():\n'),
+                                    ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+                                     'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
+                                     '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
+                                     'across calls or mutations) instead of one full\n'
+                                     '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
+                                     'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
+                                     '    with C.call_scope():\n'
+                                     '        _supersession_bounded_checks()\n'
+                                     '\n'
+                                     '\n'
+                                     'def _supersession_bounded_checks():\n')],
  'tests/test_post432_l01_l02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                           'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                           'from tests import ux_final01_scope as UX_APPROVAL\n'),
