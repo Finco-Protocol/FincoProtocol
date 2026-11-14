@@ -251,6 +251,11 @@ def supersedes(path,value,repo=None,ref=None):
     S=_pr2a()
     if path not in SUPERSEDED or not exact_blobs_ok(repo,ref):
         return False
+    from tests import ci_v4_shard2_fix_scope as S2
+    if path in S2.SUPERSEDED:       # CI V4 shard-2 fix: the finite signed successor chain (C06 forwards to it) follows this pin
+        from tests import c06_cost_workspace_scope as C06
+        if C06.signature_ok(repo,ref) and C06.supersedes(path,value,repo,ref):
+            return True
     pins=S.effective_pins(repo,ref) if S is not None and S.exact_blobs_ok(repo,ref) else {}
     return pins.get(path,manifest(repo,ref).get('source_blobs',{}).get(path))==value
 def valid(repo=None,ref=None):

@@ -151,7 +151,10 @@ def test_decide_reads_nothing_but_the_trusted_policy():
     real = S.load_node_split_policy()
     got = AC.decide(plan, real)
     assert got["decision"] == "collect" and got["eligible"] == ["tests/test_rcux_governance.py"]
-    assert AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
+    # tests/test_u1_scope.py joined the reviewed split-safe allowlist (CI V4 shard-2 fix); u2 (still NOT_BENEFICIAL) and the finance modules do not.
+    got = AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)
+    assert got["decision"] == "collect" and got["eligible"] == ["tests/test_u1_scope.py"]
+    assert AC.decide({"pytest_modules": ["tests/test_u2_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
 
 
 # ── sealing / invariants ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -307,3 +310,43 @@ def test_shadow_workflow_is_labelled_not_required_and_cannot_be_the_gate():
     assert "not required" in wf["name"] and wf["permissions"] == {"contents": "read"}
     assert all(j.get("name", "") != "CI V4 gate" for j in wf["jobs"].values())
     assert "NOT REQUIRED" in wf["jobs"]["shadow-verify"]["name"]
+
+
+# ── stall forensics on the TRUSTED node-plan executor (the module-plan shard has its own, tools/ci_v4_shard.py) ───────────────────────────────
+
+def test_node_plan_shard_names_the_running_node_dumps_its_stack_and_keeps_failures_failing(subject, tmp_path, capfd):
+    """A hung node of a NODE plan is attributable from the job log: its id is printed when it STARTS, the faulthandler dump (written to a pre-capture
+    duplicate of stderr) shows the concrete frame, a failing node is named FAILED, and the shard exit code and JUnit remain pytest's own."""
+    (subject / MODULE).write_text(SYNTH + "\nimport time\n\n\ndef _stuck_here(seconds):\n    time.sleep(seconds)\n\n\ndef test_slow():\n    _stuck_here(5)\n\n\n"
+                                  "def test_boom():\n    assert 1 == 2\n")
+    for args in (("add", "-A"), ("commit", "-qm", "slow and failing nodes")):
+        _git(subject, "-c", "user.name=ci-test-identity", "-c", "user.email=ci-test-identity", *args)
+    plan = _sealed(subject)
+    ids = [MODULE + "::test_param[" + p + "]" for p in ("a", "b/c.py", "x::y", "f[g]")] + [MODULE + "::TestKlass::test_method", MODULE + "::test_one",
+                                                                                           MODULE + "::test_slow", MODULE + "::test_boom"]
+    rec, node_plan, ev = _apply(subject, tmp_path, plan, weights={n: 30.0 for n in ids})
+    assert rec["decision"] == "node_plan"
+    pf = tmp_path / "plan-run.json"
+    pf.write_text(json.dumps(node_plan))
+    out = tmp_path / "shards"
+    rcs = {}
+    for i in range(len(node_plan["schedule"]["shards"])):
+        rcs[i] = AC.shard(pf, i, subject, tmp_path / "w", out / ("s%d" % i), TRUSTED, dump_after_s=2)
+    log = capfd.readouterr()
+    text = log.out + log.err
+    owner = [i for i, units in enumerate(node_plan["schedule"]["units"]) for u in units if u["kind"] == "nodes" and MODULE + "::test_slow" in u["node_ids"]]
+    assert owner and len(owner) == 1
+    assert MODULE + "::test_slow" in text and "stall dump" in text and "in _stuck_here" in text
+    assert text.index(MODULE + "::test_slow") < text.index("stall dump")                 # the node id is already in the log when the stack is dumped
+    assert MODULE + "::test_boom FAILED" in text
+    boom_owner = [i for i, units in enumerate(node_plan["schedule"]["units"]) for u in units if u["kind"] == "nodes" and MODULE + "::test_boom" in u["node_ids"]]
+    assert all(rcs[i] == 1 for i in boom_owner) and any(rc == 1 for rc in rcs.values())               # a failure is never turned into success
+    rec0 = json.loads((out / ("s%d" % boom_owner[0]) / ("shard-%d.json" % boom_owner[0])).read_text())
+    assert rec0["pytest_exit"] == 1 and rec0["executor"]["trusted_base_sha"] == TRUSTED
+
+
+def test_node_plan_shard_runs_pytest_through_the_diagnostic_wrapper_without_q():
+    """Static contract of the executor argv: the stdlib wrapper (never a pytest option, see hosted run 43590299354), -v and no -q."""
+    import inspect
+    src = inspect.getsource(AC.shard)
+    assert "pytest_command(" in src and "DIAGNOSTIC_ARGS" in src and '"-q"' not in src and '"-m", "pytest"' not in src
