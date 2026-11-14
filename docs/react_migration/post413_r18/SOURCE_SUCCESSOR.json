@@ -16,8 +16,8 @@
     "tests/post413_r18_scope.py": "51e6b7410340a3717dc44909ba8b3e44796a4c19",
     "tests/test_post413_r18_scope.py": "8b1d5ced257c6366117ddebe73eb7ed012401786",
     "tests/test_r18_atomic_reference_clone.py": "5dcffbd37ce131a1b3c5d20be0ef6bece372d9c5",
-    "tests/test_u1_scope.py": "8f58878effa3d1d07fe630eea68b0e0c16c01d9b",
-    "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
+    "tests/test_u1_scope.py": "39d18e4bca7f293c6cfe5ddec8e9b913133e6df9",
+    "tests/test_wf06b_scope.py": "afc78930738268e56b7513d0bfe1b8d16c0bf48c",
     "tests/u1_scope.py": "66bbe898e63da2676c4e90af23984e0465649636"
   }
 }

@@ -127,7 +127,8 @@ def test_owned_set_is_finite_literal_and_admits_no_forbidden_path_except_the_two
     assert T.HANDOFF_PATHS == frozenset((
         "tests/c06_cost_workspace_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_c06_cost_workspace_scope.py",
         "tests/test_ci_v4_perf_scope.py", "tests/test_f03_financing_scope.py", "tests/test_f04_financing_scope.py",
-        "tests/test_post413_o1_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_r02_ppa_ux_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_r04_ppa_scope.py",
+        "tests/test_post413_o1_scope.py", "tests/test_rcux_governance.py", "tests/test_u1_scope.py", "tests/test_u2_scope.py", "tests/test_wf06b_scope.py",
+        "tests/test_post432_l01_l02_scope.py", "tests/test_r02_ppa_ux_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_r04_ppa_scope.py",
         "tests/test_t01e_remediation_scope.py", "tests/test_ux_pr1_scope.py", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr1_scope.py",
         "tests/ux_pr2b_scope.py",
         "tests/ux_pr2c_scope.py", "tests/ux_pr3b1_scope.py"))

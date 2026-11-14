@@ -67,26 +67,27 @@ def _unexplained(changed, registered_exact):
 
 
 def test_positive_cohort_is_exact_registered_and_closed():
-    assert U2.exact_blobs_ok() and U2.valid() and C.valid() and U1.exact_blobs_ok() and W.exact_blobs_ok()
-    assert U2.__name__ in C.COHORT_MODULES and U2 in C.cohorts() and U2.protected_blobs() == {}
-    data = U2.manifest()
-    assert set(data['source_blobs']) == U2.OWNED_PATHS and set(data['base_blobs']) == U2.SUPERSEDED
-    assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in U2.OWNED_PATHS)
-    assert not (U2.OWNED_PATHS & U2.R1_PATHS)                                                    # addendum: no R1-owned file
-    for stranger in ('app/library/router.py', 'app/v2/acquisition_router.py', 'tests/test_something_new.py',
-                     'financial_engine/x.py', '.github/workflows/ci.yml'):
-        assert not U2.allowed_path(stranger) and not U1.allowed_path(stranger) and not W.allowed_path(stranger)
-    # An R1 path is never U2's. It is admitted by U1 / WF-06B ONLY through the exact, registered R1 cohort that owns it (integration branch).
-    r1 = {m.__name__: m for m in _later()}['tests.post413_r1_scope']
-    for r1_path in ('frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'):
-        assert not U2.allowed_path(r1_path) and r1_path not in U2.OWNED_PATHS and r1.allowed_path(r1_path)
-        assert 'tests.post413_r1_scope' in C.COHORT_MODULES and r1.exact_blobs_ok() and U1.allowed_path(r1_path) and W.allowed_path(r1_path)
-    for owned in ('app/v2/react_opex_lines.py', 'frontend/src/app/capex/profileImport.ts', 'tests/u2_scope.py'):
-        assert U2.matches(owned) and U2.allowed_path(owned) and U1.allowed_path(owned) and W.allowed_path(owned)
-    path = 'static/react/finco-react.js'
-    pin = data['source_blobs'][path]
-    assert U2.supersedes(path, pin) and U1.supersedes(path, pin) and W.supersedes(path, pin) and not U2.supersedes(path, '0' * 40)
-    assert not U2.supersedes('app/v2/react_opex_lines.py', data['source_blobs']['app/v2/react_opex_lines.py'])   # new at U2: nothing to supersede
+    with C.call_scope():
+        assert U2.exact_blobs_ok() and U2.valid() and C.valid() and U1.exact_blobs_ok() and W.exact_blobs_ok()
+        assert U2.__name__ in C.COHORT_MODULES and U2 in C.cohorts() and U2.protected_blobs() == {}
+        data = U2.manifest()
+        assert set(data['source_blobs']) == U2.OWNED_PATHS and set(data['base_blobs']) == U2.SUPERSEDED
+        assert not any(p.startswith(U2.FORBIDDEN_PREFIXES) or p in U2.FORBIDDEN_PATHS for p in U2.OWNED_PATHS)
+        assert not (U2.OWNED_PATHS & U2.R1_PATHS)                                                    # addendum: no R1-owned file
+        for stranger in ('app/library/router.py', 'app/v2/acquisition_router.py', 'tests/test_something_new.py',
+                         'financial_engine/x.py', '.github/workflows/ci.yml'):
+            assert not U2.allowed_path(stranger) and not U1.allowed_path(stranger) and not W.allowed_path(stranger)
+        # An R1 path is never U2's. It is admitted by U1 / WF-06B ONLY through the exact, registered R1 cohort that owns it (integration branch).
+        r1 = {m.__name__: m for m in _later()}['tests.post413_r1_scope']
+        for r1_path in ('frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts', 'frontend/src/app/workflow/PPAEditorView.tsx'):
+            assert not U2.allowed_path(r1_path) and r1_path not in U2.OWNED_PATHS and r1.allowed_path(r1_path)
+            assert 'tests.post413_r1_scope' in C.COHORT_MODULES and r1.exact_blobs_ok() and U1.allowed_path(r1_path) and W.allowed_path(r1_path)
+        for owned in ('app/v2/react_opex_lines.py', 'frontend/src/app/capex/profileImport.ts', 'tests/u2_scope.py'):
+            assert U2.matches(owned) and U2.allowed_path(owned) and U1.allowed_path(owned) and W.allowed_path(owned)
+        path = 'static/react/finco-react.js'
+        pin = data['source_blobs'][path]
+        assert U2.supersedes(path, pin) and U1.supersedes(path, pin) and W.supersedes(path, pin) and not U2.supersedes(path, '0' * 40)
+        assert not U2.supersedes('app/v2/react_opex_lines.py', data['source_blobs']['app/v2/react_opex_lines.py'])   # new at U2: nothing to supersede
 
 
 def test_base_is_main_after_413_and_u1_is_superseded_only_at_its_own_pins():
@@ -140,11 +141,14 @@ def test_older_cohorts_still_exact_through_the_bounded_hooks():
 
 @pytest.mark.parametrize('path', sorted(U2.OWNED_PATHS))
 def test_one_altered_byte_in_any_owned_file_fails_closed(path, wt):
-    assert U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U2.exact_blobs_ok(wt)
     _flip(wt / path)
-    assert not U2.exact_blobs_ok(wt) and not U2.matches(path, (wt / path).read_bytes(), repo=wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt) and not U2.matches(path, (wt / path).read_bytes(), repo=wt) and not C.valid(wt)
     if path in U1.OWNED_PATHS:
-        assert not U1.exact_blobs_ok(wt)                                                          # U1 stops following a drifted U2 state
+        with C.call_scope():
+            assert not U1.exact_blobs_ok(wt)                                                          # U1 stops following a drifted U2 state
 
 
 @pytest.mark.parametrize('kind', ['extra-path', 'missing-pin', 'wrong-base', 'wrong-tree', 'wrong-blob', 'swapped-pins', 'drop-base-blob',
@@ -176,38 +180,48 @@ def test_manifest_forgery_is_refused(kind, wt):
     elif kind == 'extra-base-blob':
         d['base_blobs']['app/v2/save_all_commands.py'] = _git(U2.ROOT, 'rev-parse', f'{U2.BASE}:app/v2/save_all_commands.py').strip()
     mpath.write_text(json.dumps(d, indent=2, sort_keys=True) + '\n')
-    assert not U2.exact_blobs_ok(wt) and not C.valid(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt) and not C.valid(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt)
 
 
 def test_u1_follows_u2_only_where_u2_recorded_exactly_the_u1_pin(wt, monkeypatch):
     path = 'frontend/src/app/capex/CapexStudio.tsx'
-    assert U1.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U1.exact_blobs_ok(wt)
     # forge the U1 pin: U2's recorded BASE blob no longer equals it -> U1 must NOT follow U2
     upath = wt / U1.MANIFEST
     u = json.loads(upath.read_text())
     u['source_blobs'][path] = '1' * 40
     upath.write_text(json.dumps(u, indent=2, sort_keys=True) + '\n')
-    assert not U1.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U1.exact_blobs_ok(wt) and not C.valid(wt)
     _git(wt, 'checkout', '--', U1.MANIFEST)
-    assert U1.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U1.exact_blobs_ok(wt)
     # a U2 cohort that no longer supersedes the path is not followed either
     monkeypatch.setattr(U2, 'SUPERSEDED', frozenset(U2.SUPERSEDED - {path}))
-    assert not U1.supersedes(path, U2.manifest(wt)['source_blobs'][path], repo=wt)
+    with C.call_scope():
+        assert not U1.supersedes(path, U2.manifest(wt)['source_blobs'][path], repo=wt)
 
 
 def test_extra_tracked_extra_untracked_r1_and_executable_paths_fail_closed(wt):
     (wt / 'frontend/src/app/Sneaky.tsx').write_text('export {}\n')
-    assert not U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt)
     _git(wt, 'add', 'frontend/src/app/Sneaky.tsx')
-    assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
     _git(wt, 'reset', '-q')
     (wt / 'frontend/src/app/Sneaky.tsx').unlink()
-    assert U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U2.exact_blobs_ok(wt)
     owned = wt / 'app/v2/react_opex_lines.py'
     owned.chmod(0o755)
-    assert not U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt)
     owned.chmod(0o644)
-    assert U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U2.exact_blobs_ok(wt)
 
 
 @pytest.mark.parametrize('path', ['financial_engine/__init__.py', 'finco_core/__init__.py', 'domain/__init__.py', 'main_web.py', 'tools/ci_v3_schema.py',
@@ -217,11 +231,14 @@ def test_extra_tracked_extra_untracked_r1_and_executable_paths_fail_closed(wt):
                                   'frontend/src/app/WorkspaceView.tsx', 'frontend/src/app/editing/ChangesProvider.tsx',
                                   'app/capex_profiles/config.py', 'app/v2/capex_router.py', 'app/v2/opex_router.py'])
 def test_protected_r1_and_unowned_code_modified_after_signing_fails_closed(path, wt):
-    assert U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U2.exact_blobs_ok(wt)
     _flip(wt / path)
     _git(wt, '-c', 'user.name=T', '-c', 'user.email=ci-test-identity', 'commit', '-qam', 'tamper', '--no-verify')
-    assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
-    assert not U2.allowed_path(path)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U2.allowed_path(path)
     _git(wt, 'reset', '--hard', '-q', 'HEAD~1')
 
 
@@ -278,8 +295,10 @@ def test_an_unreviewed_second_include_router_fails_closed(where, wt):
         import re
         rcm = text[text.index(_RCM_MARK):text.index(_RCUX_TAIL)]
         assert re.findall(r"^router\.include_router\((\w+)\)$", rcm, flags=re.M) != _RCM_INCLUDES   # the protected RC-M check refuses it
-    assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt) and not C.valid(wt)
-    assert not U1.supersedes(_ROUTER, U2._blob(text.encode()), repo=wt)
+    with C.call_scope():
+        assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not W.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U1.supersedes(_ROUTER, U2._blob(text.encode()), repo=wt)
 
 
 def test_an_unrelated_committed_extra_file_fails_closed(wt):
@@ -288,8 +307,10 @@ def test_an_unrelated_committed_extra_file_fails_closed(wt):
     _git(wt, 'add', 'app/v2/react_unreviewed.py')
     _git(wt, '-c', 'user.name=T', '-c', 'user.email=ci-test-identity', 'commit', '-qm', 'extra', '--no-verify')
     try:
-        assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not C.valid(wt)
-        assert not U2.allowed_path('app/v2/react_unreviewed.py') and not U1.allowed_path('app/v2/react_unreviewed.py')
+        with C.call_scope():
+            assert not U2.exact_blobs_ok(wt) and not U1.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not U2.allowed_path('app/v2/react_unreviewed.py') and not U1.allowed_path('app/v2/react_unreviewed.py')
     finally:
         _git(wt, 'reset', '--hard', '-q', 'HEAD~1')
 
@@ -373,13 +394,16 @@ def test_shared_reviewed_paths_are_signed_identically_and_fail_closed(wt):
     assert (union_u2 & union_siblings) <= SHARED_REVIEWED and 'tests/test_wf06b_scope.py' in (union_u2 & union_siblings)
     path = 'tests/test_wf06b_scope.py'
     _flip(wt / path)                                                                                  # one byte of drift: signatures disagree
-    assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
     _git(wt, 'checkout', '--', path)
     mpath = wt / U2.MANIFEST                                                                          # forged pin in one owner only
     d = json.loads(mpath.read_text()); d['source_blobs'][path] = '0' * 40; mpath.write_text(json.dumps(d, indent=2) + '\n')
-    assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert len(_shared_signatures(wt, four, path)) == 2 and not U2.exact_blobs_ok(wt)
     _git(wt, 'checkout', '--', str(mpath.relative_to(wt)))
-    assert 'app/v2/react_unreviewed.py' not in SHARED_REVIEWED and not U2.allowed_path('app/v2/react_unreviewed.py')   # extra unowned path
+    with C.call_scope():
+        assert 'app/v2/react_unreviewed.py' not in SHARED_REVIEWED and not U2.allowed_path('app/v2/react_unreviewed.py')   # extra unowned path
     swapped = (SHARED_REVIEWED - {path}) | {'tests/test_rcm_governance_x.py'}                         # same cardinality, different identity
     assert len(swapped) == len(SHARED_REVIEWED) and (union_u2 & union_siblings) - swapped == {path}
     assert not any(p.startswith(('financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/')) for p in SHARED_REVIEWED)   # no protected path
