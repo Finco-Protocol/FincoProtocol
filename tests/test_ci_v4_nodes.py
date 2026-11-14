@@ -197,13 +197,16 @@ def test_split_policy_is_a_closed_literal_allowlist(mutate):
 
 
 def test_repository_policy_is_the_closed_reviewed_allowlist():
-    """PR-B enables the required-gate use (authority only from the TRUSTED base, see tests/test_ci_v4_activate.py); the allowlist stays the two
-    proven modules - nothing else (U1/U2/O1, finance, Goal Seek) is split without separate isolation evidence."""
+    """PR-B enables the required-gate use (authority only from the TRUSTED base, see tests/test_ci_v4_activate.py); the allowlist stays the three
+    proven modules - nothing else (U2/O1, finance, Goal Seek) is split without separate isolation evidence. tests/test_u1_scope.py joined
+    2026-11-14 with its own isolation proof (the same per-test worktree/reset fixtures as the proven WF-06B module) after its measured size
+    grew 15.9x over the stale weight (4113.3 s across 100 nodes, heaviest node 1990.5 s, run 43569255310 shard-1 at the exact PR head)."""
     pol = S.load_node_split_policy()
     assert pol["enabled_in_required_pr_gate"] is True
-    assert set(pol["modules"]) == {"tests/test_rcux_governance.py", "tests/test_wf06b_scope.py"}
+    assert set(pol["modules"]) == {"tests/test_rcux_governance.py", "tests/test_wf06b_scope.py", "tests/test_u1_scope.py"}
     for m in pol["modules"]:
         assert (ROOT / m).is_file()
+        assert pol["modules"][m]["isolation_proof"]
     weights = json.loads((ROOT / "docs/ci_v4/node_weights.json").read_text())
     assert weights["sources"] and all(len(s["sha"]) == 40 and len(s["artifact_sha256"]) == 64 for s in weights["sources"])
     assert all("NOT a completed sample" in c["reason"] for c in weights["censored"])
