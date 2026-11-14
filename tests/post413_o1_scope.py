@@ -232,7 +232,7 @@ def _exact_blobs_ok(repo=None, ref=None):
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, ref) for p in pins):
                 return False
         # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)
         # Only the protected subtrees can fail this check, so the diff is limited to them (same verdict as the whole-tree diff, without a full stat of the checkout).

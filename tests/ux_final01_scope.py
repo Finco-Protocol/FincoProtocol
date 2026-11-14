@@ -327,6 +327,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
  'tests/post413_o1_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
                                 '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), root, '
                                 'ref) for p, sha in pins.items()):\n'),
+                               ('            if listed != pins:\n                return False\n',
+                                '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
+                                'ref) for p in pins):\n'
+                                '                return False\n'),
                                ('def supersedes(path, value, repo=None, ref=None):\n',
                                 'def _ux_pin(path, blob, root, ref):\n'
                                 '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
@@ -342,6 +346,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
  'tests/post413_r17_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
                                  '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), '
                                  'root, ref) for p, sha in pins.items()):\n'),
+                                ('            if listed != pins:\n                return False\n',
+                                 '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
+                                 'ref) for p in pins):\n'
+                                 '                return False\n'),
                                 ('def supersedes(path, value, repo=None, ref=None):\n',
                                  'def _ux_pin(path, blob, root, ref):\n'
                                  '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
@@ -357,6 +365,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
  'tests/post413_r18_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
                                  '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), '
                                  'root, ref) for p, sha in pins.items()):\n'),
+                                ('            if listed != pins:\n                return False\n',
+                                 '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
+                                 'ref) for p in pins):\n'
+                                 '                return False\n'),
                                 ('def supersedes(path, value, repo=None, ref=None):\n',
                                  'def _ux_pin(path, blob, root, ref):\n'
                                  '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
@@ -372,6 +384,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
  'tests/post413_r1_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
                                 '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), root, '
                                 'ref) for p, sha in pins.items()):\n'),
+                               ('            if listed != pins:\n                return False\n',
+                                '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
+                                'ref) for p in pins):\n'
+                                '                return False\n'),
                                ('def supersedes(path, value, repo=None, ref=None):\n',
                                 'def _ux_pin(path, blob, root, ref):\n'
                                 '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
