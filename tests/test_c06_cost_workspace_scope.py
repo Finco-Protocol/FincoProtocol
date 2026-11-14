@@ -55,7 +55,7 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')
-        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys(ROOT))      # C06's keys plus the reviewed successor's own extra keys
+        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)
 
 @pytest.mark.parametrize('path',sorted(F.OWNED_PATHS|{F.MANIFEST}))
 def test_worktree_byte_tamper_fails_without_changing_head(clone,path):

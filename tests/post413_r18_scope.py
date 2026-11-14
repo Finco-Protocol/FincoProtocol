@@ -170,14 +170,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, ref) for p in pins):
+            if listed != pins:
                 return False
         # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)
         # Only the protected subtrees can fail this check, so the diff is limited to them (same verdict as the whole-tree diff, without a full stat of the checkout).
@@ -220,15 +220,6 @@ def allowed_path(path, repo=None, ref=None):
 def base_blob(path, repo=None, ref=None):
     """The recorded BASE blob of a superseded path (re-verified against git inside ``exact_blobs_ok``), or ``None``."""
     return manifest(repo, ref).get('base_blobs', {}).get(path)
-
-
-def _ux_pin(path, blob, root, ref):
-    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; history and every other pin stay unchanged."""
-    from tests import ux_final01_scope as UX
-    if path not in UX.SUPERSEDED:
-        return False
-    from tests import c06_cost_workspace_scope as C06
-    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
 
 
 def supersedes(path, value, repo=None, ref=None):

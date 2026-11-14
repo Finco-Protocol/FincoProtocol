@@ -11,7 +11,6 @@ import pytest
 from tests import fin_v2_cohorts as C
 from tests import u1_scope as U1
 from tests import u2_scope as U2
-from tests import ux_final01_scope as UX_APPROVAL
 from tests import wf06b_scope as W
 
 
@@ -330,11 +329,7 @@ def test_the_u1_successor_assertion_admits_only_a_registered_exact_u2(wt, monkey
     shared = (union_u2 & union_siblings) - SHARED_REVIEWED
     assert union_u2 <= union_all and shared == set(), shared                                         # U2 and siblings share only the reviewed governance/bundle paths
     for path in sorted(union_u2 & union_siblings):                                                   # every owner signs the SAME exact blob, = the tree
-        sigs = _shared_signatures(wt, list(four.values()), path)
-        owners = {m.manifest(wt).get('source_blobs', {}).get(path) for m in four.values() if path in m.OWNED_PATHS}
-        tree_blob = U1._blob((Path(wt) / path).read_bytes())
-        # one shared blob, or: every owner still signs ONE historical blob and only the reviewed UX-FINAL-01 successor moves the tree to its own exact pin
-        assert len(sigs) == 1 or (len(owners) == 1 and UX_APPROVAL.supersedes(path, tree_blob, wt, None)), path
+        assert len(_shared_signatures(wt, list(four.values()), path)) == 1, path
     # U2 unregistered: its U2-only permissions disappear, the sibling cohorts' stay (they are independently registered and exact)
     without_u2 = _u1_test_later_owned(wt, tuple(m for m in C.COHORT_MODULES if m != U2.__name__))
     assert without_u2 == union_siblings and 'app/v2/react_opex_lines.py' not in without_u2

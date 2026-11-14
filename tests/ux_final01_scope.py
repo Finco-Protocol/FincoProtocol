@@ -58,24 +58,16 @@ LIVE_DOCS = frozenset((
 HANDOFF_PATHS = frozenset((
     "tests/c06_cost_workspace_scope.py",
     "tests/fin_v2_cohorts.py",
-    "tests/post413_o1_scope.py",
-    "tests/post413_r17_scope.py",
-    "tests/post413_r18_scope.py",
-    "tests/post413_r1_scope.py",
     "tests/test_bess02_scope.py",
     "tests/test_c06_cost_workspace_scope.py",
     "tests/test_ci_v4_perf_scope.py",
     "tests/test_f03_financing_scope.py",
     "tests/test_f04_financing_scope.py",
-    "tests/test_post413_r17_scope.py",
-    "tests/test_post413_r18_scope.py",
-    "tests/test_post413_r1_scope.py",
     "tests/test_post432_l01_l02_scope.py",
     "tests/test_r02_ppa_ux_scope.py",
     "tests/test_r03_ppa_scope.py",
     "tests/test_r04_ppa_scope.py",
     "tests/test_t01e_remediation_scope.py",
-    "tests/test_u1_scope.py",
     "tests/test_u2_scope.py",
     "tests/u1_scope.py",
     "tests/u2_scope.py",
@@ -95,7 +87,7 @@ CURRENT_MAPS = frozenset((
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",
 ))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py", "tests/post413_r1_scope.py", "tests/post413_r17_scope.py", "tests/post413_r18_scope.py")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
@@ -260,19 +252,6 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and '
                                         'N.signature_ok(root, ref) else ()\r\n'
                                         '        return tuple(MAP_KEYS) + more\r\n'),
-                                       ('    for key in MAP_KEYS:\r\n'
-                                        '        if key in d["source_blobs"]:\r\n'
-                                        '            d["source_blobs"][key] = pins[key]\r\n'
-                                        '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\r\n',
-                                        '    for key in MAP_KEYS:\r\n'
-                                        '        if key in d["source_blobs"]:\r\n'
-                                        '            d["source_blobs"][key] = pins[key]\r\n'
-                                        '    N = _next()      # the one reviewed forward successor may move its own additional existing '
-                                        'current-map keys, and only where its pins are supplied\r\n'
-                                        '    for key in (tuple(k for k in N.MAP_KEYS if k not in MAP_KEYS) if N is not None else ()):\r\n'
-                                        '        if key in d["source_blobs"] and key in pins:\r\n'
-                                        '            d["source_blobs"][key] = pins[key]\r\n'
-                                        '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\r\n'),
                                        ('def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
                                         '    return dict(manifest(repo, ref).get("source_blobs", {}))\r\n',
                                         'def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
@@ -340,82 +319,6 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         '                return False\r\n'
                                         '        return N.reviewed_edits_ok(root, ref) if nxt else True\r\n')],
  'tests/fin_v2_cohorts.py': [("'tests.c06_cost_workspace_scope')", "'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')")],
- 'tests/post413_o1_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
-                                '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), root, '
-                                'ref) for p, sha in pins.items()):\n'),
-                               ('            if listed != pins:\n                return False\n',
-                                '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
-                                'ref) for p in pins):\n'
-                                '                return False\n'),
-                               ('def supersedes(path, value, repo=None, ref=None):\n',
-                                'def _ux_pin(path, blob, root, ref):\n'
-                                '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
-                                'history and every other pin stay unchanged."""\n'
-                                '    from tests import ux_final01_scope as UX\n'
-                                '    if path not in UX.SUPERSEDED:\n'
-                                '        return False\n'
-                                '    from tests import c06_cost_workspace_scope as C06\n'
-                                '    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
-                                '\n'
-                                '\n'
-                                'def supersedes(path, value, repo=None, ref=None):\n')],
- 'tests/post413_r17_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
-                                 '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), '
-                                 'root, ref) for p, sha in pins.items()):\n'),
-                                ('            if listed != pins:\n                return False\n',
-                                 '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
-                                 'ref) for p in pins):\n'
-                                 '                return False\n'),
-                                ('def supersedes(path, value, repo=None, ref=None):\n',
-                                 'def _ux_pin(path, blob, root, ref):\n'
-                                 '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
-                                 'history and every other pin stay unchanged."""\n'
-                                 '    from tests import ux_final01_scope as UX\n'
-                                 '    if path not in UX.SUPERSEDED:\n'
-                                 '        return False\n'
-                                 '    from tests import c06_cost_workspace_scope as C06\n'
-                                 '    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
-                                 '\n'
-                                 '\n'
-                                 'def supersedes(path, value, repo=None, ref=None):\n')],
- 'tests/post413_r18_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
-                                 '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), '
-                                 'root, ref) for p, sha in pins.items()):\n'),
-                                ('            if listed != pins:\n                return False\n',
-                                 '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
-                                 'ref) for p in pins):\n'
-                                 '                return False\n'),
-                                ('def supersedes(path, value, repo=None, ref=None):\n',
-                                 'def _ux_pin(path, blob, root, ref):\n'
-                                 '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
-                                 'history and every other pin stay unchanged."""\n'
-                                 '    from tests import ux_final01_scope as UX\n'
-                                 '    if path not in UX.SUPERSEDED:\n'
-                                 '        return False\n'
-                                 '    from tests import c06_cost_workspace_scope as C06\n'
-                                 '    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
-                                 '\n'
-                                 '\n'
-                                 'def supersedes(path, value, repo=None, ref=None):\n')],
- 'tests/post413_r1_scope.py': [('            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
-                                '            if any(_blob(_read(root, p, ref)) != sha and not _ux_pin(p, _blob(_read(root, p, ref)), root, '
-                                'ref) for p, sha in pins.items()):\n'),
-                               ('            if listed != pins:\n                return False\n',
-                                '            if set(listed) != set(pins) or any(listed[p] != pins[p] and not _ux_pin(p, listed[p], root, '
-                                'ref) for p in pins):\n'
-                                '                return False\n'),
-                               ('def supersedes(path, value, repo=None, ref=None):\n',
-                                'def _ux_pin(path, blob, root, ref):\n'
-                                '    """UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move this exact pin; '
-                                'history and every other pin stay unchanged."""\n'
-                                '    from tests import ux_final01_scope as UX\n'
-                                '    if path not in UX.SUPERSEDED:\n'
-                                '        return False\n'
-                                '    from tests import c06_cost_workspace_scope as C06\n'
-                                '    return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)\n'
-                                '\n'
-                                '\n'
-                                'def supersedes(path, value, repo=None, ref=None):\n')],
  'tests/test_bess02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                  'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                  'from tests import ux_final01_scope as UX_APPROVAL\n'),
@@ -433,10 +336,7 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                  '            continue\n'
                                  '        if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared '
                                  'bundle, exactly at its pinned blob\n')],
- 'tests/test_c06_cost_workspace_scope.py': [("original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)\n",
-                                             "original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys(ROOT))      # C06's "
-                                             "keys plus the reviewed successor's own extra keys\n"),
-                                            ('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
+ 'tests/test_c06_cost_workspace_scope.py': [('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
                                              '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
                                              "(F.__name__, 'tests.ux_final01_scope'))\n"),
                                             ('    for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)\n',
@@ -548,72 +448,6 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         'kind==\'duplicate_registration\':text=text.replace("\'tests.f04_financing_scope\', '
                                         '\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'","\'tests.f04_financing_scope\', '
                                         '\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\'")\n')],
- 'tests/test_post413_r17_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
-                                      'def test_positive_cohort_is_exact_registered_and_closed():\n'
-                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                      'across calls or mutations) instead of one full\n'
-                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                      '    with C.call_scope():\n'
-                                      '        _positive_cohort_checks()\n'
-                                      '\n'
-                                      '\n'
-                                      'def _positive_cohort_checks():\n'),
-                                     ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
-                                      'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
-                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                      'across calls or mutations) instead of one full\n'
-                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                      '    with C.call_scope():\n'
-                                      '        _supersession_bounded_checks()\n'
-                                      '\n'
-                                      '\n'
-                                      'def _supersession_bounded_checks():\n')],
- 'tests/test_post413_r18_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
-                                      'def test_positive_cohort_is_exact_registered_and_closed():\n'
-                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                      'across calls or mutations) instead of one full\n'
-                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                      '    with C.call_scope():\n'
-                                      '        _positive_cohort_checks()\n'
-                                      '\n'
-                                      '\n'
-                                      'def _positive_cohort_checks():\n'),
-                                     ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
-                                      'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
-                                      '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                      'across calls or mutations) instead of one full\n'
-                                      '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                      'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                      '    with C.call_scope():\n'
-                                      '        _supersession_bounded_checks()\n'
-                                      '\n'
-                                      '\n'
-                                      'def _supersession_bounded_checks():\n')],
- 'tests/test_post413_r1_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
-                                     'def test_positive_cohort_is_exact_registered_and_closed():\n'
-                                     '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                     'across calls or mutations) instead of one full\n'
-                                     '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                     'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                     '    with C.call_scope():\n'
-                                     '        _positive_cohort_checks()\n'
-                                     '\n'
-                                     '\n'
-                                     'def _positive_cohort_checks():\n'),
-                                    ('def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
-                                     'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n'
-                                     '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept '
-                                     'across calls or mutations) instead of one full\n'
-                                     '    # cohort verdict per path. Nodes that mutate a worktree (the `wt` fixture) and the node that '
-                                     'proves the no-memo contract are NOT scoped. Assertions unchanged.\n'
-                                     '    with C.call_scope():\n'
-                                     '        _supersession_bounded_checks()\n'
-                                     '\n'
-                                     '\n'
-                                     'def _supersession_bounded_checks():\n')],
  'tests/test_post432_l01_l02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                           'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                           'from tests import ux_final01_scope as UX_APPROVAL\n'),
@@ -745,51 +579,7 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                            '\'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                            '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
                                            'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')],
- 'tests/test_u1_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
-                             'def test_positive_cohort_is_exact_registered_and_closed():\n'
-                             '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
-                             'calls or mutations) instead of one full\n'
-                             '    # cohort verdict per path. The nodes that mutate a worktree (the `wt` fixture) are deliberately NOT '
-                             'scoped. Assertions are unchanged.\n'
-                             '    with C.call_scope():\n'
-                             '        _positive_cohort_checks()\n'
-                             '\n'
-                             '\n'
-                             'def _positive_cohort_checks():\n'),
-                            ('def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\n',
-                             'def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\n'
-                             '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
-                             'calls or mutations) instead of one full\n'
-                             '    # cohort verdict per path. The nodes that mutate a worktree (the `wt` fixture) are deliberately NOT '
-                             'scoped. Assertions are unchanged.\n'
-                             '    with C.call_scope():\n'
-                             '        _no_path_outside_checks()\n'
-                             '\n'
-                             '\n'
-                             'def _no_path_outside_checks():\n'),
-                            ('def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\n',
-                             'def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\n'
-                             '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
-                             'calls or mutations) instead of one full\n'
-                             '    # cohort verdict per path. The nodes that mutate a worktree (the `wt` fixture) are deliberately NOT '
-                             'scoped. Assertions are unchanged.\n'
-                             '    with C.call_scope():\n'
-                             '        _integration_reference_checks()\n'
-                             '\n'
-                             '\n'
-                             'def _integration_reference_checks():\n')],
- 'tests/test_u2_scope.py': [('from tests import u2_scope as U2\n',
-                             'from tests import u2_scope as U2\nfrom tests import ux_final01_scope as UX_APPROVAL\n'),
-                            ('        assert len(_shared_signatures(wt, list(four.values()), path)) == 1, path\n',
-                             '        sigs = _shared_signatures(wt, list(four.values()), path)\n'
-                             "        owners = {m.manifest(wt).get('source_blobs', {}).get(path) for m in four.values() if path in "
-                             'm.OWNED_PATHS}\n'
-                             '        tree_blob = U1._blob((Path(wt) / path).read_bytes())\n'
-                             '        # one shared blob, or: every owner still signs ONE historical blob and only the reviewed UX-FINAL-01 '
-                             'successor moves the tree to its own exact pin\n'
-                             '        assert len(sigs) == 1 or (len(owners) == 1 and UX_APPROVAL.supersedes(path, tree_blob, wt, None)), '
-                             'path\n'),
-                            ('def test_positive_cohort_is_exact_registered_and_closed():\n',
+ 'tests/test_u2_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
                              'def test_positive_cohort_is_exact_registered_and_closed():\n'
                              '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
                              'calls or mutations) instead of one full\n'
