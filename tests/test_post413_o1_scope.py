@@ -52,18 +52,19 @@ def _flip(path):
 
 
 def test_positive_cohort_is_exact_registered_and_closed():
-    assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()
-    assert O.__name__ in C.COHORT_MODULES and O in C.cohorts() and O.__name__ in U.LATER_COHORTS and O.protected_blobs() == {}
-    data = O.manifest()
-    assert set(data['source_blobs']) == O.OWNED_PATHS - {O.MANIFEST} and set(data['base_blobs']) == O.SUPERSEDED
-    assert all('*' not in p and not p.endswith('/') for p in O.OWNED_PATHS)
-    assert not any(p.startswith(O.FORBIDDEN_PREFIXES) or p in O.FORBIDDEN_PATHS for p in O.OWNED_PATHS)
-    assert O.SUPERSEDED <= O.OWNED_PATHS
-    for stranger in ('app/library/router.py', 'app/v2/react_workspace_router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py',
-                     'financial_engine/x.py', '.github/workflows/ci.yml', 'app/capex_profiles/binding.py'):
-        assert not O.allowed_path(stranger) and not O.matches(stranger)
-    for owned in (ROUTE, SERVICE, BUNDLE, EDITOR, 'app/capex_profiles/runtime.py', 'tests/post413_o1_scope.py'):
-        assert O.matches(owned) and O.allowed_path(owned) and U.allowed_path(owned)
+    with C.call_scope():
+        assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()
+        assert O.__name__ in C.COHORT_MODULES and O in C.cohorts() and O.__name__ in U.LATER_COHORTS and O.protected_blobs() == {}
+        data = O.manifest()
+        assert set(data['source_blobs']) == O.OWNED_PATHS - {O.MANIFEST} and set(data['base_blobs']) == O.SUPERSEDED
+        assert all('*' not in p and not p.endswith('/') for p in O.OWNED_PATHS)
+        assert not any(p.startswith(O.FORBIDDEN_PREFIXES) or p in O.FORBIDDEN_PATHS for p in O.OWNED_PATHS)
+        assert O.SUPERSEDED <= O.OWNED_PATHS
+        for stranger in ('app/library/router.py', 'app/v2/react_workspace_router.py', 'frontend/src/app/NewUnreviewed.tsx', 'tests/test_something_new.py',
+                         'financial_engine/x.py', '.github/workflows/ci.yml', 'app/capex_profiles/binding.py'):
+            assert not O.allowed_path(stranger) and not O.matches(stranger)
+        for owned in (ROUTE, SERVICE, BUNDLE, EDITOR, 'app/capex_profiles/runtime.py', 'tests/post413_o1_scope.py'):
+            assert O.matches(owned) and O.allowed_path(owned) and U.allowed_path(owned)
 
 
 def test_the_ci_v4_governance_gate_passes_on_the_real_source():
@@ -81,13 +82,14 @@ def test_base_is_the_merged_main_and_history_is_recorded_not_rewritten():
 
 
 def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
-    pins = O.manifest()['source_blobs']
-    for path in (ROUTE, SERVICE, 'app/v2/router.py', 'frontend/src/app/api.ts'):
-        assert O.supersedes(path, pins[path]) and U.supersedes(path, pins[path])
-        assert not O.supersedes(path, '0' * 40) and not U.supersedes(path, '0' * 40)
-    assert not O.supersedes('app/v2/capex_router.py', pins['app/v2/capex_router.py'])           # no older cohort pins it: owned, never superseded
-    assert not O.supersedes('app/library/router.py', pins[ROUTE]) and not U.supersedes('app/library/router.py', pins[ROUTE])
-    assert not O.supersedes(ROUTE, pins[SERVICE])                                                # one path's pin is never another path's value
+    with C.call_scope():
+        pins = O.manifest()['source_blobs']
+        for path in (ROUTE, SERVICE, 'app/v2/router.py', 'frontend/src/app/api.ts'):
+            assert O.supersedes(path, pins[path]) and U.supersedes(path, pins[path])
+            assert not O.supersedes(path, '0' * 40) and not U.supersedes(path, '0' * 40)
+        assert not O.supersedes('app/v2/capex_router.py', pins['app/v2/capex_router.py'])           # no older cohort pins it: owned, never superseded
+        assert not O.supersedes('app/library/router.py', pins[ROUTE]) and not U.supersedes('app/library/router.py', pins[ROUTE])
+        assert not O.supersedes(ROUTE, pins[SERVICE])                                                # one path's pin is never another path's value
 
 
 CI_V4_MANIFEST = 'docs/ci_v4/SOURCE_SUCCESSOR.json'
@@ -141,6 +143,18 @@ def _ci_v4_own_later_paths(repo=None, ref=None):
     return frozenset(p for p in C4.OWNED_PATHS if p.startswith(CI_V4_OWN_PREFIXES) and p not in O.OWNED_PATHS)
 
 
+def _c06_continues(path, signed_pin, root, ref):
+    """The accepted C06 successor (#444) moved a presentation path that U2 had signed: C06 is exact and registered, its recorded BASE blob is exactly
+    U2's signed pin and the evaluated bytes are exactly C06's own pin (the registered chain U2 -> C06; nothing else is admitted by this helper)."""
+    from tests import c06_cost_workspace_scope as K
+    if K.__name__ not in C.COHORT_MODULES or path not in K.SUPERSEDED or not K.exact_blobs_ok(root, ref):
+        return False
+    signed = K.manifest(root, ref)
+    pin = signed.get('source_blobs', {}).get(path)
+    return (pin is not None and signed.get('base_blobs', {}).get(path) == signed_pin and K.supersedes(path, pin, root, ref)
+            and K._blob(K._read(root, path, ref)) == pin)
+
+
 def _u2_signed_later_pins(repo=None, ref=None):
     from tests import u2_scope as U2
     root = Path(repo) if repo is not None else O.ROOT
@@ -151,8 +165,9 @@ def _u2_signed_later_pins(repo=None, ref=None):
     historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']
     return {p: signed[p] for p in U2_LATER_PRESENTATION
             if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED
-            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)
-            and U2._blob(U2._read(root, p, ref)) == signed[p]}
+            and signed[p] != historical.get(p)
+            and ((U2.supersedes(p, signed[p], root, ref) and U2._blob(U2._read(root, p, ref)) == signed[p])
+                 or _c06_continues(p, signed[p], root, ref))}
 
 
 # UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.
@@ -238,9 +253,10 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
 
 
 def test_shared_sibling_pins_equal_this_cohorts_pin_and_nothing_else_moved():
-    evidence = _audit_shared_sibling_pins()
-    assert set(evidence[U2_MANIFEST]['u2']) == U2_LATER_PRESENTATION
-    assert all(not row['u2'] for name, row in evidence.items() if name != U2_MANIFEST)
+    with C.call_scope():
+        evidence = _audit_shared_sibling_pins()
+        assert set(evidence[U2_MANIFEST]['u2']) == U2_LATER_PRESENTATION
+        assert all(not row['u2'] for name, row in evidence.items() if name != U2_MANIFEST)
 
 
 @pytest.mark.parametrize('change', ['forged_pin', 'stale_pin', 'unsigned_source', 'foreign_path', 'wrong_o1_pin', 'deregistered_u2', 'broken_u2_scope'])
@@ -272,19 +288,25 @@ def test_signed_u2_sibling_admission_rejects_tampering_at_the_evaluated_checkout
     if target == U2_MANIFEST:
         (wt / target).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
     with pytest.raises(AssertionError):
-        _audit_shared_sibling_pins(wt)
-    assert not C.valid(wt)
+        with C.call_scope():
+            _audit_shared_sibling_pins(wt)
+    with C.call_scope():
+        assert not C.valid(wt)
     _git(wt, 'checkout', '--', target)
     # A new call observes the restored bytes; no verdict is shared across the mutation boundary.
-    assert U2.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U2.exact_blobs_ok(wt)
 
 
 def test_signed_u2_sibling_admission_checks_the_named_commit_not_another_checkout(wt):
-    before = _audit_shared_sibling_pins(wt, 'HEAD')
+    with C.call_scope():
+        before = _audit_shared_sibling_pins(wt, 'HEAD')
     _flip(wt / sorted(U2_LATER_PRESENTATION)[0])
     with pytest.raises(AssertionError):
-        _audit_shared_sibling_pins(wt)
-    assert _audit_shared_sibling_pins(wt, 'HEAD') == before
+        with C.call_scope():
+            _audit_shared_sibling_pins(wt)
+    with C.call_scope():
+        assert _audit_shared_sibling_pins(wt, 'HEAD') == before
 
 
 @pytest.mark.parametrize('entries', [
@@ -311,7 +333,8 @@ def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(
     assert not later & {'tests/test_cost_batch_save_v1.py', 'tests/test_saas_revamp_entry.py', 'tests/u2_scope.py'}   # product / shared files stay out
     assert '.github/workflows/public_safety_and_smoke.yml' not in later and 'tools/ci_v3_production.py' not in later
     _flip(wt / 'tools/ci_v4_shard.py')                                                          # a drifted CI V4 file: cohort inexact -> no exception
-    assert not C4.exact_blobs_ok(wt) and _ci_v4_own_later_paths(wt) == frozenset()
+    with C.call_scope():
+        assert not C4.exact_blobs_ok(wt) and _ci_v4_own_later_paths(wt) == frozenset()
     _git(wt, 'checkout', '--', 'tools/ci_v4_shard.py')
     assert _ci_v4_own_later_paths(wt) == later
 
@@ -319,10 +342,13 @@ def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(
 @pytest.mark.parametrize('path', sorted(O.OWNED_PATHS))
 def test_one_byte_in_each_owned_source_fails_closed(wt, path):
     _flip(wt / path)
-    assert not O.exact_blobs_ok(wt)
-    assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
     _git(wt, 'checkout', '--', path)
-    assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity
 
 
 def test_modified_manifest_missing_or_extra_pin_and_wrong_base_fail_closed(wt):
@@ -346,68 +372,84 @@ def test_modified_manifest_missing_or_extra_pin_and_wrong_base_fail_closed(wt):
         data = json.loads(json.dumps(original))
         change(data)
         write(data)
-        assert not O.exact_blobs_ok(wt)
+        with C.call_scope():
+            assert not O.exact_blobs_ok(wt)
     manifest.write_text(json.dumps(original, indent=2) + '\n')
-    assert O.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt)
 
 
 def test_altered_registry_hook_or_sibling_pin_fails_closed(wt):
     for path in ('tests/u1_scope.py', 'tests/fin_v2_cohorts.py'):
         _flip(wt / path)
-        assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not O.exact_blobs_ok(wt) and not C.valid(wt)
         _git(wt, 'checkout', '--', path)
     registry = wt / 'tests/fin_v2_cohorts.py'
     registry.write_text(registry.read_text().replace("'tests.post413_o1_scope'", "'tests.post413_o1_scope_x'"))
-    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     _git(wt, 'checkout', '--', 'tests/fin_v2_cohorts.py')
-    assert O.exact_blobs_ok(wt) and C.valid(wt)
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt) and C.valid(wt)
     for manifest in sorted(SIBLINGS):
         data = json.loads((wt / manifest).read_text())
         key = 'tests/u1_scope.py'
         data['source_blobs'][key] = '0' * 40
         (wt / manifest).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
-        assert not C.valid(wt), manifest                                                         # a stale/forged sibling pin of a shared blob fails the composite
+        with C.call_scope():
+            assert not C.valid(wt), manifest                                                         # a stale/forged sibling pin of a shared blob fails the composite
         _git(wt, 'checkout', '--', manifest)
-    assert C.valid(wt)
+    with C.call_scope():
+        assert C.valid(wt)
 
 
 def test_one_byte_in_the_workstream_b_route_or_service_fails_the_composite_and_restores(wt):
     for path in (ROUTE, SERVICE, 'app/v2/save_all_commands.py', 'app/capex_profiles/runtime.py'):
         _flip(wt / path)
-        assert not C.valid(wt), path
+        with C.call_scope():
+            assert not C.valid(wt), path
         _git(wt, 'checkout', '--', path)
-    assert C.valid(wt)
+    with C.call_scope():
+        assert C.valid(wt)
 
 
 def test_unauthorised_extra_source_changed_unowned_file_and_foreign_prefix_fail_closed(wt):
     (wt / 'app').mkdir(exist_ok=True)
     (wt / 'app' / 'untracked_new_source.py').write_text('X = 1\n')
-    assert not C.valid(wt)                                                                       # untracked source outside every pin
+    with C.call_scope():
+        assert not C.valid(wt)                                                                       # untracked source outside every pin
     _git(wt, 'clean', '-fdxq')
     _flip(wt / 'app/library/router.py')                                                          # an unowned, historically pinned file
-    assert not C.valid(wt)
+    with C.call_scope():
+        assert not C.valid(wt)
     _git(wt, 'checkout', '--', 'app/library/router.py')
     (wt / 'financial_engine').mkdir(exist_ok=True)
     (wt / 'financial_engine' / 'unreviewed.py').write_text('X = 1\n')
     _git(wt, 'add', 'financial_engine/unreviewed.py')
-    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     _git(wt, 'reset', '--hard', '-q')
     _git(wt, 'clean', '-fdxq')
-    assert C.valid(wt)
+    with C.call_scope():
+        assert C.valid(wt)
 
 
 def test_altered_ci_v4_workflow_or_selector_and_a_stale_historical_pin_fail_closed(wt):
     for path in ('.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_select.py'):
         _flip(wt / path)
-        assert not C.valid(wt), path
+        with C.call_scope():
+            assert not C.valid(wt), path
         _git(wt, 'checkout', '--', path)
     historical = wt / 'docs/react_migration/wsv2_editing/SOURCE_SUCCESSOR.json'
     data = json.loads(historical.read_text())
     data['source_blobs'][ROUTE] = '0' * 40
     historical.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
-    assert not C.valid(wt)
+    with C.call_scope():
+        assert not C.valid(wt)
     _git(wt, 'checkout', '--', str(historical.relative_to(wt)))
-    assert C.valid(wt)
+    with C.call_scope():
+        assert C.valid(wt)
 
 
 def test_a_deregistered_cohort_or_a_hook_without_it_fails_and_an_executable_or_committed_mode_change_fails(wt):
@@ -415,21 +457,26 @@ def test_a_deregistered_cohort_or_a_hook_without_it_fails_and_an_executable_or_c
     original = registry.read_text()
     registry.write_text(_without_tuple_module(original, 'COHORT_MODULES', O.__name__))
     assert registry.read_text() != original and O.__name__ not in _tuple_assignment(registry.read_text(), 'COHORT_MODULES')[1]
-    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     registry.write_text(original)
     hook = wt / 'tests/u1_scope.py'
     hook_original = hook.read_text()
     hook.write_text(_without_tuple_module(hook_original, 'LATER_COHORTS', O.__name__))
     assert hook.read_text() != hook_original and O.__name__ not in _tuple_assignment(hook.read_text(), 'LATER_COHORTS')[1]
-    assert not O.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt) and not C.valid(wt)
     hook.write_text(hook_original)
-    assert O.exact_blobs_ok(wt) and C.valid(wt)
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt) and C.valid(wt)
     (wt / ROUTE).chmod(0o755)
-    assert not O.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt)
     _git(wt, 'checkout', '--', ROUTE)
     _git(wt, 'update-index', '--chmod=+x', ROUTE)
     _git(wt, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'mode')
-    assert not O.exact_blobs_ok(wt, 'HEAD')
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt, 'HEAD')
 
 
 def test_the_cohort_is_acyclic_and_keeps_no_verdict_beyond_one_outer_call():
@@ -446,14 +493,18 @@ def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
     from tests import ux_pr1_scope as UX
     path = 'tests/test_model_workspace_consolidation_browser.py'
     assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
-    before = _audit_shared_sibling_pins(wt, 'HEAD')
+    with C.call_scope():
+        before = _audit_shared_sibling_pins(wt, 'HEAD')
     from tests import ux_pr2b_scope as UX3
-    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]
+    with C.call_scope():
+        assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]
     original = (wt / path).read_bytes()
     _flip(wt / path)
     with pytest.raises(AssertionError):
-        _audit_shared_sibling_pins(wt)
-    assert _audit_shared_sibling_pins(wt, 'HEAD') == before
+        with C.call_scope():
+            _audit_shared_sibling_pins(wt)
+    with C.call_scope():
+        assert _audit_shared_sibling_pins(wt, 'HEAD') == before
     (wt / path).write_bytes(original)
     sibling = wt / 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
     raw = sibling.read_bytes()
@@ -461,6 +512,8 @@ def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
     data['source_blobs'][path] = '0' * 40
     sibling.write_text(json.dumps(data, indent=2) + '\n')
     with pytest.raises(AssertionError):
-        _audit_shared_sibling_pins(wt)
+        with C.call_scope():
+            _audit_shared_sibling_pins(wt)
     sibling.write_bytes(raw)
-    assert _audit_shared_sibling_pins(wt) == before
+    with C.call_scope():
+        assert _audit_shared_sibling_pins(wt) == before

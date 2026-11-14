@@ -23,6 +23,51 @@ from pathlib import Path
 
 from tools.ci_v3_pytest_config import plugin_args
 
+# Stall forensics (2026-11-14, PR #446 shard-2: a single governance node hung for 2h19m at 83% with no evidence and no
+# artifact). One verbose flag per test, WITHOUT -q (-q and -v cancel to verbosity 0, which prints no node ids): the node id is written
+# at test START, so the last id in the log names the running, hung node), plus a pure-Python stall watchdog armed around the whole pytest
+# process: every DIAGNOSTIC_DUMP_AFTER_S seconds of process lifetime it dumps the stack of every thread and keeps running (no pytest plugin is
+# involved, so PYTEST_DISABLE_PLUGIN_AUTOLOAD cannot break it). A hung or timed-out test stays CANCELLED/INCOMPLETE, never PASS, and the job timeout
+# of the workflow remains the hard ceiling. 2400 s stays above the heaviest measured legitimate node (1990.5 s, run 43569255310 shard-1) so a
+# healthy post-split shard (~38 min) never triggers a dump; a 150-min stall dumps three times and names the exact stuck frames.
+DIAGNOSTIC_DUMP_AFTER_S = 2400
+DIAGNOSTIC_ARGS = ("-v",)
+# The wrapper starts a pure-Python watchdog thread, then hands over to pytest's own main (same argument list; sys.argv[0] is "-c").
+# faulthandler.dump_traceback_later is NOT used: its C-level dump runs without the GIL and, on Python 3.12, crashed the very process it was
+# diagnosing (hosted run 43619391821 shard-1: exit -11 three seconds after the first dump, reproduced locally). The thread below only reads
+# sys._current_frames() and formats them with the traceback module (GIL held, no C-level frame walking), writes to a DUPLICATE of the real stderr
+# taken before pytest's fd-level capture redirects fd 2, and never raises into the run. It only reports: a hung run stays incomplete (the workflow
+# timeout is the ceiling) and the exit code is pytest's own.
+def _wrapper_code(dump_after_s):
+    return ("import os, sys, threading, time, traceback\n"
+            "_real_stderr = os.fdopen(os.dup(2), 'w', buffering=1)\n"
+            "def _stall_watchdog(interval):\n"
+            "    me = threading.get_ident()\n"
+            "    dump = 0\n"
+            "    while True:\n"
+            "        time.sleep(interval)\n"
+            "        dump += 1\n"
+            "        try:\n"
+            "            _real_stderr.write('\\nTimeout (%%d s of process lifetime) - stall dump %%d\\n' %% (interval * dump, dump))\n"
+            "            for tid, frame in sorted(sys._current_frames().items()):\n"
+            "                if tid != me:\n"
+            "                    _real_stderr.write('Thread 0x%%x (most recent call last):\\n' %% tid + ''.join(traceback.format_stack(frame)))\n"
+            "            _real_stderr.flush()\n"
+            "        except Exception:\n"
+            "            pass\n"
+            "threading.Thread(target=_stall_watchdog, args=(%d,), daemon=True, name='ci-v4-stall-watchdog').start()\n"
+            "import pytest\n"
+            "sys.exit(pytest.main(sys.argv[1:]))\n" % int(dump_after_s))
+
+
+_DIAGNOSTIC_WRAPPER_CODE = _wrapper_code(DIAGNOSTIC_DUMP_AFTER_S)
+
+
+def pytest_command(extra, dump_after_s=DIAGNOSTIC_DUMP_AFTER_S):
+    """Full argv for one shard pytest run: the diagnostic watchdog wrapper + the given pytest arguments (the interval is injectable for tests only)."""
+    code = _DIAGNOSTIC_WRAPPER_CODE if dump_after_s == DIAGNOSTIC_DUMP_AFTER_S else _wrapper_code(dump_after_s)
+    return [sys.executable, "-c", code, *extra]
+
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE = 2 * 1024 ** 3
 
@@ -115,12 +160,12 @@ def main(argv=None):
             evidence = out / ("nodes-shard-%d.json" % a.index)
             env.update(FINCO_CI_V4_NODE_ASSIGN=str(out / ("assign-shard-%d.json" % a.index)), FINCO_CI_V4_NODE_EVIDENCE=str(evidence))
             targets = sorted(set(assign["whole"]) | set(assign["split"]))
-            rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
-                                  "--junitxml", str(junit), *targets], env=env)
+            rc = subprocess.call(pytest_command(["-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
+                                  "--junitxml", str(junit), *targets]), env=env)
             record.update({"units": plan["schedule"]["units"][a.index], "node_evidence": evidence.name})
         elif mods:
-            rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(),
-                                  "--junitxml", str(junit), *mods], env=env)
+            rc = subprocess.call(pytest_command(["-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(),
+                                  "--junitxml", str(junit), *mods]), env=env)
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)

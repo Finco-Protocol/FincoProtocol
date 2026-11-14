@@ -14,10 +14,15 @@
       "verdict": "SPLIT_SAFE_FLOOR_LIMITED",
       "isolation_proof": "Module fixture _tree creates its own detached worktree under tmp_path_factory (one per process) and removes it at teardown; fixture wt resets --hard and cleans -fdx after EVERY test, so no test depends on another's state; non-wt tests only read the real tree. Floor: one node (test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession) took 6718 s of 8197 s (run 41856777361); splitting cannot shorten that node.",
       "granularity": "node"
+    },
+    "tests/test_u1_scope.py": {
+      "verdict": "SPLIT_SAFE",
+      "isolation_proof": "Same fixture architecture as the already-proven tests/test_wf06b_scope.py: module fixture _tree creates its own detached git worktree under tmp_path_factory (one per process) and removes it at teardown; fixture wt resets --hard and cleans -fdx after EVERY test, so no test depends on another's state; non-wt tests only read the real tree. Measured at the exact head this policy is decided for: 100 nodes, 4113.3 s total, heaviest node test_integration_reference_is_main_after_414_and_everything_unowned_equals_it 1990.5 s (run 43569255310 shard-1, head 97679444) - the module grew 15.9x over its recorded weight (258.992 s) when the PR #446 governance cohort registration made the whole-composite verdicts part of every enumeration, so the old NOT_BENEFICIAL verdict is stale. Floor: the 1990.5 s node is indivisible and keeps its own part.",
+      "granularity": "node"
     }
   },
   "not_split": {
-    "tests/test_u1_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 337 s of 388 s (run 41912154663); module below target.",
+    "tests/test_u1_scope.py": "SUPERSEDED 2026-11-14: moved to 'modules' as SPLIT_SAFE. The old NOT_BENEFICIAL verdict measured u1 at 456 s with a 402 s heaviest node (run 41912154663); at head 97679444 the same module measures 4113.3 s (heaviest node 1990.5 s), far above the 900 s target unit.",
     "tests/test_post413_o1_scope.py": "NOT_BENEFICIAL: one node (test_the_ci_v4_governance_gate_passes_on_the_real_source) is 445 s of 474 s (run 41912154663); module below target.",
     "tests/test_u2_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 402 s of 456 s (run 41912154663); module below target."
   }

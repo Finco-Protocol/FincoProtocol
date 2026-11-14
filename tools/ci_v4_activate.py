@@ -170,10 +170,10 @@ def _check_activation(plan, trusted_sha, plugin_sha):
         raise ActivationError("node plan was collected with a different plugin than the trusted one")
 
 
-def shard(plan_path, index, subject, workdir, output, trusted_sha, tmp_mode="disk", trusted=ROOT):
+def shard(plan_path, index, subject, workdir, output, trusted_sha, tmp_mode="disk", trusted=ROOT, dump_after_s=None):
     """Execute ONE node-plan shard against the subject with the trusted plugin (whole modules + exact assigned node ids)."""
     from tools.ci_v4_schedule import plan_digest
-    from tools.ci_v4_shard import assignment, choose_tmp
+    from tools.ci_v4_shard import DIAGNOSTIC_ARGS, assignment, choose_tmp, pytest_command
     from tools.ci_v3_pytest_config import plugin_args
     plan = json.loads(Path(plan_path).read_text())
     if "node_split" not in plan or plan_digest(plan) != plan.get("digest"):
@@ -198,8 +198,12 @@ def shard(plan_path, index, subject, workdir, output, trusted_sha, tmp_mode="dis
     targets = sorted(set(assign["whole"]) | set(assign["split"]))
     t0 = time.monotonic()
     try:
-        rc = subprocess.call([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(), "-p", TRUSTED_PLUGIN,
-                              "--junitxml", str(junit), *targets], cwd=subject, env=env)
+        # Same stall forensics as the module-plan shard (tools/ci_v4_shard.py): one node id per test at its START (no -q, which would cancel -v) and the
+        # stdlib faulthandler watchdog writing to a pre-capture duplicate of stderr, so a hung or failing node is attributable from the job log.
+        # It only reports: a hung run stays incomplete (the workflow timeout is the ceiling) and the exit code is pytest's own.
+        argv = pytest_command(["-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", TRUSTED_PLUGIN,
+                               "--junitxml", str(junit), *targets], **({} if dump_after_s is None else {"dump_after_s": dump_after_s}))
+        rc = subprocess.call(argv, cwd=subject, env=env)
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)

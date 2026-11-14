@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from tests import c06_cost_workspace_scope as C06_APPROVAL
+from tests import ci_v4_shard2_fix_scope as S2_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -80,8 +81,10 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     changed = set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines())
     assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
+    from tests import ci_v4_shard2_fix_scope as S2
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
-                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)]
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)
+                and not (S2.signature_ok() and p in S2.CI_TOOL_PATHS)]      # exactly the literal CI V4 tool paths of the reviewed shard-2 fix successor
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
@@ -96,9 +99,11 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import f03_financing_scope as G
     from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
     nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
-                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope') if m in C.COHORT_MODULES)
+                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_shard2_fix_scope') if m in C.COHORT_MODULES)
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if len(nxt) == 7 and C06_APPROVAL.signature_ok():
+    if 'tests.ci_v4_shard2_fix_scope' in C.COHORT_MODULES and S2_APPROVAL.signature_ok():
+        expected = S2_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
+    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():
         expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
     elif len(nxt) == 6 and W.signature_ok():
         expected = W.expected_handoff(ROOT, X.REGISTRY)

@@ -12,6 +12,7 @@ from tests import model_mutation_security_successor as S
 from tests import wf04_scope as WF04
 from tests import wf06b_scope as WF06B
 from tests import post413_r1_scope as R1
+from tests import fin_v2_cohorts as C      # the registry call scope of the read-only verdict phases below
 from tests import ux_pr3b1_scope as PR3
 
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
@@ -69,22 +70,23 @@ def _authenticated_ux1_mvp_successor(path, source, *, repo=None, ref=None):
 
 
 def test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned():
-    assert all(ALLOWED.match(path) for path in LAYER), [p for p in LAYER if not ALLOWED.match(p)]
-    assert "static/react/finco-react.js" in LAYER
-    for path, blob in LAYER.items():
-        assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
-        assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
-        later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
-        from tests import wf03_lifecycle_scope as WF03
-        # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
-        assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
-                or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path])
-                or WF06B.matches(path, SOURCES[path])                  # PR #410: the exact WF-06B successor state of a superseded path
-                or R1.matches(path, SOURCES[path])
-                or _authenticated_u1_workflow_successor(path, SOURCES[path])
-                or _authenticated_ux1_mvp_successor(path, SOURCES[path])
-                or PR3.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
-    assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
+    with C.call_scope():
+        assert all(ALLOWED.match(path) for path in LAYER), [p for p in LAYER if not ALLOWED.match(p)]
+        assert "static/react/finco-react.js" in LAYER
+        for path, blob in LAYER.items():
+            assert path in S.BLOBS and len(blob) == 40 and re.fullmatch(r"[0-9a-f]{40}", blob)
+            assert blob not in {S.BLOBS[path], S.RC_M_SUCCESSORS.get(path)}                # a NEW reviewed state, never a repin
+            later = S.WSV2_ACCEPTANCE_SUCCESSORS.get(path, S.WSV2_PRESENTATION_SUCCESSORS.get(path, S.WSV2_BROWSER_SUCCESSORS.get(path, blob)))  # exact later WS1 state only
+            from tests import wf03_lifecycle_scope as WF03
+            # or the exact reviewed WS-2 state; WF-04 successor lineage: the exact later state pinned by tests/wf04_scope.py while that cohort is valid; or the exact WF-03 state
+            assert (S.git_blob(SOURCES[path]) in {later, S.WSV2_SAVE_ALL_SUCCESSORS.get(path), S.WSV2_EDITING_SUCCESSORS.get(path)}
+                    or WF04.presentation_successor(path, SOURCES[path]) or WF03.matches(path,SOURCES[path])
+                    or WF06B.matches(path, SOURCES[path])                  # PR #410: the exact WF-06B successor state of a superseded path
+                    or R1.matches(path, SOURCES[path])
+                    or _authenticated_u1_workflow_successor(path, SOURCES[path])
+                    or _authenticated_ux1_mvp_successor(path, SOURCES[path])
+                    or PR3.matches(path, SOURCES[path]))                    # post-#413: the exact state pinned by the closed R1 cohort (role file: one added wrapper)
+        assert S.violations(SOURCES) == [] and S.current_mutation_successor_valid()
 
 
 @pytest.mark.parametrize("path", sorted(LAYER))
@@ -219,17 +221,18 @@ def _last_run_history_id(record, owner, history) -> "str | None":
 
 
 def test_the_workspace_router_changes_only_by_the_one_rcux_include_and_reviewed_wording():
-    source = SOURCES["app/v2/react_workspace_router.py"]
-    tail = source[source.index("# ───────────────────────────── RC-UX: React adapters"):]
-    assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == ["_rcux_router"]
-    assert re.findall(r"^from app\.v2\.(\w+) import router as (\w+)", tail, flags=re.M) == [("react_rcux", "_rcux_router")]
-    rebuilt = _git("show", f"{BASE}:app/v2/react_workspace_router.py")
-    for old, new in ROUTER_WORDING:
-        assert rebuilt.count(old) == 1, old
-        rebuilt = rebuilt.replace(old, new)
-    expected = rebuilt.rstrip("\n") + "\n\n\n" + tail.rstrip("\n") + "\n"
-    from tests import fin_v2_wsv2_scope as WS2
-    assert source == expected or WS2.matches("app/v2/react_workspace_router.py", source.encode())   # or the Owner-approved WS-2 exact blob
+    with C.call_scope():
+        source = SOURCES["app/v2/react_workspace_router.py"]
+        tail = source[source.index("# ───────────────────────────── RC-UX: React adapters"):]
+        assert re.findall(r"^router\.include_router\((\w+)\)$", tail, flags=re.M) == ["_rcux_router"]
+        assert re.findall(r"^from app\.v2\.(\w+) import router as (\w+)", tail, flags=re.M) == [("react_rcux", "_rcux_router")]
+        rebuilt = _git("show", f"{BASE}:app/v2/react_workspace_router.py")
+        for old, new in ROUTER_WORDING:
+            assert rebuilt.count(old) == 1, old
+            rebuilt = rebuilt.replace(old, new)
+        expected = rebuilt.rstrip("\n") + "\n\n\n" + tail.rstrip("\n") + "\n"
+        from tests import fin_v2_wsv2_scope as WS2
+        assert source == expected or WS2.matches("app/v2/react_workspace_router.py", source.encode())   # or the Owner-approved WS-2 exact blob
 
 
 def test_the_rcux_aggregator_lists_exactly_the_adapter_modules_it_mounts():
@@ -253,56 +256,57 @@ def test_the_rcux_adapters_add_no_calculation_authority_and_never_import_the_eng
 
 
 def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
-    try:
-        changed = set(_git("diff", "--name-only", MAIN, "HEAD").split())
-        changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
-    except subprocess.CalledProcessError:
-        pytest.skip("baseline commit not available in this checkout")
-    forbidden = ("app/input_adapter.py", "app/api/project_runner.py", "app/runtime/model_execution.py", "app/v2/router.py",
-                 "app/v2/returns_projection.py", "app/services/run_intent_service.py", "app/persistence/run_intent_repository.py",
-                 "app/persistence/run_history_repository.py", "app/persistence/projects_repository.py", "app/services/run_service.py",
-                 "app/services/goal_seek.py", "app/services/sensitivity_matrix.py", "main_web.py",
-                 "app/workbook/mutation_csrf.py", "app/workbook/financing_csrf.py")
-    prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/", "app/export/")
-    hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
-    # The ONE later, separately governed exception: the PR #394 correction cohort pins the exact blob of app/services/run_intent_service.py
-    # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
-    from tests import fin_v2_pr394_corr_scope as PR394
-    hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
-    # Two later, separately governed exceptions: the Owner-approved WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py) pins the exact blob of each of its own
-    # paths; the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly the two workbook paths below (the registered contractual-DSCR inputs and their
-    # pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
-    from tests import fin_v2_wsv2_scope as WS2
-    from tests import wf04_scope as WF04
-    hits = [p for p in hits if not (p in WS2.OWNED_PATHS and WS2.matches(p, (S.ROOT / p).read_bytes()))]
-    hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
-                                    and WF04.matches(p, (S.ROOT / p).read_bytes()))]
-    # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
-    # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
-    hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
-    # Fourth: the Owner-approved WF-03 lifecycle cohort (tests/wf03_lifecycle_scope.py) owns exactly these four paths (archive / restore fences, request
-    # admission, creation completeness, demo-provisioning prefixes); only that exact path with exactly that pinned blob is attributed to it.
-    from tests import wf03_lifecycle_scope as WF03
-    WF03_PATHS = ("main_web.py", "app/v2/router.py", "app/persistence/projects_repository.py", "app/services/run_service.py")
-    hits = [p for p in hits if not (p in WF03_PATHS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
-    # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
-    # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
-    hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
-    # Sixth: the Owner-approved CI V4 cohort (tests/ci_v4_scope.py, CI policy 2026-11-04) owns exactly its literal CI_PATHS (new ci_v4_* workflows and
-    # tools only); admitted only through U1's bounded later-CI hook while that cohort is registered and exact. No existing workflow or tool is admitted.
-    from tests import u1_scope as U1
-    hits = [p for p in hits if not U1._later_ci_owns(p, S.ROOT, None)]
-    # Seventh: the closed Workstream-B cohort (tests/post413_o1_scope.py; O1 / G7 / G-U2-1 / D7, every behaviour off by default or additive, no Owner decision
-    # approved here) owns a literal, finite path set. Only a path of that set at exactly its pinned blob, while the cohort and the composite are valid, is attributed to it.
-    from tests import post413_o1_scope as O1
-    hits = [p for p in hits if not (p in O1.OWNED_PATHS and O1.matches(p, (S.ROOT / p).read_bytes()))]
-    assert hits == [], hits
-    assert not O1.matches("app/capex_profiles/binding.py", (S.ROOT / "app/capex_profiles/binding.py").read_bytes())      # a sibling file the cohort does not own
-    assert not O1.matches("app/v2/router.py", b"x = 1\n")                                                                 # an owned path at foreign bytes
-    for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
-        assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
-    golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
-    assert golden == [], golden
+    with C.call_scope():
+        try:
+            changed = set(_git("diff", "--name-only", MAIN, "HEAD").split())
+            changed |= set(_git("diff", "--name-only").split()) | set(_git("diff", "--name-only", "--cached").split())
+        except subprocess.CalledProcessError:
+            pytest.skip("baseline commit not available in this checkout")
+        forbidden = ("app/input_adapter.py", "app/api/project_runner.py", "app/runtime/model_execution.py", "app/v2/router.py",
+                     "app/v2/returns_projection.py", "app/services/run_intent_service.py", "app/persistence/run_intent_repository.py",
+                     "app/persistence/run_history_repository.py", "app/persistence/projects_repository.py", "app/services/run_service.py",
+                     "app/services/goal_seek.py", "app/services/sensitivity_matrix.py", "main_web.py",
+                     "app/workbook/mutation_csrf.py", "app/workbook/financing_csrf.py")
+        prefixes = ("financial_engine/", "finco_core/", "domain/", ".github/", "app/workbook/", "app/capex_profiles/", "app/export/")
+        hits = [p for p in changed if p in forbidden or p.startswith(prefixes)]
+        # The ONE later, separately governed exception: the PR #394 correction cohort pins the exact blob of app/services/run_intent_service.py
+        # (tests/fin_v2_pr394_corr_scope.py).  Only that exact path with exactly that blob is attributed to it - never a prefix or another forbidden path.
+        from tests import fin_v2_pr394_corr_scope as PR394
+        hits = [p for p in hits if not (p == "app/services/run_intent_service.py" and PR394.matches(p, (S.ROOT / p).read_bytes()))]
+        # Two later, separately governed exceptions: the Owner-approved WS-2 Save All cohort (tests/fin_v2_wsv2_scope.py) pins the exact blob of each of its own
+        # paths; the Owner-authorised WF-04 cohort (tests/wf04_scope.py) owns exactly the two workbook paths below (the registered contractual-DSCR inputs and their
+        # pure Run-terms module). Only that exact path with exactly that blob is attributed to it.
+        from tests import fin_v2_wsv2_scope as WS2
+        from tests import wf04_scope as WF04
+        hits = [p for p in hits if not (p in WS2.OWNED_PATHS and WS2.matches(p, (S.ROOT / p).read_bytes()))]
+        hits = [p for p in hits if not (p in ("app/workbook/registry.py", "app/workbook/dscr_contract_terms.py")
+                                        and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+        # Third: the Owner-approved Correction C timeout hunk in exactly one workflow (tests/wf04_scope.py admits the path only at the exact approved-main
+        # bytes plus the literal hunk, while the whole cohort is valid); every other .github/ path is still a hit.
+        hits = [p for p in hits if not (p == WF04.WORKFLOW_PATH and WF04.matches(p, (S.ROOT / p).read_bytes()))]
+        # Fourth: the Owner-approved WF-03 lifecycle cohort (tests/wf03_lifecycle_scope.py) owns exactly these four paths (archive / restore fences, request
+        # admission, creation completeness, demo-provisioning prefixes); only that exact path with exactly that pinned blob is attributed to it.
+        from tests import wf03_lifecycle_scope as WF03
+        WF03_PATHS = ("main_web.py", "app/v2/router.py", "app/persistence/projects_repository.py", "app/services/run_service.py")
+        hits = [p for p in hits if not (p in WF03_PATHS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+        # Fifth: the three Owner-approved CI workflows the WF-03 cohort owns (Correction E budgets + the run-attempt artifact integrity repair): only the
+        # exact path set WF03.CI_TIMEOUT_WORKFLOWS, each at exactly its WF-03-pinned blob. No other .github/ path and no other byte is admitted.
+        hits = [p for p in hits if not (p in WF03.CI_TIMEOUT_WORKFLOWS and WF03.matches(p, (S.ROOT / p).read_bytes()))]
+        # Sixth: the Owner-approved CI V4 cohort (tests/ci_v4_scope.py, CI policy 2026-11-04) owns exactly its literal CI_PATHS (new ci_v4_* workflows and
+        # tools only); admitted only through U1's bounded later-CI hook while that cohort is registered and exact. No existing workflow or tool is admitted.
+        from tests import u1_scope as U1
+        hits = [p for p in hits if not U1._later_ci_owns(p, S.ROOT, None)]
+        # Seventh: the closed Workstream-B cohort (tests/post413_o1_scope.py; O1 / G7 / G-U2-1 / D7, every behaviour off by default or additive, no Owner decision
+        # approved here) owns a literal, finite path set. Only a path of that set at exactly its pinned blob, while the cohort and the composite are valid, is attributed to it.
+        from tests import post413_o1_scope as O1
+        hits = [p for p in hits if not (p in O1.OWNED_PATHS and O1.matches(p, (S.ROOT / p).read_bytes()))]
+        assert hits == [], hits
+        assert not O1.matches("app/capex_profiles/binding.py", (S.ROOT / "app/capex_profiles/binding.py").read_bytes())      # a sibling file the cohort does not own
+        assert not O1.matches("app/v2/router.py", b"x = 1\n")                                                                 # an owned path at foreign bytes
+        for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
+            assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
+        golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
+        assert golden == [], golden
 
 
 # ── RC-UX adapters: read-only, no state-changing route, no token issuance of their own ──────────────────────────────────────────
@@ -364,11 +368,12 @@ def test_each_rcux_acceptance_module_is_not_collected_alone_exports_exactly_its_
 
 def test_the_wf03_ci_workflow_successor_is_exact_path_and_exact_blob_only():
     """Negatives for the RC-UX CI-workflow successor: exactly the three WF-03 workflows at their exact pins; no other .github/ path, no other byte."""
-    from tests import wf03_lifecycle_scope as WF03
-    assert WF03.CI_TIMEOUT_WORKFLOWS == {".github/workflows/ci_public_job.yml", ".github/workflows/ci_v3_required_job.yml",
-                                         ".github/workflows/public_safety_and_smoke.yml"}
-    for path in sorted(WF03.CI_TIMEOUT_WORKFLOWS):
-        raw = (S.ROOT / path).read_bytes()
-        assert WF03.matches(path, raw) and not WF03.matches(path, raw + b"\n") and not WF03.matches(path, raw.replace(b"timeout-minutes", b"timeout-minutez", 1))
-    for other in (".github/workflows/protocol_ui_browser.yml", ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/new_unreviewed.yml"):
-        assert other not in WF03.CI_TIMEOUT_WORKFLOWS and not WF03.allowed_path(other)
+    with C.call_scope():
+        from tests import wf03_lifecycle_scope as WF03
+        assert WF03.CI_TIMEOUT_WORKFLOWS == {".github/workflows/ci_public_job.yml", ".github/workflows/ci_v3_required_job.yml",
+                                             ".github/workflows/public_safety_and_smoke.yml"}
+        for path in sorted(WF03.CI_TIMEOUT_WORKFLOWS):
+            raw = (S.ROOT / path).read_bytes()
+            assert WF03.matches(path, raw) and not WF03.matches(path, raw + b"\n") and not WF03.matches(path, raw.replace(b"timeout-minutes", b"timeout-minutez", 1))
+        for other in (".github/workflows/protocol_ui_browser.yml", ".github/workflows/finval_f01_acceptance.yml", ".github/workflows/new_unreviewed.yml"):
+            assert other not in WF03.CI_TIMEOUT_WORKFLOWS and not WF03.allowed_path(other)

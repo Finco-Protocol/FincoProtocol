@@ -39,6 +39,19 @@ def _effective_pin(path,historical):
             pin=signed['source_blobs'][path]
     return pin
 
+def _later_authority(path):
+    """The LAST registered successor after UX-PR3b2 (BESS01, R02, F03, C06, the CI V4 shard-2 fix ...) that supersedes ``path``, or None. It is the
+    authority for the CURRENT blob; PR1 keeps its own authenticated lineage (``_effective_pin``) up to PR3b2."""
+    import importlib
+    from tests import ux_pr3b2_scope as F
+    last=None
+    for name in C.COHORT_MODULES[C.COHORT_MODULES.index(F.__name__)+1:]:
+        later=importlib.import_module(name)
+        if path in getattr(later,'SUPERSEDED',()):
+            assert later.exact_blobs_ok()
+            last=later
+    return last
+
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
     with ExitStack() as scopes:
@@ -53,10 +66,14 @@ def test_exact_registered_and_historical_maps_immutable():
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
             hist=d['source_blobs'][p]
             eff=_effective_pin(p,hist)
-            assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40)
+            last=_later_authority(p)
+            cur=git(U.ROOT,'hash-object',p).strip()
+            if last is None:   # nothing moved the pin after UX-PR3b2: the PR1 lineage end is the current pin
+                assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40) and cur==eff
+            else:              # the last registered successor that moved it accepts exactly the current blob and nothing forged
+                assert last.supersedes(p,cur) and not last.supersedes(p,'0'*40)
             if eff!=hist:  # a historical pin is preserved but no longer current authority
                 assert not U.supersedes(p,hist)
-            assert git(U.ROOT,'hash-object',p).strip()==eff
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
             assert {k:v for k,v in old.items() if k!='source_blobs'}=={k:v for k,v in now.items() if k!='source_blobs'}
@@ -65,13 +82,19 @@ def test_exact_registered_and_historical_maps_immutable():
 
 @pytest.mark.parametrize('path',sorted(U.OWNED_PATHS))
 def test_unsigned_byte_fails_closed(path,wt):
-    assert U.exact_blobs_ok(wt)
+    # One bounded read-only registry call scope PER PHASE (each is dropped before the byte is changed, so no verdict is ever reused across the
+    # mutation): the unscoped composite recomputed the whole cohort chain at every link (about 16-21 minutes per parameter on a hosted runner).
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt)
     p=wt/path;p.write_bytes(p.read_bytes()+b'\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
 
 @pytest.mark.parametrize('change',['missing','extra','base','tree','history','mode','foreign','deregister'])
 def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):
-    assert U.exact_blobs_ok(wt)
+    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same assertions, no verdict reused across a mutation.
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt)
     path=wt/U.MANIFEST;d=json.loads(path.read_text())
     if change=='missing':d['source_blobs'].pop(next(iter(d['source_blobs'])))
     elif change=='extra':d['source_blobs']['financial_engine/new.py']='0'*40
@@ -84,7 +107,8 @@ def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):
         p=wt/'tests/fin_v2_cohorts.py';p.write_text(p.read_text().replace(", 'tests.ux_pr1_scope'",''))
     path.write_text(json.dumps(d,indent=2)+'\n')
     try:
-        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not U.exact_blobs_ok(wt) and not C.valid(wt)
     finally:
         # core.filemode=false makes reset preserve a pure executable-mode mutation.
         (wt/'frontend/src/app/WorkspaceView.tsx').chmod(0o644)
@@ -94,27 +118,41 @@ def test_shared_pin_and_historical_map_tamper_fail_closed(path,wt):
     p=wt/path;d=json.loads(p.read_text());old=p.read_bytes()
     owned=next(k for k in d['source_blobs'] if k in U.OWNED_PATHS)
     d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same assertions, no verdict reused across a mutation.
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
     p.write_bytes(old);d=json.loads(old);d['base']='0'*40;p.write_text(json.dumps(d)+'\n')
-    assert not U.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)
 
 def test_match_requires_exact_registered_source_and_named_ref(wt):
     from tests import wf06b_scope as W
     p='frontend/src/app/workflow/WorkflowBar.tsx';raw=(wt/p).read_bytes()
-    assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)
+    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same assertions, no verdict reused across a mutation.
+    with C.call_scope():
+        assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)
     (wt/p).write_bytes(raw+b'\n')
-    assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)
-    assert U.exact_blobs_ok(wt,'HEAD')
+    with C.call_scope():
+        assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt,'HEAD')
 
 
 def test_ci_artifacts_are_not_source_exemptions(wt):
-    evidence=wt/'evidence'/'ux-pr1-probe';evidence.mkdir(parents=True,exist_ok=True)
-    artifact=evidence/'source.json';artifact.write_text('{"synthetic": true}\n')
-    assert U.exact_blobs_ok(wt) and C.valid(wt)
+    # A finite generated-evidence path (the BESS01 guard accepts only those exact F01 outputs, no prefix or glob): the probe stays a data file, never source.
+    evidence=wt/'evidence'/'browser';evidence.mkdir(parents=True,exist_ok=True)
+    artifact=evidence/'solar.json';artifact.write_text('{"synthetic": true}\n')
+    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same assertions, no verdict reused across a mutation.
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt) and C.valid(wt)
     for suffix in ('.py','.tsx','.mjs'):
         source=evidence/('unsigned'+suffix);source.write_text('unsigned\n')
-        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not U.exact_blobs_ok(wt) and not C.valid(wt)
         source.unlink()
-    artifact.chmod(0o755);assert not U.exact_blobs_ok(wt)
+    artifact.chmod(0o755)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)
     artifact.chmod(0o644);artifact.unlink();artifact.symlink_to(wt/'tests/ux_pr1_scope.py')
-    assert not U.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)

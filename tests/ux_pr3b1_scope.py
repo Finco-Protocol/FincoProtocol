@@ -223,7 +223,8 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):
+    from tests import ci_v4_shard2_fix_scope as S2
+    if path in S2.SUPERSEDED or path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):
         from tests import c06_cost_workspace_scope as C06
         if C06.signature_ok(repo, ref) and C06.supersedes(path, value, repo, ref):
             return True

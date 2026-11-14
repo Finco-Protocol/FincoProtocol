@@ -7,6 +7,7 @@ import shutil
 
 import pytest
 from tests import c06_cost_workspace_scope as C06_APPROVAL
+from tests import ci_v4_shard2_fix_scope as S2_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 from tests import bess02_scope as B, fin_v2_cohorts as C
@@ -171,6 +172,9 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
                             'tests/onaccept01_scope.py', 'tests/tax_reference_registry_scope.py'}
     from tests import f03_financing_scope as G
     for path in sorted(paths):
+        if path in S2_APPROVAL.SUPERSEDED and S2_APPROVAL.signature_ok():     # the one reviewed CI V4 shard-2 fix successor of the CI V4 scheduler/shard sources
+            assert B._blob((B.ROOT/path).read_bytes()) == S2_APPROVAL.effective_pins()[path]
+            continue
         if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared bundle, exactly at its pinned blob
             assert B._blob((B.ROOT/path).read_bytes()) == G.effective_pins()[path]
             continue
@@ -194,7 +198,8 @@ def test_accepted_r02_product_and_historical_manifest_are_unchanged():
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)
                 and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
             or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, W.__name__)
-                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok()))
+                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok()) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, S2_APPROVAL.__name__)
+            and C06_APPROVAL.signature_ok() and S2_APPROVAL.signature_ok()))
     assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope')
 
 
