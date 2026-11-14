@@ -68,6 +68,7 @@ HANDOFF_PATHS = frozenset((
     "tests/test_r03_ppa_scope.py",
     "tests/test_r04_ppa_scope.py",
     "tests/test_t01e_remediation_scope.py",
+    "tests/test_u2_scope.py",
     "tests/u1_scope.py",
     "tests/u2_scope.py",
     "tests/ux_pr1_scope.py",
@@ -86,7 +87,7 @@ CURRENT_MAPS = frozenset((
     "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",
     "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",
 ))
-MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+MAP_KEYS = (REGISTRY, "static/react/finco-react.js", "static/react/finco-react.css", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py")
 OWNED_PATHS = SOURCE_PATHS | NEW | HANDOFF_PATHS | CURRENT_MAPS
 SUPERSEDED = OWNED_PATHS - NEW
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "tools/", "migrations/", "app/", "research/", "main_web.py")
@@ -124,7 +125,6 @@ FROZEN = (
     "tests/tax_reference_registry_scope.py",
     "tests/test_c06_cost_workspace_browser.py",
     "tests/test_c06_custom_capex_profile_replay.py",
-    "tests/test_u2_scope.py",
     "tests/test_ux_pr3b1_scope.py",
 )
 # C06 and R04 keep owning their own production baselines; this successor owns no revenue or CAPEX engine path.
@@ -579,6 +579,17 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                            '\'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                            '    ("fake_extra", lambda b: b.replace(b"\'tests.ux_final01_scope\')", '
                                            'b"\'tests.ux_final01_scope\', \'tests.fake_scope\')")),\n')],
+ 'tests/test_u2_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
+                             'def test_positive_cohort_is_exact_registered_and_closed():\n'
+                             '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
+                             'calls or mutations) instead of one full\n'
+                             '    # cohort verdict per path (the same bounded call scope the accepted PR3b1 and U1 successors use). '
+                             'Assertions are unchanged.\n'
+                             '    with C.call_scope():\n'
+                             '        _positive_cohort_checks()\n'
+                             '\n'
+                             '\n'
+                             'def _positive_cohort_checks():\n')],
  'tests/u1_scope.py': [("'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')\n\n\nclass _Discovered:",
                         "'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')\n\n\nclass _Discovered:"),
                        ('        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)\n',

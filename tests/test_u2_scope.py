@@ -67,6 +67,13 @@ def _unexplained(changed, registered_exact):
 
 
 def test_positive_cohort_is_exact_registered_and_closed():
+    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across calls or mutations) instead of one full
+    # cohort verdict per path (the same bounded call scope the accepted PR3b1 and U1 successors use). Assertions are unchanged.
+    with C.call_scope():
+        _positive_cohort_checks()
+
+
+def _positive_cohort_checks():
     assert U2.exact_blobs_ok() and U2.valid() and C.valid() and U1.exact_blobs_ok() and W.exact_blobs_ok()
     assert U2.__name__ in C.COHORT_MODULES and U2 in C.cohorts() and U2.protected_blobs() == {}
     data = U2.manifest()
