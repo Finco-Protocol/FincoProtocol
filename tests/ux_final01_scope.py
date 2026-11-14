@@ -257,6 +257,19 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and '
                                         'N.signature_ok(root, ref) else ()\r\n'
                                         '        return tuple(MAP_KEYS) + more\r\n'),
+                                       ('    for key in MAP_KEYS:\r\n'
+                                        '        if key in d["source_blobs"]:\r\n'
+                                        '            d["source_blobs"][key] = pins[key]\r\n'
+                                        '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\r\n',
+                                        '    for key in MAP_KEYS:\r\n'
+                                        '        if key in d["source_blobs"]:\r\n'
+                                        '            d["source_blobs"][key] = pins[key]\r\n'
+                                        '    N = _next()      # the one reviewed forward successor may move its own additional existing '
+                                        'current-map keys, and only where its pins are supplied\r\n'
+                                        '    for key in (tuple(k for k in N.MAP_KEYS if k not in MAP_KEYS) if N is not None else ()):\r\n'
+                                        '        if key in d["source_blobs"] and key in pins:\r\n'
+                                        '            d["source_blobs"][key] = pins[key]\r\n'
+                                        '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\r\n'),
                                        ('def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
                                         '    return dict(manifest(repo, ref).get("source_blobs", {}))\r\n',
                                         'def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
@@ -693,7 +706,18 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                              '\n'
                              '\n'
                              'def _integration_reference_checks():\n')],
- 'tests/test_u2_scope.py': [('def test_positive_cohort_is_exact_registered_and_closed():\n',
+ 'tests/test_u2_scope.py': [('from tests import u2_scope as U2\n',
+                             'from tests import u2_scope as U2\nfrom tests import ux_final01_scope as UX_APPROVAL\n'),
+                            ('        assert len(_shared_signatures(wt, list(four.values()), path)) == 1, path\n',
+                             '        sigs = _shared_signatures(wt, list(four.values()), path)\n'
+                             "        owners = {m.manifest(wt).get('source_blobs', {}).get(path) for m in four.values() if path in "
+                             'm.OWNED_PATHS}\n'
+                             '        tree_blob = U1._blob((Path(wt) / path).read_bytes())\n'
+                             '        # one shared blob, or: every owner still signs ONE historical blob and only the reviewed UX-FINAL-01 '
+                             'successor moves the tree to its own exact pin\n'
+                             '        assert len(sigs) == 1 or (len(owners) == 1 and UX_APPROVAL.supersedes(path, tree_blob, wt, None)), '
+                             'path\n'),
+                            ('def test_positive_cohort_is_exact_registered_and_closed():\n',
                              'def test_positive_cohort_is_exact_registered_and_closed():\n'
                              '    # Read-only node: ONE registry-wide read for THIS call only (dropped on exit; nothing is kept across '
                              'calls or mutations) instead of one full\n'

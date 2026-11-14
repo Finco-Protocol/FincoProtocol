@@ -154,6 +154,10 @@ def expected_map(root, path, pins=None):
     for key in MAP_KEYS:
         if key in d["source_blobs"]:
             d["source_blobs"][key] = pins[key]
+    N = _next()      # the one reviewed forward successor may move its own additional existing current-map keys, and only where its pins are supplied
+    for key in (tuple(k for k in N.MAP_KEYS if k not in MAP_KEYS) if N is not None else ()):
+        if key in d["source_blobs"] and key in pins:
+            d["source_blobs"][key] = pins[key]
     return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
 
 

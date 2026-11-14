@@ -122,9 +122,11 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
         "tests/test_r02_ppa_ux_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_f03_financing_scope.py",
         "tests/test_t01e_remediation_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_f04_financing_scope.py", "tests/test_r04_ppa_scope.py",
         "tests/test_c06_cost_workspace_scope.py", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr1_scope.py", "tests/ux_pr2b_scope.py",
-        "tests/ux_pr2c_scope.py", "tests/ux_pr3b1_scope.py"))
+        "tests/ux_pr2c_scope.py", "tests/ux_pr3b1_scope.py", "tests/test_u2_scope.py", "tests/test_u1_scope.py", "tests/post413_r1_scope.py",
+        "tests/post413_r17_scope.py", "tests/post413_r18_scope.py", "tests/post413_o1_scope.py"))
     assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS
-    assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", BUNDLE, STYLE_BUNDLE, "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py")
+    assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", BUNDLE, STYLE_BUNDLE, "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr3b1_scope.py",
+                          "tests/test_u2_scope.py", "tests/post413_r1_scope.py", "tests/post413_r17_scope.py", "tests/post413_r18_scope.py")
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") for p in T.OWNED_PATHS | {T.MANIFEST} | T.LIVE_DOCS)
     assert not T.LIVE_DOCS & T.OWNED_PATHS and all(p.endswith(".md") for p in T.LIVE_DOCS)      # unpinned documentation only, never code
     assert T.PREDECESSOR == "tests/c06_cost_workspace_scope.py"

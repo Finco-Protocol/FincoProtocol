@@ -46,7 +46,7 @@
     "tests/test_u2_opex_lines.py": "274dbe6f1721536decbf850086156cc2e4576e0e",
     "tests/test_u2_profile_import.py": "a4c7e9df6a611a9b10b5f9908d575b108a7abe02",
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
-    "tests/test_u2_scope.py": "68f1484f30072784ce9b5594c408f45b971f11ac",
+    "tests/test_u2_scope.py": "0fab70188d95ae7d668009b27254cf7163968fd5",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
     "tests/u1_scope.py": "794ed4300a05d817d1a23a57ee553606bfa239d8",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
