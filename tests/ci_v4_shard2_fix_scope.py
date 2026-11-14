@@ -34,12 +34,14 @@ REGISTRY = "tests/fin_v2_cohorts.py"
 PREDECESSOR = "tests/c06_cost_workspace_scope.py"
 # The only tools/ paths this cohort can admit (literal; an unknown tools/ path is never admitted by any prefix or pattern).
 CI_TOOL_PATHS = frozenset((
+    "tools/ci_v4_activate.py",
     "tools/ci_v4_schedule.py",
     "tools/ci_v4_shard.py",
 ))
 SOURCE_PATHS = CI_TOOL_PATHS | frozenset((
     "docs/ci_v4/node_split_policy.json",
     "docs/ci_v4/node_weights.json",
+    "tests/test_ci_v4_activate.py",
     "tests/test_ci_v4_nodes.py",
     "tests/test_ci_v4_schedule.py",
 ))
@@ -53,15 +55,16 @@ HANDOFF_PATHS = frozenset((
     "tests/fin_v2_cohorts.py",
     "tests/test_bess02_scope.py",
     "tests/test_c06_cost_workspace_scope.py",
-    "tests/test_ci_v4_activate.py",
     "tests/test_ci_v4_perf_scope.py",
     "tests/test_f03_financing_scope.py",
     "tests/test_f04_financing_scope.py",
+    "tests/test_post413_o1_scope.py",
     "tests/test_post432_l01_l02_scope.py",
     "tests/test_r02_ppa_ux_scope.py",
     "tests/test_r03_ppa_scope.py",
     "tests/test_r04_ppa_scope.py",
     "tests/test_t01e_remediation_scope.py",
+    "tests/test_ux_pr1_scope.py",
     "tests/u1_scope.py",
     "tests/u2_scope.py",
     "tests/ux_pr1_scope.py",
@@ -121,7 +124,6 @@ FROZEN = (
     "tests/r04_ppa_scope.py",
     "tests/t01e_remediation_scope.py",
     "tests/tax_reference_registry_scope.py",
-    "tools/ci_v4_activate.py",
     "tools/ci_v4_aggregate.py",
     "tools/ci_v4_full_record.py",
     "tools/ci_v4_governance_gate.py",
@@ -365,14 +367,6 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                              "original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)\n",
                                              "        assert {k for k in original['source_blobs'] if "
                                              "original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys())\n")],
- 'tests/test_ci_v4_activate.py': [('    assert AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, '
-                                   'real)["decision"] == "module_plan"\n',
-                                   '    # tests/test_u1_scope.py joined the reviewed split-safe allowlist (CI V4 shard-2 fix); u2 (still '
-                                   'NOT_BENEFICIAL) and the finance modules do not.\n'
-                                   '    got = AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)\n'
-                                   '    assert got["decision"] == "collect" and got["eligible"] == ["tests/test_u1_scope.py"]\n'
-                                   '    assert AC.decide({"pytest_modules": ["tests/test_u2_scope.py", "tests/test_goal_seek_v1.py"]}, '
-                                   'real)["decision"] == "module_plan"\n')],
  'tests/test_ci_v4_perf_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                      'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                      'from tests import ci_v4_shard2_fix_scope as S2_APPROVAL\n'),
@@ -469,6 +463,28 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                         '        expected=json.loads(S2_APPROVAL.expected_map(ROOT,path,S2_APPROVAL.effective_pins()) if '
                                         'S2_APPROVAL.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if '
                                         'C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))')],
+ 'tests/test_post413_o1_scope.py': [('def _u2_signed_later_pins(repo=None, ref=None):\n',
+                                     'def _c06_continues(path, signed_pin, root, ref):\n'
+                                     '    """The accepted C06 successor (#444) moved a presentation path that U2 had signed: C06 is exact and '
+                                     'registered, its recorded BASE blob is exactly\n'
+                                     "    U2's signed pin and the evaluated bytes are exactly C06's own pin (the registered chain U2 -> C06; nothing "
+                                     'else is admitted by this helper)."""\n'
+                                     '    from tests import c06_cost_workspace_scope as K\n'
+                                     '    if K.__name__ not in C.COHORT_MODULES or path not in K.SUPERSEDED or not K.exact_blobs_ok(root, ref):\n'
+                                     '        return False\n'
+                                     '    signed = K.manifest(root, ref)\n'
+                                     "    pin = signed.get('source_blobs', {}).get(path)\n"
+                                     "    return (pin is not None and signed.get('base_blobs', {}).get(path) == signed_pin and K.supersedes(path, "
+                                     'pin, root, ref)\n'
+                                     '            and K._blob(K._read(root, path, ref)) == pin)\n'
+                                     '\n'
+                                     '\n'
+                                     'def _u2_signed_later_pins(repo=None, ref=None):\n'),
+                                    ('            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)\n'
+                                     '            and U2._blob(U2._read(root, p, ref)) == signed[p]}\n',
+                                     '            and signed[p] != historical.get(p)\n'
+                                     '            and ((U2.supersedes(p, signed[p], root, ref) and U2._blob(U2._read(root, p, ref)) == signed[p])\n'
+                                     '                 or _c06_continues(p, signed[p], root, ref))}\n')],
  'tests/test_post432_l01_l02_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                           'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                           'from tests import ci_v4_shard2_fix_scope as S2_APPROVAL\n'),
@@ -490,7 +506,18 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                      "    if 'tests.ci_v4_shard2_fix_scope' in C.COHORT_MODULES and S2_APPROVAL.signature_ok():\n"
                                      '        expected = S2_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
                                      '    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
-                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n')],
+                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'),
+                                    ("    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', "
+                                     "'.github/', 'tools/', 'scripts/'))\n"
+                                     '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in '
+                                     'G.SOURCE_PATHS)]\n',
+                                     '    from tests import ci_v4_shard2_fix_scope as S2\n'
+                                     "    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', "
+                                     "'.github/', 'tools/', 'scripts/'))\n"
+                                     '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in '
+                                     'G.SOURCE_PATHS)\n'
+                                     '                and not (S2.signature_ok() and p in S2.CI_TOOL_PATHS)]      # exactly the literal CI V4 tool '
+                                     'paths of the reviewed shard-2 fix successor\n')],
  'tests/test_r03_ppa_scope.py': [('from tests import c06_cost_workspace_scope as C06_APPROVAL\n',
                                   'from tests import c06_cost_workspace_scope as C06_APPROVAL\n'
                                   'from tests import ci_v4_shard2_fix_scope as S2_APPROVAL\n'),
@@ -590,6 +617,120 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                            'b"\'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.fake_scope\')")),\n',
                                            '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_shard2_fix_scope\')", '
                                            'b"\'tests.ci_v4_shard2_fix_scope\', \'tests.fake_scope\')")),\n')],
+ 'tests/test_ux_pr1_scope.py': [('def test_unsigned_byte_fails_closed(path,wt):\n'
+                                 '    assert U.exact_blobs_ok(wt)\n'
+                                 "    p=wt/path;p.write_bytes(p.read_bytes()+b'\\n')\n"
+                                 '    assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n',
+                                 'def test_unsigned_byte_fails_closed(path,wt):\n'
+                                 '    # One bounded read-only registry call scope PER PHASE (each is dropped before the byte is changed, so no '
+                                 'verdict is ever reused across the\n'
+                                 '    # mutation): the unscoped composite recomputed the whole cohort chain at every link (about 16-21 minutes per '
+                                 'parameter on a hosted runner).\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert U.exact_blobs_ok(wt)\n'
+                                 "    p=wt/path;p.write_bytes(p.read_bytes()+b'\\n')\n"
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'),
+                                ('def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):\n'
+                                 '    assert U.exact_blobs_ok(wt)\n'
+                                 '    path=wt/U.MANIFEST;d=json.loads(path.read_text())\n',
+                                 'def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):\n'
+                                 '    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same '
+                                 'assertions, no verdict reused across a mutation.\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert U.exact_blobs_ok(wt)\n'
+                                 '    path=wt/U.MANIFEST;d=json.loads(path.read_text())\n'),
+                                ('    try:\n        assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n    finally:\n        # core.filemode=false',
+                                 '    try:\n'
+                                 '        with C.call_scope():\n'
+                                 '            assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                 '    finally:\n'
+                                 '        # core.filemode=false'),
+                                ("    d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                 '    assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                 "    p.write_bytes(old);d=json.loads(old);d['base']='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                 '    assert not U.exact_blobs_ok(wt)\n',
+                                 "    d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                 '    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same '
+                                 'assertions, no verdict reused across a mutation.\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                 "    p.write_bytes(old);d=json.loads(old);d['base']='0'*40;p.write_text(json.dumps(d)+'\\n')\n"
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.exact_blobs_ok(wt)\n'),
+                                ('    assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)\n'
+                                 "    (wt/p).write_bytes(raw+b'\\n')\n"
+                                 '    assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)\n'
+                                 "    assert U.exact_blobs_ok(wt,'HEAD')\n",
+                                 '    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same '
+                                 'assertions, no verdict reused across a mutation.\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)\n'
+                                 "    (wt/p).write_bytes(raw+b'\\n')\n"
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)\n'
+                                 '    with C.call_scope():\n'
+                                 "        assert U.exact_blobs_ok(wt,'HEAD')\n"),
+                                ('    assert U.exact_blobs_ok(wt) and C.valid(wt)\n'
+                                 "    for suffix in ('.py','.tsx','.mjs'):\n"
+                                 "        source=evidence/('unsigned'+suffix);source.write_text('unsigned\\n')\n"
+                                 '        assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                 '        source.unlink()\n'
+                                 '    artifact.chmod(0o755);assert not U.exact_blobs_ok(wt)\n'
+                                 "    artifact.chmod(0o644);artifact.unlink();artifact.symlink_to(wt/'tests/ux_pr1_scope.py')\n"
+                                 '    assert not U.exact_blobs_ok(wt)\n',
+                                 '    # Read-only verdict phases run in their own bounded call scope (dropped before any byte changes): same '
+                                 'assertions, no verdict reused across a mutation.\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert U.exact_blobs_ok(wt) and C.valid(wt)\n'
+                                 "    for suffix in ('.py','.tsx','.mjs'):\n"
+                                 "        source=evidence/('unsigned'+suffix);source.write_text('unsigned\\n')\n"
+                                 '        with C.call_scope():\n'
+                                 '            assert not U.exact_blobs_ok(wt) and not C.valid(wt)\n'
+                                 '        source.unlink()\n'
+                                 '    artifact.chmod(0o755)\n'
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.exact_blobs_ok(wt)\n'
+                                 "    artifact.chmod(0o644);artifact.unlink();artifact.symlink_to(wt/'tests/ux_pr1_scope.py')\n"
+                                 '    with C.call_scope():\n'
+                                 '        assert not U.exact_blobs_ok(wt)\n'),
+                                ('def test_exact_registered_and_historical_maps_immutable():\n',
+                                 'def _later_authority(path):\n'
+                                 '    """The LAST registered successor after UX-PR3b2 (BESS01, R02, F03, C06, the CI V4 shard-2 fix ...) that '
+                                 'supersedes ``path``, or None. It is the\n'
+                                 '    authority for the CURRENT blob; PR1 keeps its own authenticated lineage (``_effective_pin``) up to PR3b2."""\n'
+                                 '    import importlib\n'
+                                 '    from tests import ux_pr3b2_scope as F\n'
+                                 '    last=None\n'
+                                 '    for name in C.COHORT_MODULES[C.COHORT_MODULES.index(F.__name__)+1:]:\n'
+                                 '        later=importlib.import_module(name)\n'
+                                 "        if path in getattr(later,'SUPERSEDED',()):\n"
+                                 '            assert later.exact_blobs_ok()\n'
+                                 '            last=later\n'
+                                 '    return last\n'
+                                 '\n'
+                                 'def test_exact_registered_and_historical_maps_immutable():\n'),
+                                ('            eff=_effective_pin(p,hist)\n'
+                                 "            assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40)\n"
+                                 '            if eff!=hist:  # a historical pin is preserved but no longer current authority\n'
+                                 '                assert not U.supersedes(p,hist)\n'
+                                 "            assert git(U.ROOT,'hash-object',p).strip()==eff\n",
+                                 '            eff=_effective_pin(p,hist)\n'
+                                 '            last=_later_authority(p)\n'
+                                 "            cur=git(U.ROOT,'hash-object',p).strip()\n"
+                                 '            if last is None:   # nothing moved the pin after UX-PR3b2: the PR1 lineage end is the current pin\n'
+                                 "                assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40) and cur==eff\n"
+                                 '            else:              # the last registered successor that moved it accepts exactly the current blob and '
+                                 'nothing forged\n'
+                                 "                assert last.supersedes(p,cur) and not last.supersedes(p,'0'*40)\n"
+                                 '            if eff!=hist:  # a historical pin is preserved but no longer current authority\n'
+                                 '                assert not U.supersedes(p,hist)\n'),
+                                ("    evidence=wt/'evidence'/'ux-pr1-probe';evidence.mkdir(parents=True,exist_ok=True)\n"
+                                 '    artifact=evidence/\'source.json\';artifact.write_text(\'{"synthetic": true}\\n\')\n',
+                                 '    # A finite generated-evidence path (the BESS01 guard accepts only those exact F01 outputs, no prefix or glob): '
+                                 'the probe stays a data file, never source.\n'
+                                 "    evidence=wt/'evidence'/'browser';evidence.mkdir(parents=True,exist_ok=True)\n"
+                                 '    artifact=evidence/\'solar.json\';artifact.write_text(\'{"synthetic": true}\\n\')\n')],
  'tests/u1_scope.py': [("'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')\n\n\nclass _Discovered:",
                         "'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_shard2_fix_scope')\n\n\nclass _Discovered:"),
                        ("    if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css',",

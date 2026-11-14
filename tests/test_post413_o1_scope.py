@@ -141,6 +141,18 @@ def _ci_v4_own_later_paths(repo=None, ref=None):
     return frozenset(p for p in C4.OWNED_PATHS if p.startswith(CI_V4_OWN_PREFIXES) and p not in O.OWNED_PATHS)
 
 
+def _c06_continues(path, signed_pin, root, ref):
+    """The accepted C06 successor (#444) moved a presentation path that U2 had signed: C06 is exact and registered, its recorded BASE blob is exactly
+    U2's signed pin and the evaluated bytes are exactly C06's own pin (the registered chain U2 -> C06; nothing else is admitted by this helper)."""
+    from tests import c06_cost_workspace_scope as K
+    if K.__name__ not in C.COHORT_MODULES or path not in K.SUPERSEDED or not K.exact_blobs_ok(root, ref):
+        return False
+    signed = K.manifest(root, ref)
+    pin = signed.get('source_blobs', {}).get(path)
+    return (pin is not None and signed.get('base_blobs', {}).get(path) == signed_pin and K.supersedes(path, pin, root, ref)
+            and K._blob(K._read(root, path, ref)) == pin)
+
+
 def _u2_signed_later_pins(repo=None, ref=None):
     from tests import u2_scope as U2
     root = Path(repo) if repo is not None else O.ROOT
@@ -151,8 +163,9 @@ def _u2_signed_later_pins(repo=None, ref=None):
     historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']
     return {p: signed[p] for p in U2_LATER_PRESENTATION
             if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED
-            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)
-            and U2._blob(U2._read(root, p, ref)) == signed[p]}
+            and signed[p] != historical.get(p)
+            and ((U2.supersedes(p, signed[p], root, ref) and U2._blob(U2._read(root, p, ref)) == signed[p])
+                 or _c06_continues(p, signed[p], root, ref))}
 
 
 # UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.

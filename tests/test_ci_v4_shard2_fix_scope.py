@@ -26,6 +26,7 @@ from tests import ci_v4_scope as V
 from tests import ci_v4_shard2_fix_scope as T
 
 ROOT = Path(__file__).resolve().parents[1]
+ACTIVATE = "tools/ci_v4_activate.py"
 SCHEDULE = "tools/ci_v4_schedule.py"
 SHARD = "tools/ci_v4_shard.py"
 SPLIT_POLICY = "docs/ci_v4/node_split_policy.json"
@@ -119,14 +120,16 @@ def test_manifest_schema_pins_modes_and_immutable_base():
 
 
 def test_owned_set_is_finite_literal_and_admits_no_forbidden_path_except_the_two_tools():
-    assert T.CI_TOOL_PATHS == frozenset((SCHEDULE, SHARD))
-    assert T.SOURCE_PATHS == frozenset((SCHEDULE, SHARD, SPLIT_POLICY, NODE_WEIGHTS, "tests/test_ci_v4_nodes.py", "tests/test_ci_v4_schedule.py"))
+    assert T.CI_TOOL_PATHS == frozenset((ACTIVATE, SCHEDULE, SHARD))
+    assert T.SOURCE_PATHS == frozenset((ACTIVATE, SCHEDULE, SHARD, SPLIT_POLICY, NODE_WEIGHTS, "tests/test_ci_v4_activate.py", "tests/test_ci_v4_nodes.py",
+                                       "tests/test_ci_v4_schedule.py"))
     assert T.NEW == frozenset(("tests/ci_v4_shard2_fix_scope.py", "tests/test_ci_v4_shard2_fix_scope.py"))
     assert T.HANDOFF_PATHS == frozenset((
         "tests/c06_cost_workspace_scope.py", "tests/fin_v2_cohorts.py", "tests/test_bess02_scope.py", "tests/test_c06_cost_workspace_scope.py",
-        "tests/test_ci_v4_activate.py", "tests/test_ci_v4_perf_scope.py", "tests/test_f03_financing_scope.py", "tests/test_f04_financing_scope.py",
-        "tests/test_post432_l01_l02_scope.py", "tests/test_r02_ppa_ux_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_r04_ppa_scope.py",
-        "tests/test_t01e_remediation_scope.py", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr1_scope.py", "tests/ux_pr2b_scope.py",
+        "tests/test_ci_v4_perf_scope.py", "tests/test_f03_financing_scope.py", "tests/test_f04_financing_scope.py",
+        "tests/test_post413_o1_scope.py", "tests/test_post432_l01_l02_scope.py", "tests/test_r02_ppa_ux_scope.py", "tests/test_r03_ppa_scope.py", "tests/test_r04_ppa_scope.py",
+        "tests/test_t01e_remediation_scope.py", "tests/test_ux_pr1_scope.py", "tests/u1_scope.py", "tests/u2_scope.py", "tests/ux_pr1_scope.py",
+        "tests/ux_pr2b_scope.py",
         "tests/ux_pr2c_scope.py", "tests/ux_pr3b1_scope.py"))
     assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS
     assert set(T.MAP_KEYS) == {T.REGISTRY} | T.SOURCE_PATHS | T.HANDOFF_PATHS
@@ -234,10 +237,10 @@ def test_the_change_set_is_the_owned_set_and_touches_no_engine_app_workflow_or_f
         assert not p.startswith(("app/", "financial_engine/", "finco_core/", "domain/", ".github/", "migrations/", "research/", "frontend/", "static/", "main_web.py")), p
         if p.startswith("tools/"):
             assert p in T.CI_TOOL_PATHS, p                                    # exactly the two reviewed tools, never another tools/ path
-    assert {p for p in changed if p.startswith("tools/")} == set(T.CI_TOOL_PATHS)
+    assert {p for p in changed if p.startswith("tools/")} == set(T.CI_TOOL_PATHS) == {ACTIVATE, SCHEDULE, SHARD}
     for p in ("docs/ci_v4/module_weights.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/correction_p/SOURCE_SUCCESSOR.json",
               ".github/workflows/ci_v4_pr.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_release_gate.yml",
-              "tools/ci_v4_select.py", "tools/ci_v4_governance_gate.py", "tools/ci_v4_nodes.py", "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py"):
+              "tools/ci_v4_select.py", "tools/ci_v4_governance_gate.py", "tools/ci_v4_nodes.py", "tools/ci_v4_aggregate.py"):
         assert p not in changed and (ROOT / p).read_bytes() == _base(p), p
 
 
@@ -248,17 +251,17 @@ def test_no_older_cohort_forbidden_prefix_or_ci_allowlist_was_widened():
         assert p in T.FROZEN and (ROOT / p).read_bytes() == _base(p), p
     assert V.CI_PREFIXES == (".github/", "tools/") and "tools/" in F.FORBIDDEN and ".github/" in F.FORBIDDEN
     assert {"tools/ci_v4_schedule.py", "tools/ci_v4_shard.py"} <= V.CI_PATHS            # the pre-existing literal CI V4 paths: the same files, no new path
-    assert not T.allowed_path("tools/ci_v4_select.py") and not T.allowed_path("tools/ci_v4_new.py") and not T.allowed_path(".github/workflows/ci_v4_pr.yml")
-    assert T.allowed_path(SCHEDULE) and T.allowed_path(SHARD)
+    assert not T.allowed_path("tools/ci_v4_select.py") and not T.allowed_path("tools/ci_v4_nodes.py") and not T.allowed_path("tools/ci_v4_new.py") and not T.allowed_path(".github/workflows/ci_v4_pr.yml")
+    assert T.allowed_path(SCHEDULE) and T.allowed_path(SHARD) and T.allowed_path(ACTIVATE)
 
 
-def test_the_two_scheduler_tools_stay_inside_the_reviewed_surface():
-    for p in (SCHEDULE, SHARD):
+def test_the_three_reviewed_tools_stay_inside_the_reviewed_surface():
+    for p in (ACTIVATE, SCHEDULE, SHARD):
         diff = _git("diff", "--unified=0", T.BASE, "--", p)
         added = "\n".join(l[1:] for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++"))
         for forbidden in ("os.system", "eval(", "exec(", "shell=True", "urllib", "requests", "socket", "GITHUB_TOKEN", "secrets.", "os.environ["):
             assert forbidden not in added, (p, forbidden)
-    assert "_DIAGNOSTIC_WRAPPER_CODE" in (ROOT / SHARD).read_text()
+    assert "_DIAGNOSTIC_WRAPPER_CODE" in (ROOT / SHARD).read_text() and "pytest_command(" in (ROOT / ACTIVATE).read_text()
 
 
 def test_node_split_policy_is_the_closed_reviewed_allowlist():
@@ -521,3 +524,57 @@ def test_older_cohort_hooks_only_follow_this_successor_while_its_signature_holds
         for path in (SCHEDULE, SPLIT_POLICY, NODE_WEIGHTS, T.REGISTRY):
             value = T.manifest(clone, "HEAD")["source_blobs"][path]
             assert U2.supersedes(path, value, clone, bad) is False and U3.supersedes(path, value, clone, bad) is False, path
+
+
+# ---------------------------------------------------------------- post413_o1: the accepted U2 -> C06 lineage of CostWorkbench / CostLinesGridView
+U2_MAP = "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json"
+C06_MANIFEST = "docs/react_migration/c06_cost_workspace/SOURCE_SUCCESSOR.json"
+COST_WORKBENCH = "frontend/src/app/CostWorkbench.tsx"
+
+
+def _json_pin(path, key, value):
+    def run(raw):
+        d = json.loads(raw)
+        d["source_blobs"][key] = value
+        return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
+    return run
+
+
+def test_o1_audit_accepts_the_registered_u2_to_c06_lineage_with_an_authenticated_link():
+    """Positive control for the reviewed finite expectation: the clean head passes and the two U2-signed presentation paths that C06 moved are both
+    recognised, each through C06's recorded BASE blob (= U2's signed pin) and C06's own pin (= the evaluated bytes)."""
+    from tests import test_post413_o1_scope as T1
+    with C.call_scope():
+        evidence = T1._audit_shared_sibling_pins()
+        assert set(evidence[U2_MAP]["u2"]) == T1.U2_LATER_PRESENTATION == {COST_WORKBENCH, "frontend/src/app/editing/CostLinesGridView.tsx"}
+        signed = json.loads((ROOT / U2_MAP).read_text())["source_blobs"]
+        c06 = json.loads((ROOT / C06_MANIFEST).read_text())
+        for p in T1.U2_LATER_PRESENTATION:
+            assert c06["base_blobs"][p] == signed[p] and T1._c06_continues(p, signed[p], ROOT, None)
+            assert not T1._c06_continues(p, "0" * 40, ROOT, None) and not T1._c06_continues(p, c06["source_blobs"][p], ROOT, None)      # only the signed link
+
+
+@pytest.mark.parametrize("name", ["forged_u2_pin", "stale_u2_pin", "foreign_path_in_u2_map", "unsigned_bytes", "forged_c06_base_link"])
+def test_o1_audit_still_rejects_every_tampering_of_the_u2_to_c06_lineage(clone, name):
+    from tests import test_post413_o1_scope as T1
+    with C.call_scope():
+        assert T1._audit_shared_sibling_pins(clone, "HEAD")            # the clean committed head passes: a rejection below is caused by the tamper
+    stale = json.loads(subprocess.check_output(["git", "show", T1.O.BASE + ":" + U2_MAP], cwd=ROOT))["source_blobs"][COST_WORKBENCH]      # the o1 BASE value
+    base = json.loads((ROOT / C06_MANIFEST).read_text())["base_blobs"][COST_WORKBENCH]
+    edits = {
+        "forged_u2_pin": {U2_MAP: _json_pin(U2_MAP, COST_WORKBENCH, "0" * 40)},
+        "stale_u2_pin": {U2_MAP: _json_pin(U2_MAP, COST_WORKBENCH, stale)},
+        "foreign_path_in_u2_map": {U2_MAP: _json_pin(U2_MAP, "frontend/src/app/ForeignSibling.tsx", "0" * 40)},
+        "unsigned_bytes": {COST_WORKBENCH: lambda b: b + b"\n"},
+        "forged_c06_base_link": {C06_MANIFEST: lambda b: b.replace(b'"' + COST_WORKBENCH.encode() + b'": "' + base[:8].encode(), b'"' + COST_WORKBENCH.encode() + b'": "0000' + base[4:8].encode(), 1)},
+    }[name]
+    ref = _variant(clone, edits)
+    # The audit either raises, or (a pin equal to the historical one is simply "not moved") stops admitting the path as a later signed U2 successor.
+    try:
+        with C.call_scope():
+            admitted = set(T1._audit_shared_sibling_pins(clone, ref)[U2_MAP]["u2"])
+    except AssertionError:
+        admitted = None
+    assert admitted != T1.U2_LATER_PRESENTATION, name
+    with C.call_scope():                                              # and the registered chain itself refuses the tampered commit
+        assert not T.exact_blobs_ok(clone, ref) and not C.valid(clone, ref), name

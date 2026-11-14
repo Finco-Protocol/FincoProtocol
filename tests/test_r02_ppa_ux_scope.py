@@ -81,8 +81,10 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     changed = set(_git(ROOT, 'diff', '--name-only', '--no-renames', X.BASE).splitlines())
     assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
+    from tests import ci_v4_shard2_fix_scope as S2
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
-                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)]
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)
+                and not (S2.signature_ok() and p in S2.CI_TOOL_PATHS)]      # exactly the literal CI V4 tool paths of the reviewed shard-2 fix successor
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
