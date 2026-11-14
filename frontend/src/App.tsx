@@ -9,6 +9,7 @@ import { WorkspaceView } from "./app/WorkspaceView";
 import { ws2Extensions } from "./app/editing/wsv2Extensions";
 import { ReportPrecisionProvider } from "./app/ReportPrecision";
 import "./styles/rx-mvp-correction.css";
+import "./styles/ux-final01.css";
 
 type Phase = "loading" | "error" | "ready";
 

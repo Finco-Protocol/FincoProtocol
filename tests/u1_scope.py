@@ -200,7 +200,7 @@ _SCOPE = []
 LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')
 
 
-RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')
+RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ux_final01_scope')
 
 
 class _Discovered:
@@ -212,7 +212,7 @@ class _Discovered:
         self._module = module
         self.__name__ = module.__name__
         self.MANIFEST = module.MANIFEST
-        self.OWNED_PATHS = frozenset(module.OWNED_PATHS)
+        self.OWNED_PATHS = frozenset(module.OWNED_PATHS) | frozenset(getattr(module, 'LIVE_DOCS', ()))      # living documents a cohort may change without a pin
 
     def exact_blobs_ok(self, repo=None, ref=None):
         return self._module.exact_blobs_ok(repo, ref)
@@ -397,6 +397,10 @@ def allowed_path(path, repo=None, ref=None):
 
 def _c06_correction_c_pin(path, blob, root, ref):
     """Only the finite signed Correction C successor may move these exact U1 pins; history remains untouched."""
+    from tests import ux_final01_scope as UX
+    if path in UX.SUPERSEDED:       # UX-FINAL-01: the finite signed successor chain (C06 forwards to it) may move these exact pins too
+        from tests import c06_cost_workspace_scope as C06
+        return C06.signature_ok(root, ref) and C06.supersedes(path, blob, root, ref)
     if path not in ('frontend/src/app/capex/CapexStudio.tsx', 'frontend/src/styles/compact-inputs.css', 'static/react/finco-react.css', 'tests/model_react_rcux_capex_acceptance.py'):
         return False
     try:
