@@ -430,7 +430,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [('    _SCOPE.append({})\r\n   
                                  '            continue\n'
                                  '        if path in G.SOURCE_PATHS and G.signature_ok():     # one reviewed F03 successor of the shared '
                                  'bundle, exactly at its pinned blob\n')],
- 'tests/test_c06_cost_workspace_scope.py': [('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
+ 'tests/test_c06_cost_workspace_scope.py': [("original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)\n",
+                                             "original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys(ROOT))      # C06's "
+                                             "keys plus the reviewed successor's own extra keys\n"),
+                                            ('    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)\n',
                                              '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
                                              "(F.__name__, 'tests.ux_final01_scope'))\n"),
                                             ('    for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)\n',
