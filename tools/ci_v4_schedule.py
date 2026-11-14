@@ -68,10 +68,11 @@ def choose_workers(modules, weights, tier, tier_cfg):
     """Smallest worker count whose marginal gain justifies another runner (policy: min seconds saved per extra worker).
 
     Correction (2026-11-14, PR #446 shard-2 forensics): the LPT critical path is NOT monotonic in the worker count - one
-    sub-threshold step can precede a materially better k+1 (deterministic repro in tests/test_ci_v4_schedule.py), so the scan
-    continues to the cap instead of stopping at the first sub-threshold step. The ACCEPTANCE rule is unchanged: a larger k is
-    taken only while it saves >= min_module_seconds_per_extra_worker of critical path, so the result is still the smallest
-    threshold-justified count under the tier cap (fail-closed, no empty workers via plan_shards).
+    sub-threshold step can precede a materially better k+2 (deterministic repro in tests/test_ci_v4_schedule.py), so the scan
+    continues to the cap instead of stopping at the first sub-threshold step. The per-extra-worker policy is kept exactly: a larger
+    k is accepted only when it saves at least min_module_seconds_per_extra_worker for EVERY worker it adds over the last accepted
+    count (``saved >= min_gain * (k - best)``). One threshold never pays for two runners: skipping a bad step cannot turn a one-worker
+    justification into a multi-worker purchase. Fail-closed, tier cap unchanged, no empty workers (plan_shards).
     """
     cap = int(tier_cfg["max"])
     min_gain = float(tier_cfg["min_module_seconds_per_extra_worker"])
@@ -84,7 +85,7 @@ def choose_workers(modules, weights, tier, tier_cfg):
     for k in range(2, min(cap, n) + 1):
         _, loads = lpt(modules, weights, k)
         crit = max(loads)
-        if best_crit - crit >= min_gain:      # saved wall time must beat the stated threshold
+        if best_crit - crit >= min_gain * (k - best):      # every added worker must earn the stated threshold
             best, best_crit = k, crit
     return best
 
@@ -213,12 +214,12 @@ def apply_node_split(plan, inventory, split_policy, weights, node_weights, polic
     if not split:
         return plan
     cap = int(cfg["max"]); min_gain = float(cfg["min_module_seconds_per_extra_worker"])
-    # Same correction as choose_workers: keep scanning to the cap (unit critical path is not monotonic in k); the
-    # acceptance threshold itself is unchanged, so no worker is added without the policy-justified saving.
+    # Same correction as choose_workers: keep scanning to the cap (unit critical path is not monotonic in k) and price every
+    # added worker at the policy threshold, so no worker is added without its own policy-justified saving.
     best, (best_shards, best_loads) = 1, _lpt_units(units, 1)
     for k in range(2, min(cap, len(units)) + 1):
         shards, loads = _lpt_units(units, k)
-        if max(best_loads) - max(loads) >= min_gain:
+        if max(best_loads) - max(loads) >= min_gain * (k - best):
             best, best_shards, best_loads = k, shards, loads
     pairs = [(s, l) for s, l in zip(best_shards, best_loads) if s]
     over = float(cfg["fixed_overhead_seconds_per_worker"])

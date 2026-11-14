@@ -24,8 +24,8 @@ from pathlib import Path
 from tools.ci_v3_pytest_config import plugin_args
 
 # Stall forensics (2026-11-14, PR #446 shard-2: a single governance node hung for 2h19m at 83% with no evidence and no
-# artifact). One verbose flag per test (the last COMPLETED node id is always in the log, so the deterministic collection
-# order of the sealed plan names the next, hung node) plus a stdlib faulthandler watchdog armed around the whole pytest
+# artifact). One verbose flag per test, WITHOUT -q (-q and -v cancel to verbosity 0, which prints no node ids): the node id is written
+# at test START, so the last id in the log names the running, hung node plus a stdlib faulthandler watchdog armed around the whole pytest
 # process: every DIAGNOSTIC_DUMP_AFTER_S seconds of process lifetime it dumps the stack of every thread and keeps running
 # (repeat=True; no pytest plugin is involved, so PYTEST_DISABLE_PLUGIN_AUTOLOAD cannot break it). A hung or timed-out test
 # stays CANCELLED/INCOMPLETE, never PASS, and the job timeout of the workflow remains the hard ceiling. 2400 s stays above
@@ -34,17 +34,27 @@ from tools.ci_v3_pytest_config import plugin_args
 DIAGNOSTIC_DUMP_AFTER_S = 2400
 DIAGNOSTIC_ARGS = ("-v",)
 # The wrapper arms the watchdog, then hands over to pytest's own main (same argument list; sys.argv[0] is "-c").
-_DIAGNOSTIC_WRAPPER_CODE = (
-    "import faulthandler, sys\n"
-    "faulthandler.dump_traceback_later(%d, repeat=True)\n"
-    "import pytest\n"
-    "sys.exit(pytest.main(sys.argv[1:]))\n" % DIAGNOSTIC_DUMP_AFTER_S
-)
+# The dump goes to a DUPLICATE of the real stderr taken before pytest starts: pytest's default fd-level capture redirects fd 2 for the
+# duration of every test, so a dump written to fd 2 would be swallowed by the capture file of exactly the hung test it is meant to name.
+def _wrapper_code(dump_after_s):
+    return ("import faulthandler, os, sys\n"
+            "_real_stderr = os.fdopen(os.dup(2), 'w')\n"
+            "faulthandler.dump_traceback_later(%d, repeat=True, file=_real_stderr)\n"
+            "import pytest\n"
+            "try:\n"
+            "    rc = pytest.main(sys.argv[1:])\n"
+            "finally:\n"
+            "    faulthandler.cancel_dump_traceback_later()\n"
+            "sys.exit(rc)\n" % int(dump_after_s))
 
 
-def pytest_command(extra):
-    """Full argv for one shard pytest run: the diagnostic watchdog wrapper + the given pytest arguments."""
-    return [sys.executable, "-c", _DIAGNOSTIC_WRAPPER_CODE, *extra]
+_DIAGNOSTIC_WRAPPER_CODE = _wrapper_code(DIAGNOSTIC_DUMP_AFTER_S)
+
+
+def pytest_command(extra, dump_after_s=DIAGNOSTIC_DUMP_AFTER_S):
+    """Full argv for one shard pytest run: the diagnostic watchdog wrapper + the given pytest arguments (the interval is injectable for tests only)."""
+    code = _DIAGNOSTIC_WRAPPER_CODE if dump_after_s == DIAGNOSTIC_DUMP_AFTER_S else _wrapper_code(dump_after_s)
+    return [sys.executable, "-c", code, *extra]
 
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE = 2 * 1024 ** 3
@@ -138,11 +148,11 @@ def main(argv=None):
             evidence = out / ("nodes-shard-%d.json" % a.index)
             env.update(FINCO_CI_V4_NODE_ASSIGN=str(out / ("assign-shard-%d.json" % a.index)), FINCO_CI_V4_NODE_EVIDENCE=str(evidence))
             targets = sorted(set(assign["whole"]) | set(assign["split"]))
-            rc = subprocess.call(pytest_command(["-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
+            rc = subprocess.call(pytest_command(["-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(), "-p", "tools.ci_v4_nodes",
                                   "--junitxml", str(junit), *targets]), env=env)
             record.update({"units": plan["schedule"]["units"][a.index], "node_evidence": evidence.name})
         elif mods:
-            rc = subprocess.call(pytest_command(["-q", "-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(),
+            rc = subprocess.call(pytest_command(["-rs", *DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", *plugin_args(),
                                   "--junitxml", str(junit), *mods]), env=env)
     finally:
         if tmp is not None:

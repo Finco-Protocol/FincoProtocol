@@ -391,3 +391,71 @@ def test_real_allowlisted_modules_collect_exact_lossless_ids(tmp_path):
     for m in mods:
         ids = got[0]["modules"][m]["node_ids"]
         assert ids and len(ids) == len(set(ids)) and len({N.junit_address(i) for i in ids}) == len(ids)
+
+
+# ---- stall forensics: the in-process stdlib faulthandler watchdog (2026-11-14) -----------------------------------------------------------------
+WRAP = r'''
+import time
+
+
+def _hang_here(seconds):
+    time.sleep(seconds)
+
+
+def test_fast():
+    assert True
+
+
+def test_slow_node():
+    _hang_here(6)
+
+
+def test_after():
+    assert True
+'''
+WRAP_FAIL = "def test_boom():\n    assert 1 == 2\n"
+
+
+def _run_wrapped(tmp_path, body, name, dump_after_s=2, **extra_env):
+    f = tmp_path / name
+    f.write_text(body)
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", **extra_env)
+    argv = SH.pytest_command(["-rs", *SH.DIAGNOSTIC_ARGS, "-p", "no:cacheprovider", "--rootdir", str(tmp_path), str(f)], dump_after_s=dump_after_s)
+    proc = subprocess.run(argv, cwd=tmp_path, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+    return proc.returncode, proc.stdout.decode(errors="replace")
+
+
+def test_watchdog_names_the_running_node_and_dumps_the_stack_repeatedly_without_stopping_the_run(tmp_path):
+    """Real pytest under PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 (the hosted shard environment): a node that outlives the interval is named in the log
+    BEFORE it finishes, every dump shows the concrete frame it is stuck in, the dump repeats, and the run still completes (a watchdog never kills)."""
+    secret = "SYNTH-SECRET-VALUE-448"
+    rc, out = _run_wrapped(tmp_path, WRAP, "test_wrap.py", FINCO_SYNTH_TOKEN=secret)
+    assert rc == 0, out
+    first_dump = out.index("most recent call first")
+    running = out.index("test_wrap.py::test_slow_node")
+    assert running < first_dump                                              # the stuck node id is already in the log when the first dump is written
+    assert "PASSED" not in out[running:first_dump].split("\\n", 1)[0]          # ... and it had not completed yet
+    assert out.count("most recent call first") >= 2                          # repeat=True: a longer stall dumps again
+    assert "in _hang_here" in out and "test_wrap.py" in out[first_dump:]     # the concrete currently-running frame
+    assert out.count("Timeout (0:00:02)!") >= 2
+    assert "test_wrap.py::test_after" in out and "3 passed" in out
+    assert secret not in out and "FINCO_SYNTH_TOKEN" not in out              # a dump shows frames only, never the environment
+
+
+def test_watchdog_keeps_a_failing_run_failing_and_adds_no_dump_to_a_fast_run(tmp_path):
+    rc, out = _run_wrapped(tmp_path, WRAP_FAIL, "test_fail.py", dump_after_s=30)
+    assert rc == 1 and "1 failed" in out and "most recent call first" not in out      # failure stays failure; nothing is dumped before the interval
+    rc, out = _run_wrapped(tmp_path, "def test_ok():\n    assert True\n", "test_ok.py", dump_after_s=30)
+    assert rc == 0 and "1 passed" in out and "most recent call first" not in out
+
+
+def test_watchdog_is_an_in_process_stdlib_wrapper_not_a_pytest_option():
+    """Hosted run 43590299354: with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 the pytest option form (-p faulthandler / --faulthandler-timeout) was rejected. The
+    shard command must stay the stdlib wrapper, with the unchanged default interval above the heaviest measured legitimate node."""
+    argv = SH.pytest_command(["-rs", "x"])
+    assert argv[:2] == [sys.executable, "-c"] and argv[3:] == ["-rs", "x"] and "dump_traceback_later(2400, repeat=True, file=_real_stderr)" in argv[2]
+    assert "os.dup(2)" in argv[2] and "cancel_dump_traceback_later" in argv[2]            # the dump survives pytest's fd capture and never fires after the run
+    assert not any(a == "faulthandler" or a.startswith("--faulthandler") for a in argv)
+    assert SH.DIAGNOSTIC_DUMP_AFTER_S == 2400 and SH.DIAGNOSTIC_ARGS == ("-v",)
+    weights = json.loads((ROOT / "docs/ci_v4/node_weights.json").read_text())["nodes"]
+    assert SH.DIAGNOSTIC_DUMP_AFTER_S > max(weights.values())            # a healthy measured node never triggers a dump

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from tests import c06_cost_workspace_scope as C06_APPROVAL
+from tests import ci_v4_shard2_fix_scope as S2_APPROVAL
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -98,7 +99,9 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import ci_v4_perf_scope as F
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():
+    if 'tests.ci_v4_shard2_fix_scope' in C.COHORT_MODULES and S2_APPROVAL.signature_ok():
+        expected = S2_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():
         expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.r04_ppa_scope' in C.COHORT_MODULES and W.signature_ok():
         expected = W.expected_handoff(ROOT, X.REGISTRY)

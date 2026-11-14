@@ -26,7 +26,7 @@ class Mutation:
 def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='b1c08e2d00fe9933565d253d5cee6e5849b143e1'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
-    assert C.COHORT_MODULES == F.BASE_COHORTS + (F.__name__,)
+    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, 'tests.ci_v4_shard2_fix_scope'))
     assert C.COHORT_MODULES.count(F.__name__)==1
     for ref in (None,'HEAD'):
         with C.call_scope():
@@ -41,18 +41,22 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','static/react/finco-react.css','tests/u1_scope.py','tests/u2_scope.py','tests/ux_pr3b1_scope.py','tests/test_u2_scope.py','tests/test_ux_pr3b1_scope.py')
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
-    for path in F.HANDOFFS:assert (ROOT/path).read_bytes()==F.expected_handoff(ROOT,path)
+    from tests import ci_v4_shard2_fix_scope as S2
+    for path in F.HANDOFFS:
+        want=S2.expected_handoff(ROOT,path) if S2.signature_ok() and path in S2.HANDOFFS else F.expected_handoff(ROOT,path)
+        assert (ROOT/path).read_bytes()==want
     for path in F.FROZEN:assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT)
 
 def test_current_maps_change_only_their_existing_registry_and_js_keys():
     for path in F.CURRENT_MAPS:
         original=json.loads(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT))
         current=json.loads((ROOT/path).read_text())
-        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        from tests import ci_v4_shard2_fix_scope as S2
+        expected=json.loads(S2.expected_map(ROOT,path,S2.effective_pins()) if S2.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's pins win)
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')
-        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.MAP_KEYS)
+        assert {k for k in original['source_blobs'] if original['source_blobs'][k]!=current['source_blobs'][k]}<=set(F.map_keys())
 
 @pytest.mark.parametrize('path',sorted(F.OWNED_PATHS|{F.MANIFEST}))
 def test_worktree_byte_tamper_fails_without_changing_head(clone,path):
@@ -76,8 +80,8 @@ def test_modes_registry_and_closed_diff_are_enforced(clone,kind):
             path=clone/F.PREDECESSOR;path.write_bytes(subprocess.check_output(['git','show',F.BASE+':'+F.PREDECESSOR],cwd=clone))
         else:
             path=clone/F.REGISTRY;text=path.read_text()
-            if kind=='missing_registration':text=text.replace(", 'tests.c06_cost_workspace_scope')",')')
-            elif kind=='duplicate_registration':text=text.replace("'tests.c06_cost_workspace_scope')","'tests.c06_cost_workspace_scope', 'tests.c06_cost_workspace_scope')")
+            if kind=='missing_registration':text=text.replace(", 'tests.c06_cost_workspace_scope', 'tests.ci_v4_shard2_fix_scope')", ", 'tests.ci_v4_shard2_fix_scope')")
+            elif kind=='duplicate_registration':text=text.replace("'tests.c06_cost_workspace_scope', 'tests.ci_v4_shard2_fix_scope')","'tests.c06_cost_workspace_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_shard2_fix_scope')")
             else:text=text.replace("'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'","'tests.c06_cost_workspace_scope', 'tests.r04_ppa_scope'")
             path.write_text(text)
         with C.call_scope():assert not F.exact_blobs_ok(clone) and not C.valid(clone)
@@ -140,7 +144,7 @@ def test_accepted_ref_preserves_all_preexisting_exact_guards_and_original_code(c
     with C.call_scope():
         assert not F.signature_ok(clone,F.BASE)
         for m in C.cohorts():
-            if m.__name__!=F.__name__:
+            if m.__name__ not in (F.__name__,'tests.ci_v4_shard2_fix_scope'):      # the later reviewed CI V4 shard-2 fix successor does not exist at the accepted base
                 assert m.exact_blobs_ok(clone,F.BASE),m.__name__
         assert B.ci_authority_ok(clone,F.BASE)
         for path in (provider,editor):

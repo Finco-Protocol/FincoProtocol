@@ -151,7 +151,10 @@ def test_decide_reads_nothing_but_the_trusted_policy():
     real = S.load_node_split_policy()
     got = AC.decide(plan, real)
     assert got["decision"] == "collect" and got["eligible"] == ["tests/test_rcux_governance.py"]
-    assert AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
+    # tests/test_u1_scope.py joined the reviewed split-safe allowlist (CI V4 shard-2 fix); u2 (still NOT_BENEFICIAL) and the finance modules do not.
+    got = AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)
+    assert got["decision"] == "collect" and got["eligible"] == ["tests/test_u1_scope.py"]
+    assert AC.decide({"pytest_modules": ["tests/test_u2_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
 
 
 # ── sealing / invariants ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
