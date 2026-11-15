@@ -91,7 +91,11 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     assert not any(p.startswith((".github/", "tools/", "app/", "financial_engine/", "finco_core/", "domain/", "frontend/", "static/", "research/"))
                    for p in T.OWNED_PATHS | {T.MANIFEST})
+    from tests import ci_v4_lean_b2_scope as T2
     for path in T.FROZEN:
+        if T.SUCCESSOR in C.COHORT_MODULES and T2.signature_ok() and path in T2.HANDOFFS:      # the reviewed B2 successor owns this control file's further substitution
+            assert (ROOT / path).read_bytes() == T2.expected_handoff(ROOT, path), path
+            continue
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path
     assert {"tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json", ".github/workflows/ci_v4_pr.yml", "tools/ci_v4_aggregate.py",
             "tools/ci_v4_schedule.py", "docs/ci_v4/module_weights.json"} <= set(T.FROZEN)
@@ -99,8 +103,12 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    from tests import ci_v4_lean_b2_scope as T2
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+        if T.SUCCESSOR in C.COHORT_MODULES and T2.signature_ok() and p in T2.HANDOFFS:      # the reviewed B2 substitution of this shared path
+            assert (ROOT / p).read_bytes() == T2.expected_handoff(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
     for ref in (None, "HEAD"):
         with C.call_scope():
@@ -108,9 +116,12 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_c06():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")
+    assert C.COHORT_MODULES.count(T.__name__) == 1
+    assert C.COHORT_MODULES[-2:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"))
     assert K.SUCCESSOR == T.__name__ and K._next() is T
+    from tests import ci_v4_lean_b2_scope as T2
+    if T.SUCCESSOR in C.COHORT_MODULES:
+        assert C.COHORT_MODULES[-1] == T.SUCCESSOR and T.SUCCESSOR != T.__name__ and T2.PREDECESSOR == "tests/ci_v4_lean_b1_scope.py"
 
 
 def test_c06_and_every_older_cohort_still_follow_the_chain():
@@ -126,15 +137,17 @@ def test_current_maps_move_only_their_registry_and_u1_discovery_keys():
         old = json.loads(_git("show", T.BASE + ":" + p))
         cur = json.loads((ROOT / p).read_text())
         assert set(old) == set(cur) and all(old[k] == cur[k] for k in old if k != "source_blobs")
+        from tests import ci_v4_lean_b2_scope as T2
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
-        assert changed <= set(T.MAP_KEYS)
+        assert changed <= set(T.MAP_KEYS) | (set(T2.MAP_KEYS) if T.SUCCESSOR in C.COHORT_MODULES and T2.signature_ok() else set())
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")
+    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"))
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1
+    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") <= 1
 
 
 # -------------------------------------------------------------------------------------------------------------- tamper (committed refs)
@@ -154,12 +167,13 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope')"
+    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b1_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope')")),
+        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope')")),
         ("b1_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b1_scope'", b"")),
+        ("b2_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b2_scope'", b"")),
         ("c06_missing", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', ", b"")),
         ("r04_removed", lambda b: b.replace(b"'tests.r04_ppa_scope', ", b"")),
         ("earlier_reordered", lambda b: b.replace(b"'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope'", b"'tests.fin_v2_ci_scope', 'tests.fin_v2_3_scope'")),

@@ -98,8 +98,11 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import ci_v4_perf_scope as F
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     B1 = C06_APPROVAL._next()
+    B2 = B1._next() if B1 is not None else None
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():
+    if 'tests.ci_v4_lean_b2_scope' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():
+        expected = B2.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():
         expected = B1.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():
         expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)

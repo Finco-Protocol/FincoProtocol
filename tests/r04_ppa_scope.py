@@ -626,6 +626,10 @@ def _signature_ok(root, ref, closure=False):
         for p in FROZEN:
             if current.get(p) == _base_blob(key, p) and modes.get(p) == _base_mode(key, p):
                 continue
+            from tests.fin_v2_cohorts import COHORT_MODULES as _CM2
+            from tests import ci_v4_lean_b2_scope as _B2
+            if 'tests.ci_v4_lean_b2_scope' in _CM2 and _B2.signature_ok(root, ref) and p in _B2.HANDOFFS:
+                continue
             # The historical BASE pin stays immutable. Only the owner-approved literal C06 handoff may supersede current bytes.
             if not (c06 and p in ('tests/ci_v4_perf_scope.py', 'tests/f03_financing_scope.py', 'tests/r03_ppa_scope.py', 'tests/t01e_remediation_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py')
                     and modes.get(p) == "100644" and C06.supersedes(p, current.get(p), root, ref)):
