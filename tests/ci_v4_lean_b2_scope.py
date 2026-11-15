@@ -53,6 +53,17 @@ HANDOFF_PATHS = frozenset((
     'tests/c06_cost_workspace_scope.py',
     'tests/ci_v4_lean_b1_scope.py',
     'tests/fin_v2_cohorts.py',
+    'tests/test_bess02_scope.py',
+    'tests/test_c06_cost_workspace_scope.py',
+    'tests/test_ci_v4_lean_b1_scope.py',
+    'tests/test_ci_v4_perf_scope.py',
+    'tests/test_f03_financing_scope.py',
+    'tests/test_f04_financing_scope.py',
+    'tests/test_post432_l01_l02_scope.py',
+    'tests/test_r02_ppa_ux_scope.py',
+    'tests/test_r03_ppa_scope.py',
+    'tests/test_r04_ppa_scope.py',
+    'tests/test_t01e_remediation_scope.py',
     'tests/test_u1_scope.py',
     'tests/u1_scope.py',
 ))
@@ -315,6 +326,182 @@ HANDOFFS = {
          (
                 '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\r\n'
                 "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope')):       # at most the two reviewed successors\r\n")),
+    ],
+    'tests/test_bess02_scope.py': [
+        ('                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n',
+         "                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n"),
+    ],
+    'tests/test_f03_financing_scope.py': [
+        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n',
+         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n"),
+        ('    ("fake_extra", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')", b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.fake_scope\')")),\n',
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')", b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.fake_scope\')")),\n'),
+    ],
+    'tests/test_f04_financing_scope.py': [
+        ("        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n",
+         "        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n"),
+        ('        B1=C06_APPROVAL._next()\n',
+         (
+                '        B1=C06_APPROVAL._next()\n'
+                '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\n')),
+        ('        authority=B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\n',
+         '        authority=B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\n'),
+        ("        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)\n",
+         (
+                '        _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None\n'
+                "        expected=json.loads(_B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)\n")),
+    ],
+    'tests/test_r03_ppa_scope.py': [
+        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n',
+         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n"),
+        ('    ("fake_extra", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')", b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.fake_scope\')")),\n',
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')", b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.fake_scope\')")),\n'),
+        ('    B1 = C06_APPROVAL._next()\n',
+         (
+                '    B1 = C06_APPROVAL._next()\n'
+                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n')),
+        ('        authority = B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n',
+         '        authority = B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n'),
+    ],
+    'tests/test_r04_ppa_scope.py': [
+        ('    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n',
+         '    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\n'),
+        ('    ("fake_extra", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')", b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.fake_scope\')")),\n',
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')", b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.fake_scope\')")),\n'),
+        ('        B1 = C06_APPROVAL._next()\n',
+         (
+                '        B1 = C06_APPROVAL._next()\n'
+                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n')),
+        ('        authority = (B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\n',
+         '        authority = (B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\n'),
+    ],
+    'tests/test_t01e_remediation_scope.py': [
+        ('                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n',
+         '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\n'),
+        ('    ("fake_extra", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')", b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.fake_scope\')")),\n',
+         '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')", b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.fake_scope\')")),\n'),
+        ('        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\n',
+         (
+                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                '        if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the further reviewed B2 substitution of this shared path\n'
+                '            assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)\n'
+                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                '            continue\n'
+                '        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\n')),
+    ],
+    'tests/test_ci_v4_perf_scope.py': [
+        ((
+                '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n'),
+         (
+                '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                "            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n")),
+        ((
+                '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\n'),
+         (
+                '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                "                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))\n")),
+        ('    return N if N is not None and N.signature_ok() else None\n',
+         (
+                '    return N if N is not None and N.signature_ok() else None\n'
+                '\n'
+                '\n'
+                'def _b2():\n'
+                '    """The one reviewed B2 successor of B1 while it is registered and exact, else None."""\n'
+                '    N = _b1()\n'
+                '    N2 = N._next() if N is not None else None\n'
+                '    return N2 if N2 is not None and N2.signature_ok() else None\n')),
+        ((
+                '    for p in sorted(F.HANDOFFS):\n'
+                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\n'),
+         (
+                '    for p in sorted(F.HANDOFFS):\n'
+                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\n'
+                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\n')),
+        ((
+                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\n'),
+         (
+                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\n'
+                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\n')),
+        ('              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')")\n',
+         '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')")\n'),
+    ],
+    'tests/test_c06_cost_workspace_scope.py': [
+        ('    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR))       # C06 is followed by at most the one reviewed B1 successor\n',
+         "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))       # C06 is followed by at most the one reviewed B1 successor\n"),
+        ((
+                '    N=F._next()\n'
+                '    for path in F.HANDOFFS:\n'
+                '        later=N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'),
+         (
+                '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None\n'
+                '    for path in F.HANDOFFS:\n'
+                '        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n')),
+        ('            elif kind==\'duplicate_registration\':text=text.replace("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')","\'tests.c06_cost_workspace_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')")\n',
+         '            elif kind==\'duplicate_registration\':text=text.replace("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\'","\'tests.c06_cost_workspace_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\'")\n'),
+        ('            if m.__name__ not in (F.__name__, F.SUCCESSOR):         # a successor never attests an older accepted ref\n',
+         "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'):         # a successor never attests an older accepted ref\n"),
+        ("        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)\n",
+         (
+                '        _N=F._next();_N2=_N._next() if _N is not None and _N.signature_ok() else None\n'
+                "        expected=json.loads(_N2.expected_map(ROOT,path,_N2.effective_pins()) if _N2 is not None and _N2.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)\n")),
+    ],
+    'tests/test_post432_l01_l02_scope.py': [
+        ("    if 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\n",
+         (
+                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                "    if 'tests.ci_v4_lean_b2_scope' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():\n"
+                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                "    elif 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\n")),
+    ],
+    'tests/test_r02_ppa_ux_scope.py': [
+        ("                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope') if m in C.COHORT_MODULES)\n",
+         "                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope') if m in C.COHORT_MODULES)\n"),
+        ('    B1 = C06_APPROVAL._next()\n',
+         (
+                '    B1 = C06_APPROVAL._next()\n'
+                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n')),
+        ('    if len(nxt) == 8 and B1 is not None and B1.signature_ok():\n',
+         (
+                '    if len(nxt) == 9 and B2 is not None and B2.signature_ok():\n'
+                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                '    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\n')),
+    ],
+    'tests/test_ci_v4_lean_b1_scope.py': [
+        ((
+                '    for p in T.HANDOFFS:\n'
+                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'),
+         (
+                '    N = T._next()\n'
+                '    for p in T.HANDOFFS:\n'
+                '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path\n'
+                '            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\n'
+                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                '            continue\n'
+                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n')),
+        ((
+                '    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                '    assert C.COHORT_MODULES[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\n'),
+         (
+                '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                '    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"\n')),
+        ('        assert changed <= set(T.MAP_KEYS)\n',
+         '        assert changed <= set(T.map_keys())\n'),
+        ('    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\n',
+         '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\n'),
+        ('    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')"\n',
+         '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"\n'),
+        ('        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b1_scope\')")),\n',
+         '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'),
+        ('        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\')")),\n',
+         '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'),
+        ('    reg = pins[T.REGISTRY]\n',
+         '    reg = T.effective_pins()[T.REGISTRY]\n'),
     ],
 }
 

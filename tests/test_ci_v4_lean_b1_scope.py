@@ -99,7 +99,12 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    N = T._next()
     for p in T.HANDOFFS:
+        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path
+            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
     for ref in (None, "HEAD"):
@@ -108,8 +113,8 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_c06():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"
     assert K.SUCCESSOR == T.__name__ and K._next() is T
 
 
@@ -127,13 +132,13 @@ def test_current_maps_move_only_their_registry_and_u1_discovery_keys():
         cur = json.loads((ROOT / p).read_text())
         assert set(old) == set(cur) and all(old[k] == cur[k] for k in old if k != "source_blobs")
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
-        assert changed <= set(T.MAP_KEYS)
+        assert changed <= set(T.map_keys())
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")
+    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1
 
 
@@ -154,11 +159,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope')"
+    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b1_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope')")),
+        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope')")),
         ("b1_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b1_scope'", b"")),
         ("c06_missing", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', ", b"")),
         ("r04_removed", lambda b: b.replace(b"'tests.r04_ppa_scope', ", b"")),
@@ -227,7 +232,7 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]
     assert K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not K.supersedes(T.REGISTRY, "0" * 40)
     assert not K.supersedes(T.REGISTRY, pins[T.PREDECESSOR])         # a real blob pinned for another path
