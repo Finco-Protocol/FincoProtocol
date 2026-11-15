@@ -149,8 +149,8 @@ _ADM_META = 'Admission: risk=probe-only, nearest=none, witness=red-before-green 
 def b3_repo(tmp_path):
     root = tmp_path / "b3repo"
     subprocess.check_call(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(root)])
-    subprocess.check_call(["git", "config", "user.email", "t@t"], cwd=root)
     subprocess.check_call(["git", "config", "user.name", "t"], cwd=root)
+    subprocess.check_call(["git", "config", "user.email", "t-at-test-placeholder"], cwd=root)
     subprocess.check_call(["git", "checkout", "-q", "-b", "b3-probe"], cwd=root)
     return root
 
