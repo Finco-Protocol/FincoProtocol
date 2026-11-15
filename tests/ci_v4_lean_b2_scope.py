@@ -531,11 +531,15 @@ def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
         pins = manifest(root, ref).get("source_blobs", {})
+        N = _next()
+        nxt = N is not None and N.signature_ok(root, ref)
         for path in HANDOFFS:
+            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+                continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
                 return False
-        return True
+        return N.reviewed_edits_ok(root, ref) if nxt else True
     except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):
         return False
 
@@ -675,9 +679,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
-        N = _next()
         nx = _next_pins(root, ref)
-        nxt = N is not None and N.signature_ok(root, ref)
         if nx.get("tests/ci_v4_lean_b2_scope.py", pins.get("tests/ci_v4_lean_b2_scope.py")) != _MODULE_BLOB:
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
@@ -703,10 +705,7 @@ def _signature_ok(root, ref, closure=False):
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
             return False
-        n_covered = {p for p in HANDOFFS if nxt and p in N.HANDOFFS}
-        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS if p not in n_covered):
-            return False
-        if nxt and not N.reviewed_edits_ok(root, ref):
+        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
@@ -715,10 +714,9 @@ def _signature_ok(root, ref, closure=False):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p)
-               for p in FROZEN if not (nxt and p in N.HANDOFFS)):
+        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
@@ -771,15 +769,24 @@ def supersedes(path, value, repo=None, ref=None):
         N = _next()
         if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):
             return True
-        if path not in SUPERSEDED:
-            return False
-        # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line
-        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
+        return _supersedes_own(path, value, repo, ref)
+
+
+def _supersedes_own(path, value, repo=None, ref=None):
+    if path not in SUPERSEDED:
+        return False
+    # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
+    # files), so a signature-only verdict never makes the tree valid.
+    # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line
+    return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
 
 
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
             return False
         actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())

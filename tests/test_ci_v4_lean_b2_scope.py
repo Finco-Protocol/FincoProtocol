@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = "tests/ci_v4_lean_b2_scope.py"
 OWN_TEST = "tests/test_ci_v4_lean_b2_scope.py"
 U1_TESTS = "tests/test_u1_scope.py"
+README = "docs/ci_v4/lean_b2/README.md"      # a B2-owned path no later successor hands off: its pin is still judged by B2 itself
 SCOPED_NODES = ("test_positive_cohort_is_exact_registered_and_closed",
                 "test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession",
                 "test_integration_reference_is_main_after_414_and_everything_unowned_equals_it")
@@ -286,7 +287,7 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
             return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
         return f
     forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(MODULE, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__(README, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
               edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),
               edit(lambda d: d["source_blobs"].pop(OWN_TEST)), edit(lambda d: d.__setitem__("extra", 1)),
               edit(lambda d: d.__setitem__("authorization", "broader")), edit(lambda d: d.__setitem__("schema_version", "OTHER")),
@@ -327,8 +328,9 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]            # the CURRENT registry pin (the B3 successor overlay wins while its signature holds)
     assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+    assert not B.supersedes(T.REGISTRY, pins[T.REGISTRY])       # B2's own registry pin is superseded by B3 and no longer current
     assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(U1_TESTS, "0" * 40)
     assert not B.supersedes(T.REGISTRY, pins[T.PREDECESSOR])         # a real blob pinned for another path
     assert not B.supersedes(U1_TESTS, pins[T.REGISTRY]) and not B.supersedes(T.REGISTRY, pins[U1_TESTS])

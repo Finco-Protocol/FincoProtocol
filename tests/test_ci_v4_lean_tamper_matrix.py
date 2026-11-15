@@ -220,7 +220,7 @@ ROWS = [
     ("deleted_pinned_file", "deleted_pinned", _delete("app/v2/grid_router.py"), "app/v2/grid_router.py", "exception"),
     ("untracked_guarded_path", "untracked_guarded", _new_untracked("app/lean_matrix_untracked.py"), "app/lean_matrix_untracked.py", "direct"),
     ("unowned_tracked_file", "unowned_tracked", _new_tracked("docs/ci_v4/lean_matrix_unowned.md"), "docs/ci_v4/lean_matrix_unowned.md", "direct"),
-    ("forged_manifest_pin", "forged_manifest", _manifest_edit(lambda d: d["source_blobs"].__setitem__("tests/ci_v4_lean_report.py", "0" * 40)),
+    ("forged_manifest_pin", "forged_manifest", _manifest_edit(lambda d: d["source_blobs"].__setitem__("docs/ci_v4/lean_b1/README.md", "0" * 40)),
      B1.MANIFEST, "cohort_named"),
     ("forged_manifest_base_tree", "forged_manifest", _manifest_edit(lambda d: d.__setitem__("base_tree", "0" * 40)), B1.MANIFEST, "cohort_named"),
     ("registry_cohort_removed", "registry", _text_sub(REG, "'tests.f03_financing_scope', ", ""), REG, "pinned"),

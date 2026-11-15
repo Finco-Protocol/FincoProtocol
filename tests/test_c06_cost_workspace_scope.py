@@ -41,9 +41,9 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','static/react/finco-react.css','tests/u1_scope.py','tests/u2_scope.py','tests/ux_pr3b1_scope.py','tests/test_u2_scope.py','tests/test_ux_pr3b1_scope.py')
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
-    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None
+    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() if N2 is not None and N2.signature_ok() else None
     for path in F.HANDOFFS:
-        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path
+        later=N3 if N3 is not None and N3.signature_ok() and path in N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path
         assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)
     for path in F.FROZEN:assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT)
 

@@ -1,15 +1,14 @@
-"""CI V4 Lean B3: ONE finite exact-source successor after the accepted B2 cohort (GLM B3+B4 scoped implementation, 2026-11-15).
+"""CI V4 Lean B3: ONE finite exact-source successor after the accepted B2 cohort (B3+B4 scoped implementation, 2026-11-15).
 
 BASE is accepted main (the merged #451, ``523a9eb2``). This cohort carries the WARN-ONLY test-admission report
 (``tests/ci_v4_lean_report.py``: the machine-readable test-admission JSON over the trusted-base diff, its CLI command
-and its targeted tests) and a DATA-ONLY refresh of ``docs/ci_v4/module_weights.json`` (hosted per-module JUnit
-weights from run 43744944268 on the merged #451, u1 measured directly at 1537.3 s). It changes NO selector, policy,
-workflow, product, financial or UI source and selects, deletes, skips or moves NO test. ZERO B4 demotions are
-proposed: the B4 evidence is ``B4_PROOF_BLOCKED_ZERO_DEMOTIONS`` in the private packet.
+and its targeted tests). It changes NO selector, policy, workflow, scheduling weight, product, financial or UI source and
+selects, deletes, skips or moves NO test: ``docs/ci_v4/module_weights.json`` is FROZEN to its accepted-main bytes. ZERO B4
+demotions are proposed: the B4 evidence is ``B4_PROOF_BLOCKED_ZERO_DEMOTIONS`` in the private packet.
 
 Every changed byte, Git mode and the immutable BASE tree are bound to this module's manifest. The shared governance
-paths this successor really changes (the B2 forward hook, the composite registry, the U1 discovery list, the exact-tail
-tests, the report machinery and the eight current maps) are SUPERSEDED paths: each carries its accepted BASE blob, the
+paths this successor really changes (the C06, B1 and B2 forward hooks, the composite registry, the U1 discovery list, the
+exact-tail tests, the report machinery and the eight current maps) are SUPERSEDED paths: each carries its accepted BASE blob, the
 literal one-occurrence substitutions that produce its new blob, and the exact new blob. Previous manifests are never
 rewritten except the current-map keys every earlier successor moved the same way.
 
@@ -31,8 +30,8 @@ BASE = "523a9eb2f4efb00dac49cee070cf925232ba0698"
 BASE_TREE = "d702f6c10b91af5a41afba057f83c088dff31340"
 MANIFEST = "docs/ci_v4/lean_b3/SOURCE_SUCCESSOR.json"
 SCHEMA = "CI_V4_LEAN_B3_EXACT_SOURCE_V1"
-AUTHORIZATION = ("GLM B3+B4 scoped implementation (2026-11-15): one finite exact-source successor of the accepted B2 cohort for the "
-                 "WARN-ONLY test-admission report and the data-only scheduling-weight refresh; no selector, policy, workflow, product, "
+AUTHORIZATION = ("B3+B4 scoped implementation (2026-11-15): one finite exact-source successor of the accepted B2 cohort for the "
+                 "WARN-ONLY test-admission report; no selector, policy, workflow, scheduling-weight, product, "
                  "financial or test-selection change; no merge or deployment authority; zero test demotions proposed.")
 REGISTRY = "tests/fin_v2_cohorts.py"
 PREDECESSOR = "tests/ci_v4_lean_b2_scope.py"
@@ -52,10 +51,11 @@ NEW = frozenset((
     "tests/ci_v4_lean_b3_scope.py",
     "tests/test_ci_v4_lean_b3_scope.py",
 ))
-# Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS): the B2 forward hook, the registry, the
-# U1 discovery list, the exact-tail tests, the report machinery and the data-only weights refresh.
+# Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS): the C06, B1 and B2 forward hooks, the registry,
+# the U1 discovery list, the exact-tail tests and the report machinery.
 HANDOFF_PATHS = frozenset((
     'tests/c06_cost_workspace_scope.py',
+    'tests/ci_v4_lean_b1_scope.py',
     'tests/ci_v4_lean_b2_scope.py',
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
@@ -75,7 +75,7 @@ HANDOFF_PATHS = frozenset((
     'tests/test_r04_ppa_scope.py',
     'tests/test_t01e_remediation_scope.py',
 ))
-# ... and the eight current maps, of which the registry, U1-discovery and weights keys move (the bounded handoff every earlier successor made).
+# ... and the eight current maps, of which only the registry and U1-discovery keys move (the bounded handoff every earlier successor made).
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -90,12 +90,11 @@ MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
 SUPERSEDED = HANDOFF_PATHS | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
-# Accepted CI V4 control sources that this successor must leave byte-identical to BASE; the scheduling weights move by the reviewed
-# HANDOFF above instead (data-only, no selection semantics).
+# Accepted CI V4 control sources that this successor must leave byte-identical to BASE: no selector, policy, aggregator, scheduler, workflow or scheduling-weight change.
 FROZEN = (
     ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_pr.yml",
     ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",
-    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json",
+    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",
     "docs/ci_v4/node_split_policy.json", "docs/ci_v4/node_weights.json",
     "pytest.ini",
     "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",
@@ -150,2331 +149,428 @@ def expected_map(root, path, pins=None):
 HANDOFFS = {
     'tests/c06_cost_workspace_scope.py': [
         ((
-            '    try:\r\n'
-            '        pins = manifest(root, ref).get("source_blobs", {})\r\n'),
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\r\n'
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope')):       # at most the two reviewed successors\r\n"
+            '            return False\r\n'),
          (
-            '    try:\r\n'
-            '        from tests.fin_v2_cohorts import COHORT_MODULES as _CM3\r\n'
-            '        pins = manifest(root, ref).get("source_blobs", {})\r\n')),
-        ('        nxt = N is not None and N.signature_ok(root, ref)\r\n',
+             '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\r\n'
+             "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),\r\n"
+             "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')):       # at most the three reviewed successors\r\n"
+             '            return False\r\n')),
+    ],
+    'tests/ci_v4_lean_b1_scope.py': [
+        ((
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\n'
+            '            return False\n'),
          (
-            '        nxt = N is not None and N.signature_ok(root, ref)\r\n'
-            '        N2 = N._next() if nxt else None\r\n'
-            '        n_hand = set(N.HANDOFFS) | (set(N2.HANDOFFS) if N2 is not None and N.SUCCESSOR in _CM3 and N2.signature_ok(root, ref) else set())\r\n')),
-        ('            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path\r\n',
-         '            if nxt and path in n_hand:            # the reviewed successor chain owns the further substitution of this shared path\r\n'),
+             '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+             '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\n'
+             "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope')):       # B1 -> B2 -> B3, nothing else\n"
+             '            return False\n')),
     ],
     'tests/ci_v4_lean_b2_scope.py': [
         ((
-            '"""CI V4 Lean B2: ONE finite exact-source successor after the accepted B1 leaf (owner decision NEW_DRAFT_FROM_MAIN, 2026-11-15).\n'
-            '\n'
-            'BASE is accepted main (the merged #449, ``3e859ac8``). This cohort changes exactly one thing in behaviour: the READ-ONLY provenance nodes of\n'
-            '``tests/test_u1_scope.py`` that re-derive the same many-cohort exact-source verdict dozens of times now share ONE outer ``call_scope`` (the\n'
-            'bounded, existing, per-call memo that dies with its block). The tamper nodes that mutate a worktree are not touched and no verdict is ever kept\n'
-            'across a mutation, a ref, a tree or a test case. It changes NO selector, policy, workflow, product, financial or UI source and selects, deletes,\n'
-            'skips or moves NO test: ``FROZEN`` pins every CI V4 control file to its accepted BASE blob.\n'
-            '\n'
-            "Every changed byte, Git mode and the immutable BASE tree are bound to this module's manifest. The shared governance paths this successor really\n"
-            'changes (the composite registry, the U1 discovery entry, the U1 provenance tests, the B1 and C06 forward hooks, the exact-tail tests and the\n'
-            'current maps) are SUPERSEDED paths: each carries its accepted BASE blob, the literal one-occurrence substitutions that produce its new blob, and\n'
-            'the exact new blob. Previous manifests are never rewritten except the current-map keys that every earlier successor moved the same way.\n'
-            '\n'
-            'Termination: the signature reads Git objects, this manifest and the registry tuple only. It never calls the B1 leaf, the C06 leaf, an older cohort\n'
-            'or the composite; the B1 leaf calls this module through one forward hook (the acyclic pattern B1 used for C06).\n'
-            '"""\n'
-            'from __future__ import annotations\n'
-            '\n'
-            'from contextlib import contextmanager\n'
-            'from functools import lru_cache\n'
-            'from pathlib import Path\n'
-            'import hashlib\n'
-            'import json\n'
-            'import subprocess\n'
-            '\n'
-            'ROOT = Path(__file__).resolve().parents[1]\n'
-            'BASE = "3e859ac82c9510f467999a5182bd9d9a21583291"\n'
-            'BASE_TREE = "af0a714420ba84dcd026a04e47d0ff9e0473c6d8"\n'
-            'MANIFEST = "docs/ci_v4/lean_b2/SOURCE_SUCCESSOR.json"\n'
-            'SCHEMA = "CI_V4_LEAN_B2_EXACT_SOURCE_V1"\n'
-            "AUTHORIZATION = ('Owner decision NEW_DRAFT_FROM_MAIN (2026-11-15): one finite exact-source successor of the accepted CI V4 Lean B1 leaf for '\n"
-            "                 'a bounded, semantic-preserving U1 provenance test-runtime optimisation; no selector, policy, workflow, product, financial, UI or test-selection change; no test demotion; no merge or deployment authority.')\n"
-            'REGISTRY = "tests/fin_v2_cohorts.py"\n'
-            'PREDECESSOR = "tests/ci_v4_lean_b1_scope.py"\n'
-            'BASE_COHORTS = (\n'
-            "    'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope', 'tests.fin_v2_rcux_scope',\n"
-            "    'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope', 'tests.wf03_lifecycle_scope',\n"
-            "    'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope', 'tests.post413_r17_scope',\n"
-            "    'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope',\n"
-            "    'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope',\n"
-            "    'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope',\n"
-            "    'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope',\n"
-            "    'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope',\n"
-            ')\n'
-            'NEW = frozenset((\n'
-            '    "docs/ci_v4/lean_b2/README.md",\n'
-            '    "tests/ci_v4_lean_b2_scope.py",\n'
-            '    "tests/test_ci_v4_lean_b2_scope.py",\n'
-            '))\n'
-            '# Accepted governance paths whose bytes move by one reviewed literal substitution (HANDOFFS) ...\n'
-            'HANDOFF_PATHS = frozenset((\n'
-            "    'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json',\n"
-            "    'tests/c06_cost_workspace_scope.py',\n"
-            "    'tests/ci_v4_lean_b1_scope.py',\n"
-            "    'tests/fin_v2_cohorts.py',\n"
-            "    'tests/test_bess02_scope.py',\n"
-            "    'tests/test_c06_cost_workspace_scope.py',\n"
-            "    'tests/test_ci_v4_lean_b1_scope.py',\n"
-            "    'tests/test_ci_v4_lean_tamper_matrix.py',\n"
-            "    'tests/test_ci_v4_perf_scope.py',\n"
-            "    'tests/test_f03_financing_scope.py',\n"
-            "    'tests/test_f04_financing_scope.py',\n"
-            "    'tests/test_post432_l01_l02_scope.py',\n"
-            "    'tests/test_r02_ppa_ux_scope.py',\n"
-            "    'tests/test_r03_ppa_scope.py',\n"
-            "    'tests/test_r04_ppa_scope.py',\n"
-            "    'tests/test_t01e_remediation_scope.py',\n"
-            "    'tests/test_u1_scope.py',\n"
-            "    'tests/u1_scope.py',\n"
-            '))\n'
-            '# ... and the current maps, of which only the registry, U1 discovery and U1 provenance-test keys move (the bounded handoff every earlier successor made).\n'
-            'CURRENT_MAPS = frozenset((\n'
-            '    "docs/ci_v4/SOURCE_SUCCESSOR.json",\n'
-            '    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",\n'
-            '    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json",\n'
-            '    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json",\n'
-            '    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json",\n'
-            '    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json",\n'
-            '    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",\n'
-            '    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",\n'
-            '))\n'
-            "MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py', 'tests/test_u1_scope.py')\n"
-            'SUPERSEDED = HANDOFF_PATHS | CURRENT_MAPS\n'
-            'OWNED_PATHS = NEW | SUPERSEDED\n'
-            'FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")\n'
-            '# Accepted CI V4 control sources that this successor must leave byte-identical to BASE: no selector, policy, aggregator, scheduler or workflow change.\n'
-            'FROZEN = (\n'
-            '    ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_pr.yml",\n'
-            '    ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",\n'
-            '    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",\n'
-            '    "docs/ci_v4/node_split_policy.json", "docs/ci_v4/node_weights.json",\n'
-            '    "pytest.ini",\n'
-            '    "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",\n'
-            '    "tools/ci_v4_nodes.py", "tools/ci_v4_release_gate.py", "tools/ci_v4_schedule.py", "tools/ci_v4_select.py", "tools/ci_v4_shard.py",\n'
-            ')\n'
-            '\n'
-            '\n'
-            'def _git(root, *args):\n'
-            '    return subprocess.check_output(["git", *args], cwd=root, stderr=subprocess.DEVNULL)\n'
-            '\n'
-            '\n'
-            'def _read(root, path, ref=None):\n'
-            '    # A committed ref is read from Git (with the repository root); the working tree is read from disk.\n'
-            '    return (Path(root) / path).read_bytes() if ref is None else _git(root, "show", ref + ":" + path)\n'
-            '\n'
-            '\n'
-            'def _blob(raw):\n'
-            '    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()\n'
-            '\n'
-            '\n'
-            '_MODULE_BLOB = _blob(Path(__file__).read_bytes())\n'
-            '\n'
-            '\n'
-            'def manifest(repo=None, ref=None):\n'
-            '    root = Path(repo) if repo is not None else ROOT\n'
-            '    try:\n'
-            '        raw = _read(root, MANIFEST, ref)\n'
-            '        d = json.loads(raw)\n'
-            '        if raw != (json.dumps(d, indent=2, sort_keys=True) + "\\n").encode():       # canonical bytes only: no extra, reordered or hidden byte\n'
-            '            return {}\n'
-            '        return d if (isinstance(d, dict) and set(d) == {"schema_version", "authorization", "base", "base_tree", "source_blobs", "base_blobs",\n'
-            '                                                       "source_modes", "base_modes"}\n'
-            '                     and d.get("authorization") == AUTHORIZATION and d["schema_version"] == SCHEMA and d["base"] == BASE\n'
-            '                     and d["base_tree"] == BASE_TREE and isinstance(d["source_blobs"], dict) and isinstance(d["base_blobs"], dict)) else {}\n'
-            '    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):\n'
-            '        return {}\n'
-            '\n'
-            '\n'
-            'def expected_map(root, path, pins=None):\n'
-            '    """Only the finite current-source keys (MAP_KEYS: the registry and the U1 discovery guard) may move; all history stays unchanged."""\n'
-            '    d = json.loads(_base_bytes(str(root), path))\n'
-            '    pins = manifest(root).get("source_blobs", {}) if pins is None else pins\n'
-            '    for key in MAP_KEYS:\n'
-            '        if key in d["source_blobs"]:\n'
-            '            d["source_blobs"][key] = pins[key]\n'
-            '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\n'
-            '\n'
-            '\n'
-            '# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes. The accepted C06 leaf gains one forward hook\n'
-            '# to this cohort (the same acyclic pattern F03, T01-E, R03 and R04 used); the registry appends this cohort exactly once; the exact-tail tests\n'
-            '# accept one more state.\n'
-            'HANDOFFS = {\n'
-            "    'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json': [\n"
-            '        (\'    "tests/test_u1_scope.py": "8f58878effa3d1d07fe630eea68b0e0c16c01d9b",\\n\',\n'
-            '         \'    "tests/test_u1_scope.py": "4c1da14dfcd634614472a0dcbb4d4aee846220ba",\\n\'),\n'
-            '    ],\n'
-            "    'tests/fin_v2_cohorts.py': [\n"
-            '        ("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')",\n'
-            '         "\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"),\n'
-            '    ],\n'
-            "    'tests/u1_scope.py': [\n"
-            '        ("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')",\n'
-            '         "\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"),\n'
-            '    ],\n'
-            "    'tests/test_u1_scope.py': [\n"
-            "        ('def test_positive_cohort_is_exact_registered_and_closed():\\n',\n"
-            '         (\n'
-            "                'def test_positive_cohort_is_exact_registered_and_closed():\\n'\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call: each cohort verdict is computed once and dropped on exit (no mutation inside)\\n'\n"
-            "                '        _positive_cohort_is_exact_registered_and_closed()\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _positive_cohort_is_exact_registered_and_closed():\\n')),\n"
-            "        ('def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n',\n"
-            '         (\n'
-            "                'def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n'\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call over the finite owned set; nothing is mutated inside the scope\\n'\n"
-            "                '        _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession()\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n')),\n"
-            "        ('def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n',\n"
-            '         (\n'
-            "                'def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n'\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call: the later-cohort enumeration shares one verdict per cohort\\n'\n"
-            "                '        _integration_reference_is_main_after_414_and_everything_unowned_equals_it()\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n')),\n"
-            '    ],\n'
-            "    'tests/ci_v4_lean_b1_scope.py': [\n"
-            '        ((\n'
-            '                \'        pins = manifest(root, ref).get("source_blobs", {})\\n\'\n'
-            "                '        for path in HANDOFFS:\\n'),\n"
-            '         (\n'
-            '                \'        pins = manifest(root, ref).get("source_blobs", {})\\n\'\n'
-            "                '        N = _next()\\n'\n"
-            "                '        nxt = N is not None and N.signature_ok(root, ref)\\n'\n"
-            "                '        for path in HANDOFFS:\\n'\n"
-            "                '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path\\n'\n"
-            "                '                continue\\n')),\n"
-            '        ((\n'
-            "                '                return False\\n'\n"
-            "                '        return True\\n'\n"
-            "                '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\\n'),\n"
-            '         (\n'
-            "                '                return False\\n'\n"
-            "                '        return N.reviewed_edits_ok(root, ref) if nxt else True\\n'\n"
-            "                '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\\n')),\n"
-            '        ((\n'
-            "                '    _SCOPE.append({})\\n'\n"
-            "                '    try:\\n'\n"
-            "                '        yield\\n'\n"
-            "                '    finally:\\n'),\n"
-            '         (\n'
-            "                '    _SCOPE.append({})\\n'\n"
-            "                '    try:\\n'\n"
-            "                '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\\n'\n"
-            "                '        N = _next()\\n'\n"
-            "                '        if N is None:\\n'\n"
-            "                '            yield\\n'\n"
-            "                '        else:\\n'\n"
-            "                '            with N.scoped():\\n'\n"
-            "                '                yield\\n'\n"
-            "                '    finally:\\n')),\n"
-            '        ((\n'
-            '                \'    if mode == "exact":\\n\'\n'
-            "                '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\\n'\n"
-            "                '    return _signature_ok(root, ref, mode)\\n'),\n"
-            '         (\n'
-            "                '    from contextlib import nullcontext\\n'\n"
-            "                '    N = _next()\\n'\n"
-            "                '    with (N.scoped() if N is not None else nullcontext()):\\n'\n"
-            '                \'        if mode == "exact":\\n\'\n'
-            "                '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\\n'\n"
-            "                '        return _signature_ok(root, ref, mode)\\n')),\n"
-            '        ((\n'
-            "                'def map_keys(repo=None, ref=None):\\n'\n"
-            "                '    return tuple(MAP_KEYS)\\n'),\n"
-            '         (\n'
-            '                "SUCCESSOR = \'tests.ci_v4_lean_b2_scope\'\\n"\n'
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _next():\\n'\n"
-            '                \'    """The one finite forward successor (CI V4 Lean B2). Low-level only: its signature never calls this module or the composite."""\\n\'\n'
-            "                '    from tests.fin_v2_cohorts import COHORT_MODULES\\n'\n"
-            "                '    if SUCCESSOR not in COHORT_MODULES:\\n'\n"
-            "                '        return None\\n'\n"
-            "                '    from tests import ci_v4_lean_b2_scope\\n'\n"
-            "                '    return ci_v4_lean_b2_scope\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _next_pins(root, ref):\\n'\n"
-            "                '    N = _next()\\n'\n"
-            "                '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def map_keys(repo=None, ref=None):\\n'\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\n"
-            "                '    with scoped():\\n'\n"
-            "                '        N = _next()\\n'\n"
-            "                '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()\\n'\n"
-            "                '        return tuple(MAP_KEYS) + more\\n')),\n"
-            "        ('        if COHORT_MODULES != BASE_COHORTS + (__name__,):\\n',\n"
-            "         '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\\n'),\n"
-            '        (\'        if pins.get("tests/ci_v4_lean_b1_scope.py") != _MODULE_BLOB:\\n\',\n'
-            '         (\n'
-            "                '        nx = _next_pins(root, ref)\\n'\n"
-            '                \'        if nx.get("tests/ci_v4_lean_b1_scope.py", pins.get("tests/ci_v4_lean_b1_scope.py")) != _MODULE_BLOB:\\n\')),\n'
-            "        ('        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\\n',\n"
-            '         (\n'
-            "                '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\\n'\n"
-            "                '        cur = {p: nx.get(p, b) for p, b in pins.items()}\\n')),\n"
-            "        ('        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\\n',\n"
-            "         '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\\n'),\n"
-            "        ('            if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\\n',\n"
-            "         '            if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):\\n'),\n"
-            '        ((\n'
-            "                '        allowed = OWNED_PATHS | {MANIFEST}\\n'\n"
-            "                '        changed = set('),\n"
-            '         (\n'
-            "                '        allowed = closure_paths(root, ref)\\n'\n"
-            "                '        changed = set(')),\n"
-            '        ((\n'
-            "                'def effective_pins(repo=None, ref=None, *, signature=False):\\n'\n"
-            '                \'    return dict(manifest(repo, ref).get("source_blobs", {}))\\n\'),\n'
-            '         (\n'
-            "                'def effective_pins(repo=None, ref=None, *, signature=False):\\n'\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\n"
-            "                '    with scoped():\\n'\n"
-            '                \'        pins = dict(manifest(repo, ref).get("source_blobs", {}))\\n\'\n'
-            "                '        pins.update(_next_pins(root, ref))\\n'\n"
-            "                '        return pins\\n')),\n"
-            '        ((\n'
-            "                'def closure_paths(repo=None, ref=None):\\n'\n"
-            "                '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\\n'),\n"
-            '         (\n'
-            "                'def closure_paths(repo=None, ref=None):\\n'\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\n"
-            "                '    with scoped():\\n'\n"
-            "                '        if not signature_ok(root, ref):\\n'\n"
-            "                '            return frozenset()\\n'\n"
-            "                '        N = _next()\\n'\n"
-            "                '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\\n')),\n"
-            '        ((\n'
-            "                'def supersedes(path, value, repo=None, ref=None):\\n'\n"
-            "                '    if path not in SUPERSEDED:\\n'\n"
-            "                '        return False\\n'),\n"
-            '         (\n'
-            "                'def supersedes(path, value, repo=None, ref=None):\\n'\n"
-            "                '    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped\\n'\n"
-            "                '        N = _next()\\n'\n"
-            "                '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):\\n'\n"
-            "                '            return True\\n'\n"
-            "                '        return _supersedes_own(path, value, repo, ref)\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _supersedes_own(path, value, repo=None, ref=None):\\n'\n"
-            "                '    if path not in SUPERSEDED:\\n'\n"
-            "                '        return False\\n')),\n"
-            '        (\'    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value\\n\',\n'
-            '         (\n'
-            "                '    # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line\\n'\n"
-            "                '    return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\\n')),\n"
-            '        ((\n'
-            "                '    try:\\n'\n"
-            '                \'        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\\n\'),\n'
-            '         (\n'
-            "                '    try:\\n'\n"
-            "                '        N = _next()\\n'\n"
-            "                '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\\n'\n"
-            "                '            return True\\n'\n"
-            '                \'        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\\n\')),\n'
-            '    ],\n'
-            "    'tests/c06_cost_workspace_scope.py': [\n"
-            "        ('        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\\r\\n',\n"
-            '         (\n'
-            "                '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\\r\\n'\n"
-            '                "                                  BASE_COHORTS + (__name__, SUCCESSOR, \'tests.ci_v4_lean_b2_scope\')):       # at most the two reviewed successors\\r\\n")),\n'
-            '    ],\n'
-            "    'tests/test_bess02_scope.py': [\n"
-            "        ('                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\n"
-            '         "                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\n'
-            '    ],\n'
-            "    'tests/test_f03_financing_scope.py': [\n"
-            "        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\n"
-            '         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\n'
-            '    ],\n'
-            "    'tests/test_f04_financing_scope.py': [\n"
-            '        ("        C.COHORT_MODULES[-3:]==(\'tests.r03_ppa_scope\',\'tests.f04_financing_scope\',\'tests.r04_ppa_scope\') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n",\n'
-            '         "        C.COHORT_MODULES[-3:]==(\'tests.r03_ppa_scope\',\'tests.f04_financing_scope\',\'tests.r04_ppa_scope\') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\n'
-            "        ('        B1=C06_APPROVAL._next()\\n',\n"
-            '         (\n'
-            "                '        B1=C06_APPROVAL._next()\\n'\n"
-            "                '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\n"
-            "        ('        authority=B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\\n',\n"
-            "         '        authority=B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\\n'),\n"
-            '        ("        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n",\n'
-            '         (\n'
-            "                '        _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None\\n'\n"
-            '                "        expected=json.loads(_B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n")),\n'
-            '    ],\n'
-            "    'tests/test_r03_ppa_scope.py': [\n"
-            "        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\n"
-            '         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\n'
-            "        ('    B1 = C06_APPROVAL._next()\\n',\n"
-            '         (\n'
-            "                '    B1 = C06_APPROVAL._next()\\n'\n"
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\n"
-            "        ('        authority = B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\\n',\n"
-            "         '        authority = B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\\n'),\n"
-            '    ],\n'
-            "    'tests/test_r04_ppa_scope.py': [\n"
-            '        (\'    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n\',\n'
-            '         \'    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \\\'tests.ci_v4_lean_b2_scope\\\'))\\n\'),\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\n'
-            "        ('        B1 = C06_APPROVAL._next()\\n',\n"
-            '         (\n'
-            "                '        B1 = C06_APPROVAL._next()\\n'\n"
-            "                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\n"
-            "        ('        authority = (B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\\n',\n"
-            "         '        authority = (B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\\n'),\n"
-            '    ],\n'
-            "    'tests/test_t01e_remediation_scope.py': [\n"
-            '        (\'                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n\',\n'
-            '         \'                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \\\'tests.ci_v4_lean_b2_scope\\\'))\\n\'),\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\n'
-            "        ('        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\\n',\n"
-            '         (\n'
-            "                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n'\n"
-            "                '        if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the further reviewed B2 substitution of this shared path\\n'\n"
-            "                '            assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)\\n'\n"
-            "                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'\n"
-            "                '            continue\\n'\n"
-            "                '        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\\n')),\n"
-            '    ],\n'
-            "    'tests/test_ci_v4_perf_scope.py': [\n"
-            '        ((\n'
-            '                \'            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\n'
-            "                '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n'),\n"
-            '         (\n'
-            '                \'            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\n'
-            '                "            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n")),\n'
-            '        ((\n'
-            '                \'                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\n'
-            "                '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n'),\n"
-            '         (\n'
-            '                \'                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\n'
-            '                "                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n")),\n'
-            "        ('    return N if N is not None and N.signature_ok() else None\\n',\n"
-            '         (\n'
-            "                '    return N if N is not None and N.signature_ok() else None\\n'\n"
-            "                '\\n'\n"
-            "                '\\n'\n"
-            "                'def _b2():\\n'\n"
-            '                \'    """The one reviewed B2 successor of B1 while it is registered and exact, else None."""\\n\'\n'
-            "                '    N = _b1()\\n'\n"
-            "                '    N2 = N._next() if N is not None else None\\n'\n"
-            "                '    return N2 if N2 is not None and N2.signature_ok() else None\\n')),\n"
-            '        ((\n'
-            "                '    for p in sorted(F.HANDOFFS):\\n'\n"
-            "                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n'),\n"
-            '         (\n'
-            "                '    for p in sorted(F.HANDOFFS):\\n'\n"
-            "                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\\n'\n"
-            "                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n')),\n"
-            '        ((\n'
-            "                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\\n'\n"
-            "                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n'),\n"
-            '         (\n'
-            "                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\\n'\n"
-            "                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\\n'\n"
-            "                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n')),\n"
-            '        (\'              "\\\'tests.t01e_remediation_scope\\\', \\\'tests.r03_ppa_scope\\\', \\\'tests.f04_financing_scope\\\', \\\'tests.r04_ppa_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")\\n\',\n'
-            '         \'              "\\\'tests.t01e_remediation_scope\\\', \\\'tests.r03_ppa_scope\\\', \\\'tests.f04_financing_scope\\\', \\\'tests.r04_ppa_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")\\n\'),\n'
-            '    ],\n'
-            "    'tests/test_c06_cost_workspace_scope.py': [\n"
-            "        ('    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR))       # C06 is followed by at most the one reviewed B1 successor\\n',\n"
-            '         "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))       # C06 is followed by at most the one reviewed B1 successor\\n"),\n'
-            '        ((\n'
-            "                '    N=F._next()\\n'\n"
-            "                '    for path in F.HANDOFFS:\\n'\n"
-            "                '        later=N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\\n'),\n"
-            '         (\n'
-            "                '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None\\n'\n"
-            "                '    for path in F.HANDOFFS:\\n'\n"
-            "                '        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\\n')),\n"
-            '        (\'            elif kind==\\\'duplicate_registration\\\':text=text.replace("\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')","\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")\\n\',\n'
-            '         \'            elif kind==\\\'duplicate_registration\\\':text=text.replace("\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\'","\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\'")\\n\'),\n'
-            '        ("        assert {k for k in original[\'source_blobs\'] if original[\'source_blobs\'][k]!=current[\'source_blobs\'][k]}<=set(F.MAP_KEYS)\\n",\n'
-            '         "        assert {k for k in original[\'source_blobs\'] if original[\'source_blobs\'][k]!=current[\'source_blobs\'][k]}<=set(F.map_keys())\\n"),\n'
-            "        ('            if m.__name__ not in (F.__name__, F.SUCCESSOR):         # a successor never attests an older accepted ref\\n',\n"
-            '         "            if m.__name__ not in (F.__name__, F.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'):         # a successor never attests an older accepted ref\\n"),\n'
-            '        ("        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n",\n'
-            '         (\n'
-            "                '        _N=F._next();_N2=_N._next() if _N is not None and _N.signature_ok() else None\\n'\n"
-            '                "        expected=json.loads(_N2.expected_map(ROOT,path,_N2.effective_pins()) if _N2 is not None and _N2.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n")),\n'
-            '    ],\n'
-            "    'tests/test_post432_l01_l02_scope.py': [\n"
-            '        ("    if \'tests.ci_v4_lean_b1_scope\' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\\n",\n'
-            '         (\n'
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n'\n"
-            '                "    if \'tests.ci_v4_lean_b2_scope\' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():\\n"\n'
-            "                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\\n'\n"
-            '                "    elif \'tests.ci_v4_lean_b1_scope\' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\\n")),\n'
-            '    ],\n'
-            "    'tests/test_r02_ppa_ux_scope.py': [\n"
-            '        ("                            \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\') if m in C.COHORT_MODULES)\\n",\n'
-            '         "                            \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\') if m in C.COHORT_MODULES)\\n"),\n'
-            "        ('    B1 = C06_APPROVAL._next()\\n',\n"
-            '         (\n'
-            "                '    B1 = C06_APPROVAL._next()\\n'\n"
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\n"
-            "        ('    if len(nxt) == 8 and B1 is not None and B1.signature_ok():\\n',\n"
-            '         (\n'
-            "                '    if len(nxt) == 9 and B2 is not None and B2.signature_ok():\\n'\n"
-            "                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\\n'\n"
-            "                '    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\\n')),\n"
-            '    ],\n'
-            "    'tests/test_ci_v4_lean_b1_scope.py': [\n"
-            '        ((\n'
-            "                '    for p in T.HANDOFFS:\\n'\n"
-            "                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\\n'\n"
-            "                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'),\n"
-            '         (\n'
-            "                '    N = T._next()\\n'\n"
-            "                '    for p in T.HANDOFFS:\\n'\n"
-            "                '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path\\n'\n"
-            "                '            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\\n'\n"
-            "                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'\n"
-            "                '            continue\\n'\n"
-            "                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\\n'\n"
-            "                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n')),\n"
-            '        ((\n'
-            "                '    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1\\n'\n"
-            '                \'    assert C.COHORT_MODULES[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\'),\n'
-            '         (\n'
-            "                '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\\n'\n"
-            '                \'    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"\\n\')),\n'
-            "        ('        assert changed <= set(T.MAP_KEYS)\\n',\n"
-            "         '        assert changed <= set(T.map_keys())\\n'),\n"
-            '        (\'    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\',\n'
-            '         \'    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\'),\n'
-            '        (\'    tail = b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')"\\n\',\n'
-            '         \'    tail = b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')"\\n\'),\n'
-            '        (\'        ("duplicate", lambda b: b.replace(tail, b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")),\\n\',\n'
-            '         \'        ("duplicate", lambda b: b.replace(tail, b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")),\\n\'),\n'
-            '        (\'        ("swapped_c06_b1", lambda b: b.replace(tail, b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.c06_cost_workspace_scope\\\')")),\\n\',\n'
-            '         \'        ("swapped_c06_b1", lambda b: b.replace(tail, b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")),\\n\'),\n'
-            "        ('    reg = pins[T.REGISTRY]\\n',\n"
-            "         '    reg = T.effective_pins()[T.REGISTRY]\\n'),\n"
-            '    ],\n'
-            "    'tests/test_ci_v4_lean_tamper_matrix.py': [\n"
-            '        (\'TAIL = "\\\'tests.ci_v4_lean_b1_scope\\\')"\\n\',\n'
-            '         \'TAIL = "\\\'tests.ci_v4_lean_b2_scope\\\')"\\n\'),\n'
-            '        (\'    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\\\'tests.ci_v4_lean_b1_scope\\\', " + TAIL), REG, "pinned"),\\n\',\n'
-            '         \'    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\\\'tests.ci_v4_lean_b2_scope\\\', " + TAIL), REG, "pinned"),\\n\'),\n'
-            '        (\'    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \\\'tests.ci_v4_lean_b1_scope\\\')", ")"), "tests/u1_scope.py", "pinned"),\\n\',\n'
-            '         \'    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \\\'tests.ci_v4_lean_b2_scope\\\')", ")"), "tests/u1_scope.py", "pinned"),\\n\'),\n'
-            '    ],\n'
-            '}\n'
-            '\n'
-            '\n'
-            'def expected_handoff(root, path):\n'
-            '    """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""\n'
-            '    raw = _base_bytes(str(root), path).decode()\n'
-            '    for old, new in HANDOFFS[path]:\n'
-            '        if raw.count(old) != 1:\n'
-            '            raise ValueError("reviewed handoff is missing or ambiguous")\n'
-            '        raw = raw.replace(old, new)\n'
-            '    return raw.encode()\n'
-            '\n'
-            '\n'
-            'def reviewed_edits_ok(repo=None, ref=None):\n'
-            '    root = Path(repo) if repo is not None else ROOT\n'
-            '    try:\n'
             '        pins = manifest(root, ref).get("source_blobs", {})\n'
             '        for path in HANDOFFS:\n'
-            '            actual = _read(root, path, ref)\n'
-            '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\n'
+            '            actual = _read(root, path, ref)\n'),
+         (
+             '        pins = manifest(root, ref).get("source_blobs", {})\n'
+             '        N = _next()\n'
+             '        nxt = N is not None and N.signature_ok(root, ref)\n'
+             '        for path in HANDOFFS:\n'
+             '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path\n'
+             '                continue\n'
+             '            actual = _read(root, path, ref)\n')),
+        ((
             '                return False\n'
             '        return True\n'
-            '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\n'
-            '        return False\n'
-            '\n'
-            '\n'
-            '_SCOPE = []\n'
-            '\n'
-            '\n'
-            '@contextmanager\n'
-            'def scoped():\n'
-            '    if _SCOPE:\n'
-            '        yield\n'
-            '        return\n'
-            '    _SCOPE.append({})\n'
+            '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\n'),
+         (
+             '                return False\n'
+             '        return N.reviewed_edits_ok(root, ref) if nxt else True\n'
+             '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\n')),
+        ((
             '    try:\n'
             '        yield\n'
-            '    finally:\n'
-            '        _SCOPE.pop()\n'
-            '\n'
-            '\n'
-            'def _compute(root, ref, mode):\n'
+            '    finally:\n'),
+         (
+             '    try:\n'
+             '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\n'
+             '        N = _next()\n'
+             '        if N is None:\n'
+             '            yield\n'
+             '        else:\n'
+             '            with N.scoped():\n'
+             '                yield\n'
+             '    finally:\n')),
+        ((
             '    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""\n'
             '    if mode == "exact":\n'
             '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
             '    return _signature_ok(root, ref, mode)\n'
-            '\n'
-            '\n'
-            'def _verdict(root, ref, closure):\n'
-            '    key = (str(root), ref, closure)\n'
-            '    if _SCOPE and key in _SCOPE[-1]:\n'
-            '        return _SCOPE[-1][key]\n'
-            '    value = _compute(root, ref, closure)\n'
-            '    if _SCOPE:\n'
-            '        _SCOPE[-1][key] = value\n'
-            '    return value\n'
-            '\n'
-            '\n'
-            'def signature_ok(repo=None, ref=None):\n'
-            '    """Source/base/mode authority only: it never reads a foreign current map\'s bytes (the full closure alone judges those)."""\n'
-            '    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)\n'
-            '\n'
+            '\n'),
+         (
+             '    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""\n'
+             '    from contextlib import nullcontext\n'
+             '    N = _next()\n'
+             '    with (N.scoped() if N is not None else nullcontext()):\n'
+             '        if mode == "exact":\n'
+             '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
+             '        return _signature_ok(root, ref, mode)\n'
+             '\n')),
+        ((
             '\n'
             'def map_keys(repo=None, ref=None):\n'
             '    return tuple(MAP_KEYS)\n'
-            '\n'
-            '\n'
-            '@lru_cache(maxsize=512)\n'
-            'def _base_mode(root, path):\n'
-            '    """Only immutable BASE entries are cached; evaluated source modes always come from the snapshot."""\n'
-            '    return _git(Path(root), "ls-tree", BASE, "--", path).decode().split()[0]\n'
-            '\n'
-            '\n'
-            '@lru_cache(maxsize=512)\n'
-            'def _base_bytes(root, path):\n'
-            '    """Bytes of an IMMUTABLE accepted-main (BASE) object. Never a working-tree or ref read, so a cached value can never go stale."""\n'
-            '    return _git(Path(root), "show", BASE + ":" + path)\n'
-            '\n'
-            '\n'
-            '@lru_cache(maxsize=8)\n'
-            'def _base_tree(root):\n'
-            '    return _git(Path(root), "rev-parse", BASE + "^{tree}").decode().strip()\n'
-            '\n'
-            '\n'
-            '@lru_cache(maxsize=256)\n'
-            'def _expected_blob(root, path):\n'
-            '    """Blob id of the literal reviewed transformation of an immutable BASE blob (a pure function of BASE and this module\'s literals)."""\n'
-            '    text = _base_bytes(root, path).decode()\n'
-            '    for old, new in HANDOFFS[path]:\n'
-            '        if text.count(old) != 1:\n'
-            '            raise ValueError("reviewed edit is missing or ambiguous")\n'
-            '        text = text.replace(old, new)\n'
-            '    return _blob(text.encode())\n'
-            '\n'
-            '\n'
-            '@lru_cache(maxsize=256)\n'
-            'def _expected_map_blob(root, path, moved):\n'
-            '    """Pure function of an immutable BASE map and the literal moved registry pin."""\n'
-            '    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))\n'
-            '\n'
-            '\n'
-            'def _snapshot(root, ref, paths):\n'
-            '    """One read of the evaluated state: {path: blob} and {path: mode}. A committed ref is read with ONE ls-tree; the WORKING TREE is read from\n'
-            '    disk and hashed here (Git blob framing over the current bytes), so a modified, replaced or deleted file is judged by what is really on disk, never by\n'
-            '    HEAD. A symlink or non-file is skipped (so its pin fails) and an executable bit is reported as a bad mode."""\n'
-            '    paths = sorted(paths)\n'
-            '    blobs, modes = {}, {}\n'
-            '    if ref is None:\n'
-            '        for p in paths:\n'
-            '            f = root / p\n'
-            '            if f.is_symlink() or not f.is_file():\n'
-            '                continue\n'
-            '            blobs[p] = _blob(f.read_bytes())\n'
-            '            modes[p] = "100755" if f.stat().st_mode & 0o111 else "100644"\n'
-            '        return blobs, modes\n'
-            '    for line in _git(root, "ls-tree", "-r", ref, "--", *paths).decode().splitlines():\n'
-            '        meta, name = line.split("\\t", 1)\n'
-            '        mode, kind, blob = meta.split()\n'
-            '        if kind == "blob":\n'
-            '            blobs[name], modes[name] = blob, mode\n'
-            '    return blobs, modes\n'
-            '\n'
-            '\n'
-            'def _signature_ok(root, ref, closure=False):\n'
-            '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""\n'
-            '    try:\n'
+            '\n'),
+         (
+             '\n'
+             "SUCCESSOR = 'tests.ci_v4_lean_b3_scope'\n"
+             '\n'
+             '\n'
+             'def _next():\n'
+             '    """The one finite forward successor (CI V4 Lean B3). Low-level only: its signature never calls this module or the composite."""\n'
+             '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
+             '    if SUCCESSOR not in COHORT_MODULES:\n'
+             '        return None\n'
+             '    from tests import ci_v4_lean_b3_scope\n'
+             '    return ci_v4_lean_b3_scope\n'
+             '\n'
+             '\n'
+             'def _next_pins(root, ref):\n'
+             '    N = _next()\n'
+             '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\n'
+             '\n'
+             '\n'
+             'def map_keys(repo=None, ref=None):\n'
+             '    root = Path(repo) if repo is not None else ROOT\n'
+             '    with scoped():\n'
+             '        N = _next()\n'
+             '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()\n'
+             '        return tuple(MAP_KEYS) + more\n'
+             '\n')),
+        ((
             '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
             '        if COHORT_MODULES != BASE_COHORTS + (__name__,):\n'
-            '            return False\n'
-            '        d = manifest(root, ref)\n'
+            '            return False\n'),
+         (
+             '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+             '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\n'
+             '            return False\n')),
+        ((
             '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n'
             '        if pins.get("tests/ci_v4_lean_b2_scope.py") != _MODULE_BLOB:\n'
-            '            return False\n'
-            '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n'
-            '            return False\n'
-            '        if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:\n'
-            '            return False\n'
-            '        if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p\n'
-            '                                           for p in OWNED_PATHS | {MANIFEST}):\n'
-            '            return False\n'
-            '        _git(root, "merge-base", "--is-ancestor", BASE, ref or "HEAD")\n'
-            '        key = str(root)\n'
-            '        if _base_tree(key) != BASE_TREE:\n'
-            '            return False\n'
-            '        if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds\n'
-            '            return False\n'
-            '        if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):\n'
-            '            return False\n'
+            '            return False\n'),
+         (
+             '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n'
+             '        nx = _next_pins(root, ref)\n'
+             '        if nx.get("tests/ci_v4_lean_b2_scope.py", pins.get("tests/ci_v4_lean_b2_scope.py")) != _MODULE_BLOB:\n'
+             '            return False\n')),
+        ((
             '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
             '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\n'
             '        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\n'
-            '            return False\n'
-            '        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}\n'
-            '        if any(modes.get(p) != "100644" for p in owned):\n'
-            '            return False\n'
-            '        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):\n'
-            '            return False\n'
-            '        if set(HANDOFFS) != HANDOFF_PATHS:\n'
-            '            return False\n'
-            '        for p in CURRENT_MAPS:\n'
-            '            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\n'
-            '                return False\n'
-            '        if closure:\n'
+            '            return False\n'),
+         (
+             '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
+             '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'
+             '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\n'
+             '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\n'
+             '            return False\n')),
+        ((
             '            for p in CURRENT_MAPS:\n'
             '                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\n'
-            '                    return False\n'
-            '        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):\n'
-            '            return False\n'
-            '        return True\n'
-            '    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):\n'
-            '        return False\n'
-            '\n'
-            '\n'
-            'def exact_blobs_ok(repo=None, ref=None):\n'
-            '    return _verdict(Path(repo) if repo is not None else ROOT, ref, "exact")\n'
-            '\n'
-            '\n'
-            'def _diff_ok(root, ref):\n'
+            '                    return False\n'),
+         (
+             '            for p in CURRENT_MAPS:\n'
+             '                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):\n'
+             '                    return False\n')),
+        ((
             '    try:\n'
             '        allowed = OWNED_PATHS | {MANIFEST}\n'
-            '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())\n'
-            '        if not changed <= allowed:\n'
-            '            return False\n'
-            '        if ref is None:\n'
-            '            untracked = set(_git(root, "ls-files", "--others", "--exclude-standard").decode().splitlines())\n'
-            '            if any(p not in allowed and not (p.startswith("evidence/") and p.endswith((".json", ".xml", ".png", ".txt", ".csv", ".html", ".zip")))\n'
-            '                   for p in untracked):\n'
-            '                return False\n'
-            '        return True\n'
-            '    except (OSError, subprocess.CalledProcessError):\n'
-            '        return False\n'
-            '\n'
-            '\n'
+            '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())\n'),
+         (
+             '    try:\n'
+             '        allowed = closure_paths(root, ref)\n'
+             '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())\n')),
+        ((
             'def effective_pins(repo=None, ref=None, *, signature=False):\n'
             '    return dict(manifest(repo, ref).get("source_blobs", {}))\n'
-            '\n'
-            '\n'
+            '\n'),
+         (
+             'def effective_pins(repo=None, ref=None, *, signature=False):\n'
+             '    root = Path(repo) if repo is not None else ROOT\n'
+             '    with scoped():\n'
+             '        pins = dict(manifest(repo, ref).get("source_blobs", {}))\n'
+             '        pins.update(_next_pins(root, ref))\n'
+             '        return pins\n'
+             '\n')),
+        ((
             'def closure_paths(repo=None, ref=None):\n'
             '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\n'
-            '\n'
-            '\n'
-            'def allowed_path(path, repo=None, ref=None):\n'
-            '    return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)\n'
-            '\n'
-            '\n'
+            '\n'),
+         (
+             'def closure_paths(repo=None, ref=None):\n'
+             '    root = Path(repo) if repo is not None else ROOT\n'
+             '    with scoped():\n'
+             '        if not signature_ok(root, ref):\n'
+             '            return frozenset()\n'
+             '        N = _next()\n'
+             '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\n'
+             '\n')),
+        ((
             'def supersedes(path, value, repo=None, ref=None):\n'
-            '    if path not in SUPERSEDED:\n'
-            '        return False\n'
-            "    # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked\n"
+            '    if path not in SUPERSEDED:\n'),
+         (
+             'def supersedes(path, value, repo=None, ref=None):\n'
+             '    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped\n'
+             '        N = _next()\n'
+             '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):\n'
+             '            return True\n'
+             '        return _supersedes_own(path, value, repo, ref)\n'
+             '\n'
+             '\n'
+             'def _supersedes_own(path, value, repo=None, ref=None):\n'
+             '    if path not in SUPERSEDED:\n')),
+        ((
             '    # files), so a signature-only verdict never makes the tree valid.\n'
             '    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value\n'
-            '\n'
-            '\n'
-            'def nontrust_scope_authorized(changed, repo=None):\n'
-            '    root = Path(repo) if repo is not None else ROOT\n'
-            '    try:\n'
-            '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n'
-            '            return False\n'
-            '        actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())\n'
-            '        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} and exact_blobs_ok(root)\n'
-            '    except (OSError, subprocess.CalledProcessError):\n'
-            '        return False\n'
-            '\n'
-            '\n'
-            'def valid(repo=None, ref=None):\n'
-            '    from tests.fin_v2_cohorts import valid as composite\n'
-            '    return exact_blobs_ok(repo, ref) and composite(repo, ref)\n'
-            '\n'
-            '\n'
-            'def matches(path, source=None, *, repo=None, ref=None):\n'
-            '    pins = manifest(repo, ref).get("source_blobs", {})\n'
-            '    if path not in pins or not valid(repo, ref):\n'
-            '        return False\n'
-            '    return source is None or _blob(source.encode() if isinstance(source, str) else source) == pins[path]\n'
-            '\n'
-            '\n'
-            'def protected_blobs(repo=None, ref=None):\n'
-            '    return {}\n'),
+            '\n'),
          (
-            '"""CI V4 Lean B2: ONE finite exact-source successor after the accepted B1 leaf (owner decision NEW_DRAFT_FROM_MAIN, 2026-11-15).\r\n'
-            '\r\n'
-            'BASE is accepted main (the merged #449, ``3e859ac8``). This cohort changes exactly one thing in behaviour: the READ-ONLY provenance nodes of\r\n'
-            '``tests/test_u1_scope.py`` that re-derive the same many-cohort exact-source verdict dozens of times now share ONE outer ``call_scope`` (the\r\n'
-            'bounded, existing, per-call memo that dies with its block). The tamper nodes that mutate a worktree are not touched and no verdict is ever kept\r\n'
-            'across a mutation, a ref, a tree or a test case. It changes NO selector, policy, workflow, product, financial or UI source and selects, deletes,\r\n'
-            'skips or moves NO test: ``FROZEN`` pins every CI V4 control file to its accepted BASE blob.\r\n'
-            '\r\n'
-            "Every changed byte, Git mode and the immutable BASE tree are bound to this module's manifest. The shared governance paths this successor really\r\n"
-            'changes (the composite registry, the U1 discovery entry, the U1 provenance tests, the B1 and C06 forward hooks, the exact-tail tests and the\r\n'
-            'current maps) are SUPERSEDED paths: each carries its accepted BASE blob, the literal one-occurrence substitutions that produce its new blob, and\r\n'
-            'the exact new blob. Previous manifests are never rewritten except the current-map keys that every earlier successor moved the same way.\r\n'
-            '\r\n'
-            'Termination: the signature reads Git objects, this manifest and the registry tuple only. It never calls the B1 leaf, the C06 leaf, an older cohort\r\n'
-            'or the composite; the B1 leaf calls this module through one forward hook (the acyclic pattern B1 used for C06).\r\n'
-            '"""\r\n'
-            'from __future__ import annotations\r\n'
-            '\r\n'
-            'from contextlib import contextmanager\r\n'
-            'from functools import lru_cache\r\n'
-            'from pathlib import Path\r\n'
-            'import hashlib\r\n'
-            'import json\r\n'
-            'import subprocess\r\n'
-            '\r\n'
-            'ROOT = Path(__file__).resolve().parents[1]\r\n'
-            'BASE = "3e859ac82c9510f467999a5182bd9d9a21583291"\r\n'
-            'BASE_TREE = "af0a714420ba84dcd026a04e47d0ff9e0473c6d8"\r\n'
-            'MANIFEST = "docs/ci_v4/lean_b2/SOURCE_SUCCESSOR.json"\r\n'
-            'SCHEMA = "CI_V4_LEAN_B2_EXACT_SOURCE_V1"\r\n'
-            "AUTHORIZATION = ('Owner decision NEW_DRAFT_FROM_MAIN (2026-11-15): one finite exact-source successor of the accepted CI V4 Lean B1 leaf for '\r\n"
-            "                 'a bounded, semantic-preserving U1 provenance test-runtime optimisation; no selector, policy, workflow, product, financial, UI or test-selection change; no test demotion; no merge or deployment authority.')\r\n"
-            'REGISTRY = "tests/fin_v2_cohorts.py"\r\n'
-            'PREDECESSOR = "tests/ci_v4_lean_b1_scope.py"\r\n'
-            'BASE_COHORTS = (\r\n'
-            "    'tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope', 'tests.fin_v2_rcux_scope',\r\n"
-            "    'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope', 'tests.wf03_lifecycle_scope',\r\n"
-            "    'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope', 'tests.post413_r17_scope',\r\n"
-            "    'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope',\r\n"
-            "    'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope',\r\n"
-            "    'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope',\r\n"
-            "    'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope',\r\n"
-            "    'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope',\r\n"
-            ')\r\n'
-            'NEW = frozenset((\r\n'
-            '    "docs/ci_v4/lean_b2/README.md",\r\n'
-            '    "tests/ci_v4_lean_b2_scope.py",\r\n'
-            '    "tests/test_ci_v4_lean_b2_scope.py",\r\n'
-            '))\r\n'
-            '# Accepted governance paths whose bytes move by one reviewed literal substitution (HANDOFFS) ...\r\n'
-            'HANDOFF_PATHS = frozenset((\r\n'
-            "    'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json',\r\n"
-            "    'tests/c06_cost_workspace_scope.py',\r\n"
-            "    'tests/ci_v4_lean_b1_scope.py',\r\n"
-            "    'tests/fin_v2_cohorts.py',\r\n"
-            "    'tests/test_bess02_scope.py',\r\n"
-            "    'tests/test_c06_cost_workspace_scope.py',\r\n"
-            "    'tests/test_ci_v4_lean_b1_scope.py',\r\n"
-            "    'tests/test_ci_v4_lean_tamper_matrix.py',\r\n"
-            "    'tests/test_ci_v4_perf_scope.py',\r\n"
-            "    'tests/test_f03_financing_scope.py',\r\n"
-            "    'tests/test_f04_financing_scope.py',\r\n"
-            "    'tests/test_post432_l01_l02_scope.py',\r\n"
-            "    'tests/test_r02_ppa_ux_scope.py',\r\n"
-            "    'tests/test_r03_ppa_scope.py',\r\n"
-            "    'tests/test_r04_ppa_scope.py',\r\n"
-            "    'tests/test_t01e_remediation_scope.py',\r\n"
-            "    'tests/test_u1_scope.py',\r\n"
-            "    'tests/u1_scope.py',\r\n"
-            '))\r\n'
-            '# ... and the current maps, of which only the registry, U1 discovery and U1 provenance-test keys move (the bounded handoff every earlier successor made).\r\n'
-            'CURRENT_MAPS = frozenset((\r\n'
-            '    "docs/ci_v4/SOURCE_SUCCESSOR.json",\r\n'
-            '    "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json",\r\n'
-            '    "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json",\r\n'
-            '    "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json",\r\n'
-            '    "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json",\r\n'
-            '    "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json",\r\n'
-            '    "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json",\r\n'
-            '    "docs/tax_reference_registry/SOURCE_SUCCESSOR.json",\r\n'
-            '))\r\n'
-            "MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py', 'tests/test_u1_scope.py')\r\n"
-            'SUPERSEDED = HANDOFF_PATHS | CURRENT_MAPS\r\n'
-            'OWNED_PATHS = NEW | SUPERSEDED\r\n'
-            'FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", ".github/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")\r\n'
-            '# Accepted CI V4 control sources that this successor must leave byte-identical to BASE: no selector, policy, aggregator, scheduler or workflow change.\r\n'
-            'FROZEN = (\r\n'
-            '    ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_pr.yml",\r\n'
-            '    ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",\r\n'
-            '    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",\r\n'
-            '    "docs/ci_v4/node_split_policy.json", "docs/ci_v4/node_weights.json",\r\n'
-            '    "pytest.ini",\r\n'
-            '    "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",\r\n'
-            '    "tools/ci_v4_nodes.py", "tools/ci_v4_release_gate.py", "tools/ci_v4_schedule.py", "tools/ci_v4_select.py", "tools/ci_v4_shard.py",\r\n'
-            ')\r\n'
-            '\r\n'
-            '\r\n'
-            'def _git(root, *args):\r\n'
-            '    return subprocess.check_output(["git", *args], cwd=root, stderr=subprocess.DEVNULL)\r\n'
-            '\r\n'
-            '\r\n'
-            'def _read(root, path, ref=None):\r\n'
-            '    # A committed ref is read from Git (with the repository root); the working tree is read from disk.\r\n'
-            '    return (Path(root) / path).read_bytes() if ref is None else _git(root, "show", ref + ":" + path)\r\n'
-            '\r\n'
-            '\r\n'
-            'def _blob(raw):\r\n'
-            '    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()\r\n'
-            '\r\n'
-            '\r\n'
-            '_MODULE_BLOB = _blob(Path(__file__).read_bytes())\r\n'
-            '\r\n'
-            '\r\n'
-            'def manifest(repo=None, ref=None):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    try:\r\n'
-            '        raw = _read(root, MANIFEST, ref)\r\n'
-            '        d = json.loads(raw)\r\n'
-            '        if raw != (json.dumps(d, indent=2, sort_keys=True) + "\\n").encode():       # canonical bytes only: no extra, reordered or hidden byte\r\n'
-            '            return {}\r\n'
-            '        return d if (isinstance(d, dict) and set(d) == {"schema_version", "authorization", "base", "base_tree", "source_blobs", "base_blobs",\r\n'
-            '                                                       "source_modes", "base_modes"}\r\n'
-            '                     and d.get("authorization") == AUTHORIZATION and d["schema_version"] == SCHEMA and d["base"] == BASE\r\n'
-            '                     and d["base_tree"] == BASE_TREE and isinstance(d["source_blobs"], dict) and isinstance(d["base_blobs"], dict)) else {}\r\n'
-            '    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):\r\n'
-            '        return {}\r\n'
-            '\r\n'
-            '\r\n'
-            'def expected_map(root, path, pins=None):\r\n'
-            '    """Only the finite current-source keys (MAP_KEYS: the registry and the U1 discovery guard) may move; all history stays unchanged."""\r\n'
-            '    d = json.loads(_base_bytes(str(root), path))\r\n'
-            '    pins = manifest(root).get("source_blobs", {}) if pins is None else pins\r\n'
-            '    for key in MAP_KEYS:\r\n'
-            '        if key in d["source_blobs"]:\r\n'
-            '            d["source_blobs"][key] = pins[key]\r\n'
-            '    return (json.dumps(d, sort_keys=True, indent=2) + "\\n").encode()\r\n'
-            '\r\n'
-            '\r\n'
-            '# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes. The accepted C06 leaf gains one forward hook\r\n'
-            '# to this cohort (the same acyclic pattern F03, T01-E, R03 and R04 used); the registry appends this cohort exactly once; the exact-tail tests\r\n'
-            '# accept one more state.\r\n'
-            'HANDOFFS = {\r\n'
-            "    'docs/react_migration/ux_pr2c/UX_PR2C_EXACT_SOURCE.json': [\r\n"
-            '        (\'    "tests/test_u1_scope.py": "8f58878effa3d1d07fe630eea68b0e0c16c01d9b",\\n\',\r\n'
-            '         \'    "tests/test_u1_scope.py": "4c1da14dfcd634614472a0dcbb4d4aee846220ba",\\n\'),\r\n'
-            '    ],\r\n'
-            "    'tests/fin_v2_cohorts.py': [\r\n"
-            '        ("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')",\r\n'
-            '         "\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"),\r\n'
-            '    ],\r\n'
-            "    'tests/u1_scope.py': [\r\n"
-            '        ("\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\')",\r\n'
-            '         "\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"),\r\n'
-            '    ],\r\n'
-            "    'tests/test_u1_scope.py': [\r\n"
-            "        ('def test_positive_cohort_is_exact_registered_and_closed():\\n',\r\n"
-            '         (\r\n'
-            "                'def test_positive_cohort_is_exact_registered_and_closed():\\n'\r\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call: each cohort verdict is computed once and dropped on exit (no mutation inside)\\n'\r\n"
-            "                '        _positive_cohort_is_exact_registered_and_closed()\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _positive_cohort_is_exact_registered_and_closed():\\n')),\r\n"
-            "        ('def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n',\r\n"
-            '         (\r\n'
-            "                'def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n'\r\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call over the finite owned set; nothing is mutated inside the scope\\n'\r\n"
-            "                '        _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession()\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():\\n')),\r\n"
-            "        ('def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n',\r\n"
-            '         (\r\n'
-            "                'def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n'\r\n"
-            "                '    with C.call_scope():       # ONE outer READ-ONLY governance call: the later-cohort enumeration shares one verdict per cohort\\n'\r\n"
-            "                '        _integration_reference_is_main_after_414_and_everything_unowned_equals_it()\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _integration_reference_is_main_after_414_and_everything_unowned_equals_it():\\n')),\r\n"
-            '    ],\r\n'
-            "    'tests/ci_v4_lean_b1_scope.py': [\r\n"
-            '        ((\r\n'
-            '                \'        pins = manifest(root, ref).get("source_blobs", {})\\n\'\r\n'
-            "                '        for path in HANDOFFS:\\n'),\r\n"
-            '         (\r\n'
-            '                \'        pins = manifest(root, ref).get("source_blobs", {})\\n\'\r\n'
-            "                '        N = _next()\\n'\r\n"
-            "                '        nxt = N is not None and N.signature_ok(root, ref)\\n'\r\n"
-            "                '        for path in HANDOFFS:\\n'\r\n"
-            "                '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path\\n'\r\n"
-            "                '                continue\\n')),\r\n"
-            '        ((\r\n'
-            "                '                return False\\n'\r\n"
-            "                '        return True\\n'\r\n"
-            "                '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\\n'),\r\n"
-            '         (\r\n'
-            "                '                return False\\n'\r\n"
-            "                '        return N.reviewed_edits_ok(root, ref) if nxt else True\\n'\r\n"
-            "                '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\\n')),\r\n"
-            '        ((\r\n'
-            "                '    _SCOPE.append({})\\n'\r\n"
-            "                '    try:\\n'\r\n"
-            "                '        yield\\n'\r\n"
-            "                '    finally:\\n'),\r\n"
-            '         (\r\n'
-            "                '    _SCOPE.append({})\\n'\r\n"
-            "                '    try:\\n'\r\n"
-            "                '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\\n'\r\n"
-            "                '        N = _next()\\n'\r\n"
-            "                '        if N is None:\\n'\r\n"
-            "                '            yield\\n'\r\n"
-            "                '        else:\\n'\r\n"
-            "                '            with N.scoped():\\n'\r\n"
-            "                '                yield\\n'\r\n"
-            "                '    finally:\\n')),\r\n"
-            '        ((\r\n'
-            '                \'    if mode == "exact":\\n\'\r\n'
-            "                '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\\n'\r\n"
-            "                '    return _signature_ok(root, ref, mode)\\n'),\r\n"
-            '         (\r\n'
-            "                '    from contextlib import nullcontext\\n'\r\n"
-            "                '    N = _next()\\n'\r\n"
-            "                '    with (N.scoped() if N is not None else nullcontext()):\\n'\r\n"
-            '                \'        if mode == "exact":\\n\'\r\n'
-            "                '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\\n'\r\n"
-            "                '        return _signature_ok(root, ref, mode)\\n')),\r\n"
-            '        ((\r\n'
-            "                'def map_keys(repo=None, ref=None):\\n'\r\n"
-            "                '    return tuple(MAP_KEYS)\\n'),\r\n"
-            '         (\r\n'
-            '                "SUCCESSOR = \'tests.ci_v4_lean_b2_scope\'\\n"\r\n'
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _next():\\n'\r\n"
-            '                \'    """The one finite forward successor (CI V4 Lean B2). Low-level only: its signature never calls this module or the composite."""\\n\'\r\n'
-            "                '    from tests.fin_v2_cohorts import COHORT_MODULES\\n'\r\n"
-            "                '    if SUCCESSOR not in COHORT_MODULES:\\n'\r\n"
-            "                '        return None\\n'\r\n"
-            "                '    from tests import ci_v4_lean_b2_scope\\n'\r\n"
-            "                '    return ci_v4_lean_b2_scope\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _next_pins(root, ref):\\n'\r\n"
-            "                '    N = _next()\\n'\r\n"
-            "                '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def map_keys(repo=None, ref=None):\\n'\r\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\r\n"
-            "                '    with scoped():\\n'\r\n"
-            "                '        N = _next()\\n'\r\n"
-            "                '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()\\n'\r\n"
-            "                '        return tuple(MAP_KEYS) + more\\n')),\r\n"
-            "        ('        if COHORT_MODULES != BASE_COHORTS + (__name__,):\\n',\r\n"
-            "         '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\\n'),\r\n"
-            '        (\'        if pins.get("tests/ci_v4_lean_b1_scope.py") != _MODULE_BLOB:\\n\',\r\n'
-            '         (\r\n'
-            "                '        nx = _next_pins(root, ref)\\n'\r\n"
-            '                \'        if nx.get("tests/ci_v4_lean_b1_scope.py", pins.get("tests/ci_v4_lean_b1_scope.py")) != _MODULE_BLOB:\\n\')),\r\n'
-            "        ('        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\\n',\r\n"
-            '         (\r\n'
-            "                '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\\n'\r\n"
-            "                '        cur = {p: nx.get(p, b) for p, b in pins.items()}\\n')),\r\n"
-            "        ('        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\\n',\r\n"
-            "         '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\\n'),\r\n"
-            "        ('            if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\\n',\r\n"
-            "         '            if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):\\n'),\r\n"
-            '        ((\r\n'
-            "                '        allowed = OWNED_PATHS | {MANIFEST}\\n'\r\n"
-            "                '        changed = set('),\r\n"
-            '         (\r\n'
-            "                '        allowed = closure_paths(root, ref)\\n'\r\n"
-            "                '        changed = set(')),\r\n"
-            '        ((\r\n'
-            "                'def effective_pins(repo=None, ref=None, *, signature=False):\\n'\r\n"
-            '                \'    return dict(manifest(repo, ref).get("source_blobs", {}))\\n\'),\r\n'
-            '         (\r\n'
-            "                'def effective_pins(repo=None, ref=None, *, signature=False):\\n'\r\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\r\n"
-            "                '    with scoped():\\n'\r\n"
-            '                \'        pins = dict(manifest(repo, ref).get("source_blobs", {}))\\n\'\r\n'
-            "                '        pins.update(_next_pins(root, ref))\\n'\r\n"
-            "                '        return pins\\n')),\r\n"
-            '        ((\r\n'
-            "                'def closure_paths(repo=None, ref=None):\\n'\r\n"
-            "                '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\\n'),\r\n"
-            '         (\r\n'
-            "                'def closure_paths(repo=None, ref=None):\\n'\r\n"
-            "                '    root = Path(repo) if repo is not None else ROOT\\n'\r\n"
-            "                '    with scoped():\\n'\r\n"
-            "                '        if not signature_ok(root, ref):\\n'\r\n"
-            "                '            return frozenset()\\n'\r\n"
-            "                '        N = _next()\\n'\r\n"
-            "                '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\\n')),\r\n"
-            '        ((\r\n'
-            "                'def supersedes(path, value, repo=None, ref=None):\\n'\r\n"
-            "                '    if path not in SUPERSEDED:\\n'\r\n"
-            "                '        return False\\n'),\r\n"
-            '         (\r\n'
-            "                'def supersedes(path, value, repo=None, ref=None):\\n'\r\n"
-            "                '    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped\\n'\r\n"
-            "                '        N = _next()\\n'\r\n"
-            "                '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):\\n'\r\n"
-            "                '            return True\\n'\r\n"
-            "                '        return _supersedes_own(path, value, repo, ref)\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _supersedes_own(path, value, repo=None, ref=None):\\n'\r\n"
-            "                '    if path not in SUPERSEDED:\\n'\r\n"
-            "                '        return False\\n')),\r\n"
-            '        (\'    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value\\n\',\r\n'
-            '         (\r\n'
-            "                '    # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line\\n'\r\n"
-            "                '    return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\\n')),\r\n"
-            '        ((\r\n'
-            "                '    try:\\n'\r\n"
-            '                \'        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\\n\'),\r\n'
-            '         (\r\n'
-            "                '    try:\\n'\r\n"
-            "                '        N = _next()\\n'\r\n"
-            "                '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\\n'\r\n"
-            "                '            return True\\n'\r\n"
-            '                \'        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\\n\')),\r\n'
-            '    ],\r\n'
-            "    'tests/c06_cost_workspace_scope.py': [\r\n"
-            "        ('        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\\r\\n',\r\n"
-            '         (\r\n'
-            "                '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\\r\\n'\r\n"
-            '                "                                  BASE_COHORTS + (__name__, SUCCESSOR, \'tests.ci_v4_lean_b2_scope\')):       # at most the two reviewed successors\\r\\n")),\r\n'
-            '    ],\r\n'
-            "    'tests/test_bess02_scope.py': [\r\n"
-            "        ('                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\r\n"
-            '         "                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\r\n'
-            '    ],\r\n'
-            "    'tests/test_f03_financing_scope.py': [\r\n"
-            "        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\r\n"
-            '         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\r\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\r\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\r\n'
-            '    ],\r\n'
-            "    'tests/test_f04_financing_scope.py': [\r\n"
-            '        ("        C.COHORT_MODULES[-3:]==(\'tests.r03_ppa_scope\',\'tests.f04_financing_scope\',\'tests.r04_ppa_scope\') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n",\r\n'
-            '         "        C.COHORT_MODULES[-3:]==(\'tests.r03_ppa_scope\',\'tests.f04_financing_scope\',\'tests.r04_ppa_scope\') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\r\n'
-            "        ('        B1=C06_APPROVAL._next()\\n',\r\n"
-            '         (\r\n'
-            "                '        B1=C06_APPROVAL._next()\\n'\r\n"
-            "                '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\r\n"
-            "        ('        authority=B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\\n',\r\n"
-            "         '        authority=B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\\n'),\r\n"
-            '        ("        expected=json.loads(C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n",\r\n'
-            '         (\r\n'
-            "                '        _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None\\n'\r\n"
-            '                "        expected=json.loads(_B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n")),\r\n'
-            '    ],\r\n'
-            "    'tests/test_r03_ppa_scope.py': [\r\n"
-            "        ('        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n',\r\n"
-            '         "        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n"),\r\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\r\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\r\n'
-            "        ('    B1 = C06_APPROVAL._next()\\n',\r\n"
-            '         (\r\n'
-            "                '    B1 = C06_APPROVAL._next()\\n'\r\n"
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\r\n"
-            "        ('        authority = B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\\n',\r\n"
-            "         '        authority = B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\\n'),\r\n"
-            '    ],\r\n'
-            "    'tests/test_r04_ppa_scope.py': [\r\n"
-            '        (\'    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n\',\r\n'
-            '         \'    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \\\'tests.ci_v4_lean_b2_scope\\\'))\\n\'),\r\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\r\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\r\n'
-            "        ('        B1 = C06_APPROVAL._next()\\n',\r\n"
-            '         (\r\n'
-            "                '        B1 = C06_APPROVAL._next()\\n'\r\n"
-            "                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\r\n"
-            "        ('        authority = (B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\\n',\r\n"
-            "         '        authority = (B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\\n'),\r\n"
-            '    ],\r\n'
-            "    'tests/test_t01e_remediation_scope.py': [\r\n"
-            '        (\'                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n\',\r\n'
-            '         \'                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \\\'tests.ci_v4_lean_b2_scope\\\'))\\n\'),\r\n'
-            '        (\'    ("fake_extra", lambda b: b.replace(b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')", b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.fake_scope\\\')")),\\n\',\r\n'
-            '         \'    ("fake_extra", lambda b: b.replace(b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')", b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.fake_scope\\\')")),\\n\'),\r\n'
-            "        ('        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\\n',\r\n"
-            '         (\r\n'
-            "                '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n'\r\n"
-            "                '        if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the further reviewed B2 substitution of this shared path\\n'\r\n"
-            "                '            assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)\\n'\r\n"
-            "                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'\r\n"
-            "                '            continue\\n'\r\n"
-            "                '        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path\\n')),\r\n"
-            '    ],\r\n'
-            "    'tests/test_ci_v4_perf_scope.py': [\r\n"
-            '        ((\r\n'
-            '                \'            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\r\n'
-            "                '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n'),\r\n"
-            '         (\r\n'
-            '                \'            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\r\n'
-            '                "            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n")),\r\n'
-            '        ((\r\n'
-            '                \'                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\r\n'
-            "                '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))\\n'),\r\n"
-            '         (\r\n'
-            '                \'                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\\n\'\r\n'
-            '                "                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))\\n")),\r\n'
-            "        ('    return N if N is not None and N.signature_ok() else None\\n',\r\n"
-            '         (\r\n'
-            "                '    return N if N is not None and N.signature_ok() else None\\n'\r\n"
-            "                '\\n'\r\n"
-            "                '\\n'\r\n"
-            "                'def _b2():\\n'\r\n"
-            '                \'    """The one reviewed B2 successor of B1 while it is registered and exact, else None."""\\n\'\r\n'
-            "                '    N = _b1()\\n'\r\n"
-            "                '    N2 = N._next() if N is not None else None\\n'\r\n"
-            "                '    return N2 if N2 is not None and N2.signature_ok() else None\\n')),\r\n"
-            '        ((\r\n'
-            "                '    for p in sorted(F.HANDOFFS):\\n'\r\n"
-            "                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n'),\r\n"
-            '         (\r\n'
-            "                '    for p in sorted(F.HANDOFFS):\\n'\r\n"
-            "                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\\n'\r\n"
-            "                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n')),\r\n"
-            '        ((\r\n'
-            "                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\\n'\r\n"
-            "                '        want = (_b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n'),\r\n"
-            '         (\r\n'
-            "                '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\\n'\r\n"
-            "                '        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\\n'\r\n"
-            "                '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\\n')),\r\n"
-            '        (\'              "\\\'tests.t01e_remediation_scope\\\', \\\'tests.r03_ppa_scope\\\', \\\'tests.f04_financing_scope\\\', \\\'tests.r04_ppa_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")\\n\',\r\n'
-            '         \'              "\\\'tests.t01e_remediation_scope\\\', \\\'tests.r03_ppa_scope\\\', \\\'tests.f04_financing_scope\\\', \\\'tests.r04_ppa_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")\\n\'),\r\n'
-            '    ],\r\n'
-            "    'tests/test_c06_cost_workspace_scope.py': [\r\n"
-            "        ('    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR))       # C06 is followed by at most the one reviewed B1 successor\\n',\r\n"
-            '         "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'))       # C06 is followed by at most the one reviewed B1 successor\\n"),\r\n'
-            '        ((\r\n'
-            "                '    N=F._next()\\n'\r\n"
-            "                '    for path in F.HANDOFFS:\\n'\r\n"
-            "                '        later=N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\\n'),\r\n"
-            '         (\r\n'
-            "                '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None\\n'\r\n"
-            "                '    for path in F.HANDOFFS:\\n'\r\n"
-            "                '        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\\n')),\r\n"
-            '        (\'            elif kind==\\\'duplicate_registration\\\':text=text.replace("\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')","\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")\\n\',\r\n'
-            '         \'            elif kind==\\\'duplicate_registration\\\':text=text.replace("\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\'","\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\'")\\n\'),\r\n'
-            '        ("        assert {k for k in original[\'source_blobs\'] if original[\'source_blobs\'][k]!=current[\'source_blobs\'][k]}<=set(F.MAP_KEYS)\\n",\r\n'
-            '         "        assert {k for k in original[\'source_blobs\'] if original[\'source_blobs\'][k]!=current[\'source_blobs\'][k]}<=set(F.map_keys())\\n"),\r\n'
-            "        ('            if m.__name__ not in (F.__name__, F.SUCCESSOR):         # a successor never attests an older accepted ref\\n',\r\n"
-            '         "            if m.__name__ not in (F.__name__, F.SUCCESSOR, \'tests.ci_v4_lean_b2_scope\'):         # a successor never attests an older accepted ref\\n"),\r\n'
-            '        ("        expected=json.loads(F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n",\r\n'
-            '         (\r\n'
-            "                '        _N=F._next();_N2=_N._next() if _N is not None and _N.signature_ok() else None\\n'\r\n"
-            '                "        expected=json.loads(_N2.expected_map(ROOT,path,_N2.effective_pins()) if _N2 is not None and _N2.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor\'s registry pin wins)\\n")),\r\n'
-            '    ],\r\n'
-            "    'tests/test_post432_l01_l02_scope.py': [\r\n"
-            '        ("    if \'tests.ci_v4_lean_b1_scope\' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\\n",\r\n'
-            '         (\r\n'
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n'\r\n"
-            '                "    if \'tests.ci_v4_lean_b2_scope\' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():\\n"\r\n'
-            "                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\\n'\r\n"
-            '                "    elif \'tests.ci_v4_lean_b1_scope\' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():\\n")),\r\n'
-            '    ],\r\n'
-            "    'tests/test_r02_ppa_ux_scope.py': [\r\n"
-            '        ("                            \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\') if m in C.COHORT_MODULES)\\n",\r\n'
-            '         "                            \'tests.r04_ppa_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\') if m in C.COHORT_MODULES)\\n"),\r\n'
-            "        ('    B1 = C06_APPROVAL._next()\\n',\r\n"
-            '         (\r\n'
-            "                '    B1 = C06_APPROVAL._next()\\n'\r\n"
-            "                '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\\n')),\r\n"
-            "        ('    if len(nxt) == 8 and B1 is not None and B1.signature_ok():\\n',\r\n"
-            '         (\r\n'
-            "                '    if len(nxt) == 9 and B2 is not None and B2.signature_ok():\\n'\r\n"
-            "                '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\\n'\r\n"
-            "                '    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\\n')),\r\n"
-            '    ],\r\n'
-            "    'tests/test_ci_v4_lean_b1_scope.py': [\r\n"
-            '        ((\r\n'
-            "                '    for p in T.HANDOFFS:\\n'\r\n"
-            "                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\\n'\r\n"
-            "                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'),\r\n"
-            '         (\r\n'
-            "                '    N = T._next()\\n'\r\n"
-            "                '    for p in T.HANDOFFS:\\n'\r\n"
-            "                '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path\\n'\r\n"
-            "                '            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\\n'\r\n"
-            "                '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n'\r\n"
-            "                '            continue\\n'\r\n"
-            "                '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\\n'\r\n"
-            "                '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\\n')),\r\n"
-            '        ((\r\n'
-            "                '    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1\\n'\r\n"
-            '                \'    assert C.COHORT_MODULES[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\'),\r\n'
-            '         (\r\n'
-            "                '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\\n'\r\n"
-            '                \'    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"\\n\')),\r\n'
-            "        ('        assert changed <= set(T.MAP_KEYS)\\n',\r\n"
-            "         '        assert changed <= set(T.map_keys())\\n'),\r\n"
-            '        (\'    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\',\r\n'
-            '         \'    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\\n\'),\r\n'
-            '        (\'    tail = b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')"\\n\',\r\n'
-            '         \'    tail = b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')"\\n\'),\r\n'
-            '        (\'        ("duplicate", lambda b: b.replace(tail, b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\')")),\\n\',\r\n'
-            '         \'        ("duplicate", lambda b: b.replace(tail, b"\\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")),\\n\'),\r\n'
-            '        (\'        ("swapped_c06_b1", lambda b: b.replace(tail, b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.c06_cost_workspace_scope\\\')")),\\n\',\r\n'
-            '         \'        ("swapped_c06_b1", lambda b: b.replace(tail, b"\\\'tests.ci_v4_lean_b1_scope\\\', \\\'tests.c06_cost_workspace_scope\\\', \\\'tests.ci_v4_lean_b2_scope\\\')")),\\n\'),\r\n'
-            "        ('    reg = pins[T.REGISTRY]\\n',\r\n"
-            "         '    reg = T.effective_pins()[T.REGISTRY]\\n'),\r\n"
-            '    ],\r\n'
-            "    'tests/test_ci_v4_lean_tamper_matrix.py': [\r\n"
-            '        (\'TAIL = "\\\'tests.ci_v4_lean_b1_scope\\\')"\\n\',\r\n'
-            '         \'TAIL = "\\\'tests.ci_v4_lean_b2_scope\\\')"\\n\'),\r\n'
-            '        (\'    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\\\'tests.ci_v4_lean_b1_scope\\\', " + TAIL), REG, "pinned"),\\n\',\r\n'
-            '         \'    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\\\'tests.ci_v4_lean_b2_scope\\\', " + TAIL), REG, "pinned"),\\n\'),\r\n'
-            '        (\'    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \\\'tests.ci_v4_lean_b1_scope\\\')", ")"), "tests/u1_scope.py", "pinned"),\\n\',\r\n'
-            '         \'    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \\\'tests.ci_v4_lean_b2_scope\\\')", ")"), "tests/u1_scope.py", "pinned"),\\n\'),\r\n'
-            '    ],\r\n'
-            '}\r\n'
-            '\r\n'
-            '\r\n'
-            'def expected_handoff(root, path):\r\n'
-            '    """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""\r\n'
-            '    raw = _base_bytes(str(root), path).decode()\r\n'
-            '    for old, new in HANDOFFS[path]:\r\n'
-            '        if raw.count(old) != 1:\r\n'
-            '            raise ValueError("reviewed handoff is missing or ambiguous")\r\n'
-            '        raw = raw.replace(old, new)\r\n'
-            '    return raw.encode()\r\n'
-            '\r\n'
-            '\r\n'
-            'def reviewed_edits_ok(repo=None, ref=None):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    try:\r\n'
-            '        pins = manifest(root, ref).get("source_blobs", {})\r\n'
-            '        for path in HANDOFFS:\r\n'
-            '            actual = _read(root, path, ref)\r\n'
-            '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\r\n'
-            '                return False\r\n'
-            '        return True\r\n'
-            '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):\r\n'
-            '        return False\r\n'
-            '\r\n'
-            '\r\n'
-            '_SCOPE = []\r\n'
-            '\r\n'
-            '\r\n'
-            '@contextmanager\r\n'
-            'def scoped():\r\n'
-            '    if _SCOPE:\r\n'
-            '        yield\r\n'
-            '        return\r\n'
-            '    _SCOPE.append({})\r\n'
-            '    try:\r\n'
-            '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.\r\n'
-            '        N = _next()\r\n'
-            '        if N is None:\r\n'
-            '            yield\r\n'
-            '        else:\r\n'
-            '            with N.scoped():\r\n'
-            '                yield\r\n'
-            '    finally:\r\n'
-            '        _SCOPE.pop()\r\n'
-            '\r\n'
-            '\r\n'
-            'def _compute(root, ref, mode):\r\n'
-            '    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""\r\n'
-            '    from contextlib import nullcontext\r\n'
-            '    N = _next()\r\n'
-            '    with (N.scoped() if N is not None else nullcontext()):\r\n'
-            '        if mode == "exact":\r\n'
-            '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\r\n'
-            '        return _signature_ok(root, ref, mode)\r\n'
-            '\r\n'
-            '\r\n'
-            'def _verdict(root, ref, closure):\r\n'
-            '    key = (str(root), ref, closure)\r\n'
-            '    if _SCOPE and key in _SCOPE[-1]:\r\n'
-            '        return _SCOPE[-1][key]\r\n'
-            '    value = _compute(root, ref, closure)\r\n'
-            '    if _SCOPE:\r\n'
-            '        _SCOPE[-1][key] = value\r\n'
-            '    return value\r\n'
-            '\r\n'
-            '\r\n'
-            'def signature_ok(repo=None, ref=None):\r\n'
-            '    """Source/base/mode authority only: it never reads a foreign current map\'s bytes (the full closure alone judges those)."""\r\n'
-            '    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)\r\n'
-            '\r\n'
-            '\r\n'
-            "SUCCESSOR = 'tests.ci_v4_lean_b3_scope'\r\n"
-            '\r\n'
-            '\r\n'
-            'def _next():\r\n'
-            '    """The one finite forward successor (CI V4 Lean B3). Low-level only: its signature never calls this module or the composite."""\r\n'
-            '    from tests.fin_v2_cohorts import COHORT_MODULES\r\n'
-            '    if SUCCESSOR not in COHORT_MODULES:\r\n'
-            '        return None\r\n'
-            '    from tests import ci_v4_lean_b3_scope\r\n'
-            '    return ci_v4_lean_b3_scope\r\n'
-            '\r\n'
-            '\r\n'
-            'def _next_pins(root, ref):\r\n'
-            '    N = _next()\r\n'
-            '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\r\n'
-            '\r\n'
-            '\r\n'
-            'def map_keys(repo=None, ref=None):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    with scoped():\r\n'
-            '        N = _next()\r\n'
-            '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()\r\n'
-            '        return tuple(MAP_KEYS) + more\r\n'
-            '\r\n'
-            '\r\n'
-            '@lru_cache(maxsize=512)\r\n'
-            'def _base_mode(root, path):\r\n'
-            '    """Only immutable BASE entries are cached; evaluated source modes always come from the snapshot."""\r\n'
-            '    return _git(Path(root), "ls-tree", BASE, "--", path).decode().split()[0]\r\n'
-            '\r\n'
-            '\r\n'
-            '@lru_cache(maxsize=512)\r\n'
-            'def _base_bytes(root, path):\r\n'
-            '    """Bytes of an IMMUTABLE accepted-main (BASE) object. Never a working-tree or ref read, so a cached value can never go stale."""\r\n'
-            '    return _git(Path(root), "show", BASE + ":" + path)\r\n'
-            '\r\n'
-            '\r\n'
-            '@lru_cache(maxsize=8)\r\n'
-            'def _base_tree(root):\r\n'
-            '    return _git(Path(root), "rev-parse", BASE + "^{tree}").decode().strip()\r\n'
-            '\r\n'
-            '\r\n'
-            '@lru_cache(maxsize=256)\r\n'
-            'def _expected_blob(root, path):\r\n'
-            '    """Blob id of the literal reviewed transformation of an immutable BASE blob (a pure function of BASE and this module\'s literals)."""\r\n'
-            '    text = _base_bytes(root, path).decode()\r\n'
-            '    for old, new in HANDOFFS[path]:\r\n'
-            '        if text.count(old) != 1:\r\n'
-            '            raise ValueError("reviewed edit is missing or ambiguous")\r\n'
-            '        text = text.replace(old, new)\r\n'
-            '    return _blob(text.encode())\r\n'
-            '\r\n'
-            '\r\n'
-            '@lru_cache(maxsize=256)\r\n'
-            'def _expected_map_blob(root, path, moved):\r\n'
-            '    """Pure function of an immutable BASE map and the literal moved registry pin."""\r\n'
-            '    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))\r\n'
-            '\r\n'
-            '\r\n'
-            'def _snapshot(root, ref, paths):\r\n'
-            '    """One read of the evaluated state: {path: blob} and {path: mode}. A committed ref is read with ONE ls-tree; the WORKING TREE is read from\r\n'
-            '    disk and hashed here (Git blob framing over the current bytes), so a modified, replaced or deleted file is judged by what is really on disk, never by\r\n'
-            '    HEAD. A symlink or non-file is skipped (so its pin fails) and an executable bit is reported as a bad mode."""\r\n'
-            '    paths = sorted(paths)\r\n'
-            '    blobs, modes = {}, {}\r\n'
-            '    if ref is None:\r\n'
-            '        for p in paths:\r\n'
-            '            f = root / p\r\n'
-            '            if f.is_symlink() or not f.is_file():\r\n'
-            '                continue\r\n'
-            '            blobs[p] = _blob(f.read_bytes())\r\n'
-            '            modes[p] = "100755" if f.stat().st_mode & 0o111 else "100644"\r\n'
-            '        return blobs, modes\r\n'
-            '    for line in _git(root, "ls-tree", "-r", ref, "--", *paths).decode().splitlines():\r\n'
-            '        meta, name = line.split("\\t", 1)\r\n'
-            '        mode, kind, blob = meta.split()\r\n'
-            '        if kind == "blob":\r\n'
-            '            blobs[name], modes[name] = blob, mode\r\n'
-            '    return blobs, modes\r\n'
-            '\r\n'
-            '\r\n'
-            'def _signature_ok(root, ref, closure=False):\r\n'
-            '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""\r\n'
-            '    try:\r\n'
-            '        from tests.fin_v2_cohorts import COHORT_MODULES\r\n'
-            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\r\n'
-            '            return False\r\n'
-            '        d = manifest(root, ref)\r\n'
-            '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\r\n'
-            '        N = _next()\r\n'
-            '        nx = _next_pins(root, ref)\r\n'
-            '        nxt = N is not None and N.signature_ok(root, ref)\r\n'
-            '        if nx.get("tests/ci_v4_lean_b2_scope.py", pins.get("tests/ci_v4_lean_b2_scope.py")) != _MODULE_BLOB:\r\n'
-            '            return False\r\n'
-            '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\r\n'
-            '            return False\r\n'
-            '        if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:\r\n'
-            '            return False\r\n'
-            '        if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p\r\n'
-            '                                           for p in OWNED_PATHS | {MANIFEST}):\r\n'
-            '            return False\r\n'
-            '        _git(root, "merge-base", "--is-ancestor", BASE, ref or "HEAD")\r\n'
-            '        key = str(root)\r\n'
-            '        if _base_tree(key) != BASE_TREE:\r\n'
-            '            return False\r\n'
-            '        if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds\r\n'
-            '            return False\r\n'
-            '        if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):\r\n'
-            '            return False\r\n'
-            '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\r\n'
-            '        cur = {p: nx.get(p, b) for p, b in pins.items()}\r\n'
-            '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\r\n'
-            '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\r\n'
-            '            return False\r\n'
-            '        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}\r\n'
-            '        if any(modes.get(p) != "100644" for p in owned):\r\n'
-            '            return False\r\n'
-            '        n_covered = {p for p in HANDOFFS if nxt and p in N.HANDOFFS}\r\n'
-            '        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS if p not in n_covered):\r\n'
-            '            return False\r\n'
-            '        if nxt and not N.reviewed_edits_ok(root, ref):\r\n'
-            '            return False\r\n'
-            '        if set(HANDOFFS) != HANDOFF_PATHS:\r\n'
-            '            return False\r\n'
-            '        for p in CURRENT_MAPS:\r\n'
-            '            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\r\n'
-            '                return False\r\n'
-            '        if closure:\r\n'
-            '            for p in CURRENT_MAPS:\r\n'
-            '                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\r\n'
-            '                    return False\r\n'
-            '        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p)\r\n'
-            '               for p in FROZEN if not (nxt and p in N.HANDOFFS)):\r\n'
-            '            return False\r\n'
-            '        return True\r\n'
-            '    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):\r\n'
-            '        return False\r\n'
-            '\r\n'
-            '\r\n'
-            'def exact_blobs_ok(repo=None, ref=None):\r\n'
-            '    return _verdict(Path(repo) if repo is not None else ROOT, ref, "exact")\r\n'
-            '\r\n'
-            '\r\n'
-            'def _diff_ok(root, ref):\r\n'
-            '    try:\r\n'
-            '        allowed = closure_paths(root, ref)\r\n'
-            '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())\r\n'
-            '        if not changed <= allowed:\r\n'
-            '            return False\r\n'
-            '        if ref is None:\r\n'
-            '            untracked = set(_git(root, "ls-files", "--others", "--exclude-standard").decode().splitlines())\r\n'
-            '            if any(p not in allowed and not (p.startswith("evidence/") and p.endswith((".json", ".xml", ".png", ".txt", ".csv", ".html", ".zip")))\r\n'
-            '                   for p in untracked):\r\n'
-            '                return False\r\n'
-            '        return True\r\n'
-            '    except (OSError, subprocess.CalledProcessError):\r\n'
-            '        return False\r\n'
-            '\r\n'
-            '\r\n'
-            'def effective_pins(repo=None, ref=None, *, signature=False):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    with scoped():\r\n'
-            '        pins = dict(manifest(repo, ref).get("source_blobs", {}))\r\n'
-            '        pins.update(_next_pins(root, ref))\r\n'
-            '        return pins\r\n'
-            '\r\n'
-            '\r\n'
-            'def closure_paths(repo=None, ref=None):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    with scoped():\r\n'
-            '        if not signature_ok(root, ref):\r\n'
-            '            return frozenset()\r\n'
-            '        N = _next()\r\n'
-            '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())\r\n'
-            '\r\n'
-            '\r\n'
-            'def allowed_path(path, repo=None, ref=None):\r\n'
-            '    return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)\r\n'
-            '\r\n'
-            '\r\n'
-            'def supersedes(path, value, repo=None, ref=None):\r\n'
-            '    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped\r\n'
-            '        N = _next()\r\n'
-            '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):\r\n'
-            '            return True\r\n'
-            '        if path not in SUPERSEDED:\r\n'
-            '            return False\r\n'
-            '        # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line\r\n'
-            '        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\r\n'
-            '\r\n'
-            '\r\n'
-            'def nontrust_scope_authorized(changed, repo=None):\r\n'
-            '    root = Path(repo) if repo is not None else ROOT\r\n'
-            '    try:\r\n'
-            '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\r\n'
-            '            return False\r\n'
-            '        actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())\r\n'
-            '        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} and exact_blobs_ok(root)\r\n'
-            '    except (OSError, subprocess.CalledProcessError):\r\n'
-            '        return False\r\n'
-            '\r\n'
-            '\r\n'
-            'def valid(repo=None, ref=None):\r\n'
-            '    from tests.fin_v2_cohorts import valid as composite\r\n'
-            '    return exact_blobs_ok(repo, ref) and composite(repo, ref)\r\n'
-            '\r\n'
-            '\r\n'
-            'def matches(path, source=None, *, repo=None, ref=None):\r\n'
-            '    pins = manifest(repo, ref).get("source_blobs", {})\r\n'
-            '    if path not in pins or not valid(repo, ref):\r\n'
-            '        return False\r\n'
-            '    return source is None or _blob(source.encode() if isinstance(source, str) else source) == pins[path]\r\n'
-            '\r\n'
-            '\r\n'
-            'def protected_blobs(repo=None, ref=None):\r\n'
-            '    return {}\r\n')),
+             '    # files), so a signature-only verdict never makes the tree valid.\n'
+             '    # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line\n'
+             '    return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\n'
+             '\n')),
+        ((
+            '    try:\n'
+            '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n'),
+         (
+             '    try:\n'
+             '        N = _next()\n'
+             '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\n'
+             '            return True\n'
+             '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n')),
     ],
     'tests/ci_v4_lean_report.py': [
         ((
-            '"""CI V4 Lean B1: opt-in measurement, worker SIMULATION and WARN-ONLY test-admission report.\n'
-            '\n'
-            'Nothing here selects, schedules, skips, gates or blocks anything. Every number carries an evidence label so a local measurement or a simulation can\n'
-            'never be read as hosted proof:\n'
-            '\n'
-            '* ``MEASURED_LOCAL``  - observed on this machine, by this process (wall / CPU seconds, Git subprocess counts, collected node ids).\n'
-            '* ``SIMULATION``      - computed from recorded module weights with the accepted LPT function of ``tools/ci_v4_schedule.py``; never hosted truth.\n'
-            "* ``WARN_ONLY``       - a test-admission observation from Fable's PROPOSED policy; it never fails a run and the exit code stays 0.\n"
-            '\n'
-            'Run it explicitly (``python -m tests.ci_v4_lean_report <command>``); it is never imported by the CI V4 plan, selector, scheduler or aggregator.\n'
-            'Only public-safe test file names and counters are written - no private inputs, no client material.\n'
-            '"""\n'
-            'from __future__ import annotations\n'
-            '\n'
-            'import argparse\n'
-            'import ast\n'
-            'import contextlib\n'
-            'import hashlib\n'
-            'import json\n'
-            'import re\n'
-            'import subprocess\n'
-            'import sys\n'
-            'import time\n'
-            'import xml.etree.ElementTree as ET\n'
-            'from pathlib import Path\n'
-            '\n'
-            'ROOT = Path(__file__).resolve().parents[1]\n'
-            'SCHEMA = "FINCO_CI_V4_LEAN_REPORT_V1"\n'
-            'LABELS = ("MEASURED_LOCAL", "SIMULATION", "WARN_ONLY")\n'
-            '# Fable C3-A PROPOSED budgets (05_TEST_ADMISSION_AND_RETIREMENT_POLICY_V1): NOT owner approved, never enforced.\n'
-            'PROPOSED_BUDGETS = {"enforced": False, "approved_by_owner": False,\n'
-            '                    "node_seconds": {"target": 60, "warn": 120, "exception": 300},\n'
-            '                    "module_minutes": {"target": 5, "warn": 10, "exception": 15},\n'
-            '                    "critical_path_minutes": {"target": 35, "warn": 45, "exception": 60}}\n'
-            'SIM_WORKERS = (3, 4, 5, 6, 8)\n'
-            '\n'
-            '\n'
-            '# ----------------------------------------------------------------------------------------------------- Git subprocess counting\n'
-            '@contextlib.contextmanager\n'
-            'def git_subprocess_counter():\n'
-            '    """Count every ``git`` child process started by this interpreter inside the block (restored on exit; no global state is kept)."""\n'
-            '    counts = {"git": 0, "other": 0}\n'
-            '    original = subprocess.Popen.__init__\n'
-            '\n'
-            '    def counted(self, args, *a, **k):\n'
-            '        first = args[0] if isinstance(args, (list, tuple)) and args else str(args)\n'
-            '        counts["git" if first == "git" else "other"] += 1\n'
-            '        return original(self, args, *a, **k)\n'
-            '\n'
-            '    subprocess.Popen.__init__ = counted\n'
-            '    try:\n'
-            '        yield counts\n'
-            '    finally:\n'
-            '        subprocess.Popen.__init__ = original\n'
-            '\n'
-            '\n'
-            'def measure_gate(root=ROOT):\n'
-            '    """One central governance gate verdict, measured: wall, CPU, Git subprocesses. Runs the repository\'s own ``run()`` unchanged."""\n'
-            '    root = Path(root).resolve()\n'
-            '    sys.path.insert(0, str(root))\n'
-            '    try:\n'
-            '        from tools import ci_v4_governance_gate as G\n'
-            '        with git_subprocess_counter() as counts:\n'
-            '            wall, cpu = time.monotonic(), time.process_time()\n'
-            '            try:\n'
-            '                record = G.run()\n'
-            '                error = None\n'
-            '            except Exception as exc:                                   # fail closed, report the exception honestly\n'
-            '                record, error = {"verdict": "FAIL"}, "%s: %s" % (type(exc).__name__, exc)\n'
-            '            wall, cpu = time.monotonic() - wall, time.process_time() - cpu\n'
-            '    finally:\n'
-            '        sys.path.remove(str(root))\n'
-            '    return {"label": "MEASURED_LOCAL", "what": "central governance gate (one pass)", "verdict": record.get("verdict"),\n'
-            '            "cohorts_checked": len(record.get("cohorts", {})), "wall_s": round(wall, 2), "cpu_s": round(cpu, 2),\n'
-            '            "git_subprocesses": counts["git"], "other_subprocesses": counts["other"], "error": error}\n'
-            '\n'
-            '\n'
-            '# ----------------------------------------------------------------------------------------------------- collection evidence\n'
-            '_NODE = re.compile(r"^(?P<id>[\\w./-]+\\.py::\\S.*)$")\n'
-            '\n'
-            '\n'
-            'def parse_collect_output(text):\n'
-            '    """Node ids, errors and the summary line from ``pytest --collect-only -q`` output."""\n'
-            '    nodes, errors = [], []\n'
-            '    for line in text.splitlines():\n'
-            '        line = line.rstrip()\n'
-            '        m = _NODE.match(line)\n'
-            '        if m:\n'
-            '            nodes.append(m.group("id"))\n'
-            '        elif line.startswith("ERROR "):\n'
-            '            errors.append(line)\n'
-            '    return nodes, errors\n'
-            '\n'
-            '\n'
-            'def collection_digest(modules, root=ROOT, extra_args=()):\n'
-            '    """Exact collected node ids of ``modules`` from a FRESH pytest process (the same profile the CI uses: root pytest.ini, no cache plugin)."""\n'
-            '    cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *extra_args, *modules]\n'
-            '    start = time.monotonic()\n'
-            '    proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)\n'
-            '    nodes, errors = parse_collect_output(proc.stdout)\n'
-            '    digest = hashlib.sha256("\\n".join(sorted(nodes)).encode()).hexdigest()\n'
-            '    return {"label": "MEASURED_LOCAL", "what": "pytest --collect-only", "modules": sorted(modules), "collected_nodes": len(nodes),\n'
-            '            "node_id_sha256": digest, "collection_errors": errors, "returncode": proc.returncode,\n'
-            '            "collect_wall_s": round(time.monotonic() - start, 2),\n'
-            '            "note": "selected / executed / skipped / deselected are NOT derived from collection; they come only from a run\'s JUnit"}\n'
-            '\n'
-            '\n'
-            '# ----------------------------------------------------------------------------------------------------- weights + SIMULATION\n'
-            'def load_recorded_weights(path=None):\n'
-            '    from tools import ci_v4_schedule as sched\n'
-            '    weights = sched.load_weights(path)\n'
-            '    try:\n'
-            '        source = json.loads(Path(path or ROOT / "docs/ci_v4/module_weights.json").read_text()).get("source", "unknown")\n'
-            '    except (OSError, ValueError):\n'
-            '        source = "unknown"\n'
-            '    return weights, source\n'
-            '\n'
-            '\n'
-            'def simulate_workers(modules, weights=None, counts=SIM_WORKERS, weights_source="supplied"):\n'
-            '    """LPT SIMULATION of whole-module scheduling for ``counts`` workers. A module without a recorded weight is priced at the conservative\n'
-            '    default of the accepted scheduler and listed as ``unknown_modules`` (never silently zero). Result is a SIMULATION, not hosted proof."""\n'
-            '    from tools import ci_v4_schedule as sched\n'
-            '    mods = sorted(set(modules))\n'
-            '    if weights is None:\n'
-            '        weights, weights_source = load_recorded_weights()\n'
-            '    unknown = [m for m in mods if m not in weights]\n'
-            '    total = sum(sched.weight_of(m, weights) for m in mods)\n'
-            '    rows = []\n'
-            '    for k in counts:\n'
-            '        _, loads = sched.lpt(mods, weights, k)\n'
-            '        rows.append({"workers": k, "critical_path_s": round(max(loads), 1) if loads else 0.0, "runner_s": round(sum(loads), 1),\n'
-            '                     "imbalance_ratio": round(max(loads) / (sum(loads) / k), 3) if loads and sum(loads) else None})\n'
-            '    return {"label": "SIMULATION", "what": "whole-module LPT over recorded weights", "modules": len(mods), "total_weight_s": round(total, 1),\n'
-            '            "weights_source": weights_source, "unknown_modules": unknown, "default_module_s_for_unknown": sched.DEFAULT_MODULE_SECONDS,\n'
-            '            "rows": rows, "disclaimer": "NOT hosted evidence; weights are historical and a schedule is only a prediction until a hosted run confirms it"}\n'
-            '\n'
-            '\n'
-            'def read_junit_module_seconds(junit_paths):\n'
-            '    """module path -> summed testcase seconds, from JUnit XML (classname ``tests.test_x`` -> ``tests/test_x.py``)."""\n'
-            '    seconds, nodes = {}, {}\n'
-            '    for p in junit_paths:\n'
-            '        for case in ET.parse(p).getroot().iter("testcase"):\n'
-            '            cls = case.get("classname", "")\n'
-            '            parts = cls.split(".")\n'
-            '            # pytest classnames are dotted module paths, optionally followed by a test class name\n'
-            '            path = None\n'
-            '            for i in range(len(parts), 0, -1):\n'
-            '                cand = "/".join(parts[:i]) + ".py"\n'
-            '                if (ROOT / cand).is_file():\n'
-            '                    path = cand\n'
-            '                    break\n'
-            '            if path is None:\n'
-            '                continue\n'
-            '            seconds[path] = seconds.get(path, 0.0) + float(case.get("time", 0) or 0)\n'
-            '            nodes[path] = nodes.get(path, 0) + 1\n'
-            '    return seconds, nodes\n'
-            '\n'
-            '\n'
-            'def propose_weights(junit_paths, current_weights, provenance, run_ref=""):\n'
-            '    """A weights PROPOSAL from one run\'s JUnit. It never writes ``docs/ci_v4/module_weights.json`` and is NOT active: activation needs the trusted-base\n'
-            '    flow and hosted proof. A module absent from the JUnit keeps its previous weight (or stays unknown); ties sort lexically. Deterministic."""\n'
-            '    seconds, nodes = read_junit_module_seconds(sorted(junit_paths))\n'
-            '    modules = {m: round(seconds.get(m, current_weights.get(m, 0.0)), 3) for m in sorted(set(seconds) | set(current_weights))}\n'
-            '    kept = sorted(m for m in current_weights if m not in seconds)\n'
-            '    return {"label": "MEASURED_LOCAL", "status": "PROPOSAL_NOT_ACTIVE", "provenance": provenance, "run_ref": run_ref,\n'
-            '            "refreshed_modules": len(seconds), "kept_previous_weight": kept[:50], "kept_previous_weight_count": len(kept),\n'
-            '            "modules": modules, "nodes": {m: nodes[m] for m in sorted(nodes)},\n'
-            '            "rule": "must come from the last ACCEPTED main-run JUnit; unknown stays unknown (conservative default applies); trusted-base activation required"}\n'
-            '\n'
-            '\n'
-            '# ----------------------------------------------------------------------------------------------------- WARN-ONLY admission report\n'
-            '_WARNINGS = {\n'
-            '    "ADM-RISK": "module docstring does not name the protected risk (policy item 1)",\n'
-            '    "ADM-SOURCE-TEXT": "a test reads another file\'s text/bytes and asserts on it; acceptable only when that text is an approved contract (policy item 8)",\n'
-            '    "ADM-COPIED-MATRIX": "large parametrization over owned paths looks like a per-cohort copy of a tamper matrix; extend the central matrix instead (policy item 8)",\n'
-            '    "ADM-GIT-LOOP": "subprocess / git helper called inside a loop or comprehension; measure the Git subprocess count per node (policy item 5)",\n'
-            '    "ADM-SKIP": "skip/xfail present: a skipped node is never PASS (policy item 3)",\n'
-            '}\n'
-            '\n'
-            '\n'
-            'def _call_name(node):\n'
-            '    f = node.func\n'
-            '    return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")\n'
-            '\n'
-            '\n'
-            'def admission_report(paths, root=ROOT):\n'
-            '    """WARN-ONLY observations about test files (purely static, AST). Never raises for a finding; never changes an exit code."""\n'
-            '    findings = []\n'
-            '    for rel in sorted(paths):\n'
-            '        p = Path(root) / rel\n'
-            '        try:\n'
-            '            tree = ast.parse(p.read_text(encoding="utf-8"))\n'
-            '        except (OSError, SyntaxError, UnicodeDecodeError) as exc:\n'
-            '            findings.append({"path": rel, "code": "ADM-UNREADABLE", "line": 0, "severity": "WARN", "message": "could not parse: %s" % type(exc).__name__})\n'
-            '            continue\n'
-            '        doc = ast.get_docstring(tree) or ""\n'
-            '        if rel.rsplit("/", 1)[-1].startswith("test_") and not re.search(r"\\brisk|protect|invariant|negative|tamper|fail[- ]closed|never\\b", doc, re.I):\n'
-            '            findings.append({"path": rel, "code": "ADM-RISK", "line": 1, "severity": "WARN", "message": _WARNINGS["ADM-RISK"]})\n'
-            '        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_")]:\n'
-            '            calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]\n'
-            '            names = {_call_name(c) for c in calls}\n'
-            '            has_assert = any(isinstance(n, ast.Assert) for n in ast.walk(fn))\n'
-            '            if has_assert and names & {"read_text", "read_bytes"} and any(isinstance(n, (ast.Compare,)) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops)\n'
-            '                                                                         for n in ast.walk(fn)):\n'
-            '                findings.append({"path": rel, "code": "ADM-SOURCE-TEXT", "line": fn.lineno, "severity": "WARN", "message": _WARNINGS["ADM-SOURCE-TEXT"]})\n'
-            '            for loop in [n for n in ast.walk(fn) if isinstance(n, (ast.For, ast.While, ast.ListComp, ast.GeneratorExp, ast.SetComp))]:\n'
-            '                inner = {_call_name(c) for c in ast.walk(loop) if isinstance(c, ast.Call)}\n'
-            '                if inner & {"check_output", "run", "Popen", "git", "_git"}:\n'
-            '                    findings.append({"path": rel, "code": "ADM-GIT-LOOP", "line": fn.lineno, "severity": "WARN", "message": _WARNINGS["ADM-GIT-LOOP"]})\n'
-            '                    break\n'
-            '        for node in ast.walk(tree):\n'
-            '            if isinstance(node, ast.Call) and _call_name(node) == "parametrize" and node.args:\n'
-            '                values = node.args[-1]\n'
-            '                n = len(values.elts) if isinstance(values, (ast.List, ast.Tuple)) else 0\n'
-            '                if n >= 20 or (isinstance(values, ast.Call) and "OWNED_PATHS" in ast.unparse(values)):\n'
-            '                    findings.append({"path": rel, "code": "ADM-COPIED-MATRIX", "line": node.lineno, "severity": "WARN", "message": _WARNINGS["ADM-COPIED-MATRIX"]})\n'
-            '            if isinstance(node, (ast.Attribute, ast.Name)) and getattr(node, "attr", getattr(node, "id", "")) in ("skip", "xfail", "skipif"):\n'
-            '                findings.append({"path": rel, "code": "ADM-SKIP", "line": getattr(node, "lineno", 0), "severity": "WARN", "message": _WARNINGS["ADM-SKIP"]})\n'
-            '    return {"label": "WARN_ONLY", "what": "test-admission observations (Fable policy V1, PROPOSED)", "files": len(set(paths)), "warnings": len(findings),\n'
-            '            "findings": findings, "budgets": PROPOSED_BUDGETS, "exit_code_policy": "always 0: informational, never a gate"}\n'
-            '\n'
-            '\n'
-            'def budget_warnings(junit_paths):\n'
-            '    """WARN-ONLY: compare observed node/module seconds in a run\'s JUnit with the PROPOSED (not approved) budgets."""\n'
-            '    node_b, mod_b = PROPOSED_BUDGETS["node_seconds"], PROPOSED_BUDGETS["module_minutes"]\n'
-            '    rows, per_module = [], {}\n'
-            '    for p in junit_paths:\n'
-            '        for case in ET.parse(p).getroot().iter("testcase"):\n'
-            '            t = float(case.get("time", 0) or 0)\n'
-            '            per_module[case.get("classname", "")] = per_module.get(case.get("classname", ""), 0.0) + t\n'
-            '            for level in ("exception", "warn"):\n'
-            '                if t > node_b[level]:\n'
-            '                    rows.append({"kind": "node", "level": level.upper(), "id": "%s::%s" % (case.get("classname"), case.get("name")), "seconds": round(t, 1)})\n'
-            '                    break\n'
-            '    for cls, t in per_module.items():\n'
-            '        for level in ("exception", "warn"):\n'
-            '            if t / 60.0 > mod_b[level]:\n'
-            '                rows.append({"kind": "module", "level": level.upper(), "id": cls, "seconds": round(t, 1)})\n'
-            '                break\n'
-            '    return {"label": "WARN_ONLY", "enforced": False, "budgets": PROPOSED_BUDGETS, "findings": sorted(rows, key=lambda r: (r["kind"], -r["seconds"], r["id"]))}\n'
-            '\n'
-            '\n'
-            '# ----------------------------------------------------------------------------------------------------- CLI (explicit, opt-in)\n'
-            'def _emit(obj, output):\n'
-            '    obj = {"schema": SCHEMA, **obj}\n'
-            '    text = json.dumps(obj, indent=2, sort_keys=True) + "\\n"\n'
-            '    if output:\n'
-            '        Path(output).parent.mkdir(parents=True, exist_ok=True)\n'
-            '        Path(output).write_text(text)\n'
-            '    else:\n'
-            '        sys.stdout.write(text)\n'
-            '\n'
-            '\n'
-            'def main(argv=None):\n'
-            '    ap = argparse.ArgumentParser(description="CI V4 Lean B1 opt-in report (measurement / SIMULATION / WARN-ONLY). Never gates anything.")\n'
             '    sub = ap.add_subparsers(dest="cmd", required=True)\n'
             '    for name in ("measure-gate", "collect", "simulate", "weights-proposal", "admission", "budgets"):\n'
-            '        s = sub.add_parser(name)\n'
-            '        s.add_argument("--output")\n'
-            '        if name in ("collect", "simulate"):\n'
-            '            s.add_argument("modules", nargs="+")\n'
-            '        if name == "admission":\n'
-            '            s.add_argument("paths", nargs="+")\n'
-            '        if name in ("weights-proposal", "budgets"):\n'
-            '            s.add_argument("--junit", nargs="+", required=True)\n'
-            '        if name == "weights-proposal":\n'
-            '            s.add_argument("--provenance", required=True, help="run id / commit of the ACCEPTED main run the JUnit came from")\n'
-            '    a = ap.parse_args(argv)\n'
-            '    if a.cmd == "measure-gate":\n'
-            '        _emit(measure_gate(), a.output)\n'
-            '    elif a.cmd == "collect":\n'
-            '        _emit(collection_digest(a.modules), a.output)\n'
-            '    elif a.cmd == "simulate":\n'
-            '        _emit(simulate_workers(a.modules), a.output)\n'
-            '    elif a.cmd == "weights-proposal":\n'
-            '        weights, _ = load_recorded_weights()\n'
-            '        _emit(propose_weights(a.junit, weights, a.provenance), a.output)\n'
-            '    elif a.cmd == "budgets":\n'
-            '        _emit(budget_warnings(a.junit), a.output)\n'
-            '    else:\n'
-            '        _emit(admission_report(a.paths), a.output)\n'
-            '    return 0            # informational by design; a measurement failure is reported inside the JSON, never as a gate\n'
-            '\n'
-            '\n'
-            'if __name__ == "__main__":\n'
-            '    sys.exit(main())\n'),
+            '        s = sub.add_parser(name)\n'),
          (
-            '"""CI V4 Lean B1: opt-in measurement, worker SIMULATION and WARN-ONLY test-admission report.\r\n'
-            '\r\n'
-            'Nothing here selects, schedules, skips, gates or blocks anything. Every number carries an evidence label so a local measurement or a simulation can\r\n'
-            'never be read as hosted proof:\r\n'
-            '\r\n'
-            '* ``MEASURED_LOCAL``  - observed on this machine, by this process (wall / CPU seconds, Git subprocess counts, collected node ids).\r\n'
-            '* ``SIMULATION``      - computed from recorded module weights with the accepted LPT function of ``tools/ci_v4_schedule.py``; never hosted truth.\r\n'
-            "* ``WARN_ONLY``       - a test-admission observation from Fable's PROPOSED policy; it never fails a run and the exit code stays 0.\r\n"
-            '\r\n'
-            'Run it explicitly (``python -m tests.ci_v4_lean_report <command>``); it is never imported by the CI V4 plan, selector, scheduler or aggregator.\r\n'
-            'Only public-safe test file names and counters are written - no private inputs, no client material.\r\n'
-            '"""\r\n'
-            'from __future__ import annotations\r\n'
-            '\r\n'
-            'import argparse\r\n'
-            'import ast\r\n'
-            'import contextlib\r\n'
-            'import hashlib\r\n'
-            'import json\r\n'
-            'import re\r\n'
-            'import subprocess\r\n'
-            'import sys\r\n'
-            'import time\r\n'
-            'import xml.etree.ElementTree as ET\r\n'
-            'from pathlib import Path\r\n'
-            '\r\n'
-            'ROOT = Path(__file__).resolve().parents[1]\r\n'
-            'SCHEMA = "FINCO_CI_V4_LEAN_REPORT_V1"\r\n'
-            'LABELS = ("MEASURED_LOCAL", "SIMULATION", "WARN_ONLY")\r\n'
-            '# Fable C3-A PROPOSED budgets (05_TEST_ADMISSION_AND_RETIREMENT_POLICY_V1): NOT owner approved, never enforced.\r\n'
-            'PROPOSED_BUDGETS = {"enforced": False, "approved_by_owner": False,\r\n'
-            '                    "node_seconds": {"target": 60, "warn": 120, "exception": 300},\r\n'
-            '                    "module_minutes": {"target": 5, "warn": 10, "exception": 15},\r\n'
-            '                    "critical_path_minutes": {"target": 35, "warn": 45, "exception": 60}}\r\n'
-            'SIM_WORKERS = (3, 4, 5, 6, 8)\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------------- Git subprocess counting\r\n'
-            '@contextlib.contextmanager\r\n'
-            'def git_subprocess_counter():\r\n'
-            '    """Count every ``git`` child process started by this interpreter inside the block (restored on exit; no global state is kept)."""\r\n'
-            '    counts = {"git": 0, "other": 0}\r\n'
-            '    original = subprocess.Popen.__init__\r\n'
-            '\r\n'
-            '    def counted(self, args, *a, **k):\r\n'
-            '        first = args[0] if isinstance(args, (list, tuple)) and args else str(args)\r\n'
-            '        counts["git" if first == "git" else "other"] += 1\r\n'
-            '        return original(self, args, *a, **k)\r\n'
-            '\r\n'
-            '    subprocess.Popen.__init__ = counted\r\n'
-            '    try:\r\n'
-            '        yield counts\r\n'
-            '    finally:\r\n'
-            '        subprocess.Popen.__init__ = original\r\n'
-            '\r\n'
-            '\r\n'
-            'def measure_gate(root=ROOT):\r\n'
-            '    """One central governance gate verdict, measured: wall, CPU, Git subprocesses. Runs the repository\'s own ``run()`` unchanged."""\r\n'
-            '    root = Path(root).resolve()\r\n'
-            '    sys.path.insert(0, str(root))\r\n'
-            '    try:\r\n'
-            '        from tools import ci_v4_governance_gate as G\r\n'
-            '        with git_subprocess_counter() as counts:\r\n'
-            '            wall, cpu = time.monotonic(), time.process_time()\r\n'
-            '            try:\r\n'
-            '                record = G.run()\r\n'
-            '                error = None\r\n'
-            '            except Exception as exc:                                   # fail closed, report the exception honestly\r\n'
-            '                record, error = {"verdict": "FAIL"}, "%s: %s" % (type(exc).__name__, exc)\r\n'
-            '            wall, cpu = time.monotonic() - wall, time.process_time() - cpu\r\n'
-            '    finally:\r\n'
-            '        sys.path.remove(str(root))\r\n'
-            '    return {"label": "MEASURED_LOCAL", "what": "central governance gate (one pass)", "verdict": record.get("verdict"),\r\n'
-            '            "cohorts_checked": len(record.get("cohorts", {})), "wall_s": round(wall, 2), "cpu_s": round(cpu, 2),\r\n'
-            '            "git_subprocesses": counts["git"], "other_subprocesses": counts["other"], "error": error}\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------------- collection evidence\r\n'
-            '_NODE = re.compile(r"^(?P<id>[\\w./-]+\\.py::\\S.*)$")\r\n'
-            '\r\n'
-            '\r\n'
-            'def parse_collect_output(text):\r\n'
-            '    """Node ids, errors and the summary line from ``pytest --collect-only -q`` output."""\r\n'
-            '    nodes, errors = [], []\r\n'
-            '    for line in text.splitlines():\r\n'
-            '        line = line.rstrip()\r\n'
-            '        m = _NODE.match(line)\r\n'
-            '        if m:\r\n'
-            '            nodes.append(m.group("id"))\r\n'
-            '        elif line.startswith("ERROR "):\r\n'
-            '            errors.append(line)\r\n'
-            '    return nodes, errors\r\n'
-            '\r\n'
-            '\r\n'
-            'def collection_digest(modules, root=ROOT, extra_args=()):\r\n'
-            '    """Exact collected node ids of ``modules`` from a FRESH pytest process (the same profile the CI uses: root pytest.ini, no cache plugin)."""\r\n'
-            '    cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *extra_args, *modules]\r\n'
-            '    start = time.monotonic()\r\n'
-            '    proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)\r\n'
-            '    nodes, errors = parse_collect_output(proc.stdout)\r\n'
-            '    digest = hashlib.sha256("\\n".join(sorted(nodes)).encode()).hexdigest()\r\n'
-            '    return {"label": "MEASURED_LOCAL", "what": "pytest --collect-only", "modules": sorted(modules), "collected_nodes": len(nodes),\r\n'
-            '            "node_id_sha256": digest, "collection_errors": errors, "returncode": proc.returncode,\r\n'
-            '            "collect_wall_s": round(time.monotonic() - start, 2),\r\n'
-            '            "note": "selected / executed / skipped / deselected are NOT derived from collection; they come only from a run\'s JUnit"}\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------------- weights + SIMULATION\r\n'
-            'def load_recorded_weights(path=None):\r\n'
-            '    from tools import ci_v4_schedule as sched\r\n'
-            '    weights = sched.load_weights(path)\r\n'
-            '    try:\r\n'
-            '        source = json.loads(Path(path or ROOT / "docs/ci_v4/module_weights.json").read_text()).get("source", "unknown")\r\n'
-            '    except (OSError, ValueError):\r\n'
-            '        source = "unknown"\r\n'
-            '    return weights, source\r\n'
-            '\r\n'
-            '\r\n'
-            'def simulate_workers(modules, weights=None, counts=SIM_WORKERS, weights_source="supplied"):\r\n'
-            '    """LPT SIMULATION of whole-module scheduling for ``counts`` workers. A module without a recorded weight is priced at the conservative\r\n'
-            '    default of the accepted scheduler and listed as ``unknown_modules`` (never silently zero). Result is a SIMULATION, not hosted proof."""\r\n'
-            '    from tools import ci_v4_schedule as sched\r\n'
-            '    mods = sorted(set(modules))\r\n'
-            '    if weights is None:\r\n'
-            '        weights, weights_source = load_recorded_weights()\r\n'
-            '    unknown = [m for m in mods if m not in weights]\r\n'
-            '    total = sum(sched.weight_of(m, weights) for m in mods)\r\n'
-            '    rows = []\r\n'
-            '    for k in counts:\r\n'
-            '        _, loads = sched.lpt(mods, weights, k)\r\n'
-            '        rows.append({"workers": k, "critical_path_s": round(max(loads), 1) if loads else 0.0, "runner_s": round(sum(loads), 1),\r\n'
-            '                     "imbalance_ratio": round(max(loads) / (sum(loads) / k), 3) if loads and sum(loads) else None})\r\n'
-            '    return {"label": "SIMULATION", "what": "whole-module LPT over recorded weights", "modules": len(mods), "total_weight_s": round(total, 1),\r\n'
-            '            "weights_source": weights_source, "unknown_modules": unknown, "default_module_s_for_unknown": sched.DEFAULT_MODULE_SECONDS,\r\n'
-            '            "rows": rows, "disclaimer": "NOT hosted evidence; weights are historical and a schedule is only a prediction until a hosted run confirms it"}\r\n'
-            '\r\n'
-            '\r\n'
-            'def read_junit_module_seconds(junit_paths):\r\n'
-            '    """module path -> summed testcase seconds, from JUnit XML (classname ``tests.test_x`` -> ``tests/test_x.py``)."""\r\n'
-            '    seconds, nodes = {}, {}\r\n'
-            '    for p in junit_paths:\r\n'
-            '        for case in ET.parse(p).getroot().iter("testcase"):\r\n'
-            '            cls = case.get("classname", "")\r\n'
-            '            parts = cls.split(".")\r\n'
-            '            # pytest classnames are dotted module paths, optionally followed by a test class name\r\n'
-            '            path = None\r\n'
-            '            for i in range(len(parts), 0, -1):\r\n'
-            '                cand = "/".join(parts[:i]) + ".py"\r\n'
-            '                if (ROOT / cand).is_file():\r\n'
-            '                    path = cand\r\n'
-            '                    break\r\n'
-            '            if path is None:\r\n'
-            '                continue\r\n'
-            '            seconds[path] = seconds.get(path, 0.0) + float(case.get("time", 0) or 0)\r\n'
-            '            nodes[path] = nodes.get(path, 0) + 1\r\n'
-            '    return seconds, nodes\r\n'
-            '\r\n'
-            '\r\n'
-            'def propose_weights(junit_paths, current_weights, provenance, run_ref=""):\r\n'
-            '    """A weights PROPOSAL from one run\'s JUnit. It never writes ``docs/ci_v4/module_weights.json`` and is NOT active: activation needs the trusted-base\r\n'
-            '    flow and hosted proof. A module absent from the JUnit keeps its previous weight (or stays unknown); ties sort lexically. Deterministic."""\r\n'
-            '    seconds, nodes = read_junit_module_seconds(sorted(junit_paths))\r\n'
-            '    modules = {m: round(seconds.get(m, current_weights.get(m, 0.0)), 3) for m in sorted(set(seconds) | set(current_weights))}\r\n'
-            '    kept = sorted(m for m in current_weights if m not in seconds)\r\n'
-            '    return {"label": "MEASURED_LOCAL", "status": "PROPOSAL_NOT_ACTIVE", "provenance": provenance, "run_ref": run_ref,\r\n'
-            '            "refreshed_modules": len(seconds), "kept_previous_weight": kept[:50], "kept_previous_weight_count": len(kept),\r\n'
-            '            "modules": modules, "nodes": {m: nodes[m] for m in sorted(nodes)},\r\n'
-            '            "rule": "must come from the last ACCEPTED main-run JUnit; unknown stays unknown (conservative default applies); trusted-base activation required"}\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------------- WARN-ONLY admission report\r\n'
-            '_WARNINGS = {\r\n'
-            '    "ADM-RISK": "module docstring does not name the protected risk (policy item 1)",\r\n'
-            '    "ADM-SOURCE-TEXT": "a test reads another file\'s text/bytes and asserts on it; acceptable only when that text is an approved contract (policy item 8)",\r\n'
-            '    "ADM-COPIED-MATRIX": "large parametrization over owned paths looks like a per-cohort copy of a tamper matrix; extend the central matrix instead (policy item 8)",\r\n'
-            '    "ADM-GIT-LOOP": "subprocess / git helper called inside a loop or comprehension; measure the Git subprocess count per node (policy item 5)",\r\n'
-            '    "ADM-SKIP": "skip/xfail present: a skipped node is never PASS (policy item 3)",\r\n'
-            '}\r\n'
-            '\r\n'
-            '\r\n'
-            'def _call_name(node):\r\n'
-            '    f = node.func\r\n'
-            '    return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")\r\n'
-            '\r\n'
-            '\r\n'
-            'def admission_report(paths, root=ROOT):\r\n'
-            '    """WARN-ONLY observations about test files (purely static, AST). Never raises for a finding; never changes an exit code."""\r\n'
-            '    findings = []\r\n'
-            '    for rel in sorted(paths):\r\n'
-            '        p = Path(root) / rel\r\n'
-            '        try:\r\n'
-            '            tree = ast.parse(p.read_text(encoding="utf-8"))\r\n'
-            '        except (OSError, SyntaxError, UnicodeDecodeError) as exc:\r\n'
-            '            findings.append({"path": rel, "code": "ADM-UNREADABLE", "line": 0, "severity": "WARN", "message": "could not parse: %s" % type(exc).__name__})\r\n'
-            '            continue\r\n'
-            '        doc = ast.get_docstring(tree) or ""\r\n'
-            '        if rel.rsplit("/", 1)[-1].startswith("test_") and not re.search(r"\\brisk|protect|invariant|negative|tamper|fail[- ]closed|never\\b", doc, re.I):\r\n'
-            '            findings.append({"path": rel, "code": "ADM-RISK", "line": 1, "severity": "WARN", "message": _WARNINGS["ADM-RISK"]})\r\n'
-            '        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_")]:\r\n'
-            '            calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]\r\n'
-            '            names = {_call_name(c) for c in calls}\r\n'
-            '            has_assert = any(isinstance(n, ast.Assert) for n in ast.walk(fn))\r\n'
-            '            if has_assert and names & {"read_text", "read_bytes"} and any(isinstance(n, (ast.Compare,)) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops)\r\n'
-            '                                                                         for n in ast.walk(fn)):\r\n'
-            '                findings.append({"path": rel, "code": "ADM-SOURCE-TEXT", "line": fn.lineno, "severity": "WARN", "message": _WARNINGS["ADM-SOURCE-TEXT"]})\r\n'
-            '            for loop in [n for n in ast.walk(fn) if isinstance(n, (ast.For, ast.While, ast.ListComp, ast.GeneratorExp, ast.SetComp))]:\r\n'
-            '                inner = {_call_name(c) for c in ast.walk(loop) if isinstance(c, ast.Call)}\r\n'
-            '                if inner & {"check_output", "run", "Popen", "git", "_git"}:\r\n'
-            '                    findings.append({"path": rel, "code": "ADM-GIT-LOOP", "line": fn.lineno, "severity": "WARN", "message": _WARNINGS["ADM-GIT-LOOP"]})\r\n'
-            '                    break\r\n'
-            '        for node in ast.walk(tree):\r\n'
-            '            if isinstance(node, ast.Call) and _call_name(node) == "parametrize" and node.args:\r\n'
-            '                values = node.args[-1]\r\n'
-            '                n = len(values.elts) if isinstance(values, (ast.List, ast.Tuple)) else 0\r\n'
-            '                if n >= 20 or (isinstance(values, ast.Call) and "OWNED_PATHS" in ast.unparse(values)):\r\n'
-            '                    findings.append({"path": rel, "code": "ADM-COPIED-MATRIX", "line": node.lineno, "severity": "WARN", "message": _WARNINGS["ADM-COPIED-MATRIX"]})\r\n'
-            '            if isinstance(node, (ast.Attribute, ast.Name)) and getattr(node, "attr", getattr(node, "id", "")) in ("skip", "xfail", "skipif"):\r\n'
-            '                findings.append({"path": rel, "code": "ADM-SKIP", "line": getattr(node, "lineno", 0), "severity": "WARN", "message": _WARNINGS["ADM-SKIP"]})\r\n'
-            '    return {"label": "WARN_ONLY", "what": "test-admission observations (Fable policy V1, PROPOSED)", "files": len(set(paths)), "warnings": len(findings),\r\n'
-            '            "findings": findings, "budgets": PROPOSED_BUDGETS, "exit_code_policy": "always 0: informational, never a gate"}\r\n'
-            '\r\n'
-            '\r\n'
-            'def budget_warnings(junit_paths):\r\n'
-            '    """WARN-ONLY: compare observed node/module seconds in a run\'s JUnit with the PROPOSED (not approved) budgets."""\r\n'
-            '    node_b, mod_b = PROPOSED_BUDGETS["node_seconds"], PROPOSED_BUDGETS["module_minutes"]\r\n'
-            '    rows, per_module = [], {}\r\n'
-            '    for p in junit_paths:\r\n'
-            '        for case in ET.parse(p).getroot().iter("testcase"):\r\n'
-            '            t = float(case.get("time", 0) or 0)\r\n'
-            '            per_module[case.get("classname", "")] = per_module.get(case.get("classname", ""), 0.0) + t\r\n'
-            '            for level in ("exception", "warn"):\r\n'
-            '                if t > node_b[level]:\r\n'
-            '                    rows.append({"kind": "node", "level": level.upper(), "id": "%s::%s" % (case.get("classname"), case.get("name")), "seconds": round(t, 1)})\r\n'
-            '                    break\r\n'
-            '    for cls, t in per_module.items():\r\n'
-            '        for level in ("exception", "warn"):\r\n'
-            '            if t / 60.0 > mod_b[level]:\r\n'
-            '                rows.append({"kind": "module", "level": level.upper(), "id": cls, "seconds": round(t, 1)})\r\n'
-            '                break\r\n'
-            '    return {"label": "WARN_ONLY", "enforced": False, "budgets": PROPOSED_BUDGETS, "findings": sorted(rows, key=lambda r: (r["kind"], -r["seconds"], r["id"]))}\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------------- CLI (explicit, opt-in)\r\n'
-            'def _emit(obj, output):\r\n'
-            '    obj = {"schema": SCHEMA, **obj}\r\n'
-            '    text = json.dumps(obj, indent=2, sort_keys=True) + "\\n"\r\n'
-            '    if output:\r\n'
-            '        Path(output).parent.mkdir(parents=True, exist_ok=True)\r\n'
-            '        Path(output).write_text(text)\r\n'
-            '    else:\r\n'
-            '        sys.stdout.write(text)\r\n'
-            '\r\n'
-            '\r\n'
-            'def main(argv=None):\r\n'
-            '    ap = argparse.ArgumentParser(description="CI V4 Lean B1 opt-in report (measurement / SIMULATION / WARN-ONLY). Never gates anything.")\r\n'
-            '    sub = ap.add_subparsers(dest="cmd", required=True)\r\n'
-            '    for name in ("measure-gate", "collect", "simulate", "weights-proposal", "admission", "budgets", "test-admission"):\r\n'
-            '        s = sub.add_parser(name)\r\n'
-            '        s.add_argument("--output")\r\n'
-            '        if name in ("collect", "simulate"):\r\n'
-            '            s.add_argument("modules", nargs="+")\r\n'
-            '        if name == "admission":\r\n'
-            '            s.add_argument("paths", nargs="+")\r\n'
-            '        if name in ("weights-proposal", "budgets"):\r\n'
-            '            s.add_argument("--junit", nargs="+", required=True)\r\n'
-            '        if name == "test-admission":\r\n'
-            '            s.add_argument("--junit", nargs="+")\r\n'
-            '        if name == "test-admission":\r\n'
-            '            s.add_argument("--base", default="origin/main")\r\n'
-            '            s.add_argument("--head", default="HEAD")\r\n'
-            '            s.add_argument("--plan", help="trusted-base plan JSON (from the plan job artifact), optional")\r\n'
-            '        if name == "weights-proposal":\r\n'
-            '            s.add_argument("--provenance", required=True, help="run id / commit of the ACCEPTED main run the JUnit came from")\r\n'
-            '    a = ap.parse_args(argv)\r\n'
-            '    if a.cmd == "measure-gate":\r\n'
-            '        _emit(measure_gate(), a.output)\r\n'
-            '    elif a.cmd == "collect":\r\n'
-            '        _emit(collection_digest(a.modules), a.output)\r\n'
-            '    elif a.cmd == "simulate":\r\n'
-            '        _emit(simulate_workers(a.modules), a.output)\r\n'
-            '    elif a.cmd == "weights-proposal":\r\n'
-            '        weights, _ = load_recorded_weights()\r\n'
-            '        _emit(propose_weights(a.junit, weights, a.provenance), a.output)\r\n'
-            '    elif a.cmd == "budgets":\r\n'
-            '        _emit(budget_warnings(a.junit), a.output)\r\n'
-            '    elif a.cmd == "test-admission":\r\n'
-            '        _emit(test_admission_report(a.base, a.head, a.plan, a.junit or ()), a.output)\r\n'
-            '    else:\r\n'
-            '        _emit(admission_report(a.paths), a.output)\r\n'
-            '    return 0            # informational by design; a measurement failure is reported inside the JSON, never as a gate\r\n'
-            '\r\n'
-            '\r\n'
-            '# ----------------------------------------------------------------------------------------------- B3 test-admission report (WARN-ONLY, opt-in)\r\n'
-            'ADMISSION_FIELDS = ("risk", "nearest", "witness", "tier", "owner", "retire")\r\n'
-            '\r\n'
-            '\r\n'
-            'def _git_name_status(base, head, root):\r\n'
-            '    """Added/removed/renamed/changed test-module paths vs the trusted base (rename detection ON)."""\r\n'
-            '    out = subprocess.check_output(["git", "-c", "core.quotepath=false", "diff", "--name-status", "-M", base, head,\r\n'
-            '                                   "--", "tests/"], cwd=root).decode("utf-8", "replace")\r\n'
-            '    added, removed, renamed, changed = [], [], [], []\r\n'
-            '    for line in out.splitlines():\r\n'
-            '        parts = line.split("\\t")\r\n'
-            '        if not parts or not parts[0]:\r\n'
-            '            continue\r\n'
-            '        st, p = parts[0], parts[-1]\r\n'
-            '        if st.startswith("A"):\r\n'
-            '            added.append(p)\r\n'
-            '        elif st.startswith("D"):\r\n'
-            '            removed.append(p)\r\n'
-            '        elif st.startswith("R") and len(parts) >= 3:\r\n'
-            '            renamed.append({"from": parts[1], "to": parts[2]})\r\n'
-            '        elif st.startswith("M"):\r\n'
-            '            changed.append(p)\r\n'
-            '    return added, removed, renamed, changed\r\n'
-            '\r\n'
-            '\r\n'
-            'def _test_node_names(src):\r\n'
-            '    try:\r\n'
-            '        tree = ast.parse(src)\r\n'
-            '    except (SyntaxError, ValueError):\r\n'
-            '        return None                                    # unparsable -> UNKNOWN, never an empty lie\r\n'
-            '    return sorted(n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"))\r\n'
-            '\r\n'
-            '\r\n'
-            'def _body_hashes(src):\r\n'
-            '    """Cheap duplicate-candidate heuristic: normalized AST-dump hash per test function (a CANDIDATE, never a finding)."""\r\n'
-            '    try:\r\n'
-            '        tree = ast.parse(src)\r\n'
-            '    except (SyntaxError, ValueError):\r\n'
-            '        return {}\r\n'
-            '    out = {}\r\n'
-            '    for n in ast.walk(tree):\r\n'
-            '        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"):\r\n'
-            '            body = ast.dump(ast.Module(body=n.body, type_ignores=[]))\r\n'
-            '            out[n.name] = hashlib.sha1(body.encode()).hexdigest()\r\n'
-            '    return out\r\n'
-            '\r\n'
-            '\r\n'
-            'def _admission_metadata(rel, root):\r\n'
-            '    """Parse the module docstring\'s \'Admission:\' directives; every missing field is UNKNOWN, never invented."""\r\n'
-            '    try:\r\n'
-            '        doc = ast.get_docstring(ast.parse((Path(root) / rel).read_text(encoding="utf-8"))) or ""\r\n'
-            '    except (OSError, SyntaxError, UnicodeDecodeError):\r\n'
-            '        return {}\r\n'
-            '    meta = {}\r\n'
-            '    for line in doc.splitlines():\r\n'
-            '        if line.strip().lower().startswith("admission:"):\r\n'
-            '            for item in line.split(":", 1)[1].split(","):\r\n'
-            '                if "=" in item:\r\n'
-            '                    k, v = item.split("=", 1)\r\n'
-            '                    meta[k.strip().lower()] = v.strip()\r\n'
-            '    return {f: meta.get(f, "UNKNOWN") for f in ADMISSION_FIELDS}\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit_paths=(), root=ROOT):\r\n'
-            '    """B3 WARN-ONLY test-admission report over the trusted-base diff. Read-only: it never gates, never writes\r\n'
-            '    repo files, and every unavailable measurement is UNKNOWN with its label — never zero, never a fabricated PASS."""\r\n'
-            '    root = Path(root)\r\n'
-            '    head_sha = subprocess.check_output(["git", "rev-parse", head], cwd=root).decode().strip()\r\n'
-            '    head_tree = subprocess.check_output(["git", "rev-parse", head + "^{tree}"], cwd=root).decode().strip()\r\n'
-            '    worktree_clean = subprocess.check_output(["git", "status", "--porcelain"], cwd=root).decode().strip() == ""\r\n'
-            '    head_binding = ("WORKTREE_CLEAN_HEAD_MATCHES" if (worktree_clean and head in ("HEAD", head_sha)) else\r\n'
-            '                    "COMMITTED_REF (working tree bytes are NOT the supplied head; content reads are UNVERIFIED_INPUT for that ref)")\r\n'
-            '    added, removed, renamed, changed = _git_name_status(base, head, root)\r\n'
-            '    is_test = lambda p: p.startswith("tests/") and p.rsplit("/", 1)[-1].startswith("test_") and p.endswith(".py")\r\n'
-            '    added, removed, changed = sorted(filter(is_test, added)), sorted(filter(is_test, removed)), sorted(filter(is_test, changed))\r\n'
-            '\r\n'
-            '    node_deltas, growth = [], {"added_modules": len(added), "removed_modules": len(removed), "renamed_modules": len(renamed),\r\n'
-            '                               "added_nodes": 0, "removed_nodes": 0}\r\n'
-            '    plan, selected_set, plan_provenance = None, None, "UNKNOWN (no plan supplied)"\r\n'
-            '    if plan_path:\r\n'
-            '        try:\r\n'
-            '            plan = json.loads(Path(plan_path).read_text())\r\n'
-            '            selected_set = set(plan.get("pytest_modules", []))\r\n'
-            '            if plan.get("tested_sha") == head_sha:\r\n'
-            '                plan_provenance = "OBSERVED_HOSTED (plan tested_sha == report head)"\r\n'
-            '            else:\r\n'
-            '                plan_provenance = "UNVERIFIED_INPUT (plan tested_sha %s != report head %s)" % (plan.get("tested_sha", "UNKNOWN")[:12], head_sha[:12])\r\n'
-            '        except (OSError, ValueError):\r\n'
-            '            plan = None\r\n'
-            '            plan_provenance = "UNKNOWN (plan unreadable)"\r\n'
-            '    junit_secs, _jnodes = read_junit_module_seconds(sorted(junit_paths)) if junit_paths else ({}, {})\r\n'
-            '    junit_provenance = "OBSERVED_HOSTED" if junit_paths else "UNKNOWN (no junit supplied)"\r\n'
-            '\r\n'
-            '    new_skips, duplicates, meta_rows = [], [], []\r\n'
-            '    existing_hashes = {}\r\n'
-            '    for rel in sorted(set(added) | set(changed)):\r\n'
-            '        src_now = (root / rel).read_text(encoding="utf-8", errors="replace")\r\n'
-            '        now_nodes = _test_node_names(src_now)\r\n'
-            '        try:\r\n'
-            '            src_base = subprocess.check_output(["git", "show", "%s:%s" % (base, rel)], cwd=root).decode("utf-8", "replace")\r\n'
-            '            base_nodes = _test_node_names(src_base)\r\n'
-            '        except subprocess.CalledProcessError:\r\n'
-            '            src_base, base_nodes = None, []\r\n'
-            '        if now_nodes is None or (src_base is not None and base_nodes is None):\r\n'
-            '            status, added_n, removed_n = "UNKNOWN", [], []\r\n'
-            '        else:\r\n'
-            '            added_n = [n for n in (now_nodes or []) if n not in (base_nodes or [])]\r\n'
-            '            removed_n = [n for n in (base_nodes or []) if n not in (now_nodes or [])]\r\n'
-            '            status = "MEASURED_LOCAL"\r\n'
-            '        growth["added_nodes"] += len(added_n)\r\n'
-            '        growth["removed_nodes"] += len(removed_n)\r\n'
-            '        node_deltas.append({"module": rel, "status": status, "added_nodes": added_n, "removed_nodes": removed_n,\r\n'
-            '                            "selected": ("SELECTED" if (selected_set is not None and rel in selected_set)\r\n'
-            '                                         else ("NOT_SELECTED" if selected_set is not None else "UNKNOWN")),\r\n'
-            '                            "wall_s": (round(junit_secs[rel], 3) if rel in junit_secs else None),\r\n'
-            '                            "wall_label": ("OBSERVED_HOSTED" if rel in junit_secs else "UNKNOWN"),\r\n'
-            '                            "git_process_count": "UNKNOWN"})\r\n'
-            '        if rel in added:\r\n'
-            '            meta_rows.append({"module": rel, **_admission_metadata(rel, root)})\r\n'
-            '        marks = [ln.strip() for ln in src_now.splitlines() if re.search(r"\\b(skip|xfail|skipif)\\b", ln) and ln.strip().startswith(("@", "pytest.mark"))]\r\n'
-            '        new_skips += [{"module": rel, "marker": m[:120], "newness": "UNKNOWN (present-marker scan; not diffed against base)"} for m in marks[:3]]\r\n'
-            '        if rel in added:\r\n'
-            '            hashes = _body_hashes(src_now)\r\n'
-            '            for existing in sorted((root / "tests").glob("test_*.py")):\r\n'
-            '                erel = existing.relative_to(root).as_posix()\r\n'
-            '                if erel == rel:\r\n'
-            '                    continue\r\n'
-            '                if erel not in existing_hashes:\r\n'
-            '                    existing_hashes[erel] = _body_hashes(existing.read_text(encoding="utf-8", errors="replace"))\r\n'
-            '                for name, h in sorted(hashes.items()):\r\n'
-            '                    for name2, h2 in sorted(existing_hashes[erel].items()):\r\n'
-            '                        if h == h2:\r\n'
-            '                            duplicates.append({"candidate": "%s::%s" % (rel, name), "existing": "%s::%s" % (erel, name2),\r\n'
-            '                                               "heuristic": "identical-normalized-AST-body", "severity": "WARN"})\r\n'
-            '\r\n'
-            '    budget = budget_warnings(sorted(junit_paths)) if junit_paths else {"label": "WARN_ONLY", "enforced": False, "findings": [],\r\n'
-            '                                                                       "note": "UNKNOWN (no junit supplied)"}\r\n'
-            '    crit = {"label": "UNKNOWN (no plan supplied)"}\r\n'
-            '    if plan and plan.get("schedule", {}).get("predicted_critical_path_s") is not None:\r\n'
-            '        crit = {"plan_predicted_critical_path_s": plan["schedule"]["predicted_critical_path_s"],\r\n'
-            '                "label": "SIMULATION (weights: measured accepted)", "enforced": False}\r\n'
-            '\r\n'
-            '    findings = []\r\n'
-            '    for row in meta_rows:\r\n'
-            '        for f, v in row.items():\r\n'
-            '            if f != "module" and v == "UNKNOWN":\r\n'
-            '                findings.append({"path": row["module"], "code": "ADM-METADATA-UNKNOWN", "field": f, "severity": "WARN",\r\n'
-            '                                 "message": "admission metadata field is UNKNOWN: " + f})\r\n'
-            '    for d in duplicates:\r\n'
-            '        findings.append({"path": d["candidate"], "code": "ADM-DUPLICATE-CANDIDATE", "severity": "WARN",\r\n'
-            '                         "message": "duplicate CANDIDATE (heuristic only, never automatic): %s" % d["existing"]})\r\n'
-            '    if new_skips:\r\n'
-            '        findings.append({"code": "ADM-NEW-SKIP", "severity": "WARN",\r\n'
-            '                         "message": "new skip/xfail markers present: a skipped node is never PASS (%d markers)" % len(new_skips)})\r\n'
-            '\r\n'
-            '    return {"label": "WARN_ONLY", "what": "B3 test-admission report over the trusted-base diff",\r\n'
-            '            "base": base, "head": head, "head_sha": head_sha, "head_tree": head_tree, "head_binding": head_binding,\r\n'
-            '            "plan_provenance": plan_provenance, "junit_provenance": junit_provenance,\r\n'
-            '            "modules": {"added": added, "removed": removed, "renamed": renamed, "changed": changed},\r\n'
-            '            "node_deltas": node_deltas, "node_delta_kind": "AST_FUNCTION_DELTA (exact collected node ids require a fresh pytest --collect-only on both exact SHA/trees; UNKNOWN when unavailable)", "growth": growth,\r\n'
-            '            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": "UNKNOWN (see present_skip_markers newness)",\r\n'
-            '            "critical_path": crit, "budgets": budget, "findings": findings,\r\n'
-            '            "labels_used": ["MEASURED_LOCAL", "OBSERVED_HOSTED", "SIMULATION", "UNKNOWN", "WARN_ONLY"],\r\n'
-            '            "exit_code_policy": "always 0: informational, never a gate"}\r\n'
-            '\r\n'
-            '\r\n'
-            'if __name__ == "__main__":\r\n'
-            '    sys.exit(main())\r\n')),
+             '    sub = ap.add_subparsers(dest="cmd", required=True)\n'
+             '    for name in ("measure-gate", "collect", "simulate", "weights-proposal", "admission", "budgets", "test-admission"):\n'
+             '        s = sub.add_parser(name)\n')),
+        ((
+            '            s.add_argument("--junit", nargs="+", required=True)\n'
+            '        if name == "weights-proposal":\n'),
+         (
+             '            s.add_argument("--junit", nargs="+", required=True)\n'
+             '        if name == "test-admission":\n'
+             '            s.add_argument("--junit", nargs="+")\n'
+             '        if name == "test-admission":\n'
+             '            s.add_argument("--base", default="origin/main")\n'
+             '            s.add_argument("--head", default="HEAD")\n'
+             '            s.add_argument("--plan", help="trusted-base plan JSON (from the plan job artifact), optional")\n'
+             '        if name == "weights-proposal":\n')),
+        ((
+            '        _emit(budget_warnings(a.junit), a.output)\n'
+            '    else:\n'),
+         (
+             '        _emit(budget_warnings(a.junit), a.output)\n'
+             '    elif a.cmd == "test-admission":\n'
+             '        _emit(test_admission_report(a.base, a.head, a.plan, a.junit or ()), a.output)\n'
+             '    else:\n')),
+        ((
+            '\n'
+            'if __name__ == "__main__":\n'),
+         (
+             '\n'
+             '# ----------------------------------------------------------------------------------------------- B3 test-admission report (WARN-ONLY, opt-in)\n'
+             'ADMISSION_FIELDS = ("risk", "nearest", "witness", "tier", "owner", "retire")\n'
+             '\n'
+             '\n'
+             'def _git_name_status(base, head, root):\n'
+             '    """Added/removed/renamed/changed test-module paths vs the trusted base (rename detection ON)."""\n'
+             '    out = subprocess.check_output(["git", "-c", "core.quotepath=false", "diff", "--name-status", "-M", base, head,\n'
+             '                                   "--", "tests/"], cwd=root).decode("utf-8", "replace")\n'
+             '    added, removed, renamed, changed = [], [], [], []\n'
+             '    for line in out.splitlines():\n'
+             '        parts = line.split("\\t")\n'
+             '        if not parts or not parts[0]:\n'
+             '            continue\n'
+             '        st, p = parts[0], parts[-1]\n'
+             '        if st.startswith("A"):\n'
+             '            added.append(p)\n'
+             '        elif st.startswith("D"):\n'
+             '            removed.append(p)\n'
+             '        elif st.startswith("R") and len(parts) >= 3:\n'
+             '            renamed.append({"from": parts[1], "to": parts[2]})\n'
+             '        elif st.startswith("M"):\n'
+             '            changed.append(p)\n'
+             '    return added, removed, renamed, changed\n'
+             '\n'
+             '\n'
+             'def _test_node_names(src):\n'
+             '    try:\n'
+             '        tree = ast.parse(src)\n'
+             '    except (SyntaxError, ValueError):\n'
+             '        return None                                    # unparsable -> UNKNOWN, never an empty lie\n'
+             '    return sorted(n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"))\n'
+             '\n'
+             '\n'
+             'def _body_hashes(src):\n'
+             '    """Cheap duplicate-candidate heuristic: normalized AST-dump hash per test function (a CANDIDATE, never a finding)."""\n'
+             '    try:\n'
+             '        tree = ast.parse(src)\n'
+             '    except (SyntaxError, ValueError):\n'
+             '        return {}\n'
+             '    out = {}\n'
+             '    for n in ast.walk(tree):\n'
+             '        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"):\n'
+             '            body = ast.dump(ast.Module(body=n.body, type_ignores=[]))\n'
+             '            out[n.name] = hashlib.sha1(body.encode()).hexdigest()\n'
+             '    return out\n'
+             '\n'
+             '\n'
+             'def _show(ref, rel, root):\n'
+             '    """The text of ``rel`` AT ``ref`` (Git object read, never the working tree), or None when the path does not exist there."""\n'
+             '    try:\n'
+             '        return subprocess.check_output(["git", "show", "%s:%s" % (ref, rel)], cwd=root, stderr=subprocess.DEVNULL).decode("utf-8", "replace")\n'
+             '    except subprocess.CalledProcessError:\n'
+             '        return None\n'
+             '\n'
+             '\n'
+             'def _skip_markers(src):\n'
+             '    return [ln.strip() for ln in src.splitlines() if re.search(r"\\b(skip|xfail|skipif)\\b", ln) and ln.strip().startswith(("@", "pytest.mark", "pytestmark"))]\n'
+             '\n'
+             '\n'
+             'def _admission_metadata(src):\n'
+             '    """Parse the module docstring\'s \'Admission:\' directives; every missing field is UNKNOWN, never invented."""\n'
+             '    try:\n'
+             '        doc = ast.get_docstring(ast.parse(src)) or ""\n'
+             '    except (SyntaxError, ValueError):\n'
+             '        return {}\n'
+             '    meta = {}\n'
+             '    for line in doc.splitlines():\n'
+             '        if line.strip().lower().startswith("admission:"):\n'
+             '            for item in line.split(":", 1)[1].split(","):\n'
+             '                if "=" in item:\n'
+             '                    k, v = item.split("=", 1)\n'
+             '                    meta[k.strip().lower()] = v.strip()\n'
+             '    return {f: meta.get(f, "UNKNOWN") for f in ADMISSION_FIELDS}\n'
+             '\n'
+             '\n'
+             'def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit_paths=(), root=ROOT):\n'
+             '    """B3 WARN-ONLY test-admission report over the trusted-base diff. Read-only: it never gates, never writes\n'
+             '    repo files, and every unavailable measurement is UNKNOWN with its label — never zero, never a fabricated PASS."""\n'
+             '    root = Path(root)\n'
+             '    head_sha = subprocess.check_output(["git", "rev-parse", head], cwd=root).decode().strip()\n'
+             '    head_tree = subprocess.check_output(["git", "rev-parse", head + "^{tree}"], cwd=root).decode().strip()\n'
+             '    worktree_clean = subprocess.check_output(["git", "status", "--porcelain"], cwd=root).decode().strip() == ""\n'
+             '    head_binding = ("WORKTREE_CLEAN_HEAD_MATCHES" if (worktree_clean and head in ("HEAD", head_sha)) else\n'
+             '                    "COMMITTED_REF (every content read is a Git object read at the supplied head; the working tree is never read)")\n'
+             '    added, removed, renamed, changed = _git_name_status(base, head, root)\n'
+             '    is_test = lambda p: p.startswith("tests/") and p.rsplit("/", 1)[-1].startswith("test_") and p.endswith(".py")\n'
+             '    added, removed, changed = sorted(filter(is_test, added)), sorted(filter(is_test, removed)), sorted(filter(is_test, changed))\n'
+             '\n'
+             '    node_deltas, growth = [], {"added_modules": len(added), "removed_modules": len(removed), "renamed_modules": len(renamed),\n'
+             '                               "added_nodes": 0, "removed_nodes": 0}\n'
+             '    plan, selected_set, plan_provenance = None, None, "UNKNOWN (no plan supplied)"\n'
+             '    if plan_path:\n'
+             '        try:\n'
+             '            plan = json.loads(Path(plan_path).read_text())\n'
+             '            selected_set = set(plan.get("pytest_modules", []))\n'
+             '            if plan.get("tested_sha") == head_sha:\n'
+             '                plan_provenance = "SHA_BOUND_INPUT (plan tested_sha == report head; that the plan came from a hosted run is attested by the caller, not by this tool)"\n'
+             '            else:\n'
+             '                plan_provenance = "UNVERIFIED_INPUT (plan tested_sha %s != report head %s)" % (plan.get("tested_sha", "UNKNOWN")[:12], head_sha[:12])\n'
+             '        except (OSError, ValueError):\n'
+             '            plan = None\n'
+             '            plan_provenance = "UNKNOWN (plan unreadable)"\n'
+             '    junit_secs, _jnodes = read_junit_module_seconds(sorted(junit_paths)) if junit_paths else ({}, {})\n'
+             '    # A JUnit file carries no commit identity, so it is never OBSERVED_HOSTED here: the caller must attest its run and SHA separately.\n'
+             '    junit_provenance = ("UNVERIFIED_INPUT (JUnit supplied; it is not bound to the report head SHA, so its seconds are not hosted proof)"\n'
+             '                        if junit_paths else "UNKNOWN (no junit supplied)")\n'
+             '\n'
+             '    new_skips, duplicates, meta_rows = [], [], []\n'
+             '    existing_hashes = {}\n'
+             '    for rel in sorted(set(added) | set(changed)):\n'
+             '        src_now = _show(head, rel, root)\n'
+             '        now_nodes = _test_node_names(src_now) if src_now is not None else None\n'
+             '        src_base = _show(base, rel, root)\n'
+             '        base_nodes = _test_node_names(src_base) if src_base is not None else []\n'
+             '        if now_nodes is None or base_nodes is None:\n'
+             '            src_now = src_now or ""\n'
+             '            status, added_n, removed_n = "UNKNOWN", [], []\n'
+             '        else:\n'
+             '            added_n = [n for n in now_nodes if n not in base_nodes]\n'
+             '            removed_n = [n for n in base_nodes if n not in now_nodes]\n'
+             '            status = "AST_FUNCTION_DELTA"          # function names only: never collected pytest node ids or a parametrize count\n'
+             '        growth["added_nodes"] += len(added_n)\n'
+             '        growth["removed_nodes"] += len(removed_n)\n'
+             '        node_deltas.append({"module": rel, "status": status, "added_nodes": added_n, "removed_nodes": removed_n,\n'
+             '                            "node_id_status": "UNKNOWN (no SHA-bound pytest --collect-only of both states; function names are not node ids)",\n'
+             '                            "selected": ("SELECTED" if (selected_set is not None and rel in selected_set)\n'
+             '                                         else ("NOT_SELECTED" if selected_set is not None else "UNKNOWN")),\n'
+             '                            "wall_s": (round(junit_secs[rel], 3) if rel in junit_secs else None),\n'
+             '                            "wall_label": ("UNVERIFIED_INPUT (JUnit not SHA-bound)" if rel in junit_secs else "UNKNOWN"),\n'
+             '                            "git_process_count": "UNKNOWN"})\n'
+             '        if rel in added:\n'
+             '            meta_rows.append({"module": rel, **_admission_metadata(src_now)})\n'
+             '        base_marks = set(_skip_markers(src_base)) if src_base is not None else set()\n'
+             '        new_skips += [{"module": rel, "marker": m[:120],\n'
+             '                       "newness": "PRE_EXISTING (same marker line present at base)" if m in base_marks else "NEW_VS_BASE (marker line absent at base)"}\n'
+             '                      for m in _skip_markers(src_now)[:3]]\n'
+             '        if rel in added:\n'
+             '            hashes = _body_hashes(src_now)\n'
+             '            listing = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", head, "--", "tests/"], cwd=root).decode("utf-8", "replace").splitlines()\n'
+             '            for erel in sorted(p for p in listing if is_test(p) and p.count("/") == 1):\n'
+             '                if erel == rel:\n'
+             '                    continue\n'
+             '                if erel not in existing_hashes:\n'
+             '                    existing_hashes[erel] = _body_hashes(_show(head, erel, root) or "")\n'
+             '                for name, h in sorted(hashes.items()):\n'
+             '                    for name2, h2 in sorted(existing_hashes[erel].items()):\n'
+             '                        if h == h2:\n'
+             '                            duplicates.append({"candidate": "%s::%s" % (rel, name), "existing": "%s::%s" % (erel, name2),\n'
+             '                                               "heuristic": "identical-normalized-AST-body", "severity": "WARN"})\n'
+             '\n'
+             '    budget = budget_warnings(sorted(junit_paths)) if junit_paths else {"label": "WARN_ONLY", "enforced": False, "findings": [],\n'
+             '                                                                       "note": "UNKNOWN (no junit supplied)"}\n'
+             '    crit = {"label": "UNKNOWN (no plan supplied)"}\n'
+             '    if plan:\n'
+             '        predicted = (plan.get("schedule") or {}).get("predicted_critical_path_s")\n'
+             '        crit = {"plan_predicted_critical_path_s": predicted, "enforced": False,\n'
+             '                "label": ("SIMULATION (the plan\'s prediction from the committed scheduling weights; not an observed hosted time)"\n'
+             '                          if predicted is not None else "UNKNOWN (the supplied plan carries no predicted critical path)")}\n'
+             '\n'
+             '    findings = []\n'
+             '    for row in meta_rows:\n'
+             '        for f, v in row.items():\n'
+             '            if f != "module" and v == "UNKNOWN":\n'
+             '                findings.append({"path": row["module"], "code": "ADM-METADATA-UNKNOWN", "field": f, "severity": "WARN",\n'
+             '                                 "message": "admission metadata field is UNKNOWN: " + f})\n'
+             '    for d in duplicates:\n'
+             '        findings.append({"path": d["candidate"], "code": "ADM-DUPLICATE-CANDIDATE", "severity": "WARN",\n'
+             '                         "message": "duplicate CANDIDATE (heuristic only, never automatic): %s" % d["existing"]})\n'
+             '    fresh = [k for k in new_skips if k["newness"].startswith("NEW_VS_BASE")]\n'
+             '    if fresh:\n'
+             '        findings.append({"code": "ADM-NEW-SKIP", "severity": "WARN",\n'
+             '                         "message": "new skip/xfail markers: a skipped node is never PASS (%d marker lines absent at base)" % len(fresh)})\n'
+             '\n'
+             '    return {"label": "WARN_ONLY", "what": "B3 test-admission report over the trusted-base diff",\n'
+             '            "base": base, "head": head, "head_sha": head_sha, "head_tree": head_tree, "head_binding": head_binding,\n'
+             '            "plan_provenance": plan_provenance, "junit_provenance": junit_provenance,\n'
+             '            "modules": {"added": added, "removed": removed, "renamed": renamed, "changed": changed},\n'
+             '            "node_deltas": node_deltas, "node_delta_kind": "AST_FUNCTION_DELTA (exact collected node ids require a fresh pytest --collect-only on both exact SHA/trees; UNKNOWN when unavailable)", "growth": growth,\n'
+             '            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": fresh,\n'
+             '            "critical_path": crit, "budgets": budget, "findings": findings,\n'
+             '            "labels_used": ["AST_FUNCTION_DELTA", "MEASURED_LOCAL", "SHA_BOUND_INPUT", "SIMULATION", "UNVERIFIED_INPUT", "UNKNOWN", "WARN_ONLY"],\n'
+             '            "exit_code_policy": "always 0: informational, never a gate"}\n'
+             '\n'
+             '\n'
+             'if __name__ == "__main__":\n')),
     ],
     'tests/fin_v2_cohorts.py': [
         ("                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')\n",
@@ -2485,455 +581,321 @@ HANDOFFS = {
          "                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))\n"),
     ],
     'tests/test_c06_cost_workspace_scope.py': [
-        ("    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))       # C06 is followed by at most the one reviewed B1 successor\n",
-         "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))       # C06 is followed by the reviewed B1, B2 and B3 successors\n"),
-        ("            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'):         # a successor never attests an older accepted ref\n",
-         "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'):         # a successor never attests an older accepted ref\n"),
+        ((
+            "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+            "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))       # C06 is followed by at most the one reviewed B1 successor\n"
+            '    assert C.COHORT_MODULES.count(F.__name__)==1\n'),
+         (
+             "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+             "    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))       # C06 is followed by the reviewed B1, B2 and B3 successors\n"
+             '    assert C.COHORT_MODULES.count(F.__name__)==1\n')),
+        ((
+            "    for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+            '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None\n'
+            '    for path in F.HANDOFFS:\n'
+            '        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
+            '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'),
+         (
+             "    for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+             '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() if N2 is not None and N2.signature_ok() else None\n'
+             '    for path in F.HANDOFFS:\n'
+             '        later=N3 if N3 is not None and N3.signature_ok() and path in N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
+             '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n')),
+        ((
+            '        for m in C.cohorts():\n'
+            "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'):         # a successor never attests an older accepted ref\n"
+            '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'),
+         (
+             '        for m in C.cohorts():\n'
+             "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'):         # a successor never attests an older accepted ref\n"
+             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n')),
     ],
     'tests/test_ci_v4_lean_b1_scope.py': [
-        ('                   for p in T.OWNED_PATHS | {T.MANIFEST})\n',
+        ((
+            'MATRIX = "tests/test_ci_v4_lean_tamper_matrix.py"\n'
+            '\n'),
          (
+             'MATRIX = "tests/test_ci_v4_lean_tamper_matrix.py"\n'
+             'README = "docs/ci_v4/lean_b1/README.md"      # a B1-owned path no later successor hands off: its pin is still judged by B1 itself\n'
+             '\n')),
+        ((
             '                   for p in T.OWNED_PATHS | {T.MANIFEST})\n'
-            '    T2 = T._next()\n'
-            '    T3 = T2._next() if T2 is not None and T2.signature_ok() else None\n')),
-        ('    for path in T.FROZEN:\n',
-         (
             '    for path in T.FROZEN:\n'
-            "        if T3 is not None and T2 is not None and T2.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and path in T3.HANDOFFS:      # the reviewed B3 successor owns this control file's further substitution\n"
-            '            assert (ROOT / path).read_bytes() == T3.expected_handoff(ROOT, path), path\n'
-            '            continue\n')),
-        ('    N = T._next()\n',
+            '        assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path\n'),
          (
+             '                   for p in T.OWNED_PATHS | {T.MANIFEST})\n'
+             '    T2 = T._next()\n'
+             '    T3 = T2._next() if T2 is not None and T2.signature_ok() else None\n'
+             '    for path in T.FROZEN:\n'
+             "        if T3 is not None and T2 is not None and T2.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and path in T3.HANDOFFS:      # the reviewed B3 successor owns this control file's further substitution\n"
+             '            assert (ROOT / path).read_bytes() == T3.expected_handoff(ROOT, path), path\n'
+             '            continue\n'
+             '        assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path\n')),
+        ((
             '    N = T._next()\n'
-            '    N2 = N._next() if N is not None and N.signature_ok() else None\n')),
-        ('    for p in T.HANDOFFS:\n',
-         (
             '    for p in T.HANDOFFS:\n'
-            '        if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this shared path\n'
-            '            assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
-            '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
-            '            continue\n')),
-        ('    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\n',
-         '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-4:] if m != "tests.ci_v4_lean_b3_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'),
-        ('    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"\n',
-         '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')"\n'),
-        ('        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n',
-         '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'),
-        ('        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n',
-         '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'),
+            '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path\n'),
+         (
+             '    N = T._next()\n'
+             '    N2 = N._next() if N is not None and N.signature_ok() else None\n'
+             '    for p in T.HANDOFFS:\n'
+             '        if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this shared path\n'
+             '            assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
+             '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+             '            continue\n'
+             '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path\n')),
+        ((
+            'def test_registered_exactly_once_as_the_terminal_cohort_after_c06():\n'
+            '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+            '    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"\n'),
+         (
+             'def test_registered_exactly_once_as_the_terminal_cohort_after_c06():\n'
+             '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR),\n'
+             '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope")) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+             '    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"\n')),
+        ((
+            '    from tests import u1_scope as U\n'
+            '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-3:] if m != "tests.ci_v4_lean_b2_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope")\n'
+            '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1\n'),
+         (
+             '    from tests import u1_scope as U\n'
+             '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-4:] if m != "tests.ci_v4_lean_b3_scope") == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'
+             '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1\n')),
+        ((
+            'def test_registry_mutations_are_rejected(clone):\n'
+            '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"\n'
+            '    for name, fn in (\n'
+            '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'
+            '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+            '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'
+            '        ("b1_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b1_scope\'", b"")),\n'),
+         (
+             'def test_registry_mutations_are_rejected(clone):\n'
+             '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')"\n'
+             '    for name, fn in (\n'
+             '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'
+             '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+             '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'
+             '        ("b1_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b1_scope\'", b"")),\n')),
+        ((
+            '    forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),\n'
+            '              edit(lambda d: d["source_blobs"].__setitem__(REPORT, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),\n'
+            '              edit(lambda d: d["source_modes"].__setitem__(REPORT, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),\n'),
+         (
+             '    forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),\n'
+             '              edit(lambda d: d["source_blobs"].__setitem__(README, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),\n'
+             '              edit(lambda d: d["source_modes"].__setitem__(REPORT, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),\n')),
     ],
     'tests/test_ci_v4_lean_b2_scope.py': [
-        ('    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n',
-         (
-            '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
-            '    T3 = T._next()\n')),
-        ('        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n',
-         (
-            '        if T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path\n'
-            '            assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)\n'
-            '        else:\n'
-            '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n')),
         ((
+            'U1_TESTS = "tests/test_u1_scope.py"\n'
+            'SCOPED_NODES = ("test_positive_cohort_is_exact_registered_and_closed",\n'),
+         (
+             'U1_TESTS = "tests/test_u1_scope.py"\n'
+             'README = "docs/ci_v4/lean_b2/README.md"      # a B2-owned path no later successor hands off: its pin is still judged by B2 itself\n'
+             'SCOPED_NODES = ("test_positive_cohort_is_exact_registered_and_closed",\n')),
+        ((
+            '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+            '    for p in T.HANDOFFS:\n'
+            '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+            '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'),
+         (
+             '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+             '    T3 = T._next()\n'
+             '    for p in T.HANDOFFS:\n'
+             '        if T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path\n'
+             '            assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)\n'
+             '        else:\n'
+             '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+             '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n')),
+        ((
+            'def test_registered_exactly_once_as_the_terminal_cohort_after_b1():\n'
             '    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1\n'
             '    assert C.COHORT_MODULES[-3:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'
-            '    assert B.SUCCESSOR == T.__name__ and B._next() is T and K.SUCCESSOR == B.__name__ and K._next() is B\n'),
+            '    assert B.SUCCESSOR == T.__name__ and B._next() is T and K.SUCCESSOR == B.__name__ and K._next() is B\n'
+            '\n'),
          (
-            '    assert C.COHORT_MODULES.count(T.__name__) == 1\n'
-            '    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))\n'
-            '    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B\n'
-            '    from tests import ci_v4_lean_b3_scope as T3\n'
-            '    if T.SUCCESSOR in C.COHORT_MODULES:\n'
-            '        assert C.COHORT_MODULES[-1] == T.SUCCESSOR and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"\n')),
-        ('    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n',
-         '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))\n'),
-        ('    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"\n',
-         '    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')"\n'),
-        ('        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n',
-         '        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'),
+             'def test_registered_exactly_once_as_the_terminal_cohort_after_b1():\n'
+             '    assert C.COHORT_MODULES.count(T.__name__) == 1\n'
+             '    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))\n'
+             '    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B\n'
+             '    from tests import ci_v4_lean_b3_scope as T3\n'
+             '    if T.SUCCESSOR in C.COHORT_MODULES:\n'
+             '        assert C.COHORT_MODULES[-1] == T.SUCCESSOR and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"\n'
+             '\n')),
+        ((
+            '    from tests import u1_scope as U\n'
+            '    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'
+            '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1\n'),
+         (
+             '    from tests import u1_scope as U\n'
+             '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))\n'
+             '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1\n')),
+        ((
+            'def test_registry_mutations_are_rejected(clone):\n'
+            '    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\')"\n'
+            '    for name, fn in (\n'
+            '        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'
+            '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'),
+         (
+             'def test_registry_mutations_are_rejected(clone):\n'
+             '    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')"\n'
+             '    for name, fn in (\n'
+             '        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\')")),\n'
+             '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n')),
+        ((
+            '    forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),\n'
+            '              edit(lambda d: d["source_blobs"].__setitem__(MODULE, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),\n'
+            '              edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),\n'),
+         (
+             '    forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),\n'
+             '              edit(lambda d: d["source_blobs"].__setitem__(README, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),\n'
+             '              edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),\n')),
+        ((
+            '    pins = T.manifest()["source_blobs"]\n'
+            '    reg = pins[T.REGISTRY]\n'
+            '    assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)\n'
+            '    assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(U1_TESTS, "0" * 40)\n'),
+         (
+             '    pins = T.manifest()["source_blobs"]\n'
+             '    reg = T.effective_pins()[T.REGISTRY]            # the CURRENT registry pin (the B3 successor overlay wins while its signature holds)\n'
+             '    assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)\n'
+             "    assert not B.supersedes(T.REGISTRY, pins[T.REGISTRY])       # B2's own registry pin is superseded by B3 and no longer current\n"
+             '    assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(U1_TESTS, "0" * 40)\n')),
     ],
     'tests/test_ci_v4_lean_report.py': [
-        ((
-            '"""CI V4 Lean B1 report: the measurement / SIMULATION / WARN-ONLY helpers never gate, never mutate the repository and never present a local\n'
-            'measurement or a simulation as hosted evidence. Risk protected: an informational tool silently becoming a blocking gate or a fake PASS."""\n'
-            'import json\n'
-            'import subprocess\n'
-            'import sys\n'
-            'import textwrap\n'
-            'from pathlib import Path\n'
-            '\n'
-            'import pytest\n'
-            '\n'
-            'from tests import ci_v4_lean_report as R\n'
-            '\n'
-            'ROOT = Path(__file__).resolve().parents[1]\n'
-            '\n'
-            '\n'
-            'def _junit(tmp_path, cases, name="j.xml"):\n'
-            '    rows = "".join("<testcase classname=\'%s\' name=\'%s\' time=\'%s\'/>" % c for c in cases)\n'
-            '    p = tmp_path / name\n'
-            '    p.write_text("<testsuites><testsuite>%s</testsuite></testsuites>" % rows)\n'
-            '    return p\n'
-            '\n'
-            '\n'
-            'def test_git_subprocess_counter_counts_only_git_and_restores_popen():\n'
-            '    before = subprocess.Popen.__init__\n'
-            '    with R.git_subprocess_counter() as c:\n'
-            '        subprocess.run(["git", "--version"], capture_output=True)\n'
-            '        subprocess.run(["git", "--version"], capture_output=True)\n'
-            '        subprocess.run([sys.executable, "-c", "pass"], capture_output=True)\n'
-            '    assert c == {"git": 2, "other": 1}\n'
-            '    assert subprocess.Popen.__init__ is before            # nothing stays patched\n'
-            '\n'
-            '\n'
-            'def test_every_report_is_labelled_and_a_simulation_is_never_hosted_evidence():\n'
-            '    sim = R.simulate_workers(["tests/a.py", "tests/b.py", "tests/c.py"], {"tests/a.py": 30.0, "tests/b.py": 20.0, "tests/c.py": 10.0}, weights_source="unit")\n'
-            '    assert sim["label"] == "SIMULATION" and "NOT hosted evidence" in sim["disclaimer"]\n'
-            '    assert [r["workers"] for r in sim["rows"]] == list(R.SIM_WORKERS) == [3, 4, 5, 6, 8]\n'
-            '    assert R.admission_report([])["label"] == "WARN_ONLY" and R.budget_warnings([])["label"] == "WARN_ONLY"\n'
-            '    assert set(R.LABELS) == {"MEASURED_LOCAL", "SIMULATION", "WARN_ONLY"}\n'
-            '\n'
-            '\n'
-            'def test_simulation_is_deterministic_conserves_work_and_prices_unknown_modules_conservatively():\n'
-            '    w = {"tests/a.py": 100.0, "tests/b.py": 100.0, "tests/c.py": 50.0}\n'
-            '    mods = ["tests/c.py", "tests/a.py", "tests/b.py", "tests/new_unweighted.py"]\n'
-            '    one = R.simulate_workers(mods, w, weights_source="unit")\n'
-            '    two = R.simulate_workers(list(reversed(mods)), w, weights_source="unit")\n'
-            '    assert one == two                                            # order-independent, deterministic tie-breaks\n'
-            '    assert one["unknown_modules"] == ["tests/new_unweighted.py"]  # never silently zero\n'
-            '    assert one["total_weight_s"] == 100 + 100 + 50 + one["default_module_s_for_unknown"]\n'
-            '    for row in one["rows"]:\n'
-            '        assert row["runner_s"] == one["total_weight_s"]           # LPT only moves work between workers, it never loses any\n'
-            '\n'
-            '\n'
-            'def test_simulation_with_the_recorded_weights_names_its_provenance():\n'
-            '    sim = R.simulate_workers(["tests/test_ci_v4_aggregate.py"])\n'
-            '    assert sim["weights_source"] and sim["weights_source"] != "supplied" and sim["rows"]\n'
-            '\n'
-            '\n'
-            'def test_collection_output_parser_reads_node_ids_and_errors():\n'
-            '    nodes, errors = R.parse_collect_output(textwrap.dedent("""\\\n'
-            '        tests/test_a.py::test_one\n'
-            '        tests/test_a.py::test_two[param-1]\n'
-            '        ERROR tests/test_bad.py\n'
-            '        2 tests collected, 1 error in 0.1s\n'
-            '        """))\n'
-            '    assert nodes == ["tests/test_a.py::test_one", "tests/test_a.py::test_two[param-1]"] and errors == ["ERROR tests/test_bad.py"]\n'
-            '\n'
-            '\n'
-            'def test_collection_digest_is_stable_and_order_independent_for_a_real_module():\n'
-            '    a = R.collection_digest(["tests/test_ci_v4_lean_report.py"])\n'
-            '    b = R.collection_digest(["tests/test_ci_v4_lean_report.py"])\n'
-            '    assert a["label"] == "MEASURED_LOCAL" and a["collected_nodes"] >= 8 and a["collection_errors"] == []\n'
-            '    assert a["node_id_sha256"] == b["node_id_sha256"] and a["collected_nodes"] == b["collected_nodes"]\n'
-            '    assert "NOT derived from collection" in a["note"]            # collected is never reported as selected / executed / passed\n'
-            '\n'
-            '\n'
-            'def test_weights_proposal_is_not_active_deterministic_and_keeps_unknown_unknown(tmp_path):\n'
-            '    j = _junit(tmp_path, [("tests.test_ci_v4_aggregate", "test_one", 2.5), ("tests.test_ci_v4_aggregate", "test_two", 1.5)])\n'
-            '    cur = {"tests/test_ci_v4_aggregate.py": 99.0, "tests/test_ci_v4_select.py": 7.0}\n'
-            '    before = (ROOT / "docs/ci_v4/module_weights.json").read_bytes()\n'
-            '    p1 = R.propose_weights([j], cur, "unit-provenance", "run-1")\n'
-            '    p2 = R.propose_weights([j], cur, "unit-provenance", "run-1")\n'
-            '    assert p1 == p2 and p1["status"] == "PROPOSAL_NOT_ACTIVE"\n'
-            '    assert p1["modules"]["tests/test_ci_v4_aggregate.py"] == 4.0\n'
-            '    assert p1["modules"]["tests/test_ci_v4_select.py"] == 7.0 and p1["kept_previous_weight"] == ["tests/test_ci_v4_select.py"]\n'
-            '    assert (ROOT / "docs/ci_v4/module_weights.json").read_bytes() == before      # the active weights file is never written\n'
-            '\n'
-            '\n'
-            'def test_admission_report_is_warn_only_and_flags_the_proposed_checklist_items(tmp_path):\n'
-            '    f = tmp_path / "test_sample.py"\n'
-            "    f.write_text(textwrap.dedent('''\\\n"
-            '        import subprocess\n'
-            '        import pytest\n'
-            '\n'
-            '        @pytest.mark.skip\n'
-            '        def test_reads_source(tmp_path):\n'
-            '            text = (tmp_path / "x.py").read_text()\n'
-            '            assert "needle" in text\n'
-            '\n'
-            '        def test_git_in_a_loop():\n'
-            '            for p in ("a", "b"):\n'
-            '                subprocess.check_output(["git", "status", p])\n'
-            "        '''))\n"
-            '    rep = R.admission_report([str(f)])\n'
-            '    codes = {x["code"] for x in rep["findings"]}\n'
-            '    assert {"ADM-RISK", "ADM-SOURCE-TEXT", "ADM-GIT-LOOP", "ADM-SKIP"} <= codes\n'
-            '    assert rep["label"] == "WARN_ONLY" and rep["budgets"]["enforced"] is False and rep["budgets"]["approved_by_owner"] is False\n'
-            '    assert all(x["severity"] == "WARN" for x in rep["findings"])\n'
-            '\n'
-            '\n'
-            'def test_a_documented_clean_test_has_no_admission_warning(tmp_path):\n'
-            '    f = tmp_path / "test_clean.py"\n'
-            '    f.write_text(\'"""Risk protected: a negative control that fails closed."""\\n\\ndef test_ok():\\n    assert 1 + 1 == 2\\n\')\n'
-            '    assert R.admission_report([str(f)])["findings"] == []\n'
-            '\n'
-            '\n'
-            'def test_budget_warnings_use_the_proposed_not_approved_thresholds(tmp_path):\n'
-            '    j = _junit(tmp_path, [("tests.t", "fast", 59), ("tests.t", "slow", 130), ("tests.t", "huge", 310)])\n'
-            '    rep = R.budget_warnings([j])\n'
-            '    levels = {r["id"]: r["level"] for r in rep["findings"] if r["kind"] == "node"}\n'
-            '    assert levels == {"tests.t::slow": "WARN", "tests.t::huge": "EXCEPTION"} and rep["enforced"] is False\n'
-            '\n'
-            '\n'
-            'def test_the_cli_never_gates_even_when_it_finds_warnings(tmp_path):\n'
-            '    f = tmp_path / "test_bad.py"\n'
-            '    f.write_text("def test_x():\\n    assert True\\n")\n'
-            '    out = tmp_path / "o.json"\n'
-            '    assert R.main(["admission", "--output", str(out), str(f)]) == 0\n'
-            '    data = json.loads(out.read_text())\n'
-            '    assert data["schema"] == R.SCHEMA and data["warnings"] >= 1 and data["exit_code_policy"].startswith("always 0")\n'
-            '    r = subprocess.run([sys.executable, "-m", "tests.ci_v4_lean_report", "admission", str(f)], cwd=ROOT, capture_output=True, text=True)\n'
-            '    assert r.returncode == 0 and "WARN_ONLY" in r.stdout\n'
-            '\n'
-            '\n'
-            'def test_the_report_module_is_not_wired_into_selection_scheduling_or_aggregation():\n'
-            '    """It must stay opt-in: none of the CI V4 tools imports it, and it writes no tracked file by default."""\n'
-            '    for tool in ("ci_v4_select", "ci_v4_schedule", "ci_v4_aggregate", "ci_v4_governance_gate", "ci_v4_activate", "ci_v4_shard", "ci_v4_nodes"):\n'
-            '        assert "ci_v4_lean_report" not in (ROOT / "tools" / (tool + ".py")).read_text(), tool\n'
-            '    workflows = "".join(p.read_text() for p in (ROOT / ".github/workflows").glob("ci_v4_*.yml"))\n'
-            '    assert "ci_v4_lean_report" not in workflows\n'),
+        ('    assert "ci_v4_lean_report" not in workflows\n',
          (
-            '"""CI V4 Lean B1 report: the measurement / SIMULATION / WARN-ONLY helpers never gate, never mutate the repository and never present a local\r\n'
-            'measurement or a simulation as hosted evidence. Risk protected: an informational tool silently becoming a blocking gate or a fake PASS."""\r\n'
-            'import json\r\n'
-            'import subprocess\r\n'
-            'import sys\r\n'
-            'import textwrap\r\n'
-            'from pathlib import Path\r\n'
-            '\r\n'
-            'import pytest\r\n'
-            '\r\n'
-            'from tests import ci_v4_lean_report as R\r\n'
-            '\r\n'
-            'ROOT = Path(__file__).resolve().parents[1]\r\n'
-            '\r\n'
-            '\r\n'
-            'def _junit(tmp_path, cases, name="j.xml"):\r\n'
-            '    rows = "".join("<testcase classname=\'%s\' name=\'%s\' time=\'%s\'/>" % c for c in cases)\r\n'
-            '    p = tmp_path / name\r\n'
-            '    p.write_text("<testsuites><testsuite>%s</testsuite></testsuites>" % rows)\r\n'
-            '    return p\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_git_subprocess_counter_counts_only_git_and_restores_popen():\r\n'
-            '    before = subprocess.Popen.__init__\r\n'
-            '    with R.git_subprocess_counter() as c:\r\n'
-            '        subprocess.run(["git", "--version"], capture_output=True)\r\n'
-            '        subprocess.run(["git", "--version"], capture_output=True)\r\n'
-            '        subprocess.run([sys.executable, "-c", "pass"], capture_output=True)\r\n'
-            '    assert c == {"git": 2, "other": 1}\r\n'
-            '    assert subprocess.Popen.__init__ is before            # nothing stays patched\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_every_report_is_labelled_and_a_simulation_is_never_hosted_evidence():\r\n'
-            '    sim = R.simulate_workers(["tests/a.py", "tests/b.py", "tests/c.py"], {"tests/a.py": 30.0, "tests/b.py": 20.0, "tests/c.py": 10.0}, weights_source="unit")\r\n'
-            '    assert sim["label"] == "SIMULATION" and "NOT hosted evidence" in sim["disclaimer"]\r\n'
-            '    assert [r["workers"] for r in sim["rows"]] == list(R.SIM_WORKERS) == [3, 4, 5, 6, 8]\r\n'
-            '    assert R.admission_report([])["label"] == "WARN_ONLY" and R.budget_warnings([])["label"] == "WARN_ONLY"\r\n'
-            '    assert set(R.LABELS) == {"MEASURED_LOCAL", "SIMULATION", "WARN_ONLY"}\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_simulation_is_deterministic_conserves_work_and_prices_unknown_modules_conservatively():\r\n'
-            '    w = {"tests/a.py": 100.0, "tests/b.py": 100.0, "tests/c.py": 50.0}\r\n'
-            '    mods = ["tests/c.py", "tests/a.py", "tests/b.py", "tests/new_unweighted.py"]\r\n'
-            '    one = R.simulate_workers(mods, w, weights_source="unit")\r\n'
-            '    two = R.simulate_workers(list(reversed(mods)), w, weights_source="unit")\r\n'
-            '    assert one == two                                            # order-independent, deterministic tie-breaks\r\n'
-            '    assert one["unknown_modules"] == ["tests/new_unweighted.py"]  # never silently zero\r\n'
-            '    assert one["total_weight_s"] == 100 + 100 + 50 + one["default_module_s_for_unknown"]\r\n'
-            '    for row in one["rows"]:\r\n'
-            '        assert row["runner_s"] == one["total_weight_s"]           # LPT only moves work between workers, it never loses any\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_simulation_with_the_recorded_weights_names_its_provenance():\r\n'
-            '    sim = R.simulate_workers(["tests/test_ci_v4_aggregate.py"])\r\n'
-            '    assert sim["weights_source"] and sim["weights_source"] != "supplied" and sim["rows"]\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_collection_output_parser_reads_node_ids_and_errors():\r\n'
-            '    nodes, errors = R.parse_collect_output(textwrap.dedent("""\\\r\n'
-            '        tests/test_a.py::test_one\r\n'
-            '        tests/test_a.py::test_two[param-1]\r\n'
-            '        ERROR tests/test_bad.py\r\n'
-            '        2 tests collected, 1 error in 0.1s\r\n'
-            '        """))\r\n'
-            '    assert nodes == ["tests/test_a.py::test_one", "tests/test_a.py::test_two[param-1]"] and errors == ["ERROR tests/test_bad.py"]\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_collection_digest_is_stable_and_order_independent_for_a_real_module():\r\n'
-            '    a = R.collection_digest(["tests/test_ci_v4_lean_report.py"])\r\n'
-            '    b = R.collection_digest(["tests/test_ci_v4_lean_report.py"])\r\n'
-            '    assert a["label"] == "MEASURED_LOCAL" and a["collected_nodes"] >= 8 and a["collection_errors"] == []\r\n'
-            '    assert a["node_id_sha256"] == b["node_id_sha256"] and a["collected_nodes"] == b["collected_nodes"]\r\n'
-            '    assert "NOT derived from collection" in a["note"]            # collected is never reported as selected / executed / passed\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_weights_proposal_is_not_active_deterministic_and_keeps_unknown_unknown(tmp_path):\r\n'
-            '    j = _junit(tmp_path, [("tests.test_ci_v4_aggregate", "test_one", 2.5), ("tests.test_ci_v4_aggregate", "test_two", 1.5)])\r\n'
-            '    cur = {"tests/test_ci_v4_aggregate.py": 99.0, "tests/test_ci_v4_select.py": 7.0}\r\n'
-            '    before = (ROOT / "docs/ci_v4/module_weights.json").read_bytes()\r\n'
-            '    p1 = R.propose_weights([j], cur, "unit-provenance", "run-1")\r\n'
-            '    p2 = R.propose_weights([j], cur, "unit-provenance", "run-1")\r\n'
-            '    assert p1 == p2 and p1["status"] == "PROPOSAL_NOT_ACTIVE"\r\n'
-            '    assert p1["modules"]["tests/test_ci_v4_aggregate.py"] == 4.0\r\n'
-            '    assert p1["modules"]["tests/test_ci_v4_select.py"] == 7.0 and p1["kept_previous_weight"] == ["tests/test_ci_v4_select.py"]\r\n'
-            '    assert (ROOT / "docs/ci_v4/module_weights.json").read_bytes() == before      # the active weights file is never written\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_admission_report_is_warn_only_and_flags_the_proposed_checklist_items(tmp_path):\r\n'
-            '    f = tmp_path / "test_sample.py"\r\n'
-            "    f.write_text(textwrap.dedent('''\\\r\n"
-            '        import subprocess\r\n'
-            '        import pytest\r\n'
-            '\r\n'
-            '        @pytest.mark.skip\r\n'
-            '        def test_reads_source(tmp_path):\r\n'
-            '            text = (tmp_path / "x.py").read_text()\r\n'
-            '            assert "needle" in text\r\n'
-            '\r\n'
-            '        def test_git_in_a_loop():\r\n'
-            '            for p in ("a", "b"):\r\n'
-            '                subprocess.check_output(["git", "status", p])\r\n'
-            "        '''))\r\n"
-            '    rep = R.admission_report([str(f)])\r\n'
-            '    codes = {x["code"] for x in rep["findings"]}\r\n'
-            '    assert {"ADM-RISK", "ADM-SOURCE-TEXT", "ADM-GIT-LOOP", "ADM-SKIP"} <= codes\r\n'
-            '    assert rep["label"] == "WARN_ONLY" and rep["budgets"]["enforced"] is False and rep["budgets"]["approved_by_owner"] is False\r\n'
-            '    assert all(x["severity"] == "WARN" for x in rep["findings"])\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_a_documented_clean_test_has_no_admission_warning(tmp_path):\r\n'
-            '    f = tmp_path / "test_clean.py"\r\n'
-            '    f.write_text(\'"""Risk protected: a negative control that fails closed."""\\n\\ndef test_ok():\\n    assert 1 + 1 == 2\\n\')\r\n'
-            '    assert R.admission_report([str(f)])["findings"] == []\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_budget_warnings_use_the_proposed_not_approved_thresholds(tmp_path):\r\n'
-            '    j = _junit(tmp_path, [("tests.t", "fast", 59), ("tests.t", "slow", 130), ("tests.t", "huge", 310)])\r\n'
-            '    rep = R.budget_warnings([j])\r\n'
-            '    levels = {r["id"]: r["level"] for r in rep["findings"] if r["kind"] == "node"}\r\n'
-            '    assert levels == {"tests.t::slow": "WARN", "tests.t::huge": "EXCEPTION"} and rep["enforced"] is False\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_the_cli_never_gates_even_when_it_finds_warnings(tmp_path):\r\n'
-            '    f = tmp_path / "test_bad.py"\r\n'
-            '    f.write_text("def test_x():\\n    assert True\\n")\r\n'
-            '    out = tmp_path / "o.json"\r\n'
-            '    assert R.main(["admission", "--output", str(out), str(f)]) == 0\r\n'
-            '    data = json.loads(out.read_text())\r\n'
-            '    assert data["schema"] == R.SCHEMA and data["warnings"] >= 1 and data["exit_code_policy"].startswith("always 0")\r\n'
-            '    r = subprocess.run([sys.executable, "-m", "tests.ci_v4_lean_report", "admission", str(f)], cwd=ROOT, capture_output=True, text=True)\r\n'
-            '    assert r.returncode == 0 and "WARN_ONLY" in r.stdout\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_the_report_module_is_not_wired_into_selection_scheduling_or_aggregation():\r\n'
-            '    """It must stay opt-in: none of the CI V4 tools imports it, and it writes no tracked file by default."""\r\n'
-            '    for tool in ("ci_v4_select", "ci_v4_schedule", "ci_v4_aggregate", "ci_v4_governance_gate", "ci_v4_activate", "ci_v4_shard", "ci_v4_nodes"):\r\n'
-            '        assert "ci_v4_lean_report" not in (ROOT / "tools" / (tool + ".py")).read_text(), tool\r\n'
-            '    workflows = "".join(p.read_text() for p in (ROOT / ".github/workflows").glob("ci_v4_*.yml"))\r\n'
-            '    assert "ci_v4_lean_report" not in workflows\r\n'
-            '\r\n'
-            '\r\n'
-            '# -------------------------------------------------------------------------------------------- B3 test-admission report (targeted cases)\r\n'
-            'from tests import ci_v4_lean_report as _B3R\r\n'
-            '\r\n'
-            "_ADM_META = 'Admission: risk=probe-only, nearest=none, witness=red-before-green missing, tier=fast, owner=ci, retire=when-flaky'\r\n"
-            '\r\n'
-            '\r\n'
-            '@pytest.fixture()\r\n'
-            'def b3_repo(tmp_path):\r\n'
-            '    root = tmp_path / "b3repo"\r\n'
-            '    subprocess.check_call(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(root)])\r\n'
-            '    subprocess.check_call(["git", "config", "user.name", "t"], cwd=root)\r\n'
-            '    subprocess.check_call(["git", "config", "user.email", "t-at-test-placeholder"], cwd=root)\r\n'
-            '    subprocess.check_call(["git", "checkout", "-q", "-b", "b3-probe"], cwd=root)\r\n'
-            '    return root\r\n'
-            '\r\n'
-            '\r\n'
-            'def _b3_commit(root, msg="probe"):\r\n'
-            '    subprocess.check_call(["git", "add", "-A"], cwd=root)\r\n'
-            '    subprocess.check_call(["git", "commit", "-q", "--allow-empty", "-m", msg], cwd=root)\r\n'
-            '    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root).decode().strip()\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_normal_addition_is_listed_with_labels(b3_repo):\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_normal.py").write_text(\r\n'
-            '        "\'%s\'\\n\\ndef test_b3_probe_normal():\\n    assert True\\n" % _ADM_META)\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\r\n'
-            '    assert rep["modules"]["added"] == ["tests/test_b3_probe_normal.py"]\r\n'
-            '    row = rep["node_deltas"][0]\r\n'
-            '    assert row["added_nodes"] == ["test_b3_probe_normal"] and row["status"] == "MEASURED_LOCAL"\r\n'
-            '    assert row["selected"] == "UNKNOWN" and row["wall_label"] == "UNKNOWN" and row["git_process_count"] == "UNKNOWN"\r\n'
-            '    assert all(v != "UNKNOWN" for k, v in rep["admission_metadata"][0].items() if k != "module")\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_duplicate_candidate_is_heuristic_warn_only(b3_repo):\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_dup.py").write_text(\r\n'
-            '        "def test_b3_probe_dup():\\n    value = 1 + 1\\n    assert value == 2\\n")\r\n'
-            '    _b3_commit(b3_repo)\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_dup2.py").write_text(\r\n'
-            '        "def test_b3_probe_dup2():\\n    value = 1 + 1\\n    assert value == 2\\n")\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~2", head=head, root=b3_repo)\r\n'
-            '    assert rep["duplicate_candidates"], "identical normalized bodies must surface as CANDIDATES"\r\n'
-            '    assert all(d["severity"] == "WARN" for d in rep["duplicate_candidates"])\r\n'
-            '    assert rep["label"] == "WARN_ONLY"\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_missing_metadata_is_unknown_never_invented(b3_repo):\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_nodoc.py").write_text("def test_b3_probe_nodoc():\\n    assert 1\\n")\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\r\n'
-            '    meta = rep["admission_metadata"][0]\r\n'
-            '    assert all(v == "UNKNOWN" for k, v in meta.items() if k != "module")\r\n'
-            '    assert any(f["code"] == "ADM-METADATA-UNKNOWN" for f in rep["findings"])\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_new_skip_is_reported_never_pass(b3_repo):\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_skip.py").write_text(\r\n'
-            '        "import pytest\\n\\n\\npytestmark = pytest.mark.skip(reason=\'probe\')\\ndef test_b3_probe_skip():\\n    assert True\\n")\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\r\n'
-            '    assert rep["new_skip_markers"], "a new skip must be visible; a skipped node is never PASS"\r\n'
-            '    assert any(f["code"] == "ADM-NEW-SKIP" for f in rep["findings"])\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_tool_failure_is_reported_inside_json_never_as_exit(b3_repo):\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_broken.py").write_text("def broken(:\\n")\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\r\n'
-            '    assert rep["node_deltas"][0]["status"] == "UNKNOWN"      # unparsable source is UNKNOWN, never an empty lie\r\n'
-            '    assert rep["exit_code_policy"].startswith("always 0")\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_unchanged_fast_path_is_empty(b3_repo):\r\n'
-            '    head = _b3_commit(b3_repo, "empty")\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\r\n'
-            '    assert rep["modules"]["added"] == [] and rep["modules"]["removed"] == [] and rep["modules"]["changed"] == []\r\n'
-            '    assert rep["node_deltas"] == [] and rep["growth"]["added_nodes"] == 0\r\n'
-            '\r\n'
-            '\r\n'
-            'def test_b3_admission_plan_status_selected_vs_not_selected(b3_repo):\r\n'
-            '    plan = {"pytest_modules": ["tests/test_b3_probe_in_plan.py"], "schedule": {"predicted_critical_path_s": None}}\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_in_plan.py").write_text("def test_in_plan():\\n    assert True\\n")\r\n'
-            '    (b3_repo / "tests" / "test_b3_probe_out_plan.py").write_text("def test_out_plan():\\n    assert True\\n")\r\n'
-            '    pf = b3_repo / "plan.json"\r\n'
-            '    pf.write_text(json.dumps(plan))\r\n'
-            '    head = _b3_commit(b3_repo)\r\n'
-            '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, plan_path=str(pf), root=b3_repo)\r\n'
-            '    by_mod = {r["module"]: r for r in rep["node_deltas"]}\r\n'
-            '    assert by_mod["tests/test_b3_probe_in_plan.py"]["selected"] == "SELECTED"\r\n'
-            '    assert by_mod["tests/test_b3_probe_out_plan.py"]["selected"] == "NOT_SELECTED"\r\n'
-            '    assert rep["critical_path"]["plan_predicted_critical_path_s"] is None\r\n')),
+             '    assert "ci_v4_lean_report" not in workflows\n'
+             '\n'
+             '\n'
+             '# -------------------------------------------------------------------------------------------- B3 test-admission report (targeted cases)\n'
+             'from tests import ci_v4_lean_report as _B3R\n'
+             '\n'
+             "_ADM_META = 'Admission: risk=probe-only, nearest=none, witness=red-before-green missing, tier=fast, owner=ci, retire=when-flaky'\n"
+             '\n'
+             '\n'
+             '@pytest.fixture()\n'
+             'def b3_repo(tmp_path):\n'
+             '    root = tmp_path / "b3repo"\n'
+             '    subprocess.check_call(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(root)])\n'
+             '    subprocess.check_call(["git", "config", "user.name", "t"], cwd=root)\n'
+             '    subprocess.check_call(["git", "config", "user.email", "t-at-test-placeholder"], cwd=root)\n'
+             '    subprocess.check_call(["git", "checkout", "-q", "-b", "b3-probe"], cwd=root)\n'
+             '    return root\n'
+             '\n'
+             '\n'
+             'def _b3_commit(root, msg="probe"):\n'
+             '    subprocess.check_call(["git", "add", "-A"], cwd=root)\n'
+             '    subprocess.check_call(["git", "commit", "-q", "--allow-empty", "-m", msg], cwd=root)\n'
+             '    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root).decode().strip()\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_normal_addition_is_listed_with_labels(b3_repo):\n'
+             '    (b3_repo / "tests" / "test_b3_probe_normal.py").write_text(\n'
+             '        "\'%s\'\\n\\ndef test_b3_probe_normal():\\n    assert True\\n" % _ADM_META)\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\n'
+             '    assert rep["modules"]["added"] == ["tests/test_b3_probe_normal.py"]\n'
+             '    row = rep["node_deltas"][0]\n'
+             '    assert row["added_nodes"] == ["test_b3_probe_normal"] and row["status"] == "AST_FUNCTION_DELTA"\n'
+             '    assert row["node_id_status"].startswith("UNKNOWN")      # function names are never reported as collected node ids\n'
+             '    assert row["selected"] == "UNKNOWN" and row["wall_label"] == "UNKNOWN" and row["git_process_count"] == "UNKNOWN"\n'
+             '    assert all(v != "UNKNOWN" for k, v in rep["admission_metadata"][0].items() if k != "module")\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_duplicate_candidate_is_heuristic_warn_only(b3_repo):\n'
+             '    (b3_repo / "tests" / "test_b3_probe_dup.py").write_text(\n'
+             '        "def test_b3_probe_dup():\\n    value = 1 + 1\\n    assert value == 2\\n")\n'
+             '    _b3_commit(b3_repo)\n'
+             '    (b3_repo / "tests" / "test_b3_probe_dup2.py").write_text(\n'
+             '        "def test_b3_probe_dup2():\\n    value = 1 + 1\\n    assert value == 2\\n")\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~2", head=head, root=b3_repo)\n'
+             '    assert rep["duplicate_candidates"], "identical normalized bodies must surface as CANDIDATES"\n'
+             '    assert all(d["severity"] == "WARN" for d in rep["duplicate_candidates"])\n'
+             '    assert rep["label"] == "WARN_ONLY"\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_missing_metadata_is_unknown_never_invented(b3_repo):\n'
+             '    (b3_repo / "tests" / "test_b3_probe_nodoc.py").write_text("def test_b3_probe_nodoc():\\n    assert 1\\n")\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\n'
+             '    meta = rep["admission_metadata"][0]\n'
+             '    assert all(v == "UNKNOWN" for k, v in meta.items() if k != "module")\n'
+             '    assert any(f["code"] == "ADM-METADATA-UNKNOWN" for f in rep["findings"])\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_new_skip_is_reported_never_pass(b3_repo):\n'
+             '    (b3_repo / "tests" / "test_b3_probe_skip.py").write_text(\n'
+             '        "import pytest\\n\\n\\npytestmark = pytest.mark.skip(reason=\'probe\')\\ndef test_b3_probe_skip():\\n    assert True\\n")\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\n'
+             '    assert [k["newness"][:11] for k in rep["new_skip_markers"]] == ["NEW_VS_BASE"], "a new skip must be visible; a skipped node is never PASS"\n'
+             '    assert any(f["code"] == "ADM-NEW-SKIP" for f in rep["findings"])\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_tool_failure_is_reported_inside_json_never_as_exit(b3_repo):\n'
+             '    (b3_repo / "tests" / "test_b3_probe_broken.py").write_text("def broken(:\\n")\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\n'
+             '    assert rep["node_deltas"][0]["status"] == "UNKNOWN"      # unparsable source is UNKNOWN, never an empty lie\n'
+             '    assert rep["exit_code_policy"].startswith("always 0")\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_unchanged_fast_path_is_empty(b3_repo):\n'
+             '    head = _b3_commit(b3_repo, "empty")\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)\n'
+             '    assert rep["modules"]["added"] == [] and rep["modules"]["removed"] == [] and rep["modules"]["changed"] == []\n'
+             '    assert rep["node_deltas"] == [] and rep["growth"]["added_nodes"] == 0\n'
+             '\n'
+             '\n'
+             'def test_b3_admission_plan_status_selected_vs_not_selected(b3_repo):\n'
+             '    plan = {"pytest_modules": ["tests/test_b3_probe_in_plan.py"], "schedule": {"predicted_critical_path_s": None}}\n'
+             '    (b3_repo / "tests" / "test_b3_probe_in_plan.py").write_text("def test_in_plan():\\n    assert True\\n")\n'
+             '    (b3_repo / "tests" / "test_b3_probe_out_plan.py").write_text("def test_out_plan():\\n    assert True\\n")\n'
+             '    pf = b3_repo / "plan.json"\n'
+             '    pf.write_text(json.dumps(plan))\n'
+             '    head = _b3_commit(b3_repo)\n'
+             '    rep = _B3R.test_admission_report(base="HEAD~1", head=head, plan_path=str(pf), root=b3_repo)\n'
+             '    by_mod = {r["module"]: r for r in rep["node_deltas"]}\n'
+             '    assert by_mod["tests/test_b3_probe_in_plan.py"]["selected"] == "SELECTED"\n'
+             '    assert by_mod["tests/test_b3_probe_out_plan.py"]["selected"] == "NOT_SELECTED"\n'
+             '    assert rep["critical_path"]["plan_predicted_critical_path_s"] is None\n')),
     ],
     'tests/test_ci_v4_lean_tamper_matrix.py': [
-        ('TAIL = "\'tests.ci_v4_lean_b2_scope\')"\n',
-         'TAIL = "\'tests.ci_v4_lean_b3_scope\')"\n'),
-        ('    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b2_scope\', " + TAIL), REG, "pinned"),\n',
-         '    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b3_scope\', " + TAIL), REG, "pinned"),\n'),
-        ('    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b2_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n',
-         '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b3_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n'),
+        ((
+            'REG = "tests/fin_v2_cohorts.py"\n'
+            'TAIL = "\'tests.ci_v4_lean_b2_scope\')"\n'
+            '# row id, invariant class, mutation, injected path, attribution class\n'),
+         (
+             'REG = "tests/fin_v2_cohorts.py"\n'
+             'TAIL = "\'tests.ci_v4_lean_b3_scope\')"\n'
+             '# row id, invariant class, mutation, injected path, attribution class\n')),
+        ((
+            '    ("unowned_tracked_file", "unowned_tracked", _new_tracked("docs/ci_v4/lean_matrix_unowned.md"), "docs/ci_v4/lean_matrix_unowned.md", "direct"),\n'
+            '    ("forged_manifest_pin", "forged_manifest", _manifest_edit(lambda d: d["source_blobs"].__setitem__("tests/ci_v4_lean_report.py", "0" * 40)),\n'
+            '     B1.MANIFEST, "cohort_named"),\n'),
+         (
+             '    ("unowned_tracked_file", "unowned_tracked", _new_tracked("docs/ci_v4/lean_matrix_unowned.md"), "docs/ci_v4/lean_matrix_unowned.md", "direct"),\n'
+             '    ("forged_manifest_pin", "forged_manifest", _manifest_edit(lambda d: d["source_blobs"].__setitem__("docs/ci_v4/lean_b1/README.md", "0" * 40)),\n'
+             '     B1.MANIFEST, "cohort_named"),\n')),
+        ((
+            '    ("registry_cohort_removed", "registry", _text_sub(REG, "\'tests.f03_financing_scope\', ", ""), REG, "pinned"),\n'
+            '    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b2_scope\', " + TAIL), REG, "pinned"),\n'
+            '    ("registry_b1_unregistered", "registry", _text_sub(REG, ", \'tests.ci_v4_lean_b1_scope\'", ""), REG, "pinned"),\n'),
+         (
+             '    ("registry_cohort_removed", "registry", _text_sub(REG, "\'tests.f03_financing_scope\', ", ""), REG, "pinned"),\n'
+             '    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b3_scope\', " + TAIL), REG, "pinned"),\n'
+             '    ("registry_b1_unregistered", "registry", _text_sub(REG, ", \'tests.ci_v4_lean_b1_scope\'", ""), REG, "pinned"),\n')),
+        ((
+            '    ("successor_hook_removed", "successor_handoff", _restore_predecessor_base_bytes, B1.PREDECESSOR, "pinned"),\n'
+            '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b2_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n'
+            '    ("current_map_key_forged", "current_map", _forge_map_key, "docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),\n'),
+         (
+             '    ("successor_hook_removed", "successor_handoff", _restore_predecessor_base_bytes, B1.PREDECESSOR, "pinned"),\n'
+             '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b3_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n'
+             '    ("current_map_key_forged", "current_map", _forge_map_key, "docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),\n')),
     ],
     'tests/test_ci_v4_perf_scope.py': [
         ((

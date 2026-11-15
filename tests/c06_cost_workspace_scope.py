@@ -2111,14 +2111,11 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
-        from tests.fin_v2_cohorts import COHORT_MODULES as _CM3
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
-        N2 = N._next() if nxt else None
-        n_hand = set(N.HANDOFFS) | (set(N2.HANDOFFS) if N2 is not None and N.SUCCESSOR in _CM3 and N2.signature_ok(root, ref) else set())
         for path in HANDOFFS:
-            if nxt and path in n_hand:            # the reviewed successor chain owns the further substitution of this shared path
+            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
                 continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
@@ -2260,7 +2257,8 @@ def _signature_ok(root, ref, closure=False):
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
         if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),
-                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope')):       # at most the two reviewed successors
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')):       # at most the three reviewed successors
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})

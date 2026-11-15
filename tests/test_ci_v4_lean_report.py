@@ -168,7 +168,8 @@ def test_b3_admission_normal_addition_is_listed_with_labels(b3_repo):
     rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
     assert rep["modules"]["added"] == ["tests/test_b3_probe_normal.py"]
     row = rep["node_deltas"][0]
-    assert row["added_nodes"] == ["test_b3_probe_normal"] and row["status"] == "MEASURED_LOCAL"
+    assert row["added_nodes"] == ["test_b3_probe_normal"] and row["status"] == "AST_FUNCTION_DELTA"
+    assert row["node_id_status"].startswith("UNKNOWN")      # function names are never reported as collected node ids
     assert row["selected"] == "UNKNOWN" and row["wall_label"] == "UNKNOWN" and row["git_process_count"] == "UNKNOWN"
     assert all(v != "UNKNOWN" for k, v in rep["admission_metadata"][0].items() if k != "module")
 
@@ -200,7 +201,7 @@ def test_b3_admission_new_skip_is_reported_never_pass(b3_repo):
         "import pytest\n\n\npytestmark = pytest.mark.skip(reason='probe')\ndef test_b3_probe_skip():\n    assert True\n")
     head = _b3_commit(b3_repo)
     rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
-    assert rep["new_skip_markers"], "a new skip must be visible; a skipped node is never PASS"
+    assert [k["newness"][:11] for k in rep["new_skip_markers"]] == ["NEW_VS_BASE"], "a new skip must be visible; a skipped node is never PASS"
     assert any(f["code"] == "ADM-NEW-SKIP" for f in rep["findings"])
 
 

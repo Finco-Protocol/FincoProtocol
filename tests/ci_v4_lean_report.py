@@ -337,11 +337,23 @@ def _body_hashes(src):
     return out
 
 
-def _admission_metadata(rel, root):
+def _show(ref, rel, root):
+    """The text of ``rel`` AT ``ref`` (Git object read, never the working tree), or None when the path does not exist there."""
+    try:
+        return subprocess.check_output(["git", "show", "%s:%s" % (ref, rel)], cwd=root, stderr=subprocess.DEVNULL).decode("utf-8", "replace")
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _skip_markers(src):
+    return [ln.strip() for ln in src.splitlines() if re.search(r"\b(skip|xfail|skipif)\b", ln) and ln.strip().startswith(("@", "pytest.mark", "pytestmark"))]
+
+
+def _admission_metadata(src):
     """Parse the module docstring's 'Admission:' directives; every missing field is UNKNOWN, never invented."""
     try:
-        doc = ast.get_docstring(ast.parse((Path(root) / rel).read_text(encoding="utf-8"))) or ""
-    except (OSError, SyntaxError, UnicodeDecodeError):
+        doc = ast.get_docstring(ast.parse(src)) or ""
+    except (SyntaxError, ValueError):
         return {}
     meta = {}
     for line in doc.splitlines():
@@ -361,7 +373,7 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
     head_tree = subprocess.check_output(["git", "rev-parse", head + "^{tree}"], cwd=root).decode().strip()
     worktree_clean = subprocess.check_output(["git", "status", "--porcelain"], cwd=root).decode().strip() == ""
     head_binding = ("WORKTREE_CLEAN_HEAD_MATCHES" if (worktree_clean and head in ("HEAD", head_sha)) else
-                    "COMMITTED_REF (working tree bytes are NOT the supplied head; content reads are UNVERIFIED_INPUT for that ref)")
+                    "COMMITTED_REF (every content read is a Git object read at the supplied head; the working tree is never read)")
     added, removed, renamed, changed = _git_name_status(base, head, root)
     is_test = lambda p: p.startswith("tests/") and p.rsplit("/", 1)[-1].startswith("test_") and p.endswith(".py")
     added, removed, changed = sorted(filter(is_test, added)), sorted(filter(is_test, removed)), sorted(filter(is_test, changed))
@@ -374,51 +386,54 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
             plan = json.loads(Path(plan_path).read_text())
             selected_set = set(plan.get("pytest_modules", []))
             if plan.get("tested_sha") == head_sha:
-                plan_provenance = "OBSERVED_HOSTED (plan tested_sha == report head)"
+                plan_provenance = "SHA_BOUND_INPUT (plan tested_sha == report head; that the plan came from a hosted run is attested by the caller, not by this tool)"
             else:
                 plan_provenance = "UNVERIFIED_INPUT (plan tested_sha %s != report head %s)" % (plan.get("tested_sha", "UNKNOWN")[:12], head_sha[:12])
         except (OSError, ValueError):
             plan = None
             plan_provenance = "UNKNOWN (plan unreadable)"
     junit_secs, _jnodes = read_junit_module_seconds(sorted(junit_paths)) if junit_paths else ({}, {})
-    junit_provenance = "OBSERVED_HOSTED" if junit_paths else "UNKNOWN (no junit supplied)"
+    # A JUnit file carries no commit identity, so it is never OBSERVED_HOSTED here: the caller must attest its run and SHA separately.
+    junit_provenance = ("UNVERIFIED_INPUT (JUnit supplied; it is not bound to the report head SHA, so its seconds are not hosted proof)"
+                        if junit_paths else "UNKNOWN (no junit supplied)")
 
     new_skips, duplicates, meta_rows = [], [], []
     existing_hashes = {}
     for rel in sorted(set(added) | set(changed)):
-        src_now = (root / rel).read_text(encoding="utf-8", errors="replace")
-        now_nodes = _test_node_names(src_now)
-        try:
-            src_base = subprocess.check_output(["git", "show", "%s:%s" % (base, rel)], cwd=root).decode("utf-8", "replace")
-            base_nodes = _test_node_names(src_base)
-        except subprocess.CalledProcessError:
-            src_base, base_nodes = None, []
-        if now_nodes is None or (src_base is not None and base_nodes is None):
+        src_now = _show(head, rel, root)
+        now_nodes = _test_node_names(src_now) if src_now is not None else None
+        src_base = _show(base, rel, root)
+        base_nodes = _test_node_names(src_base) if src_base is not None else []
+        if now_nodes is None or base_nodes is None:
+            src_now = src_now or ""
             status, added_n, removed_n = "UNKNOWN", [], []
         else:
-            added_n = [n for n in (now_nodes or []) if n not in (base_nodes or [])]
-            removed_n = [n for n in (base_nodes or []) if n not in (now_nodes or [])]
-            status = "MEASURED_LOCAL"
+            added_n = [n for n in now_nodes if n not in base_nodes]
+            removed_n = [n for n in base_nodes if n not in now_nodes]
+            status = "AST_FUNCTION_DELTA"          # function names only: never collected pytest node ids or a parametrize count
         growth["added_nodes"] += len(added_n)
         growth["removed_nodes"] += len(removed_n)
         node_deltas.append({"module": rel, "status": status, "added_nodes": added_n, "removed_nodes": removed_n,
+                            "node_id_status": "UNKNOWN (no SHA-bound pytest --collect-only of both states; function names are not node ids)",
                             "selected": ("SELECTED" if (selected_set is not None and rel in selected_set)
                                          else ("NOT_SELECTED" if selected_set is not None else "UNKNOWN")),
                             "wall_s": (round(junit_secs[rel], 3) if rel in junit_secs else None),
-                            "wall_label": ("OBSERVED_HOSTED" if rel in junit_secs else "UNKNOWN"),
+                            "wall_label": ("UNVERIFIED_INPUT (JUnit not SHA-bound)" if rel in junit_secs else "UNKNOWN"),
                             "git_process_count": "UNKNOWN"})
         if rel in added:
-            meta_rows.append({"module": rel, **_admission_metadata(rel, root)})
-        marks = [ln.strip() for ln in src_now.splitlines() if re.search(r"\b(skip|xfail|skipif)\b", ln) and ln.strip().startswith(("@", "pytest.mark"))]
-        new_skips += [{"module": rel, "marker": m[:120], "newness": "UNKNOWN (present-marker scan; not diffed against base)"} for m in marks[:3]]
+            meta_rows.append({"module": rel, **_admission_metadata(src_now)})
+        base_marks = set(_skip_markers(src_base)) if src_base is not None else set()
+        new_skips += [{"module": rel, "marker": m[:120],
+                       "newness": "PRE_EXISTING (same marker line present at base)" if m in base_marks else "NEW_VS_BASE (marker line absent at base)"}
+                      for m in _skip_markers(src_now)[:3]]
         if rel in added:
             hashes = _body_hashes(src_now)
-            for existing in sorted((root / "tests").glob("test_*.py")):
-                erel = existing.relative_to(root).as_posix()
+            listing = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", head, "--", "tests/"], cwd=root).decode("utf-8", "replace").splitlines()
+            for erel in sorted(p for p in listing if is_test(p) and p.count("/") == 1):
                 if erel == rel:
                     continue
                 if erel not in existing_hashes:
-                    existing_hashes[erel] = _body_hashes(existing.read_text(encoding="utf-8", errors="replace"))
+                    existing_hashes[erel] = _body_hashes(_show(head, erel, root) or "")
                 for name, h in sorted(hashes.items()):
                     for name2, h2 in sorted(existing_hashes[erel].items()):
                         if h == h2:
@@ -428,9 +443,11 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
     budget = budget_warnings(sorted(junit_paths)) if junit_paths else {"label": "WARN_ONLY", "enforced": False, "findings": [],
                                                                        "note": "UNKNOWN (no junit supplied)"}
     crit = {"label": "UNKNOWN (no plan supplied)"}
-    if plan and plan.get("schedule", {}).get("predicted_critical_path_s") is not None:
-        crit = {"plan_predicted_critical_path_s": plan["schedule"]["predicted_critical_path_s"],
-                "label": "SIMULATION (weights: measured accepted)", "enforced": False}
+    if plan:
+        predicted = (plan.get("schedule") or {}).get("predicted_critical_path_s")
+        crit = {"plan_predicted_critical_path_s": predicted, "enforced": False,
+                "label": ("SIMULATION (the plan's prediction from the committed scheduling weights; not an observed hosted time)"
+                          if predicted is not None else "UNKNOWN (the supplied plan carries no predicted critical path)")}
 
     findings = []
     for row in meta_rows:
@@ -441,18 +458,19 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
     for d in duplicates:
         findings.append({"path": d["candidate"], "code": "ADM-DUPLICATE-CANDIDATE", "severity": "WARN",
                          "message": "duplicate CANDIDATE (heuristic only, never automatic): %s" % d["existing"]})
-    if new_skips:
+    fresh = [k for k in new_skips if k["newness"].startswith("NEW_VS_BASE")]
+    if fresh:
         findings.append({"code": "ADM-NEW-SKIP", "severity": "WARN",
-                         "message": "new skip/xfail markers present: a skipped node is never PASS (%d markers)" % len(new_skips)})
+                         "message": "new skip/xfail markers: a skipped node is never PASS (%d marker lines absent at base)" % len(fresh)})
 
     return {"label": "WARN_ONLY", "what": "B3 test-admission report over the trusted-base diff",
             "base": base, "head": head, "head_sha": head_sha, "head_tree": head_tree, "head_binding": head_binding,
             "plan_provenance": plan_provenance, "junit_provenance": junit_provenance,
             "modules": {"added": added, "removed": removed, "renamed": renamed, "changed": changed},
             "node_deltas": node_deltas, "node_delta_kind": "AST_FUNCTION_DELTA (exact collected node ids require a fresh pytest --collect-only on both exact SHA/trees; UNKNOWN when unavailable)", "growth": growth,
-            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": "UNKNOWN (see present_skip_markers newness)",
+            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": fresh,
             "critical_path": crit, "budgets": budget, "findings": findings,
-            "labels_used": ["MEASURED_LOCAL", "OBSERVED_HOSTED", "SIMULATION", "UNKNOWN", "WARN_ONLY"],
+            "labels_used": ["AST_FUNCTION_DELTA", "MEASURED_LOCAL", "SHA_BOUND_INPUT", "SIMULATION", "UNVERIFIED_INPUT", "UNKNOWN", "WARN_ONLY"],
             "exit_code_policy": "always 0: informational, never a gate"}
 
 

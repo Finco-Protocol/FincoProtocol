@@ -1,7 +1,7 @@
 """CI V4 Lean B3 exact-source successor (after the accepted B2 cohort): positive identity and adversarial fail-closed controls.
 
-Risk protected: B3 carries the WARN-ONLY test-admission report machinery and the data-only scheduling-weight refresh inside the protected
-provenance graph. It must own exactly its finite file set, change no CI control file, and every forged manifest, registry state, handoff, mode
+Risk protected: B3 carries the WARN-ONLY test-admission report machinery inside the protected provenance graph (the scheduling weights are
+NOT part of it: they stay FROZEN to the accepted-main bytes). It must own exactly its finite file set, change no CI control file, and every forged manifest, registry state, handoff, mode
 or ref must be rejected. Every negative runs in an ISOLATED clone (a committed variant); the evaluated checkout is never edited and no verdict
 is cached across mutations.
 """
@@ -81,7 +81,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert set(data["source_blobs"]) == T.OWNED_PATHS and set(data["base_blobs"]) == T.SUPERSEDED
     assert set(data["source_modes"]) == T.OWNED_PATHS and set(data["base_modes"]) == T.SUPERSEDED
     assert len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS
-    assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", "tests/u1_scope.py", "docs/ci_v4/module_weights.json")
+    assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", "tests/u1_scope.py")
     assert T.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py" and T.REGISTRY == "tests/fin_v2_cohorts.py"
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") or p.startswith("/") for p in T.OWNED_PATHS | {T.MANIFEST})
     for path in T.SUPERSEDED:
@@ -89,9 +89,9 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert _git("rev-parse", T.BASE + "^{tree}") == T.BASE_TREE
 
 
-def test_the_report_is_opt_in_and_the_refresh_is_data_only():
-    """The report machinery never gates and the weights move by one reviewed handoff; every other CI V4 control file stays byte-equal to BASE."""
-    assert WEIGHTS in T.HANDOFF_PATHS and WEIGHTS in T.MAP_KEYS
+def test_the_report_is_opt_in_and_the_scheduling_weights_stay_frozen():
+    """The report machinery never gates; the scheduling weights are FROZEN like every other CI V4 control file (byte-equal to BASE)."""
+    assert WEIGHTS in T.FROZEN and WEIGHTS not in T.HANDOFF_PATHS and WEIGHTS not in T.MAP_KEYS and WEIGHTS not in T.OWNED_PATHS
     assert REPORT in T.HANDOFF_PATHS
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     assert not any(p.startswith((".github/", "tools/", "app/", "financial_engine/", "finco_core/", "domain/", "frontend/", "static/", "research/"))
@@ -126,7 +126,7 @@ def test_b2_b1_and_every_older_cohort_still_follow_the_chain():
         assert set(B.closure_paths()) >= set(T.closure_paths()) and set(K.closure_paths()) >= set(B.closure_paths())
 
 
-def test_current_maps_move_only_their_registry_u1_and_weights_keys():
+def test_current_maps_move_only_their_registry_and_u1_keys():
     pins = T.effective_pins()
     for p in T.CURRENT_MAPS:
         old = json.loads(_git("show", T.BASE + ":" + p))
@@ -194,7 +194,9 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
             return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
         return f
     forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(WEIGHTS, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__(WEIGHTS, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(REPORT, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__("tests/ci_v4_lean_b1_scope.py", "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__("tests/c06_cost_workspace_scope.py", "0" * 40)),
+              edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
               edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),
               edit(lambda d: d["source_blobs"].pop(OWN_TEST)), edit(lambda d: d.__setitem__("extra", 1)),
               edit(lambda d: d.__setitem__("authorization", "broader")), edit(lambda d: d.__setitem__("schema_version", "OTHER")),
@@ -240,9 +242,10 @@ def test_supersession_is_pin_exact_and_cross_path_safe():
     assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not B.supersedes(T.REGISTRY, pins[T.PREDECESSOR])         # a real blob pinned for another path
-    assert not B.supersedes(WEIGHTS, pins[T.REGISTRY]) and not B.supersedes(T.REGISTRY, pins[WEIGHTS])
+    weights_blob = _git("rev-parse", T.BASE + ":" + WEIGHTS)
+    assert not B.supersedes(WEIGHTS, pins[T.REGISTRY]) and not B.supersedes(T.REGISTRY, weights_blob)
     assert not B.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])      # the accepted B2-era registry blob is no longer current
-    assert not B.supersedes(WEIGHTS, T.manifest()["base_blobs"][WEIGHTS])            # nor is the accepted-main weights blob
+    assert not B.supersedes(WEIGHTS, weights_blob)                                    # the frozen weights file is never a superseded path
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):
@@ -251,3 +254,31 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
         assert T.signature_ok(clone, "HEAD") and K.exact_blobs_ok(clone, "HEAD")
         assert not T.signature_ok(clone, bad) and not T.exact_blobs_ok(clone, bad)               # same process, same scope, other ref
     assert T.signature_ok(clone, "HEAD")                                                          # and the positive verdict was never poisoned
+
+
+def test_the_registry_tail_is_one_finite_sequence_for_c06_b1_b2_and_b3(monkeypatch):
+    """C06 -> B1 -> B2 -> B3 is the ONLY accepted tail: any permutation, duplicate, extra cohort or reordered truncation fails the signature of every layer."""
+    exact = C.COHORT_MODULES
+    assert exact[-4:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope")
+    layers = (K, B1, B, T)
+    with C.call_scope():
+        assert all(m.signature_ok() for m in layers)                       # state A: the pristine registry is accepted by every layer
+    c06, b1, b2, b3 = exact[-4:]
+    head = exact[:-4]
+    variants = {
+        "b2_b3_swapped": head + (c06, b1, b3, b2),
+        "b1_b2_swapped": head + (c06, b2, b1, b3),
+        "b3_duplicated": exact + (b3,),
+        "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",),
+        "b3_before_c06": head + (b3, c06, b1, b2),
+        "c06_dropped": head + (b1, b2, b3),
+    }
+    for name, tail in variants.items():
+        monkeypatch.setattr(C, "COHORT_MODULES", tail)
+        for layer in layers:
+            # a layer that is not itself in the sequence is not judged here; every layer present must refuse a tail it was not reviewed for
+            if layer.__name__ in tail:
+                assert not layer.signature_ok(), (name, layer.__name__)
+    monkeypatch.setattr(C, "COHORT_MODULES", exact)
+    with C.call_scope():
+        assert all(m.signature_ok() for m in layers)                       # state A restored: accepted again
