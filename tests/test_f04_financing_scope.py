@@ -29,7 +29,7 @@ def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
     assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
-        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))
+        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))
         and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1
     for ref in (None,'HEAD'):
@@ -47,7 +47,8 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:
         B1=C06_APPROVAL._next()
-        authority=B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
+        B2=B1._next() if B1 is not None else None
+        authority=B2 if B2 is not None and B1 is not None and B1.SUCCESSOR in C.COHORT_MODULES and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     for path in F.FROZEN:
         if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():

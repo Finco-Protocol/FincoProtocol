@@ -2111,11 +2111,14 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests.fin_v2_cohorts import COHORT_MODULES as _CM3
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
+        N2 = N._next() if nxt else None
+        n_hand = set(N.HANDOFFS) | (set(N2.HANDOFFS) if N2 is not None and N.SUCCESSOR in _CM3 and N2.signature_ok(root, ref) else set())
         for path in HANDOFFS:
-            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+            if nxt and path in n_hand:            # the reviewed successor chain owns the further substitution of this shared path
                 continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
@@ -2256,7 +2259,7 @@ def _signature_ok(root, ref, closure=False):
     """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
-        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):
+        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope')):
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
@@ -2301,7 +2304,10 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
+        from tests.fin_v2_cohorts import COHORT_MODULES as _CM2
+        from tests import ci_v4_lean_b2_scope as _B2
+        _b2live = 'tests.ci_v4_lean_b2_scope' in _CM2 and _B2.signature_ok(root, ref)
+        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN if not (_b2live and p in _B2.HANDOFFS)):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

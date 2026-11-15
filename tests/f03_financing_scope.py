@@ -722,7 +722,10 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
+        from tests.fin_v2_cohorts import COHORT_MODULES as _CM2
+        from tests import ci_v4_lean_b2_scope as _B2
+        _b2live = 'tests.ci_v4_lean_b2_scope' in _CM2 and _B2.signature_ok(root, ref)
+        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN if not (_b2live and p in _B2.HANDOFFS)):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
