@@ -24,7 +24,7 @@ from tests import r04_ppa_scope as P
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = "tests/ci_v4_lean_b3_scope.py"
 OWN_TEST = "tests/test_ci_v4_lean_b3_scope.py"
-WEIGHTS = "docs/ci_v4/module_weights.json"
+WEIGHTS = "docs/ci_v4/module_weights.json"      # NOT B3-owned (Correction A revert); FROZEN-adjacent control file
 REPORT = "tests/ci_v4_lean_report.py"
 
 
@@ -137,12 +137,10 @@ def test_current_maps_move_only_their_registry_u1_and_weights_keys():
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
-def test_the_weights_refresh_is_measured_honest_and_selection_neutral():
+def test_the_weights_file_is_untouched_by_this_successor():
     d = json.loads((ROOT / WEIGHTS).read_text())
     old = json.loads(_git("show", T.BASE + ":" + WEIGHTS))
-    assert set(d["modules"]) == set(old["modules"]) and set(d["nodes"]) == set(old["nodes"])
-    assert abs(d["modules"]["tests/test_u1_scope.py"] - 1537.3) < 0.01 and old["modules"]["tests/test_u1_scope.py"] < 300.0
-    assert "43744944268" in d["source"] and "523a9eb2" in d["source"]
+    assert d == old      # the data-only weights refresh was reverted (Correction A stop rule): B3 moves no weights byte
 
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
@@ -175,16 +173,6 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
     assert _rejected(clone, _variant(clone, {path: lambda b: b + b"\n"})), path
 
 
-def test_weights_mutations_are_rejected(clone):
-    for name, fn in (
-        ("u1_weight_changed", lambda b: b.replace(b'"tests/test_u1_scope.py": 1537.3', b'"tests/test_u1_scope.py": 100.0')),
-        ("u1_weight_deleted", lambda b: b.replace(b'"tests/test_u1_scope.py": 1537.3, ', b"")),
-        ("source_relabelled", lambda b: b.replace(b"43744944268", b"41782498276")),
-        ("one_module_added", lambda b: b.replace(b'"tests/test_u1_scope.py": 1537.3', b'"tests/test_u1_scope.py": 1537.3, "tests/fake_module.py": 1.0')),
-    ):
-        ref = _variant(clone, {WEIGHTS: fn})
-        assert _g(clone, "diff", "--name-only", "HEAD", ref).decode().split() == [WEIGHTS], name
-        assert _rejected(clone, ref), name
 
 
 def test_partially_applied_handoff_is_rejected(clone):
@@ -216,9 +204,9 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
 
 
 def test_mode_symlink_deletion_and_unowned_paths_are_rejected(clone):
-    assert _rejected(clone, _variant(clone, mode=WEIGHTS))
+    assert _rejected(clone, _variant(clone, mode=MODULE))
     assert _rejected(clone, _variant(clone, symlink=OWN_TEST))
-    assert _rejected(clone, _variant(clone, remove=(WEIGHTS,)))
+    assert _rejected(clone, _variant(clone, remove=(MODULE,)))
     for path in ("tools/ci_v4_lean_extra.py", ".github/workflows/lean_b3.yml", "app/lean_b3_extra.py", "docs/ci_v4/lean_b3/EXTRA.md", "tests/test_lean_b3_unowned.py"):
         f = clone / path
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -240,7 +228,8 @@ def test_wrong_ancestor_and_older_refs_are_rejected(clone):
 def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_paths(clone):
     for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json"):
         assert not T.allowed_path(p)
-    assert T.allowed_path(WEIGHTS) and T.allowed_path(REPORT) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
+    assert T.allowed_path(REPORT) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
+    assert not T.allowed_path(WEIGHTS)      # weights are not B3-owned after the Correction A revert
     bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "d702f6c1', b'"base_tree": "0702f6c1', 1)})
     assert not T.allowed_path(WEIGHTS, clone, bad)                    # with a false signature even an owned path confers no authority
 

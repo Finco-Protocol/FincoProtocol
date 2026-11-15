@@ -357,20 +357,31 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
     """B3 WARN-ONLY test-admission report over the trusted-base diff. Read-only: it never gates, never writes
     repo files, and every unavailable measurement is UNKNOWN with its label — never zero, never a fabricated PASS."""
     root = Path(root)
+    head_sha = subprocess.check_output(["git", "rev-parse", head], cwd=root).decode().strip()
+    head_tree = subprocess.check_output(["git", "rev-parse", head + "^{tree}"], cwd=root).decode().strip()
+    worktree_clean = subprocess.check_output(["git", "status", "--porcelain"], cwd=root).decode().strip() == ""
+    head_binding = ("WORKTREE_CLEAN_HEAD_MATCHES" if (worktree_clean and head in ("HEAD", head_sha)) else
+                    "COMMITTED_REF (working tree bytes are NOT the supplied head; content reads are UNVERIFIED_INPUT for that ref)")
     added, removed, renamed, changed = _git_name_status(base, head, root)
     is_test = lambda p: p.startswith("tests/") and p.rsplit("/", 1)[-1].startswith("test_") and p.endswith(".py")
     added, removed, changed = sorted(filter(is_test, added)), sorted(filter(is_test, removed)), sorted(filter(is_test, changed))
 
     node_deltas, growth = [], {"added_modules": len(added), "removed_modules": len(removed), "renamed_modules": len(renamed),
                                "added_nodes": 0, "removed_nodes": 0}
-    plan, selected_set = None, None
+    plan, selected_set, plan_provenance = None, None, "UNKNOWN (no plan supplied)"
     if plan_path:
         try:
             plan = json.loads(Path(plan_path).read_text())
             selected_set = set(plan.get("pytest_modules", []))
+            if plan.get("tested_sha") == head_sha:
+                plan_provenance = "OBSERVED_HOSTED (plan tested_sha == report head)"
+            else:
+                plan_provenance = "UNVERIFIED_INPUT (plan tested_sha %s != report head %s)" % (plan.get("tested_sha", "UNKNOWN")[:12], head_sha[:12])
         except (OSError, ValueError):
             plan = None
+            plan_provenance = "UNKNOWN (plan unreadable)"
     junit_secs, _jnodes = read_junit_module_seconds(sorted(junit_paths)) if junit_paths else ({}, {})
+    junit_provenance = "OBSERVED_HOSTED" if junit_paths else "UNKNOWN (no junit supplied)"
 
     new_skips, duplicates, meta_rows = [], [], []
     existing_hashes = {}
@@ -399,11 +410,11 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
         if rel in added:
             meta_rows.append({"module": rel, **_admission_metadata(rel, root)})
         marks = [ln.strip() for ln in src_now.splitlines() if re.search(r"\b(skip|xfail|skipif)\b", ln) and ln.strip().startswith(("@", "pytest.mark"))]
-        new_skips += [{"module": rel, "marker": m[:120]} for m in marks[:3]]
+        new_skips += [{"module": rel, "marker": m[:120], "newness": "UNKNOWN (present-marker scan; not diffed against base)"} for m in marks[:3]]
         if rel in added:
             hashes = _body_hashes(src_now)
             for existing in sorted((root / "tests").glob("test_*.py")):
-                erel = existing.as_posix()
+                erel = existing.relative_to(root).as_posix()
                 if erel == rel:
                     continue
                 if erel not in existing_hashes:
@@ -435,10 +446,11 @@ def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit
                          "message": "new skip/xfail markers present: a skipped node is never PASS (%d markers)" % len(new_skips)})
 
     return {"label": "WARN_ONLY", "what": "B3 test-admission report over the trusted-base diff",
-            "base": base, "head": head, "tested_sha_from_plan": (plan or {}).get("tested_sha", "UNKNOWN"),
+            "base": base, "head": head, "head_sha": head_sha, "head_tree": head_tree, "head_binding": head_binding,
+            "plan_provenance": plan_provenance, "junit_provenance": junit_provenance,
             "modules": {"added": added, "removed": removed, "renamed": renamed, "changed": changed},
-            "node_deltas": node_deltas, "growth": growth,
-            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "new_skip_markers": new_skips,
+            "node_deltas": node_deltas, "node_delta_kind": "AST_FUNCTION_DELTA (exact collected node ids require a fresh pytest --collect-only on both exact SHA/trees; UNKNOWN when unavailable)", "growth": growth,
+            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": "UNKNOWN (see present_skip_markers newness)",
             "critical_path": crit, "budgets": budget, "findings": findings,
             "labels_used": ["MEASURED_LOCAL", "OBSERVED_HOSTED", "SIMULATION", "UNKNOWN", "WARN_ONLY"],
             "exit_code_policy": "always 0: informational, never a gate"}

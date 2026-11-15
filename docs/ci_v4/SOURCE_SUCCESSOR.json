@@ -21,7 +21,7 @@
     "docs/ci_v4/FINAL_REPORT_HR.md": "1cffd65b0a18ae7fb8a966ccf9d21bc26a14bcf3",
     "docs/ci_v4/ci-v4-policy.json": "6b2ddd75ad104655ed808027ce522e0f9503902c",
     "docs/ci_v4/full_skip_baseline.json": "b682456e7e66744a540c4940fdbcb04d595d21d0",
-    "docs/ci_v4/module_weights.json": "5e89b28c3fe510782f23eb62f645e81f2c7b7c83",
+    "docs/ci_v4/module_weights.json": "f78508fec0cc2354331cdb64ec09ccf0193463b4",
     "docs/ci_v4/node_split_policy.json": "2075e0f17fabe1742c3335de57e01b8729171a66",
     "docs/ci_v4/node_weights.json": "77b5891a674ad450c07884893e9341742100a286",
     "tests/ci_v4_scope.py": "fe25a85088ee3525e4aba35822996b124af10a2e",

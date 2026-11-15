@@ -197,7 +197,7 @@ def test_b3_admission_missing_metadata_is_unknown_never_invented(b3_repo):
 
 def test_b3_admission_new_skip_is_reported_never_pass(b3_repo):
     (b3_repo / "tests" / "test_b3_probe_skip.py").write_text(
-        "import pytest\n\n\n@pytest.mark.skip(reason='probe')\ndef test_b3_probe_skip():\n    assert True\n")
+        "import pytest\n\n\npytestmark = pytest.mark.skip(reason='probe')\ndef test_b3_probe_skip():\n    assert True\n")
     head = _b3_commit(b3_repo)
     rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
     assert rep["new_skip_markers"], "a new skip must be visible; a skipped node is never PASS"

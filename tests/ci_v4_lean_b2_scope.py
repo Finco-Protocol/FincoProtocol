@@ -731,7 +731,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 def _diff_ok(root, ref):
     try:
-        allowed = OWNED_PATHS | {MANIFEST}
+        allowed = closure_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= allowed:
             return False
@@ -746,11 +746,20 @@ def _diff_ok(root, ref):
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get("source_blobs", {}))
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        pins = dict(manifest(repo, ref).get("source_blobs", {}))
+        pins.update(_next_pins(root, ref))
+        return pins
 
 
 def closure_paths(repo=None, ref=None):
-    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        if not signature_ok(root, ref):
+            return frozenset()
+        N = _next()
+        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def allowed_path(path, repo=None, ref=None):
@@ -758,11 +767,14 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path not in SUPERSEDED:
-        return False
-    # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
-    # files), so a signature-only verdict never makes the tree valid.
-    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+    with scoped():      # one shared read scope per call: the successor signature is evaluated once, then dropped
+        N = _next()
+        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):
+            return True
+        if path not in SUPERSEDED:
+            return False
+        # the CURRENT pin of this path (the successor overlay wins while its signature holds), never a raw superseded manifest line
+        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
 
 
 def nontrust_scope_authorized(changed, repo=None):
