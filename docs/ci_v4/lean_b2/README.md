@@ -22,11 +22,16 @@ provenance tests, the B1 and C06 forward hooks, the exact-tail scope tests and t
 ## Evidence labels
 Measured on one machine, not hosted: `MEASURED_LOCAL`. A local run is not hosted acceptance; skipped, cancelled or not-run is never PASS.
 
-| Node (accepted main) | wall before | wall after |
+| Node | before (accepted main) | after (this change) |
 |---|---|---|
-| `test_integration_reference_is_main_after_414…` | ~2600 s | seconds |
-| `test_positive_cohort_is_exact_registered_and_closed` | ~430–510 s | seconds |
-| `test_no_path_outside_the_superseded_set…` | ~250 s | < 1 s |
+| `test_integration_reference_is_main_after_414…` | 2626 s | 2.7 s |
+| `test_positive_cohort_is_exact_registered_and_closed` | 430–507 s | 5.8 s |
+| `test_no_path_outside_the_superseded_set…` | 247 s | 0.4 s |
+| whole `tests/test_u1_scope.py` (100 tests) | 4457 s, 255,025 Git processes | 1141 s, 93,743 Git processes |
+
+`MEASURED_LOCAL` on one 4-core machine, both runs under concurrent load. The two remaining slow nodes (`test_an_older_cohort_accepts_a_superseded_blob…`
+~350 s and `test_wf06b_follows_u1_only_for_the_exact_pin…` ~220 s) MUTATE a worktree and are deliberately left unchanged; they are candidates for a
+separate, individually reviewed change. Hosted timing is `HEAD_PENDING_HOSTED_VERIFICATION`.
 
 ## Rollback
 One `git revert` of the B2 merge removes the new files and restores the registry, B1/C06 leaves, `tests/u1_scope.py`, `tests/test_u1_scope.py`, the
