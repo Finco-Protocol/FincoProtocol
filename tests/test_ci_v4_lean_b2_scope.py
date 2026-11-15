@@ -191,7 +191,7 @@ def test_the_mutation_detector_is_not_vacuous_and_tamper_nodes_stay_outside_any_
     import ast
     for name, node in fns.items():
         if name.startswith("test_") and name not in SCOPED_NODES and _mutation_markers(node):
-            assert "call_scope" not in ast.unparse(node), name              # no tamper / worktree node was moved inside a shared scope
+            assert not any(isinstance(x, ast.Attribute) and x.attr == "call_scope" for x in ast.walk(node)), name       # no tamper / worktree node sits inside a shared scope
     for name in ("test_older_cohorts_still_exact_through_the_bounded_hooks",):
         assert name in fns                                                  # the pre-existing read-only scope is untouched
 
