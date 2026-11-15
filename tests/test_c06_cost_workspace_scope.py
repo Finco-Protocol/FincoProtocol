@@ -26,7 +26,7 @@ class Mutation:
 def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='b1c08e2d00fe9933565d253d5cee6e5849b143e1'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
-    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))       # C06 is followed by at most the one reviewed B1 successor
+    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))       # C06 is followed by the reviewed B1, B2 and B3 successors
     assert C.COHORT_MODULES.count(F.__name__)==1
     for ref in (None,'HEAD'):
         with C.call_scope():
@@ -144,7 +144,7 @@ def test_accepted_ref_preserves_all_preexisting_exact_guards_and_original_code(c
     with C.call_scope():
         assert not F.signature_ok(clone,F.BASE)
         for m in C.cohorts():
-            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'):         # a successor never attests an older accepted ref
+            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'):         # a successor never attests an older accepted ref
                 assert m.exact_blobs_ok(clone,F.BASE),m.__name__
         assert B.ci_authority_ok(clone,F.BASE)
         for path in (provider,editor):

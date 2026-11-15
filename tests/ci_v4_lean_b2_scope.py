@@ -550,16 +550,25 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        yield
+        # Successor reads inside this SAME outer read share its memo; dropped with the scope, never kept globally.
+        N = _next()
+        if N is None:
+            yield
+        else:
+            with N.scoped():
+                yield
     finally:
         _SCOPE.pop()
 
 
 def _compute(root, ref, mode):
     """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""
-    if mode == "exact":
-        return _signature_ok(root, ref, True) and _diff_ok(root, ref)
-    return _signature_ok(root, ref, mode)
+    from contextlib import nullcontext
+    N = _next()
+    with (N.scoped() if N is not None else nullcontext()):
+        if mode == "exact":
+            return _signature_ok(root, ref, True) and _diff_ok(root, ref)
+        return _signature_ok(root, ref, mode)
 
 
 def _verdict(root, ref, closure):
@@ -577,8 +586,29 @@ def signature_ok(repo=None, ref=None):
     return _verdict(Path(repo) if repo is not None else ROOT, ref, False)
 
 
+SUCCESSOR = 'tests.ci_v4_lean_b3_scope'
+
+
+def _next():
+    """The one finite forward successor (CI V4 Lean B3). Low-level only: its signature never calls this module or the composite."""
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if SUCCESSOR not in COHORT_MODULES:
+        return None
+    from tests import ci_v4_lean_b3_scope
+    return ci_v4_lean_b3_scope
+
+
+def _next_pins(root, ref):
+    N = _next()
+    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}
+
+
 def map_keys(repo=None, ref=None):
-    return tuple(MAP_KEYS)
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        N = _next()
+        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and N.signature_ok(root, ref) else ()
+        return tuple(MAP_KEYS) + more
 
 
 @lru_cache(maxsize=512)
@@ -641,11 +671,14 @@ def _signature_ok(root, ref, closure=False):
     """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
-        if COHORT_MODULES != BASE_COHORTS + (__name__,):
+        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
-        if pins.get("tests/ci_v4_lean_b2_scope.py") != _MODULE_BLOB:
+        N = _next()
+        nx = _next_pins(root, ref)
+        nxt = N is not None and N.signature_ok(root, ref)
+        if nx.get("tests/ci_v4_lean_b2_scope.py", pins.get("tests/ci_v4_lean_b2_scope.py")) != _MODULE_BLOB:
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
@@ -663,13 +696,17 @@ def _signature_ok(root, ref, closure=False):
         if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):
             return False
         judged = {p for p in pins if closure or p not in CURRENT_MAPS}
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
         current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
-        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
+        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:
             return False
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
             return False
-        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
+        n_covered = {p for p in HANDOFFS if nxt and p in N.HANDOFFS}
+        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS if p not in n_covered):
+            return False
+        if nxt and not N.reviewed_edits_ok(root, ref):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
@@ -680,7 +717,8 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
+        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p)
+               for p in FROZEN if not (nxt and p in N.HANDOFFS)):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

@@ -2111,11 +2111,14 @@ def expected_handoff(root, path):
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        from tests.fin_v2_cohorts import COHORT_MODULES as _CM3
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
+        N2 = N._next() if nxt else None
+        n_hand = set(N.HANDOFFS) | (set(N2.HANDOFFS) if N2 is not None and N.SUCCESSOR in _CM3 and N2.signature_ok(root, ref) else set())
         for path in HANDOFFS:
-            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+            if nxt and path in n_hand:            # the reviewed successor chain owns the further substitution of this shared path
                 continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):

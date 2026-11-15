@@ -137,3 +137,97 @@ def test_the_report_module_is_not_wired_into_selection_scheduling_or_aggregation
         assert "ci_v4_lean_report" not in (ROOT / "tools" / (tool + ".py")).read_text(), tool
     workflows = "".join(p.read_text() for p in (ROOT / ".github/workflows").glob("ci_v4_*.yml"))
     assert "ci_v4_lean_report" not in workflows
+
+
+# -------------------------------------------------------------------------------------------- B3 test-admission report (targeted cases)
+from tests import ci_v4_lean_report as _B3R
+
+_ADM_META = 'Admission: risk=probe-only, nearest=none, witness=red-before-green missing, tier=fast, owner=ci, retire=when-flaky'
+
+
+@pytest.fixture()
+def b3_repo(tmp_path):
+    root = tmp_path / "b3repo"
+    subprocess.check_call(["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(root)])
+    subprocess.check_call(["git", "config", "user.email", "t@t"], cwd=root)
+    subprocess.check_call(["git", "config", "user.name", "t"], cwd=root)
+    subprocess.check_call(["git", "checkout", "-q", "-b", "b3-probe"], cwd=root)
+    return root
+
+
+def _b3_commit(root, msg="probe"):
+    subprocess.check_call(["git", "add", "-A"], cwd=root)
+    subprocess.check_call(["git", "commit", "-q", "--allow-empty", "-m", msg], cwd=root)
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root).decode().strip()
+
+
+def test_b3_admission_normal_addition_is_listed_with_labels(b3_repo):
+    (b3_repo / "tests" / "test_b3_probe_normal.py").write_text(
+        "'%s'\n\ndef test_b3_probe_normal():\n    assert True\n" % _ADM_META)
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
+    assert rep["modules"]["added"] == ["tests/test_b3_probe_normal.py"]
+    row = rep["node_deltas"][0]
+    assert row["added_nodes"] == ["test_b3_probe_normal"] and row["status"] == "MEASURED_LOCAL"
+    assert row["selected"] == "UNKNOWN" and row["wall_label"] == "UNKNOWN" and row["git_process_count"] == "UNKNOWN"
+    assert all(v != "UNKNOWN" for k, v in rep["admission_metadata"][0].items() if k != "module")
+
+
+def test_b3_admission_duplicate_candidate_is_heuristic_warn_only(b3_repo):
+    (b3_repo / "tests" / "test_b3_probe_dup.py").write_text(
+        "def test_b3_probe_dup():\n    value = 1 + 1\n    assert value == 2\n")
+    _b3_commit(b3_repo)
+    (b3_repo / "tests" / "test_b3_probe_dup2.py").write_text(
+        "def test_b3_probe_dup2():\n    value = 1 + 1\n    assert value == 2\n")
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~2", head=head, root=b3_repo)
+    assert rep["duplicate_candidates"], "identical normalized bodies must surface as CANDIDATES"
+    assert all(d["severity"] == "WARN" for d in rep["duplicate_candidates"])
+    assert rep["label"] == "WARN_ONLY"
+
+
+def test_b3_admission_missing_metadata_is_unknown_never_invented(b3_repo):
+    (b3_repo / "tests" / "test_b3_probe_nodoc.py").write_text("def test_b3_probe_nodoc():\n    assert 1\n")
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
+    meta = rep["admission_metadata"][0]
+    assert all(v == "UNKNOWN" for k, v in meta.items() if k != "module")
+    assert any(f["code"] == "ADM-METADATA-UNKNOWN" for f in rep["findings"])
+
+
+def test_b3_admission_new_skip_is_reported_never_pass(b3_repo):
+    (b3_repo / "tests" / "test_b3_probe_skip.py").write_text(
+        "import pytest\n\n\n@pytest.mark.skip(reason='probe')\ndef test_b3_probe_skip():\n    assert True\n")
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
+    assert rep["new_skip_markers"], "a new skip must be visible; a skipped node is never PASS"
+    assert any(f["code"] == "ADM-NEW-SKIP" for f in rep["findings"])
+
+
+def test_b3_admission_tool_failure_is_reported_inside_json_never_as_exit(b3_repo):
+    (b3_repo / "tests" / "test_b3_probe_broken.py").write_text("def broken(:\n")
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
+    assert rep["node_deltas"][0]["status"] == "UNKNOWN"      # unparsable source is UNKNOWN, never an empty lie
+    assert rep["exit_code_policy"].startswith("always 0")
+
+
+def test_b3_admission_unchanged_fast_path_is_empty(b3_repo):
+    head = _b3_commit(b3_repo, "empty")
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, root=b3_repo)
+    assert rep["modules"]["added"] == [] and rep["modules"]["removed"] == [] and rep["modules"]["changed"] == []
+    assert rep["node_deltas"] == [] and rep["growth"]["added_nodes"] == 0
+
+
+def test_b3_admission_plan_status_selected_vs_not_selected(b3_repo):
+    plan = {"pytest_modules": ["tests/test_b3_probe_in_plan.py"], "schedule": {"predicted_critical_path_s": None}}
+    (b3_repo / "tests" / "test_b3_probe_in_plan.py").write_text("def test_in_plan():\n    assert True\n")
+    (b3_repo / "tests" / "test_b3_probe_out_plan.py").write_text("def test_out_plan():\n    assert True\n")
+    pf = b3_repo / "plan.json"
+    pf.write_text(json.dumps(plan))
+    head = _b3_commit(b3_repo)
+    rep = _B3R.test_admission_report(base="HEAD~1", head=head, plan_path=str(pf), root=b3_repo)
+    by_mod = {r["module"]: r for r in rep["node_deltas"]}
+    assert by_mod["tests/test_b3_probe_in_plan.py"]["selected"] == "SELECTED"
+    assert by_mod["tests/test_b3_probe_out_plan.py"]["selected"] == "NOT_SELECTED"
+    assert rep["critical_path"]["plan_predicted_critical_path_s"] is None

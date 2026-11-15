@@ -100,7 +100,10 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     B1 = C06_APPROVAL._next()
     expected = N.expected_handoff(ROOT, X.REGISTRY)
     B2 = B1._next() if B1 is not None and B1.signature_ok() else None
-    if 'tests.ci_v4_lean_b2_scope' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():
+    B3 = B2._next() if B2 is not None and B2.signature_ok() else None
+    if 'tests.ci_v4_lean_b3_scope' in C.COHORT_MODULES and B3 is not None and B3.signature_ok():
+        expected = B3.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.ci_v4_lean_b2_scope' in C.COHORT_MODULES and B2 is not None and B2.signature_ok():
         expected = B2.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():
         expected = B1.expected_handoff(ROOT, X.REGISTRY)
