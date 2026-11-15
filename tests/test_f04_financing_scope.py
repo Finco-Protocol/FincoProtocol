@@ -29,7 +29,8 @@ def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
     assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
-        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES == C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,) and C06_APPROVAL.signature_ok())
+        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))
+        and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1
     for ref in (None,'HEAD'):
         with C.call_scope():
@@ -45,7 +46,8 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     for path in F.HANDOFFS:
-        authority=C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
+        B1=C06_APPROVAL._next()
+        authority=B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     for path in F.FROZEN:
         if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
@@ -86,8 +88,8 @@ def test_modes_registry_and_closed_diff_are_enforced(clone,kind):
             path=clone/F.PREDECESSOR;path.write_bytes(subprocess.check_output(['git','show',F.BASE+':'+F.PREDECESSOR],cwd=clone))
         else:
             path=clone/F.REGISTRY;text=path.read_text()
-            if kind=='missing_registration':text=text.replace(", 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')",", 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
-            elif kind=='duplicate_registration':text=text.replace("'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')","'tests.f04_financing_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope')")
+            if kind=='missing_registration':text=text.replace(", 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'",", 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'")
+            elif kind=='duplicate_registration':text=text.replace("'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'","'tests.f04_financing_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'")
             else:text=text.replace("'tests.r03_ppa_scope', 'tests.f04_financing_scope'","'tests.f04_financing_scope', 'tests.r03_ppa_scope'")
             path.write_text(text)
         with C.call_scope():assert not F.exact_blobs_ok(clone) and not C.valid(clone)

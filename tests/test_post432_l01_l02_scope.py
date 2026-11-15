@@ -97,8 +97,11 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     own = base.replace(X.REGISTRY_MARKER, X.REGISTRY_NEW)
     from tests import ci_v4_perf_scope as F
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
+    B1 = C06_APPROVAL._next()
     expected = N.expected_handoff(ROOT, X.REGISTRY)
-    if 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():
+    if 'tests.ci_v4_lean_b1_scope' in C.COHORT_MODULES and B1 is not None and B1.signature_ok():
+        expected = B1.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.c06_cost_workspace_scope' in C.COHORT_MODULES and C06_APPROVAL.signature_ok():
         expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.r04_ppa_scope' in C.COHORT_MODULES and W.signature_ok():
         expected = W.expected_handoff(ROOT, X.REGISTRY)
