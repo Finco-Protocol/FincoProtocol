@@ -38,6 +38,11 @@ def _flip(path):
 
 
 def test_positive_cohort_is_exact_registered_and_closed():
+    with C.call_scope():       # ONE outer READ-ONLY governance call: each cohort verdict is computed once and dropped on exit (no mutation inside)
+        _positive_cohort_is_exact_registered_and_closed()
+
+
+def _positive_cohort_is_exact_registered_and_closed():
     assert U.exact_blobs_ok() and U.valid() and C.valid() and W.exact_blobs_ok()
     assert U.__name__ in C.COHORT_MODULES and U in C.cohorts() and U.protected_blobs() == {}
     data = U.manifest()
@@ -222,6 +227,11 @@ def test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_forei
 
 
 def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
+    with C.call_scope():       # ONE outer READ-ONLY governance call over the finite owned set; nothing is mutated inside the scope
+        _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession()
+
+
+def _no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
     later_superseded = set().union(*(set(m.SUPERSEDED) for m in U._later_modules()))
     for path in U.OWNED_PATHS - U.SUPERSEDED - {U.MANIFEST} - later_superseded:
         raw = (U.ROOT / path).read_bytes()
@@ -229,6 +239,11 @@ def test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession():
 
 
 def test_integration_reference_is_main_after_414_and_everything_unowned_equals_it():
+    with C.call_scope():       # ONE outer READ-ONLY governance call: the later-cohort enumeration shares one verdict per cohort
+        _integration_reference_is_main_after_414_and_everything_unowned_equals_it()
+
+
+def _integration_reference_is_main_after_414_and_everything_unowned_equals_it():
     assert _git(U.ROOT, 'rev-parse', U.INTEGRATION + '^{tree}').strip() == U.INTEGRATION_TREE
     subprocess.check_call(['git', 'merge-base', '--is-ancestor', U.BASE, U.INTEGRATION], cwd=U.ROOT)
     subprocess.check_call(['git', 'merge-base', '--is-ancestor', U.INTEGRATION, 'HEAD'], cwd=U.ROOT)
