@@ -56,6 +56,7 @@ HANDOFF_PATHS = frozenset((
     'tests/test_bess02_scope.py',
     'tests/test_c06_cost_workspace_scope.py',
     'tests/test_ci_v4_lean_b1_scope.py',
+    'tests/test_ci_v4_lean_tamper_matrix.py',
     'tests/test_ci_v4_perf_scope.py',
     'tests/test_f03_financing_scope.py',
     'tests/test_f04_financing_scope.py',
@@ -504,6 +505,14 @@ HANDOFFS = {
          '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', \'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b2_scope\')")),\n'),
         ('    reg = pins[T.REGISTRY]\n',
          '    reg = T.effective_pins()[T.REGISTRY]\n'),
+    ],
+    'tests/test_ci_v4_lean_tamper_matrix.py': [
+        ('TAIL = "\'tests.ci_v4_lean_b1_scope\')"\n',
+         'TAIL = "\'tests.ci_v4_lean_b2_scope\')"\n'),
+        ('    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b1_scope\', " + TAIL), REG, "pinned"),\n',
+         '    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "\'tests.ci_v4_lean_b2_scope\', " + TAIL), REG, "pinned"),\n'),
+        ('    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b1_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n',
+         '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", \'tests.ci_v4_lean_b2_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n'),
     ],
 }
 

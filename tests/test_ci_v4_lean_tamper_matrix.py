@@ -209,7 +209,7 @@ def _restore_predecessor_base_bytes(clone):
 
 
 REG = "tests/fin_v2_cohorts.py"
-TAIL = "'tests.ci_v4_lean_b1_scope')"
+TAIL = "'tests.ci_v4_lean_b2_scope')"
 # row id, invariant class, mutation, injected path, attribution class
 ROWS = [
     ("guarded_byte_product", "guarded_byte", _append("app/v2/router.py"), "app/v2/router.py", "pinned"),
@@ -224,12 +224,12 @@ ROWS = [
      B1.MANIFEST, "cohort_named"),
     ("forged_manifest_base_tree", "forged_manifest", _manifest_edit(lambda d: d.__setitem__("base_tree", "0" * 40)), B1.MANIFEST, "cohort_named"),
     ("registry_cohort_removed", "registry", _text_sub(REG, "'tests.f03_financing_scope', ", ""), REG, "pinned"),
-    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "'tests.ci_v4_lean_b1_scope', " + TAIL), REG, "pinned"),
+    ("registry_duplicate_registration", "registry", _text_sub(REG, TAIL, "'tests.ci_v4_lean_b2_scope', " + TAIL), REG, "pinned"),
     ("registry_b1_unregistered", "registry", _text_sub(REG, ", 'tests.ci_v4_lean_b1_scope'", ""), REG, "pinned"),
     ("registry_parent_forged", "registry", lambda clone: _text_sub(REG, re.search(r"PARENT = '[0-9a-f]+'", (clone / REG).read_text()).group(0),
                                                                     "PARENT = '%s'" % HEAD_OF[str(clone)])(clone), REG, "pinned"),
     ("successor_hook_removed", "successor_handoff", _restore_predecessor_base_bytes, B1.PREDECESSOR, "pinned"),
-    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", 'tests.ci_v4_lean_b1_scope')", ")"), "tests/u1_scope.py", "pinned"),
+    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", 'tests.ci_v4_lean_b2_scope')", ")"), "tests/u1_scope.py", "pinned"),
     ("current_map_key_forged", "current_map", _forge_map_key, "docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),
 ]
 assert len({r[0] for r in ROWS}) == len(ROWS)
