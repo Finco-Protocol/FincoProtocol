@@ -106,6 +106,11 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
     from tests import r03_ppa_scope as Y
     B1 = C06_APPROVAL._next()
     for p in T.HANDOFFS:
+        B2 = B1._next() if B1 is not None and B1.signature_ok() else None
+        if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the further reviewed B2 substitution of this shared path
+            assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further reviewed B1 substitution of this shared path
             assert (ROOT / p).read_bytes() == B1.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
@@ -134,7 +139,7 @@ def test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_s
     i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")
     assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"
     assert (C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", "tests.f04_financing_scope"),
-                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR))
+                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))
         and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1
 
@@ -235,7 +240,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_t01e", lambda b: b.replace(b"'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b"'tests.t01e_remediation_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope')", b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')", b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.fake_scope')")),
     ("swapped_f03_t01e", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.t01e_remediation_scope', 'tests.f03_financing_scope'")),
     ("t01e_missing", lambda b: b.replace(b", 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope'", b", 'tests.r03_ppa_scope'")),
     ("f03_removed", lambda b: b.replace(b"'tests.f03_financing_scope', ", b"")),
