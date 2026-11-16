@@ -50,7 +50,7 @@ def world(tmp_path_factory):
                       "README.md": "x\n", "tools/ci_gate.py": "GATE = 1\n", ".gitignore": "__pycache__/\n"}.items():
         r.write(rel, text)
     base = r.commit("accepted main")
-    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="h")
+    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="h", full_run={"status": "PASS", "run_id": "1", "sha": base})
     r.write(E.TRUSTED_EPOCH_PATH, E.canonical(epoch).decode())
     tip = r.commit("promoted")
     r.write("app/main.py", "MAIN = 2\n")
@@ -76,6 +76,14 @@ def test_generators_are_pure_functions_of_git_objects_and_canonical(world, tmp_p
     assert CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(cand), "--full-run-id", "42"]) == 0
     epoch, problems = E.load_epoch(cand.read_bytes())
     assert epoch is not None and epoch["guard"]["mode"] == "ALL_TRACKED" and epoch["full_run"]["run_id"] == "42", problems
+    blocked = tmp_path / "blocked.json"
+    assert CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(blocked), "--full-run-blocked-reason", "TIMEOUT_19200S",
+                      "--full-run-last-observed", "43828509961"]) == 0
+    ep2, problems = E.load_epoch(blocked.read_bytes())
+    assert ep2 is not None and ep2["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED" and not E.epoch_full_provenance(ep2)[0], problems   # honest, never a pass
+    assert E.epoch_full_provenance(epoch)[0] and not E.epoch_full_provenance({**epoch, "full_run": {**epoch["full_run"], "sha": "0" * 40}})[0]
+    with pytest.raises(SystemExit):
+        CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(blocked), "--full-run-id", "1", "--full-run-blocked-reason", "x"])
     for bad in ("HEAD", "main", "$(true)", ""):
         with pytest.raises(SystemExit):
             CAND.candidate(str(r.path), bad)
@@ -240,12 +248,12 @@ def test_shadow_workflow_is_split_by_trust_boundary_and_least_privilege():
 
 
 def test_repository_artifacts_make_no_authority_claim():
-    """No trusted epoch ships in 2B (a separate owner-reviewed promotion PR), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
-    assert not (ROOT / E.TRUSTED_EPOCH_PATH).exists(), "a trusted epoch needs a separate owner-reviewed promotion PR"
+    """No trust anchor ships (an epoch is a separate owner-approved promotion), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
+    assert not (ROOT / E.TRUSTED_EPOCH_PATH).exists()
     delta = json.loads((ROOT / E.DELTA_PATH).read_bytes())
     assert (ROOT / E.DELTA_PATH).read_bytes() == E.canonical(delta) and delta["schema"] == E.DELTA_SCHEMA and set(delta) == E.DELTA_KEYS
     assert E.SHA40.fullmatch(delta["base_sha"]) and E.SHA256.fullmatch(delta["result_inventory_sha256"])
     cand = ROOT / E.CANDIDATE_EPOCH_PATH
-    epoch, problems = E.load_epoch(cand.read_bytes())
-    assert epoch is not None and epoch["legacy"] is True, problems                      # LEGACY_NARROW_GUARD: never an approved FULL guard
-    assert {r["status"] for r in epoch["atlas"]} <= {"COVERED", "GAP", "UNKNOWN"} and any(r["status"] != "COVERED" for r in epoch["atlas"])
+    legacy, problems = E.load_epoch(cand.read_bytes())
+    assert legacy is not None and legacy["legacy"] is True, problems                      # LEGACY_NARROW_GUARD: never an approved FULL guard
+    assert {r["status"] for r in legacy["atlas"]} <= {"COVERED", "GAP", "UNKNOWN"} and any(r["status"] != "COVERED" for r in legacy["atlas"])

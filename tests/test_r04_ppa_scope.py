@@ -113,14 +113,15 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
         B3 = B2._next() if B2 is not None and B2.signature_ok() else None
         B4 = B3._next() if B3 is not None and B3.signature_ok() else None
         B5 = B4._next() if B4 is not None and B4.signature_ok() else None
-        authority = (B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
+        B6 = B5._next() if B5 is not None and B5.signature_ok() else None
+        authority = (B6 if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
                      else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T)
         assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_f04():
-    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'))
+    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'))
                                                     and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1
 
@@ -139,8 +140,12 @@ def test_current_maps_move_only_the_registry_key():
 
 def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():
     from tests import ci_v5_bootstrap_scope as V5
+    from tests import ci_v5_gate_scope as GT
     for p in T.FROZEN:
-        if V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
+        if GT.signature_ok() and p in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this shared path (literal, pin-exact)
+            assert (ROOT / p).read_bytes() == GT.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == GT.manifest()["source_blobs"][p]
+        elif V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
             assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]
         elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
@@ -229,7 +234,7 @@ def test_current_map_tamper_is_rejected_by_the_full_closure(clone, path):
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_r04", lambda b: b.replace(b"'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'", b"'tests.r04_ppa_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope')", b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')", b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.fake_scope')")),
     ("swapped_f04_r04", lambda b: b.replace(b"'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'", b"'tests.r04_ppa_scope', 'tests.f04_financing_scope', 'tests.c06_cost_workspace_scope'")),
     ("r04_missing", lambda b: b.replace(b", 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope'", b", 'tests.c06_cost_workspace_scope'")),
     ("f04_removed", lambda b: b.replace(b"'tests.f04_financing_scope', ", b"")),

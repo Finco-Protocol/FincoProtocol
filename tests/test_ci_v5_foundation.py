@@ -97,7 +97,7 @@ def legit_change(repo):                       # one P modify + one P add + one X
 
 
 def promote(repo, snapshot_sha):
-    epoch = E.make_epoch(E.Git(repo.path), snapshot_sha, epoch_id="synthetic", full_run={"status": "ATTESTED_BY_OWNER", "run_id": "1", "sha": snapshot_sha})
+    epoch = E.make_epoch(E.Git(repo.path), snapshot_sha, epoch_id="synthetic", full_run={"status": "PASS", "run_id": "1", "sha": snapshot_sha})
     repo.write(E.TRUSTED_EPOCH_PATH, E.canonical(epoch).decode())
     return epoch
 
@@ -587,7 +587,7 @@ def _promotion_world(w):
 def test_promotion_pr_is_promotion_requires_owner_never_a_pass(worlds):
     w, r = worlds, worlds["r"]
     base = _promotion_world(w)
-    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="promotion", full_run={"status": "ATTESTED_BY_OWNER", "run_id": "7", "sha": base})
+    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="promotion", full_run={"status": "PASS", "run_id": "7", "sha": base})
     r.write(E.TRUSTED_EPOCH_PATH, E.canonical(epoch).decode())
     head = r.commit("promote")
     rec = ver(w, head, base)

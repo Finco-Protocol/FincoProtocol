@@ -48,7 +48,9 @@ def main(argv=None):
     c.add_argument("--repo", default=".")
     c.add_argument("--commit", required=True)
     c.add_argument("--output", required=True)
-    c.add_argument("--full-run-id", help="hosted FULL run id that witnesses the snapshot (owner supplied; otherwise recorded as UNVERIFIED)")
+    c.add_argument("--full-run-id", help="id of a hosted FULL run that tested exactly --commit and passed (owner-attested: recorded as PASS bound to --commit; this tool cannot re-verify it)")
+    c.add_argument("--full-run-blocked-reason", help="no green FULL exists for this commit: recorded honestly as FULL_PROVENANCE_BLOCKED (never a pass)")
+    c.add_argument("--full-run-last-observed", help="optional run id of the last observed (non-green) FULL, for the record")
     d = sub.add_parser("delta")
     d.add_argument("--repo", default=".")
     d.add_argument("--base-sha", required=True)
@@ -56,7 +58,14 @@ def main(argv=None):
     d.add_argument("--output", required=True)
     a = ap.parse_args(argv)
     if a.cmd == "candidate":
-        run = {"status": "ATTESTED_BY_OWNER", "run_id": a.full_run_id, "sha": a.commit} if a.full_run_id else None
+        if a.full_run_id and a.full_run_blocked_reason:
+            raise SystemExit("a FULL witness is either a PASS (run id) or BLOCKED (reason), not both")
+        if a.full_run_id:
+            run = {"status": "PASS", "run_id": a.full_run_id, "sha": a.commit}
+        else:
+            run = {"status": "FULL_PROVENANCE_BLOCKED", "reason": a.full_run_blocked_reason or "no FULL witness supplied", "sha": a.commit}
+            if a.full_run_last_observed:
+                run["last_observed_run_id"] = a.full_run_last_observed
         epoch = candidate(a.repo, a.commit, run)
         write(a.output, epoch)
         print("candidate %s: %d guarded entries, digest %s" % (a.commit[:12], len(epoch["entries"]), epoch["entries_sha256"][:16]))

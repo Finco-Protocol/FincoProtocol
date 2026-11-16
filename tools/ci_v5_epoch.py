@@ -73,9 +73,20 @@ class POLICY:
     ``UNKNOWN`` (the exact V4 pin of those bytes is the judge). A new entry needs a reviewed edit of this trusted code.
     """
 
-    POLICY_VERSION = "FINCO_CI_V5_POLICY_1"
+    POLICY_VERSION = "FINCO_CI_V5_POLICY_2"
     CLASSES = ("S", "P", "X", "D")                      # strictest first
-    V4_BOUND_EXEMPT = ("docs/ci_v5/hardening_2b/SOURCE_SUCCESSOR.json",)
+    V4_BOUND_EXEMPT = ("docs/ci_v5/hardening_2b/SOURCE_SUCCESSOR.json", "docs/ci_v5/gate_3/SOURCE_SUCCESSOR.json")
+    # --- V5-3 gate policy (trusted CODE; changing any of it is a reviewed edit, never data a PR can carry) ---------------------------------------------
+    GATE_CHECK_NAME = "V5 gate (trusted base)"          # the job name of the pull_request_target gate: the string the owner adds to the required checks
+    # The six established V4 checks that must stay required and, for DEFERRED_TO_V4_VERIFIED, must be green at the EXACT head (names = check-run names).
+    V4_REQUIRED_CHECKS = ("CI V4 gate", "mandatory-browser-evidence", "rate-contract-native-and-browser", "authoritative-history", "dependency-audit",
+                          "compile-and-safety")
+    # Independent approvers (GitHub logins) whose APPROVED review at the exact head counts. EMPTY until the owner names a distinct identity in a reviewed
+    # edit: with no approver configured authorization is ``AUTHORIZATION_BLOCKED``, never a default-allow and never the PR author.
+    APPROVERS = ()
+    # Owner-signed approval (option B): (principal, "ssh-ed25519 AAAA...") public keys. The owner signs the approval commit with a key the agent never holds.
+    ALLOWED_SIGNERS = ()
+    REVIEW_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
     # The V4 mutation-security inventory (``tests.model_mutation_security_successor.BLOBS``) as of the accepted baseline; ``tests/test_ci_v5_foundation.py``
     # asserts this tuple still covers the CURRENT V4 inventory (drift = test failure), so a V4 addition can never silently fall out of the registry.
     SEMANTIC_LITERALS = (
@@ -198,7 +209,7 @@ class POLICY:
         "tests/*_scope.py", "tests/fin_v2_cohorts.py", "tests/*successor*", "tests/*_scope_*",
         "tests/*mutation*", "tests/*csrf*", "tests/*f01*", "tests/*finval*", "tests/*tenan*", "tests/*permission*", "tests/*_cas*", "tests/*save*",
         "tests/*browser*", "tests/*acceptance*", "tests/*native*", "tests/*cohort*", "tests/*governance*", "tests/*bootstrap*",
-        "docs/ci_v4/*", "docs/*SOURCE_SUCCESSOR*.json", "docs/*EXACT_SOURCE*.json", "docs/ci_v5/bootstrap/*", "docs/ci_v5/hardening_2b/*",
+        "docs/ci_v4/*", "docs/*SOURCE_SUCCESSOR*.json", "docs/*EXACT_SOURCE*.json", "docs/ci_v5/bootstrap/*", "docs/ci_v5/hardening_2b/*", "docs/ci_v5/gate_3/*",
         "tools/ci_*", "tools/*gate*", "tools/*scan*", "tools/governance*",
         "app/*router*", "app/*routes*", "app/*route.py", "app/*csrf*", "app/*auth*", "app/*session*", "app/*tenan*", "app/*permission*",
         "app/*mutation*", "app/*save*", "app/*middleware*", "app/*security*",
@@ -559,6 +570,19 @@ def _tidy(items):
     return [{"code": c, "detail": d} for c, d in items]
 
 
+def epoch_full_provenance(epoch):
+    """(ok, reason). An epoch is only a TRUSTED checkpoint when its FULL witness is an attested PASS bound to the very commit it snapshots (run id + sha). A
+    blocked / failed / unknown FULL is recorded honestly and is NEVER read as a pass: the epoch then stays non-authoritative (``EPOCH_FULL_PROVENANCE_NOT_GREEN``)."""
+    fr = epoch.get("full_run") if isinstance(epoch, dict) else None
+    if not isinstance(fr, dict):
+        return False, "no FULL witness"
+    if fr.get("status") != "PASS":
+        return False, "FULL status is %s" % fr.get("status")
+    if not (isinstance(fr.get("run_id"), str) and fr["run_id"] and fr.get("sha") == epoch.get("base_commit")):
+        return False, "FULL witness is not bound to run id + the epoch's own commit"
+    return True, "FULL PASS attested for run %s" % fr["run_id"]
+
+
 def _epoch_truth(git, epoch, base_sha, base_inv, failures, unknowns):
     """The epoch must be a truthful ALL_TRACKED snapshot of the commit it names, and that commit must be accepted history of the trusted base."""
     etypes = git.run("cat-file", "--batch-check=%(objectname) %(objecttype)", input=("%s\n%s^{tree}\n" % (epoch["base_commit"], epoch["base_commit"])).encode()).decode().splitlines()
@@ -689,6 +713,11 @@ def verify(root, head_sha, base_sha, *, trusted_ref_tip=None, tool_source="UNTRU
                     rec["trust"]["guard_mode"] = "LEGACY_NARROW_GUARD"
                     unknowns.append(("LEGACY_NARROW_GUARD", "epoch schema V1 guards a narrow prefix list: it is never an approved FULL guard"))
                 _epoch_truth(git, epoch, base_sha, base_inv, failures, unknowns)
+                if not epoch["legacy"]:
+                    full_ok, full_why = epoch_full_provenance(epoch)
+                    rec["epoch"]["full_witness"] = "FULL_WITNESS_ATTESTED_GREEN" if full_ok else (epoch["full_run"] or {}).get("status", "UNKNOWN")
+                    if not full_ok:
+                        unknowns.append(("EPOCH_FULL_PROVENANCE_NOT_GREEN", "%s: the epoch is a checkpoint without a green FULL witness and is never authoritative" % full_why))
                 if not epoch["legacy"] and epoch_map(epoch) != base_g:
                     drift = {p for p in set(base_g) | set(epoch_map(epoch)) if base_g.get(p) != epoch_map(epoch).get(p)}
                     notes["epoch_drift_paths"] = len(drift)               # informational only: the epoch is a checkpoint, not the base inventory

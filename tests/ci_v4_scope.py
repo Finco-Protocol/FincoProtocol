@@ -125,7 +125,12 @@ def _f03_ci_owns(path, root, ref):
 def _v5_ci_paths(root, ref):
     """The literal CI paths of the exact CI V5 bootstrap successor (the non-required shadow workflow and the V5 tool files); empty unless that cohort is exact. No CI wildcard."""
     from tests import ci_v5_bootstrap_scope as V
-    return V.CI_PATHS if V.exact_blobs_ok(root, ref) else frozenset()
+    out = V.CI_PATHS if V.exact_blobs_ok(root, ref) else frozenset()
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if 'tests.ci_v5_gate_scope' in COHORT_MODULES:      # the V5-3 gate successor admits ITS literal CI paths too (the separate pull_request_target gate workflow); no wildcard
+        from tests import ci_v5_gate_scope as G
+        out = out | (G.CI_PATHS if G.exact_blobs_ok(root, ref) else frozenset())
+    return out
 
 
 def _git(root, *args):
