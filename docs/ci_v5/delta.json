@@ -10,7 +10,7 @@
    "path": "docs/ci_v4/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "4acd950a8f0edb68fc404b1acd73e03f3db7d865",
+   "blob": "b90724c24c4a8f5d53a99fe943394dd5da46f2fa",
    "class": "D",
    "mode": "100644",
    "op": "add",
@@ -276,6 +276,6 @@
    "path": "tests/u1_scope.py"
   }
  ],
- "result_inventory_sha256": "1058649faf57a0e52cb149b150e790619ecc738ff7914380b4dc132f1c423c5d",
+ "result_inventory_sha256": "38138a141397a597b2a66ce729c02b0fb9b6cf18347e42abcf15c13f8324a896",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
