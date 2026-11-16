@@ -73,7 +73,7 @@
    "path": "tests/c06_cost_workspace_scope.py"
   },
   {
-   "blob": "0ed6129c168d5dbf0ea6a59ebccaf75be821eb9b",
+   "blob": "54db365eb62368b71df3f8717ca5af8cbe0cd0b7",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -262,7 +262,7 @@
    "path": "tests/test_r04_ppa_scope.py"
   },
   {
-   "blob": "3926a2d1363e6ae4776de3fb885e60f57b532ddf",
+   "blob": "cdc37b1a7252d595f1031fc80370fa1dce58964f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -276,6 +276,6 @@
    "path": "tests/u1_scope.py"
   }
  ],
- "result_inventory_sha256": "2b74f15169b9c35dc8938899715c599ddecec6269ec17e921985e39d01bc4cf8",
+ "result_inventory_sha256": "1058649faf57a0e52cb149b150e790619ecc738ff7914380b4dc132f1c423c5d",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
