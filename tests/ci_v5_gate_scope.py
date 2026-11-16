@@ -326,6 +326,22 @@ HANDOFFS = {
             '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
             "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope')):\n"
             '            return False\n')),
+        ((
+            '        pins = manifest(root, ref).get("source_blobs", {})\n'
+            '        N = _next()\n'
+            '        nxt = N is not None and N.signature_ok(root, ref)\n'
+            '        for path in HANDOFFS:\n'
+            '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path\n'
+            '                continue\n'
+            '            actual = _read(root, path, ref)\n'),
+         (
+            '        pins = manifest(root, ref).get("source_blobs", {})\n'
+            '        N = _next()\n'
+            '        nxt = N is not None and N.signature_ok(root, ref)\n'
+            '        for path in HANDOFFS:\n'
+            '            if nxt and (path in N.HANDOFFS or path in N.later_handoffs(root, ref)):            # a reviewed successor (or one behind it) owns the further substitution of this shared path\n'
+            '                continue\n'
+            '            actual = _read(root, path, ref)\n')),
     ],
     'tests/ci_v5_hardening_scope.py': [
         ((
@@ -399,6 +415,14 @@ HANDOFFS = {
             'def _next_pins(root, ref):\n'
             '    N = _next()\n'
             '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}\n'
+            '\n'
+            '\n'
+            'def later_handoffs(root, ref):\n'
+            '    """HANDOFFS of every reviewed successor behind this cohort (only while each signature holds): a path a LATER cohort owns is not judged against this cohort\'s literals."""\n'
+            '    N = _next()\n'
+            '    if N is None or not N.signature_ok(root, ref):\n'
+            '        return frozenset()\n'
+            "    return frozenset(N.HANDOFFS) | (N.later_handoffs(root, ref) if hasattr(N, 'later_handoffs') else frozenset())\n"
             '\n'
             '\n'
             'def map_keys(repo=None, ref=None):\n'

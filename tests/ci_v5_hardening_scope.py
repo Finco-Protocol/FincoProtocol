@@ -1227,6 +1227,14 @@ def _next_pins(root, ref):
     return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}
 
 
+def later_handoffs(root, ref):
+    """HANDOFFS of every reviewed successor behind this cohort (only while each signature holds): a path a LATER cohort owns is not judged against this cohort's literals."""
+    N = _next()
+    if N is None or not N.signature_ok(root, ref):
+        return frozenset()
+    return frozenset(N.HANDOFFS) | (N.later_handoffs(root, ref) if hasattr(N, 'later_handoffs') else frozenset())
+
+
 def map_keys(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     with scoped():

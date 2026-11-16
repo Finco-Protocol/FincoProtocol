@@ -1130,7 +1130,7 @@ def reviewed_edits_ok(repo=None, ref=None):
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
         for path in HANDOFFS:
-            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+            if nxt and (path in N.HANDOFFS or path in N.later_handoffs(root, ref)):            # a reviewed successor (or one behind it) owns the further substitution of this shared path
                 continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
