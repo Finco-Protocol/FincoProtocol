@@ -254,7 +254,7 @@ def _emit(obj, output):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="CI V4 Lean B1 opt-in report (measurement / SIMULATION / WARN-ONLY). Never gates anything.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("measure-gate", "collect", "simulate", "weights-proposal", "admission", "budgets"):
+    for name in ("measure-gate", "collect", "simulate", "weights-proposal", "admission", "budgets", "test-admission"):
         s = sub.add_parser(name)
         s.add_argument("--output")
         if name in ("collect", "simulate"):
@@ -263,6 +263,12 @@ def main(argv=None):
             s.add_argument("paths", nargs="+")
         if name in ("weights-proposal", "budgets"):
             s.add_argument("--junit", nargs="+", required=True)
+        if name == "test-admission":
+            s.add_argument("--junit", nargs="+")
+        if name == "test-admission":
+            s.add_argument("--base", default="origin/main")
+            s.add_argument("--head", default="HEAD")
+            s.add_argument("--plan", help="trusted-base plan JSON (from the plan job artifact), optional")
         if name == "weights-proposal":
             s.add_argument("--provenance", required=True, help="run id / commit of the ACCEPTED main run the JUnit came from")
     a = ap.parse_args(argv)
@@ -277,9 +283,195 @@ def main(argv=None):
         _emit(propose_weights(a.junit, weights, a.provenance), a.output)
     elif a.cmd == "budgets":
         _emit(budget_warnings(a.junit), a.output)
+    elif a.cmd == "test-admission":
+        _emit(test_admission_report(a.base, a.head, a.plan, a.junit or ()), a.output)
     else:
         _emit(admission_report(a.paths), a.output)
     return 0            # informational by design; a measurement failure is reported inside the JSON, never as a gate
+
+
+# ----------------------------------------------------------------------------------------------- B3 test-admission report (WARN-ONLY, opt-in)
+ADMISSION_FIELDS = ("risk", "nearest", "witness", "tier", "owner", "retire")
+
+
+def _git_name_status(base, head, root):
+    """Added/removed/renamed/changed test-module paths vs the trusted base (rename detection ON)."""
+    out = subprocess.check_output(["git", "-c", "core.quotepath=false", "diff", "--name-status", "-M", base, head,
+                                   "--", "tests/"], cwd=root).decode("utf-8", "replace")
+    added, removed, renamed, changed = [], [], [], []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if not parts or not parts[0]:
+            continue
+        st, p = parts[0], parts[-1]
+        if st.startswith("A"):
+            added.append(p)
+        elif st.startswith("D"):
+            removed.append(p)
+        elif st.startswith("R") and len(parts) >= 3:
+            renamed.append({"from": parts[1], "to": parts[2]})
+        elif st.startswith("M"):
+            changed.append(p)
+    return added, removed, renamed, changed
+
+
+def _test_node_names(src):
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return None                                    # unparsable -> UNKNOWN, never an empty lie
+    return sorted(n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"))
+
+
+def _body_hashes(src):
+    """Cheap duplicate-candidate heuristic: normalized AST-dump hash per test function (a CANDIDATE, never a finding)."""
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return {}
+    out = {}
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_"):
+            body = ast.dump(ast.Module(body=n.body, type_ignores=[]))
+            out[n.name] = hashlib.sha1(body.encode()).hexdigest()
+    return out
+
+
+def _show(ref, rel, root):
+    """The text of ``rel`` AT ``ref`` (Git object read, never the working tree), or None when the path does not exist there."""
+    try:
+        return subprocess.check_output(["git", "show", "%s:%s" % (ref, rel)], cwd=root, stderr=subprocess.DEVNULL).decode("utf-8", "replace")
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _skip_markers(src):
+    return [ln.strip() for ln in src.splitlines() if re.search(r"\b(skip|xfail|skipif)\b", ln) and ln.strip().startswith(("@", "pytest.mark", "pytestmark"))]
+
+
+def _admission_metadata(src):
+    """Parse the module docstring's 'Admission:' directives; every missing field is UNKNOWN, never invented."""
+    try:
+        doc = ast.get_docstring(ast.parse(src)) or ""
+    except (SyntaxError, ValueError):
+        return {}
+    meta = {}
+    for line in doc.splitlines():
+        if line.strip().lower().startswith("admission:"):
+            for item in line.split(":", 1)[1].split(","):
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    meta[k.strip().lower()] = v.strip()
+    return {f: meta.get(f, "UNKNOWN") for f in ADMISSION_FIELDS}
+
+
+def test_admission_report(base="origin/main", head="HEAD", plan_path=None, junit_paths=(), root=ROOT):
+    """B3 WARN-ONLY test-admission report over the trusted-base diff. Read-only: it never gates, never writes
+    repo files, and every unavailable measurement is UNKNOWN with its label — never zero, never a fabricated PASS."""
+    root = Path(root)
+    head_sha = subprocess.check_output(["git", "rev-parse", head], cwd=root).decode().strip()
+    head_tree = subprocess.check_output(["git", "rev-parse", head + "^{tree}"], cwd=root).decode().strip()
+    worktree_clean = subprocess.check_output(["git", "status", "--porcelain"], cwd=root).decode().strip() == ""
+    head_binding = ("WORKTREE_CLEAN_HEAD_MATCHES" if (worktree_clean and head in ("HEAD", head_sha)) else
+                    "COMMITTED_REF (every content read is a Git object read at the supplied head; the working tree is never read)")
+    added, removed, renamed, changed = _git_name_status(base, head, root)
+    is_test = lambda p: p.startswith("tests/") and p.rsplit("/", 1)[-1].startswith("test_") and p.endswith(".py")
+    added, removed, changed = sorted(filter(is_test, added)), sorted(filter(is_test, removed)), sorted(filter(is_test, changed))
+
+    node_deltas, growth = [], {"added_modules": len(added), "removed_modules": len(removed), "renamed_modules": len(renamed),
+                               "added_nodes": 0, "removed_nodes": 0}
+    plan, selected_set, plan_provenance = None, None, "UNKNOWN (no plan supplied)"
+    if plan_path:
+        try:
+            plan = json.loads(Path(plan_path).read_text())
+            selected_set = set(plan.get("pytest_modules", []))
+            if plan.get("tested_sha") == head_sha:
+                plan_provenance = "SHA_BOUND_INPUT (plan tested_sha == report head; that the plan came from a hosted run is attested by the caller, not by this tool)"
+            else:
+                plan_provenance = "UNVERIFIED_INPUT (plan tested_sha %s != report head %s)" % (plan.get("tested_sha", "UNKNOWN")[:12], head_sha[:12])
+        except (OSError, ValueError):
+            plan = None
+            plan_provenance = "UNKNOWN (plan unreadable)"
+    junit_secs, _jnodes = read_junit_module_seconds(sorted(junit_paths)) if junit_paths else ({}, {})
+    # A JUnit file carries no commit identity, so it is never OBSERVED_HOSTED here: the caller must attest its run and SHA separately.
+    junit_provenance = ("UNVERIFIED_INPUT (JUnit supplied; it is not bound to the report head SHA, so its seconds are not hosted proof)"
+                        if junit_paths else "UNKNOWN (no junit supplied)")
+
+    new_skips, duplicates, meta_rows = [], [], []
+    existing_hashes = {}
+    for rel in sorted(set(added) | set(changed)):
+        src_now = _show(head, rel, root)
+        now_nodes = _test_node_names(src_now) if src_now is not None else None
+        src_base = _show(base, rel, root)
+        base_nodes = _test_node_names(src_base) if src_base is not None else []
+        if now_nodes is None or base_nodes is None:
+            src_now = src_now or ""
+            status, added_n, removed_n = "UNKNOWN", [], []
+        else:
+            added_n = [n for n in now_nodes if n not in base_nodes]
+            removed_n = [n for n in base_nodes if n not in now_nodes]
+            status = "AST_FUNCTION_DELTA"          # function names only: never collected pytest node ids or a parametrize count
+        growth["added_nodes"] += len(added_n)
+        growth["removed_nodes"] += len(removed_n)
+        node_deltas.append({"module": rel, "status": status, "added_nodes": added_n, "removed_nodes": removed_n,
+                            "node_id_status": "UNKNOWN (no SHA-bound pytest --collect-only of both states; function names are not node ids)",
+                            "selected": ("SELECTED" if (selected_set is not None and rel in selected_set)
+                                         else ("NOT_SELECTED" if selected_set is not None else "UNKNOWN")),
+                            "wall_s": (round(junit_secs[rel], 3) if rel in junit_secs else None),
+                            "wall_label": ("UNVERIFIED_INPUT (JUnit not SHA-bound)" if rel in junit_secs else "UNKNOWN"),
+                            "git_process_count": "UNKNOWN"})
+        if rel in added:
+            meta_rows.append({"module": rel, **_admission_metadata(src_now)})
+        base_marks = set(_skip_markers(src_base)) if src_base is not None else set()
+        new_skips += [{"module": rel, "marker": m[:120],
+                       "newness": "PRE_EXISTING (same marker line present at base)" if m in base_marks else "NEW_VS_BASE (marker line absent at base)"}
+                      for m in _skip_markers(src_now)[:3]]
+        if rel in added:
+            hashes = _body_hashes(src_now)
+            listing = subprocess.check_output(["git", "ls-tree", "-r", "--name-only", head, "--", "tests/"], cwd=root).decode("utf-8", "replace").splitlines()
+            for erel in sorted(p for p in listing if is_test(p) and p.count("/") == 1):
+                if erel == rel:
+                    continue
+                if erel not in existing_hashes:
+                    existing_hashes[erel] = _body_hashes(_show(head, erel, root) or "")
+                for name, h in sorted(hashes.items()):
+                    for name2, h2 in sorted(existing_hashes[erel].items()):
+                        if h == h2:
+                            duplicates.append({"candidate": "%s::%s" % (rel, name), "existing": "%s::%s" % (erel, name2),
+                                               "heuristic": "identical-normalized-AST-body", "severity": "WARN"})
+
+    budget = budget_warnings(sorted(junit_paths)) if junit_paths else {"label": "WARN_ONLY", "enforced": False, "findings": [],
+                                                                       "note": "UNKNOWN (no junit supplied)"}
+    crit = {"label": "UNKNOWN (no plan supplied)"}
+    if plan:
+        predicted = (plan.get("schedule") or {}).get("predicted_critical_path_s")
+        crit = {"plan_predicted_critical_path_s": predicted, "enforced": False,
+                "label": ("SIMULATION (the plan's prediction from the committed scheduling weights; not an observed hosted time)"
+                          if predicted is not None else "UNKNOWN (the supplied plan carries no predicted critical path)")}
+
+    findings = []
+    for row in meta_rows:
+        for f, v in row.items():
+            if f != "module" and v == "UNKNOWN":
+                findings.append({"path": row["module"], "code": "ADM-METADATA-UNKNOWN", "field": f, "severity": "WARN",
+                                 "message": "admission metadata field is UNKNOWN: " + f})
+    for d in duplicates:
+        findings.append({"path": d["candidate"], "code": "ADM-DUPLICATE-CANDIDATE", "severity": "WARN",
+                         "message": "duplicate CANDIDATE (heuristic only, never automatic): %s" % d["existing"]})
+    fresh = [k for k in new_skips if k["newness"].startswith("NEW_VS_BASE")]
+    if fresh:
+        findings.append({"code": "ADM-NEW-SKIP", "severity": "WARN",
+                         "message": "new skip/xfail markers: a skipped node is never PASS (%d marker lines absent at base)" % len(fresh)})
+
+    return {"label": "WARN_ONLY", "what": "B3 test-admission report over the trusted-base diff",
+            "base": base, "head": head, "head_sha": head_sha, "head_tree": head_tree, "head_binding": head_binding,
+            "plan_provenance": plan_provenance, "junit_provenance": junit_provenance,
+            "modules": {"added": added, "removed": removed, "renamed": renamed, "changed": changed},
+            "node_deltas": node_deltas, "node_delta_kind": "AST_FUNCTION_DELTA (exact collected node ids require a fresh pytest --collect-only on both exact SHA/trees; UNKNOWN when unavailable)", "growth": growth,
+            "admission_metadata": meta_rows, "duplicate_candidates": duplicates, "present_skip_markers": new_skips, "new_skip_markers": fresh,
+            "critical_path": crit, "budgets": budget, "findings": findings,
+            "labels_used": ["AST_FUNCTION_DELTA", "MEASURED_LOCAL", "SHA_BOUND_INPUT", "SIMULATION", "UNVERIFIED_INPUT", "UNKNOWN", "WARN_ONLY"],
+            "exit_code_policy": "always 0: informational, never a gate"}
 
 
 if __name__ == "__main__":

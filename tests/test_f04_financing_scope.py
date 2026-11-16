@@ -29,7 +29,7 @@ def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
     assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (
-        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))
+        C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))
         and C06_APPROVAL.signature_ok())
     assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1
     for ref in (None,'HEAD'):
@@ -48,7 +48,8 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     for path in F.HANDOFFS:
         B1=C06_APPROVAL._next()
         B2=B1._next() if B1 is not None and B1.signature_ok() else None
-        authority=B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
+        B3=B2._next() if B2 is not None and B2.signature_ok() else None
+        authority=B3 if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and path in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     for path in F.FROZEN:
         if path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
@@ -61,8 +62,8 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
     for path in F.CURRENT_MAPS:
         original=json.loads(subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT))
         current=json.loads((ROOT/path).read_text())
-        _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None
-        expected=json.loads(_B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None;_B3=_B2._next() if _B2 is not None and _B2.signature_ok() else None
+        expected=json.loads(_B3.expected_map(ROOT,path,_B3.effective_pins()) if _B3 is not None and _B2 is not None and _B2.SUCCESSOR in C.COHORT_MODULES and _B3.signature_ok() else _B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')

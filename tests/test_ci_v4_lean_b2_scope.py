@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = "tests/ci_v4_lean_b2_scope.py"
 OWN_TEST = "tests/test_ci_v4_lean_b2_scope.py"
 U1_TESTS = "tests/test_u1_scope.py"
+README = "docs/ci_v4/lean_b2/README.md"      # a B2-owned path no later successor hands off: its pin is still judged by B2 itself
 SCOPED_NODES = ("test_positive_cohort_is_exact_registered_and_closed",
                 "test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession",
                 "test_integration_reference_is_main_after_414_and_everything_unowned_equals_it")
@@ -105,8 +106,12 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    T3 = T._next()
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+        if T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path
+            assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
     for ref in (None, "HEAD"):
         with C.call_scope():
@@ -114,9 +119,12 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_b1():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-3:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
-    assert B.SUCCESSOR == T.__name__ and B._next() is T and K.SUCCESSOR == B.__name__ and K._next() is B
+    assert C.COHORT_MODULES.count(T.__name__) == 1
+    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))
+    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B
+    from tests import ci_v4_lean_b3_scope as T3
+    if T.SUCCESSOR in C.COHORT_MODULES:
+        assert C.COHORT_MODULES[-1] == T.SUCCESSOR and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"
 
 
 def test_b1_c06_and_every_older_cohort_still_follow_the_chain():
@@ -140,7 +148,7 @@ def test_current_maps_move_only_their_registry_u1_and_u1_test_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
+    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1
 
 
@@ -242,9 +250,9 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope')"
+    tail = b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
         ("swapped_b1_b2", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b1_scope')")),
         ("b2_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b2_scope'", b"")),
@@ -279,7 +287,7 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
             return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
         return f
     forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(MODULE, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__(README, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
               edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),
               edit(lambda d: d["source_blobs"].pop(OWN_TEST)), edit(lambda d: d.__setitem__("extra", 1)),
               edit(lambda d: d.__setitem__("authorization", "broader")), edit(lambda d: d.__setitem__("schema_version", "OTHER")),
@@ -320,8 +328,9 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]            # the CURRENT registry pin (the B3 successor overlay wins while its signature holds)
     assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+    assert not B.supersedes(T.REGISTRY, pins[T.REGISTRY])       # B2's own registry pin is superseded by B3 and no longer current
     assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(U1_TESTS, "0" * 40)
     assert not B.supersedes(T.REGISTRY, pins[T.PREDECESSOR])         # a real blob pinned for another path
     assert not B.supersedes(U1_TESTS, pins[T.REGISTRY]) and not B.supersedes(T.REGISTRY, pins[U1_TESTS])

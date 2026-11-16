@@ -26,7 +26,7 @@ class Mutation:
 def test_exact_source_chain_worktree_and_committed_ref(clone):
     assert F.BASE=='b1c08e2d00fe9933565d253d5cee6e5849b143e1'
     assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE
-    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'))       # C06 is followed by at most the one reviewed B1 successor
+    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))       # C06 is followed by the reviewed B1, B2 and B3 successors
     assert C.COHORT_MODULES.count(F.__name__)==1
     for ref in (None,'HEAD'):
         with C.call_scope():
@@ -41,9 +41,9 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert F.MAP_KEYS==(F.REGISTRY,'static/react/finco-react.js','static/react/finco-react.css','tests/u1_scope.py','tests/u2_scope.py','tests/ux_pr3b1_scope.py','tests/test_u2_scope.py','tests/test_ux_pr3b1_scope.py')
     assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in F.OWNED_PATHS)
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
-    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None
+    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() if N2 is not None and N2.signature_ok() else None
     for path in F.HANDOFFS:
-        later=N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path
+        later=N3 if N3 is not None and N3.signature_ok() and path in N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path
         assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)
     for path in F.FROZEN:assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+path],cwd=ROOT)
 
@@ -144,7 +144,7 @@ def test_accepted_ref_preserves_all_preexisting_exact_guards_and_original_code(c
     with C.call_scope():
         assert not F.signature_ok(clone,F.BASE)
         for m in C.cohorts():
-            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope'):         # a successor never attests an older accepted ref
+            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'):         # a successor never attests an older accepted ref
                 assert m.exact_blobs_ok(clone,F.BASE),m.__name__
         assert B.ci_authority_ok(clone,F.BASE)
         for path in (provider,editor):
