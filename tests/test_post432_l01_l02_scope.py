@@ -103,7 +103,10 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     B3 = B2._next() if B2 is not None and B2.signature_ok() else None
     B4 = B3._next() if B3 is not None and B3.signature_ok() else None
     B5 = B4._next() if B4 is not None and B4.signature_ok() else None
-    if 'tests.ci_v5_hardening_scope' in C.COHORT_MODULES and B5 is not None and B5.signature_ok():
+    B6 = B5._next() if B5 is not None and B5.signature_ok() else None
+    if 'tests.ci_v5_gate_scope' in C.COHORT_MODULES and B6 is not None and B6.signature_ok():
+        expected = B6.expected_handoff(ROOT, X.REGISTRY)
+    elif 'tests.ci_v5_hardening_scope' in C.COHORT_MODULES and B5 is not None and B5.signature_ok():
         expected = B5.expected_handoff(ROOT, X.REGISTRY)
     elif 'tests.ci_v5_bootstrap_scope' in C.COHORT_MODULES and B4 is not None and B4.signature_ok():
         expected = B4.expected_handoff(ROOT, X.REGISTRY)
