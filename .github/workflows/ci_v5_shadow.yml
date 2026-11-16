@@ -1,23 +1,30 @@
 # CI V5 SHADOW (observational) - NOT REQUIRED, never satisfies or replaces any required check ("CI V4 gate" stays authoritative).
-# One cheap pass at the exact PR head: V5 epoch verdict (trust decided by WHERE the epoch is read from), the accepted V4 one-pass central governance
-# gate for comparison, the B5 test-admission report, and a comparison artifact. Read-only token, no secrets, no deployment, no new required check.
-# Disable or revert this single file to remove V5 shadow entirely; V4 is untouched.
+# Split by TRUST BOUNDARY (V5-2B):
+#   verdict  : Git OBJECTS only. Evaluator + B5 come from the trusted BASE (git archive of the protected branch tip); no PR-head script, Python, plugin or
+#              imported module runs here. If the trusted base has no V5-2B evaluator yet (the transition PR), the head's copy is used and the verdict is
+#              honestly labelled UNTRUSTED_TOOL_SOURCE (it can never be an integrity pass).
+#   v4       : the accepted V4 central governance gate. It executes PR-head Python, so it is isolated in its own job and judges nothing.
+#   compare  : trusted-base code only; reads the two artifacts as DATA and writes the comparison + job summary.
+# Still `on: pull_request` (a PR can edit this file), still contents: read, no secrets, no privileged PR trigger. A future authoritative lane needs an
+# immutable organization-required workflow or a reviewed privileged trigger; neither is introduced here (docs/ci_v5/README.md, owner steps).
+# Delete this single file to remove V5 shadow entirely; V4 is untouched.
 name: CI V5 shadow (not required)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    branches: [main]
 permissions:
   contents: read
 concurrency:
   group: ci-v5-shadow-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
-  shadow:
+  verdict:
+    name: v5-verdict (git objects only)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      BASE_TIP_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -27,29 +34,117 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - name: Resolve trusted tools (read from the trusted base commit; the PR head is used only when the base has none)
+      - name: Resolve the trusted tip and trusted tools (archived from the base tip; nothing is read from the PR head unless the base has no evaluator)
         id: tools
         run: |
           set -euo pipefail
-          BASE="$(git merge-base "$BASE_TIP_SHA" "$HEAD_SHA")"
+          TIP="$(git rev-parse --verify refs/remotes/origin/main^{commit})"
           TRUSTED="$RUNNER_TEMP/trusted_v5"
           mkdir -p "$TRUSTED"
-          if git cat-file -e "$BASE:tools/ci_v5_shadow.py" 2>/dev/null && git cat-file -e "$BASE:tests/ci_v4_lean_report.py" 2>/dev/null; then
-            git archive "$BASE" tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py | tar -x -C "$TRUSTED"
+          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py"
+          if git show "$TIP:tools/ci_v5_epoch.py" 2>/dev/null | grep -q "FINCO_CI_V5_DELTA_V2" && git cat-file -e "$TIP:tests/ci_v4_lean_report.py" 2>/dev/null; then
+            git archive "$TIP" $FILES | tar -x -C "$TRUSTED"
             echo "provenance=TRUSTED_BASE" >> "$GITHUB_OUTPUT"
           else
-            git archive "$HEAD_SHA" tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py | tar -x -C "$TRUSTED"
-            echo "provenance=HEAD_CANDIDATE_UNTRUSTED" >> "$GITHUB_OUTPUT"
+            git archive "$HEAD_SHA" $FILES | tar -x -C "$TRUSTED"
+            echo "provenance=UNTRUSTED_TOOL_SOURCE" >> "$GITHUB_OUTPUT"
           fi
+          echo "tip=$TIP" >> "$GITHUB_OUTPUT"
           echo "dir=$TRUSTED" >> "$GITHUB_OUTPUT"
-      - name: Run CI V5 shadow
+      - name: V5 verdict (no checkout code is executed)
         env:
           TOOLS_DIR: ${{ steps.tools.outputs.dir }}
           PROVENANCE: ${{ steps.tools.outputs.provenance }}
+          TIP: ${{ steps.tools.outputs.tip }}
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          python "$TOOLS_DIR/tools/ci_v5_shadow.py" --repo . --head-sha "$HEAD_SHA" --base-tip-sha "$BASE_TIP_SHA" \
-            --out-dir "$RUNNER_TEMP/ci_v5_out" --b3-report "$TOOLS_DIR/tests/ci_v4_lean_report.py" \
-            --tools-provenance "$PROVENANCE" --summary "$GITHUB_STEP_SUMMARY"
+          python -I "$TOOLS_DIR/tools/ci_v5_shadow.py" verdict --repo . --head-sha "$HEAD_SHA" --base-tip-sha "$TIP" \
+            --out-dir "$RUNNER_TEMP/ci_v5_verdict" --b3-report "$TOOLS_DIR/tests/ci_v4_lean_report.py" --tools-provenance "$PROVENANCE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-v5-verdict-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ci_v5_verdict
+          if-no-files-found: warn
+          retention-days: 14
+  v4-comparison:
+    name: v4-comparison (runs PR-head code, isolated)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Run the accepted V4 central governance gate (PR-head code; result is an artifact, never a verdict of this job)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python tools/ci_v5_shadow.py v4 --repo . --head-sha "$HEAD_SHA" --out-dir "$RUNNER_TEMP/ci_v5_v4"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-v5-v4gate-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ci_v5_v4
+          if-no-files-found: warn
+          retention-days: 14
+  compare:
+    name: compare (trusted code, artifacts as data)
+    needs: [verdict, v4-comparison]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Resolve trusted tools (archived from the base tip; the head's copy only when the base has no V5-2B evaluator)
+        id: tools
+        run: |
+          set -euo pipefail
+          TIP="$(git rev-parse --verify refs/remotes/origin/main^{commit})"
+          TRUSTED="$RUNNER_TEMP/trusted_v5"
+          mkdir -p "$TRUSTED"
+          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py"
+          if git show "$TIP:tools/ci_v5_epoch.py" 2>/dev/null | grep -q "FINCO_CI_V5_DELTA_V2"; then
+            git archive "$TIP" $FILES | tar -x -C "$TRUSTED"
+            echo "provenance=TRUSTED_BASE" >> "$GITHUB_OUTPUT"
+          else
+            git archive "$HEAD_SHA" $FILES | tar -x -C "$TRUSTED"
+            echo "provenance=UNTRUSTED_TOOL_SOURCE" >> "$GITHUB_OUTPUT"
+          fi
+          echo "dir=$TRUSTED" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true
+        with:
+          name: ci-v5-verdict-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/in_verdict
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true
+        with:
+          name: ci-v5-v4gate-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/in_v4
+      - name: Compare (data only) and write the job summary
+        env:
+          TOOLS_DIR: ${{ steps.tools.outputs.dir }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/in_verdict" "$RUNNER_TEMP/in_v4"
+          python -I "$TOOLS_DIR/tools/ci_v5_shadow.py" compare --head-sha "$HEAD_SHA" --verdict-dir "$RUNNER_TEMP/in_verdict" \
+            --v4-dir "$RUNNER_TEMP/in_v4" --out-dir "$RUNNER_TEMP/ci_v5_out" --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

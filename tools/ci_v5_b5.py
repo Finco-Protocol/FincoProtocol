@@ -18,6 +18,7 @@ import xml.etree.ElementTree as ET
 
 SCHEMA = "FINCO_CI_V5_B5_REPORT_V1"
 STATUSES = ("PASS", "FAIL", "NOT_SELECTED", "SKIPPED", "CANCELLED", "UNKNOWN")
+TRUSTED_LANE = "TRUSTED_BASE"              # the only lane whose JUnit attestation is accepted: a PR-head lane could write any file it likes
 
 
 def load_b3(path):
@@ -49,9 +50,9 @@ def junit_evidence(junit_paths, attestation_path, head_sha, known_modules=()):
             att = None
     digests = sorted(_sha256(p) for p in junit_paths)
     bound = (isinstance(att, dict) and att.get("kind") == "hosted_run" and att.get("sha") == head_sha and att.get("run_id")
-             and sorted(att.get("junit_sha256", [])) == digests)
+             and att.get("lane") == TRUSTED_LANE and sorted(att.get("junit_sha256", [])) == digests)
     if not bound:
-        return "UNVERIFIED_INPUT", "JUnit is not SHA-bound by a matching attestation (sha + junit digests); statuses and seconds withheld", {}
+        return "UNVERIFIED_INPUT", "JUnit is not bound by a matching attestation from a trusted lane (lane + sha + junit digests); statuses and seconds withheld", {}
     known, statuses = set(known_modules), {}
     for p in junit_paths:
         for case in ET.parse(p).getroot().iter("testcase"):
@@ -101,6 +102,7 @@ def build(root, base_sha, head_sha, b3_path, plan=None, junit=(), attestation=No
     return {"schema": SCHEMA, "label": "WARN_ONLY", "status": "OK", "head_sha": head_sha, "head_tree": raw["head_tree"], "base_sha": base_sha,
             "head_binding": raw["head_binding"], "plan_provenance": raw["plan_provenance"], "junit": {"label": label, "reason": reason},
             "node_delta_kind": "AST_FUNCTION_DELTA (not collected pytest node ids; exact ids need a SHA-bound --collect-only of both trees)",
+            "collected_nodes": {"status": "UNAVAILABLE", "reason": "no SHA-bound --collect-only of both trees: file/function deltas above are NOT collected node counts"},
             "modules": sorted(mods, key=lambda m: (m["change"], m["path"])),
             "admission_metadata": raw["admission_metadata"], "duplicate_candidates": raw["duplicate_candidates"],
             "duplicate_note": "CANDIDATES only (identical normalized AST body); never a finding, never automatic",
