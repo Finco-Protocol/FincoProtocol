@@ -206,7 +206,7 @@
    "path": "tests/test_ci_v5_foundation.py"
   },
   {
-   "blob": "70e152040eae186d716ddca2e51e6b14b4fe2892",
+   "blob": "fc4675416187017bd19543ece4a7145a5c4d4556",
    "class": "X",
    "mode": "100644",
    "op": "add",
@@ -311,6 +311,6 @@
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "fb552b8f490ad55da4512675de21b9eb35aeafb66ff6eb3cae0e56fefcbce337",
+ "result_inventory_sha256": "41735cd6918568fb026d3b20d2ce14f36dc7857e819332b60fafef83f2c26699",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
