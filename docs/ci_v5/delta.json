@@ -1,0 +1,42 @@
+{
+ "changes": [
+  {
+   "blob": "40c16a73e480595b143417afc68932894cd1cb82",
+   "mode": "100644",
+   "op": "add",
+   "path": ".github/workflows/ci_v5_shadow.yml"
+  },
+  {
+   "blob": "15444a33302b5a853c911895efc14263e64f0442",
+   "mode": "100644",
+   "op": "add",
+   "path": "tests/test_ci_v5_foundation.py"
+  },
+  {
+   "blob": "008c3c6bb579d3051d2b155ded50c0651c77db81",
+   "mode": "100644",
+   "op": "add",
+   "path": "tools/ci_v5_b5.py"
+  },
+  {
+   "blob": "1ef6bf5a842f1d855831d2c8ed22f2df084a46b0",
+   "mode": "100644",
+   "op": "add",
+   "path": "tools/ci_v5_candidate.py"
+  },
+  {
+   "blob": "f7a0607b02779b13cd1899f42c843fd1b00792e5",
+   "mode": "100644",
+   "op": "add",
+   "path": "tools/ci_v5_epoch.py"
+  },
+  {
+   "blob": "39f21b61e080e58a7462d8b1fbb48963d45797e9",
+   "mode": "100644",
+   "op": "add",
+   "path": "tools/ci_v5_shadow.py"
+  }
+ ],
+ "epoch_entries_sha256": "22ba7f9c4b0abd2951b033089e6d432771d9a161011e42b4f9849897575a6e3e",
+ "schema": "FINCO_CI_V5_DELTA_V1"
+}
