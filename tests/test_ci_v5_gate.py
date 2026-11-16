@@ -131,8 +131,7 @@ def test_signed_head_with_real_ssh_signatures_where_the_tool_exists(tmp_path):
     assert SH.verify_signed_head(str(repo), foreign, allowed)[0] == "AUTHORIZATION_BLOCKED"
     unsigned = commit("owner", "unsigned", sign=False)
     assert SH.verify_signed_head(str(repo), unsigned, allowed)[0] == "AUTHORIZATION_BLOCKED"                              # unsigned
-    run("git", "reset", "-q", "--soft", "HEAD~3", cwd=repo)                                                                # forge: re-commit the same content, unsigned
-    forged = commit("owner", "owner signed approval", sign=False)
+    forged = run("git", "commit-tree", good + "^{tree}", "-m", "owner signed approval", cwd=repo)                         # forge: the same tree and message, but unsigned
     assert forged != good and SH.verify_signed_head(str(repo), forged, allowed)[0] == "AUTHORIZATION_BLOCKED"              # the signature binds the exact commit
 
 
