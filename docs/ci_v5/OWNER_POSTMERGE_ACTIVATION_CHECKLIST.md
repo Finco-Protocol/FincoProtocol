@@ -36,7 +36,7 @@ Only after step 0's FULL condition: `python tools/ci_v5_candidate.py candidate -
 
 ## 4. Add the gate to the required checks — ADDITIVE ONLY, V4 untouched
 
-Settings → Branches → `main` → Require status checks to pass → add **`V5 gate (trusted base)`** (the job name; it only appears after the gate has run once on a PR). Keep every existing required check. Also confirm:
+Settings → Branches → `main` → Require status checks to pass → add **`V5 gate (trusted base)`** (the job name in `.github/workflows/ci_v5_gate.yml`; it only appears after the gate has run once on a PR; exactly ONE job in the repository produces this name, so no skipped duplicate can satisfy the requirement). Keep every existing required check. Also confirm:
 - [ ] "Require branches to be up to date before merging" ON (strict)
 - [ ] "Do not allow bypassing the above settings" / "Include administrators" ON; no bypass actors in rulesets
 - [ ] "Require review from Code Owners" ON; "Dismiss stale pull request approvals when new commits are pushed" ON; "Require approval of the most recent reviewable push" ON; ≥ 1 approving review
@@ -55,7 +55,7 @@ Only when steps 2–5 all have their evidence may anyone write `DUAL_REQUIRED_AC
 
 ## 6. Rollback (owner approval needed; V4 stays in force)
 
-Remove only `V5 gate (trusted base)` from the required checks (Settings → Branches → `main`), or delete the `gate` job / the whole `ci_v5_shadow.yml`. Do not rewrite accepted `main`; the epoch history stays. Evidence: PRs merge again under the six V4 checks alone.
+Remove only `V5 gate (trusted base)` from the required checks (Settings → Branches → `main`), or delete `.github/workflows/ci_v5_gate.yml`. Do not rewrite accepted `main`; the epoch history stays. Evidence: PRs merge again under the six V4 checks alone.
 
 ## Known residual risks
 

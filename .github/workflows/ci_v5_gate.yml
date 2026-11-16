@@ -1,0 +1,85 @@
+# CI V5 GATE - the production-candidate V5 check (NOT yet required by any GitHub setting; a green run of it is not evidence of enforcement).
+# Its OWN workflow file, `pull_request_target` ONLY. Reasons (each is a security property, asserted by tests/test_ci_v5_gate.py):
+#   * for `pull_request_target` GitHub reads this file from the PROTECTED BASE branch, not from the pull request, so a PR cannot rewrite the gate that judges it;
+#   * a workflow that ALSO listed `pull_request` would create a SKIPPED check run with the SAME NAME on every PR event, and a skipped check counts as passing for a
+#     required status check: the gate's name must be produced by exactly one event;
+#   * the head is never checked out or executed: the job checks out the BASE, fetches the PR head as Git OBJECTS ONLY, has read-only permissions and no secrets, and
+#     reads reviews and check runs itself from the API. It blocks unless integrity, an independent authorization at the exact head and (for a semantic deferral) the same
+#     head's V4 checks all hold. After approving, re-run this job (reviews are read when it runs).
+# The owner adds the check name `V5 gate (trusted base)` to the required checks ONLY after this file is on the protected branch (docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md).
+# Delete this single file to remove the gate; V4 and the observational shadow lane (ci_v5_shadow.yml) are untouched.
+name: CI V5 gate (trusted base)
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-v5-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  gate:
+    name: V5 gate (trusted base)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Fetch the PR head as Git OBJECTS ONLY and resolve the trusted tip (nothing from the head is checked out or executed)
+        id: refs
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+          TIP="$(git rev-parse --verify refs/remotes/origin/main^{commit})"
+          # the tools are this checkout (the protected base); they are trusted only if it is accepted history of the tip and already has the V2 evaluator
+          if git merge-base --is-ancestor HEAD "$TIP" && grep -q "FINCO_CI_V5_DELTA_V2" tools/ci_v5_epoch.py; then PROVENANCE=TRUSTED_BASE; else PROVENANCE=UNTRUSTED_TOOL_SOURCE; fi
+          echo "tip=$TIP" >> "$GITHUB_OUTPUT"
+          echo "provenance=$PROVENANCE" >> "$GITHUB_OUTPUT"
+      - name: Gate (reviews and check runs are read by this trusted job; a V4-deferral waits, bounded, for the same head's V4 checks)
+        env:
+          TIP: ${{ steps.refs.outputs.tip }}
+          PROVENANCE: ${{ steps.refs.outputs.provenance }}
+        run: |
+          set -uo pipefail
+          OUT="$RUNNER_TEMP/ci_v5_gate"
+          mkdir -p "$OUT"
+          fetch() {
+            gh api --paginate --jq '.[]' "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews" | jq -s '.' > "$OUT/reviews.json" || echo '[]' > "$OUT/reviews.json"
+            gh api --paginate --jq '.check_runs[]' "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" | jq -s '.' > "$OUT/check_runs.json" || echo '[]' > "$OUT/check_runs.json"
+          }
+          run_gate() {
+            python -I tools/ci_v5_shadow.py gate --repo . --head-sha "$HEAD_SHA" --head-ref refs/remotes/pr/head --base-tip-sha "$TIP" --pr-author "$PR_AUTHOR" \
+              --reviews-json "$OUT/reviews.json" --check-runs-json "$OUT/check_runs.json" --tools-provenance "$PROVENANCE" --out-dir "$OUT" --summary "$GITHUB_STEP_SUMMARY"
+          }
+          DEADLINE=$(( $(date +%s) + 5400 ))
+          fetch
+          run_gate; RC=$?
+          while [ "$RC" -ne 0 ] && grep -q "DEFERRAL_NEEDS_V4_VERIFIED_AT_THE_SAME_HEAD" "$OUT/gate_decision.json" && [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            sleep 120
+            fetch
+            run_gate; RC=$?
+          done
+          exit "$RC"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-v5-gate-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ci_v5_gate
+          if-no-files-found: warn
+          retention-days: 14

@@ -222,16 +222,15 @@ def test_b5_report_is_honest_about_missing_plan_junit_and_collected_nodes(world,
 
 
 # --------------------------------------------------------------------------------------------------------------------------------- workflow / artifacts
-def test_shadow_jobs_are_split_by_trust_boundary_and_least_privilege():
-    """The three SHADOW jobs (the PR-editable ``pull_request`` event). The privileged ``gate`` job has its own structural test in tests/test_ci_v5_gate.py."""
+def test_shadow_workflow_is_split_by_trust_boundary_and_least_privilege():
     import yaml
     text = (ROOT / ".github/workflows/ci_v5_shadow.yml").read_text()
     wf = yaml.safe_load(text)
     on = wf.get("on", wf.get(True))
-    assert wf["permissions"] == {"contents": "read"} and list(wf["jobs"]) == ["verdict", "v4-comparison", "compare", "gate"] and on["pull_request"]["branches"] == ["main"]
-    for banned in ("secrets.", "continue-on-error: false", "workflow_run", "pull-requests: write", "contents: write", "workflow_dispatch"):
+    assert wf["permissions"] == {"contents": "read"} and list(wf["jobs"]) == ["verdict", "v4-comparison", "compare"] and on["pull_request"]["branches"] == ["main"]
+    for banned in ("pull_request_target", "secrets.", "continue-on-error: false", "workflow_run", "pull-requests: write", "contents: write"):
         assert banned not in text, banned
-    jobs = {k: v for k, v in wf["jobs"].items() if k != "gate"}
+    jobs = wf["jobs"]
     runs = {k: "\n".join(s.get("run", "") for s in j["steps"]) for k, j in jobs.items()}
     # job 1 (the verdict) and job 3 (compare): trusted-base tools by ``git archive``, run OUTSIDE the checkout with isolated python; nothing from the checkout is run
     for k in ("verdict", "compare"):
@@ -239,14 +238,13 @@ def test_shadow_jobs_are_split_by_trust_boundary_and_least_privilege():
         assert "python tools/" not in runs[k] and "python -m" not in runs[k] and "pytest" not in runs[k] and "pip " not in runs[k] and "npm " not in runs[k]
         assert "origin/main" in runs[k] and "merge-base" not in runs[k], "the base is the protected tip, never a caller-supplied merge-base"
     assert "FINCO_CI_V5_DELTA_V2" in runs["verdict"] and "UNTRUSTED_TOOL_SOURCE" in runs["verdict"] and "TRUSTED_BASE" in runs["verdict"]
-    # job 2 is the ONLY shadow job that executes PR-head code, and it publishes only its own artifact
+    # job 2 is the ONLY job that executes PR-head code, and it publishes only its own artifact
     assert "python tools/ci_v5_shadow.py v4" in runs["v4-comparison"]
-    assert jobs["compare"]["needs"] == ["verdict", "v4-comparison"] and "always()" in jobs["compare"]["if"]
-    assert not any("${{" in s.get("run", "") for j in wf["jobs"].values() for s in j["steps"]), "event/context values reach scripts only through env:"
-    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for j in wf["jobs"].values() for s in j["steps"] if "uses" in s))        # actions pinned by full SHA
-    names = {s["with"]["name"] for j in wf["jobs"].values() for s in j["steps"] if "uses" in s and "artifact" in s["uses"]}
-    assert names == {"ci-v5-verdict-${{ github.event.pull_request.head.sha }}", "ci-v5-v4gate-${{ github.event.pull_request.head.sha }}", "ci-v5-shadow-${{ github.event.pull_request.head.sha }}",
-                     "ci-v5-gate-${{ github.event.pull_request.head.sha }}"}
+    assert jobs["compare"]["needs"] == ["verdict", "v4-comparison"] and jobs["compare"]["if"] == "always()"
+    assert not any("${{" in s.get("run", "") for j in jobs.values() for s in j["steps"]), "event/context values reach scripts only through env:"
+    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for j in jobs.values() for s in j["steps"] if "uses" in s))        # actions pinned by full SHA
+    names = {s["with"]["name"] for j in jobs.values() for s in j["steps"] if "uses" in s and "artifact" in s["uses"]}
+    assert names == {"ci-v5-verdict-${{ github.event.pull_request.head.sha }}", "ci-v5-v4gate-${{ github.event.pull_request.head.sha }}", "ci-v5-shadow-${{ github.event.pull_request.head.sha }}"}
 
 
 def test_repository_artifacts_make_no_authority_claim():

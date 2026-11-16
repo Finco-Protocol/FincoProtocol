@@ -469,16 +469,20 @@ def test_repository_epoch_checkpoint_is_a_truthful_v2_snapshot_with_an_honest_fu
 # ---------------------------------------------------------------------------------------------------------------------------------- workflow structure
 def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head():
     import yaml
-    text = (ROOT / ".github/workflows/ci_v5_shadow.yml").read_text()
+    path = ROOT / ".github/workflows/ci_v5_gate.yml"
+    text = path.read_text()
     wf = yaml.safe_load(text)
     on = wf.get("on", wf.get(True))
     jobs = wf["jobs"]
-    assert set(on) == {"pull_request", "pull_request_target"} and on["pull_request_target"]["branches"] == ["main"] and list(jobs) == ["verdict", "v4-comparison", "compare", "gate"]
+    # its OWN file, ONE event: no `pull_request` => no skipped same-named check run that a required-status rule would count as passing
+    assert set(on) == {"pull_request_target"} and on["pull_request_target"]["branches"] == ["main"] and list(jobs) == ["gate"]
     assert on["pull_request_target"]["types"] == ["opened", "synchronize", "reopened", "ready_for_review"]
-    for k in ("verdict", "v4-comparison", "compare"):
-        assert "github.event_name == 'pull_request'" in jobs[k]["if"], k                                              # the PR-editable jobs never run for the privileged event
+    shadow = yaml.safe_load((ROOT / ".github/workflows/ci_v5_shadow.yml").read_text())
+    assert set(shadow.get("on", shadow.get(True))) == {"pull_request"} and "gate" not in shadow["jobs"]
+    names = [j.get("name") for f in (wf, shadow) for j in f["jobs"].values()]
+    assert names.count(POLICY.GATE_CHECK_NAME) == 1, "the required-check name is produced by exactly one job in the whole repository's V5 workflows"
     gate = jobs["gate"]
-    assert gate["if"] == "github.event_name == 'pull_request_target'" and gate["name"] == POLICY.GATE_CHECK_NAME
+    assert "if" not in gate and gate["name"] == POLICY.GATE_CHECK_NAME
     assert gate["permissions"] == {"contents": "read", "pull-requests": "read", "checks": "read"} and wf["permissions"] == {"contents": "read"}
     steps = gate["steps"]
     checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout"))
@@ -493,6 +497,6 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert env["GH_TOKEN"] == "${{ github.token }}" and not any(w in text for w in ("secrets.", "workflow_dispatch", "contents: write", "pull-requests: write", "pull_request_review", "workflow_run:"))
     for forbidden in ("github.event.pull_request.title", "github.event.pull_request.body", "github.event.pull_request.head.ref", "github.head_ref", "head.repo", "comment.body"):
         assert forbidden not in text, forbidden
-    assert wf["concurrency"]["group"] == "ci-v5-${{ github.event_name }}-${{ github.event.pull_request.number }}"
-    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for j in jobs.values() for s in j["steps"] if "uses" in s))
+    assert wf["concurrency"]["group"] == "ci-v5-gate-${{ github.event.pull_request.number }}"
+    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for s in steps if "uses" in s))
     assert "FINCO_CI_V5_DELTA_V2" in runs and "TRUSTED_BASE" in runs and "UNTRUSTED_TOOL_SOURCE" in runs
