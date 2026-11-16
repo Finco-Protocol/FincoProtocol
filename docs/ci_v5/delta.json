@@ -213,7 +213,7 @@
    "path": "tests/test_ci_v5_gate.py"
   },
   {
-   "blob": "0ade9ba166a245ba2731cbb3f1b66fac4e4038bc",
+   "blob": "679f53a44715e28e0629bb8f67b4fb67fbb66def",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -311,6 +311,6 @@
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "0003a3f321e6f2329c0994fecc9e78a69fe8c432680d2054ed234cdb62331254",
+ "result_inventory_sha256": "60e9481c607211646b8ba0cf5f2ea71c7b05e195014a7d87bda10ac10d1f4f3f",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
