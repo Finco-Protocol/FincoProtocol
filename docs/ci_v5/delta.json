@@ -73,7 +73,7 @@
    "path": "tests/c06_cost_workspace_scope.py"
   },
   {
-   "blob": "7a1734f8b0618e67013be92cc013ec029a176928",
+   "blob": "64f6f5d0847b8a8144ff51585aba3834159354ec",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -143,7 +143,7 @@
    "path": "tests/test_bess02_scope.py"
   },
   {
-   "blob": "8fb24b060bc6d2c7fcfa54d5a5d59616d91f5f13",
+   "blob": "39e3b224eaf89ea41e86d68e9c32026be498a399",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -157,28 +157,28 @@
    "path": "tests/test_ci_v3_outcome_reconciliation.py"
   },
   {
-   "blob": "7c7343f23a4990e08254826c922102d39580727f",
+   "blob": "0b1f9ae88b5d566534f924002012203c88da88f3",
    "class": "S",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v4_full_recovery_scope.py"
   },
   {
-   "blob": "b8a09b550764ee68fbf88c66852a9784c33121e1",
+   "blob": "ea7a9fd25bd5ec09403b6a10b3b517a74b61217d",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_b1_scope.py"
   },
   {
-   "blob": "9c81ea3dccdb007137295361c8a13ae6ba0764ab",
+   "blob": "1d6ab94134446c62fafa88dee3cdcfbce0ff5c9f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_b2_scope.py"
   },
   {
-   "blob": "6abc5b7a52c43fa96905209c184a9c3807233fdc",
+   "blob": "e728bbeb18e699ef0bb749773c2ad915d6ce09bc",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -192,21 +192,28 @@
    "path": "tests/test_ci_v4_lean_tamper_matrix.py"
   },
   {
-   "blob": "582b6e11f73b71929a25e71dc856392a61dc87bd",
+   "blob": "b32867deb5d5fc4d7afe42feda13aa5ea5bd1e04",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_perf_scope.py"
   },
   {
-   "blob": "4c78055fdcf1955d7bcb5f4267d99a86dca85f15",
+   "blob": "adce92f377f581210072964ae2cbfd094e582a4d",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "335ccd4d086b2888a2824dd91bd51728cbe22241",
+   "blob": "ca658542a5c6db1603dcf32d878b072c5cb51c99",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/test_ci_v5_gate_scope.py"
+  },
+  {
+   "blob": "40bac0377a36d3b14fd8be53a83fababae39684e",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -220,35 +227,42 @@
    "path": "tests/test_f03_financing_scope.py"
   },
   {
-   "blob": "47ea587278ee7f24bcf1280bcf349757f506ec7e",
+   "blob": "2868f26f5efe970bc670d9555e6388685495267b",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_f04_financing_scope.py"
   },
   {
-   "blob": "089aa91462d09911d653eb3b650309d2f9308885",
+   "blob": "8ec9ad3f2cc0c0c8827947099d301c5266fac2cc",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/test_post432_l01_l02_scope.py"
+  },
+  {
+   "blob": "d869c7a8c221efc134fd6585f917f3179dcbb339",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r02_ppa_ux_scope.py"
   },
   {
-   "blob": "d5f5c0c1735bcf44c26da40d93ebba815feba613",
+   "blob": "bd96d397472204936679d747758f2f8e6f3982d1",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r03_ppa_scope.py"
   },
   {
-   "blob": "fad6081380da343984d6ac50b784affcf95b61a2",
+   "blob": "3d5d36420589b74becd8bd8d8e7896d9c162b945",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r04_ppa_scope.py"
   },
   {
-   "blob": "d109fdbb663b4883fa0c1ed5750ebea8df11917f",
+   "blob": "3926a2d1363e6ae4776de3fb885e60f57b532ddf",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -262,6 +276,6 @@
    "path": "tests/u1_scope.py"
   }
  ],
- "result_inventory_sha256": "02f9545df2e2b0e539cf9c3bcd331816d49d22f51d66f63bde5d9bef0797d72d",
+ "result_inventory_sha256": "34709d6c5081c26c1a428ca819c488703f3321eaf99d635dbab935fecc872fa8",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
