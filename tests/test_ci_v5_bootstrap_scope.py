@@ -134,8 +134,11 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    from tests import ci_v5_gate_scope as G6
     for p in T.HANDOFFS:
-        if H5.signature_ok() and p in H5.HANDOFFS:                       # the reviewed V5-2B successor further substitutes this shared path (literal, pin-exact)
+        if G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor substitutes the final state of this shared path (literal, pin-exact)
+            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)
+        elif H5.signature_ok() and p in H5.HANDOFFS:                     # the reviewed V5-2B successor further substitutes this shared path (literal, pin-exact)
             assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)
         else:
             assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)

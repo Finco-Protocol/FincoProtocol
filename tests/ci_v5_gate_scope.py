@@ -989,6 +989,17 @@ HANDOFFS = {
             '        ("v5_2b_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
             '        ("v5_3_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n')),
         ((
+            '    for p in T.HANDOFFS:\n'
+            '        if H5.signature_ok() and p in H5.HANDOFFS:                       # the reviewed V5-2B successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)\n'),
+         (
+            '    from tests import ci_v5_gate_scope as G6\n'
+            '    for p in T.HANDOFFS:\n'
+            '        if G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor substitutes the final state of this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+            '        elif H5.signature_ok() and p in H5.HANDOFFS:                     # the reviewed V5-2B successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)\n')),
+        ((
             'def test_the_registry_tail_is_one_finite_sequence_and_v5_2b_is_terminal(monkeypatch):\n'
             '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B is the ONLY accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""\n'
             '    exact = C.COHORT_MODULES\n'
