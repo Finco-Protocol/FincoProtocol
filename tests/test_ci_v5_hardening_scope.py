@@ -149,7 +149,7 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 def test_registered_exactly_once_after_the_v5_bootstrap_with_only_the_reviewed_v5_3_behind_it():
     assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1
     assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE module gained after this cohort; no hardcoded total
-    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope")
+    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
     assert T._next() is G6 and T.SUCCESSOR == G6.__name__
     assert V5.SUCCESSOR == T.__name__ and V5._next() is T and B3.SUCCESSOR == V5.__name__ and B3._next() is V5
     assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1
@@ -180,7 +180,7 @@ def test_current_maps_move_only_their_registry_and_u1_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_3_gate():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_hardening_scope") == 1
+    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_hardening_scope") == 1
 
 
 # -------------------------------------------------------------------------------------------------------------- tamper (committed refs)
@@ -210,11 +210,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')"
+    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')"
     for name, fn in (
-        ("duplicate_h5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')")),
+        ("duplicate_h5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_v5_h5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_gate_scope')")),
+        ("swapped_v5_h5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
         ("h5_missing", lambda b: b.replace(b", 'tests.ci_v5_hardening_scope'", b"")),
         ("g6_missing", lambda b: b.replace(b", 'tests.ci_v5_gate_scope'", b"")),
         ("v5_missing", lambda b: b.replace(b", 'tests.ci_v5_bootstrap_scope'", b"")),
@@ -344,7 +344,7 @@ def test_the_registry_tail_is_one_finite_sequence_and_v5_3_is_terminal(monkeypat
     """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 is the ONLY accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""
     exact = C.COHORT_MODULES
     assert exact[-7:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",
-                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope")
+                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
     layers = (K, B1, B2, B3, V5, T, G6)
     with C.call_scope():
         assert all(m.signature_ok() for m in layers)

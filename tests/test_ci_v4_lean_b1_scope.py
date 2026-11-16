@@ -143,7 +143,7 @@ def test_registered_exactly_once_as_the_terminal_cohort_after_c06():
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope"),
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"),
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"),
-                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope")) and C.COHORT_MODULES.count(T.__name__) == 1
+                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) and C.COHORT_MODULES.count(T.__name__) == 1
     assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"
     assert K.SUCCESSOR == T.__name__ and K._next() is T
 
@@ -168,7 +168,7 @@ def test_current_maps_move_only_their_registry_and_u1_discovery_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-7:] if m not in ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope")) == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
+    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-7:] if m not in ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1
 
 
@@ -189,11 +189,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')"
+    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')")),
+        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
         ("b1_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b1_scope'", b"")),
         ("c06_missing", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', ", b"")),
         ("r04_removed", lambda b: b.replace(b"'tests.r04_ppa_scope', ", b"")),
