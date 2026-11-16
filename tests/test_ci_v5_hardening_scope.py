@@ -120,7 +120,7 @@ def test_tools_and_github_are_admitted_only_as_the_literal_bootstrap_ci_paths():
 
 
 def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte_equal():
-    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST}      # the checkpoint is owned by the V5-3 gate cohort (it exists now), never by the V5-2B cohort
+    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST} and not (ROOT / TRUST_ANCHOR).exists()
     assert SHADOW in T.REPLACED and SHADOW not in T.FROZEN
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     for path in T.FROZEN:

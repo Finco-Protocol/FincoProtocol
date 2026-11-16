@@ -120,7 +120,7 @@ def test_only_the_literal_pr_files_enter_tools_and_github_and_nothing_else_is_wi
 
 def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte_equal():
     """The bridge is not activation: the trust anchor is never owned or present; the V4 selector / policy / schedule / required workflows / weights are frozen."""
-    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST}      # the checkpoint is owned by the V5-3 gate cohort (it exists now), never by the bootstrap
+    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST} and not (ROOT / TRUST_ANCHOR).exists()
     assert CANDIDATE in T.NEW and (ROOT / CANDIDATE).exists()
     assert SHADOW in T.NEW and SHADOW not in T.FROZEN                         # the ONE new workflow is non-required; no second workflow is owned
     assert len([p for p in T.NEW if p.startswith(".github/workflows/")]) == 1

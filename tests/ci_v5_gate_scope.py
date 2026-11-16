@@ -1,10 +1,10 @@
 """CI V5-3 gate exact-source successor (after the V5-2B cohort): ONE finite, terminal exact-source ownership successor (2026-11-16).
 
 BASE is accepted main (``16da701c``, merged #454). V4 requires every changed path to be owned by a registered cohort. The V5-2C + V5-3 PR adds the owner-reviewed
-trust checkpoint ``docs/ci_v5/epoch.json`` (a V2 ALL_TRACKED snapshot of that base with an honest, BLOCKED FULL witness), the owner checklist and the gate tests, and rewrites
+gate workflow (its own ``pull_request_target`` file), the owner checklist and the gate tests, and rewrites
 eight files the V5 cohorts own (the evaluator + trusted policy, the candidate generator, the shadow/gate orchestrator, the workflow that gains the ``pull_request_target`` gate job,
 the two V5 test modules, the README and the explicit delta). It is NOT V5 activation: it makes no check required, edits no branch protection, makes no V5 verdict authoritative
-(the epoch's FULL witness is blocked, the approver and signer lists are empty), changes no V4 selector, scheduler, aggregator, required workflow, policy, weight, node split,
+(NO trust anchor ships: ``docs/ci_v5/epoch.json`` is deliberately absent, the approver and signer lists are empty), changes no V4 selector, scheduler, aggregator, required workflow, policy, weight, node split,
 financial or UI byte, and selects, deletes, skips or moves no test.
 
 Every changed byte, Git mode and the immutable BASE tree are bound to this module's manifest. The shared governance paths this successor really changes (the C06, B1, B2 and B3
@@ -84,7 +84,6 @@ BASE_COHORTS = (
 NEW = frozenset((
     '.github/workflows/ci_v5_gate.yml',
     'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
-    'docs/ci_v5/epoch.json',
     'tests/ci_v5_gate_scope.py',
     'tests/test_ci_v5_gate.py',
     'tests/test_ci_v5_gate_scope.py',
@@ -963,10 +962,6 @@ HANDOFFS = {
     ],
     'tests/test_ci_v5_bootstrap_scope.py': [
         ((
-            '    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST} and not (ROOT / TRUST_ANCHOR).exists()\n'),
-         (
-            '    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST}      # the checkpoint is owned by the V5-3 gate cohort (it exists now), never by the bootstrap\n')),
-        ((
             '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\n'
             '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE module gained after the bootstrap; no hardcoded total\n'
             '    assert C.COHORT_MODULES[-3:] == ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope")\n'),
@@ -1029,10 +1024,6 @@ HANDOFFS = {
          (
             'from tests import ci_v5_gate_scope as G6\n'
             'from tests import ci_v5_hardening_scope as T\n')),
-        ((
-            '    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST} and not (ROOT / TRUST_ANCHOR).exists()\n'),
-         (
-            '    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST}      # the checkpoint is owned by the V5-3 gate cohort (it exists now), never by the V5-2B cohort\n')),
         ((
             '    assert "SHADOW ONLY" in text and "PROMOTION_REQUIRES_OWNER" in text and "no `epoch.json` ships here" in text.replace("**", "").lower()'),
          (

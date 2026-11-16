@@ -31,7 +31,7 @@ OWN_TEST = "tests/test_ci_v5_gate_scope.py"
 TRUST_ANCHOR = "docs/ci_v5/epoch.json"
 DELTA = "docs/ci_v5/delta.json"
 SHADOW = ".github/workflows/ci_v5_shadow.yml"
-NEW_FILES = frozenset((MODULE, OWN_TEST, "tests/test_ci_v5_gate.py", "docs/ci_v5/epoch.json", "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md", ".github/workflows/ci_v5_gate.yml"))
+NEW_FILES = frozenset((MODULE, OWN_TEST, "tests/test_ci_v5_gate.py", "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md", ".github/workflows/ci_v5_gate.yml"))
 REPLACED_FILES = frozenset(("docs/ci_v5/README.md", "docs/ci_v5/delta.json", "tests/test_ci_v5_foundation.py", "tests/test_ci_v5_hardening.py",
                             "tools/ci_v5_candidate.py", "tools/ci_v5_epoch.py", "tools/ci_v5_shadow.py"))
 
@@ -120,9 +120,7 @@ def test_tools_and_github_are_admitted_only_as_literal_bootstrap_ci_paths_and_no
 
 
 def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte_equal():
-    assert TRUST_ANCHOR in T.NEW and (ROOT / TRUST_ANCHOR).exists() and TRUST_ANCHOR not in H5.OWNED_PATHS | {H5.MANIFEST}      # the checkpoint is owned HERE, as a NON-authoritative witness-blocked epoch
-    import json as _json
-    assert _json.loads((ROOT / TRUST_ANCHOR).read_bytes())["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED"
+    assert TRUST_ANCHOR not in T.OWNED_PATHS | {T.MANIFEST} and not (ROOT / TRUST_ANCHOR).exists()
     assert SHADOW not in T.OWNED_PATHS and SHADOW not in T.FROZEN      # the shadow workflow is unchanged by this PR
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     for path in T.FROZEN:
@@ -275,10 +273,10 @@ def test_mode_symlink_deletion_rename_and_owned_file_removal_are_rejected(clone)
 
 
 def test_added_or_unowned_paths_are_rejected_and_the_trust_anchor_is_never_admitted(clone):
-    for path in ("tools/ci_v5_extra.py", ".github/workflows/ci_v5_extra.yml", "docs/ci_v5/epoch2.json", "docs/ci_v5/gate_3/EXTRA.md", "app/ci_v5_extra.py",
+    for path in ("tools/ci_v5_extra.py", ".github/workflows/ci_v5_extra.yml", TRUST_ANCHOR, "docs/ci_v5/gate_3/EXTRA.md", "app/ci_v5_extra.py",
                  "tests/test_ci_v5_unowned.py", "tools/ci_v4_extra.py"):
         assert _rejected_by_closure(clone, _variant(clone, add=(path,))), path
-    assert T.allowed_path(TRUST_ANCHOR) and not T.allowed_path("docs/ci_v5/epoch2.json") and not T.allowed_path("tools/ci_v5_extra.py") and not T.allowed_path(".github/workflows/ci_v5_extra.yml")
+    assert not T.allowed_path(TRUST_ANCHOR) and not T.allowed_path("tools/ci_v5_extra.py") and not T.allowed_path(".github/workflows/ci_v5_extra.yml")
 
 
 def test_an_incorrect_delta_is_rejected(clone):
@@ -312,7 +310,7 @@ def test_an_untracked_file_in_the_worktree_is_rejected_and_the_state_restores(cl
 
 
 def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_paths(clone):
-    for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v5/epoch2.json"):
+    for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json", TRUST_ANCHOR):
         assert not T.allowed_path(p)
     assert T.allowed_path(DELTA) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
     bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "72b42b2b', b'"base_tree": "02b42b2b', 1)})
