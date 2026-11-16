@@ -32,7 +32,7 @@ the head, no failure and no unknown. Everything else is `INTEGRITY_FAIL` or `UNK
 | `tests/test_ci_v5_foundation.py` | The A/B/A hostile matrix (synthetic repos): audit cases G1–G24, GA3, T1, T2a, T3c–e, T4a–k, T5b, W1–W11, S1b, R1–R8, A1–A4 + promotion attacks. |
 | `tests/test_ci_v5_hardening.py` | Lane separation, B5 / comparison vocabulary, generators, workflow structure. |
 | `docs/ci_v5/delta.json` | This PR's finite base-relative delta (exempt from the guard; bound by its own `result_inventory_sha256`). |
-| `docs/ci_v5/epoch.candidate.json` | Legacy V1 candidate: still readable, reported as `LEGACY_NARROW_GUARD`, never an approved FULL guard. **No `epoch.json` ships here.** |
+| `docs/ci_v5/epoch.candidate.json` | Legacy V1 candidate (epoch state `CANDIDATE_UNTRUSTED`): still readable, reported as `LEGACY_NARROW_GUARD`, never an approved FULL guard. **No `epoch.json` ships here.** |
 
 ## Delta V2
 

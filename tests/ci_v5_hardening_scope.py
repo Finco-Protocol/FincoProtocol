@@ -919,6 +919,12 @@ HANDOFFS = {
             '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5), "h5_duplicated": exact + (h5,), "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5),\n'
             '                "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "h5_before_c06": head + (h5, c06, b1, b2, b3, v5),\n'
             '                "c06_dropped": head + (b1, b2, b3, v5, h5), "b3_dropped": head + (c06, b1, b2, v5, h5), "b1_dropped": head + (c06, b2, b3, v5, h5), "v5_dropped": head + (c06, b1, b2, b3, h5)}\n')),
+        ((
+            '              edit(lambda d: d["source_blobs"].__setitem__(DELTA, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(CANDIDATE, "0" * 40)),\n'
+            '              edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(T.PREDECESSOR, "0" * 40)),\n'),
+         (
+            '              edit(lambda d: d["source_blobs"].__setitem__(CANDIDATE, "0" * 40)),      # DELTA and SHADOW are further pinned (and judged) by the V5-2B successor: their bootstrap-era pins are shadowed\n'
+            '              edit(lambda d: d["source_blobs"].__setitem__(T.PREDECESSOR, "0" * 40)),\n')),
     ],
     'tests/test_f03_financing_scope.py': [
         ((

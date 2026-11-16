@@ -253,8 +253,8 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
             return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
         return f
     forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(DELTA, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(CANDIDATE, "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(T.PREDECESSOR, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__(CANDIDATE, "0" * 40)),      # DELTA and SHADOW are further pinned (and judged) by the V5-2B successor: their bootstrap-era pins are shadowed
+              edit(lambda d: d["source_blobs"].__setitem__(T.PREDECESSOR, "0" * 40)),
               edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
               edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),
               edit(lambda d: d["source_blobs"].pop(OWN_TEST)), edit(lambda d: d["source_blobs"].__setitem__(TRUST_ANCHOR, "1" * 40)),
