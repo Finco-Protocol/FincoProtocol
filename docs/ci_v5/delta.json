@@ -274,15 +274,8 @@
    "mode": "100644",
    "op": "modify",
    "path": "tests/u1_scope.py"
-  },
-  {
-   "blob": "ade2cdbc9d337a6d5bde0f72f52cbf81d53d2604",
-   "class": "S",
-   "mode": "100644",
-   "op": "modify",
-   "path": "tests/wf03_lifecycle_scope.py"
   }
  ],
- "result_inventory_sha256": "a819dfbffcdde2351b7b1fc19c226fea323ecfc13de797255f03abcdd37421b9",
+ "result_inventory_sha256": "ac2527c0b599b57d19f0a462cd0b4f79a5209c9827625fb12a86c78f8e4a8cd8",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
