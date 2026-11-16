@@ -324,8 +324,8 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
-    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+    reg = T.effective_pins()[T.REGISTRY]                                              # the CURRENT registry pin (the FULL-recovery overlay wins); this cohort's own pin is superseded
+    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
     assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the accepted bootstrap-era registry blob is no longer current

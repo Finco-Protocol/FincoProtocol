@@ -314,7 +314,7 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
     for p in ("financial_engine/tax/engine.py", "app/v2/router.py", "tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json", TRUST_ANCHOR):
         assert not T.allowed_path(p)
     assert T.allowed_path(DELTA) and T.allowed_path(T.MANIFEST) and T.protected_blobs() == {}
-    bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "72b42b2b', b'"base_tree": "02b42b2b', 1)})
+    bad = _variant(clone, {T.MANIFEST: lambda b: b.replace(b'"base_tree": "48f3ded7', b'"base_tree": "08f3ded7', 1)})
     assert not T.allowed_path(DELTA, clone, bad)                       # with a false signature even an owned path confers no authority
 
 

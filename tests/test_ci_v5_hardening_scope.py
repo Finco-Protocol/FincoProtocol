@@ -135,7 +135,9 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     for p in T.HANDOFFS:
-        if G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor further substitutes this shared path (literal, pin-exact)
+        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)
+            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
+        elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor further substitutes this shared path (literal, pin-exact)
             assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)
         else:
             assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
@@ -325,8 +327,8 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = G6.manifest()["source_blobs"][T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor's pin; this cohort's own pin is superseded
-    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+    reg = T.effective_pins()[T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor's pin; this cohort's own pin is superseded
+    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and not V5.supersedes(T.REGISTRY, G6.manifest()["source_blobs"][T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
     assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the accepted bootstrap-era registry blob is no longer current

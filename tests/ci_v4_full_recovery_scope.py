@@ -1147,6 +1147,12 @@ HANDOFFS = {
             '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
             '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
             '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr)}\n')),
+        ((
+            '    reg = pins[T.REGISTRY]\n'
+            '    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes'),
+         (
+            "    reg = T.effective_pins()[T.REGISTRY]                                              # the CURRENT registry pin (the FULL-recovery overlay wins); this cohort's own pin is superseded\n"
+            '    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg) and B3.supersedes')),
     ],
     'tests/test_ci_v5_hardening_scope.py': [
         ((
@@ -1227,6 +1233,32 @@ HANDOFFS = {
             '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
             '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
             '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr)}\n')),
+        ((
+            '    for p in T.HANDOFFS:\n'
+            '        if G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+            '        else:\n'
+            '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+            '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+            '    for p in T.REPLACED:\n'
+            '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'),
+         (
+            '    for p in T.HANDOFFS:\n'
+            '        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+            '        elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+            '        else:\n'
+            '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+            '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+            '    for p in T.REPLACED:\n'
+            '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n')),
+        ((
+            '    reg = G6.manifest()["source_blobs"][T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor\'s pin; this cohort\'s own pin is superseded\n'
+            '    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg)'),
+         (
+            "    reg = T.effective_pins()[T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor's pin; this cohort's own pin is superseded\n"
+            '    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and not V5.supersedes(T.REGISTRY, G6.manifest()["source_blobs"][T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg)')),
     ],
     'tests/test_f03_financing_scope.py': [
         ((
