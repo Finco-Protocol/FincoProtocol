@@ -7,7 +7,7 @@
    "path": ".github/workflows/ci_v5_shadow.yml"
   },
   {
-   "blob": "15444a33302b5a853c911895efc14263e64f0442",
+   "blob": "ce62469be126bea0794fd10f5e51e8372b466624",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v5_foundation.py"
