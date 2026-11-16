@@ -50,7 +50,7 @@ def world(tmp_path_factory):
                       "README.md": "x\n", "tools/ci_gate.py": "GATE = 1\n", ".gitignore": "__pycache__/\n"}.items():
         r.write(rel, text)
     base = r.commit("accepted main")
-    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="h")
+    epoch = E.make_epoch(E.Git(r.path), base, epoch_id="h", full_run={"status": "PASS", "run_id": "1", "sha": base})
     r.write(E.TRUSTED_EPOCH_PATH, E.canonical(epoch).decode())
     tip = r.commit("promoted")
     r.write("app/main.py", "MAIN = 2\n")
@@ -76,6 +76,14 @@ def test_generators_are_pure_functions_of_git_objects_and_canonical(world, tmp_p
     assert CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(cand), "--full-run-id", "42"]) == 0
     epoch, problems = E.load_epoch(cand.read_bytes())
     assert epoch is not None and epoch["guard"]["mode"] == "ALL_TRACKED" and epoch["full_run"]["run_id"] == "42", problems
+    blocked = tmp_path / "blocked.json"
+    assert CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(blocked), "--full-run-blocked-reason", "TIMEOUT_19200S",
+                      "--full-run-last-observed", "43828509961"]) == 0
+    ep2, problems = E.load_epoch(blocked.read_bytes())
+    assert ep2 is not None and ep2["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED" and not E.epoch_full_provenance(ep2)[0], problems   # honest, never a pass
+    assert E.epoch_full_provenance(epoch)[0] and not E.epoch_full_provenance({**epoch, "full_run": {**epoch["full_run"], "sha": "0" * 40}})[0]
+    with pytest.raises(SystemExit):
+        CAND.main(["candidate", "--repo", str(r.path), "--commit", world["base"], "--output", str(blocked), "--full-run-id", "1", "--full-run-blocked-reason", "x"])
     for bad in ("HEAD", "main", "$(true)", ""):
         with pytest.raises(SystemExit):
             CAND.candidate(str(r.path), bad)
@@ -214,15 +222,16 @@ def test_b5_report_is_honest_about_missing_plan_junit_and_collected_nodes(world,
 
 
 # --------------------------------------------------------------------------------------------------------------------------------- workflow / artifacts
-def test_shadow_workflow_is_split_by_trust_boundary_and_least_privilege():
+def test_shadow_jobs_are_split_by_trust_boundary_and_least_privilege():
+    """The three SHADOW jobs (the PR-editable ``pull_request`` event). The privileged ``gate`` job has its own structural test in tests/test_ci_v5_gate.py."""
     import yaml
     text = (ROOT / ".github/workflows/ci_v5_shadow.yml").read_text()
     wf = yaml.safe_load(text)
     on = wf.get("on", wf.get(True))
-    assert wf["permissions"] == {"contents": "read"} and list(wf["jobs"]) == ["verdict", "v4-comparison", "compare"] and on["pull_request"]["branches"] == ["main"]
-    for banned in ("pull_request_target", "secrets.", "continue-on-error: false", "workflow_run", "pull-requests: write", "contents: write"):
+    assert wf["permissions"] == {"contents": "read"} and list(wf["jobs"]) == ["verdict", "v4-comparison", "compare", "gate"] and on["pull_request"]["branches"] == ["main"]
+    for banned in ("secrets.", "continue-on-error: false", "workflow_run", "pull-requests: write", "contents: write", "workflow_dispatch"):
         assert banned not in text, banned
-    jobs = wf["jobs"]
+    jobs = {k: v for k, v in wf["jobs"].items() if k != "gate"}
     runs = {k: "\n".join(s.get("run", "") for s in j["steps"]) for k, j in jobs.items()}
     # job 1 (the verdict) and job 3 (compare): trusted-base tools by ``git archive``, run OUTSIDE the checkout with isolated python; nothing from the checkout is run
     for k in ("verdict", "compare"):
@@ -230,22 +239,24 @@ def test_shadow_workflow_is_split_by_trust_boundary_and_least_privilege():
         assert "python tools/" not in runs[k] and "python -m" not in runs[k] and "pytest" not in runs[k] and "pip " not in runs[k] and "npm " not in runs[k]
         assert "origin/main" in runs[k] and "merge-base" not in runs[k], "the base is the protected tip, never a caller-supplied merge-base"
     assert "FINCO_CI_V5_DELTA_V2" in runs["verdict"] and "UNTRUSTED_TOOL_SOURCE" in runs["verdict"] and "TRUSTED_BASE" in runs["verdict"]
-    # job 2 is the ONLY job that executes PR-head code, and it publishes only its own artifact
+    # job 2 is the ONLY shadow job that executes PR-head code, and it publishes only its own artifact
     assert "python tools/ci_v5_shadow.py v4" in runs["v4-comparison"]
-    assert jobs["compare"]["needs"] == ["verdict", "v4-comparison"] and jobs["compare"]["if"] == "always()"
-    assert not any("${{" in s.get("run", "") for j in jobs.values() for s in j["steps"]), "event/context values reach scripts only through env:"
-    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for j in jobs.values() for s in j["steps"] if "uses" in s))        # actions pinned by full SHA
-    names = {s["with"]["name"] for j in jobs.values() for s in j["steps"] if "uses" in s and "artifact" in s["uses"]}
-    assert names == {"ci-v5-verdict-${{ github.event.pull_request.head.sha }}", "ci-v5-v4gate-${{ github.event.pull_request.head.sha }}", "ci-v5-shadow-${{ github.event.pull_request.head.sha }}"}
+    assert jobs["compare"]["needs"] == ["verdict", "v4-comparison"] and "always()" in jobs["compare"]["if"]
+    assert not any("${{" in s.get("run", "") for j in wf["jobs"].values() for s in j["steps"]), "event/context values reach scripts only through env:"
+    assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for j in wf["jobs"].values() for s in j["steps"] if "uses" in s))        # actions pinned by full SHA
+    names = {s["with"]["name"] for j in wf["jobs"].values() for s in j["steps"] if "uses" in s and "artifact" in s["uses"]}
+    assert names == {"ci-v5-verdict-${{ github.event.pull_request.head.sha }}", "ci-v5-v4gate-${{ github.event.pull_request.head.sha }}", "ci-v5-shadow-${{ github.event.pull_request.head.sha }}",
+                     "ci-v5-gate-${{ github.event.pull_request.head.sha }}"}
 
 
 def test_repository_artifacts_make_no_authority_claim():
-    """No trusted epoch ships in 2B (a separate owner-reviewed promotion PR), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
-    assert not (ROOT / E.TRUSTED_EPOCH_PATH).exists(), "a trusted epoch needs a separate owner-reviewed promotion PR"
+    """The checkpoint ships with an HONEST blocked FULL witness (never authoritative), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
+    epoch, problems = E.load_epoch((ROOT / E.TRUSTED_EPOCH_PATH).read_bytes())
+    assert epoch is not None and epoch["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED" and not E.epoch_full_provenance(epoch)[0], problems
     delta = json.loads((ROOT / E.DELTA_PATH).read_bytes())
     assert (ROOT / E.DELTA_PATH).read_bytes() == E.canonical(delta) and delta["schema"] == E.DELTA_SCHEMA and set(delta) == E.DELTA_KEYS
     assert E.SHA40.fullmatch(delta["base_sha"]) and E.SHA256.fullmatch(delta["result_inventory_sha256"])
     cand = ROOT / E.CANDIDATE_EPOCH_PATH
-    epoch, problems = E.load_epoch(cand.read_bytes())
-    assert epoch is not None and epoch["legacy"] is True, problems                      # LEGACY_NARROW_GUARD: never an approved FULL guard
-    assert {r["status"] for r in epoch["atlas"]} <= {"COVERED", "GAP", "UNKNOWN"} and any(r["status"] != "COVERED" for r in epoch["atlas"])
+    legacy, problems = E.load_epoch(cand.read_bytes())
+    assert legacy is not None and legacy["legacy"] is True, problems                      # LEGACY_NARROW_GUARD: never an approved FULL guard
+    assert {r["status"] for r in legacy["atlas"]} <= {"COVERED", "GAP", "UNKNOWN"} and any(r["status"] != "COVERED" for r in legacy["atlas"])
