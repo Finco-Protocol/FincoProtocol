@@ -56,6 +56,13 @@ def _b6():
     N6 = N5._next() if N5 is not None else None
     return N6 if N6 is not None and N6.signature_ok() else None
 
+
+def _b7():
+    """The one reviewed FULL-recovery successor of the V5-3 gate cohort while it is registered and exact, else None."""
+    N6 = _b6()
+    N7 = N6._next() if N6 is not None else None
+    return N7 if N7 is not None and N7.signature_ok() else None
+
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -98,7 +105,8 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
 def test_every_handoff_file_equals_its_reviewed_literal_substitution():
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     for p in sorted(F.HANDOFFS):
-        want = (_b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
+        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS
+                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
                 else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS
                 else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS
                 else _b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS
@@ -327,7 +335,8 @@ def test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_dist
         now = (ROOT / p).read_bytes()
         assert base_bytes != now, p                       # the takeover is real, not a no-op
         from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-        want = (_b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
+        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS
+                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
                 else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS
                 else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS
                 else _b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS

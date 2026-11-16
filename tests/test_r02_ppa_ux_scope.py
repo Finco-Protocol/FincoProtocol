@@ -107,7 +107,10 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     B4 = B3._next() if B3 is not None and B3.signature_ok() else None
     B5 = B4._next() if B4 is not None and B4.signature_ok() else None
     B6 = B5._next() if B5 is not None and B5.signature_ok() else None
-    if len(nxt) == 13 and B6 is not None and B6.signature_ok():
+    B7 = B6._next() if B6 is not None and B6.signature_ok() else None
+    if len(nxt) == 14 and B7 is not None and B7.signature_ok():
+        expected = B7.expected_handoff(ROOT, X.REGISTRY)
+    elif len(nxt) == 13 and B6 is not None and B6.signature_ok():
         expected = B6.expected_handoff(ROOT, X.REGISTRY)
     elif len(nxt) == 12 and B5 is not None and B5.signature_ok():
         expected = B5.expected_handoff(ROOT, X.REGISTRY)

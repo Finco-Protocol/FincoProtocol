@@ -111,6 +111,7 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
         B4 = B3._next() if B3 is not None and B3.signature_ok() else None
         B5 = B4._next() if B4 is not None and B4.signature_ok() else None
         B6 = B5._next() if B5 is not None and B5.signature_ok() else None
+        B7 = B6._next() if B6 is not None and B6.signature_ok() else None
         if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS:            # the further reviewed V5-3 substitution of this shared path
             assert (ROOT / p).read_bytes() == B6.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]

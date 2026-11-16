@@ -110,7 +110,12 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     N3 = N2._next() if N2 is not None and N2.signature_ok() else None
     N4 = N3._next() if N3 is not None and N3.signature_ok() else None
     N5 = N4._next() if N4 is not None and N4.signature_ok() else None
+    N6 = N5._next() if N5 is not None and N5.signature_ok() else None
     for p in T.HANDOFFS:
+        if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further reviewed FULL-recovery substitution of this shared path
+            assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if N5 is not None and N5.signature_ok() and p in N5.HANDOFFS:      # the further reviewed V5-3 substitution of this shared path
             assert (ROOT / p).read_bytes() == N5.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
@@ -168,7 +173,7 @@ def test_current_maps_move_only_their_registry_and_u1_discovery_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-7:] if m not in ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
+    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-8:] if m not in ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1
 
 
