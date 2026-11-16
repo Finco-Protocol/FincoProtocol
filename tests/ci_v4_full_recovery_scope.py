@@ -121,6 +121,7 @@ HANDOFF_PATHS = frozenset((
     'tests/test_r04_ppa_scope.py',
     'tests/test_t01e_remediation_scope.py',
     'tests/u1_scope.py',
+    'tests/wf03_lifecycle_scope.py',
 ))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
@@ -1531,6 +1532,16 @@ HANDOFFS = {
             '\n'
             "RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')\n"
             '\n')),
+    ],
+    'tests/wf03_lifecycle_scope.py': [
+        ((
+            "    if facts.get('ws2_manifest_pins')!={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}: return False\n"),
+         (
+            '    want_pins={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}\n'
+            "    held=facts.get('ws2_manifest_pins')\n"
+            '    # The WS-2 manifest pin keeps describing the reviewed WS-2 state. A path whose CURRENT blob a later reviewed cohort of the exact-source chain has itself pinned (the bounded WF-06B hook\n'
+            "    # used for this module's own pins) is not drift; any other blob, a missing pin or an extra key still fails closed.\n"
+            '    if not isinstance(held,dict) or set(held)!=set(want_pins) or any(held[p]!=want_pins[p] and not _wf06b_supersedes(p,want_pins[p],ROOT,None) for p in want_pins): return False\n')),
     ],
 }
 

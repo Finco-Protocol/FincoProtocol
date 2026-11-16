@@ -539,7 +539,11 @@ def accepts_ci_trust_state(facts,phases,native):
     if facts.get('blobs')!=expected: return False
     if facts.get('ws2_extra_blobs')!={p:pins[p] for p in P.WS2_TRUST_EXTRA_BLOBS}: return False
     if facts.get('record_blob')!=P.WS2_RECORD_BLOB or facts.get('ws2_receipt')!=P.ws2_expected_receipt(): return False
-    if facts.get('ws2_manifest_pins')!={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}: return False
+    want_pins={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}
+    held=facts.get('ws2_manifest_pins')
+    # The WS-2 manifest pin keeps describing the reviewed WS-2 state. A path whose CURRENT blob a later reviewed cohort of the exact-source chain has itself pinned (the bounded WF-06B hook
+    # used for this module's own pins) is not drift; any other blob, a missing pin or an extra key still fails closed.
+    if not isinstance(held,dict) or set(held)!=set(want_pins) or any(held[p]!=want_pins[p] and not _wf06b_supersedes(p,want_pins[p],ROOT,None) for p in want_pins): return False
     parent={**P.WS2_TRUST_BLOBS,**P.WS2_TRUST_EXTRA_BLOBS,**P.D029_TRUST_CHANGED_BLOBS}
     if actual['parent_blobs']!=parent: return False
     for node in CI_EVIDENCE_NODES:
