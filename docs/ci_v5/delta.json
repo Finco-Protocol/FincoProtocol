@@ -66,11 +66,46 @@
    "path": "docs/tax_reference_registry/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "a2144de66314bf8388b723c15d5c9f9341d07832",
+   "blob": "4dd066d13f8285af1b3ea36b2c223389f02a689e",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/c06_cost_workspace_scope.py"
+  },
+  {
+   "blob": "bd24a12ec2c00ec8dea502a3949b90265b5433e0",
    "class": "S",
    "mode": "100644",
    "op": "add",
    "path": "tests/ci_v4_full_recovery_scope.py"
+  },
+  {
+   "blob": "c9f28c857d56c5ed44bdc28897d0f932b5e89678",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v4_lean_b1_scope.py"
+  },
+  {
+   "blob": "cbf31e2add14d37bcfab3270f194080d12e21e48",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v4_lean_b2_scope.py"
+  },
+  {
+   "blob": "5737d97acf02865eb712758ae43bad38da8ba9ff",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v4_lean_b3_scope.py"
+  },
+  {
+   "blob": "6f072338bdedaccba851f8268ebf7e7e76bf7bf9",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
    "blob": "54474b933faaa87c02f9de63efbc58ce14f3f40d",
@@ -78,6 +113,13 @@
    "mode": "100644",
    "op": "modify",
    "path": "tests/ci_v5_gate_scope.py"
+  },
+  {
+   "blob": "8c40da9c0d16fe15abc2cad8aac43077bd6255fc",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v5_hardening_scope.py"
   },
   {
    "blob": "a0c70dda15ec3f7a617c1e28f9ae28d086ba4605",
@@ -115,6 +157,6 @@
    "path": "tests/u1_scope.py"
   }
  ],
- "result_inventory_sha256": "438393476fa0d4c2851ca10a70ea6f9e69ac90b5c848b9c95ec66ec9cdd78b1e",
+ "result_inventory_sha256": "399f82c49cd9d395dba44487309b03fe33ea255b0359ace68f82430862d26503",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
