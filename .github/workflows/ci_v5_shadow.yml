@@ -1,0 +1,59 @@
+# CI V5 SHADOW (observational) - NOT REQUIRED, never satisfies or replaces any required check ("CI V4 gate" stays authoritative).
+# One cheap pass at the exact PR head: V5 epoch verdict (trust decided by WHERE the epoch is read from), the accepted V4 one-pass central governance
+# gate for comparison, the B5 test-admission report, and a comparison artifact. Read-only token, no secrets, no deployment, no new required check.
+# Disable or revert this single file to remove V5 shadow entirely; V4 is untouched.
+name: CI V5 shadow (not required)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: ci-v5-shadow-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  shadow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_TIP_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Resolve trusted tools (read from the trusted base commit; the PR head is used only when the base has none)
+        id: tools
+        run: |
+          set -euo pipefail
+          BASE="$(git merge-base "$BASE_TIP_SHA" "$HEAD_SHA")"
+          TRUSTED="$RUNNER_TEMP/trusted_v5"
+          mkdir -p "$TRUSTED"
+          if git cat-file -e "$BASE:tools/ci_v5_shadow.py" 2>/dev/null && git cat-file -e "$BASE:tests/ci_v4_lean_report.py" 2>/dev/null; then
+            git archive "$BASE" tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py | tar -x -C "$TRUSTED"
+            echo "provenance=TRUSTED_BASE" >> "$GITHUB_OUTPUT"
+          else
+            git archive "$HEAD_SHA" tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py | tar -x -C "$TRUSTED"
+            echo "provenance=HEAD_CANDIDATE_UNTRUSTED" >> "$GITHUB_OUTPUT"
+          fi
+          echo "dir=$TRUSTED" >> "$GITHUB_OUTPUT"
+      - name: Run CI V5 shadow
+        env:
+          TOOLS_DIR: ${{ steps.tools.outputs.dir }}
+          PROVENANCE: ${{ steps.tools.outputs.provenance }}
+        run: |
+          python "$TOOLS_DIR/tools/ci_v5_shadow.py" --repo . --head-sha "$HEAD_SHA" --base-tip-sha "$BASE_TIP_SHA" \
+            --out-dir "$RUNNER_TEMP/ci_v5_out" --b3-report "$TOOLS_DIR/tests/ci_v4_lean_report.py" \
+            --tools-provenance "$PROVENANCE" --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-v5-shadow-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/ci_v5_out
+          if-no-files-found: warn
+          retention-days: 14
