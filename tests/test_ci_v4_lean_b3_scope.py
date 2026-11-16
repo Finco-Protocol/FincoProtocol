@@ -104,17 +104,21 @@ def test_the_report_is_opt_in_and_the_scheduling_weights_stay_frozen():
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+    N = T._next()
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+        if N is not None and N.signature_ok() and p in N.HANDOFFS:      # the reviewed V5 bootstrap substitution of this shared path
+            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
     for ref in (None, "HEAD"):
         with C.call_scope():
             assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and B.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
 
 
-def test_registered_exactly_once_as_the_terminal_cohort_after_b2():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-2:] == ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope")
+def test_registered_exactly_once_after_b2_with_only_the_reviewed_v5_bootstrap_behind_it():
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert C.COHORT_MODULES[-3:] in (("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"),)
     assert B.SUCCESSOR == T.__name__ and B._next() is T and B1.SUCCESSOR == B.__name__ and B1._next() is B
 
 
@@ -143,9 +147,9 @@ def test_the_weights_file_is_untouched_by_this_successor():
     assert d == old      # the data-only weights refresh was reverted (Correction A stop rule): B3 moves no weights byte
 
 
-def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
+def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_bootstrap():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-1] == "tests.ci_v4_lean_b3_scope"
+    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope")
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b3_scope") == 1
 
 
@@ -237,8 +241,10 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
-    pins = T.manifest()["source_blobs"]
+    pins = T.effective_pins()          # the CURRENT pins: the V5 bootstrap overlay wins for the paths it superseded
     reg = pins[T.REGISTRY]
+    assert reg != T.manifest()["source_blobs"][T.REGISTRY]                                     # the B3-era registry pin is no longer current
+    assert not B.supersedes(T.REGISTRY, T.manifest()["source_blobs"][T.REGISTRY])
     assert B.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not B.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not B.supersedes(T.REGISTRY, pins[T.PREDECESSOR])         # a real blob pinned for another path
@@ -256,22 +262,26 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
     assert T.signature_ok(clone, "HEAD")                                                          # and the positive verdict was never poisoned
 
 
-def test_the_registry_tail_is_one_finite_sequence_for_c06_b1_b2_and_b3(monkeypatch):
-    """C06 -> B1 -> B2 -> B3 is the ONLY accepted tail: any permutation, duplicate, extra cohort or reordered truncation fails the signature of every layer."""
+def test_the_registry_tail_is_one_finite_sequence_for_c06_b1_b2_b3_and_the_v5_bootstrap(monkeypatch):
+    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP is the ONLY accepted tail: any permutation, duplicate, extra cohort or reordered truncation fails the signature of every layer."""
+    from tests import ci_v5_bootstrap_scope as V
     exact = C.COHORT_MODULES
-    assert exact[-4:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope")
-    layers = (K, B1, B, T)
+    assert exact[-5:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope")
+    layers = (K, B1, B, T, V)
     with C.call_scope():
         assert all(m.signature_ok() for m in layers)                       # state A: the pristine registry is accepted by every layer
-    c06, b1, b2, b3 = exact[-4:]
-    head = exact[:-4]
+    c06, b1, b2, b3, v5 = exact[-5:]
+    head = exact[:-5]
     variants = {
-        "b2_b3_swapped": head + (c06, b1, b3, b2),
-        "b1_b2_swapped": head + (c06, b2, b1, b3),
+        "b2_b3_swapped": head + (c06, b1, b3, b2, v5),
+        "b1_b2_swapped": head + (c06, b2, b1, b3, v5),
+        "b3_v5_swapped": head + (c06, b1, b2, v5, b3),
+        "v5_duplicated": exact + (v5,),
         "b3_duplicated": exact + (b3,),
         "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",),
-        "b3_before_c06": head + (b3, c06, b1, b2),
-        "c06_dropped": head + (b1, b2, b3),
+        "v5_before_c06": head + (v5, c06, b1, b2, b3),
+        "c06_dropped": head + (b1, b2, b3, v5),
+        "b3_dropped": head + (c06, b1, b2, v5),
     }
     for name, tail in variants.items():
         monkeypatch.setattr(C, "COHORT_MODULES", tail)

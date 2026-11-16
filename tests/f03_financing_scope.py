@@ -409,6 +409,14 @@ def expected_handoff(root, path):
     return raw.encode()
 
 
+def _v5_scope_handoff(path, root, ref):
+    """The one-time CI V5 bootstrap successor may further supersede the F03-reviewed CI V4 scope module (and nothing else): the literal ``_v5_ci_paths`` hook."""
+    if path != 'tests/ci_v4_scope.py':
+        return False
+    from tests import ci_v5_bootstrap_scope as V
+    return V.signature_ok(root, ref) and path in V.HANDOFFS
+
+
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
@@ -418,7 +426,7 @@ def reviewed_edits_ok(repo=None, ref=None):
             pins = manifest(root, ref).get("source_blobs", {})
             return N is not None and N.signature_ok(root, ref) and N.reviewed_edits_ok(root, ref) and all(
                 _read(root, p, ref) == expected_handoff(root, p) and pins.get(p) == _blob(_read(root, p, ref))
-                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS)
+                for p in HANDOFFS if p not in C06.HANDOFFS and p not in N.HANDOFFS and not _v5_scope_handoff(p, root, ref))
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)

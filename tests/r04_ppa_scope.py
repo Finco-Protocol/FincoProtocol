@@ -627,7 +627,7 @@ def _signature_ok(root, ref, closure=False):
             if current.get(p) == _base_blob(key, p) and modes.get(p) == _base_mode(key, p):
                 continue
             # The historical BASE pin stays immutable. Only the owner-approved literal C06 handoff may supersede current bytes.
-            if not (c06 and p in ('tests/ci_v4_perf_scope.py', 'tests/f03_financing_scope.py', 'tests/r03_ppa_scope.py', 'tests/t01e_remediation_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py')
+            if not (c06 and p in ('tests/ci_v4_perf_scope.py', 'tests/f03_financing_scope.py', 'tests/r03_ppa_scope.py', 'tests/t01e_remediation_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py', 'tests/ci_v4_scope.py')
                     and modes.get(p) == "100644" and C06.supersedes(p, current.get(p), root, ref)):
                 return False
         for p, (mode, blob) in BASELINE.items():

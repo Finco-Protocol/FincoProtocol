@@ -71,9 +71,17 @@ def test_f03_only_exact_f01_ci_handoffs_are_admitted():
     assert set(F.REVIEWED_CI_HANDOFFS) == {
         "tests/ci_v4_scope.py", "tests/ux_pr2b_scope.py", "tests/ux_pr2c_scope.py"
     }
-    assert F.reviewed_ci_handoffs_ok()
+    from tests import ci_v5_bootstrap_scope as V5
+    # The one-time V5 bootstrap successor further supersedes the CI V4 scope module ONLY (its literal V5 CI-path hook): the current bytes are then the
+    # bridge's pin-exact reviewed bytes, and F03's reviewed bytes are the accepted-main bytes the bridge was substituted over.
+    v5 = V5.signature_ok() and "tests/ci_v4_scope.py" in V5.HANDOFFS
+    assert F.reviewed_ci_handoffs_ok() or (v5 and not F.reviewed_ci_handoffs_ok(path="tests/ci_v4_scope.py")
+                                           and all(F.reviewed_ci_handoffs_ok(path=p) for p in F.REVIEWED_CI_HANDOFFS if p != "tests/ci_v4_scope.py"))
     for p in sorted(F.REVIEWED_CI_HANDOFFS):
         raw = (ROOT / p).read_bytes()
+        if v5 and p == "tests/ci_v4_scope.py":
+            assert raw == V5.expected_handoff(ROOT, p) and V5._blob(raw) == V5.manifest()["source_blobs"][p]
+            raw = subprocess.check_output(["git", "show", V5.BASE + ":" + p], cwd=ROOT)
         assert F.reviewed_ci_handoffs_ok(path=p, actual=raw)
         assert not F.reviewed_ci_handoffs_ok(path=p, actual=raw + b"\\n# unreviewed\\n")
     assert not F.reviewed_ci_handoffs_ok(path=".github/workflows/ci_v4_pr.yml")
@@ -135,13 +143,13 @@ def test_valid_descendant_chain_is_exact_at_the_reviewed_head(clone):
                                   "tests.r03_ppa_scope")) or (
         C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (
         C.COHORT_MODULES[-7:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'))
+        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'))
         and C06_APPROVAL.signature_ok())
 
 
 @pytest.mark.parametrize("name,fn", [
     ("duplicate_f03", lambda b: b.replace(b"'tests.f03_financing_scope', 'tests.t01e_remediation_scope'", b"'tests.f03_financing_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope'")),
-    ("fake_extra", lambda b: b.replace(b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')", b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.fake_scope')")),
+    ("fake_extra", lambda b: b.replace(b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')", b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.fake_scope')")),
     ("swapped_perf_f03", lambda b: b.replace(b"'tests.ci_v4_perf_scope', 'tests.f03_financing_scope'", b"'tests.f03_financing_scope', 'tests.ci_v4_perf_scope'")),
     ("swapped_bess_perf", lambda b: b.replace(b"'tests.bess02_scope', 'tests.ci_v4_perf_scope'", b"'tests.ci_v4_perf_scope', 'tests.bess02_scope'")),
     ("perf_removed", lambda b: b.replace(b"'tests.ci_v4_perf_scope', ", b"")),

@@ -101,7 +101,11 @@ def _pr2c_supersedes(path, value, root, ref):
     if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):
         return False
     from tests import f03_financing_scope as F
-    return F.supersedes(path, value, root, ref)
+    if F.supersedes(path, value, root, ref):
+        return True
+    # The one-time CI V5 bootstrap successor may further supersede this module only (the literal hook below); never the F01 job, never a prefix.
+    from tests import ci_v5_bootstrap_scope as V
+    return path == 'tests/ci_v4_scope.py' and V.supersedes(path, value, root, ref)
 
 
 def _merge_event_successor():
@@ -116,6 +120,12 @@ def _f03_ci_owns(path, root, ref):
         return False
     from tests import f03_financing_scope as F
     return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)
+
+
+def _v5_ci_paths(root, ref):
+    """The literal CI paths of the exact CI V5 bootstrap successor (the non-required shadow workflow and the V5 tool files); empty unless that cohort is exact. No CI wildcard."""
+    from tests import ci_v5_bootstrap_scope as V
+    return V.CI_PATHS if V.exact_blobs_ok(root, ref) else frozenset()
 
 
 def _git(root, *args):
@@ -212,6 +222,7 @@ def _exact_blobs_ok(repo=None, ref=None):
     authorized_ci = successor.CI_PATHS if successor_ok else frozenset()
     if _f03_ci_owns('.github/workflows/finval_f01_acceptance.yml', root, ref):
         authorized_ci = authorized_ci | {'.github/workflows/finval_f01_acceptance.yml'}
+    authorized_ci = authorized_ci | _v5_ci_paths(root, ref)
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
     if not data or not _owned_ok() or set(pins) != OWNED_PATHS - {MANIFEST} or set(base_blobs) != SUPERSEDED:
@@ -264,7 +275,7 @@ def ci_owns(path, repo=None, ref=None):
     """A literal CI V4 path or the exact owner-authorized merge-guard successor; never a wildcard CI admission."""
     root = Path(repo) if repo is not None else ROOT
     return (path in CI_PATHS or _merge_event_successor().ci_owns(path, repo, ref)
-            or _f03_ci_owns(path, root, ref)) and exact_blobs_ok(repo, ref)
+            or _f03_ci_owns(path, root, ref) or path in _v5_ci_paths(root, ref)) and exact_blobs_ok(repo, ref)
 
 
 def base_blob(path, repo=None, ref=None):
