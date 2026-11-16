@@ -32,7 +32,7 @@ class Repo:
         self.git("init", "-q", "-b", "main")
 
     def git(self, *a, input=None):
-        p = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *a], cwd=self.path,
+        p = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t\x40test.invalid", "-c", "commit.gpgsign=false", *a], cwd=self.path,
                            input=input, capture_output=True, text=True)
         assert p.returncode == 0, (a, p.stderr)
         return p.stdout.strip()
