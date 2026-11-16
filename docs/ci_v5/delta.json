@@ -3,11 +3,11 @@
  "base_tree": "72b42b2b4e391db7ecd661a2822f07a2602bb721",
  "changes": [
   {
-   "blob": "5915e41d1160b5919745b3a2a37a65218737681d",
+   "blob": "deb0c83c0b63f66f3c9011f4d723397a2164d921",
    "class": "S",
    "mode": "100644",
-   "op": "modify",
-   "path": ".github/workflows/ci_v5_shadow.yml"
+   "op": "add",
+   "path": ".github/workflows/ci_v5_gate.yml"
   },
   {
    "blob": "c0ef16f22150bfed6aac376490d6325c22c04183",
@@ -17,14 +17,14 @@
    "path": "docs/ci_v4/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "4784d7d7e859d358c28d369dd80fcc930a5acdd2",
+   "blob": "62fe4b48bc225f4eb2aa4c04606feeca4503a7c2",
    "class": "D",
    "mode": "100644",
    "op": "add",
    "path": "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md"
   },
   {
-   "blob": "15db3380da6ba50fa671cabd71e2f29e7dea053a",
+   "blob": "402a7ed435fbe153d79300300ba8cd18069727eb",
    "class": "D",
    "mode": "100644",
    "op": "modify",
@@ -108,6 +108,13 @@
    "path": "tests/ci_v4_lean_b3_scope.py"
   },
   {
+   "blob": "d81bc0990ac1bcdcef8de6124b6e8b3e584fefd0",
+   "class": "S",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/ci_v4_scope.py"
+  },
+  {
    "blob": "87497a17384305289b0218bd4d3e3431eaf21bcf",
    "class": "S",
    "mode": "100644",
@@ -115,7 +122,7 @@
    "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "793e20ad5d09ab44b42d0353f79bb5283aa3e62c",
+   "blob": "68e5db57e34dda6bfdc00217156441bd3ce5f452",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -143,7 +150,7 @@
    "path": "tests/test_bess02_scope.py"
   },
   {
-   "blob": "eca577cb5a508f911e29447dcd811ccbb4960aca",
+   "blob": "0a44323f2fe258cbf139d316b1cfeb02a856be8f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -199,21 +206,21 @@
    "path": "tests/test_ci_v5_foundation.py"
   },
   {
-   "blob": "b700edcb918e224c4a6b84524137cd3f658d6802",
+   "blob": "bab832f345f70942af01afabf5f39179196aa2d9",
    "class": "X",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v5_gate.py"
   },
   {
-   "blob": "6e2bad2c831c4a06732621889127f787d1d779ff",
+   "blob": "7fb05812ca3703bcb83ce883e37ead7ce704d9c7",
    "class": "S",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v5_gate_scope.py"
   },
   {
-   "blob": "e127955161d2150db66608b62e0d634a3cca3fbf",
+   "blob": "79eaac3c884349e34739e2fdc707e07e93ab2727",
    "class": "X",
    "mode": "100644",
    "op": "modify",
@@ -227,14 +234,14 @@
    "path": "tests/test_ci_v5_hardening_scope.py"
   },
   {
-   "blob": "dfe907937d7f5642b050e37e72fc43ae43f70d6a",
+   "blob": "9366cc70f9b8c874e675f80de1b5aa4c9be2c500",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_f03_financing_scope.py"
   },
   {
-   "blob": "f0143339784f4965485bcc1a63d3c7979e7b0d43",
+   "blob": "3e40382e387a2ee6a244df6736f792e595c3946f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -248,28 +255,28 @@
    "path": "tests/test_post432_l01_l02_scope.py"
   },
   {
-   "blob": "ac1bd1092bf1dca3b34c20b77aad61cfbc8c3366",
+   "blob": "c1a2d30e29f2cd81e40ce48e4f86ca3a95803ced",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r02_ppa_ux_scope.py"
   },
   {
-   "blob": "7684c3a528fe6329170be4f235f7c11429057c5b",
+   "blob": "8f0098b9a8cf008e86692e985c7b6717b8710719",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r03_ppa_scope.py"
   },
   {
-   "blob": "5c89fb0dba27191e83ffae93da5a984e7660d80c",
+   "blob": "4ea4c123a456f33618613eef367e5dd06bb4e75d",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r04_ppa_scope.py"
   },
   {
-   "blob": "a23c9c11976e8ac7e6d84bb2ef6fc1558e37da69",
+   "blob": "a663e52167237e4246b075085b9197512ed863af",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -304,6 +311,6 @@
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "852d022ff69098e52bfc41516b4e5ffd1a64f0922d60fbd822f8ab19527764c3",
+ "result_inventory_sha256": "ce3a4b183cdede76f349dd2f087bda1732b434d79c8ed14fcfe33e28d7b820a8",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
