@@ -95,7 +95,13 @@ REPLACED = frozenset((
 CI_PATHS = frozenset(())
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset((
+    'tests/c06_cost_workspace_scope.py',
+    'tests/ci_v4_lean_b1_scope.py',
+    'tests/ci_v4_lean_b2_scope.py',
+    'tests/ci_v4_lean_b3_scope.py',
+    'tests/ci_v5_bootstrap_scope.py',
     'tests/ci_v5_gate_scope.py',
+    'tests/ci_v5_hardening_scope.py',
     'tests/fin_v2_cohorts.py',
     'tests/u1_scope.py',
 ))
@@ -171,6 +177,114 @@ def expected_map(root, path, pins=None):
 # V5-2B cohort received from the bootstrap and the gate from V5-2B); the earlier layers accept one more reviewed tail state; the registry appends this cohort exactly once;
 # the U1 discovery list names it; the exact-tail tests accept one more state.
 HANDOFFS = {
+    'tests/c06_cost_workspace_scope.py': [
+        ((
+            '\r\n'
+            'def _v5_handoffs(root, ref):\r\n'
+            '    """The shared paths the one-time CI V5 bootstrap successor further substitutes (its literal HANDOFFS), only while its signature holds. It is reached through the\r\n'
+            '    B1 -> B2 -> B3 reviewed-edit chain, which verifies those bytes; nothing is admitted here."""\r\n'
+            '    from tests import ci_v5_bootstrap_scope as V\r\n'
+            '    from tests.fin_v2_cohorts import COHORT_MODULES\r\n'
+            '    out = frozenset(V.HANDOFFS) if V.signature_ok(root, ref) else frozenset()\r\n'
+            "    if 'tests.ci_v5_hardening_scope' in COHORT_MODULES:      # the V5-2B hardening successor, one chain step further (literal HANDOFFS, only while its signature holds)\r\n"
+            '        from tests import ci_v5_hardening_scope as H\r\n'
+            '        out = out | (frozenset(H.HANDOFFS) if H.signature_ok(root, ref) else frozenset())\r\n'
+            "    if 'tests.ci_v5_gate_scope' in COHORT_MODULES:      # the V5-3 gate successor, one chain step further (literal HANDOFFS, only while its signature holds)\r\n"
+            '        from tests import ci_v5_gate_scope as G\r\n'
+            '        out = out | (frozenset(G.HANDOFFS) if G.signature_ok(root, ref) else frozenset())\r\n'
+            '    return out\r\n'
+            '\r\n'
+            '\r\n'
+            'def reviewed_edits_ok(repo=None, ref=None):\r\n'),
+         (
+            '\r\n'
+            'def _v5_handoffs(root, ref):\r\n'
+            '    """The shared paths the one-time CI V5 bootstrap successor further substitutes (its literal HANDOFFS), only while its signature holds. It is reached through the\r\n'
+            '    B1 -> B2 -> B3 reviewed-edit chain, which verifies those bytes; nothing is admitted here."""\r\n'
+            '    from tests import ci_v5_bootstrap_scope as V\r\n'
+            '    from tests.fin_v2_cohorts import COHORT_MODULES\r\n'
+            '    out = frozenset(V.HANDOFFS) if V.signature_ok(root, ref) else frozenset()\r\n'
+            "    if 'tests.ci_v5_hardening_scope' in COHORT_MODULES:      # the V5-2B hardening successor, one chain step further (literal HANDOFFS, only while its signature holds)\r\n"
+            '        from tests import ci_v5_hardening_scope as H\r\n'
+            '        out = out | (frozenset(H.HANDOFFS) if H.signature_ok(root, ref) else frozenset())\r\n'
+            "    if 'tests.ci_v5_gate_scope' in COHORT_MODULES:      # the V5-3 gate successor, one chain step further (literal HANDOFFS, only while its signature holds)\r\n"
+            '        from tests import ci_v5_gate_scope as G\r\n'
+            '        out = out | (frozenset(G.HANDOFFS) if G.signature_ok(root, ref) else frozenset())\r\n'
+            "    if 'tests.ci_v4_full_recovery_scope' in COHORT_MODULES:      # the FULL-recovery successor, one chain step further (literal HANDOFFS, only while its signature holds)\r\n"
+            '        from tests import ci_v4_full_recovery_scope as FR\r\n'
+            '        out = out | (frozenset(FR.HANDOFFS) if FR.signature_ok(root, ref) else frozenset())\r\n'
+            '    return out\r\n'
+            '\r\n'
+            '\r\n'
+            'def reviewed_edits_ok(repo=None, ref=None):\r\n')),
+        ((
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):       # at most the six reviewed successors\r\n"
+            '            return False\r\n'),
+         (
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\r\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):       # at most the seven reviewed successors\r\n"
+            '            return False\r\n')),
+    ],
+    'tests/ci_v4_lean_b1_scope.py': [
+        ((
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\n'
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):       # B1 -> B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3, nothing else\n"
+            '            return False\n'),
+         (
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\n'
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):       # B1 -> B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else\n"
+            '            return False\n')),
+    ],
+    'tests/ci_v4_lean_b2_scope.py': [
+        ((
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\n'
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):       # B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3, nothing else\n"
+            '            return False\n'),
+         (
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),\n'
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+            "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):       # B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else\n"
+            '            return False\n')),
+    ],
+    'tests/ci_v4_lean_b3_scope.py': [
+        ((
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):\n"
+            '            return False\n'),
+         (
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):\n"
+            '            return False\n')),
+    ],
+    'tests/ci_v5_bootstrap_scope.py': [
+        ((
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope')):\n"
+            '            return False\n'),
+         (
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):\n"
+            '            return False\n')),
+    ],
     'tests/ci_v5_gate_scope.py': [
         ((
             '        pins = manifest(root, ref).get("source_blobs", {})\n'
@@ -361,6 +475,16 @@ HANDOFFS = {
             '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):\n'
             '            return True\n'
             '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n')),
+    ],
+    'tests/ci_v5_hardening_scope.py': [
+        ((
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\n'
+            '            return False\n'),
+         (
+            '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_full_recovery_scope')):\n"
+            '            return False\n')),
     ],
     'tests/fin_v2_cohorts.py': [
         ((

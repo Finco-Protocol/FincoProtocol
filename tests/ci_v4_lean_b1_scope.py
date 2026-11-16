@@ -600,7 +600,8 @@ def _signature_ok(root, ref, closure=False):
                                   BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope'),
                                   BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),
                                   BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),
-                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):       # B1 -> B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3, nothing else
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):       # B1 -> B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
