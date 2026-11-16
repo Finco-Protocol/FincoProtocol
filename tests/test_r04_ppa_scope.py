@@ -110,7 +110,8 @@ def test_signature_exactness_and_reviewed_substitutions_hold():
     for p in T.HANDOFFS:
         B1 = C06_APPROVAL._next()
         B2 = B1._next() if B1 is not None and B1.signature_ok() else None
-        authority = (B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
+        B3 = B2._next() if B2 is not None and B2.signature_ok() else None
+        authority = (B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
                      else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T)
         assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]

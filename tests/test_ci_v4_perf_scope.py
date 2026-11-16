@@ -28,6 +28,13 @@ def _b2():
     N2 = N._next() if N is not None else None
     return N2 if N2 is not None and N2.signature_ok() else None
 
+
+def _b3():
+    """The one reviewed B3 successor of B2 while it is registered and exact, else None."""
+    N = _b2()
+    N3 = N._next() if N is not None else None
+    return N3 if N3 is not None and N3.signature_ok() else None
+
 from tests import f04_financing_scope as Q
 from tests import r04_ppa_scope as W
 
@@ -70,7 +77,8 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
 def test_every_handoff_file_equals_its_reviewed_literal_substitution():
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
     for p in sorted(F.HANDOFFS):
-        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS
+        want = (_b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS
+                else _b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS
                 else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS
                 else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS
                 else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
@@ -295,7 +303,8 @@ def test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_dist
         now = (ROOT / p).read_bytes()
         assert base_bytes != now, p                       # the takeover is real, not a no-op
         from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-        want = (_b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS
+        want = (_b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS
+                else _b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS
                 else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS
                 else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS
                 else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
