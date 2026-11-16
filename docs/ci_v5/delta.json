@@ -17,7 +17,7 @@
    "path": "docs/ci_v4/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "f55ec92b66d7ff57584f75a109a38d8e8f7d2c23",
+   "blob": "b6028d4b081e2f0cd64a228801760fa33482a96d",
    "class": "D",
    "mode": "100644",
    "op": "modify",
@@ -108,7 +108,7 @@
    "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "55a21e10876e31d73f2a3af42a17cced63e1e330",
+   "blob": "47ff9ccd09d5f5f5d73a0092636bddabd15e3575",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -171,7 +171,7 @@
    "path": "tests/test_ci_v4_perf_scope.py"
   },
   {
-   "blob": "f813570bb6057774e06936aad823f6a29264204d",
+   "blob": "4ef9ddc74116b5e61a45d1db8fdbc4807fdcb4fd",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -283,6 +283,6 @@
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "7027fd5b92fdc08500b6cbef9ee86297e7c3b060c2d407d4817342dd933b2a98",
+ "result_inventory_sha256": "05d58bb09a68e3a014d37c89925db3752490312a35a23c169efab2c6b60c099d",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
