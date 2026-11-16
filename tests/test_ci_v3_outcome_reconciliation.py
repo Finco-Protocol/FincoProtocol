@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import functools
 import inspect
 import json
 import subprocess
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tests import fin_v2_cohorts as COHORTS
 from tools import ci_v3_production as prod
 from tools.ci_v3_schema import read_json
 
@@ -42,8 +44,32 @@ def run_evidence(**changes):
     return changes.get("phases", phases), changes.get("native", native)
 
 
-def real_facts():
+@pytest.fixture(autouse=True)
+def one_governance_call_per_test():
+    """Each test is ONE outer governance call: every exact-source cohort verdict is computed once per test (not once per nested call) and dropped when the
+    test ends. Nothing is cached across tests, refs, monkeypatches or mutations; the assertions and their inputs are unchanged."""
+    with COHORTS.call_scope():
+        yield
+
+
+@functools.lru_cache(maxsize=1)
+def _head_facts():
+    # the facts of the checked-out HEAD are immutable for the whole session; every consumer receives its OWN deep copy (a test may mutate it)
     return prod.d029_source_facts()
+
+
+def real_facts():
+    return copy.deepcopy(_head_facts())
+
+
+def test_the_session_cached_head_facts_equal_freshly_read_facts():
+    """Negative control for the one cached read: a fresh read of the real sources is identical, and a caller's mutation never reaches the cache."""
+    fresh = prod.d029_source_facts()
+    assert real_facts() == fresh and real_facts() is not real_facts()
+    mutated = real_facts()
+    mutated["blobs"]["app/trust_readiness/registry.py"] = "0" * 40
+    mutated["changed"] = frozenset()
+    assert real_facts() == fresh and real_facts()["blobs"] != mutated["blobs"]
 
 
 def problems(facts=None, node=NODE, old=OLD, old_native=OLD_NATIVE, new=NEW, new_native=NEW_NATIVE, run=None):
