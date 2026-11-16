@@ -254,7 +254,7 @@ def test_forged_manifest_base_tree_pin_and_mode_are_rejected(clone):
             return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
         return f
     forged = (edit(lambda d: d.__setitem__("base", "0" * 40)), edit(lambda d: d.__setitem__("base_tree", "0" * 40)),
-              edit(lambda d: d["source_blobs"].__setitem__(DELTA, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)),
+              edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)),      # (the delta pin is superseded by the V5-3 cohort)
               edit(lambda d: d["source_blobs"].__setitem__(T.PREDECESSOR, "0" * 40)), edit(lambda d: d["base_blobs"].__setitem__(T.REGISTRY, "0" * 40)),
               edit(lambda d: d["source_modes"].__setitem__(MODULE, "100755")), edit(lambda d: d["base_modes"].__setitem__(T.REGISTRY, "100755")),
               edit(lambda d: d["source_blobs"].pop(OWN_TEST)), edit(lambda d: d["source_blobs"].__setitem__(TRUST_ANCHOR, "1" * 40)),
@@ -323,8 +323,8 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
-    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+    reg = G6.manifest()["source_blobs"][T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor's pin; this cohort's own pin is superseded
+    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
     assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the accepted bootstrap-era registry blob is no longer current

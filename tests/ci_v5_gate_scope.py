@@ -1031,6 +1031,16 @@ HANDOFFS = {
     ],
     'tests/test_ci_v5_hardening_scope.py': [
         ((
+            'edit(lambda d: d["source_blobs"].__setitem__(DELTA, "0" * 40)), edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)),'),
+         (
+            'edit(lambda d: d["source_blobs"].__setitem__(SHADOW, "0" * 40)),      # (the delta pin is superseded by the V5-3 cohort)')),
+        ((
+            '    reg = pins[T.REGISTRY]\n'
+            '    assert V5.supersedes(T.REGISTRY, reg)'),
+         (
+            '    reg = G6.manifest()["source_blobs"][T.REGISTRY]                                   # the CURRENT registry blob is the V5-3 gate successor\'s pin; this cohort\'s own pin is superseded\n'
+            '    assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY]) and V5.supersedes(T.REGISTRY, reg)')),
+        ((
             'from tests import ci_v5_hardening_scope as T\n'),
          (
             'from tests import ci_v5_gate_scope as G6\n'
