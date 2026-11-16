@@ -82,6 +82,7 @@ BASE_COHORTS = (
     'tests.ci_v5_hardening_scope',
 )
 NEW = frozenset((
+    '.github/workflows/ci_v5_gate.yml',
     'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
     'docs/ci_v5/epoch.json',
     'tests/ci_v5_gate_scope.py',
@@ -90,7 +91,6 @@ NEW = frozenset((
 ))
 # The V5 files the earlier V5 cohorts owned, rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 REPLACED = frozenset((
-    '.github/workflows/ci_v5_shadow.yml',
     'docs/ci_v5/README.md',
     'docs/ci_v5/delta.json',
     'tests/test_ci_v5_foundation.py',
@@ -101,7 +101,7 @@ REPLACED = frozenset((
 ))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset((
-    '.github/workflows/ci_v5_shadow.yml',
+    '.github/workflows/ci_v5_gate.yml',
     'tools/ci_v5_candidate.py',
     'tools/ci_v5_epoch.py',
     'tools/ci_v5_shadow.py',
@@ -112,6 +112,7 @@ HANDOFF_PATHS = frozenset((
     'tests/ci_v4_lean_b1_scope.py',
     'tests/ci_v4_lean_b2_scope.py',
     'tests/ci_v4_lean_b3_scope.py',
+    'tests/ci_v4_scope.py',
     'tests/ci_v5_bootstrap_scope.py',
     'tests/ci_v5_hardening_scope.py',
     'tests/fin_v2_cohorts.py',
@@ -290,6 +291,31 @@ HANDOFFS = {
             '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
             "        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope')):\n"
             '            return False\n')),
+    ],
+    'tests/ci_v4_scope.py': [
+        ((
+            '    return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)\n'
+            '\n'
+            '\n'
+            'def _v5_ci_paths(root, ref):\n'
+            '    """The literal CI paths of the exact CI V5 bootstrap successor (the non-required shadow workflow and the V5 tool files); empty unless that cohort is exact. No CI wildcard."""\n'
+            '    from tests import ci_v5_bootstrap_scope as V\n'
+            '    return V.CI_PATHS if V.exact_blobs_ok(root, ref) else frozenset()\n'
+            '\n'),
+         (
+            '    return path in F.CI_PATHS and F.exact_blobs_ok(root, ref) and F.reviewed_workflow_ok(root, ref)\n'
+            '\n'
+            '\n'
+            'def _v5_ci_paths(root, ref):\n'
+            '    """The literal CI paths of the exact CI V5 bootstrap successor (the non-required shadow workflow and the V5 tool files); empty unless that cohort is exact. No CI wildcard."""\n'
+            '    from tests import ci_v5_bootstrap_scope as V\n'
+            '    out = V.CI_PATHS if V.exact_blobs_ok(root, ref) else frozenset()\n'
+            '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
+            "    if 'tests.ci_v5_gate_scope' in COHORT_MODULES:      # the V5-3 gate successor admits ITS literal CI paths too (the separate pull_request_target gate workflow); no wildcard\n"
+            '        from tests import ci_v5_gate_scope as G\n'
+            '        out = out | (G.CI_PATHS if G.exact_blobs_ok(root, ref) else frozenset())\n'
+            '    return out\n'
+            '\n')),
     ],
     'tests/ci_v5_bootstrap_scope.py': [
         ((
@@ -534,8 +560,12 @@ HANDOFFS = {
             '        later=N6 if N6 is not None and N6.signature_ok() and path in N6.HANDOFFS else N5 if N5 is not None and N5.signature_ok() and path in N5.HANDOFFS else N4 if N4 is not None and N4.signature_ok() and path in N4.HANDOFFS else N3 if N3 is not None and N3.signature_ok() and path in N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
             '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'
             '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
             '    for path in F.FROZEN:\n'
-            '        if V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this frozen CI module (literal, pin-exact)\n'
+            '        if GT.signature_ok() and path in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this CI module (literal, pin-exact)\n'
+            '            assert (ROOT/path).read_bytes()==GT.expected_handoff(ROOT,path)\n'
+            "            assert F._blob((ROOT/path).read_bytes())==GT.manifest()['source_blobs'][path]\n"
+            '        elif V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this frozen CI module (literal, pin-exact)\n'
             '            assert (ROOT/path).read_bytes()==V5.expected_handoff(ROOT,path)\n'
             "            assert F._blob((ROOT/path).read_bytes())==V5.manifest()['source_blobs'][path]\n"
             '        else:\n'
@@ -1084,6 +1114,36 @@ HANDOFFS = {
             '    ("duplicate_f03", lambda b: b.replace(b"\'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'", b"\'tests.f03_financing_scope\', \'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'")),\n'
             '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', \'tests.ci_v5_hardening_scope\', \'tests.ci_v5_gate_scope\')", b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', \'tests.ci_v5_hardening_scope\', \'tests.ci_v5_gate_scope\', \'tests.fake_scope\')")),\n'
             '    ("swapped_perf_f03", lambda b: b.replace(b"\'tests.ci_v4_perf_scope\', \'tests.f03_financing_scope\'", b"\'tests.f03_financing_scope\', \'tests.ci_v4_perf_scope\'")),\n')),
+        ((
+            '    }\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    # The one-time V5 bootstrap successor further supersedes the CI V4 scope module ONLY (its literal V5 CI-path hook): the current bytes are then the\n'
+            "    # bridge's pin-exact reviewed bytes, and F03's reviewed bytes are the accepted-main bytes the bridge was substituted over.\n"
+            '    v5 = V5.signature_ok() and "tests/ci_v4_scope.py" in V5.HANDOFFS\n'
+            '    assert F.reviewed_ci_handoffs_ok() or (v5 and not F.reviewed_ci_handoffs_ok(path="tests/ci_v4_scope.py")\n'
+            '                                           and all(F.reviewed_ci_handoffs_ok(path=p) for p in F.REVIEWED_CI_HANDOFFS if p != "tests/ci_v4_scope.py"))\n'
+            '    for p in sorted(F.REVIEWED_CI_HANDOFFS):\n'
+            '        raw = (ROOT / p).read_bytes()\n'
+            '        if v5 and p == "tests/ci_v4_scope.py":\n'
+            '            assert raw == V5.expected_handoff(ROOT, p) and V5._blob(raw) == V5.manifest()["source_blobs"][p]\n'
+            '            raw = subprocess.check_output(["git", "show", V5.BASE + ":" + p], cwd=ROOT)\n'
+            '        assert F.reviewed_ci_handoffs_ok(path=p, actual=raw)\n'),
+         (
+            '    }\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
+            '    # The one-time V5 bootstrap successor further supersedes the CI V4 scope module ONLY (its literal V5 CI-path hook): the current bytes are then the\n'
+            "    # bridge's pin-exact reviewed bytes, and F03's reviewed bytes are the accepted-main bytes the bridge was substituted over.\n"
+            '    v5 = V5.signature_ok() and "tests/ci_v4_scope.py" in V5.HANDOFFS\n'
+            '    assert F.reviewed_ci_handoffs_ok() or (v5 and not F.reviewed_ci_handoffs_ok(path="tests/ci_v4_scope.py")\n'
+            '                                           and all(F.reviewed_ci_handoffs_ok(path=p) for p in F.REVIEWED_CI_HANDOFFS if p != "tests/ci_v4_scope.py"))\n'
+            '    for p in sorted(F.REVIEWED_CI_HANDOFFS):\n'
+            '        raw = (ROOT / p).read_bytes()\n'
+            '        if v5 and p == "tests/ci_v4_scope.py":\n'
+            '            gt = GT.signature_ok() and p in GT.HANDOFFS      # the V5-3 gate successor further substitutes this module (its literal _v5_ci_paths union)\n'
+            '            assert raw == (GT.expected_handoff(ROOT, p) if gt else V5.expected_handoff(ROOT, p)) and V5._blob(raw) == (GT.manifest() if gt else V5.manifest())["source_blobs"][p]\n'
+            '            raw = subprocess.check_output(["git", "show", V5.BASE + ":" + p], cwd=ROOT)\n'
+            '        assert F.reviewed_ci_handoffs_ok(path=p, actual=raw)\n')),
     ],
     'tests/test_f04_financing_scope.py': [
         ((
@@ -1115,8 +1175,12 @@ HANDOFFS = {
             '        authority=B6 if B6 is not None and B6.signature_ok() and path in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and path in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and path in B4.HANDOFFS else B3 if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and path in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path\n'
             '        assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)\n'
             '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
             '    for path in F.FROZEN:\n'
-            '        if V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '        if GT.signature_ok() and path in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this CI module (literal, pin-exact)\n'
+            '            assert (ROOT/path).read_bytes()==GT.expected_handoff(ROOT,path)\n'
+            "            assert F._blob((ROOT/path).read_bytes())==GT.manifest()['source_blobs'][path]\n"
+            '        elif V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
             '            assert (ROOT/path).read_bytes()==V5.expected_handoff(ROOT,path)\n'
             "            assert F._blob((ROOT/path).read_bytes())==V5.manifest()['source_blobs'][path]\n"
             '        elif path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
@@ -1179,6 +1243,25 @@ HANDOFFS = {
             '        expected = B4.expected_handoff(ROOT, X.REGISTRY)\n'
             '    elif len(nxt) == 10 and B3 is not None and B3.signature_ok():\n'
             '        expected = B3.expected_handoff(ROOT, X.REGISTRY)\n')),
+        ((
+            '    from tests import f03_financing_scope as G\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    assert X.exact_blobs_ok() and X.signature_ok()\n'),
+         (
+            '    from tests import f03_financing_scope as G\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
+            '    assert X.exact_blobs_ok() and X.signature_ok()\n')),
+        ((
+            "    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))\n"
+            '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)\n'
+            "                and not (V5.signature_ok() and p in V5.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)\n"
+            "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):\n"),
+         (
+            "    assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))\n"
+            '                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)\n'
+            "                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)\n"
+            "    for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):\n")),
     ],
     'tests/test_r03_ppa_scope.py': [
         ((
@@ -1212,6 +1295,28 @@ HANDOFFS = {
             '    for p in T.HANDOFFS:\n'
             '        authority = B6 if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and p in Q.HANDOFFS else T\n'
             '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n')),
+        ((
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    for p in T.FROZEN:\n'
+            '        if V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'),
+         (
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
+            '    for p in T.FROZEN:\n'
+            '        if GT.signature_ok() and p in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == GT.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == GT.manifest()["source_blobs"][p]\n'
+            '        elif V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n')),
     ],
     'tests/test_r04_ppa_scope.py': [
         ((
@@ -1243,6 +1348,28 @@ HANDOFFS = {
             '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
             '        authority = (B6 if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path\n'
             '                     else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T)\n')),
+        ((
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    for p in T.FROZEN:\n'
+            '        if V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'),
+         (
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
+            '    for p in T.FROZEN:\n'
+            '        if GT.signature_ok() and p in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == GT.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == GT.manifest()["source_blobs"][p]\n'
+            '        elif V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n')),
     ],
     'tests/test_t01e_remediation_scope.py': [
         ((
@@ -1292,6 +1419,28 @@ HANDOFFS = {
             '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
             '            continue\n'
             '        if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and p in B3.HANDOFFS:            # the further reviewed B3 substitution of this shared path\n')),
+        ((
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    for p in T.FROZEN:\n'
+            '        if V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'),
+         (
+            'def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():\n'
+            '    from tests import ci_v5_bootstrap_scope as V5\n'
+            '    from tests import ci_v5_gate_scope as GT\n'
+            '    for p in T.FROZEN:\n'
+            '        if GT.signature_ok() and p in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == GT.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == GT.manifest()["source_blobs"][p]\n'
+            '        elif V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)\n'
+            '            assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)\n'
+            '            assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]\n'
+            '        elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():\n'
+            '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n')),
     ],
     'tests/u1_scope.py': [
         ((

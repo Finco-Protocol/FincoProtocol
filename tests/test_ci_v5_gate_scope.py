@@ -31,8 +31,8 @@ OWN_TEST = "tests/test_ci_v5_gate_scope.py"
 TRUST_ANCHOR = "docs/ci_v5/epoch.json"
 DELTA = "docs/ci_v5/delta.json"
 SHADOW = ".github/workflows/ci_v5_shadow.yml"
-NEW_FILES = frozenset((MODULE, OWN_TEST, "tests/test_ci_v5_gate.py", "docs/ci_v5/epoch.json", "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md"))
-REPLACED_FILES = frozenset((".github/workflows/ci_v5_shadow.yml", "docs/ci_v5/README.md", "docs/ci_v5/delta.json", "tests/test_ci_v5_foundation.py", "tests/test_ci_v5_hardening.py",
+NEW_FILES = frozenset((MODULE, OWN_TEST, "tests/test_ci_v5_gate.py", "docs/ci_v5/epoch.json", "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md", ".github/workflows/ci_v5_gate.yml"))
+REPLACED_FILES = frozenset(("docs/ci_v5/README.md", "docs/ci_v5/delta.json", "tests/test_ci_v5_foundation.py", "tests/test_ci_v5_hardening.py",
                             "tools/ci_v5_candidate.py", "tools/ci_v5_epoch.py", "tools/ci_v5_shadow.py"))
 
 
@@ -113,8 +113,8 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
 
 def test_tools_and_github_are_admitted_only_as_literal_bootstrap_ci_paths_and_no_new_ci_path_exists():
     owned = T.OWNED_PATHS | {T.MANIFEST}
-    assert {p for p in owned if p.startswith(T.NEW_ONLY_PREFIXES)} == set(T.CI_PATHS) and set(T.CI_PATHS) <= set(V5.CI_PATHS) and set(T.CI_PATHS) <= set(H5.CI_PATHS | V5.CI_PATHS)   # no NEW tools/.github path
-    assert T.CI_PATHS <= T.REPLACED and not {p for p in T.HANDOFF_PATHS | T.CURRENT_MAPS if p.startswith(T.NEW_ONLY_PREFIXES)}
+    assert {p for p in owned if p.startswith(T.NEW_ONLY_PREFIXES)} == set(T.CI_PATHS) and set(T.CI_PATHS) - {".github/workflows/ci_v5_gate.yml"} <= set(V5.CI_PATHS)   # the ONE new CI path is the separate pull_request_target gate workflow
+    assert T.CI_PATHS <= T.NEW | T.REPLACED and not {p for p in T.HANDOFF_PATHS | T.CURRENT_MAPS if p.startswith(T.NEW_ONLY_PREFIXES)}
     assert not any(p.startswith(("financial_engine/", "finco_core/", "domain/", "app/", "frontend/", "static/", "research/")) for p in owned)
     assert len([p for p in owned if p.startswith(".github/workflows/")]) == 1
 
@@ -123,7 +123,7 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
     assert TRUST_ANCHOR in T.NEW and (ROOT / TRUST_ANCHOR).exists() and TRUST_ANCHOR not in H5.OWNED_PATHS | {H5.MANIFEST}      # the checkpoint is owned HERE, as a NON-authoritative witness-blocked epoch
     import json as _json
     assert _json.loads((ROOT / TRUST_ANCHOR).read_bytes())["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED"
-    assert SHADOW in T.REPLACED and SHADOW not in T.FROZEN
+    assert SHADOW not in T.OWNED_PATHS and SHADOW not in T.FROZEN      # the shadow workflow is unchanged by this PR
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     for path in T.FROZEN:
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path

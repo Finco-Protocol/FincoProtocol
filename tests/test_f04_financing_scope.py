@@ -55,8 +55,12 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
         authority=B6 if B6 is not None and B6.signature_ok() and path in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and path in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and path in B4.HANDOFFS else B3 if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and path in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and path in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and path in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and path in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and path in W.HANDOFFS else F      # the latest reviewed substitution of this shared path
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     from tests import ci_v5_bootstrap_scope as V5
+    from tests import ci_v5_gate_scope as GT
     for path in F.FROZEN:
-        if V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
+        if GT.signature_ok() and path in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this CI module (literal, pin-exact)
+            assert (ROOT/path).read_bytes()==GT.expected_handoff(ROOT,path)
+            assert F._blob((ROOT/path).read_bytes())==GT.manifest()['source_blobs'][path]
+        elif V5.signature_ok() and path in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
             assert (ROOT/path).read_bytes()==V5.expected_handoff(ROOT,path)
             assert F._blob((ROOT/path).read_bytes())==V5.manifest()['source_blobs'][path]
         elif path in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():

@@ -140,8 +140,12 @@ def test_current_maps_move_only_the_registry_key():
 
 def test_historical_manifests_and_accepted_chain_files_are_byte_identical_to_the_accepted_base():
     from tests import ci_v5_bootstrap_scope as V5
+    from tests import ci_v5_gate_scope as GT
     for p in T.FROZEN:
-        if V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
+        if GT.signature_ok() and p in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this shared path (literal, pin-exact)
+            assert (ROOT / p).read_bytes() == GT.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == GT.manifest()["source_blobs"][p]
+        elif V5.signature_ok() and p in V5.HANDOFFS:      # the one-time V5 bootstrap successor further substitutes this shared path (literal, pin-exact)
             assert (ROOT / p).read_bytes() == V5.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == V5.manifest()["source_blobs"][p]
         elif p in C06_APPROVAL.HANDOFFS and C06_APPROVAL.signature_ok():
