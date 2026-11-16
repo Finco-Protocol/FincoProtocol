@@ -71,6 +71,7 @@ def _bad(root):
 
 def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():
     from tests import f03_financing_scope as G
+    from tests import ci_v5_bootstrap_scope as V5
     assert X.exact_blobs_ok() and X.signature_ok()
     data = X.manifest()
     assert set(data['source_blobs']) == X.OWNED_PATHS - {X.MANIFEST} and set(data['base_blobs']) == X.SUPERSEDED
@@ -81,7 +82,8 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     assert changed <= X.closure_paths()
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
-                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)]
+                and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)
+                and not (V5.signature_ok() and p in V5.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
@@ -96,12 +98,15 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import f03_financing_scope as G
     from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
     nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
-                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope') if m in C.COHORT_MODULES)
+                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope') if m in C.COHORT_MODULES)
     B1 = C06_APPROVAL._next()
     B2 = B1._next() if B1 is not None and B1.signature_ok() else None
     expected = N.expected_handoff(ROOT, X.REGISTRY)
     B3 = B2._next() if B2 is not None and B2.signature_ok() else None
-    if len(nxt) == 10 and B3 is not None and B3.signature_ok():
+    B4 = B3._next() if B3 is not None and B3.signature_ok() else None
+    if len(nxt) == 11 and B4 is not None and B4.signature_ok():
+        expected = B4.expected_handoff(ROOT, X.REGISTRY)
+    elif len(nxt) == 10 and B3 is not None and B3.signature_ok():
         expected = B3.expected_handoff(ROOT, X.REGISTRY)
     elif len(nxt) == 9 and B2 is not None and B2.signature_ok():
         expected = B2.expected_handoff(ROOT, X.REGISTRY)

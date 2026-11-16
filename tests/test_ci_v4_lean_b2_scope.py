@@ -107,8 +107,11 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     T3 = T._next()
+    T4 = T3._next() if T3 is not None and T3.signature_ok() else None
     for p in T.HANDOFFS:
-        if T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path
+        if T4 is not None and T4.signature_ok() and p in T4.HANDOFFS:      # the reviewed V5 bootstrap substitution of this shared path
+            assert (ROOT / p).read_bytes() == T4.expected_handoff(ROOT, p)
+        elif T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path
             assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)
         else:
             assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
@@ -120,11 +123,11 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_b1():
     assert C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))
+    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"))
     assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B
     from tests import ci_v4_lean_b3_scope as T3
     if T.SUCCESSOR in C.COHORT_MODULES:
-        assert C.COHORT_MODULES[-1] == T.SUCCESSOR and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"
+        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope") and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"
 
 
 def test_b1_c06_and_every_older_cohort_still_follow_the_chain():
@@ -148,7 +151,7 @@ def test_current_maps_move_only_their_registry_u1_and_u1_test_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"))
+    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"))
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1
 
 
@@ -250,9 +253,9 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')"
+    tail = b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
         ("swapped_b1_b2", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b1_scope')")),
         ("b2_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b2_scope'", b"")),

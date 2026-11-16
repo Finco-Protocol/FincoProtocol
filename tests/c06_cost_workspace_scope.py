@@ -2108,14 +2108,22 @@ def expected_handoff(root, path):
     return raw.encode()
 
 
+def _v5_handoffs(root, ref):
+    """The shared paths the one-time CI V5 bootstrap successor further substitutes (its literal HANDOFFS), only while its signature holds. It is reached through the
+    B1 -> B2 -> B3 reviewed-edit chain, which verifies those bytes; nothing is admitted here."""
+    from tests import ci_v5_bootstrap_scope as V
+    return frozenset(V.HANDOFFS) if V.signature_ok(root, ref) else frozenset()
+
+
 def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
         pins = manifest(root, ref).get("source_blobs", {})
         N = _next()
         nxt = N is not None and N.signature_ok(root, ref)
+        later = _v5_handoffs(root, ref) if nxt else frozenset()
         for path in HANDOFFS:
-            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further substitution of this shared path
+            if nxt and (path in N.HANDOFFS or path in later):            # the reviewed successor chain owns the further substitution of this shared path
                 continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
@@ -2258,7 +2266,7 @@ def _signature_ok(root, ref, closure=False):
         from tests.fin_v2_cohorts import COHORT_MODULES
         if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),
                                   BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),
-                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope')):       # at most the three reviewed successors
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')):       # at most the four reviewed successors
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
@@ -2303,7 +2311,7 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) for p in FROZEN):
+        if any(current.get(p) != nx.get(p, _blob(_base_bytes(key, p))) for p in FROZEN):      # a frozen path differs only to the exact pin of the exact successor chain
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

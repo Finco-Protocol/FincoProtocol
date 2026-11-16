@@ -67,13 +67,22 @@ python -m pytest tests/test_ci_v5_foundation.py -q        # FINCO_V5_AB_OUT=<csv
 
 Regenerate `delta.json` after any change to a guarded file of this PR (`tools/ci_*`, `tests/test_ci_*`, `.github/`); `delta.json` itself is not guarded.
 
-## `LEGACY_GOVERNANCE_BLOCKED` (read this before reviewing)
+## One-time V4 ownership bridge (PR #453 Correction A) — transitional, NOT V5-2 and NOT V5-3
 
-V4 requires **every** path changed since its `PARENT` to be owned by a registered exact-source cohort. Measured: one inert one-line new file under `tools/`
-makes 40 of 43 cohorts non-exact and the composite `False`. A V4-compatible successor of the previous kind (B3: 32 files, +2,194 / −79 lines) was
-**deliberately not written** (stop rule: no new ~2,000-line closure to ship a tool whose purpose is to end that closure; no forged pins, no loosened
-frozen scopes). Consequently **the required V4 governance gate is expected to be RED on this PR** and this PR is not merge-ready. Owner decision:
-see `07_GAPS_AND_OWNER_DECISIONS.md` in the evidence packet (one-time V4 successor vs an owner-approved exception for this bootstrap PR only).
+V4 requires **every** path changed since its `PARENT` to be owned by a registered exact-source cohort. Measured at the original head: all nine PR paths were
+owned by no cohort, so B3 `_diff_ok` and the composite were `False` (one inert new file under `tools/` made 40 of 43 cohorts non-exact). The owner chose the
+finite bridge **inside this same PR**: ONE new terminal exact-source successor after B3, `tests/ci_v5_bootstrap_scope.py` (manifest
+`docs/ci_v5/bootstrap/SOURCE_SUCCESSOR.json`, own test `tests/test_ci_v5_bootstrap_scope.py`). It owns exactly the nine PR files plus its own module and test,
+binds every blob and mode to the immutable BASE (`c8b7e81…`), promotes no epoch (`docs/ci_v5/epoch.json` is never owned) and gives V5 no authority.
+
+Registry tail: `C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP`. Finite reviewed handoffs only: the C06 / B1 / B2 tail tuples, ONE forward hook in B3 (the same acyclic
+pattern B2 received from B3), the registry and U1 discovery entries, the eight current maps (only their two moved keys), the exact-tail tests, and the V4
+CI-path admission that the cohort system already uses for new CI files (`tests/ci_v4_scope.py` admits ONLY the five literal V5 CI paths while the bridge is
+exact, exactly as it admits the F03 workflow; the F03 and C06 reviewed-edit checks and four frozen-set tuples defer to the exact bridge for that one path set).
+No selector, scheduler, aggregator, required workflow, policy, weight, node split, financial or UI byte moves.
+
+What it is not: V5 stays `CANDIDATE_UNTRUSTED` and non-authoritative; a V5 PASS never satisfies V4; `V4 PASS` here means "the reviewed bytes are owned", not
+"parity established" (`PARITY_NOT_ESTABLISHED`). Activation (V5-2) and ordinary-feature simplification (V5-3) remain separate owner-approved PRs.
 
 ## Rollback
 
