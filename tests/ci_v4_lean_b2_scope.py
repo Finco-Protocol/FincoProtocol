@@ -676,7 +676,8 @@ def _signature_ok(root, ref, closure=False):
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
         if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),
-                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope')):       # B2 -> B3 -> V5 bootstrap, nothing else
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope'),
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope')):       # B2 -> B3 -> V5 bootstrap -> V5-2B, nothing else
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})

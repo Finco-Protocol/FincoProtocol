@@ -20,6 +20,7 @@ from tests import ci_v4_lean_b1_scope as B1
 from tests import ci_v4_lean_b2_scope as B2
 from tests import ci_v4_lean_b3_scope as B3
 from tests import ci_v5_bootstrap_scope as T
+from tests import ci_v5_hardening_scope as H5
 from tests import fin_v2_cohorts as C
 from tests import r04_ppa_scope as P
 
@@ -134,17 +135,21 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+        if H5.signature_ok() and p in H5.HANDOFFS:                       # the reviewed V5-2B successor further substitutes this shared path (literal, pin-exact)
+            assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
         assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
     for ref in (None, "HEAD"):
         with C.call_scope():
             assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and B3.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
 
 
-def test_registered_exactly_once_as_the_terminal_cohort_after_b3():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 1                       # exactly ONE module gained; no hardcoded total
-    assert C.COHORT_MODULES[-2:] == ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope")
+def test_registered_exactly_once_after_b3_with_only_the_reviewed_v5_2b_behind_it():
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE module gained after the bootstrap; no hardcoded total
+    assert C.COHORT_MODULES[-3:] == ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope")
+    assert T._next() is H5 and T.SUCCESSOR == H5.__name__
     assert B3.SUCCESSOR == T.__name__ and B3._next() is T and B2.SUCCESSOR == B3.__name__ and B2._next() is B3
     assert B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1
 
@@ -172,9 +177,9 @@ def test_current_maps_move_only_their_registry_and_u1_keys():
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
-def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
+def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_v5_2b():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-1] == "tests.ci_v5_bootstrap_scope" and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_bootstrap_scope") == 1
+    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_bootstrap_scope") == 1
 
 
 # -------------------------------------------------------------------------------------------------------------- tamper (committed refs)
@@ -205,11 +210,12 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')"
+    tail = b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope')"
     for name, fn in (
-        ("duplicate_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope')")),
+        ("duplicate_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_b3_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope')")),
+        ("swapped_b3_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope')")),
+        ("v5_2b_missing", lambda b: b.replace(b", 'tests.ci_v5_hardening_scope'", b"")),
         ("v5_missing", lambda b: b.replace(b", 'tests.ci_v5_bootstrap_scope'", b"")),
         ("b3_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b3_scope'", b"")),
         ("b2_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b2_scope'", b"")),
@@ -320,7 +326,8 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
     pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
+    reg = T.effective_pins()[T.REGISTRY]                                             # the CURRENT pin: the V5-2B overlay wins for the registry it superseded
+    assert reg != pins[T.REGISTRY] and not B3.supersedes(T.REGISTRY, pins[T.REGISTRY])   # the bootstrap-era registry pin is no longer current
     assert B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
     assert not B3.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
     assert not B3.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
@@ -338,18 +345,19 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
     assert T.signature_ok(clone, "HEAD") and not T.signature_ok(clone, bad)
 
 
-def test_the_registry_tail_is_one_finite_sequence_and_v5_is_terminal(monkeypatch):
-    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP is the ONLY accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""
+def test_the_registry_tail_is_one_finite_sequence_and_v5_2b_is_terminal(monkeypatch):
+    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B is the ONLY accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""
     exact = C.COHORT_MODULES
-    assert exact[-5:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope")
-    layers = (K, B1, B2, B3, T)
+    assert exact[-6:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope")
+    layers = (K, B1, B2, B3, T, H5)
     with C.call_scope():
         assert all(m.signature_ok() for m in layers)
-    c06, b1, b2, b3, v5 = exact[-5:]
-    head = exact[:-5]
-    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5), "b1_b2_swapped": head + (c06, b2, b1, b3, v5), "b3_v5_swapped": head + (c06, b1, b2, v5, b3),
-                "v5_duplicated": exact + (v5,), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "v5_before_c06": head + (v5, c06, b1, b2, b3),
-                "c06_dropped": head + (b1, b2, b3, v5), "b3_dropped": head + (c06, b1, b2, v5), "b1_dropped": head + (c06, b2, b3, v5)}
+    c06, b1, b2, b3, v5, h5 = exact[-6:]
+    head = exact[:-6]
+    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5), "b1_b2_swapped": head + (c06, b2, b1, b3, v5, h5), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5),
+                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5), "h5_duplicated": exact + (h5,), "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5),
+                "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "h5_before_c06": head + (h5, c06, b1, b2, b3, v5),
+                "c06_dropped": head + (b1, b2, b3, v5, h5), "b3_dropped": head + (c06, b1, b2, v5, h5), "b1_dropped": head + (c06, b2, b3, v5, h5), "v5_dropped": head + (c06, b1, b2, b3, h5)}
     for name, tail in variants.items():
         monkeypatch.setattr(C, "COHORT_MODULES", tail)
         for layer in layers:
