@@ -327,7 +327,63 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
     return ("ENFORCEMENT_VERIFIED", []) if not findings else ("ENFORCEMENT_INCOMPLETE", findings)
 
 
-def decide(v5, authorization, v4_ok, *, head_matches=True, tool_source_trusted=True):
+def verify_full_witness(run, epoch, repo):
+    """(ok, findings): the epoch's FULL witness is SELF-DECLARED JSON until it is checked against the REAL GitHub run. ``run`` is the API object
+    ``GET /repos/{repo}/actions/runs/{run_id}`` fetched by the TRUSTED job (never data the PR supplies). It closes the false-attestation route: a witness is
+    accepted only if that run exists, is the nightly/dispatched ``CI V4 FULL`` workflow of THIS repository's ``main`` (not a PR or fork run), completed with
+    conclusion ``success`` at EXACTLY the epoch's commit. A missing, unreadable, failed, cancelled, timed-out, skipped, other-sha or other-workflow run is not a witness."""
+    ok, why = E.epoch_full_provenance(epoch)
+    if not ok:
+        return False, ["SELF_DECLARED_WITNESS_NOT_GREEN:" + why]
+    if not isinstance(run, dict) or not run:
+        return False, ["FULL_RUN_NOT_READ_FROM_GITHUB"]
+    declared = (epoch.get("full_run") or {})
+    findings = []
+    if str(run.get("id")) != str(declared.get("run_id")):
+        findings.append("RUN_ID_MISMATCH")
+    if run.get("status") != "completed" or run.get("conclusion") != "success":
+        findings.append("RUN_NOT_COMPLETED_SUCCESS:%s/%s" % (run.get("status"), run.get("conclusion")))
+    if run.get("head_sha") != epoch.get("base_commit"):
+        findings.append("RUN_SHA_IS_NOT_THE_EPOCH_COMMIT")
+    if not str(run.get("path", "")).startswith(".github/workflows/ci_v4_full.yml"):
+        findings.append("RUN_IS_NOT_THE_FULL_WORKFLOW")
+    if run.get("event") not in ("schedule", "workflow_dispatch"):
+        findings.append("RUN_EVENT_NOT_SCHEDULE_OR_DISPATCH:" + str(run.get("event")))
+    if run.get("head_branch") != "main":
+        findings.append("RUN_NOT_ON_MAIN")
+    for key in ("repository", "head_repository"):
+        if (run.get(key) or {}).get("full_name") != repo:
+            findings.append("RUN_%s_IS_NOT_THIS_REPOSITORY" % key.upper())
+    return (not findings), findings
+
+
+def gate_check_state(check_runs, head_sha, name=None):
+    """(state, findings): is the gate check UNAMBIGUOUSLY satisfied at this head? Used by the owner's probes. A required-status rule counts a SKIPPED run as passing, so
+    ANY run of the gate's name that is skipped / neutral / cancelled / not completed / failing, a run for another sha, or a duplicate-named run from a second workflow
+    makes the state AMBIGUOUS or FAILED, never satisfied. Exactly one completed ``success`` run, and nothing else with that name, is ``GATE_CHECK_SATISFIED``."""
+    name = name or E.POLICY.GATE_CHECK_NAME
+    if not isinstance(check_runs, list):
+        return "GATE_CHECK_EVIDENCE_UNAVAILABLE", ["CHECK_RUN_EVIDENCE_UNAVAILABLE"]
+    runs = [r for r in check_runs if isinstance(r, dict) and r.get("name") == name]
+    if not runs:
+        return "GATE_CHECK_MISSING", ["NO_CHECK_RUN_NAMED:" + name]
+    findings = []
+    for r in runs:
+        if r.get("head_sha") not in (None, head_sha):
+            findings.append("OTHER_SHA:" + str(r.get("head_sha"))[:12])
+        elif r.get("status") != "completed":
+            findings.append("NOT_COMPLETED:" + str(r.get("status")))
+        elif r.get("conclusion") != "success":
+            findings.append("NOT_SUCCESS:" + str(r.get("conclusion")))     # skipped / neutral / cancelled / failure / timed_out: a skipped run would satisfy a requirement
+    workflows = {(r.get("workflow_name") or (r.get("app") or {}).get("slug") or "?") for r in runs}
+    if len(runs) != 1 or len(workflows) != 1:
+        findings.append("DUPLICATE_NAMED_CHECK_RUNS:%d" % len(runs))
+    if findings:
+        return ("GATE_CHECK_FAILED" if any(f.startswith(("NOT_SUCCESS", "OTHER_SHA")) for f in findings) else "GATE_CHECK_AMBIGUOUS"), findings
+    return "GATE_CHECK_SATISFIED", []
+
+
+def decide(v5, authorization, v4_ok, *, head_matches=True, tool_source_trusted=True, full_witness_ok=True):
     """The gate decision. Never ``open`` on ``UNKNOWN`` unless the ONLY unknown is a recorded semantic gap AND the same exact head is verified by V4 AND an
     independent authorization exists; never open on INTEGRITY_FAIL, a promotion, a missing / untrusted epoch, an untrusted tool source, a stale head or
     ambiguous / absent authorization. Returns (decision, reasons)."""
@@ -336,6 +392,8 @@ def decide(v5, authorization, v4_ok, *, head_matches=True, tool_source_trusted=T
         reasons.append("HEAD_SHA_DOES_NOT_MATCH_THE_PULL_REQUEST_REF")
     if not tool_source_trusted:
         reasons.append("TOOL_SOURCE_NOT_TRUSTED_BASE")
+    if not full_witness_ok:
+        reasons.append("FULL_WITNESS_NOT_VERIFIED_AGAINST_A_REAL_GITHUB_RUN")
     t = v5.get("trust", {})
     if t.get("epoch_state") != "TRUSTED_BASE" or t.get("base_state") != "VERIFIED_TIP" or t.get("guard_mode") != "ALL_TRACKED":
         reasons.append("TRUST_NOT_ESTABLISHED:%s/%s/%s" % (t.get("epoch_state"), t.get("base_state"), t.get("guard_mode")))
@@ -389,9 +447,16 @@ def cmd_gate(a):
         else:
             why = why + w2
     v4_ok, v4_find = v4_linkage(_read_json(a.check_runs_json), a.head_sha)
-    decision, reasons = decide(v5, state, v4_ok, head_matches=head_matches, tool_source_trusted=a.tools_provenance == "TRUSTED_BASE")
+    full_ok, full_find = False, ["NO_TRUSTED_EPOCH_AT_THE_BASE"]
+    try:
+        epoch, _problems = E.load_epoch(git.run("show", a.base_tip_sha + ":" + E.TRUSTED_EPOCH_PATH))      # the BASE copy only, never the head's
+        if epoch is not None and not epoch["legacy"]:
+            full_ok, full_find = verify_full_witness(_read_json(a.full_run_json), epoch, a.repo_name)
+    except E.GitError:
+        pass
+    decision, reasons = decide(v5, state, v4_ok, head_matches=head_matches, tool_source_trusted=a.tools_provenance == "TRUSTED_BASE", full_witness_ok=full_ok)
     rec = {"schema": GATE_SCHEMA, "decision": decision, "reasons": reasons, "integrity": v5["integrity"], "authorization": state, "authorization_source": source if state == "AUTHORIZATION_APPROVED" else "NONE",
-           "authorization_findings": why, "v4_linkage": "V4_VERIFIED_AT_HEAD" if v4_ok else "V4_NOT_VERIFIED", "v4_findings": v4_find,
+           "authorization_findings": why, "v4_linkage": "V4_VERIFIED_AT_HEAD" if v4_ok else "V4_NOT_VERIFIED", "v4_findings": v4_find, "full_witness": "FULL_WITNESS_VERIFIED_AGAINST_GITHUB" if full_ok else "FULL_WITNESS_NOT_VERIFIED", "full_witness_findings": full_find,
            "enforcement": "ENFORCEMENT_UNVERIFIED", "enforcement_note": "the gate cannot read branch protection with a read token; the owner verifies with the `enforcement` subcommand",
            "head_sha": a.head_sha, "head_ref_sha": ref_sha, "base_tip_sha": a.base_tip_sha, "pr_author": a.pr_author, "epoch_sha": v5.get("epoch_sha"), "delta_digest": v5.get("delta_digest"),
            "tool_source": a.tools_provenance, "semantic_gaps": v5.get("semantic_gaps", [])}
@@ -409,10 +474,26 @@ def cmd_gate(a):
 
 def cmd_enforcement(a):
     state, findings = verify_enforcement(_read_json(a.protection_json), _read_json(a.rules_json))
+    rec = {"schema": "FINCO_CI_V5_ENFORCEMENT_V1", "enforcement": state, "findings": findings}
     print("ENFORCEMENT=%s %s" % (state, ";".join(findings)))
+    if a.check_runs_json:            # owner probe: is the gate check unambiguous at this head (no skipped / duplicate same-named run)?
+        gstate, gfind = gate_check_state(_read_json(a.check_runs_json), a.head_sha or "")
+        rec.update(gate_check=gstate, gate_check_findings=gfind)
+        print("GATE_CHECK=%s %s" % (gstate, ";".join(gfind)))
     if a.output:
-        _dump(a.output, {"schema": "FINCO_CI_V5_ENFORCEMENT_V1", "enforcement": state, "findings": findings})
-    return 0 if state == "ENFORCEMENT_VERIFIED" else 1
+        _dump(a.output, rec)
+    return 0 if state == "ENFORCEMENT_VERIFIED" and rec.get("gate_check", "GATE_CHECK_SATISFIED") == "GATE_CHECK_SATISFIED" else 1
+
+
+def cmd_full_run_id(a):
+    """Print the FULL run id the BASE epoch declares (empty when there is no V2 epoch): the workflow then reads that run from the API."""
+    try:
+        epoch, _p = E.load_epoch(E.Git(a.repo).run("show", a.base_tip_sha + ":" + E.TRUSTED_EPOCH_PATH))
+    except E.GitError:
+        epoch = None
+    run_id = str(((epoch or {}).get("full_run") or {}).get("run_id") or "") if epoch is not None and not epoch["legacy"] else ""
+    print(run_id if run_id.isdigit() else "")
+    return 0
 
 
 def main(argv=None):
@@ -444,15 +525,22 @@ def main(argv=None):
     g4.add_argument("--pr-author", required=True)
     g4.add_argument("--reviews-json")
     g4.add_argument("--check-runs-json")
+    g4.add_argument("--full-run-json", help="the API object of the run the BASE epoch declares as its FULL witness (fetched by the trusted job)")
+    g4.add_argument("--repo-name", default="", help="owner/name of this repository, for the FULL-run repository check")
     g4.add_argument("--tools-provenance", choices=("TRUSTED_BASE", "UNTRUSTED_TOOL_SOURCE"), required=True)
     g4.add_argument("--out-dir", required=True)
     g4.add_argument("--summary")
     en = sub.add_parser("enforcement")
     en.add_argument("--protection-json", help="owner's `gh api repos/<o>/<r>/branches/main/protection` output (omit if it returns 403)")
     en.add_argument("--rules-json", help="owner's `gh api repos/<o>/<r>/rules/branches/main` output")
+    en.add_argument("--check-runs-json", help="owner probe: check runs of a head commit; reports whether the gate check is unambiguous (no skipped / duplicate run)")
+    en.add_argument("--head-sha")
     en.add_argument("--output")
+    fr = sub.add_parser("full-run-id")
+    fr.add_argument("--repo", default=".")
+    fr.add_argument("--base-tip-sha", required=True)
     a = ap.parse_args(argv)
-    return {"verdict": cmd_verdict, "v4": cmd_v4, "compare": cmd_compare, "gate": cmd_gate, "enforcement": cmd_enforcement}[a.cmd](a)
+    return {"verdict": cmd_verdict, "v4": cmd_v4, "compare": cmd_compare, "gate": cmd_gate, "enforcement": cmd_enforcement, "full-run-id": cmd_full_run_id}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # CI V5 — evaluator schema V2, trust checkpoint and gate (V5-2B merged; V5-2C + V5-3 candidate) — SHADOW LANE STAYS OBSERVATIONAL
 
-**Status (V5-2C + V5-3 in ONE PR): the V5 SHADOW lane stays observational; this PR adds the owner-reviewed trust checkpoint (`docs/ci_v5/epoch.json`) and the production-candidate GATE.
+**Status (Correction A, PR #455): the V5 SHADOW lane stays observational; this PR adds the production-candidate GATE (its own `pull_request_target` workflow) and NO trust anchor: `docs/ci_v5/epoch.json` is deliberately NOT part of it (no `epoch.json` ships here; the FULL witness is `FULL_PROVENANCE_BLOCKED`).
 Nothing here is a required check, selects, skips, moves or demotes a test, or changes V4. V4 stays authoritative. The gate becomes a *required* check only when the owner adds its
 name in GitHub settings AFTER this PR is merged (`OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md`). A green workflow run is never evidence of enforcement.**
 
@@ -17,21 +17,21 @@ name in GitHub settings AFTER this PR is merged (`OWNER_POSTMERGE_ACTIVATION_CHE
 | bare `PASS` | `integrity: INTEGRITY_PASS \| INTEGRITY_FAIL \| UNKNOWN` is separate from `authorization` (always `NOT_EVALUATED` here) and `enforcement` (`SHADOW`). No bare `PASS`/`FAIL` string exists in any verdict JSON. |
 
 An `INTEGRITY_PASS` needs **all** of: tool source `TRUSTED_BASE` (archived from the base tip), trusted epoch read from the base, base == protected tip and contained in
-the head, no failure and no unknown. Everything else is `INTEGRITY_FAIL` or `UNKNOWN`. In this PR no trusted epoch exists, so **every verdict here is
+the head, no failure and no unknown. Everything else is `INTEGRITY_FAIL` or `UNKNOWN`. In this PR no trusted epoch exists (none ships here), so **every verdict here is
 `UNKNOWN` or `INTEGRITY_FAIL`, by construction**; hosted runs prove the failure paths and the plumbing, not an approved pass.
 
-## V5-2C + V5-3 (this PR): checkpoint, gate, authorization, enforcement - and what each can and cannot prove
+## V5-3 (this PR): gate, authorization, enforcement - and what each can and cannot prove (V5-2C trust-anchor promotion is NOT in this PR)
 
 | Piece | What it is | State after merge |
 |---|---|---|
-| `docs/ci_v5/epoch.json` | V2 `ALL_TRACKED` checkpoint of accepted `main` `16da701c` (4,291 guarded entries). Read ONLY from the trusted base by later PRs; this PR cannot trust its own copy (`PROMOTION_REQUIRES_OWNER`; mixed with any other guarded change it is `PROMOTION_NOT_ISOLATED`). | present, but **non-authoritative**: its FULL witness is `FULL_PROVENANCE_BLOCKED` |
-| FULL witness | An epoch is a TRUSTED checkpoint only with an attested green FULL bound to its own commit (`epoch_full_provenance`). The nightly `CI V4 FULL` has never completed inside its 19,200 s budget (run `43828509961`: 2,242 / 25,406 tests; `tests/test_ci_v3_outcome_reconciliation.py` = 16,008 s), so none exists. | every verdict stays `UNKNOWN` (`EPOCH_FULL_PROVENANCE_NOT_GREEN`) until a later owner-reviewed promotion carries a green witness |
+| Trust anchor `docs/ci_v5/epoch.json` | **NOT in this PR.** A trust anchor is a promotion; it may only be created by a separate, isolated, owner-approved PR (`PROMOTION_REQUIRES_OWNER`; mixed with anything else `PROMOTION_NOT_ISOLATED`) AFTER a green FULL run exists. No epoch ships here, no untrusted candidate of the V2 shape either; regenerate on demand with `python tools/ci_v5_candidate.py candidate --commit <tip> --full-run-id <id>`. | absent: every verdict stays `UNKNOWN` (`NO_TRUSTED_EPOCH`) |
+| FULL witness | A witness is only a JSON field until it is checked against the REAL GitHub run. `verify_full_witness` (run by the gate, trusted base) reads `GET /repos/{repo}/actions/runs/{run_id}` and accepts only a run of THIS repository's `ci_v4_full.yml` on `main`, event `schedule`/`workflow_dispatch`, `completed`/`success`, at EXACTLY the epoch's commit; a self-declared PASS with a missing, red, timed-out, other-sha, PR or fork run is rejected (`FULL_WITNESS_NOT_VERIFIED_AGAINST_A_REAL_GITHUB_RUN`). The nightly `CI V4 FULL` is red today (run `43828509961`: 19,200 s supervisor timeout, 2,242 / 25,406 tests; `tests/test_ci_v3_outcome_reconciliation.py` = 16,008 s), so no witness exists. | `FULL_PROVENANCE_BLOCKED`; a later promotion needs a green FULL |
 | Gate job `V5 gate (trusted base)` | The only job of its OWN workflow `.github/workflows/ci_v5_gate.yml` (`pull_request_target` only). GitHub reads that file from the protected base, so a PR cannot rewrite the gate that judges it; and because no `pull_request` event shares the file, no SKIPPED same-named check run exists (a skipped check counts as passing for a required status check). Checks out the BASE, fetches the head as Git objects only, read-only token, no secrets. | exists; runs on later PRs; **not required by any setting** |
 | Authorization | `AUTHORIZATION_APPROVED` needs an APPROVED review at the EXACT head by an allow-listed login that is not the PR author (repo association OWNER/MEMBER/COLLABORATOR, not dismissed), or an owner-signed head commit verified against `POLICY.ALLOWED_SIGNERS`. `POLICY.APPROVERS` and `ALLOWED_SIGNERS` are EMPTY in trusted code: nobody can approve until the owner names an independent identity in a reviewed edit (`AUTHORIZATION_BLOCKED / NO_APPROVER_CONFIGURED`). | blocked by construction |
 | Decision | `INTEGRITY_PASS_AUTHORIZED` (integrity + authorization), `DEFERRED_TO_V4_VERIFIED` (the ONLY unknown is a recorded semantic gap AND all six V4 checks are `success` at the SAME head AND authorization), else `BLOCK`. Never opens on `UNKNOWN`, a promotion, a stale/foreign head, an untrusted tool or epoch, or a skipped/missing/red V4 check. | - |
 | Enforcement | `ENFORCEMENT_VERIFIED` only from the OWNER's read of branch protection / rulesets (`python tools/ci_v5_shadow.py enforcement --protection-json ...`): the gate AND all six V4 checks required, strict, enforced admins, code-owner review, stale dismissal, last-push approval, >=1 approval. The gate itself always reports `ENFORCEMENT_UNVERIFIED`. | `ENFORCEMENT_UNVERIFIED` |
 
-After approving, re-run the gate job (reviews are read when it runs). Rollback: remove only the gate name from the required checks (or delete `ci_v5_gate.yml`); every V4 requirement and the epoch history stay.
+After approving, re-run the gate job (reviews are read when it runs). Rollback: remove only the gate name from the required checks (or delete `ci_v5_gate.yml`); every V4 requirement stays.
 
 ## Files
 
@@ -47,9 +47,8 @@ After approving, re-run the gate job (reviews are read when it runs). Rollback: 
 | `tests/test_ci_v5_hardening.py` | Lane separation, B5 / comparison vocabulary, generators, workflow structure. |
 | `docs/ci_v5/delta.json` | This PR's finite base-relative delta (exempt from the guard; bound by its own `result_inventory_sha256`). |
 | `docs/ci_v5/epoch.candidate.json` | Legacy V1 candidate (epoch state `CANDIDATE_UNTRUSTED`): still readable, reported as `LEGACY_NARROW_GUARD`, never an approved FULL guard. |
-| `docs/ci_v5/epoch.json` | The V2 checkpoint above (non-authoritative until a green FULL witness is attested). |
 | `docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md` | Exact owner steps after the merge (settings, approver, signer, probes, rollback). |
-| `tests/test_ci_v5_gate.py` | Gate logic, authorization / enforcement / V4-linkage attacks, end-to-end gate on synthetic repos, workflow structure, checkpoint truthfulness. |
+| `tests/test_ci_v5_gate.py` | Gate logic, authorization / enforcement / V4-linkage / FULL-witness / gate-check-ambiguity attacks, end-to-end gate on synthetic repos, workflow structure. |
 
 ## Delta V2
 
@@ -72,9 +71,9 @@ The delta cannot contain its own blob (exempt). A V4 exact-source manifest that 
 
 ## Trust transitions (owner-gated)
 
-1. **Promotion (this PR carries it).** `docs/ci_v5/epoch.json` is a V2 `ALL_TRACKED` snapshot of exactly the accepted base. A PR that adds/edits it is verdict `transition: PROMOTION_REQUIRES_OWNER` and can never be an integrity pass; mixed
-   with any other guarded change it is `PROMOTION_NOT_ISOLATED`. It is judged by V4 and the owner, NOT by its own V5 machinery, and becomes a trusted-base artifact only for the NEXT PR. Removing it is an intentional, owner-gated rollback.
-2. **FULL witness.** The checkpoint records `FULL_PROVENANCE_BLOCKED` honestly. Authority needs a later promotion whose `full_run` is an attested PASS bound to the epoch's commit.
+1. **Promotion (NOT in this PR).** `docs/ci_v5/epoch.json` is a V2 `ALL_TRACKED` snapshot of an accepted base. A PR that adds/edits it is verdict `transition: PROMOTION_REQUIRES_OWNER` and can never be an integrity pass; mixed
+   with any other guarded change it is `PROMOTION_NOT_ISOLATED`. It must be a separate isolated PR, judged by V4 and the owner, and becomes a trusted-base artifact only for the NEXT PR. V4's exact-source ownership rules may still block even that narrow PR (`PROMOTION_GOVERNANCE_BLOCKED`: it then needs its own V4 successor).
+2. **FULL witness.** An epoch is a trusted checkpoint only with a green FULL run for its own commit, validated against the real GitHub run (`verify_full_witness`), never a self-declared field. Today `FULL_PROVENANCE_BLOCKED`.
 3. **Authorization (D3).** Option A: a distinct approver identity with enforced code-owner review (named in `POLICY.APPROVERS`). Option B: an owner-signed approval commit (key never given to an agent; public key in `POLICY.ALLOWED_SIGNERS`). Neither is configured.
 4. **Dual-required pilot.** V5 is added ALONGSIDE V4, never in place of it, only after the owner configures and verifies the settings. Status of this repository: `ACTIVATION_PREPARED_NOT_VERIFIED` at best.
 

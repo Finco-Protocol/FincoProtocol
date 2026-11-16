@@ -6,7 +6,7 @@ Every step lists the evidence that proves it. If a step cannot produce that evid
 ## 0. Preconditions (all must hold before step 1)
 
 - [ ] This PR is merged by YOU (ordinary merge commit) after the six V4 checks are green at the exact head you reviewed. Evidence: the merge commit and the check-run list at that head.
-- [ ] `docs/ci_v5/epoch.json` exists on `main` (check: `git show origin/main:docs/ci_v5/epoch.json | head`). It records `full_run.status = FULL_PROVENANCE_BLOCKED`: **it is a non-authoritative checkpoint** and the gate will `BLOCK` everything until a later promotion carries a green FULL witness.
+- [ ] `docs/ci_v5/epoch.json` does NOT exist on `main` (this PR ships no trust anchor): the gate reports `NO_TRUSTED_EPOCH` and will `BLOCK` everything until a separate, isolated, owner-approved promotion PR adds an epoch whose FULL witness is a green run that the gate itself verifies against GitHub.
 - [ ] A green **CI V4 FULL** run exists for the accepted tip. Today it does not: the unsharded FULL step exceeds its 19,200 s budget (run 43828509961: 2,242 of 25,406 tests; one module, `tests/test_ci_v3_outcome_reconciliation.py`, used 16,008 s; at least two `F` results also appeared). Fixing that is a separate V4 change (it touches frozen V4 control files and test timing) and is NOT part of this PR. Evidence: a run id whose `sha` equals the epoch's `base_commit` and whose conclusion is `success`.
 
 ## 1. Read the real settings (read-only)
@@ -32,7 +32,7 @@ Evidence: a synthetic PR where the gate reports `authorization: AUTHORIZATION_AP
 
 ## 3. Promote an epoch with a green FULL witness (owner decision, separate from this PR)
 
-Only after step 0's FULL condition: `python tools/ci_v5_candidate.py candidate --commit <accepted tip> --output docs/ci_v5/epoch.json --full-run-id <FULL run id>` in a PR that changes only the epoch (+ the V4 successor V4 needs). Its verdict is `PROMOTION_REQUIRES_OWNER`; it takes effect for the NEXT PR only. Evidence: the next PR's gate record shows `epoch_state: TRUSTED_BASE` and `full_witness: FULL_WITNESS_ATTESTED_GREEN`.
+Only after step 0's FULL condition: `python tools/ci_v5_candidate.py candidate --commit <accepted tip> --output docs/ci_v5/epoch.json --full-run-id <FULL run id>` in a PR that changes only the epoch (+ the V4 successor V4 needs). Its verdict is `PROMOTION_REQUIRES_OWNER`; it takes effect for the NEXT PR only. V4's exact-source ownership may block even that narrow PR (`PROMOTION_GOVERNANCE_BLOCKED`) and then needs its own V4 successor. Evidence: the next PR's gate record shows `epoch_state: TRUSTED_BASE` and `full_witness: FULL_WITNESS_VERIFIED_AGAINST_GITHUB`.
 
 ## 4. Add the gate to the required checks — ADDITIVE ONLY, V4 untouched
 
@@ -55,7 +55,7 @@ Only when steps 2–5 all have their evidence may anyone write `DUAL_REQUIRED_AC
 
 ## 6. Rollback (owner approval needed; V4 stays in force)
 
-Remove only `V5 gate (trusted base)` from the required checks (Settings → Branches → `main`), or delete `.github/workflows/ci_v5_gate.yml`. Do not rewrite accepted `main`; the epoch history stays. Evidence: PRs merge again under the six V4 checks alone.
+Remove only `V5 gate (trusted base)` from the required checks (Settings → Branches → `main`), or delete `.github/workflows/ci_v5_gate.yml`. Do not rewrite accepted `main`;  Evidence: PRs merge again under the six V4 checks alone.
 
 ## Known residual risks
 

@@ -114,7 +114,7 @@ def test_signed_head_with_real_ssh_signatures_where_the_tool_exists(tmp_path):
     repo.mkdir()
     run("git", "init", "-q", "-b", "main", cwd=repo)
     run("git", "config", "user.name", "t", cwd=repo)
-    run("git", "config", "user.email", "t@test.invalid", cwd=repo)
+    run("git", "config", "user.email", "t\x40test.invalid", cwd=repo)
     run("git", "config", "gpg.format", "ssh", cwd=repo)
     (repo / "f").write_text("x\n")
     run("git", "add", "f", cwd=repo)
@@ -315,15 +315,26 @@ def make_head(w, base, files, delete=(), declare=True):
     return pre
 
 
-def run_gate(w, tmp_path, head, base, reviews, runs=None, *, author=AUTHOR, provenance="TRUSTED_BASE", head_ref=None, approvers=(OWNER_B,), monkeypatch=None):
+REPO = "acme/widgets"
+
+
+def good_full_run(sha, run_id="1", **over):
+    run = {"id": int(run_id), "status": "completed", "conclusion": "success", "head_sha": sha, "head_branch": "main", "event": "schedule", "path": ".github/workflows/ci_v4_full.yml@refs/heads/main",
+           "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO}}
+    run.update(over)
+    return run
+
+
+def run_gate(w, tmp_path, head, base, reviews, runs=None, *, author=AUTHOR, provenance="TRUSTED_BASE", head_ref=None, approvers=(OWNER_B,), monkeypatch=None, full="GOOD"):
     out = tmp_path / ("out_" + head[:8] + "_" + str(len(list(tmp_path.iterdir()))))
     out.mkdir()
     (out / "reviews.json").write_text(json.dumps(reviews))
     (out / "runs.json").write_text(json.dumps(all_green(head) if runs is None else runs))
+    (out / "full.json").write_text(json.dumps(good_full_run(w["E"]) if full == "GOOD" else full))
     if monkeypatch is not None:
         monkeypatch.setattr(POLICY, "APPROVERS", approvers)
     rc = SH.main(["gate", "--repo", str(w["r"].path), "--head-sha", head, "--head-ref", head_ref or "refs/remotes/pr/head", "--base-tip-sha", base, "--pr-author", author,
-                  "--reviews-json", str(out / "reviews.json"), "--check-runs-json", str(out / "runs.json"), "--tools-provenance", provenance, "--out-dir", str(out)])
+                  "--reviews-json", str(out / "reviews.json"), "--check-runs-json", str(out / "runs.json"), "--full-run-json", str(out / "full.json"), "--repo-name", REPO, "--tools-provenance", provenance, "--out-dir", str(out)])
     return rc, json.loads((out / "gate_decision.json").read_text())
 
 
@@ -451,19 +462,111 @@ def test_epoch_without_a_green_full_witness_is_never_authoritative(world):
     assert not E.epoch_full_provenance(ep)[0] and not E.epoch_full_provenance({})[0] and not E.epoch_full_provenance(None)[0]
 
 
-def test_repository_epoch_checkpoint_is_a_truthful_v2_snapshot_with_an_honest_full_witness():
-    raw = (ROOT / E.TRUSTED_EPOCH_PATH).read_bytes()
-    epoch, problems = E.load_epoch(raw)
-    assert epoch is not None and not epoch["legacy"] and epoch["guard"]["mode"] == "ALL_TRACKED", problems
-    assert epoch["policy_version"] == POLICY.POLICY_VERSION and sorted(epoch["guard"]["exempt"]) == sorted({E.DELTA_PATH, *POLICY.V4_BOUND_EXEMPT})
-    fr = epoch["full_run"]
-    assert fr["status"] == "FULL_PROVENANCE_BLOCKED" and fr["sha"] == epoch["base_commit"] and fr["reason"] and not E.epoch_full_provenance(epoch)[0]    # honest: blocked, never PASS
-    git = E.Git(ROOT)
-    assert git.run("cat-file", "-t", epoch["base_commit"]).strip() == b"commit" and git.run("rev-parse", epoch["base_commit"] + "^{tree}").decode().strip() == epoch["base_tree"]
-    snap = {p: v for p, v in E.read_inventory(git, epoch["base_commit"]).items() if E.is_guarded(p)}
-    assert snap == E.epoch_map(epoch)                                                                                                         # exactly the accepted base's ALL_TRACKED inventory
-    git.run("merge-base", "--is-ancestor", epoch["base_commit"], "HEAD")                                                                     # accepted history of this checkout
-    assert raw == E.canonical(json.loads(raw)) and not any(e.endswith("\t" + E.TRUSTED_EPOCH_PATH) or e.endswith("\t" + E.DELTA_PATH) for e in epoch["entries"])
+def test_this_pr_ships_no_trust_anchor_and_no_untrusted_v2_candidate():
+    """Correction A: the epoch is a trust-anchor PROMOTION and belongs in its own isolated, owner-approved PR after a green FULL run. Nothing here may stand in for it."""
+    assert not (ROOT / E.TRUSTED_EPOCH_PATH).exists() and not (ROOT / "docs/ci_v5/epoch2.json").exists()
+    legacy = json.loads((ROOT / "docs/ci_v5/epoch.candidate.json").read_text())             # the pre-existing V1 candidate stays untrusted (LEGACY_NARROW_GUARD), unchanged by this PR
+    assert legacy.get("schema") == E.EPOCH_SCHEMA_V1
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- FULL witness vs the REAL run
+def _witness(run_id="1", sha=None, status="PASS"):
+    return {"base_commit": sha or "a" * 40, "full_run": {"status": status, "run_id": run_id, "sha": sha or "a" * 40}}
+
+
+@pytest.mark.parametrize("name,run,epoch_kw,fragment", [
+    ("real_green_scheduled_run", good_full_run("a" * 40), {}, None),
+    ("real_green_dispatched_run", good_full_run("a" * 40, event="workflow_dispatch"), {}, None),
+    ("no_run_read", None, {}, "FULL_RUN_NOT_READ_FROM_GITHUB"),
+    ("empty_run_object", {}, {}, "FULL_RUN_NOT_READ_FROM_GITHUB"),
+    ("run_failed", good_full_run("a" * 40, conclusion="failure"), {}, "RUN_NOT_COMPLETED_SUCCESS"),
+    ("run_timed_out", good_full_run("a" * 40, conclusion="timed_out"), {}, "RUN_NOT_COMPLETED_SUCCESS"),
+    ("run_cancelled", good_full_run("a" * 40, conclusion="cancelled"), {}, "RUN_NOT_COMPLETED_SUCCESS"),
+    ("run_skipped", good_full_run("a" * 40, conclusion="skipped"), {}, "RUN_NOT_COMPLETED_SUCCESS"),
+    ("run_still_in_progress", good_full_run("a" * 40, status="in_progress", conclusion=None), {}, "RUN_NOT_COMPLETED_SUCCESS"),
+    ("run_of_another_commit", good_full_run("b" * 40), {}, "RUN_SHA_IS_NOT_THE_EPOCH_COMMIT"),
+    ("run_id_mismatch", good_full_run("a" * 40, run_id="2"), {}, "RUN_ID_MISMATCH"),
+    ("run_is_the_pr_workflow", good_full_run("a" * 40, path=".github/workflows/ci_v4_pr.yml@refs/heads/main"), {}, "RUN_IS_NOT_THE_FULL_WORKFLOW"),
+    ("run_triggered_by_a_pull_request", good_full_run("a" * 40, event="pull_request"), {}, "RUN_EVENT_NOT_SCHEDULE_OR_DISPATCH"),
+    ("run_on_a_feature_branch", good_full_run("a" * 40, head_branch="claude/x"), {}, "RUN_NOT_ON_MAIN"),
+    ("run_from_a_fork", good_full_run("a" * 40, head_repository={"full_name": "evil/widgets"}), {}, "HEAD_REPOSITORY_IS_NOT_THIS_REPOSITORY"),
+    ("run_of_another_repository", good_full_run("a" * 40, repository={"full_name": "evil/widgets"}), {}, "REPOSITORY_IS_NOT_THIS_REPOSITORY"),
+    ("self_declared_blocked_witness", good_full_run("a" * 40), {"status": "FULL_PROVENANCE_BLOCKED"}, "SELF_DECLARED_WITNESS_NOT_GREEN"),
+    ("self_declared_pass_without_run_id", good_full_run("a" * 40), {"run_id": ""}, "SELF_DECLARED_WITNESS_NOT_GREEN"),
+])
+def test_a_full_witness_is_valid_only_against_the_real_github_run(name, run, epoch_kw, fragment):
+    ok, findings = SH.verify_full_witness(run, _witness(**epoch_kw), REPO)
+    if fragment is None:
+        assert ok and not findings, (name, findings)
+    else:
+        assert not ok and any(fragment in f for f in findings), (name, findings)
+
+
+def test_the_run_the_epoch_declares_is_extracted_from_the_base_only(world, capsys):
+    assert SH.main(["full-run-id", "--repo", str(world["r"].path), "--base-tip-sha", world["M"]]) == 0
+    assert capsys.readouterr().out.strip() == "1"
+    assert SH.main(["full-run-id", "--repo", str(world["r"].path), "--base-tip-sha", world["E"]]) == 0      # E carries no epoch at all
+    assert capsys.readouterr().out.strip() == ""
+
+
+def test_gate_blocks_a_self_declared_green_full_witness_that_github_does_not_confirm(world, tmp_path, monkeypatch):
+    head = make_head(world, world["M"], {"app/util.py": "UTIL = 31\n"})
+    ok_rc, ok = run_gate(world, tmp_path, head, world["M"], [review(OWNER_B, commit=head)], monkeypatch=monkeypatch)
+    assert ok_rc == 0 and ok["decision"] == "INTEGRITY_PASS_AUTHORIZED" and ok["full_witness"] == "FULL_WITNESS_VERIFIED_AGAINST_GITHUB"
+    for label, full in (("no_run", {}), ("failed_run", good_full_run(world["E"], conclusion="failure")), ("timed_out", good_full_run(world["E"], conclusion="timed_out")),
+                        ("other_sha", good_full_run("c" * 40)), ("pr_run", good_full_run(world["E"], event="pull_request")), ("fork_run", good_full_run(world["E"], head_repository={"full_name": "evil/x"}))):
+        rc, rec = run_gate(world, tmp_path, head, world["M"], [review(OWNER_B, commit=head)], monkeypatch=monkeypatch, full=full)
+        assert rc == 1 and rec["decision"] == "BLOCK" and rec["full_witness"] == "FULL_WITNESS_NOT_VERIFIED", (label, rec)
+        assert "FULL_WITNESS_NOT_VERIFIED_AGAINST_A_REAL_GITHUB_RUN" in rec["reasons"], label
+
+
+def test_the_decision_blocks_without_a_verified_full_witness():
+    got, reasons = SH.decide(v5rec(), "AUTHORIZATION_APPROVED", True, full_witness_ok=False)
+    assert got == "BLOCK" and "FULL_WITNESS_NOT_VERIFIED_AGAINST_A_REAL_GITHUB_RUN" in reasons
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- the gate check can never be satisfied by a skipped run
+def gate_run(conclusion="success", status="completed", head=HEAD, workflow="CI V5 gate (trusted base)"):
+    return {"name": POLICY.GATE_CHECK_NAME, "status": status, "conclusion": conclusion, "head_sha": head, "workflow_name": workflow}
+
+
+@pytest.mark.parametrize("name,runs,state", [
+    ("one_green_run", [gate_run()], "GATE_CHECK_SATISFIED"),
+    ("skipped_run_is_not_satisfied", [gate_run("skipped")], "GATE_CHECK_FAILED"),
+    ("neutral_is_not_satisfied", [gate_run("neutral")], "GATE_CHECK_FAILED"),
+    ("cancelled_is_not_satisfied", [gate_run("cancelled")], "GATE_CHECK_FAILED"),
+    ("failure_is_not_satisfied", [gate_run("failure")], "GATE_CHECK_FAILED"),
+    ("in_progress_is_not_satisfied", [gate_run(None, status="in_progress")], "GATE_CHECK_AMBIGUOUS"),
+    ("missing_check", [], "GATE_CHECK_MISSING"),
+    ("only_other_names", [{"name": "CI V4 gate", "status": "completed", "conclusion": "success", "head_sha": HEAD}], "GATE_CHECK_MISSING"),
+    ("green_for_another_sha", [gate_run(head="9" * 40)], "GATE_CHECK_FAILED"),
+    ("skipped_twin_from_a_second_workflow_masks_the_real_one", [gate_run(), gate_run("skipped", workflow="CI V5 shadow")], "GATE_CHECK_FAILED"),
+    ("green_twin_from_a_second_workflow_is_ambiguous", [gate_run(), gate_run(workflow="CI V5 shadow")], "GATE_CHECK_AMBIGUOUS"),
+    ("evidence_unavailable", None, "GATE_CHECK_EVIDENCE_UNAVAILABLE"),
+])
+def test_a_skipped_or_duplicated_gate_run_never_satisfies_the_requirement(name, runs, state):
+    got, findings = SH.gate_check_state(runs, HEAD)
+    assert got == state, (name, got, findings)
+    if state != "GATE_CHECK_SATISFIED":
+        assert findings
+
+
+def test_the_enforcement_probe_reports_an_ambiguous_gate_check_and_exits_nonzero(tmp_path):
+    prot = tmp_path / "prot.json"
+    prot.write_text(json.dumps(good_protection()))
+    for runs, rc, state in (([gate_run()], 0, "GATE_CHECK_SATISFIED"), ([gate_run(), gate_run("skipped", workflow="other")], 1, "GATE_CHECK_FAILED")):
+        cr_file, out = tmp_path / "cr.json", tmp_path / "enf.json"
+        cr_file.write_text(json.dumps(runs))
+        assert SH.main(["enforcement", "--protection-json", str(prot), "--rules-json", str(tmp_path / "none.json"), "--check-runs-json", str(cr_file), "--head-sha", HEAD, "--output", str(out)]) == rc
+        assert json.loads(out.read_text())["gate_check"] == state
+
+
+def test_unreadable_branch_protection_stays_enforcement_unverified_even_with_a_green_gate(tmp_path):
+    cr_file, out = tmp_path / "cr.json", tmp_path / "enf.json"
+    cr_file.write_text(json.dumps([gate_run()]))
+    assert SH.main(["enforcement", "--check-runs-json", str(cr_file), "--head-sha", HEAD, "--output", str(out)]) == 1
+    rec = json.loads(out.read_text())
+    assert rec["enforcement"] == "ENFORCEMENT_UNVERIFIED" and rec["gate_check"] == "GATE_CHECK_SATISFIED"
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------- workflow structure
@@ -483,7 +586,7 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert names.count(POLICY.GATE_CHECK_NAME) == 1, "the required-check name is produced by exactly one job in the whole repository's V5 workflows"
     gate = jobs["gate"]
     assert "if" not in gate and gate["name"] == POLICY.GATE_CHECK_NAME
-    assert gate["permissions"] == {"contents": "read", "pull-requests": "read", "checks": "read"} and wf["permissions"] == {"contents": "read"}
+    assert gate["permissions"] == {"contents": "read", "pull-requests": "read", "checks": "read", "actions": "read"} and wf["permissions"] == {"contents": "read"}      # read-only: no write scope anywhere
     steps = gate["steps"]
     checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout"))
     assert "ref" not in checkout["with"] and "repository" not in checkout["with"], "the gate checks out the protected BASE (the default for this event), never the head"
@@ -500,3 +603,4 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert wf["concurrency"]["group"] == "ci-v5-gate-${{ github.event.pull_request.number }}"
     assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for s in steps if "uses" in s))
     assert "FINCO_CI_V5_DELTA_V2" in runs and "TRUSTED_BASE" in runs and "UNTRUSTED_TOOL_SOURCE" in runs
+    assert "actions/runs/${FULL_RUN_ID}" in runs and "--full-run-json" in runs and "--repo-name" in runs, "the FULL witness is verified against the real run"

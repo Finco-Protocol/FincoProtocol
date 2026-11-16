@@ -27,6 +27,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      actions: read
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -62,10 +63,13 @@ jobs:
           fetch() {
             gh api --paginate --jq '.[]' "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews" | jq -s '.' > "$OUT/reviews.json" || echo '[]' > "$OUT/reviews.json"
             gh api --paginate --jq '.check_runs[]' "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" | jq -s '.' > "$OUT/check_runs.json" || echo '[]' > "$OUT/check_runs.json"
+            # the FULL witness the BASE epoch declares is verified against the REAL run: an unreadable / missing run is `{}` (never a witness)
+            FULL_RUN_ID="$(python -I tools/ci_v5_shadow.py full-run-id --repo . --base-tip-sha "$TIP" || true)"
+            if [ -n "$FULL_RUN_ID" ]; then gh api "repos/${GH_REPO}/actions/runs/${FULL_RUN_ID}" > "$OUT/full_run.json" || echo '{}' > "$OUT/full_run.json"; else echo '{}' > "$OUT/full_run.json"; fi
           }
           run_gate() {
             python -I tools/ci_v5_shadow.py gate --repo . --head-sha "$HEAD_SHA" --head-ref refs/remotes/pr/head --base-tip-sha "$TIP" --pr-author "$PR_AUTHOR" \
-              --reviews-json "$OUT/reviews.json" --check-runs-json "$OUT/check_runs.json" --tools-provenance "$PROVENANCE" --out-dir "$OUT" --summary "$GITHUB_STEP_SUMMARY"
+              --reviews-json "$OUT/reviews.json" --check-runs-json "$OUT/check_runs.json" --full-run-json "$OUT/full_run.json" --repo-name "$GH_REPO" --tools-provenance "$PROVENANCE" --out-dir "$OUT" --summary "$GITHUB_STEP_SUMMARY"
           }
           DEADLINE=$(( $(date +%s) + 5400 ))
           fetch

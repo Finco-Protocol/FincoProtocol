@@ -248,9 +248,8 @@ def test_shadow_workflow_is_split_by_trust_boundary_and_least_privilege():
 
 
 def test_repository_artifacts_make_no_authority_claim():
-    """The checkpoint ships with an HONEST blocked FULL witness (never authoritative), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
-    epoch, problems = E.load_epoch((ROOT / E.TRUSTED_EPOCH_PATH).read_bytes())
-    assert epoch is not None and epoch["full_run"]["status"] == "FULL_PROVENANCE_BLOCKED" and not E.epoch_full_provenance(epoch)[0], problems
+    """No trust anchor ships (an epoch is a separate owner-approved promotion), the legacy V1 candidate stays non-authoritative, and the delta is a V2 document."""
+    assert not (ROOT / E.TRUSTED_EPOCH_PATH).exists()
     delta = json.loads((ROOT / E.DELTA_PATH).read_bytes())
     assert (ROOT / E.DELTA_PATH).read_bytes() == E.canonical(delta) and delta["schema"] == E.DELTA_SCHEMA and set(delta) == E.DELTA_KEYS
     assert E.SHA40.fullmatch(delta["base_sha"]) and E.SHA256.fullmatch(delta["result_inventory_sha256"])
