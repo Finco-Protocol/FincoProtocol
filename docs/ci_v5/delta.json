@@ -3,7 +3,7 @@
  "base_tree": "72b42b2b4e391db7ecd661a2822f07a2602bb721",
  "changes": [
   {
-   "blob": "deb0c83c0b63f66f3c9011f4d723397a2164d921",
+   "blob": "aca9d784772bab59413d0fd1aa79753bfad7f3f0",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -17,14 +17,14 @@
    "path": "docs/ci_v4/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "62fe4b48bc225f4eb2aa4c04606feeca4503a7c2",
+   "blob": "999b74a13a079883195608d94a80628239366681",
    "class": "D",
    "mode": "100644",
    "op": "add",
    "path": "docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md"
   },
   {
-   "blob": "402a7ed435fbe153d79300300ba8cd18069727eb",
+   "blob": "d37a48f0ee0e062dd1128b4d1482c670ef79bbdf",
    "class": "D",
    "mode": "100644",
    "op": "modify",
@@ -122,7 +122,7 @@
    "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "85dbc089322467a8083390d4b9b9f8b1f32b7b6f",
+   "blob": "327942ab4077eb999307363544a867a257565b69",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -192,7 +192,7 @@
    "path": "tests/test_ci_v4_perf_scope.py"
   },
   {
-   "blob": "3be2afed30a0538219341cf02e7b991cfff74ba5",
+   "blob": "ebabee4bdcf923db0275fa1aaa4624fd264aff93",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -206,28 +206,28 @@
    "path": "tests/test_ci_v5_foundation.py"
   },
   {
-   "blob": "bab832f345f70942af01afabf5f39179196aa2d9",
+   "blob": "70e152040eae186d716ddca2e51e6b14b4fe2892",
    "class": "X",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v5_gate.py"
   },
   {
-   "blob": "7fb05812ca3703bcb83ce883e37ead7ce704d9c7",
+   "blob": "0ade9ba166a245ba2731cbb3f1b66fac4e4038bc",
    "class": "S",
    "mode": "100644",
    "op": "add",
    "path": "tests/test_ci_v5_gate_scope.py"
   },
   {
-   "blob": "79eaac3c884349e34739e2fdc707e07e93ab2727",
+   "blob": "46b7d5eb4efda1ab9f247cac38aee5e357cf802b",
    "class": "X",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v5_hardening.py"
   },
   {
-   "blob": "908046bfc6b3f8e155f950b22cd0ad166c53c525",
+   "blob": "24c9e738002c00ce9720797f2f322cc90dbe0a22",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -304,13 +304,13 @@
    "path": "tools/ci_v5_epoch.py"
   },
   {
-   "blob": "a596acb7e6448d2ef5a6d6d23d3c793548eed0eb",
+   "blob": "9b7d2f3bcab3d6521fbd8bb22ae87fb5f2c5c38f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "692f7d28380e56fba37107c42a984b7fa8c14405326eef19e638d1adecd7b67d",
+ "result_inventory_sha256": "0003a3f321e6f2329c0994fecc9e78a69fe8c432680d2054ed234cdb62331254",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
