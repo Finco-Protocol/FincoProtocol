@@ -115,21 +115,21 @@
    "path": "tests/ci_v4_scope.py"
   },
   {
-   "blob": "87497a17384305289b0218bd4d3e3431eaf21bcf",
+   "blob": "b80c3b7c679474374490770839d47bf75df7244f",
    "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "68e5db57e34dda6bfdc00217156441bd3ce5f452",
+   "blob": "85dbc089322467a8083390d4b9b9f8b1f32b7b6f",
    "class": "S",
    "mode": "100644",
    "op": "add",
    "path": "tests/ci_v5_gate_scope.py"
   },
   {
-   "blob": "83935ca7bc550cdc10ba689000b8d31c78c02d70",
+   "blob": "b27178cf17ceff7bb57da812ada6be256c9317f3",
    "class": "S",
    "mode": "100644",
    "op": "modify",
@@ -311,6 +311,6 @@
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "result_inventory_sha256": "ce3a4b183cdede76f349dd2f087bda1732b434d79c8ed14fcfe33e28d7b820a8",
+ "result_inventory_sha256": "692f7d28380e56fba37107c42a984b7fa8c14405326eef19e638d1adecd7b67d",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
