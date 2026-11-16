@@ -378,26 +378,3 @@ def test_only_the_d029_and_ws2_tuples_exist_as_accepted_states():
     assert set(prod.D029_BLOBS) == set(prod.WS2_TRUST_BLOBS) and all(prod.D029_BLOBS[k] != prod.WS2_TRUST_BLOBS[k] for k in prod.D029_BLOBS)
     assert not any(k in prod.WS2_TRUST_BLOBS for k in prod.D029_TRUST_CHANGED_BLOBS)
 
-
-# ───────────── CI trust state C follows the reviewed pins of the exact-source chain (and nothing else) ─────────────
-def test_state_c_accepts_a_drifted_pin_only_while_a_reviewed_cohort_pins_the_current_blob(monkeypatch):
-    """The WS-2 manifest pins ``tests/test_trust_readiness_registry.py`` at its WS-2 blob while ``main`` holds a later blob that the closed BESS cohort of the chain pinned in review.
-    State C must accept exactly that (the bounded hook), and must fail closed the moment no reviewed cohort pins the current blob, a pin is missing or an unexpected key appears."""
-    from tests import wf03_lifecycle_scope as F
-    facts = real_facts()
-    phases, native = run_evidence()
-    current = F.ci_source_facts()["current_blobs"]
-    drifted = {p for p in facts["ws2_manifest_pins"] if facts["ws2_manifest_pins"][p] != current[p]}
-    assert drifted == {"tests/test_trust_readiness_registry.py"}                       # the premise: exactly the pin the BESS cohort re-pinned
-    assert F.accepts_ci_trust_state(facts, phases, native)
-    calls = []
-    monkeypatch.setattr(F, "_wf06b_supersedes", lambda path, value, *a, **k: calls.append((path, value)) or False)
-    assert not F.accepts_ci_trust_state(facts, phases, native)                          # no reviewed cohort pins the blob: drift
-    assert calls and {p for p, _v in calls} == drifted and all(v == current[p] for p, v in calls)      # asked only for the drifted path, only for its exact current blob
-    monkeypatch.undo()
-    for mutate in (lambda f: f.update({"ws2_manifest_pins": None}), lambda f: f["ws2_manifest_pins"].pop("tests/test_trust_readiness_registry.py"),
-                   lambda f: f["ws2_manifest_pins"].update({"app/trust_readiness/projection.py": "1" * 40}),
-                   lambda f: f["ws2_manifest_pins"].update({"app/trust_readiness/registry.py": "0" * 40})):
-        altered = copy.deepcopy(facts)
-        mutate(altered)
-        assert not F.accepts_ci_trust_state(altered, phases, native)

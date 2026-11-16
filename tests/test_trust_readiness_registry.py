@@ -8,11 +8,28 @@ from pathlib import Path
 import pytest
 
 from app.trust_readiness import registry as R
+from tests import fin_v2_cohorts as COHORTS
 from app.trust_readiness.contracts import EvidenceKind, ReadinessStatus as S
 
 ROOT = Path(__file__).resolve().parent.parent
 IMPLEMENTATION = {EvidenceKind.CODE, EvidenceKind.CI}
 VERIFICATION = {EvidenceKind.TEST, EvidenceKind.CI}
+
+
+_SCOPE_MEMOS = []
+
+
+@pytest.fixture(autouse=True)
+def one_governance_call_per_test():
+    """Each test is ONE outer exact-source governance call: every cohort verdict the historical-registry checks ask for (WF03 ``matches`` / ``valid``, the chain behind them) is computed once per
+    test instead of once per nested call, and dropped when the test ends. The memo starts EMPTY for every test and is gone afterwards: nothing is cached across tests, refs, mutations or
+    monkeypatches, and no assertion, parameter or expected value of this module changes."""
+    with COHORTS.call_scope():
+        memo = COHORTS._CALL[-1]
+        assert memo == {}, "a governance verdict leaked into this test from another one"
+        _SCOPE_MEMOS.append(memo)
+        yield
+    assert not COHORTS._CALL, "the governance scope outlived its test"
 
 
 def _everything():
@@ -1958,3 +1975,16 @@ def test_d029_successor_refuses_a_second_application_or_a_missing_anchor():
         _d029_registry(_d029_registry(base))
     with pytest.raises(ValueError):
         _d029_registry(base.replace(D029_RUN_INTENTS_ANCHOR, "", 1))
+
+
+def test_the_governance_scope_is_fresh_per_test_and_never_confers_a_stale_pass():
+    """Negative control for the per-test governance scope: a modified protected source is still rejected inside one scope, in any order, and a positive verdict is never poisoned."""
+    from tests import wf03_lifecycle_scope as WF03
+    assert COHORTS._CALL and not any(m is COHORTS._CALL[-1] for m in _SCOPE_MEMOS[:-1])      # a fresh memo object, not one an earlier test used
+    path = "app/trust_readiness/registry.py"
+    current = _read_current(path).strip()
+    assert WF03.matches(path, current + "\n")                                                  # the real pinned bytes with a valid chain
+    assert not WF03.matches(path, current + "\nFINCO is certified.\n")                         # one appended claim
+    assert not WF03.matches(path, current[:-1] + "\n")                                         # one byte fewer
+    assert WF03.matches(path, current + "\n")                                                  # and back: the positive verdict was not poisoned by the rejections
+
