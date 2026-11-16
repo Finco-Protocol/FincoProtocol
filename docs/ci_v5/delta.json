@@ -1,258 +1,288 @@
 {
+ "base_sha": "36158f91c20c3a79073c7b7cc387f647d157ee6a",
+ "base_tree": "20e13113ae180f770ae0f2d273b8b60c8b0174fc",
  "changes": [
   {
-   "blob": "40c16a73e480595b143417afc68932894cd1cb82",
+   "blob": "ae4a65b3e28efc890a6ba6d537e3d9b945953620",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": ".github/workflows/ci_v5_shadow.yml"
   },
   {
-   "blob": "39d3127020b4345017e8d889d7695e54ce2ea267",
+   "blob": "0028c90829e02b6a7f7520f2194dc412ee5a6cae",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/ci_v4/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "ce254d82d1d3c6c57d89e2562aff4b3af33b87fe",
+   "blob": "b6028d4b081e2f0cd64a228801760fa33482a96d",
+   "class": "D",
+   "mode": "100644",
+   "op": "modify",
+   "path": "docs/ci_v5/README.md"
+  },
+  {
+   "blob": "3e2c0c66eef72efca573ad30c744901be6093088",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json"
   },
   {
-   "blob": "658ce7b95eb0febe419b09793d9deca08d4f54df",
+   "blob": "d95f018cc59fb4a7243750702f51f0de3c16b650",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "70084df0ac20711480fb374ca1c6a5a8f32d342f",
+   "blob": "3cfa02d48cb7c7e519f0632caae3fa0b45cb7eea",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "119c4b337661a6402a9b3cf960d393ea9af625c2",
+   "blob": "95036395ff7f30b3ad4d02e3b821876e970ff841",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "ed8e14b6ca35cec529ac0e3ed46ccd75d3ef3903",
+   "blob": "63fc344c9f9f6b9189230c6e86096714b83d0a2e",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "a390292bd4a3bc92001b00838ea251ce0ce9116a",
+   "blob": "0ae028d2d6fa8b8e41ec64d45c3a2a7a8400c11c",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json"
   },
   {
-   "blob": "c9c7f5c5d9fee41235c8e0eb2abe1ada40e82bca",
+   "blob": "57e7c428d22bae711bc2caa70342c583799807b8",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "docs/tax_reference_registry/SOURCE_SUCCESSOR.json"
   },
   {
-   "blob": "c7cd0331e8d53744dd2ed7ad596fc271c3db833f",
+   "blob": "22c95cd00393a770b4d9116fc46e2f458d883d40",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/c06_cost_workspace_scope.py"
   },
   {
-   "blob": "b14d712d52cb77e9c3237bade3e4a24f393d73a5",
+   "blob": "bd9c05a2991102a7e00a2f486b0d9397a891857f",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/ci_v4_lean_b1_scope.py"
   },
   {
-   "blob": "ae886767ed7276e1c0dab94724456e1de162d39e",
+   "blob": "aa44ae641cce33fd89ee6ac50c9589d28d249672",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/ci_v4_lean_b2_scope.py"
   },
   {
-   "blob": "c8d8b6cce8d0b19fddcefcef3d9e78639769e6bc",
+   "blob": "7d9588a9249ba8eda0c93a94e83468f42fe3b4ae",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/ci_v4_lean_b3_scope.py"
   },
   {
-   "blob": "feb5061b4b70e14ed5ba836d914613ce2102ccd9",
+   "blob": "5315bd70e5b5ad86156acd1a2ab20df9872a0593",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
-   "path": "tests/ci_v4_scope.py"
-  },
-  {
-   "blob": "518dfca0f92595c612526d8bf1eaeebe9eeec4b0",
-   "mode": "100644",
-   "op": "add",
    "path": "tests/ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "868656b171fa79cc0854452f2e9fc0e0d453e739",
+   "blob": "47ff9ccd09d5f5f5d73a0092636bddabd15e3575",
+   "class": "S",
    "mode": "100644",
-   "op": "modify",
-   "path": "tests/f03_financing_scope.py"
+   "op": "add",
+   "path": "tests/ci_v5_hardening_scope.py"
   },
   {
-   "blob": "9077018e54ab9bebf1ba720c5a669ddccc0f54f1",
-   "mode": "100644",
-   "op": "modify",
-   "path": "tests/f04_financing_scope.py"
-  },
-  {
-   "blob": "4482af9076a7aabfca64415b7c91bdbe46b77345",
+   "blob": "535ed3947d326dc041cf2dd27c97808697788ea5",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/fin_v2_cohorts.py"
   },
   {
-   "blob": "32876616450ef90c1c016c9032ae1c3fc2463ebc",
-   "mode": "100644",
-   "op": "modify",
-   "path": "tests/r03_ppa_scope.py"
-  },
-  {
-   "blob": "ef8332781bfea4a8f09b096f60a2190f4decf425",
-   "mode": "100644",
-   "op": "modify",
-   "path": "tests/r04_ppa_scope.py"
-  },
-  {
-   "blob": "584975a16f18be09862027407987b0acf2f30c7e",
-   "mode": "100644",
-   "op": "modify",
-   "path": "tests/t01e_remediation_scope.py"
-  },
-  {
-   "blob": "4ad26589cd9c389e38b710e14c43f0749b59bd57",
+   "blob": "bc9d1a1026c899a83f955332d7c584cd77eb41ad",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_bess02_scope.py"
   },
   {
-   "blob": "39a8cc826d806d95aa7fc869b1c5784180c7ab0d",
+   "blob": "dbbb17fad473f05bf845fe7066bcdc7d333a8497",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_c06_cost_workspace_scope.py"
   },
   {
-   "blob": "8482a32a092afe61843bd8df1db152a29e761a9c",
+   "blob": "6571d49e9182ba238bfe816f1a7fa5e798d6fd8e",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_b1_scope.py"
   },
   {
-   "blob": "0ccf6c258a69bf1bb271829e49d6f64c46ea977b",
+   "blob": "8970ae498d9320086fd1b8b4c8a16fe429c295cb",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_b2_scope.py"
   },
   {
-   "blob": "55a782c851a820ed65f9647ba837767d550458cd",
+   "blob": "cca2958e45406ab90b683bc7674a5d66665052bb",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_b3_scope.py"
   },
   {
-   "blob": "73522cbd46ce4b6a9b7d2ba9a70a8c31d0f43d0e",
+   "blob": "b41d8cd20ddc6d835108255cf3e018822c4bcd8a",
+   "class": "X",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_lean_tamper_matrix.py"
   },
   {
-   "blob": "8fbf9a399d89f6bb612b19aa0e27df8e619a06b1",
+   "blob": "2aa407b32a23d450baa37ec277762fe8f065c831",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v4_perf_scope.py"
   },
   {
-   "blob": "1a460e81f6a66035a24937721cf8b288a87a04df",
+   "blob": "4ef9ddc74116b5e61a45d1db8fdbc4807fdcb4fd",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tests/test_ci_v5_bootstrap_scope.py"
   },
   {
-   "blob": "ce62469be126bea0794fd10f5e51e8372b466624",
+   "blob": "1efc3eb9b1e1736e2dc79a59fa6efd49f521e3d3",
+   "class": "X",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tests/test_ci_v5_foundation.py"
   },
   {
-   "blob": "752056e4656b49fe95579d8f49fc03b712b54196",
+   "blob": "fbf6a2d80b0e1b8685164e84bc92361c822701ff",
+   "class": "X",
+   "mode": "100644",
+   "op": "add",
+   "path": "tests/test_ci_v5_hardening.py"
+  },
+  {
+   "blob": "baae847482c4c90b709ccc6ba27b16e91aecd1eb",
+   "class": "S",
+   "mode": "100644",
+   "op": "add",
+   "path": "tests/test_ci_v5_hardening_scope.py"
+  },
+  {
+   "blob": "4e099283d796a15ea2c1f34bf376a96f87043bc9",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_f03_financing_scope.py"
   },
   {
-   "blob": "f9a267fa920cfc1fe32b8ad54a7e60d2914010d8",
+   "blob": "74eb04858d96a3bbdc82cffa59d5c9fdfb8b0553",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_f04_financing_scope.py"
   },
   {
-   "blob": "710e3d1ed38e8a3bb2d966c0f0581732a67caab3",
+   "blob": "075b5af9619fcdba5b5228b3664b4be49a22c129",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_post432_l01_l02_scope.py"
   },
   {
-   "blob": "e1ae6d49654f1affbaeb925d8ffc932e664f95f4",
+   "blob": "8c07b25be1c92416c5d9bcd684bd3d93c3eb7afc",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r02_ppa_ux_scope.py"
   },
   {
-   "blob": "a1d52d598535a6a04886f04ae2e5f8c39da48442",
+   "blob": "bd6c72cea2f43bec3d01b42ffc46364d8405cbf5",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r03_ppa_scope.py"
   },
   {
-   "blob": "0cb4f228e8a2c4bcfc59da75a0594582d147f644",
+   "blob": "b8f13de5d4468aa334910a09f4ce1ea0e3a92b33",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_r04_ppa_scope.py"
   },
   {
-   "blob": "6f4da3e37c453152fe225c7bf0e58b55c246e0ce",
+   "blob": "5cb5d6f244ea7566fac42dc33a38d5e12663d0d1",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_t01e_remediation_scope.py"
   },
   {
-   "blob": "514de13720ab9fa43899b31dff0ebd0876108043",
+   "blob": "b312f25d1293c761dc3bf5f81b2cfe6494ead109",
+   "class": "S",
    "mode": "100644",
    "op": "modify",
    "path": "tests/u1_scope.py"
   },
   {
-   "blob": "008c3c6bb579d3051d2b155ded50c0651c77db81",
+   "blob": "299a33fe128b5eadf8ad16b9274d77ea573fc6cd",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tools/ci_v5_b5.py"
   },
   {
-   "blob": "1ef6bf5a842f1d855831d2c8ed22f2df084a46b0",
+   "blob": "84c0feea77fbf92f878cf3990895fd80ca7c5528",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tools/ci_v5_candidate.py"
   },
   {
-   "blob": "f7a0607b02779b13cd1899f42c843fd1b00792e5",
+   "blob": "6f1a932b3b2c496ce26f518da115e48d80025e84",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tools/ci_v5_epoch.py"
   },
   {
-   "blob": "39f21b61e080e58a7462d8b1fbb48963d45797e9",
+   "blob": "e0e71242851c7d6d2afd5fb1fd478197fd833831",
+   "class": "S",
    "mode": "100644",
-   "op": "add",
+   "op": "modify",
    "path": "tools/ci_v5_shadow.py"
   }
  ],
- "epoch_entries_sha256": "22ba7f9c4b0abd2951b033089e6d432771d9a161011e42b4f9849897575a6e3e",
- "schema": "FINCO_CI_V5_DELTA_V1"
+ "result_inventory_sha256": "05d58bb09a68e3a014d37c89925db3752490312a35a23c169efab2c6b60c099d",
+ "schema": "FINCO_CI_V5_DELTA_V2"
 }

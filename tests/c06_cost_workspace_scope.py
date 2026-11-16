@@ -2112,7 +2112,12 @@ def _v5_handoffs(root, ref):
     """The shared paths the one-time CI V5 bootstrap successor further substitutes (its literal HANDOFFS), only while its signature holds. It is reached through the
     B1 -> B2 -> B3 reviewed-edit chain, which verifies those bytes; nothing is admitted here."""
     from tests import ci_v5_bootstrap_scope as V
-    return frozenset(V.HANDOFFS) if V.signature_ok(root, ref) else frozenset()
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    out = frozenset(V.HANDOFFS) if V.signature_ok(root, ref) else frozenset()
+    if 'tests.ci_v5_hardening_scope' in COHORT_MODULES:      # the V5-2B hardening successor, one chain step further (literal HANDOFFS, only while its signature holds)
+        from tests import ci_v5_hardening_scope as H
+        out = out | (frozenset(H.HANDOFFS) if H.signature_ok(root, ref) else frozenset())
+    return out
 
 
 def reviewed_edits_ok(repo=None, ref=None):
@@ -2266,7 +2271,8 @@ def _signature_ok(root, ref, closure=False):
         from tests.fin_v2_cohorts import COHORT_MODULES
         if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR),
                                   BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope'),
-                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope')):       # at most the four reviewed successors
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),
+                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope')):       # at most the five reviewed successors
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})

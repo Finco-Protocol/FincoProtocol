@@ -1,90 +1,105 @@
-# CI V5 — epoch foundation + B5 admission report (SHADOW ONLY)
+# CI V5 — evaluator schema V2 (V5-2B hardening) — SHADOW ONLY
 
 **Status: observational shadow. Nothing here is a required check, selects, skips, moves or demotes a test, or changes V4. V4 stays authoritative and is the
-automatic fallback. Activation is a separate, owner-approved PR (V5-2) after demonstrated parity.**
+automatic fallback. This PR is V5-2B only: it adds no trusted epoch, no required check and no authorization input.** The later transitions (trusted-epoch
+promotion V5-2C, dual-required pilot V5-3) are separate, owner-gated PRs/settings; their exact steps are at the end of this file.
 
-## What this adds
+## What changed in V5-2B (closes the V5-2A audit findings)
+
+| Audit finding | Closed by |
+|---|---|
+| F-02/F-03 — 1,917 tracked paths (1,059 high-risk) outside the guard; new root files / top-level folders passed | **`ALL_TRACKED`** guard: every tracked path is evaluated (add / modify / delete / rename = delete+add / mode / symlink / gitlink / unsafe UTF-8 / case-fold collisions, also between directory components). Classes S/P/X/D change the *review*, never the *visibility*. A path with no class is `S` / `UNCLASSIFIED`. |
+| F-04 — base chosen by the caller (`merge-base`, any fork, any branch) | The base is the **current tip of the protected ref** (`trusted_ref_tip`) and the head must contain it (merge-tree identity). Anything else is `UNKNOWN`, never authoritative (T1, T2a). |
+| F-05 — `EPOCH_STALE_AT_BASE`, replayed / inherited delta, silent revert | **Base-relative delta V2**: `guarded(head) == guarded(base tip) ⊕ declared changes`, bound to `base_sha`, `base_tree` and `result_inventory_sha256`. The epoch is a milestone *checkpoint*; it need not equal the base inventory (T3c, T3e). A delta file inherited unchanged from the base declares nothing. |
+| F-07 — semantic list was data inside the epoch | The class map and the semantic registry are **trusted code** (`POLICY` in `tools/ci_v5_epoch.py`, archived from the trusted base). Empty/unreadable registry = `UNKNOWN` for every path (S1b). Existing tests under `tests/` that are modified or deleted are semantic (never better than `UNKNOWN`). |
+| F-09/F-10 — ignored files, `.pyc`, `skip-worktree`, `git replace` | `GIT_NO_REPLACE_OBJECTS=1` + `--no-replace-objects`, scrubbed environment (no inherited `GIT_*`), `refs/replace` / grafts / shallow clone are reported, tracked files are **re-hashed from disk** (independent of index flags), ignored/untracked importable or served material anywhere is a failure (W3–W7, T5b). |
+| F-06 — the verdict job also ran PR-head Python | **Split by trust boundary**: `verdict` (Git objects only, trusted-base tools) / `v4-comparison` (PR-head code, isolated) / `compare` (trusted code, artifacts as data). |
+| bare `PASS` | `integrity: INTEGRITY_PASS \| INTEGRITY_FAIL \| UNKNOWN` is separate from `authorization` (always `NOT_EVALUATED` here) and `enforcement` (`SHADOW`). No bare `PASS`/`FAIL` string exists in any verdict JSON. |
+
+An `INTEGRITY_PASS` needs **all** of: tool source `TRUSTED_BASE` (archived from the base tip), trusted epoch read from the base, base == protected tip and contained in
+the head, no failure and no unknown. Everything else is `INTEGRITY_FAIL` or `UNKNOWN`. In this PR no trusted epoch exists, so **every verdict here is
+`UNKNOWN` or `INTEGRITY_FAIL`, by construction**; hosted runs prove the failure paths and the plumbing, not an approved pass.
+
+## Files
 
 | File | Role |
 |---|---|
-| `tools/ci_v5_epoch.py` | The evaluator (stdlib only). Proves `guarded inventory(HEAD) == epoch (+) delta` and `guarded inventory(trusted BASE) == epoch` from Git **objects** (one `ls-tree` per commit; 8–11 Git children measured, no cache). |
-| `tools/ci_v5_candidate.py` | Generates the `CANDIDATE_UNTRUSTED` epoch + source atlas from the real V4 guard scope, and the explicit per-PR delta. Never promotes, commits or pushes. |
-| `tools/ci_v5_b5.py` | **B5**: public-safe JSON + concise job summary over the accepted B3 `test_admission_report` (loaded from a path; logic reused, not cloned). |
-| `tools/ci_v5_shadow.py` | Orchestrator: V5 verdict, V4 one-pass central gate for comparison, B5, comparison record, summary. |
-| `.github/workflows/ci_v5_shadow.yml` | ONE non-required, read-only, no-secret `pull_request` lane. Delete this file to remove V5 shadow entirely. |
-| `docs/ci_v5/epoch.candidate.json` | Epoch snapshot of accepted `main` `c8b7e81…` (2,364 guarded entries + atlas). **`CANDIDATE_UNTRUSTED`.** |
-| `docs/ci_v5/delta.json` | This PR's finite, explicit protected delta (reviewed by a human; see below). |
-| `tests/test_ci_v5_foundation.py` | One bounded A/B/A harness (31 synthetic tamper classes) + ref/shell-injection, mutation-between-evaluations, trust-source, B5 provenance and comparison-rule tests. |
+| `tools/ci_v5_epoch.py` | Evaluator V2 + trusted `POLICY` (class map, semantic registry). Stdlib only, Git objects only. |
+| `tools/ci_v5_candidate.py` | Generators: ALL_TRACKED epoch candidate of an accepted commit; base-relative delta of a head. Never promotes. |
+| `tools/ci_v5_b5.py` | B5 test-admission report (warn-only). JUnit statuses only with an attestation from a `TRUSTED_BASE` lane that binds sha + digests. File/function deltas and *collected* nodes are reported separately (`collected_nodes: UNAVAILABLE` without a SHA-bound `--collect-only`). |
+| `tools/ci_v5_shadow.py` | `verdict` / `v4` / `compare` entry points, one per workflow job. |
+| `.github/workflows/ci_v5_shadow.yml` | The non-required `pull_request` shadow lane (3 jobs, `contents: read`, no secrets). Delete it to remove V5 shadow entirely. |
+| `tests/test_ci_v5_foundation.py` | The A/B/A hostile matrix (synthetic repos): audit cases G1–G24, GA3, T1, T2a, T3c–e, T4a–k, T5b, W1–W11, S1b, R1–R8, A1–A4 + promotion attacks. |
+| `tests/test_ci_v5_hardening.py` | Lane separation, B5 / comparison vocabulary, generators, workflow structure. |
+| `docs/ci_v5/delta.json` | This PR's finite base-relative delta (exempt from the guard; bound by its own `result_inventory_sha256`). |
+| `docs/ci_v5/epoch.candidate.json` | Legacy V1 candidate (epoch state `CANDIDATE_UNTRUSTED`): still readable, reported as `LEGACY_NARROW_GUARD`, never an approved FULL guard. **No `epoch.json` ships here.** |
 
-## Model in one paragraph
+## Delta V2
 
-An **epoch** is a reviewed snapshot of the protected source `(path, Git blob SHA, mode)`, bound to a commit SHA and its tree SHA, schema-versioned,
-canonical bytes, with a content digest (integrity, not authenticity — authenticity is *where it is read from*). A PR carries a finite **delta**
-(`add` / `modify` / `delete` with the exact new blob and mode; no wildcards; a rename is an explicit delete + add). The verifier rejects anything not
-named: undeclared byte / mode / symlink / deletion / rename / addition, path traversal, duplicates and case collisions, a delta that widens the guard,
-a delta bound to another epoch, a forged or non-canonical epoch, a pinned SHA that does not own its tree or is not accepted history, a stale epoch, a
-wrong or symbolic ref, a dirty or untracked guarded worktree, and any PR edit of the trust anchor.
+```
+schema                  FINCO_CI_V5_DELTA_V2
+base_sha, base_tree     the protected tip this PR was evaluated against (stale/replayed delta => DELTA_BASE_MISMATCH)
+result_inventory_sha256 digest of the guarded inventory of the head (exempt files excluded)
+changes[]               {op: add|modify|delete, path, blob, mode, class}   - finite, no wildcard, no same-value change, class recomputed from trusted code
+```
 
-## Trust bootstrap (tested)
+Generate it **last** (any later byte change of the PR invalidates it): `python tools/ci_v5_candidate.py delta --base-sha <tip> --head-sha <head> --output docs/ci_v5/delta.json`.
+The delta cannot contain its own blob (exempt). A V4 exact-source manifest that *pins* the delta bytes cannot be listed inside it either (hash cycle), so literal
+`POLICY.V4_BOUND_EXEMPT` paths are exempt from the delta but never invisible: a change to one is reported and forces `UNKNOWN`.
 
-1. **This PR (bootstrap).** `docs/ci_v5/epoch.json` does not exist at the trusted base. The epoch is read from the PR head as
-   `docs/ci_v5/epoch.candidate.json` → state **`CANDIDATE_UNTRUSTED`**. It is evaluated for comparison only; `authoritative=false`; a PASS is reported as
-   `NON_AUTHORITATIVE_PASS` and can never authorise the PR that carries it (a head can always self-authorise its own candidate — which is exactly why it is
-   non-authoritative).
-2. **Promotion (owner-reviewed PR).** Regenerate a candidate from the then-accepted `main`, review it, and move it to `docs/ci_v5/epoch.json`. The
-   promotion PR must change nothing else guarded; a PR that adds or edits `epoch.json` is `TRUST_ANCHOR_MODIFIED` for V5.
-3. **Later PRs.** The epoch and the evaluator are read from the **trusted base commit only** (`git archive <merge-base>`), never from the PR head → `TRUSTED_BASE`.
+## Deliberate strengthening vs the V5-2A draft
 
-`V5 PASS` means *"HEAD equals the epoch plus the declared delta"*. It does **not** mean *"the delta is approved"*: approval of `docs/ci_v5/delta.json`
-is human review (owner decision: CODEOWNERS / required review on that path — not configured here).
+* **A4** (delete `tests/conftest.py` + exact delta) is `UNKNOWN` here, not `INTEGRITY_PASS`: modifying/deleting any existing file under `tests/` is a possible neutering or
+  retirement (owner decision D5: F01 / financial / Save-CAS / tenancy / CSRF / browser / mutation tests must not be disabled), and V5 proves bytes only.
+* A new top-level path or root file, once declared, is `UNKNOWN` (class `S`/`UNCLASSIFIED`), not a pass.
 
-## Guard scope and the atlas (COVERED / GAP / UNKNOWN)
+## Trust transitions (owner-gated; none is performed by this PR)
 
-The guard is derived from V4, not invented: union of every cohort manifest pin (741) + RC-UX presentation paths (322) + mutation-security `BLOBS` (112) +
-the composite's untracked scope `app/ financial_engine/ finco_core/ domain/ .github/ main_web.py` (1,393) + the policy's `control_paths` (275) →
-**2,364 guarded paths**. All five path-scope rows are `COVERED`. The invariant rows are explicit **GAP / UNKNOWN** and V4 keeps them:
-changed-path ownership of the **1,913 unguarded tracked paths** (V4 owns every path, V5 only the guard — a deliberate narrowing and an owner decision),
-mutation-security AST semantics, successor-chain semantics, gitignored files, and test **execution** (F01 / native / browser / security / tenancy /
-Save-CAS stay in V4 and FULL). A delta touching a semantic-invariant path yields `UNKNOWN`, never PASS.
+1. **Promotion (V5-2C).** Only after this PR is accepted into `main` and the six V4 required checks are green on that tip: generate a candidate for the accepted tip
+   (`ci_v5_candidate.py candidate --commit <tip> --full-run-id <FULL run id>`), review it, and add it as `docs/ci_v5/epoch.json` in a PR that changes nothing else guarded.
+   Such a PR is verdict **`transition: PROMOTION_REQUIRES_OWNER`** (never a pass): the epoch must be a V2 ALL_TRACKED snapshot of exactly the accepted base and nothing else guarded
+   may differ (`PROMOTION_NOT_ISOLATED`). It becomes trusted only for the **next** PR whose trusted base contains it; no promotion is needed after every PR; removing the anchor is
+   an intentional, owner-gated rollback.
+2. **Authorization (D3).** Integrity is not authorization. Either (A) a separate agent identity + human code-owner approval **with enforced GitHub protection**
+   (required review from code owners, dismiss stale approvals, require approval of the most recent push, no bypass), or (B) an owner-signed ledger whose private key is never
+   given to an agent, verified by trusted code. Neither exists yet; `.github/CODEOWNERS` names a single identity that also authors and merges PRs, so **no enforcement is claimed**.
+3. **Dual-required pilot (V5-3).** V5 is added **alongside** the still-required V4 checks. Status: `READY_FOR_OWNER_CONFIGURATION` at best; see the owner steps below.
 
-## B5 (inside the same shadow lane)
+### Owner-executable steps for the pilot (read-only for you to verify first; this PR changes no setting)
 
-Per PR, automatically: added/removed/renamed/changed test modules; `AST_FUNCTION_DELTA` only (exact node ids need a SHA-bound `--collect-only` of both
-trees → `UNKNOWN`); admission fields with UNKNOWN-for-missing; new skip/xfail vs base; duplicate **candidates** only; FAST/RISK/FULL selection from a
-*supplied* trusted-base plan else `UNKNOWN`; JUnit seconds/status only with a matching `hosted_run` attestation (SHA + digests), otherwise
-`UNVERIFIED_INPUT` and withheld. Status vocabulary `PASS / FAIL / NOT_SELECTED / SKIPPED / CANCELLED / UNKNOWN`; a module with one skipped node is
-never PASS. A failing reporter is rendered as `UNAVAILABLE` and fails the harness step visibly — never a fabricated empty PASS. No token, no network, no
-pytest run. Local cost is dominated by B3's duplicate scan (≈850 Git children for a PR that adds a test module).
+1. Verify the current protection (Settings → Branches → `main`, and Settings → Rules → Rulesets): which checks are required, "Require branches to be up to date", "Do not allow bypassing"
+   / "Include administrators", code-owner review, "Dismiss stale pull request approvals", "Require approval of the most recent reviewable push". The integration used for V5-2B could
+   not read branch protection (HTTP 403) and saw `[]` rulesets: that is **not** proof that none exist.
+2. The authoritative lane must not be a workflow the PR can edit. Choose one (a security review is part of the decision): an organization/ruleset **required workflow** pinned to a ref of a
+   trusted repository, or a carefully constrained privileged-trigger workflow that checks out only the *base* and reads the head as Git objects (never runs head code, no write token).
+   `on: pull_request` (this PR) is shadow only.
+3. Intended rule diff (additive only): add the V5 verdict check name (e.g. `V5 verdict`) to the required status checks of `main`; keep every existing required check; keep "up to date" strict.
+4. Probe before relying on it: one benign no-op PR (expect `INTEGRITY_PASS` + independent approval) and one malicious PR (undeclared change / tampered workflow / unapproved delta) — the second must be
+   red or cancelled, never green. `UNKNOWN` on a semantic path may be green only as `DEFERRED_TO_V4_VERIFIED` when the exact same head is independently verified by V4 and the owner's authorization exists.
+5. Rollback: remove only the V5 check from the required list; the V4 requirements stay in force.
+
+## V4 coexistence
+
+V4 requires every path changed since its `PARENT` to be owned by a registered exact-source cohort. V5-2B edits files owned by the one-time V5 bootstrap cohort, so it carries **one more finite,
+terminal exact-source successor** (`tests/ci_v5_hardening_scope.py`, manifest `docs/ci_v5/hardening_2b/SOURCE_SUCCESSOR.json`, own test `tests/test_ci_v5_hardening_scope.py`) in the accepted literal
+one-step chain `C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B`. It binds every owned blob and mode to the immutable accepted base, supersedes only literal paths, and changes no V4 selector, scheduler,
+aggregator, policy, weight, node split, required workflow, financial or UI byte. Every further V5 change needs another such successor until V4 changed-path ownership is delegated to V5 for owner-approved
+classes (a later, separate owner decision).
 
 ## Running it
 
 ```bash
-python tools/ci_v5_epoch.py --repo . --head-sha <40hex> --base-sha <40hex> --check-worktree
-python tools/ci_v5_candidate.py candidate --repo <clean checkout of ACCEPTED main> --commit <its sha> --output docs/ci_v5/epoch.candidate.json
-python tools/ci_v5_candidate.py delta --repo . --epoch docs/ci_v5/epoch.candidate.json --head-sha <40hex> --output docs/ci_v5/delta.json
-python -m pytest tests/test_ci_v5_foundation.py -q        # FINCO_V5_AB_OUT=<csv> records the A/B/A matrix
+python tools/ci_v5_epoch.py --repo . --head-sha <40hex> --base-sha <protected tip> --trusted-ref-tip <protected tip> --tool-source TRUSTED_BASE --check-worktree
+python -m pytest tests/test_ci_v5_foundation.py tests/test_ci_v5_hardening.py -q      # FINCO_V5_AB_OUT=<csv> records the A/B/A matrix with exact shas
 ```
 
-Regenerate `delta.json` after any change to a guarded file of this PR (`tools/ci_*`, `tests/test_ci_*`, `.github/`); `delta.json` itself is not guarded.
+## Residual risks (not claimed away)
 
-## One-time V4 ownership bridge (PR #453 Correction A) — transitional, NOT V5-2 and NOT V5-3
-
-V4 requires **every** path changed since its `PARENT` to be owned by a registered exact-source cohort. Measured at the original head: all nine PR paths were
-owned by no cohort, so B3 `_diff_ok` and the composite were `False` (one inert new file under `tools/` made 40 of 43 cohorts non-exact). The owner chose the
-finite bridge **inside this same PR**: ONE new terminal exact-source successor after B3, `tests/ci_v5_bootstrap_scope.py` (manifest
-`docs/ci_v5/bootstrap/SOURCE_SUCCESSOR.json`, own test `tests/test_ci_v5_bootstrap_scope.py`). It owns exactly the nine PR files plus its own module and test,
-binds every blob and mode to the immutable BASE (`c8b7e81…`), promotes no epoch (`docs/ci_v5/epoch.json` is never owned) and gives V5 no authority.
-
-Registry tail: `C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP`. Finite reviewed handoffs only: the C06 / B1 / B2 tail tuples, ONE forward hook in B3 (the same acyclic
-pattern B2 received from B3), the registry and U1 discovery entries, the eight current maps (only their two moved keys), the exact-tail tests, and the V4
-CI-path admission that the cohort system already uses for new CI files (`tests/ci_v4_scope.py` admits ONLY the five literal V5 CI paths while the bridge is
-exact, exactly as it admits the F03 workflow; the F03 and C06 reviewed-edit checks and four frozen-set tuples defer to the exact bridge for that one path set).
-No selector, scheduler, aggregator, required workflow, policy, weight, node split, financial or UI byte moves.
-
-What it is not: V5 stays `CANDIDATE_UNTRUSTED` and non-authoritative; a V5 PASS never satisfies V4; `V4 PASS` here means "the reviewed bytes are owned", not
-"parity established" (`PARITY_NOT_ESTABLISHED`). Activation (V5-2) and ordinary-feature simplification (V5-3) remain separate owner-approved PRs.
+* A reviewer who approves a delta without reading it defeats integrity; classes exist to keep the reviewed surface small.
+* Test *execution* is untouched by V5: a declared, approved edit that neuters a test is caught only by V4 selection, no-skip rules, FIN-VAL and browser acceptance. V5 never attests that a test ran or passed.
+* A `pull_request` workflow can be rewritten by the PR it judges; V4 shares that property today. This is why V5 stays shadow until an immutable lane is configured by the owner.
+* The V4-bound exempt manifest is judged by V4's exact pin, not by V5's delta.
 
 ## Rollback
 
-Delete `.github/workflows/ci_v5_shadow.yml` (shadow stops; V4 untouched) or `git revert` this PR. No required check, branch protection, policy, scheduler,
-selector, aggregator, product, financial or UI byte is touched.
+Delete `.github/workflows/ci_v5_shadow.yml` (shadow stops; V4 untouched) or revert this PR. No required check, branch protection, policy, scheduler, selector, aggregator, product, financial or UI byte is touched.

@@ -39,7 +39,7 @@
     "frontend/src/styles/compact-inputs.css": "d342e3c0ecfe88264e9e67c30ea5907a4a31fe1e",
     "static/react/finco-react.css": "f3aa0c988a28b7b310c970ffa33993c026d11eb8",
     "static/react/finco-react.js": "f6d1b85518bf7097f883ed693ba86e41503c52c6",
-    "tests/fin_v2_cohorts.py": "4482af9076a7aabfca64415b7c91bdbe46b77345",
+    "tests/fin_v2_cohorts.py": "535ed3947d326dc041cf2dd27c97808697788ea5",
     "tests/model_react_u2_acceptance.py": "5e69a173e1374a0d9aff016f44858a39e64f832b",
     "tests/test_u1_scope.py": "4c1da14dfcd634614472a0dcbb4d4aee846220ba",
     "tests/test_u2_d13_profile_lifecycle.py": "e4df8bebb5bbf1fbbb909d31034ebb140c174229",
@@ -48,7 +48,7 @@
     "tests/test_u2_save_atomicity_oracle.py": "e1522aa3aa1717fd17d093ee41e8c836970ea94f",
     "tests/test_u2_scope.py": "60606e5b3618a523dd36940965b1e906b654a456",
     "tests/test_wf06b_scope.py": "a4a42c10e0fc341d99bca239fb4dbe42e29cadee",
-    "tests/u1_scope.py": "514de13720ab9fa43899b31dff0ebd0876108043",
+    "tests/u1_scope.py": "b312f25d1293c761dc3bf5f81b2cfe6494ead109",
     "tests/u2_browser_role.py": "a9aa0eecfa0af9faf6cd7aaeb0cb0c33be7fef6d",
     "tests/u2_scope.py": "d1dd391f4b41284992a0cd35eacd4264e5563de0"
   }
