@@ -33,7 +33,7 @@ TRUST_ANCHOR = "docs/ci_v5/epoch.json"
 DELTA = "docs/ci_v5/delta.json"
 SHADOW = ".github/workflows/ci_v5_shadow.yml"
 NEW_FILES = frozenset((MODULE, OWN_TEST, "docs/ci_v5/full_recovery/FULL_RECOVERY_REPORT.md"))
-REPLACED_FILES = frozenset(("docs/ci_v5/delta.json", "tests/test_ci_v3_outcome_reconciliation.py", "tests/fin_truth_b1/test_source_successor.py", "tests/test_trust_readiness_registry.py"))
+REPLACED_FILES = frozenset(("docs/ci_v5/delta.json", "tests/test_ci_v3_outcome_reconciliation.py", "tests/fin_truth_b1/test_source_successor.py"))
 
 
 def _git(*args, cwd=ROOT):

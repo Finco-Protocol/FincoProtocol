@@ -90,7 +90,6 @@ REPLACED = frozenset((
     'docs/ci_v5/delta.json',
     'tests/fin_truth_b1/test_source_successor.py',
     'tests/test_ci_v3_outcome_reconciliation.py',
-    'tests/test_trust_readiness_registry.py',
 ))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(())
