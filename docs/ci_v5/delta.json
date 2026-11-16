@@ -73,7 +73,7 @@
    "path": "tests/c06_cost_workspace_scope.py"
   },
   {
-   "blob": "4fa424f26fc3e73e8fe3671de3f84ad57fbcc6cf",
+   "blob": "383e2c56544fa477f8da31b9da23ffb1f2f5ffd9",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -150,14 +150,14 @@
    "path": "tests/test_c06_cost_workspace_scope.py"
   },
   {
-   "blob": "cf0e3e4be61faf0d54cddb4763244844e5ba8149",
+   "blob": "17aea2f0a6dea1f9a816edf73e2fdbbb5504852e",
    "class": "X",
    "mode": "100644",
    "op": "modify",
    "path": "tests/test_ci_v3_outcome_reconciliation.py"
   },
   {
-   "blob": "b73525e155df823192540e900208972fc913c4cb",
+   "blob": "052ea3a98bfb0a09ce3f4e6ba6aa29fec16a6926",
    "class": "S",
    "mode": "100644",
    "op": "add",
@@ -269,6 +269,13 @@
    "path": "tests/test_t01e_remediation_scope.py"
   },
   {
+   "blob": "311c49f80ff8b6cb8f3756aa3145b92a9d5c30d5",
+   "class": "X",
+   "mode": "100644",
+   "op": "modify",
+   "path": "tests/test_trust_readiness_registry.py"
+  },
+  {
    "blob": "74f91aeb16ec1156d2ccf93368875c0c5c5f5cc0",
    "class": "S",
    "mode": "100644",
@@ -283,6 +290,6 @@
    "path": "tests/wf03_lifecycle_scope.py"
   }
  ],
- "result_inventory_sha256": "aa9e71a601787e4f2c4e624a242b3d30f558587a142a8eb37982e850160060d3",
+ "result_inventory_sha256": "2a3e02008bfc229f1ca2fe9420496741465936592bcc5e1948d885588ab2adf6",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
