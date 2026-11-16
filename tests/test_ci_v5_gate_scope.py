@@ -104,7 +104,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     assert T.NEW == NEW_FILES and T.REPLACED == REPLACED_FILES and len(T.CURRENT_MAPS) == 8 and set(T.HANDOFFS) == T.HANDOFF_PATHS
     assert not T.NEW & T.SUPERSEDED and not T.REPLACED & T.HANDOFF_PATHS
     assert T.MAP_KEYS == ("tests/fin_v2_cohorts.py", "tests/u1_scope.py")
-    assert T.PREDECESSOR == "tests/ci_v5_bootstrap_scope.py" and T.REGISTRY == "tests/fin_v2_cohorts.py"
+    assert T.PREDECESSOR == "tests/ci_v5_hardening_scope.py" and T.REGISTRY == "tests/fin_v2_cohorts.py"
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p or ".." in p.split("/") or p.startswith("/") for p in T.OWNED_PATHS | {T.MANIFEST})
     for path in T.SUPERSEDED:
         assert data["base_blobs"][path] == _git("rev-parse", T.BASE + ":" + path)
