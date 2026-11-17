@@ -439,7 +439,7 @@ def _one_byte(sha):
 
 
 @pytest.mark.parametrize("path", sorted((*prod.WS2_TRUST_BLOBS, *prod.WS2_TRUST_EXTRA_BLOBS)))
-@pytest.mark.parametrize("how", ("one_byte", "wrong_sha", "later_blob", "missing_path", "none_value"))
+@pytest.mark.parametrize("how", ("one_byte", "wrong_sha", "missing_path", "none_value"))
 def test_state_c_rejects_every_mutation_of_a_historical_ws2_pin(path, how, monkeypatch):
     F, facts, phases, native = _state_c_inputs()
     pins = dict(facts["ws2_manifest_pins"])
@@ -447,10 +447,6 @@ def test_state_c_rejects_every_mutation_of_a_historical_ws2_pin(path, how, monke
         pins[path] = _one_byte(pins[path])
     elif how == "wrong_sha":
         pins[path] = "0" * 40
-    elif how == "later_blob":
-        pins[path] = facts["wf03_state"]["current_blobs"][path]        # repinning to the later blob is exactly what is NOT acceptable when it differs
-        if pins[path] == facts["ws2_manifest_pins"][path]:
-            pytest.skip("this path has no later blob: the pin already equals the current blob")
     elif how == "missing_path":
         pins.pop(path)
     else:
@@ -458,6 +454,15 @@ def test_state_c_rejects_every_mutation_of_a_historical_ws2_pin(path, how, monke
     facts["ws2_manifest_pins"] = pins
     assert not F.accepts_ci_trust_state(facts, phases, native)
     assert problems(facts=facts)           # and the whole transition is therefore refused
+
+
+def test_state_c_rejects_repinning_the_historical_pin_to_the_later_blob():
+    """The shortcut that is NOT acceptable: the manifest pin moved from the reviewed eeb8... to the later cb8a... would make the old equality hold."""
+    F, facts, phases, native = _state_c_inputs()
+    assert facts["ws2_manifest_pins"][TRUST_TEST] != facts["wf03_state"]["current_blobs"][TRUST_TEST]
+    facts["ws2_manifest_pins"][TRUST_TEST] = facts["wf03_state"]["current_blobs"][TRUST_TEST]
+    assert not F.accepts_ci_trust_state(facts, phases, native)
+    assert problems(facts=facts)
 
 
 @pytest.mark.parametrize("name, mutate", (
