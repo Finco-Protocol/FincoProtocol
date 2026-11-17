@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "base_commit": "955952c1bc16b21ce342121c5224a19d3e105aa7",
+  "base_tree": "7bb70e037bae0cdef62ac3f6115d420089ad0d7d",
+  "authority": "INERT_CANDIDATE_NOT_REGISTERED_SOURCE_SUCCESSOR",
+  "entries": [
+    {
+      "path": "docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md",
+      "base_blob": null,
+      "candidate_git_blob": "0d59008b8c920a74828cee6dc47b9abdc8909b1e",
+      "sha256": "78f5f8b6e87368d4642036241a2ae4f42e09e188f69c6c0c465b42ddfcd09bb4"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/CURRENT_STATE_AND_ROOT_CAUSE.md",
+      "base_blob": null,
+      "candidate_git_blob": "0968483764089fd3c1f600e33f5bb7adabbdade5",
+      "sha256": "870ee6023c54fa92f489919998a2fa77125f7c426d52bfc2f12fb8746bfc756d"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/DESIGN_AND_SAFETY.md",
+      "base_blob": null,
+      "candidate_git_blob": "529d8e8abad07da0a6d5bc75feef47258fada770",
+      "sha256": "20879495f9fb7eca0e1ecba2b4705eed89caa059e94f5cb6dbea0a1d2edd853a"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/INVENTORY_RECONCILIATION.json",
+      "base_blob": null,
+      "candidate_git_blob": "1ba79938ac0caf195e5393b688a541bd9a048bbb",
+      "sha256": "02cb9e03126dc10d8e058fbb3873162c8a2f1289d698210c39cf84d9b48f3898"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/NEGATIVE_TAMPER_EVIDENCE.md",
+      "base_blob": null,
+      "candidate_git_blob": "b638f1e25d80e47e7e06e61aff21314a8a48c356",
+      "sha256": "9c71d0b03093e8b2041ec21adfb9df3c8472c40f9a9c51a3c5315e52ab6e666d"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/NEXT_OWNER_ACTIONS.md",
+      "base_blob": null,
+      "candidate_git_blob": "6519426260b341c0dc83edc1d1c43176d5a7d1a0",
+      "sha256": "173ce39949649bad20356be28684980c44be614ddf22b08d37e968b03c9dee17"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/PERFORMANCE_AB_COMPARISON.csv",
+      "base_blob": null,
+      "candidate_git_blob": "ffe6e258ab2e3b449c0047ba05d9d646e91cf9b4",
+      "sha256": "a73b5d06bd9fe999ea1ee239bbe19273a693793ef5c427ce52878220403c6241"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/WORKER_ASSIGNMENT_SIMULATION.csv",
+      "base_blob": null,
+      "candidate_git_blob": "f2640e94e3b8daacd372318f4b4441a6fc5b1d88",
+      "sha256": "f8c98759c1dc165a0f1b9d53fcc5ef8c9a416e511e02de33ed426c7f0f195357"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/base-governance.json",
+      "base_blob": null,
+      "candidate_git_blob": "a1fe36e27d26dc6d5ee7a741bee22c2d810e8770",
+      "sha256": "d526939c9ccef2fd1f417a3817a6bc5f1e799fb1236f30ef40c3dea1df439501"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/cache-mutation-evidence.json",
+      "base_blob": null,
+      "candidate_git_blob": "902936f07d6be7b1993026dc4fc0a42624f05bf8",
+      "sha256": "73b3035bd293924855848341eb88fc689eb4e483ba09b0af6becade5a07cd778"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate/benchmark_scope.py",
+      "base_blob": null,
+      "candidate_git_blob": "4d6b707bae996548f578dd1dcff8cf8cdcc35610",
+      "sha256": "6f7bb1617db43f11a0aea5c1b557dad1b0a9d0f62186f38180bddce92e3b4cba"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate/full_coverage.py",
+      "base_blob": null,
+      "candidate_git_blob": "6308098501a1ac20a6e83a06a4c4cc64974c93d8",
+      "sha256": "127b6bfc8af7696cc07f166acce6120b6ef7acd646f1032cbe63639596853e5b"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate/scoped_evaluate.py",
+      "base_blob": null,
+      "candidate_git_blob": "5bf550544729e7881f5c0af0033a5d33bc6b9544",
+      "sha256": "b66b2e95032c735c5f9a343de7a73a688b86b88ecd78a34074ab40dd0c86c1b0"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate/simulate_workers.py",
+      "base_blob": null,
+      "candidate_git_blob": "fd36b47234e50291fb6f8657e9d24b588ae99730",
+      "sha256": "114d6fa622302e6af7966089632589654f30b3ce45e75cc86f8de1c355e57071"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate/test_full_coverage.py",
+      "base_blob": null,
+      "candidate_git_blob": "bc60944566e2e0cc81559a919f0fecdbe3706035",
+      "sha256": "4da2e510aa48ee3b6530390c166cf7e794e6987600bf9990a05a1364871a9098"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/candidate-tests.xml",
+      "base_blob": null,
+      "candidate_git_blob": "3779dc71501032acc17e1eea2993e0ad35d89f73",
+      "sha256": "9355e70563d6f048eaefe0584e0972b31139873e18b9402e993a9ee7b21c15d2"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/targeted-tests.xml",
+      "base_blob": null,
+      "candidate_git_blob": "4128b588f88dfb729a006f094ad3536cdae87f21",
+      "sha256": "56a26922dc6095cf33aaab1b65609d1442622a0f5ddbfb5a10238eee0aade5fc"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/worker-simulation-summary.jsonl",
+      "base_blob": null,
+      "candidate_git_blob": "03f7c5ba8a3b0092cb4d788482fcd0f881e0c3e6",
+      "sha256": "c3b00b5a9c2eb78ea66c66a80347bc6f0035cd84718cda4de7e8dce53ead4090"
+    },
+    {
+      "path": "docs/ci_v4/p0_40min/workflow-probe-governance.json",
+      "base_blob": null,
+      "candidate_git_blob": "7f51f283acf3fb12b7e46ba8691000c96bedad76",
+      "sha256": "d853118d409f4aff373ac6aa7604a69ad4070fb284b23bc7d8dd41f6017973e2"
+    }
+  ]
+}

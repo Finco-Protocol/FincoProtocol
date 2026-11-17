@@ -1,0 +1,299 @@
+{
+  "status": "LOCAL_COLLECTION_ONLY_NOT_HOSTED_RECONCILED",
+  "observed_repo_sha": "955952c1bc16b21ce342121c5224a19d3e105aa7",
+  "observed_repo_tree": "7bb70e037bae0cdef62ac3f6115d420089ad0d7d",
+  "collector_source_fields": {
+    "head": null,
+    "tree": null
+  },
+  "local_collected": 26035,
+  "local_unique": 26035,
+  "local_collection_errors": [],
+  "local_collection_skips": [
+    {
+      "nodeid": "tests/test_capital_stack_workspace_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_cost_batch_save_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_cost_editing_ux_v2_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_cost_grid_editing_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_cost_workspace_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_crypto_navigation_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_data_center_browser_acceptance.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_developer_decision_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_ev_charging_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_financing_f35b_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_financing_f37_browser_v1.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_financing_f38_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_investor_f4_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_jev_panel_browser.py",
+      "reason": "Skipped: playwright required"
+    },
+    {
+      "nodeid": "tests/test_m3_two_driver_sensitivity_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_m7_bess_candidate_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_m7_bess_workflow_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_ai_import_browser_c.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_golden_flows_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_hybrid_inputs_grid_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_import_excel_migration_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_import_v2_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_insight_q3_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_project_timeline_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_q4_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_react_poc_browser_acceptance.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_run_workspace_v3_browser.py",
+      "reason": "Skipped: browser support not installed"
+    },
+    {
+      "nodeid": "tests/test_model_smart_panel_q2_navigation_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_trust_pack_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_v7_chart_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_v7_diagnostics_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_v7_pending_editor_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_v7_refresh_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_model_wf09_capex_profile_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_model_workspace_productivity_v1_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_p3_browser_acceptance.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_p4_browser_acceptance.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_portfolio_monitoring_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_ppa01_contractual_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_ppa01_index_series_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_ppa01_rounding_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_protocol_roadmap_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_radar_n04_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_rc5_compare_sensitivity_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rc5_workflow_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rc7a_project_setup_refresh_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rc7b_postmerge_view_refresh_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_accessibility_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_construction_timing_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_debt_equity_journeys_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_flowbite_ui_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_ppa_quick_add_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_progress_scope_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_run_history_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_stale_save_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_rcux2_workspace_coherence_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_reference_canonical_browser_acceptance.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_revenue_v2_advanced_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_revenue_v3_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_sc34_draft_preservation_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_sc34_ppa_dates_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_sc34_workflow_journeys_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_supported_today_browser_acceptance.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_ui_protocol_shell.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_ux_a_goal_seek_race_browser.py",
+      "reason": "Skipped: playwright not installed in this workflow"
+    },
+    {
+      "nodeid": "tests/test_wf07_revenue_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    },
+    {
+      "nodeid": "tests/test_yield_browser.py",
+      "reason": "Skipped: could not import 'playwright': No module named 'playwright'"
+    }
+  ],
+  "local_inventory_sha256": "7d83efdc81661b30346aba88cf14b1a03814f07f734792e0a32bc20c9f4c4f83",
+  "local_collection_wall_s": 341.28,
+  "hosted_full_run_id": 44047601863,
+  "hosted_collected": null,
+  "hosted_executed": null,
+  "hosted_pass": null,
+  "hosted_fail": null,
+  "hosted_error": null,
+  "hosted_skip": null,
+  "hosted_xfail": null,
+  "record_verified": false,
+  "historic_counts_are_not_current_inventory": [
+    25406,
+    25977
+  ],
+  "differences_explained": false,
+  "note": "Actual local collection is not native-image/hosted inventory. No historical count is assumed exact. No execution claimed."
+}
