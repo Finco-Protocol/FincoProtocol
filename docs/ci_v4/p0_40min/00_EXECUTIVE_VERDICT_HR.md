@@ -1,16 +1,27 @@
-# CI_GOVERNANCE_BLOCKED
+# CODE_PREPARED_NOT_FULL_PROVEN
 
-Presjek: 2026-11-17T11:04:51.731266+00:00. `PERFORMANCE_TARGET_NOT_MET`; samo kandidat `CODE_PREPARED_NOT_FULL_PROVEN`.
+Correction D — pripremni presjek 2026-11-17. **PERFORMANCE_TARGET_NOT_MET; P0 posao ostaje otvoren.**
 
-Pregledan je vlasnički P0 zahtjev; granica 40 minuta nije dokazana i zadatak ubrzanja aktivnog CI-ja NIJE završen. Ovaj Draft sadrži inertan, testiran kandidat provjere pune pokrivenosti i izmjerene blokere. Nije aktiviran paralelni FULL, nije izrađen/lažno prihvaćen exact-source successor i nije izmijenjena povijesna autorizacija.
+Accepted main je i dalje `955952c1bc16b21ce342121c5224a19d3e105aa7`, tree `7bb70e037bae0cdef62ac3f6115d420089ad0d7d`. Ulazni PR #457 head je `775350c13d0e3ed383bfcc461e084170285424c1`, tree `e6e26af99668d6e134afbd4c20dd7bd5ac406832`. Završni SHA/tree ove izmjene i provjera bilježe se u Git objektima, PR opisu i zasebnom Correction D evidence paketu; ovaj dokument ne sadrži kružni self-hash.
 
-- Accepted main: `955952c1bc16b21ce342121c5224a19d3e105aa7`, tree `7bb70e037bae0cdef62ac3f6115d420089ad0d7d`; PR #456 doista je merged na taj main. Pregledani su svi otvoreni PR-ovi; postoje #450 i #448 sa CI radom, njihove promjene nisu preuzete.
-- Postojeći FULL 44047601863 / attempt 1 na tom SHA još radi u zadnjem live presjeku. `route` i F01 su success; sekvencijalna regresija radi; record još nema rezultata. Novi FULL nije dispatchan niti je aktivni otkazan.
-- Čisti main: svih 47 kohorti i composite PASS (31.3 s lokalno). Jedna dodatna workflow komentarska linija: 44/47 kohorti nisu exact, composite FAIL i 24 mutation violations. Izvor odmah vraćen. To je stvaran blocker promjene frozen kontrola, ne razlog za repinanje ili ignoriranje zaštita.
-- Ista WF-03 provjera: A bez scopea prekinut na 60 s (najmanje 3.000 Git poziva); B unutar JEDNOG vanjskog poziva `True` u 11.65 s uz 1588 Git poziva. A nije završio pa nije izračunat konačni speedup. Negativi mutacija/restore/ref također potvrđeni lokalno.
-- Kandidat plan/coverage/service binding: 61 sintetički test PASS. Prethodni objedinjeni run 138 PASS uključuje 59 tadašnjih kandidat testova i postojeće planner/calibration testove. To nisu izvršeni FULL testovi.
-- Lokalna puna kolekcija: 26035 nodeova u 341,28 s; nije hosted inventar i nije dokaz izvršavanja.
+## A — ispravak četiri povijesna governance testa
 
-Nema green FULL-a unutar 40 min, hosted provjere kandidata ili potvrde PR CI <=40 min. Potpuni controller, neovisna service autentifikacija/extraction integracija, exact-source successor closure te stroži release-compatible record ostaju neimplementirani. Ne predstavlja se kandidat kao deployable rješenje.
+Na ulaznom headu sva četiri prijavljena testa iz `test_ci_v4_perf_scope.py` lokalno su reproducirala hosted padove (4 FAIL / 17.28 s). Pripremljeni ispravak proširuje samo postojeći P0-owned testni put i njegove literalne handoff/source pinove. Nema 49. kohorte: ostaju 48 registriranih kohorti, 57 source pinova i 35 nepromijenjenih predecessor pinova.
 
-Preporuka: opcija A iz DESIGN_AND_SAFETY.md — V4-preserving finite control successor + scoped read-only outer-call entry points, zatim hosted verifikacija. V5 migracija je odvojena opcija koju agent nije odabrao niti aktivirao. Svi V4 required checks ostaju na snazi.
+Provjera izvodi cijeli 47-cohort prefix iz izvornog BESS02 registra i literalnog nastavka te ga uspoređuje s nepromjenjivim prihvaćenim mainom. Prihvaća samo jedan P0 terminal, uz exactness svih prethodnika. Handoff očekivanje izvodi se iz starog autentificiranog literala, accepted-base bytes i P0 literalnih zamjena; disk bytes nisu izvor očekivanja.
+
+Prva lokalna provjera izmijenjenih bytes: **4/4 izvorna testa + 8 novih adversarial slučajeva PASS (210.75 s)**. Novi negativi obuhvaćaju missing/duplicate/reordered/inserted/forged registry, pogrešan pin, krivotvorene registry bytes i krivi handoff. Svaka mutacija/restoration ulazi u novi scope. To nije konačan hosted dokaz. Puni moduli, State C/Trust i centralni gate obvezni su prije pusha.
+
+Hosted ulazni run [44089140023](https://github.com/Finco-Protocol/FincoProtocol/actions/runs/44089140023): shard-0 i shard-1 PASS; shard-2 892 PASS / 4 FAIL u 2968.26 s; aggregate FAIL. Šest pratećih workflowa PASS. V5 trusted-base ostaje odvojeno blokiran; nema promocije.
+
+## B — FULL i cilj 40 minuta nisu završeni
+
+Stari prihvaćeni-main FULL [44047601863](https://github.com/Finco-Protocol/FincoProtocol/actions/runs/44047601863) završio je kao **FULL_TIMEOUT_AT_2656_OF_26035**: supervisor 19200 s, exit 124, record FAIL, F01 PASS. Preostalih 23379 nodeova nema konačan rezultat. Workflow creation do završetka record joba: **19295 s (321 min 35 s)**.
+
+Reference-admission modul potrošio je 13362.6 s na dovršene slučajeve: 4434.0 / 4459.2 / 4469.4 s; četvrti je pri prekidu trajao dodatnih 3622 s. Outcome-reconciliation modul 1291.6 s. Ovo su stvarni hosted progress logovi, bez tvrdnje o punom JUnit-u.
+
+Kandidat i dalje nema aktivan paralelni FULL controller, neovisnu autentifikaciju/extraction svih servisnih artefakata niti inventory-bound release-compatible record. Postojeći V3 route na dispatch/schedule bira sequential. P0 sadašnja zatvorena lista ne posjeduje CI/runtime entrypointove, a V4 FROZEN provjere ih izričito zamrzavaju. Zeleni governance PR ne rješava taj opseg.
+
+Zaseban laboratorijski pokus na nepromijenjenom accepted-main izvoru mjeri postojeći call_scope oko konkretnih read-only funkcijskih poziva; ne instalira plugin u CI, ne mijenja assertione i ne predstavlja hosted FULL. Plan potrebne konačne integracije i točne barijere su u DESIGN_AND_SAFETY.md / NEXT_OWNER_ACTIONS.md te Correction D evidence paketu. Nije dokazana tehnička nemogućnost V4 sukcesije; implementacija aktivne putanje i njena neovisna provjera još nedostaju.
+
+Nema mergea, novog PR-a, rebasea, force-pusha, reruna/cancellation starog FULL-a, promjene epoch/approvera/required checks, financijskog ili produktnog koda. Ovaj Draft nije spreman za merge kao dovršeno 40-minutno rješenje.

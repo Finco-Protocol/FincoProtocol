@@ -11,3 +11,12 @@ This Draft is blocked and must not be merged as a completed P0 optimization. It 
 Separate migration decision only if Option A's exact finite closure is demonstrably too large to review; no V5 migration has been selected here. Repeated tests, a fast prediction or current non-required V5 shadow are not proof of authority/enforcement.
 
 Documentation debt: the old FULL_RECOVERY_REPORT.md contains superseded assertions about the three D-029 tests and reverted WF03 hook. It is preserved byte-for-byte; this report records that the final #456 head superseded those statements, without rewriting historical evidence.
+
+
+## Correction D — continuation after the old FULL timeout
+
+Run 44047601863 is terminal: FULL_TIMEOUT_AT_2656_OF_26035, not waiting and not green. Do not rerun its old sequential path. Preserve its forensic logs and measured reference-admission bottleneck.
+
+First complete the same-head four-module regression, historical Trust/State C controls and hosted V4 aggregate for the finite Perf-leaf correction. Then implement the concrete Option A closure/controller listed in DESIGN_AND_SAFETY.md on this same Draft. Scoped ordinary implementation remains authorized; no repeated permission question is needed. Do not request merge as a completed P0 solution while the active controller and hosted <=40-minute proof remain absent.
+
+The Correction D evidence package must distinguish unchanged-source laboratory runtime results, original hosted timeout evidence, current local source closure, and new hosted PR check results. No local simulation or green PR is a complete FULL witness.
