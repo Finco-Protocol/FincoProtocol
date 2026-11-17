@@ -12,6 +12,8 @@ Provjera izvodi cijeli 47-cohort prefix iz izvornog BESS02 registra i literalnog
 
 Prva lokalna provjera izmijenjenih bytes: **4/4 izvorna testa + 8 novih adversarial slučajeva PASS (210.75 s)**. Novi negativi obuhvaćaju missing/duplicate/reordered/inserted/forged registry, pogrešan pin, krivotvorene registry bytes i krivi handoff. Svaka mutacija/restoration ulazi u novi scope. To nije konačan hosted dokaz. Puni moduli, State C/Trust i centralni gate obvezni su prije pusha.
 
+Dodatno su četiri čiste Perf enumeracije dobile jedan vanjski read-only scope, a 13 susjednih read-only blokova spojeno je bez prijelaza preko mutacije/restorea. AST provjera potvrđuje iste assertione u istom redoslijedu, iste funkcije, argumente i parametrizacije. Prvi puni lokalni pokušaj namjerno je prekinut radi ove izmjene nakon 25 prolaza / 382.14 s; nije prikazan kao puni PASS. Cijeli paket mora se ponoviti na konačnom commitu.
+
 Hosted ulazni run [44089140023](https://github.com/Finco-Protocol/FincoProtocol/actions/runs/44089140023): shard-0 i shard-1 PASS; shard-2 892 PASS / 4 FAIL u 2968.26 s; aggregate FAIL. Šest pratećih workflowa PASS. V5 trusted-base ostaje odvojeno blokiran; nema promocije.
 
 ## B — FULL i cilj 40 minuta nisu završeni

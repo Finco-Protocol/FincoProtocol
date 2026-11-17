@@ -165,9 +165,7 @@ def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
         assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
         with C.call_scope():
             assert F.exact_blobs_ok() is True
-        with C.call_scope():
             assert F.signature_ok() is True
-        with C.call_scope():
             assert C.valid() is True
 
 
@@ -181,16 +179,15 @@ def test_every_handoff_file_equals_its_reviewed_literal_substitution():
 
 
 def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():
-    with C.call_scope():
-        assert B.signature_ok() is True
-    with C.call_scope():
-        assert B.reviewed_edits_ok() is True
-    with C.call_scope():
-        assert B.exact_blobs_ok() is True
-    assert B._next() is F
-    # the BESS02 closure now covers exactly its own paths plus this leaf's
-    assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()
-    assert "docs/ci_v4/module_weights.json" in B.closure_paths()
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        with C.call_scope():
+            assert B.signature_ok() is True
+            assert B.reviewed_edits_ok() is True
+            assert B.exact_blobs_ok() is True
+        assert B._next() is F
+        # the BESS02 closure now covers exactly its own paths plus this leaf's
+        assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()
+        assert "docs/ci_v4/module_weights.json" in B.closure_paths()
 
 
 def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tail():
@@ -218,11 +215,12 @@ def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tai
 
 
 def test_the_accepted_bess02_handoff_expectations_are_still_governed_by_this_leaf():
-    # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed
-    # substitution; the other BESS02 handoff files it does not take over still hold literally.
-    for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):
-        assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p
-    assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed
+        # substitution; the other BESS02 handoff files it does not take over still hold literally.
+        for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):
+            assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p
+        assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS
 
 
 #: exactly the three pins a current map may carry for this leaf: the registry, the module weights and the PR3b1 guard whose
@@ -231,29 +229,30 @@ MOVED_MAP_KEYS = ("docs/ci_v4/module_weights.json", "tests/fin_v2_cohorts.py", "
 
 
 def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_canonical_form():
-    assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS
-    nx = B._next_pins(ROOT, None)
-    pins = B.manifest()["source_blobs"]
-    cur = {p: nx.get(p, b) for p, b in pins.items()}
-    moved = B._next_moved(ROOT, None)
-    # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), never read from the leaf's own map logic
-    new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}
-    old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}
-    assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
-    from tests import f03_financing_scope as G
-    assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
-    assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
-    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
-    for p in sorted(B.CURRENT_MAPS):
-        disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
-        base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
-        for k in MOVED_MAP_KEYS:                                                # a map records the OLD value only before, the NEW one after
-            if k in base:
-                assert base[k] == old[k] and disk[k] == new[k], (p, k)
-        assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p
-    # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set unchanged for every map
-    for p in sorted(B.CURRENT_MAPS):
-        assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS
+        nx = B._next_pins(ROOT, None)
+        pins = B.manifest()["source_blobs"]
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
+        moved = B._next_moved(ROOT, None)
+        # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), never read from the leaf's own map logic
+        new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}
+        old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}
+        assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
+        from tests import f03_financing_scope as G
+        assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
+        assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
+        assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
+        for p in sorted(B.CURRENT_MAPS):
+            disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
+            base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
+            for k in MOVED_MAP_KEYS:                                                # a map records the OLD value only before, the NEW one after
+                if k in base:
+                    assert base[k] == old[k] and disk[k] == new[k], (p, k)
+            assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p
+        # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set unchanged for every map
+        for p in sorted(B.CURRENT_MAPS):
+            assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p
 
 
 def test_scheduler_weights_are_literal_projected_corrections_with_provenance():
@@ -284,16 +283,13 @@ def test_one_byte_of_drift_in_any_owned_path_fails_closed_and_restores(path):
         with C.call_scope():
             assert F.exact_blobs_ok() is False
         # a current map's bytes belong to the full proof only: the signature never reads a foreign manifest, every other path is in it
-        with C.call_scope():
             assert F.signature_ok() is (path in F.CURRENT_MAPS)
-        with C.call_scope():
             assert C.valid() is False
     finally:
         target.write_bytes(original)
     # a FRESH evaluation after the restore passes again; nothing was cached across the boundary
     with C.call_scope():
         assert F.exact_blobs_ok() is True
-    with C.call_scope():
         assert C.valid() is True
 
 
@@ -321,9 +317,7 @@ def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_compos
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())
         with C.call_scope():
             assert F.reviewed_edits_ok() is False
-        with C.call_scope():
             assert F.exact_blobs_ok() is False
-        with C.call_scope():
             assert C.valid() is False
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
@@ -340,7 +334,6 @@ def test_a_registry_deletion_of_the_accepted_bess_tail_fails_closed():
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())
         with C.call_scope():
             assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False
-        with C.call_scope():
             assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
@@ -354,7 +347,6 @@ def test_a_foreign_new_source_file_fails_the_closure_and_restores():
         extra.write_text('"""unreviewed"""\n', encoding="utf-8")
         with C.call_scope():
             assert F.exact_blobs_ok() is False
-        with C.call_scope():
             assert C.valid() is False
     finally:
         extra.unlink()
@@ -420,23 +412,22 @@ def _fresh_ok():
 
 
 def test_every_older_guard_reaches_the_reviewed_pins_through_one_hook_each():
-    for p in FROZEN_EDITS:
-        pin = F.manifest()["source_blobs"][p]
-        assert p in OB1.FROZEN and p not in OB1.SUPERSEDED
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        for p in FROZEN_EDITS:
+            pin = F.manifest()["source_blobs"][p]
+            assert p in OB1.FROZEN and p not in OB1.SUPERSEDED
+            with C.call_scope():
+                assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
+            assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin
+        # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own superseded set
+        pin = F.manifest()["source_blobs"][WEIGHTS]
         with C.call_scope():
-            assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
-        assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin
-    # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own superseded set
-    pin = F.manifest()["source_blobs"][WEIGHTS]
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, pin) is True
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, "0" * 40) is False
-    for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/node_weights.json"):
-        with C.call_scope():
-            assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
+            assert U31.supersedes(WEIGHTS, pin) is True
+            assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
+            assert U31.supersedes(WEIGHTS, "0" * 40) is False
+        for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/node_weights.json"):
+            with C.call_scope():
+                assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
 
 
 @pytest.mark.parametrize("path", FROZEN_EDITS)
