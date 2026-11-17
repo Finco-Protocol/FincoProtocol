@@ -579,8 +579,8 @@ def test_state_c_still_rejects_the_original_d029_and_ws2_tuples_as_state_c():
 # --- the closed exact-source chain itself (real Git objects, immutable refs; nothing is checked out or written to a ref) ---------------------
 def _mutated_ref(tmp_path, changes):
     """A commit on top of HEAD whose tree differs only by ``changes`` ({path: bytes}); loose objects only, no ref, no worktree."""
-    env = {**__import__("os").environ, "GIT_INDEX_FILE": str(tmp_path / "index"), "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+    env = {**__import__("os").environ, "GIT_INDEX_FILE": str(tmp_path / "index"), "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "synthetic.invalid",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "synthetic.invalid"}
 
     def run(*args, **kw):
         return subprocess.run(["git", *args], cwd=ROOT, env=env, check=True, capture_output=True, **kw).stdout.decode().strip()
