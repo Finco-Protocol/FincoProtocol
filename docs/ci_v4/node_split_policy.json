@@ -14,10 +14,14 @@
       "verdict": "SPLIT_SAFE_FLOOR_LIMITED",
       "isolation_proof": "Module fixture _tree creates its own detached worktree under tmp_path_factory (one per process) and removes it at teardown; fixture wt resets --hard and cleans -fdx after EVERY test, so no test depends on another's state; non-wt tests only read the real tree. Floor: one node (test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession) took 6718 s of 8197 s (run 41856777361); splitting cannot shorten that node.",
       "granularity": "node"
+    },
+    "tests/test_u1_scope.py": {
+      "verdict": "SPLIT_SAFE_FLOOR_LIMITED",
+      "isolation_proof": "P1 (post-#457, main d32f4987): module fixture _tree creates its own detached worktree per process (tmp_path_factory) and removes it at teardown; fixture wt runs reset --hard + clean -fdx after EVERY test, so no test depends on another's state (same pattern as tests/test_wf06b_scope.py). The one test that commits (test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_foreign_ref: an empty commit) leaves the tree identical. Measured: the exact 3 parts the trusted scheduler derives from run 44147228493 node times ([1 node 977 s], [44 nodes 718 s], [55 nodes 718 s]) each pass in an independent process and clone (1/1, 44/44, 55/55), plus a seeded random-order run of the whole module (docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md). Floor: test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort = 977 s of 2413 s (run 44147228493); splitting cannot shorten that node.",
+      "granularity": "node"
     }
   },
   "not_split": {
-    "tests/test_u1_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 337 s of 388 s (run 41912154663); module below target.",
     "tests/test_post413_o1_scope.py": "NOT_BENEFICIAL: one node (test_the_ci_v4_governance_gate_passes_on_the_real_source) is 445 s of 474 s (run 41912154663); module below target.",
     "tests/test_u2_scope.py": "NOT_BENEFICIAL: one node (test_older_cohorts_still_exact_through_the_bounded_hooks) is 402 s of 456 s (run 41912154663); module below target."
   }
