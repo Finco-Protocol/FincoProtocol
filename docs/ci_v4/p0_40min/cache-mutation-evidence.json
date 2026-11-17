@@ -1,0 +1,36 @@
+{
+  "local_only": true,
+  "source": "955952c1bc16b21ce342121c5224a19d3e105aa7",
+  "cases": [
+    {
+      "case": "original_worktree",
+      "result": true,
+      "expected": true,
+      "elapsed_s": 9.219570460001705
+    },
+    {
+      "case": "real_mutation_next_call",
+      "result": false,
+      "expected": false,
+      "elapsed_s": 0.8403136739943875
+    },
+    {
+      "case": "immutable_head_while_worktree_mutated",
+      "result": true,
+      "expected": true,
+      "elapsed_s": 28.278460299996368
+    },
+    {
+      "case": "restored_next_call",
+      "result": true,
+      "expected": true,
+      "elapsed_s": 3.367637265000667
+    },
+    {
+      "case": "unknown_ref",
+      "result": false,
+      "expected": false,
+      "elapsed_s": 0.0032513510013814084
+    }
+  ]
+}

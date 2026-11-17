@@ -1,0 +1,3920 @@
+"""Finite P0 candidate admission after accepted FULL recovery. All product and CI control files remain frozen.
+
+This low-level terminal signature authenticates literal source/mode/base/handoff pins; no older cohort is called.
+It grants no V5, merge, workflow-activation, FULL-performance or financial authority.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager
+from functools import lru_cache
+from pathlib import Path
+import hashlib
+import json
+import subprocess
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BASE = '955952c1bc16b21ce342121c5224a19d3e105aa7'
+BASE_TREE = '7bb70e037bae0cdef62ac3f6115d420089ad0d7d'
+MANIFEST = 'docs/ci_v4/p0_40min/SOURCE_SUCCESSOR.json'
+SCHEMA = 'CI_V4_P0_CANDIDATE_EXACT_SOURCE_V1'
+AUTHORIZATION = 'User instruction 2026-11-17: repair PR #457 source admission with one finite successor for the existing inert P0 candidate; no workflow activation, financial change, V5 promotion, merge or deployment.'
+REGISTRY = "tests/fin_v2_cohorts.py"
+PREDECESSOR = 'tests/ci_v4_full_recovery_scope.py'
+BASE_COHORTS = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope', 'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope', 'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')
+NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p0_40min/CANDIDATE_PATH_MANIFEST.json', 'docs/ci_v4/p0_40min/CURRENT_STATE_AND_ROOT_CAUSE.md', 'docs/ci_v4/p0_40min/DESIGN_AND_SAFETY.md', 'docs/ci_v4/p0_40min/INVENTORY_RECONCILIATION.json', 'docs/ci_v4/p0_40min/NEGATIVE_TAMPER_EVIDENCE.md', 'docs/ci_v4/p0_40min/NEXT_OWNER_ACTIONS.md', 'docs/ci_v4/p0_40min/PERFORMANCE_AB_COMPARISON.csv', 'docs/ci_v4/p0_40min/WORKER_ASSIGNMENT_SIMULATION.csv', 'docs/ci_v4/p0_40min/base-governance.json', 'docs/ci_v4/p0_40min/cache-mutation-evidence.json', 'docs/ci_v4/p0_40min/candidate-tests.xml', 'docs/ci_v4/p0_40min/candidate/benchmark_scope.py', 'docs/ci_v4/p0_40min/candidate/full_coverage.py', 'docs/ci_v4/p0_40min/candidate/scoped_evaluate.py', 'docs/ci_v4/p0_40min/candidate/simulate_workers.py', 'docs/ci_v4/p0_40min/candidate/test_full_coverage.py', 'docs/ci_v4/p0_40min/targeted-tests.xml', 'docs/ci_v4/p0_40min/worker-simulation-summary.jsonl', 'docs/ci_v4/p0_40min/workflow-probe-governance.json', 'tests/ci_v4_p0_scope.py', 'tests/test_ci_v4_p0_scope.py',
+                 'tests/ci_immutable_git_reads.py', 'tests/test_ci_immutable_git_reads.py'))
+# The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
+# Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
+# tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
+REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'))
+# The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
+CI_PATHS = frozenset(())
+# Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
+HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py'))
+CURRENT_MAPS = frozenset((
+    'docs/ci_v4/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
+    'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r17/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/post413_r18/SOURCE_SUCCESSOR.json',
+    'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
+    'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
+))
+MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
+SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
+OWNED_PATHS = NEW | SUPERSEDED
+FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
+NEW_ONLY_PREFIXES = (".github/", "tools/")
+# Accepted CI V4 control sources that this successor must leave byte-identical to BASE.
+FROZEN = (
+    ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_pr.yml",
+    ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",
+    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",
+    "docs/ci_v4/node_split_policy.json", "docs/ci_v4/node_weights.json",
+    "pytest.ini",
+    "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",
+    "tools/ci_v4_nodes.py", "tools/ci_v4_release_gate.py", "tools/ci_v4_schedule.py", "tools/ci_v4_select.py", "tools/ci_v4_shard.py",
+)
+
+
+def _git(root, *args):
+    return subprocess.check_output(["git", *args], cwd=root, stderr=subprocess.DEVNULL)
+
+
+def _read(root, path, ref=None):
+    # A committed ref is read from Git (with the repository root); the working tree is read from disk.
+    return (Path(root) / path).read_bytes() if ref is None else _git(root, "show", ref + ":" + path)
+
+
+def _blob(raw):
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+
+
+_MODULE_BLOB = _blob(Path(__file__).read_bytes())
+
+
+def manifest(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        raw = _read(root, MANIFEST, ref)
+        d = json.loads(raw)
+        if raw != (json.dumps(d, indent=2, sort_keys=True) + "\n").encode():       # canonical bytes only: no extra, reordered or hidden byte
+            return {}
+        return d if (isinstance(d, dict) and set(d) == {"schema_version", "authorization", "base", "base_tree", "source_blobs", "base_blobs",
+                                                       "source_modes", "base_modes"}
+                     and d.get("authorization") == AUTHORIZATION and d["schema_version"] == SCHEMA and d["base"] == BASE
+                     and d["base_tree"] == BASE_TREE and isinstance(d["source_blobs"], dict) and isinstance(d["base_blobs"], dict)) else {}
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):
+        return {}
+
+
+def expected_map(root, path, pins=None):
+    """Only the finite current-source keys (MAP_KEYS: the registry and the U1 discovery guard) may move; all history stays unchanged."""
+    d = json.loads(_base_bytes(str(root), path))
+    pins = manifest(root).get("source_blobs", {}) if pins is None else pins
+    for key in MAP_KEYS:
+        if key in d["source_blobs"]:
+            d["source_blobs"][key] = pins[key]
+    return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
+
+
+# Finite, literal, one-occurrence substitutions over the IMMUTABLE accepted-main (BASE) bytes. The V5-3 gate cohort gains one forward hook to this cohort (the same acyclic pattern the
+# V5-2B cohort received from the bootstrap and the gate from V5-2B); the earlier layers accept one more reviewed tail state; the registry appends this cohort exactly once;
+# the U1 discovery list names it; the exact-tail tests accept one more state.
+HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_recovery_scope' in COHORT_MODULES:      # the FULL-recovery successor, "
+                                        'one chain step further (literal HANDOFFS, only while its signature holds)\r\n'
+                                        '        from tests import ci_v4_full_recovery_scope as FR\r\n'
+                                        '        out = out | (frozenset(FR.HANDOFFS) if FR.signature_ok(root, ref) else frozenset())\r\n'
+                                        '    return out\r\n'
+                                        '\r\n'
+                                        '\r\n',
+                                        "    if 'tests.ci_v4_full_recovery_scope' in COHORT_MODULES:      # the FULL-recovery successor, "
+                                        'one chain step further (literal HANDOFFS, only while its signature holds)\r\n'
+                                        '        from tests import ci_v4_full_recovery_scope as FR\r\n'
+                                        '        out = out | (frozenset(FR.HANDOFFS) if FR.signature_ok(root, ref) else frozenset())\r\n'
+                                        "    if 'tests.ci_v4_p0_scope' in COHORT_MODULES:\r\n"
+                                        '        from tests import ci_v4_p0_scope as P0\r\n'
+                                        '        out = out | (frozenset(P0.HANDOFFS) if P0.signature_ok(root, ref) else frozenset())\r\n'
+                                        '    return out\r\n'
+                                        '\r\n'
+                                        '\r\n'),
+                                       ('                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope')):       # at most the seven reviewed successors\r\n"
+                                        '            return False\r\n'
+                                        '        d = manifest(root, ref)\r\n'
+                                        '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\r\n',
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\r\n"
+                                        '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                        "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)):       # at most the seven "
+                                        'reviewed successors\r\n'
+                                        '            return False\r\n'
+                                        '        d = manifest(root, ref)\r\n'
+                                        '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\r\n')],
+ 'tests/ci_v4_full_recovery_scope.py': [('    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    try:\n'
+                                         '        pins = manifest(root, ref).get("source_blobs", {})\n'
+                                         '        for path in HANDOFFS:\n'
+                                         '            actual = _read(root, path, ref)\n'
+                                         '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\n'
+                                         '                return False\n'
+                                         '        return True\n'
+                                         '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, '
+                                         'subprocess.CalledProcessError):\n'
+                                         '        return False\n'
+                                         '\n',
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    try:\n'
+                                         '        pins = manifest(root, ref).get("source_blobs", {})\n'
+                                         '        N = _next()\n'
+                                         '        nxt = N is not None and N.signature_ok(root, ref)\n'
+                                         '        for path in HANDOFFS:\n'
+                                         '            if nxt and path in N.HANDOFFS:            # the reviewed successor owns the further '
+                                         'substitution of this shared path\n'
+                                         '                continue\n'
+                                         '            actual = _read(root, path, ref)\n'
+                                         '            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):\n'
+                                         '                return False\n'
+                                         '        return N.reviewed_edits_ok(root, ref) if nxt else True\n'
+                                         '    except (OSError, ValueError, KeyError, TypeError, UnicodeError, '
+                                         'subprocess.CalledProcessError):\n'
+                                         '        return False\n'
+                                         '\n'),
+                                        ('        return\n'
+                                         '    _SCOPE.append({})\n'
+                                         '    try:\n'
+                                         '        yield\n'
+                                         '    finally:\n'
+                                         '        _SCOPE.pop()\n'
+                                         '\n'
+                                         '\n'
+                                         'def _compute(root, ref, mode):\n'
+                                         '    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the '
+                                         'changed/untracked checks."""\n'
+                                         '    if mode == "exact":\n'
+                                         '        return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
+                                         '    return _signature_ok(root, ref, mode)\n'
+                                         '\n'
+                                         '\n'
+                                         'def _verdict(root, ref, closure):\n',
+                                         '        return\n'
+                                         '    _SCOPE.append({})\n'
+                                         '    try:\n'
+                                         '        # Successor reads inside this SAME outer read share its memo; dropped with the scope, '
+                                         'never kept globally.\n'
+                                         '        N = _next()\n'
+                                         '        if N is None:\n'
+                                         '            yield\n'
+                                         '        else:\n'
+                                         '            with N.scoped():\n'
+                                         '                yield\n'
+                                         '    finally:\n'
+                                         '        _SCOPE.pop()\n'
+                                         '\n'
+                                         '\n'
+                                         'def _compute(root, ref, mode):\n'
+                                         '    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the '
+                                         'changed/untracked checks."""\n'
+                                         '    from contextlib import nullcontext\n'
+                                         '    N = _next()\n'
+                                         '    with (N.scoped() if N is not None else nullcontext()):\n'
+                                         '        if mode == "exact":\n'
+                                         '            return _signature_ok(root, ref, True) and _diff_ok(root, ref)\n'
+                                         '        return _signature_ok(root, ref, mode)\n'
+                                         '\n'
+                                         '\n'
+                                         'def _verdict(root, ref, closure):\n'),
+                                        ('    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)\n'
+                                         '\n'
+                                         '\n'
+                                         'def map_keys(repo=None, ref=None):\n'
+                                         '    return tuple(MAP_KEYS)\n'
+                                         '\n'
+                                         '\n'
+                                         '@lru_cache(maxsize=512)\n',
+                                         '    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)\n'
+                                         '\n'
+                                         '\n'
+                                         "SUCCESSOR = 'tests.ci_v4_p0_scope'\n"
+                                         '\n'
+                                         '\n'
+                                         'def _next():\n'
+                                         '    """The one finite forward successor (CI V4 FULL recovery). Low-level only: its signature '
+                                         'never calls this module or the composite."""\n'
+                                         '    from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                         '    if SUCCESSOR not in COHORT_MODULES:\n'
+                                         '        return None\n'
+                                         '    from tests import ci_v4_p0_scope\n'
+                                         '    return ci_v4_p0_scope\n'
+                                         '\n'
+                                         '\n'
+                                         'def _next_pins(root, ref):\n'
+                                         '    N = _next()\n'
+                                         '    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else '
+                                         '{}\n'
+                                         '\n'
+                                         '\n'
+                                         'def later_handoffs(root, ref):\n'
+                                         '    """HANDOFFS of every reviewed successor behind this cohort (only while each signature '
+                                         'holds): a path a LATER cohort owns is not judged against this cohort\'s literals."""\n'
+                                         '    N = _next()\n'
+                                         '    if N is None or not N.signature_ok(root, ref):\n'
+                                         '        return frozenset()\n'
+                                         "    return frozenset(N.HANDOFFS) | (N.later_handoffs(root, ref) if hasattr(N, 'later_handoffs') "
+                                         'else frozenset())\n'
+                                         '\n'
+                                         '\n'
+                                         'def map_keys(repo=None, ref=None):\n'
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    with scoped():\n'
+                                         '        N = _next()\n'
+                                         '        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_KEYS) if N is not None and '
+                                         'N.signature_ok(root, ref) else ()\n'
+                                         '        return tuple(MAP_KEYS) + more\n'
+                                         '\n'
+                                         '\n'
+                                         '@lru_cache(maxsize=512)\n'),
+                                        ('    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: '
+                                         'nothing cached from mutable state."""\n'
+                                         '    try:\n'
+                                         '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                         '        if COHORT_MODULES != BASE_COHORTS + (__name__,):\n'
+                                         '            return False\n'
+                                         '        d = manifest(root, ref)\n'
+                                         '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n'
+                                         '        if pins.get("tests/ci_v4_full_recovery_scope.py") != _MODULE_BLOB:\n'
+                                         '            return False\n'
+                                         '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n'
+                                         '            return False\n',
+                                         '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: '
+                                         'nothing cached from mutable state."""\n'
+                                         '    try:\n'
+                                         '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                         '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, '
+                                         'SUCCESSOR)):\n'
+                                         '            return False\n'
+                                         '        d = manifest(root, ref)\n'
+                                         '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n'
+                                         '        nx = _next_pins(root, ref)\n'
+                                         '        if nx.get("tests/ci_v4_full_recovery_scope.py", '
+                                         'pins.get("tests/ci_v4_full_recovery_scope.py")) != _MODULE_BLOB:\n'
+                                         '            return False\n'
+                                         '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n'
+                                         '            return False\n'),
+                                        ('        if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):\n'
+                                         '            return False\n'
+                                         '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
+                                         '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\n'
+                                         '        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:\n'
+                                         '            return False\n'
+                                         '        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}\n'
+                                         '        if any(modes.get(p) != "100644" for p in owned):\n',
+                                         '        if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):\n'
+                                         '            return False\n'
+                                         '        judged = {p for p in pins if closure or p not in CURRENT_MAPS}\n'
+                                         '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'
+                                         '        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))\n'
+                                         '        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:\n'
+                                         '            return False\n'
+                                         '        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}\n'
+                                         '        if any(modes.get(p) != "100644" for p in owned):\n'),
+                                        ('                return False\n'
+                                         '        if closure:\n'
+                                         '            for p in CURRENT_MAPS:\n'
+                                         '                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):\n'
+                                         '                    return False\n'
+                                         '        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, '
+                                         'p) for p in FROZEN):\n'
+                                         '            return False\n',
+                                         '                return False\n'
+                                         '        if closure:\n'
+                                         '            for p in CURRENT_MAPS:\n'
+                                         '                if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in '
+                                         'MAP_KEYS))):\n'
+                                         '                    return False\n'
+                                         '        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, '
+                                         'p) for p in FROZEN):\n'
+                                         '            return False\n'),
+                                        ('\n'
+                                         'def _diff_ok(root, ref):\n'
+                                         '    try:\n'
+                                         '        allowed = OWNED_PATHS | {MANIFEST}\n'
+                                         '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref '
+                                         'else []), "--").decode().splitlines())\n'
+                                         '        if not changed <= allowed:\n'
+                                         '            return False\n',
+                                         '\n'
+                                         'def _diff_ok(root, ref):\n'
+                                         '    try:\n'
+                                         '        allowed = closure_paths(root, ref)\n'
+                                         '        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref '
+                                         'else []), "--").decode().splitlines())\n'
+                                         '        if not changed <= allowed:\n'
+                                         '            return False\n'),
+                                        ('\n'
+                                         '\n'
+                                         'def effective_pins(repo=None, ref=None, *, signature=False):\n'
+                                         '    return dict(manifest(repo, ref).get("source_blobs", {}))\n'
+                                         '\n'
+                                         '\n'
+                                         'def closure_paths(repo=None, ref=None):\n'
+                                         '    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()\n'
+                                         '\n'
+                                         '\n'
+                                         'def allowed_path(path, repo=None, ref=None):\n',
+                                         '\n'
+                                         '\n'
+                                         'def effective_pins(repo=None, ref=None, *, signature=False):\n'
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    with scoped():\n'
+                                         '        pins = dict(manifest(repo, ref).get("source_blobs", {}))\n'
+                                         '        pins.update(_next_pins(root, ref))\n'
+                                         '        return pins\n'
+                                         '\n'
+                                         '\n'
+                                         'def closure_paths(repo=None, ref=None):\n'
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    with scoped():\n'
+                                         '        if not signature_ok(root, ref):\n'
+                                         '            return frozenset()\n'
+                                         '        N = _next()\n'
+                                         '        return OWNED_PATHS | {MANIFEST} | (N.closure_paths(root, ref) if N is not None else '
+                                         'frozenset())\n'
+                                         '\n'
+                                         '\n'
+                                         'def allowed_path(path, repo=None, ref=None):\n'),
+                                        ('\n'
+                                         '\n'
+                                         'def supersedes(path, value, repo=None, ref=None):\n'
+                                         '    if path not in SUPERSEDED:\n'
+                                         '        return False\n'
+                                         "    # The signature decides a supersession; the composite separately requires every cohort's "
+                                         'FULL exactness (map bytes, changed set, untracked\n'
+                                         '    # files), so a signature-only verdict never makes the tree valid.\n'
+                                         '    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == '
+                                         'value\n'
+                                         '\n'
+                                         '\n'
+                                         'def nontrust_scope_authorized(changed, repo=None):\n'
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    try:\n'
+                                         '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n'
+                                         '            return False\n'
+                                         '        actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())\n',
+                                         '\n'
+                                         '\n'
+                                         'def supersedes(path, value, repo=None, ref=None):\n'
+                                         '    with scoped():      # one shared read scope per call: the successor signature is evaluated '
+                                         'once, then dropped\n'
+                                         '        N = _next()\n'
+                                         '        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, '
+                                         'ref):\n'
+                                         '            return True\n'
+                                         '        return _supersedes_own(path, value, repo, ref)\n'
+                                         '\n'
+                                         '\n'
+                                         'def _supersedes_own(path, value, repo=None, ref=None):\n'
+                                         '    if path not in SUPERSEDED:\n'
+                                         '        return False\n'
+                                         "    # The signature decides a supersession; the composite separately requires every cohort's "
+                                         'FULL exactness (map bytes, changed set, untracked\n'
+                                         '    # files), so a signature-only verdict never makes the tree valid.\n'
+                                         '    # the CURRENT pin of this path (the successor overlay wins while its signature holds), never '
+                                         'a raw superseded manifest line\n'
+                                         '    return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value\n'
+                                         '\n'
+                                         '\n'
+                                         'def nontrust_scope_authorized(changed, repo=None):\n'
+                                         '    root = Path(repo) if repo is not None else ROOT\n'
+                                         '    try:\n'
+                                         '        N = _next()\n'
+                                         '        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, '
+                                         'root):\n'
+                                         '            return True\n'
+                                         '        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:\n'
+                                         '            return False\n'
+                                         '        actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())\n')],
+ 'tests/ci_v4_lean_b1_scope.py': [("                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                   "'tests.ci_v4_full_recovery_scope')):       # B1 -> B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL "
+                                   'recovery, nothing else\n'
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                   "'tests.ci_v4_full_recovery_scope'), BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_lean_b3_scope', "
+                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                   "'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)):       # B1 -> B2 -> B3 -> V5 "
+                                   'bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else\n'
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/ci_v4_lean_b2_scope.py': [('                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                   "'tests.ci_v5_bootstrap_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):       # "
+                                   'B2 -> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else\n'
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                   '                                  BASE_COHORTS + (__name__, SUCCESSOR, '
+                                   "'tests.ci_v5_bootstrap_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'),\n"
+                                   "                                  BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', "
+                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                   "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                   "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)):       # B2 "
+                                   '-> B3 -> V5 bootstrap -> V5-2B -> V5-3 -> FULL recovery, nothing else\n'
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/ci_v4_lean_b3_scope.py': [('    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                   'cached from mutable state."""\n'
+                                   '    try:\n'
+                                   '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                   '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                   "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope'), BASE_COHORTS + (__name__, "
+                                   "SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, "
+                                   "SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                   "'tests.ci_v4_full_recovery_scope')):\n"
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                   '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                   'cached from mutable state."""\n'
+                                   '    try:\n'
+                                   '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                   '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                   "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_hardening_scope'), BASE_COHORTS + (__name__, "
+                                   "SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, "
+                                   "SUCCESSOR, 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                   "'tests.ci_v4_full_recovery_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                   "('tests.ci_v4_p0_scope',)):\n"
+                                   '            return False\n'
+                                   '        d = manifest(root, ref)\n'
+                                   '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/ci_v5_bootstrap_scope.py': [('    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                     'cached from mutable state."""\n'
+                                     '    try:\n'
+                                     '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                     '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                     "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')):\n"
+                                     '            return False\n'
+                                     '        d = manifest(root, ref)\n'
+                                     '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                     '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                     'cached from mutable state."""\n'
+                                     '    try:\n'
+                                     '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                     '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                     "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v5_gate_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), BASE_COHORTS + (__name__, SUCCESSOR, "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)):\n"
+                                     '            return False\n'
+                                     '        d = manifest(root, ref)\n'
+                                     '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/ci_v5_gate_scope.py': [('    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                'cached from mutable state."""\n'
+                                '    try:\n'
+                                '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):\n'
+                                '            return False\n'
+                                '        d = manifest(root, ref)\n'
+                                '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                'cached from mutable state."""\n'
+                                '    try:\n'
+                                '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                "BASE_COHORTS + (__name__, SUCCESSOR) + ('tests.ci_v4_p0_scope',)):\n"
+                                '            return False\n'
+                                '        d = manifest(root, ref)\n'
+                                '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/ci_v5_hardening_scope.py': [('    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                     'cached from mutable state."""\n'
+                                     '    try:\n'
+                                     '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                     '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                     "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_full_recovery_scope')):\n"
+                                     '            return False\n'
+                                     '        d = manifest(root, ref)\n'
+                                     '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n',
+                                     '    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing '
+                                     'cached from mutable state."""\n'
+                                     '    try:\n'
+                                     '        from tests.fin_v2_cohorts import COHORT_MODULES\n'
+                                     '        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR), '
+                                     "BASE_COHORTS + (__name__, SUCCESSOR, 'tests.ci_v4_full_recovery_scope'), BASE_COHORTS + (__name__, "
+                                     "SUCCESSOR, 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)):\n"
+                                     '            return False\n'
+                                     '        d = manifest(root, ref)\n'
+                                     '        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})\n')],
+ 'tests/fin_v2_cohorts.py': [("                  'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', "
+                              "'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',\n"
+                              "                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', "
+                              "'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope',\n"
+                              "                  'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', "
+                              "'tests.u2_scope', 'tests.ci_v4_scope',\n"
+                              "                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', "
+                              "'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', "
+                              "'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', "
+                              "'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', "
+                              "'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', "
+                              "'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', "
+                              "'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', "
+                              "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                              "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')\n"
+                              '# The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).\n'
+                              "PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'\n"
+                              '\n',
+                              "                  'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', "
+                              "'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',\n"
+                              "                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', "
+                              "'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope',\n"
+                              "                  'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', "
+                              "'tests.u2_scope', 'tests.ci_v4_scope',\n"
+                              "                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', "
+                              "'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', "
+                              "'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', "
+                              "'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', "
+                              "'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', "
+                              "'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', "
+                              "'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', "
+                              "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                              "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')\n"
+                              '# The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).\n'
+                              "PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'\n"
+                              '\n')],
+ 'tests/test_bess02_scope.py': [('            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)\n'
+                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                 'Q.signature_ok())\n'
+                                 '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, '
+                                 'W.__name__)\n'
+                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                 'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                 '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), '
+                                 "C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                 "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                 "'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                 "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                 "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                 "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                 "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, "
+                                 "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                 "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                 '        and C06_APPROVAL.signature_ok()))\n'
+                                 "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', "
+                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')\n"
+                                 '\n',
+                                 '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__)\n'
+                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                 'Q.signature_ok())\n'
+                                 '            or (C.COHORT_MODULES == own + (F.__name__, G.__name__, Z.__name__, Y.__name__, Q.__name__, '
+                                 'W.__name__)\n'
+                                 '                and F.signature_ok() and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                 'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                 '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), '
+                                 "C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                 "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                 "'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                 "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                 "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                 "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                 "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, "
+                                 "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                 "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                 "C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                 "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                 '        and C06_APPROVAL.signature_ok()))\n'
+                                 "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', "
+                                 "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')\n"
+                                 '\n')],
+ 'tests/test_c06_cost_workspace_scope.py': [('def test_exact_source_chain_worktree_and_committed_ref(clone):\n'
+                                             "    assert F.BASE=='b1c08e2d00fe9933565d253d5cee6e5849b143e1'\n"
+                                             "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+                                             '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
+                                             '(F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, '
+                                             "'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), F.BASE_COHORTS + (F.__name__, "
+                                             "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                             "'tests.ci_v5_bootstrap_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), F.BASE_COHORTS + (F.__name__, "
+                                             "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                             "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                             "'tests.ci_v4_full_recovery_scope'))       # C06 is followed by the reviewed B1, B2, B3, V5 "
+                                             'bootstrap, V5-2B and V5-3 successors\n'
+                                             '    assert C.COHORT_MODULES.count(F.__name__)==1\n'
+                                             "    for ref in (None,'HEAD'):\n"
+                                             '        with C.call_scope():\n',
+                                             'def test_exact_source_chain_worktree_and_committed_ref(clone):\n'
+                                             "    assert F.BASE=='b1c08e2d00fe9933565d253d5cee6e5849b143e1'\n"
+                                             "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+                                             '    assert C.COHORT_MODULES in (F.BASE_COHORTS + (F.__name__,), F.BASE_COHORTS + '
+                                             '(F.__name__, F.SUCCESSOR), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, '
+                                             "'tests.ci_v4_lean_b2_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), F.BASE_COHORTS + (F.__name__, "
+                                             "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                             "'tests.ci_v5_bootstrap_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), F.BASE_COHORTS + (F.__name__, "
+                                             "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                             "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                             "'tests.ci_v4_full_recovery_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') "
+                                             "+ ('tests.ci_v4_p0_scope',))       # C06 is followed by the reviewed B1, B2, B3, V5 "
+                                             'bootstrap, V5-2B and V5-3 successors\n'
+                                             '    assert C.COHORT_MODULES.count(F.__name__)==1\n'
+                                             "    for ref in (None,'HEAD'):\n"
+                                             '        with C.call_scope():\n'),
+                                            ('    for path in F.SUPERSEDED:assert '
+                                             "data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+                                             '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() '
+                                             'if N2 is not None and N2.signature_ok() else None;N4=N3._next() if N3 is not None and '
+                                             'N3.signature_ok() else None;N5=N4._next() if N4 is not None and N4.signature_ok() else '
+                                             'None;N6=N5._next() if N5 is not None and N5.signature_ok() else None;N7=N6._next() if N6 is '
+                                             'not None and N6.signature_ok() else None\n'
+                                             '    for path in F.HANDOFFS:\n'
+                                             '        later=N7 if N7 is not None and N7.signature_ok() and path in N7.HANDOFFS else N6 if '
+                                             'N6 is not None and N6.signature_ok() and path in N6.HANDOFFS else N5 if N5 is not None and '
+                                             'N5.signature_ok() and path in N5.HANDOFFS else N4 if N4 is not None and N4.signature_ok() '
+                                             'and path in N4.HANDOFFS else N3 if N3 is not None and N3.signature_ok() and path in '
+                                             'N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N '
+                                             'if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in '
+                                             'N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
+                                             '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'
+                                             '    from tests import ci_v5_bootstrap_scope as V5\n',
+                                             '    for path in F.SUPERSEDED:assert '
+                                             "data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+                                             '    N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() '
+                                             'if N2 is not None and N2.signature_ok() else None;N4=N3._next() if N3 is not None and '
+                                             'N3.signature_ok() else None;N5=N4._next() if N4 is not None and N4.signature_ok() else '
+                                             'None;N6=N5._next() if N5 is not None and N5.signature_ok() else None;N7=N6._next() if N6 is '
+                                             'not None and N6.signature_ok() else None\n'
+                                             '    for path in F.HANDOFFS:\n'
+                                             '        from tests import ci_v4_p0_scope as P0\n'
+                                             '        if P0.signature_ok() and path in P0.HANDOFFS:\n'
+                                             '            assert (ROOT / path).read_bytes() == P0.expected_handoff(ROOT, path)\n'
+                                             '            assert F._blob((ROOT / path).read_bytes()) == F.effective_pins()[path]\n'
+                                             '            continue\n'
+                                             '        later=N7 if N7 is not None and N7.signature_ok() and path in N7.HANDOFFS else N6 if '
+                                             'N6 is not None and N6.signature_ok() and path in N6.HANDOFFS else N5 if N5 is not None and '
+                                             'N5.signature_ok() and path in N5.HANDOFFS else N4 if N4 is not None and N4.signature_ok() '
+                                             'and path in N4.HANDOFFS else N3 if N3 is not None and N3.signature_ok() and path in '
+                                             'N3.HANDOFFS else N2 if N2 is not None and N2.signature_ok() and path in N2.HANDOFFS else N '
+                                             'if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in '
+                                             'N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
+                                             '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'
+                                             '    from tests import ci_v5_bootstrap_scope as V5\n'),
+                                            ('    with C.call_scope():\n'
+                                             '        assert not F.signature_ok(clone,F.BASE)\n'
+                                             '        for m in C.cohorts():\n'
+                                             "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never "
+                                             'attests an older accepted ref\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
+                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
+                                             '        for path in (provider,editor):\n',
+                                             '    with C.call_scope():\n'
+                                             '        assert not F.signature_ok(clone,F.BASE)\n'
+                                             '        for m in C.cohorts():\n'
+                                             "            if m.__name__ == 'tests.ci_v4_p0_scope':\n"
+                                             '                assert not m.signature_ok(clone, F.BASE)\n'
+                                             '                assert not m.exact_blobs_ok(clone, F.BASE)\n'
+                                             "            elif m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never "
+                                             'attests an older accepted ref\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
+                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
+                                             '        for path in (provider,editor):\n')],
+ 'tests/test_ci_v4_full_recovery_scope.py': [('\n'
+                                              '\n'
+                                              'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                              '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                              '    for p in T.HANDOFFS:\n'
+                                              '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                              '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                              '    for p in T.REPLACED:\n'
+                                              '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n'
+                                              '    for ref in (None, "HEAD"):\n'
+                                              '        with C.call_scope():\n'
+                                              '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                              'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_registered_exactly_once_as_the_terminal_cohort_after_the_v5_3_gate():\n'
+                                              '    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,) and '
+                                              'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                              '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 1                       # exactly '
+                                              'ONE module gained; no hardcoded total\n'
+                                              '    assert C.COHORT_MODULES[-2:] == ("tests.ci_v5_gate_scope", '
+                                              '"tests.ci_v4_full_recovery_scope")\n'
+                                              '    assert H5.SUCCESSOR == T.__name__ and H5._next() is T and H4.SUCCESSOR == H5.__name__ '
+                                              'and H4._next() is H5 and V5.SUCCESSOR == H4.__name__ and V5._next() is H4 and B3.SUCCESSOR '
+                                              '== V5.__name__ and B3._next() is V5\n'
+                                              '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ '
+                                              'and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'
+                                              '\n',
+                                              '\n'
+                                              '\n'
+                                              'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                              '    from tests.fin_v2_cohorts import call_scope\n'
+                                              '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                              'mutation\n'
+                                              '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                              '        for p in T.HANDOFFS:\n'
+                                              '            from tests import ci_v4_p0_scope as P0\n'
+                                              '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                              '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                              '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                              '                continue\n'
+                                              '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                              '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                              '        for p in T.REPLACED:\n'
+                                              '            assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n'
+                                              '        for ref in (None, "HEAD"):\n'
+                                              '            with C.call_scope():\n'
+                                              '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                              'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_registered_exactly_once_as_the_terminal_cohort_after_the_v5_3_gate():\n'
+                                              "    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__, 'tests.ci_v4_p0_scope') and "
+                                              'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                              '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly '
+                                              'ONE module gained; no hardcoded total\n'
+                                              '    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_gate_scope", '
+                                              '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")\n'
+                                              '    assert H5.SUCCESSOR == T.__name__ and H5._next() is T and H4.SUCCESSOR == H5.__name__ '
+                                              'and H4._next() is H5 and V5.SUCCESSOR == H4.__name__ and V5._next() is H4 and B3.SUCCESSOR '
+                                              '== V5.__name__ and B3._next() is V5\n'
+                                              '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ '
+                                              'and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'
+                                              '\n'),
+                                             ('\n'
+                                              'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                              '    from tests import u1_scope as U\n'
+                                              '    assert U.RECONCILED_SUCCESSORS[-1] == "tests.ci_v4_full_recovery_scope" and '
+                                              'U.RECONCILED_SUCCESSORS.count("tests.ci_v4_full_recovery_scope") == 1\n'
+                                              '\n'
+                                              '\n'
+                                              '# '
+                                              '-------------------------------------------------------------------------------------------------------------- '
+                                              'tamper (committed refs)\n',
+                                              '\n'
+                                              'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                              '    from tests import u1_scope as U\n'
+                                              '    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_full_recovery_scope", '
+                                              '"tests.ci_v4_p0_scope") and '
+                                              'U.RECONCILED_SUCCESSORS.count("tests.ci_v4_full_recovery_scope") == 1\n'
+                                              '\n'
+                                              '\n'
+                                              '# '
+                                              '-------------------------------------------------------------------------------------------------------------- '
+                                              'tamper (committed refs)\n'),
+                                             ('\n'
+                                              '\n'
+                                              'def test_registry_mutations_are_rejected(clone):\n'
+                                              '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                              "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                              '\'tests.ci_v4_full_recovery_scope\')"\n'
+                                              '    for name, fn in (\n'
+                                              '        ("duplicate_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                              "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                              '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_full_recovery_scope\')")),\n'
+                                              '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                              '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                              "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                              '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v5_gate_scope\')")),\n'
+                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                              '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                              '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", '
+                                              'b"")),\n',
+                                              '\n'
+                                              '\n'
+                                              'def test_registry_mutations_are_rejected(clone):\n'
+                                              '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                              "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                              '\'tests.ci_v4_p0_scope\')"\n'
+                                              '    for name, fn in (\n'
+                                              '        ("duplicate_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                              "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                              "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_full_recovery_scope', "
+                                              '\'tests.ci_v4_p0_scope\')")),\n'
+                                              '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                              '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                              "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                              "'tests.ci_v4_full_recovery_scope', 'tests.ci_v5_gate_scope', "
+                                              '\'tests.ci_v4_p0_scope\')")),\n'
+                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                              '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                              '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", '
+                                              'b"")),\n'),
+                                             ('\n'
+                                              '\n'
+                                              'def test_supersession_is_pin_exact_and_cross_path_safe():\n'
+                                              '    pins = T.manifest()["source_blobs"]\n'
+                                              '    reg = pins[T.REGISTRY]\n'
+                                              '    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and '
+                                              'B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and '
+                                              'P.supersedes(T.REGISTRY, reg)\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * '
+                                              '40)\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a '
+                                              'real blob pinned for another path\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the '
+                                              'accepted bootstrap-era registry blob is no longer current\n'
+                                              '    assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE + '
+                                              '":docs/ci_v4/module_weights.json"))\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_no_verdict_is_cached_across_refs_or_mutations(clone):\n',
+                                              '\n'
+                                              '\n'
+                                              'def test_supersession_is_pin_exact_and_cross_path_safe():\n'
+                                              '    from tests.fin_v2_cohorts import call_scope\n'
+                                              '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                              'mutation\n'
+                                              '        pins = T.manifest()["source_blobs"]\n'
+                                              '        reg = T.effective_pins()[T.REGISTRY]\n'
+                                              '        assert reg != pins[T.REGISTRY]\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY])  # superseded historical pin '
+                                              'is not current authority\n'
+                                              '        assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and '
+                                              'B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and '
+                                              'P.supersedes(T.REGISTRY, reg)\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" '
+                                              '* 40)\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a '
+                                              'real blob pinned for another path\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # '
+                                              'the accepted bootstrap-era registry blob is no longer current\n'
+                                              '        assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE '
+                                              '+ ":docs/ci_v4/module_weights.json"))\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_no_verdict_is_cached_across_refs_or_mutations(clone):\n'),
+                                             ('\n'
+                                              'def '
+                                              'test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                              '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                              'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                              'present."""\n'
+                                              '    exact = C.COHORT_MODULES\n'
+                                              '    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                              '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                              '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                              '"tests.ci_v4_full_recovery_scope")\n'
+                                              '    layers = (K, B1, B2, B3, V5, H4, H5, T)\n'
+                                              '    with C.call_scope():\n'
+                                              '        assert all(m.signature_ok() for m in layers)\n'
+                                              '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]\n'
+                                              '    head = exact[:-8]\n'
+                                              '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                              'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, '
+                                              'g6, fr),\n'
+                                              '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                              'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                              '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), '
+                                              '"fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), '
+                                              '"fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + '
+                                              '("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, '
+                                              'fr),\n'
+                                              '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + '
+                                              '(c06, b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                              '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + '
+                                              '(c06, b1, b2, b3, v5, g6, fr)}\n'
+                                              '    for name, tail in variants.items():\n'
+                                              '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                              '        for layer in layers:\n',
+                                              '\n'
+                                              'def '
+                                              'test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                              '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                              'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                              'present."""\n'
+                                              '    from tests import ci_v4_p0_scope as P0\n'
+                                              '    exact = C.COHORT_MODULES\n'
+                                              '    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                              '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                              '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                              '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")\n'
+                                              '    layers = (K, B1, B2, B3, V5, H4, H5, T, P0)\n'
+                                              '    with C.call_scope():\n'
+                                              '        assert all(m.signature_ok() for m in layers)\n'
+                                              '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]\n'
+                                              '    head = exact[:-9]\n'
+                                              '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                              'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, '
+                                              'g6, fr),\n'
+                                              '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                              'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                              '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), '
+                                              '"fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), '
+                                              '"fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + '
+                                              '("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, '
+                                              'fr),\n'
+                                              '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + '
+                                              '(c06, b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                              '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + '
+                                              '(c06, b1, b2, b3, v5, g6, fr)}\n'
+                                              '    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + '
+                                              '("tests.ci_v4_p0_scope",)\n'
+                                              '                for name, value in variants.items()}\n'
+                                              '    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),\n'
+                                              '                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", '
+                                              '"tests.ci_v4_full_recovery_scope"))\n'
+                                              '    for name, tail in variants.items():\n'
+                                              '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                              '        for layer in layers:\n')],
+ 'tests/test_ci_v4_lean_b1_scope.py': [('\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '    N = T._next()\n'
+                                        '    N2 = N._next() if N is not None and N.signature_ok() else None\n'
+                                        '    N3 = N2._next() if N2 is not None and N2.signature_ok() else None\n'
+                                        '    N4 = N3._next() if N3 is not None and N3.signature_ok() else None\n'
+                                        '    N5 = N4._next() if N4 is not None and N4.signature_ok() else None\n'
+                                        '    N6 = N5._next() if N5 is not None and N5.signature_ok() else None\n'
+                                        '    for p in T.HANDOFFS:\n'
+                                        '        if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further reviewed '
+                                        'FULL-recovery substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        if N5 is not None and N5.signature_ok() and p in N5.HANDOFFS:      # the further reviewed '
+                                        'V5-3 substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N5.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the further reviewed '
+                                        'V5-2B substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        if N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the further reviewed '
+                                        'V5 bootstrap substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and '
+                                        'N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this '
+                                        'shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further '
+                                        'reviewed B2 substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '            continue\n'
+                                        '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '    for ref in (None, "HEAD"):\n'
+                                        '        with C.call_scope():\n'
+                                        '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'K.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_as_the_terminal_cohort_after_c06():\n',
+                                        '\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    from tests.fin_v2_cohorts import call_scope\n'
+                                        '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                        'mutation\n'
+                                        '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '        N = T._next()\n'
+                                        '        N2 = N._next() if N is not None and N.signature_ok() else None\n'
+                                        '        N3 = N2._next() if N2 is not None and N2.signature_ok() else None\n'
+                                        '        N4 = N3._next() if N3 is not None and N3.signature_ok() else None\n'
+                                        '        N5 = N4._next() if N4 is not None and N4.signature_ok() else None\n'
+                                        '        N6 = N5._next() if N5 is not None and N5.signature_ok() else None\n'
+                                        '        for p in T.HANDOFFS:\n'
+                                        '            from tests import ci_v4_p0_scope as P0\n'
+                                        '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                        '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further '
+                                        'reviewed FULL-recovery substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N5 is not None and N5.signature_ok() and p in N5.HANDOFFS:      # the further '
+                                        'reviewed V5-3 substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N5.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the further '
+                                        'reviewed V5-2B substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the further '
+                                        'reviewed V5 bootstrap substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and '
+                                        'N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this '
+                                        'shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the '
+                                        'further reviewed B2 substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '        for ref in (None, "HEAD"):\n'
+                                        '            with C.call_scope():\n'
+                                        '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'K.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_as_the_terminal_cohort_after_c06():\n'),
+                                       ('                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) and '
+                                        'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                        '    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == '
+                                        '"tests.c06_cost_workspace_scope"\n'
+                                        '    assert K.SUCCESSOR == T.__name__ and K._next() is T\n'
+                                        '\n',
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"),\n'
+                                        '                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), T.BASE_COHORTS + (T.__name__, '
+                                        'T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") + '
+                                        "('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1\n"
+                                        '    assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == '
+                                        '"tests.c06_cost_workspace_scope"\n'
+                                        '    assert K.SUCCESSOR == T.__name__ and K._next() is T\n'
+                                        '\n'),
+                                       ('\n'
+                                        'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-8:] if m not in '
+                                        '("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) == '
+                                        '("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1\n'
+                                        '\n'
+                                        '\n',
+                                        '\n'
+                                        'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert tuple(m for m in U.RECONCILED_SUCCESSORS[-9:] if m not in '
+                                        '("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")) == '
+                                        '("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope")\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b1_scope") == 1\n'
+                                        '\n'
+                                        '\n'),
+                                       ('\n'
+                                        '\n'
+                                        'def test_registry_mutations_are_rejected(clone):\n'
+                                        '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        '\'tests.ci_v4_full_recovery_scope\')"\n'
+                                        '    for name, fn in (\n'
+                                        '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', '
+                                        "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')")),\n'
+                                        '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                        '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        '\'tests.ci_v4_full_recovery_scope\')")),\n'
+                                        '        ("b1_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b1_scope\'", b"")),\n'
+                                        '        ("c06_missing", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', ", b"")),\n'
+                                        '        ("r04_removed", lambda b: b.replace(b"\'tests.r04_ppa_scope\', ", b"")),\n',
+                                        '\n'
+                                        '\n'
+                                        'def test_registry_mutations_are_rejected(clone):\n'
+                                        '    tail = b"\'tests.c06_cost_workspace_scope\', \'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                        '\'tests.ci_v4_p0_scope\')"\n'
+                                        '    for name, fn in (\n'
+                                        '        ("duplicate", lambda b: b.replace(tail, b"\'tests.c06_cost_workspace_scope\', '
+                                        "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                        '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                        '        ("swapped_c06_b1", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                        '        ("b1_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b1_scope\'", b"")),\n'
+                                        '        ("c06_missing", lambda b: b.replace(b"\'tests.c06_cost_workspace_scope\', ", b"")),\n'
+                                        '        ("r04_removed", lambda b: b.replace(b"\'tests.r04_ppa_scope\', ", b"")),\n')],
+ 'tests/test_ci_v4_lean_b2_scope.py': [('\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '    T3 = T._next()\n'
+                                        '    T4 = T3._next() if T3 is not None and T3.signature_ok() else None\n'
+                                        '    T5 = T4._next() if T4 is not None and T4.signature_ok() else None\n'
+                                        '    T6 = T5._next() if T5 is not None and T5.signature_ok() else None\n'
+                                        '    T7 = T6._next() if T6 is not None and T6.signature_ok() else None\n'
+                                        '    for p in T.HANDOFFS:\n'
+                                        '        if T7 is not None and T7.signature_ok() and p in T7.HANDOFFS:      # the reviewed '
+                                        'FULL-recovery substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == T7.expected_handoff(ROOT, p)\n'
+                                        '        elif T6 is not None and T6.signature_ok() and p in T6.HANDOFFS:      # the reviewed V5-3 '
+                                        'substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == T6.expected_handoff(ROOT, p)\n'
+                                        '        elif T5 is not None and T5.signature_ok() and p in T5.HANDOFFS:      # the reviewed V5-2B '
+                                        'substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == T5.expected_handoff(ROOT, p)\n'
+                                        '        elif T4 is not None and T4.signature_ok() and p in T4.HANDOFFS:      # the reviewed V5 '
+                                        'bootstrap substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == T4.expected_handoff(ROOT, p)\n'
+                                        '        elif T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p in '
+                                        'T3.HANDOFFS:      # the reviewed B3 substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)\n'
+                                        '        else:\n'
+                                        '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '    for ref in (None, "HEAD"):\n'
+                                        '        with C.call_scope():\n'
+                                        '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'B.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_as_the_terminal_cohort_after_b1():\n'
+                                        '    assert C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                        '    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", '
+                                        '"tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b2_scope", '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"))\n'
+                                        '    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B\n'
+                                        '    from tests import ci_v4_lean_b3_scope as T3\n'
+                                        '    if T.SUCCESSOR in C.COHORT_MODULES:\n'
+                                        '        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") and '
+                                        'T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_b1_c06_and_every_older_cohort_still_follow_the_chain():\n',
+                                        '\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    from tests.fin_v2_cohorts import call_scope\n'
+                                        '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                        'mutation\n'
+                                        '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '        T3 = T._next()\n'
+                                        '        T4 = T3._next() if T3 is not None and T3.signature_ok() else None\n'
+                                        '        T5 = T4._next() if T4 is not None and T4.signature_ok() else None\n'
+                                        '        T6 = T5._next() if T5 is not None and T5.signature_ok() else None\n'
+                                        '        T7 = T6._next() if T6 is not None and T6.signature_ok() else None\n'
+                                        '        for p in T.HANDOFFS:\n'
+                                        '            from tests import ci_v4_p0_scope as P0\n'
+                                        '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                        '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if T7 is not None and T7.signature_ok() and p in T7.HANDOFFS:      # the reviewed '
+                                        'FULL-recovery substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == T7.expected_handoff(ROOT, p)\n'
+                                        '            elif T6 is not None and T6.signature_ok() and p in T6.HANDOFFS:      # the reviewed '
+                                        'V5-3 substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == T6.expected_handoff(ROOT, p)\n'
+                                        '            elif T5 is not None and T5.signature_ok() and p in T5.HANDOFFS:      # the reviewed '
+                                        'V5-2B substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == T5.expected_handoff(ROOT, p)\n'
+                                        '            elif T4 is not None and T4.signature_ok() and p in T4.HANDOFFS:      # the reviewed '
+                                        'V5 bootstrap substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == T4.expected_handoff(ROOT, p)\n'
+                                        '            elif T3 is not None and T.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and p '
+                                        'in T3.HANDOFFS:      # the reviewed B3 substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == T3.expected_handoff(ROOT, p)\n'
+                                        '            else:\n'
+                                        '                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '        for ref in (None, "HEAD"):\n'
+                                        '            with C.call_scope():\n'
+                                        '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'B.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_as_the_terminal_cohort_after_b1():\n'
+                                        '    assert C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                        '    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", '
+                                        '"tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b2_scope", '
+                                        '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), (\'tests.ci_v5_gate_scope\', '
+                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
+                                        '    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B\n'
+                                        '    from tests import ci_v4_lean_b3_scope as T3\n'
+                                        '    if T.SUCCESSOR in C.COHORT_MODULES:\n'
+                                        '        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", '
+                                        '\'tests.ci_v4_p0_scope\') and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_b1_c06_and_every_older_cohort_still_follow_the_chain():\n'),
+                                       ('\n'
+                                        'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), '
+                                        '("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), '
+                                        '("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"))\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1\n'
+                                        '\n'
+                                        '\n',
+                                        '\n'
+                                        'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), '
+                                        '("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), '
+                                        '("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), '
+                                        '("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope"))\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1\n'
+                                        '\n'
+                                        '\n'),
+                                       ('\n'
+                                        '\n'
+                                        'def test_registry_mutations_are_rejected(clone):\n'
+                                        '    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', '
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')"\n'
+                                        '    for name, fn in (\n'
+                                        '        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        '\'tests.ci_v4_full_recovery_scope\')")),\n'
+                                        '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                        '        ("swapped_b1_b2", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                        '\'tests.ci_v4_lean_b1_scope\')")),\n'
+                                        '        ("b2_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b2_scope\'", b"")),\n',
+                                        '\n'
+                                        '\n'
+                                        'def test_registry_mutations_are_rejected(clone):\n'
+                                        '    tail = b"\'tests.ci_v4_lean_b1_scope\', \'tests.ci_v4_lean_b2_scope\', '
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')"\n'
+                                        '    for name, fn in (\n'
+                                        '        ("duplicate", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b1_scope\', '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                        '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                        '        ("swapped_b1_b2", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                        '\'tests.ci_v4_lean_b1_scope\')")),\n'
+                                        '        ("b2_missing", lambda b: b.replace(b", \'tests.ci_v4_lean_b2_scope\'", b"")),\n')],
+ 'tests/test_ci_v4_lean_b3_scope.py': [('\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '    N = T._next()\n'
+                                        '    N2 = N._next() if N is not None and N.signature_ok() else None\n'
+                                        '    N3 = N2._next() if N2 is not None and N2.signature_ok() else None\n'
+                                        '    N4 = N3._next() if N3 is not None and N3.signature_ok() else None\n'
+                                        '    for p in T.HANDOFFS:\n'
+                                        '        if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the reviewed '
+                                        'FULL-recovery substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)\n'
+                                        '        elif N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the reviewed V5-3 '
+                                        'substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)\n'
+                                        '        elif N2 is not None and N2.signature_ok() and p in N2.HANDOFFS:      # the reviewed V5-2B '
+                                        'substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
+                                        '        elif N is not None and N.signature_ok() and p in N.HANDOFFS:      # the reviewed V5 '
+                                        'bootstrap substitution of this shared path\n'
+                                        '            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\n'
+                                        '        else:\n'
+                                        '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '    for ref in (None, "HEAD"):\n'
+                                        '        with C.call_scope():\n'
+                                        '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'B.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_after_b2_with_only_the_reviewed_v5_bootstrap_behind_it():\n'
+                                        '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                        "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope'), "
+                                        "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope'), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')) and "
+                                        'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                        '    assert C.COHORT_MODULES[-3:] in (("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                        '"tests.ci_v4_full_recovery_scope"))\n'
+                                        '    assert B.SUCCESSOR == T.__name__ and B._next() is T and B1.SUCCESSOR == B.__name__ and '
+                                        'B1._next() is B\n'
+                                        '\n'
+                                        '\n',
+                                        '\n'
+                                        '\n'
+                                        'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                        '    from tests.fin_v2_cohorts import call_scope\n'
+                                        '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                        'mutation\n'
+                                        '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                        '        N = T._next()\n'
+                                        '        N2 = N._next() if N is not None and N.signature_ok() else None\n'
+                                        '        N3 = N2._next() if N2 is not None and N2.signature_ok() else None\n'
+                                        '        N4 = N3._next() if N3 is not None and N3.signature_ok() else None\n'
+                                        '        for p in T.HANDOFFS:\n'
+                                        '            from tests import ci_v4_p0_scope as P0\n'
+                                        '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                        '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                        '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '                continue\n'
+                                        '            if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the reviewed '
+                                        'FULL-recovery substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)\n'
+                                        '            elif N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the reviewed '
+                                        'V5-3 substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)\n'
+                                        '            elif N2 is not None and N2.signature_ok() and p in N2.HANDOFFS:      # the reviewed '
+                                        'V5-2B substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)\n'
+                                        '            elif N is not None and N.signature_ok() and p in N.HANDOFFS:      # the reviewed V5 '
+                                        'bootstrap substitution of this shared path\n'
+                                        '                assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)\n'
+                                        '            else:\n'
+                                        '                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                        '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                        '        for ref in (None, "HEAD"):\n'
+                                        '            with C.call_scope():\n'
+                                        '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                        'B.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                        '\n'
+                                        '\n'
+                                        'def test_registered_exactly_once_after_b2_with_only_the_reviewed_v5_bootstrap_behind_it():\n'
+                                        '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                        "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope'), "
+                                        "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope'), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                        "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)) and "
+                                        'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                        '    assert C.COHORT_MODULES[-3:] in (("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
+                                        '"tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                        '"tests.ci_v4_full_recovery_scope"), (\'tests.ci_v5_gate_scope\', '
+                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
+                                        '    assert B.SUCCESSOR == T.__name__ and B._next() is T and B1.SUCCESSOR == B.__name__ and '
+                                        'B1._next() is B\n'
+                                        '\n'
+                                        '\n'),
+                                       ('\n'
+                                        'def '
+                                        'test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_bootstrap():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), '
+                                        '("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", '
+                                        '"tests.ci_v4_full_recovery_scope"))\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b3_scope") == 1\n'
+                                        '\n'
+                                        '\n',
+                                        '\n'
+                                        'def '
+                                        'test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_bootstrap():\n'
+                                        '    from tests import u1_scope as U\n'
+                                        '    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b3_scope", '
+                                        '"tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), '
+                                        '("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", '
+                                        '"tests.ci_v4_full_recovery_scope"), ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope"))\n'
+                                        '    assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b3_scope") == 1\n'
+                                        '\n'
+                                        '\n'),
+                                       ('    from tests import ci_v5_hardening_scope as H\n'
+                                        '    from tests import ci_v5_gate_scope as G\n'
+                                        '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                        '    exact = C.COHORT_MODULES\n'
+                                        '    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
+                                        '    layers = (K, B1, B, T, V, H, G, FR)\n'
+                                        '    with C.call_scope():\n'
+                                        '        assert all(m.signature_ok() for m in layers)                       # state A: the '
+                                        'pristine registry is accepted by every layer\n'
+                                        '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]\n'
+                                        '    head = exact[:-8]\n'
+                                        '    variants = {\n'
+                                        '        "b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr),\n'
+                                        '        "b1_b2_swapped": head + (c06, b2, b1, b3, v5, h5, g6, fr),\n',
+                                        '    from tests import ci_v5_hardening_scope as H\n'
+                                        '    from tests import ci_v5_gate_scope as G\n'
+                                        '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                        '    from tests import ci_v4_p0_scope as P0\n'
+                                        '    exact = C.COHORT_MODULES\n'
+                                        '    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                        '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                        '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", '
+                                        '"tests.ci_v4_p0_scope")\n'
+                                        '    layers = (K, B1, B, T, V, H, G, FR, P0)\n'
+                                        '    with C.call_scope():\n'
+                                        '        assert all(m.signature_ok() for m in layers)                       # state A: the '
+                                        'pristine registry is accepted by every layer\n'
+                                        '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]\n'
+                                        '    head = exact[:-9]\n'
+                                        '    variants = {\n'
+                                        '        "b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr),\n'
+                                        '        "b1_b2_swapped": head + (c06, b2, b1, b3, v5, h5, g6, fr),\n'),
+                                       ('        "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr),\n'
+                                        '        "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr),\n'
+                                        '    }\n'
+                                        '    for name, tail in variants.items():\n'
+                                        '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                        '        for layer in layers:\n',
+                                        '        "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr),\n'
+                                        '        "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr),\n'
+                                        '    }\n'
+                                        '    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + '
+                                        '("tests.ci_v4_p0_scope",)\n'
+                                        '                for name, value in variants.items()}\n'
+                                        '    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),\n'
+                                        '                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", '
+                                        '"tests.ci_v4_full_recovery_scope"))\n'
+                                        '    for name, tail in variants.items():\n'
+                                        '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                        '        for layer in layers:\n')],
+ 'tests/test_ci_v4_lean_tamper_matrix.py': [('\n'
+                                             '\n'
+                                             'REG = "tests/fin_v2_cohorts.py"\n'
+                                             'TAIL = "\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                             '\'tests.ci_v4_full_recovery_scope\')"\n'
+                                             '# row id, invariant class, mutation, injected path, attribution class\n'
+                                             'ROWS = [\n'
+                                             '    ("guarded_byte_product", "guarded_byte", _append("app/v2/router.py"), '
+                                             '"app/v2/router.py", "pinned"),\n',
+                                             '\n'
+                                             '\n'
+                                             'REG = "tests/fin_v2_cohorts.py"\n'
+                                             'TAIL = "\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                             '\'tests.ci_v4_p0_scope\')"\n'
+                                             '# row id, invariant class, mutation, injected path, attribution class\n'
+                                             'ROWS = [\n'
+                                             '    ("guarded_byte_product", "guarded_byte", _append("app/v2/router.py"), '
+                                             '"app/v2/router.py", "pinned"),\n'),
+                                            ('    ("registry_parent_forged", "registry", lambda clone: _text_sub(REG, re.search(r"PARENT = '
+                                             '\'[0-9a-f]+\'", (clone / REG).read_text()).group(0),\n'
+                                             '                                                                    "PARENT = \'%s\'" % '
+                                             'HEAD_OF[str(clone)])(clone), REG, "pinned"),\n'
+                                             '    ("successor_hook_removed", "successor_handoff", _restore_predecessor_base_bytes, '
+                                             'B1.PREDECESSOR, "pinned"),\n'
+                                             '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", '
+                                             '\'tests.ci_v4_full_recovery_scope\')", ")"), "tests/u1_scope.py", "pinned"),\n'
+                                             '    ("current_map_key_forged", "current_map", _forge_map_key, '
+                                             '"docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),\n'
+                                             ']\n'
+                                             'assert len({r[0] for r in ROWS}) == len(ROWS)\n',
+                                             '    ("registry_parent_forged", "registry", lambda clone: _text_sub(REG, re.search(r"PARENT = '
+                                             '\'[0-9a-f]+\'", (clone / REG).read_text()).group(0),\n'
+                                             '                                                                    "PARENT = \'%s\'" % '
+                                             'HEAD_OF[str(clone)])(clone), REG, "pinned"),\n'
+                                             '    ("successor_hook_removed", "successor_handoff", _restore_predecessor_base_bytes, '
+                                             'B1.PREDECESSOR, "pinned"),\n'
+                                             '    ("successor_discovery_dropped", "successor_handoff", _text_sub("tests/u1_scope.py", ", '
+                                             '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')", ")"), "tests/u1_scope.py", '
+                                             '"pinned"),\n'
+                                             '    ("current_map_key_forged", "current_map", _forge_map_key, '
+                                             '"docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),\n'
+                                             ']\n'
+                                             'assert len({r[0] for r in ROWS}) == len(ROWS)\n')],
+ 'tests/test_ci_v4_perf_scope.py': [('    return subprocess.check_output(["git", *args], cwd=str(ROOT), stderr=subprocess.DEVNULL)\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():\n'
+                                     '    assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES\n'
+                                     '    # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own '
+                                     'complete signature\n'
+                                     '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert (C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (\n'
+                                     '            C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and '
+                                     'G.signature_ok()) or (\n'
+                                     '            C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope")\n'
+                                     '            and G.signature_ok() and Z.signature_ok()) or (\n'
+                                     '            C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
+                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (\n'
+                                     '            C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or '
+                                     '(\n'
+                                     '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                     '"tests.r04_ppa_scope")\n'
+                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
+                                     'W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), '
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), '
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                     '                and C06_APPROVAL.signature_ok())\n'
+                                     '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert F.exact_blobs_ok() is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert F.signature_ok() is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert C.valid() is True\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_every_handoff_file_equals_its_reviewed_literal_substitution():\n'
+                                     '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '    for p in sorted(F.HANDOFFS):\n'
+                                     '        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS\n'
+                                     '                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS\n'
+                                     '                else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS\n'
+                                     '                else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS\n',
+                                     '    return subprocess.check_output(["git", *args], cwd=str(ROOT), stderr=subprocess.DEVNULL)\n'
+                                     '\n'
+                                     '\n'
+                                     'def _literal_registry(raw):\n'
+                                     '    return next(ast.literal_eval(n.value) for n in ast.parse(raw).body\n'
+                                     '                if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == '
+                                     '"COHORT_MODULES" for t in n.targets))\n'
+                                     '\n'
+                                     '\n'
+                                     'def _accepted_p0_prefix():\n'
+                                     '    # Independently recover the entire immutable 47-cohort main registry, starting at the original '
+                                     'BESS02 registry.\n'
+                                     '    accepted = _literal_registry(_git("show", F.BASE + ":tests/fin_v2_cohorts.py"))\n'
+                                     '    assert accepted[-1] == "tests.bess02_scope"\n'
+                                     '    prefix = accepted + (\n'
+                                     '        "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",\n'
+                                     '        "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope",\n'
+                                     '        "tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope",\n'
+                                     '        "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope",\n'
+                                     '        "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
+                                     '    assert len(prefix) == 47\n'
+                                     '    assert _literal_registry(_git("show", '
+                                     '"955952c1bc16b21ce342121c5224a19d3e105aa7:tests/fin_v2_cohorts.py")) == prefix\n'
+                                     '    return prefix\n'
+                                     '\n'
+                                     '\n'
+                                     'def _p0():\n'
+                                     '    """Only the literal registered P0 terminal, through the exact FULL-recovery chain and every '
+                                     'predecessor."""\n'
+                                     '    prefix = _accepted_p0_prefix()\n'
+                                     '    if C.COHORT_MODULES != prefix + ("tests.ci_v4_p0_scope",):\n'
+                                     '        return None\n'
+                                     '    prior = _b7()\n'
+                                     '    terminal = prior._next() if prior is not None else None\n'
+                                     '    if (terminal is None or terminal.__name__ != "tests.ci_v4_p0_scope"\n'
+                                     '            or terminal.BASE != "955952c1bc16b21ce342121c5224a19d3e105aa7"\n'
+                                     '            or terminal.BASE_COHORTS != prefix or not terminal.signature_ok()\n'
+                                     '            or not all(m.exact_blobs_ok() for m in C.cohorts())):\n'
+                                     '        return None\n'
+                                     '    return terminal\n'
+                                     '\n'
+                                     '\n'
+                                     'def _historical_reviewed_handoff(p):\n'
+                                     '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '    return (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS\n'
+                                     '                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS\n'
+                                     '                else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS\n'
+                                     '                else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS\n'),
+                                    ('                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n'
+                                     '                else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS\n'
+                                     '                else G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else '
+                                     'F.expected_handoff(ROOT, p))\n'
+                                     '        assert (ROOT / p).read_bytes() == want, p\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert B.signature_ok() is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert B.reviewed_edits_ok() is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert B.exact_blobs_ok() is True\n'
+                                     '    assert B._next() is F\n'
+                                     "    # the BESS02 closure now covers exactly its own paths plus this leaf's\n"
+                                     '    assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()\n'
+                                     '    assert "docs/ci_v4/module_weights.json" in B.closure_paths()\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tail():\n'
+                                     '    registry = _git("show", F.BASE + ":tests/fin_v2_cohorts.py")\n'
+                                     '    accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body\n'
+                                     '                    if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)\n'
+                                     '                    and n.targets[0].id == "COHORT_MODULES")\n'
+                                     '    assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact\n'
+                                     '    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '    own = accepted + ("tests.ci_v4_perf_scope",)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert ((C.COHORT_MODULES == own or (C.COHORT_MODULES == own + '
+                                     '("tests.f03_financing_scope",) and G.signature_ok())\n'
+                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope")\n'
+                                     '                    and G.signature_ok() and Z.signature_ok())\n'
+                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
+                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok())\n'
+                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                     'Q.signature_ok())\n'
+                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                     '"tests.r04_ppa_scope")\n'
+                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                     'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                     '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                     'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                     '                and C06_APPROVAL.signature_ok()))\n'
+                                     '    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_accepted_bess02_handoff_expectations_are_still_governed_by_this_leaf():\n'
+                                     "    # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed\n"
+                                     '    # substitution; the other BESS02 handoff files it does not take over still hold literally.\n'
+                                     '    for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):\n'
+                                     '        assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p\n'
+                                     '    assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS\n'
+                                     '\n'
+                                     '\n'
+                                     '#: exactly the three pins a current map may carry for this leaf: the registry, the module weights '
+                                     'and the PR3b1 guard whose\n',
+                                     '                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n'
+                                     '                else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS\n'
+                                     '                else G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else '
+                                     'F.expected_handoff(ROOT, p))\n'
+                                     '\n'
+                                     '\n'
+                                     'def _reviewed_handoff(p):\n'
+                                     '    historical = _historical_reviewed_handoff(p)\n'
+                                     '    terminal = _p0()\n'
+                                     '    if terminal is None or p not in terminal.HANDOFFS:\n'
+                                     '        return historical\n'
+                                     '    predecessor = _git("show", terminal.BASE + ":" + p)\n'
+                                     '    pins = terminal.manifest()\n'
+                                     '    assert historical == predecessor                         # the older literal remains the '
+                                     'authenticated intermediate\n'
+                                     '    assert F._blob(predecessor) == pins["base_blobs"][p]\n'
+                                     '    reviewed = terminal.expected_handoff(ROOT, p)             # immutable BASE plus reviewed '
+                                     'literals; never disk as expectation\n'
+                                     '    assert reviewed != predecessor\n'
+                                     '    assert F._blob(reviewed) == pins["source_blobs"][p] == F.effective_pins()[p]\n'
+                                     '    return reviewed\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES\n'
+                                     '        # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its '
+                                     'own complete signature\n'
+                                     '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert (_p0() is not None or ((C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (\n'
+                                     '                C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and '
+                                     'G.signature_ok()) or (\n'
+                                     '                C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope")\n'
+                                     '                and G.signature_ok() and Z.signature_ok()) or (\n'
+                                     '                C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
+                                     '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (\n'
+                                     '                C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+                                     '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) '
+                                     'or (\n'
+                                     '                C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                     '"tests.r04_ppa_scope")\n'
+                                     '                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() '
+                                     'and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                     '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                     'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                     '                    and C06_APPROVAL.signature_ok())))\n'
+                                     '        assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is True\n'
+                                     '            assert F.signature_ok() is True\n'
+                                     '            assert C.valid() is True\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_every_handoff_file_equals_its_reviewed_literal_substitution():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '        for p in sorted(F.HANDOFFS):\n'
+                                     '            want = (_reviewed_handoff(p))\n'
+                                     '            assert (ROOT / p).read_bytes() == want, p\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():\n'
+                                     '    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is '
+                                     'inside\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert B.signature_ok() is True\n'
+                                     '            assert B.reviewed_edits_ok() is True\n'
+                                     '            assert B.exact_blobs_ok() is True\n'
+                                     '        assert B._next() is F\n'
+                                     "        # the BESS02 closure now covers exactly its own paths plus this leaf's\n"
+                                     '        assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()\n'
+                                     '        assert "docs/ci_v4/module_weights.json" in B.closure_paths()\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tail():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        registry = _git("show", F.BASE + ":tests/fin_v2_cohorts.py")\n'
+                                     '        accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body\n'
+                                     '                        if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)\n'
+                                     '                        and n.targets[0].id == "COHORT_MODULES")\n'
+                                     '        assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact\n'
+                                     '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '        own = accepted + ("tests.ci_v4_perf_scope",)\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert ((_p0() is not None or ((C.COHORT_MODULES == own or (C.COHORT_MODULES == own + '
+                                     '("tests.f03_financing_scope",) and G.signature_ok())\n'
+                                     '                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope")\n'
+                                     '                        and G.signature_ok() and Z.signature_ok())\n'
+                                     '                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope")\n'
+                                     '                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok())\n'
+                                     '                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
+                                     '                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                     'Q.signature_ok())\n'
+                                     '                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
+                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                     '"tests.r04_ppa_scope")\n'
+                                     '                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
+                                     'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                     '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                     'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                     '                    and C06_APPROVAL.signature_ok()))))\n'
+                                     '        assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_the_accepted_bess02_handoff_expectations_are_still_governed_by_this_leaf():\n'
+                                     '    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is '
+                                     'inside\n'
+                                     "        # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed\n"
+                                     '        # substitution; the other BESS02 handoff files it does not take over still hold literally.\n'
+                                     '        for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):\n'
+                                     '            assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p\n'
+                                     '        assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS\n'
+                                     '\n'
+                                     '\n'
+                                     '#: exactly the three pins a current map may carry for this leaf: the registry, the module weights '
+                                     'and the PR3b1 guard whose\n'),
+                                    ('\n'
+                                     '\n'
+                                     'def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_canonical_form():\n'
+                                     '    assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS\n'
+                                     '    nx = B._next_pins(ROOT, None)\n'
+                                     '    pins = B.manifest()["source_blobs"]\n'
+                                     '    cur = {p: nx.get(p, b) for p, b in pins.items()}\n'
+                                     '    moved = B._next_moved(ROOT, None)\n'
+                                     '    # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), '
+                                     "never read from the leaf's own map logic\n"
+                                     '    new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}\n'
+                                     '    old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}\n'
+                                     '    assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them '
+                                     'genuinely moved\n'
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), '
+                                     '**new}\n'
+                                     '    assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved '
+                                     "key is the reviewed F03 successor's\n"
+                                     '    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in '
+                                     'new.items() if k not in G.effective_pins()}}\n'
+                                     '    for p in sorted(B.CURRENT_MAPS):\n'
+                                     '        disk = json.loads((ROOT / p).read_bytes())["source_blobs"]\n'
+                                     '        base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]\n'
+                                     '        for k in MOVED_MAP_KEYS:                                                # a map records the '
+                                     'OLD value only before, the NEW one after\n'
+                                     '            if k in base:\n'
+                                     '                assert base[k] == old[k] and disk[k] == new[k], (p, k)\n'
+                                     '        assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p\n'
+                                     '    # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set '
+                                     'unchanged for every map\n'
+                                     '    for p in sorted(B.CURRENT_MAPS):\n'
+                                     '        assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == '
+                                     'set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_scheduler_weights_are_literal_projected_corrections_with_provenance():\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_canonical_form():\n'
+                                     '    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is '
+                                     'inside\n'
+                                     '        assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS\n'
+                                     '        nx = B._next_pins(ROOT, None)\n'
+                                     '        pins = B.manifest()["source_blobs"]\n'
+                                     '        cur = {p: nx.get(p, b) for p, b in pins.items()}\n'
+                                     '        moved = B._next_moved(ROOT, None)\n'
+                                     '        # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), '
+                                     "never read from the leaf's own map logic\n"
+                                     '        new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}\n'
+                                     '        old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}\n'
+                                     '        assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of '
+                                     'them genuinely moved\n'
+                                     '        from tests import f03_financing_scope as G\n'
+                                     '        assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), '
+                                     '**new}\n'
+                                     '        assert set(moved) - set(new) <= set(G.map_keys())                       # the only other '
+                                     "moved key is the reviewed F03 successor's\n"
+                                     '        assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in '
+                                     'new.items() if k not in G.effective_pins()}}\n'
+                                     '        for p in sorted(B.CURRENT_MAPS):\n'
+                                     '            disk = json.loads((ROOT / p).read_bytes())["source_blobs"]\n'
+                                     '            base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]\n'
+                                     '            for k in MOVED_MAP_KEYS:                                                # a map records '
+                                     'the OLD value only before, the NEW one after\n'
+                                     '                if k in base:\n'
+                                     '                    assert base[k] == old[k] and disk[k] == new[k], (p, k)\n'
+                                     '            assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p\n'
+                                     '        # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set '
+                                     'unchanged for every map\n'
+                                     '        for p in sorted(B.CURRENT_MAPS):\n'
+                                     '            assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == '
+                                     'set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_scheduler_weights_are_literal_projected_corrections_with_provenance():\n'),
+                                    ('        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     "        # a current map's bytes belong to the full proof only: the signature never reads a foreign "
+                                     'manifest, every other path is in it\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.signature_ok() is (path in F.CURRENT_MAPS)\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        target.write_bytes(original)\n'
+                                     '    # a FRESH evaluation after the restore passes again; nothing was cached across the boundary\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert F.exact_blobs_ok() is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert C.valid() is True\n'
+                                     '\n'
+                                     '\n',
+                                     '        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     "        # a current map's bytes belong to the full proof only: the signature never reads a foreign "
+                                     'manifest, every other path is in it\n'
+                                     '            assert F.signature_ok() is (path in F.CURRENT_MAPS)\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        target.write_bytes(original)\n'
+                                     '    # a FRESH evaluation after the restore passes again; nothing was cached across the boundary\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert F.exact_blobs_ok() is True\n'
+                                     '        assert C.valid() is True\n'
+                                     '\n'
+                                     '\n'),
+                                    ('def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():\n'
+                                     '    original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()\n'
+                                     '    text = original.decode()\n'
+                                     '    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', '
+                                     '\'tests.f03_financing_scope\', "\n'
+                                     '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', '
+                                     "'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     '\'tests.ci_v4_full_recovery_scope\')")\n'
+                                     '    assert text.count(marker) == 1\n'
+                                     '    try:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", '
+                                     '\'tests.fake_perf_scope\')").encode())\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.reviewed_edits_ok() is False\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)\n',
+                                     'def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():\n'
+                                     '    original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()\n'
+                                     '    text = original.decode()\n'
+                                     '    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', '
+                                     "'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', "
+                                     "'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")\n'
+                                     '    assert text.count(marker) == 1\n'
+                                     '    try:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", '
+                                     '\'tests.fake_perf_scope\')").encode())\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.reviewed_edits_ok() is False\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)\n'),
+                                    ('        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased\n'
+                                     '    finally:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)\n',
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False\n'
+                                     '            assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased\n'
+                                     '    finally:\n'
+                                     '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)\n'),
+                                    ('        extra.write_text(\'"""unreviewed"""\\n\', encoding="utf-8")\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        extra.unlink()\n',
+                                     '        extra.write_text(\'"""unreviewed"""\\n\', encoding="utf-8")\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.exact_blobs_ok() is False\n'
+                                     '            assert C.valid() is False\n'
+                                     '    finally:\n'
+                                     '        extra.unlink()\n'),
+                                    ('\n'
+                                     '\n'
+                                     'def '
+                                     'test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_distinct_from_the_takeover():\n'
+                                     '    for p in sorted(F.HANDOFFS):\n'
+                                     '        base_bytes = _git("show", F.BASE + ":" + p)\n'
+                                     '        now = (ROOT / p).read_bytes()\n'
+                                     '        assert base_bytes != now, p                       # the takeover is real, not a no-op\n'
+                                     '        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     '        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS\n'
+                                     '                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS\n'
+                                     '                else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS\n'
+                                     '                else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS\n'
+                                     '                else _b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS\n'
+                                     '                else _b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS\n'
+                                     '                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS\n'
+                                     '                else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in '
+                                     'C06_APPROVAL.HANDOFFS\n'
+                                     '                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS\n'
+                                     '                else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS\n'
+                                     '                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS\n'
+                                     '                else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS\n'
+                                     '                else G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else '
+                                     'F.expected_handoff(ROOT, p))\n'
+                                     '        assert want == now                                # and equals exactly the reviewed '
+                                     'substitution\n'
+                                     '\n'
+                                     '\n'
+                                     '# ---------------------------------------------------------------------------------------------\n',
+                                     '\n'
+                                     '\n'
+                                     'def '
+                                     'test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_distinct_from_the_takeover():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        for p in sorted(F.HANDOFFS):\n'
+                                     '            base_bytes = _git("show", F.BASE + ":" + p)\n'
+                                     '            now = (ROOT / p).read_bytes()\n'
+                                     '            assert base_bytes != now, p                       # the takeover is real, not a no-op\n'
+                                     '            from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope '
+                                     'as Y\n'
+                                     '            want = (_reviewed_handoff(p))\n'
+                                     '            assert want == now                                # and equals exactly the reviewed '
+                                     'substitution\n'
+                                     '\n'
+                                     '\n'
+                                     '# ---------------------------------------------------------------------------------------------\n'),
+                                    ('\n'
+                                     '\n'
+                                     'def test_every_older_guard_reaches_the_reviewed_pins_through_one_hook_each():\n'
+                                     '    for p in FROZEN_EDITS:\n'
+                                     '        pin = F.manifest()["source_blobs"][p]\n'
+                                     '        assert p in OB1.FROZEN and p not in OB1.SUPERSEDED\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False\n'
+                                     '        assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin\n'
+                                     '    # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own '
+                                     'superseded set\n'
+                                     '    pin = F.manifest()["source_blobs"][WEIGHTS]\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert U31.supersedes(WEIGHTS, pin) is True\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # '
+                                     'the OLD value is no longer accepted\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert U31.supersedes(WEIGHTS, "0" * 40) is False\n'
+                                     '    for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", '
+                                     '"docs/ci_v4/node_weights.json"):\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other\n'
+                                     '\n'
+                                     '\n'
+                                     '@pytest.mark.parametrize("path", FROZEN_EDITS)\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_every_older_guard_reaches_the_reviewed_pins_through_one_hook_each():\n'
+                                     '    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is '
+                                     'inside\n'
+                                     '        for p in FROZEN_EDITS:\n'
+                                     '            pin = F.manifest()["source_blobs"][p]\n'
+                                     '            assert p in OB1.FROZEN and p not in OB1.SUPERSEDED\n'
+                                     '            with C.call_scope():\n'
+                                     '                assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False\n'
+                                     '            assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != '
+                                     'pin\n'
+                                     '        # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own '
+                                     'superseded set\n'
+                                     '        pin = F.manifest()["source_blobs"][WEIGHTS]\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert U31.supersedes(WEIGHTS, pin) is True\n'
+                                     '            assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   '
+                                     '# the OLD value is no longer accepted\n'
+                                     '            assert U31.supersedes(WEIGHTS, "0" * 40) is False\n'
+                                     '        for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", '
+                                     '"docs/ci_v4/node_weights.json"):\n'
+                                     '            with C.call_scope():\n'
+                                     '                assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other\n'
+                                     '\n'
+                                     '\n'
+                                     '@pytest.mark.parametrize("path", FROZEN_EDITS)\n'),
+                                    ('    assert not (called & {"valid", "matches", "exact_blobs_ok", "signature_ok", "call_scope", '
+                                     '"cohorts", "supersedes"})\n'
+                                     '    imports = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}\n'
+                                     '    assert imports <= {"tests.fin_v2_cohorts", "tests.on_bess01_scope"}\n',
+                                     '    assert not (called & {"valid", "matches", "exact_blobs_ok", "signature_ok", "call_scope", '
+                                     '"cohorts", "supersedes"})\n'
+                                     '    imports = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}\n'
+                                     '    assert imports <= {"tests.fin_v2_cohorts", "tests.on_bess01_scope"}\n'
+                                     '\n'
+                                     '\n'
+                                     '@pytest.mark.parametrize("attack", ("missing", "duplicate", "reordered", "inserted", "forged"))\n'
+                                     'def test_p0_terminal_resolution_rejects_every_unreviewed_registry(monkeypatch, attack):\n'
+                                     '    exact = C.COHORT_MODULES\n'
+                                     '    variants = {\n'
+                                     '        "missing": exact[:-1],\n'
+                                     '        "duplicate": exact + ("tests.ci_v4_p0_scope",),\n'
+                                     '        "reordered": exact[:-2] + (exact[-1], exact[-2]),\n'
+                                     '        "inserted": exact[:-1] + ("tests.ci_v4_perf_scope", exact[-1]),\n'
+                                     '        "forged": exact[:-1] + ("tests.ci_v4_p0_scope_forged",),\n'
+                                     '    }\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert _p0() is not None\n'
+                                     '    try:\n'
+                                     '        monkeypatch.setattr(C, "COHORT_MODULES", variants[attack])\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert _p0() is None\n'
+                                     '            assert not F.exact_blobs_ok() and not C.valid()\n'
+                                     '    finally:\n'
+                                     '        monkeypatch.setattr(C, "COHORT_MODULES", exact)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert _p0() is not None and F.exact_blobs_ok() and C.valid()\n'
+                                     '\n'
+                                     '\n'
+                                     '@pytest.mark.parametrize("attack", ("wrong_pin", "forged_registry", "wrong_handoff"))\n'
+                                     'def test_p0_handoff_resolution_rejects_changed_source_and_restores(attack):\n'
+                                     '    from tests import ci_v4_p0_scope as P0\n'
+                                     '    rel = P0.MANIFEST if attack == "wrong_pin" else P0.REGISTRY if attack == "forged_registry" else '
+                                     '"tests/test_bess02_scope.py"\n'
+                                     '    path = ROOT / rel\n'
+                                     '    original = path.read_bytes()\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert _p0() is P0\n'
+                                     '    try:\n'
+                                     '        if attack == "wrong_pin":\n'
+                                     '            data = json.loads(original)\n'
+                                     '            data["source_blobs"][P0.REGISTRY] = "0" * 40\n'
+                                     '            path.write_bytes((json.dumps(data, indent=2, sort_keys=True) + "\\n").encode())\n'
+                                     '        else:\n'
+                                     '            path.write_bytes(original + b"\\n# unreviewed handoff\\n")\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert _p0() is None\n'
+                                     '            assert not P0.signature_ok() and not F.exact_blobs_ok() and not C.valid()\n'
+                                     '    finally:\n'
+                                     '        path.write_bytes(original)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert _p0() is P0 and _reviewed_handoff(P0.REGISTRY) == (ROOT / P0.REGISTRY).read_bytes()\n'
+                                     '    assert not C._CALL\n')],
+ 'tests/test_ci_v5_bootstrap_scope.py': [('\n'
+                                          '\n'
+                                          'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                          '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                          '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                          '    from tests import ci_v5_gate_scope as G6\n'
+                                          '    for p in T.HANDOFFS:\n'
+                                          '        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                          'FULL-recovery successor substitutes the final state of this shared path (literal, pin-exact)\n'
+                                          '            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                          '        elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 '
+                                          'successor substitutes the final state of this shared path (literal, pin-exact)\n'
+                                          '            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+                                          '        elif H5.signature_ok() and p in H5.HANDOFFS:                     # the reviewed V5-2B '
+                                          'successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '            assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)\n'
+                                          '        else:\n'
+                                          '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                          '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '    for ref in (None, "HEAD"):\n'
+                                          '        with C.call_scope():\n'
+                                          '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                          'B3.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                          '\n'
+                                          '\n'
+                                          'def test_registered_exactly_once_after_b3_with_only_the_reviewed_v5_2b_behind_it():\n'
+                                          '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                          'T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope"), '
+                                          'T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope", '
+                                          '"tests.ci_v4_full_recovery_scope")) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                          '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 4                       # exactly the '
+                                          'reviewed V5-2B and V5-3 modules gained after the bootstrap; no hardcoded total\n'
+                                          '    assert C.COHORT_MODULES[-5:] == ("tests.ci_v4_lean_b3_scope", '
+                                          '"tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                          '"tests.ci_v4_full_recovery_scope")\n'
+                                          '    assert T._next() is H5 and T.SUCCESSOR == H5.__name__\n'
+                                          '    assert B3.SUCCESSOR == T.__name__ and B3._next() is T and B2.SUCCESSOR == B3.__name__ and '
+                                          'B2._next() is B3\n'
+                                          '    assert B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and '
+                                          'K._next() is B1\n',
+                                          '\n'
+                                          '\n'
+                                          'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                          '    from tests.fin_v2_cohorts import call_scope\n'
+                                          '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                          'mutation\n'
+                                          '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                          '        from tests import ci_v4_full_recovery_scope as FR\n'
+                                          '        from tests import ci_v5_gate_scope as G6\n'
+                                          '        for p in T.HANDOFFS:\n'
+                                          '            from tests import ci_v4_p0_scope as P0\n'
+                                          '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                          '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                          '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '                continue\n'
+                                          '            if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                          'FULL-recovery successor substitutes the final state of this shared path (literal, pin-exact)\n'
+                                          '                assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                          '            elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed '
+                                          'V5-3 successor substitutes the final state of this shared path (literal, pin-exact)\n'
+                                          '                assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+                                          '            elif H5.signature_ok() and p in H5.HANDOFFS:                     # the reviewed '
+                                          'V5-2B successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '                assert (ROOT / p).read_bytes() == H5.expected_handoff(ROOT, p)\n'
+                                          '            else:\n'
+                                          '                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                          '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '        for ref in (None, "HEAD"):\n'
+                                          '            with C.call_scope():\n'
+                                          '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                          'B3.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                          '\n'
+                                          '\n'
+                                          'def test_registered_exactly_once_after_b3_with_only_the_reviewed_v5_2b_behind_it():\n'
+                                          '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                          'T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope"), '
+                                          'T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope", '
+                                          '"tests.ci_v4_full_recovery_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, '
+                                          '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") + (\'tests.ci_v4_p0_scope\',)) and '
+                                          'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                          '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 5                       # exactly the '
+                                          'reviewed V5-2B and V5-3 modules gained after the bootstrap; no hardcoded total\n'
+                                          "    assert C.COHORT_MODULES[-6:] == ('tests.ci_v4_lean_b3_scope', "
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')\n"
+                                          '    assert T._next() is H5 and T.SUCCESSOR == H5.__name__\n'
+                                          '    assert B3.SUCCESSOR == T.__name__ and B3._next() is T and B2.SUCCESSOR == B3.__name__ and '
+                                          'B2._next() is B3\n'
+                                          '    assert B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and '
+                                          'K._next() is B1\n'),
+                                         ('\n'
+                                          'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_v5_2b():\n'
+                                          '    from tests import u1_scope as U\n'
+                                          '    assert U.RECONCILED_SUCCESSORS[-4:] == ("tests.ci_v5_bootstrap_scope", '
+                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") and '
+                                          'U.RECONCILED_SUCCESSORS.count("tests.ci_v5_bootstrap_scope") == 1\n'
+                                          '\n'
+                                          '\n'
+                                          '# '
+                                          '-------------------------------------------------------------------------------------------------------------- '
+                                          'tamper (committed refs)\n',
+                                          '\n'
+                                          'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_v5_2b():\n'
+                                          '    from tests import u1_scope as U\n'
+                                          '    assert U.RECONCILED_SUCCESSORS[-5:] == ("tests.ci_v5_bootstrap_scope", '
+                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", '
+                                          '"tests.ci_v4_p0_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_bootstrap_scope") == 1\n'
+                                          '\n'
+                                          '\n'
+                                          '# '
+                                          '-------------------------------------------------------------------------------------------------------------- '
+                                          'tamper (committed refs)\n'),
+                                         ('\n'
+                                          '\n'
+                                          'def test_registry_mutations_are_rejected(clone):\n'
+                                          '    tail = b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\')"\n'
+                                          '    for name, fn in (\n'
+                                          '        ("duplicate_v5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                          "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope', "
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\')")),\n'
+                                          '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                          '        ("swapped_b3_v5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', "
+                                          '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')")),\n'
+                                          '        ("v5_2b_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                          '        ("v5_3_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                          '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n',
+                                          '\n'
+                                          '\n'
+                                          'def test_registry_mutations_are_rejected(clone):\n'
+                                          '    tail = b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')"\n'
+                                          '    for name, fn in (\n'
+                                          '        ("duplicate_v5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                          "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope', "
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                          '\'tests.ci_v4_p0_scope\')")),\n'
+                                          '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                          '        ("swapped_b3_v5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b2_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', "
+                                          '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                          '        ("v5_2b_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                          '        ("v5_3_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                          '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n'),
+                                         ('    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                          'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                          'present."""\n'
+                                          '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                          '    from tests import ci_v5_gate_scope as G6\n'
+                                          '    exact = C.COHORT_MODULES\n'
+                                          '    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                          '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
+                                          '    layers = (K, B1, B2, B3, T, H5, G6, FR)\n'
+                                          '    with C.call_scope():\n'
+                                          '        assert all(m.signature_ok() for m in layers)\n'
+                                          '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]\n'
+                                          '    head = exact[:-8]\n'
+                                          '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                          'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, '
+                                          'fr),\n'
+                                          '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                          'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,), "v5_duplicated": head '
+                                          '+ (c06, b1, b2, b3, v5, v5, h5, g6, fr),\n'
+                                          '                "fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, '
+                                          'h5, fr, g6), "fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact '
+                                          '+ ("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                          '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, '
+                                          'b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr), "v5_dropped": head '
+                                          '+ (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr)}\n'
+                                          '    for name, tail in variants.items():\n'
+                                          '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                          '        for layer in layers:\n',
+                                          '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                          'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                          'present."""\n'
+                                          '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                          '    from tests import ci_v5_gate_scope as G6\n'
+                                          '    from tests import ci_v4_p0_scope as P0\n'
+                                          '    exact = C.COHORT_MODULES\n'
+                                          '    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                          '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
+                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", '
+                                          '"tests.ci_v4_p0_scope")\n'
+                                          '    layers = (K, B1, B2, B3, T, H5, G6, FR, P0)\n'
+                                          '    with C.call_scope():\n'
+                                          '        assert all(m.signature_ok() for m in layers)\n'
+                                          '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]\n'
+                                          '    head = exact[:-9]\n'
+                                          '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                          'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, '
+                                          'fr),\n'
+                                          '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                          'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,), "v5_duplicated": head '
+                                          '+ (c06, b1, b2, b3, v5, v5, h5, g6, fr),\n'
+                                          '                "fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, '
+                                          'h5, fr, g6), "fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact '
+                                          '+ ("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                          '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, '
+                                          'b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr), "v5_dropped": head '
+                                          '+ (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr)}\n'
+                                          '    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + '
+                                          '("tests.ci_v4_p0_scope",)\n'
+                                          '                for name, value in variants.items()}\n'
+                                          '    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),\n'
+                                          '                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", '
+                                          '"tests.ci_v4_full_recovery_scope"))\n'
+                                          '    for name, tail in variants.items():\n'
+                                          '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                          '        for layer in layers:\n')],
+ 'tests/test_ci_v5_gate_scope.py': [('\n'
+                                     '\n'
+                                     'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                     '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                     '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                     '    for p in T.HANDOFFS:\n'
+                                     '        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                     'FULL-recovery successor further substitutes this shared path (literal, pin-exact)\n'
+                                     '            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                     '        else:\n'
+                                     '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                     '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                     '    for p in T.REPLACED:\n'
+                                     '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                     '    for ref in (None, "HEAD"):\n'
+                                     '        with C.call_scope():\n'
+                                     '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                     'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_registered_exactly_once_after_v5_2b_with_only_the_reviewed_full_recovery_behind_it():\n'
+                                     '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                     'T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                     '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE '
+                                     'module gained after this cohort; no hardcoded total\n'
+                                     '    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope")\n'
+                                     '    assert H5.SUCCESSOR == T.__name__ and H5._next() is T and V5.SUCCESSOR == H5.__name__ and '
+                                     'V5._next() is H5 and B3.SUCCESSOR == V5.__name__ and B3._next() is V5\n'
+                                     '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                     'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'
+                                     '\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                     '        from tests import ci_v4_full_recovery_scope as FR\n'
+                                     '        for p in T.HANDOFFS:\n'
+                                     '            from tests import ci_v4_p0_scope as P0\n'
+                                     '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                     '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                     '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                     '                continue\n'
+                                     '            if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                     'FULL-recovery successor further substitutes this shared path (literal, pin-exact)\n'
+                                     '                assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                     '            else:\n'
+                                     '                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                     '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                     '        for p in T.REPLACED:\n'
+                                     '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                     '        for ref in (None, "HEAD"):\n'
+                                     '            with C.call_scope():\n'
+                                     '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                     'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                     '\n'
+                                     '\n'
+                                     'def test_registered_exactly_once_after_v5_2b_with_only_the_reviewed_full_recovery_behind_it():\n'
+                                     '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                     "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR) + ('tests.ci_v4_p0_scope',)) and "
+                                     'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                     '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 3                       # exactly ONE '
+                                     'module gained after this cohort; no hardcoded total\n'
+                                     '    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")\n'
+                                     '    assert H5.SUCCESSOR == T.__name__ and H5._next() is T and V5.SUCCESSOR == H5.__name__ and '
+                                     'V5._next() is H5 and B3.SUCCESSOR == V5.__name__ and B3._next() is V5\n'
+                                     '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                     'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'
+                                     '\n'),
+                                    ('\n'
+                                     'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_full_recovery():\n'
+                                     '    from tests import u1_scope as U\n'
+                                     '    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_gate_scope") == 1\n'
+                                     '\n'
+                                     '\n'
+                                     '# '
+                                     '-------------------------------------------------------------------------------------------------------------- '
+                                     'tamper (committed refs)\n',
+                                     '\n'
+                                     'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_full_recovery():\n'
+                                     '    from tests import u1_scope as U\n'
+                                     '    assert U.RECONCILED_SUCCESSORS[-3:] == ("tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope") and '
+                                     'U.RECONCILED_SUCCESSORS.count("tests.ci_v5_gate_scope") == 1\n'
+                                     '\n'
+                                     '\n'
+                                     '# '
+                                     '-------------------------------------------------------------------------------------------------------------- '
+                                     'tamper (committed refs)\n'),
+                                    ('\n'
+                                     '\n'
+                                     'def test_registry_mutations_are_rejected(clone):\n'
+                                     '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                     '\'tests.ci_v5_hardening_scope\', \'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')"\n'
+                                     '    for name, fn in (\n'
+                                     '        ("duplicate_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_full_recovery_scope\')")),\n'
+                                     '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                     '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', "
+                                     '\'tests.ci_v5_gate_scope\')")),\n'
+                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                     '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                     '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_registry_mutations_are_rejected(clone):\n'
+                                     '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                     '\'tests.ci_v4_p0_scope\')"\n'
+                                     '    for name, fn in (\n'
+                                     '        ("duplicate_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_full_recovery_scope', "
+                                     '\'tests.ci_v4_p0_scope\')")),\n'
+                                     '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                     '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', "
+                                     '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                     '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                     '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n'),
+                                    ('def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                     '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY accepted '
+                                     'tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""\n'
+                                     '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                     '    exact = C.COHORT_MODULES\n'
+                                     '    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                     '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                     '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope")\n'
+                                     '    layers = (K, B1, B2, B3, V5, H5, T, FR)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert all(m.signature_ok() for m in layers)\n'
+                                     '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]\n'
+                                     '    head = exact[:-8]\n'
+                                     '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": head + '
+                                     '(c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, fr),\n'
+                                     '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": head + '
+                                     '(c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                     '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": '
+                                     'exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + (c06, '
+                                     'b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), '
+                                     '"g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                     '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, b1, '
+                                     'b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                     '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, '
+                                     'b2, b3, v5, g6, fr)}\n'
+                                     '    for name, tail in variants.items():\n'
+                                     '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                     '        for layer in layers:\n',
+                                     'def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                     '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY accepted '
+                                     'tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""\n'
+                                     '    from tests import ci_v4_full_recovery_scope as FR\n'
+                                     '    from tests import ci_v4_p0_scope as P0\n'
+                                     '    exact = C.COHORT_MODULES\n'
+                                     '    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                     '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                     '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                     '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")\n'
+                                     '    layers = (K, B1, B2, B3, V5, H5, T, FR, P0)\n'
+                                     '    with C.call_scope():\n'
+                                     '        assert all(m.signature_ok() for m in layers)\n'
+                                     '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]\n'
+                                     '    head = exact[:-9]\n'
+                                     '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": head + '
+                                     '(c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, fr),\n'
+                                     '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": head + '
+                                     '(c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                     '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": '
+                                     'exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + (c06, '
+                                     'b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), '
+                                     '"g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                     '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, b1, '
+                                     'b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                     '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, '
+                                     'b2, b3, v5, g6, fr)}\n'
+                                     '    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + '
+                                     '("tests.ci_v4_p0_scope",)\n'
+                                     '                for name, value in variants.items()}\n'
+                                     '    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),\n'
+                                     '                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", '
+                                     '"tests.ci_v4_full_recovery_scope"))\n'
+                                     '    for name, tail in variants.items():\n'
+                                     '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                     '        for layer in layers:\n')],
+ 'tests/test_ci_v5_hardening_scope.py': [('\n'
+                                          '\n'
+                                          'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                          '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                          '    for p in T.HANDOFFS:\n'
+                                          '        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                          'FULL-recovery successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                          '        elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 '
+                                          'successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '            assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+                                          '        else:\n'
+                                          '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                          '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '    for p in T.REPLACED:\n'
+                                          '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '    for ref in (None, "HEAD"):\n'
+                                          '        with C.call_scope():\n'
+                                          '            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                          'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                          '\n'
+                                          '\n'
+                                          'def '
+                                          'test_registered_exactly_once_after_the_v5_bootstrap_with_only_the_reviewed_v5_3_behind_it():\n'
+                                          '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                          "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope')) "
+                                          'and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                          '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 3                       # exactly ONE '
+                                          'module gained after this cohort; no hardcoded total\n'
+                                          '    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_bootstrap_scope", '
+                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
+                                          '    assert T._next() is G6 and T.SUCCESSOR == G6.__name__\n'
+                                          '    assert V5.SUCCESSOR == T.__name__ and V5._next() is T and B3.SUCCESSOR == V5.__name__ and '
+                                          'B3._next() is V5\n'
+                                          '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                          'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n',
+                                          '\n'
+                                          '\n'
+                                          'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
+                                          '    from tests.fin_v2_cohorts import call_scope\n'
+                                          '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                          'mutation\n'
+                                          '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                          '        for p in T.HANDOFFS:\n'
+                                          '            from tests import ci_v4_p0_scope as P0\n'
+                                          '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                          '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                          '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '                continue\n'
+                                          '            if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed '
+                                          'FULL-recovery successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '                assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)\n'
+                                          '            elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed '
+                                          'V5-3 successor further substitutes this shared path (literal, pin-exact)\n'
+                                          '                assert (ROOT / p).read_bytes() == G6.expected_handoff(ROOT, p)\n'
+                                          '            else:\n'
+                                          '                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                          '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '        for p in T.REPLACED:\n'
+                                          '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                          '        for ref in (None, "HEAD"):\n'
+                                          '            with C.call_scope():\n'
+                                          '                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and '
+                                          'V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)\n'
+                                          '\n'
+                                          '\n'
+                                          'def '
+                                          'test_registered_exactly_once_after_the_v5_bootstrap_with_only_the_reviewed_v5_3_behind_it():\n'
+                                          '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
+                                          "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope'), "
+                                          "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope') + "
+                                          "('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1\n"
+                                          '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 4                       # exactly ONE '
+                                          'module gained after this cohort; no hardcoded total\n'
+                                          "    assert C.COHORT_MODULES[-5:] == ('tests.ci_v5_bootstrap_scope', "
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                          "'tests.ci_v4_p0_scope')\n"
+                                          '    assert T._next() is G6 and T.SUCCESSOR == G6.__name__\n'
+                                          '    assert V5.SUCCESSOR == T.__name__ and V5._next() is T and B3.SUCCESSOR == V5.__name__ and '
+                                          'B3._next() is V5\n'
+                                          '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                          'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'),
+                                         ('\n'
+                                          'def '
+                                          'test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_3_gate():\n'
+                                          '    from tests import u1_scope as U\n'
+                                          '    assert U.RECONCILED_SUCCESSORS[-3:] == ("tests.ci_v5_hardening_scope", '
+                                          '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") and '
+                                          'U.RECONCILED_SUCCESSORS.count("tests.ci_v5_hardening_scope") == 1\n'
+                                          '\n'
+                                          '\n'
+                                          '# '
+                                          '-------------------------------------------------------------------------------------------------------------- '
+                                          'tamper (committed refs)\n',
+                                          '\n'
+                                          'def '
+                                          'test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_3_gate():\n'
+                                          '    from tests import u1_scope as U\n'
+                                          '    assert U.RECONCILED_SUCCESSORS[-4:] == ("tests.ci_v5_hardening_scope", '
+                                          '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope") and '
+                                          'U.RECONCILED_SUCCESSORS.count("tests.ci_v5_hardening_scope") == 1\n'
+                                          '\n'
+                                          '\n'
+                                          '# '
+                                          '-------------------------------------------------------------------------------------------------------------- '
+                                          'tamper (committed refs)\n'),
+                                         ('\n'
+                                          '\n'
+                                          'def test_registry_mutations_are_rejected(clone):\n'
+                                          '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\')"\n'
+                                          '    for name, fn in (\n'
+                                          '        ("duplicate_h5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_hardening_scope', "
+                                          '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')")),\n'
+                                          '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                          '        ("swapped_v5_h5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\')")),\n'
+                                          '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                          '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                          '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n',
+                                          '\n'
+                                          '\n'
+                                          'def test_registry_mutations_are_rejected(clone):\n'
+                                          '    tail = b"\'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                          '\'tests.ci_v4_p0_scope\')"\n'
+                                          '    for name, fn in (\n'
+                                          '        ("duplicate_h5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_hardening_scope', "
+                                          '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                          '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
+                                          '        ("swapped_v5_h5", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_gate_scope', "
+                                          '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                          '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                          '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                          '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n'),
+                                         ('\n'
+                                          'def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                          '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                          'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                          'present."""\n'
+                                          '    exact = C.COHORT_MODULES\n'
+                                          '    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                          '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                          '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                          '"tests.ci_v4_full_recovery_scope")\n'
+                                          '    layers = (K, B1, B2, B3, V5, T, G6, FR)\n'
+                                          '    with C.call_scope():\n'
+                                          '        assert all(m.signature_ok() for m in layers)\n'
+                                          '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]\n'
+                                          '    head = exact[:-8]\n'
+                                          '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                          'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, '
+                                          'fr),\n'
+                                          '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                          'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                          '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": '
+                                          'exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + '
+                                          '(c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + '
+                                          '("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                          '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, '
+                                          'b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                          '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, '
+                                          'b1, b2, b3, v5, g6, fr)}\n'
+                                          '    for name, tail in variants.items():\n'
+                                          '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                          '        for layer in layers:\n',
+                                          '\n'
+                                          'def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
+                                          '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY '
+                                          'accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer '
+                                          'present."""\n'
+                                          '    from tests import ci_v4_p0_scope as P0\n'
+                                          '    exact = C.COHORT_MODULES\n'
+                                          '    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", '
+                                          '"tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",\n'
+                                          '                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
+                                          '"tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")\n'
+                                          '    layers = (K, B1, B2, B3, V5, T, G6, FR, P0)\n'
+                                          '    with C.call_scope():\n'
+                                          '        assert all(m.signature_ok() for m in layers)\n'
+                                          '    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]\n'
+                                          '    head = exact[:-9]\n'
+                                          '    variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": '
+                                          'head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, '
+                                          'fr),\n'
+                                          '                "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": '
+                                          'head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),\n'
+                                          '                "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": '
+                                          'exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + '
+                                          '(c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + '
+                                          '("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),\n'
+                                          '                "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, '
+                                          'b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),\n'
+                                          '                "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, '
+                                          'b1, b2, b3, v5, g6, fr)}\n'
+                                          '    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + '
+                                          '("tests.ci_v4_p0_scope",)\n'
+                                          '                for name, value in variants.items()}\n'
+                                          '    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),\n'
+                                          '                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", '
+                                          '"tests.ci_v4_full_recovery_scope"))\n'
+                                          '    for name, tail in variants.items():\n'
+                                          '        monkeypatch.setattr(C, "COHORT_MODULES", tail)\n'
+                                          '        for layer in layers:\n')],
+ 'tests/test_f03_financing_scope.py': [('                                  "tests.r03_ppa_scope")) or (\n'
+                                        '        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
+                                        '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
+                                        '"tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+                                        '        C.COHORT_MODULES[-7:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
+                                        '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
+                                        '"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                                        '        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in '
+                                        '(C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + '
+                                        "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                        "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope'))\n"
+                                        '        and C06_APPROVAL.signature_ok())\n'
+                                        '\n'
+                                        '\n'
+                                        '@pytest.mark.parametrize("name,fn", [\n'
+                                        '    ("duplicate_f03", lambda b: b.replace(b"\'tests.f03_financing_scope\', '
+                                        '\'tests.t01e_remediation_scope\'", b"\'tests.f03_financing_scope\', '
+                                        '\'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'")),\n'
+                                        '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', '
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')", '
+                                        'b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                        '\'tests.ci_v5_hardening_scope\', \'tests.ci_v5_gate_scope\', \'tests.fake_scope\')")),\n'
+                                        '    ("swapped_perf_f03", lambda b: b.replace(b"\'tests.ci_v4_perf_scope\', '
+                                        '\'tests.f03_financing_scope\'", b"\'tests.f03_financing_scope\', \'tests.ci_v4_perf_scope\'")),\n'
+                                        '    ("swapped_bess_perf", lambda b: b.replace(b"\'tests.bess02_scope\', '
+                                        '\'tests.ci_v4_perf_scope\'", b"\'tests.ci_v4_perf_scope\', \'tests.bess02_scope\'")),\n'
+                                        '    ("perf_removed", lambda b: b.replace(b"\'tests.ci_v4_perf_scope\', ", b"")),\n',
+                                        '                                  "tests.r03_ppa_scope")) or (\n'
+                                        '        C.COHORT_MODULES[-6:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
+                                        '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
+                                        '"tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+                                        '        C.COHORT_MODULES[-7:] == ("tests.bess02_scope", "tests.ci_v4_perf_scope", '
+                                        '"tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", '
+                                        '"tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                                        '        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in '
+                                        '(C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + '
+                                        "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                        "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                        '        and C06_APPROVAL.signature_ok())\n'
+                                        '\n'
+                                        '\n'
+                                        '@pytest.mark.parametrize("name,fn", [\n'
+                                        '    ("duplicate_f03", lambda b: b.replace(b"\'tests.f03_financing_scope\', '
+                                        '\'tests.t01e_remediation_scope\'", b"\'tests.f03_financing_scope\', '
+                                        '\'tests.f03_financing_scope\', \'tests.t01e_remediation_scope\'")),\n'
+                                        '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', '
+                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                        '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')", '
+                                        'b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', \'tests.ci_v5_bootstrap_scope\', '
+                                        '\'tests.ci_v5_hardening_scope\', \'tests.ci_v5_gate_scope\', \'tests.fake_scope\')")),\n'
+                                        '    ("swapped_perf_f03", lambda b: b.replace(b"\'tests.ci_v4_perf_scope\', '
+                                        '\'tests.f03_financing_scope\'", b"\'tests.f03_financing_scope\', \'tests.ci_v4_perf_scope\'")),\n'
+                                        '    ("swapped_bess_perf", lambda b: b.replace(b"\'tests.bess02_scope\', '
+                                        '\'tests.ci_v4_perf_scope\'", b"\'tests.ci_v4_perf_scope\', \'tests.bess02_scope\'")),\n'
+                                        '    ("perf_removed", lambda b: b.replace(b"\'tests.ci_v4_perf_scope\', ", b"")),\n')],
+ 'tests/test_f04_financing_scope.py': [("    assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'\n"
+                                        "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+                                        "    assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (\n"
+                                        '        '
+                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') "
+                                        'and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                        'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                        '        and C06_APPROVAL.signature_ok())\n'
+                                        "    assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1\n"
+                                        "    for ref in (None,'HEAD'):\n",
+                                        "    assert F.BASE=='7584149f9334ac058cd986188b571c7dd48d538e'\n"
+                                        "    assert git(ROOT,'rev-parse',F.BASE+'^{tree}')==F.BASE_TREE\n"
+                                        "    assert (C.COHORT_MODULES[-2:]==('tests.r03_ppa_scope','tests.f04_financing_scope') or (\n"
+                                        '        '
+                                        "C.COHORT_MODULES[-3:]==('tests.r03_ppa_scope','tests.f04_financing_scope','tests.r04_ppa_scope') "
+                                        'and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                        '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                        'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                        "('tests.ci_v4_p0_scope',))\n"
+                                        '        and C06_APPROVAL.signature_ok())\n'
+                                        "    assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1\n"
+                                        "    for ref in (None,'HEAD'):\n"),
+                                       ("    assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in "
+                                        'F.OWNED_PATHS)\n'
+                                        '    for path in F.SUPERSEDED:assert '
+                                        "data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+                                        '    for path in F.HANDOFFS:\n'
+                                        '        B1=C06_APPROVAL._next()\n'
+                                        '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                        '        B3=B2._next() if B2 is not None and B2.signature_ok() else None\n',
+                                        "    assert not any('*' in p or '..' in p.split('/') or p.startswith(F.FORBIDDEN) for p in "
+                                        'F.OWNED_PATHS)\n'
+                                        '    for path in F.SUPERSEDED:assert '
+                                        "data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)\n"
+                                        '    for path in F.HANDOFFS:\n'
+                                        '        from tests import ci_v4_p0_scope as P0\n'
+                                        '        if P0.signature_ok() and path in P0.HANDOFFS:\n'
+                                        '            assert (ROOT / path).read_bytes() == P0.expected_handoff(ROOT, path)\n'
+                                        '            assert F._blob((ROOT / path).read_bytes()) == F.effective_pins()[path]\n'
+                                        '            continue\n'
+                                        '        B1=C06_APPROVAL._next()\n'
+                                        '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                        '        B3=B2._next() if B2 is not None and B2.signature_ok() else None\n')],
+ 'tests/test_r02_ppa_ux_scope.py': [('\n'
+                                     '\n'
+                                     'def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():\n'
+                                     '    import ast\n'
+                                     "    base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], "
+                                     'cwd=ROOT).decode()\n'
+                                     '    from tests import ci_v4_perf_scope as F\n'
+                                     '    from tests import f03_financing_scope as G\n'
+                                     '    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
+                                     "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',\n"
+                                     "                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     "'tests.ci_v4_full_recovery_scope') if m in C.COHORT_MODULES)\n"
+                                     '    B1 = C06_APPROVAL._next()\n'
+                                     '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                     '    B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                     '    B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                     '    B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                     '    B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                     '    if len(nxt) == 14 and B7 is not None and B7.signature_ok():\n'
+                                     '        expected = B7.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 13 and B6 is not None and B6.signature_ok():\n'
+                                     '        expected = B6.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 12 and B5 is not None and B5.signature_ok():\n'
+                                     '        expected = B5.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 11 and B4 is not None and B4.signature_ok():\n'
+                                     '        expected = B4.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 10 and B3 is not None and B3.signature_ok():\n'
+                                     '        expected = B3.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 9 and B2 is not None and B2.signature_ok():\n'
+                                     '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\n'
+                                     '        expected = B1.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 6 and W.signature_ok():\n'
+                                     '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 5 and Q.signature_ok():\n'
+                                     '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 4 and Y.signature_ok():\n'
+                                     '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 3 and Z.signature_ok():\n'
+                                     '        expected = Z.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 2 and G.signature_ok():\n'
+                                     '        expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 1 and F.signature_ok():\n'
+                                     '        expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected\n'
+                                     '    old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) '
+                                     "and n.targets[0].id == 'COHORT_MODULES')\n"
+                                     '    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
+                                     "    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and "
+                                     "core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n"
+                                     '\n'
+                                     '\n'
+                                     'def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        import ast\n'
+                                     "        base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], "
+                                     'cwd=ROOT).decode()\n'
+                                     '        from tests import ci_v4_perf_scope as F\n'
+                                     '        from tests import f03_financing_scope as G\n'
+                                     '        from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     "        nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
+                                     "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',\n"
+                                     "                                'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                     "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                     "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') if m in C.COHORT_MODULES)\n"
+                                     '        B1 = C06_APPROVAL._next()\n'
+                                     '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                     '        expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                     '        B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                     '        B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                     '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                     '        B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                     '        B8 = B7._next() if B7 is not None and B7.signature_ok() else None\n'
+                                     '        if len(nxt) == 15 and B8 is not None and B8.signature_ok():\n'
+                                     '            expected = B8.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 14 and B7 is not None and B7.signature_ok():\n'
+                                     '            expected = B7.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 13 and B6 is not None and B6.signature_ok():\n'
+                                     '            expected = B6.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 12 and B5 is not None and B5.signature_ok():\n'
+                                     '            expected = B5.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 11 and B4 is not None and B4.signature_ok():\n'
+                                     '            expected = B4.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 10 and B3 is not None and B3.signature_ok():\n'
+                                     '            expected = B3.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 9 and B2 is not None and B2.signature_ok():\n'
+                                     '            expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\n'
+                                     '            expected = B1.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '            expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 6 and W.signature_ok():\n'
+                                     '            expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 5 and Q.signature_ok():\n'
+                                     '            expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 4 and Y.signature_ok():\n'
+                                     '            expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 3 and Z.signature_ok():\n'
+                                     '            expected = Z.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 2 and G.signature_ok():\n'
+                                     '            expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 1 and F.signature_ok():\n'
+                                     '            expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected\n'
+                                     '        old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, '
+                                     "ast.Assign) and n.targets[0].id == 'COHORT_MODULES')\n"
+                                     '        core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
+                                     "        assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and "
+                                     "core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n"
+                                     '\n'
+                                     '\n'
+                                     'def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():\n')],
+ 'tests/test_r03_ppa_scope.py': [('\n'
+                                  '\n'
+                                  'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                  '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                  '    B1 = C06_APPROVAL._next()\n'
+                                  '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                  '    B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                  '    B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                  '    B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                  '    B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                  '    B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                  '    for p in T.HANDOFFS:\n'
+                                  '        authority = B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 is '
+                                  'not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and '
+                                  'p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is '
+                                  'not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and p in '
+                                  'B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not '
+                                  'None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p '
+                                  'in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and '
+                                  'p in Q.HANDOFFS else T\n'
+                                  '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
+                                  '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '\n'
+                                  '\n'
+                                  'def test_registered_exactly_once_as_the_terminal_cohort_after_t01e():\n'
+                                  '    assert (C.COHORT_MODULES[-3:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope") or (\n'
+                                  '        C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+                                  '        C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                                  '        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS '
+                                  '+ (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                  'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                  '        and C06_APPROVAL.signature_ok())\n'
+                                  '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n'
+                                  '\n',
+                                  '\n'
+                                  '\n'
+                                  'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                  '    from tests.fin_v2_cohorts import call_scope\n'
+                                  '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                  '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                  '        B1 = C06_APPROVAL._next()\n'
+                                  '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                  '        B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                  '        B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                  '        B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                  '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                  '        B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                  '        for p in T.HANDOFFS:\n'
+                                  '            from tests import ci_v4_p0_scope as P0\n'
+                                  '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                  '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                  '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '                continue\n'
+                                  '            authority = B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 '
+                                  'is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() '
+                                  'and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 '
+                                  'is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and B3.signature_ok() and p in '
+                                  'B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not '
+                                  'None and B1.signature_ok() and p in B1.HANDOFFS else C06_APPROVAL if C06_APPROVAL.signature_ok() and p '
+                                  'in C06_APPROVAL.HANDOFFS else W if W.signature_ok() and p in W.HANDOFFS else Q if Q.signature_ok() and '
+                                  'p in Q.HANDOFFS else T\n'
+                                  '            assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '\n'
+                                  '\n'
+                                  'def test_registered_exactly_once_as_the_terminal_cohort_after_t01e():\n'
+                                  '    assert (C.COHORT_MODULES[-3:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope") or (\n'
+                                  '        C.COHORT_MODULES[-4:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope") and Q.signature_ok()) or (\n'
+                                  '        C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")\n'
+                                  '        and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS '
+                                  '+ (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                  'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                  '        and C06_APPROVAL.signature_ok())\n'
+                                  '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n'
+                                  '\n'),
+                                 ('\n'
+                                  '@pytest.mark.parametrize("name,fn", [\n'
+                                  '    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", '
+                                  'b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'")),\n'
+                                  '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.ci_v4_full_recovery_scope\')", b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.fake_scope\')")),\n'
+                                  '    ("swapped_t01e_r03", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', '
+                                  '\'tests.r03_ppa_scope\'", b"\'tests.r03_ppa_scope\', \'tests.t01e_remediation_scope\'")),\n'
+                                  '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", '
+                                  'b", \'tests.f04_financing_scope\'")),\n'
+                                  '    ("t01e_removed", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', ", b"")),\n',
+                                  '\n'
+                                  '@pytest.mark.parametrize("name,fn", [\n'
+                                  '    ("duplicate_r03", lambda b: b.replace(b"\'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", '
+                                  'b"\'tests.r03_ppa_scope\', \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'")),\n'
+                                  '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')", b"\'tests.ci_v4_lean_b2_scope\', '
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  '\'tests.ci_v5_gate_scope\', \'tests.fake_scope\')")),\n'
+                                  '    ("swapped_t01e_r03", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', '
+                                  '\'tests.r03_ppa_scope\'", b"\'tests.r03_ppa_scope\', \'tests.t01e_remediation_scope\'")),\n'
+                                  '    ("r03_missing", lambda b: b.replace(b", \'tests.r03_ppa_scope\', \'tests.f04_financing_scope\'", '
+                                  'b", \'tests.f04_financing_scope\'")),\n'
+                                  '    ("t01e_removed", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', ", b"")),\n')],
+ 'tests/test_r04_ppa_scope.py': [('\n'
+                                  '\n'
+                                  'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                  '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                  '    for p in T.HANDOFFS:\n'
+                                  '        B1 = C06_APPROVAL._next()\n'
+                                  '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                  '        B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                  '        B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                  '        B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                  '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                  '        B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                  '        authority = (B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 is '
+                                  'not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and '
+                                  'p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is '
+                                  'not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and '
+                                  'p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the '
+                                  'further reviewed B1 substitution of this shared path\n'
+                                  '                     else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS '
+                                  'else T)\n'
+                                  '        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
+                                  '        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '\n'
+                                  '\n'
+                                  'def test_registered_exactly_once_as_the_terminal_cohort_after_f04():\n'
+                                  '    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in '
+                                  '(C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + '
+                                  '(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                  "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                  "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                  '                                                    and C06_APPROVAL.signature_ok())\n'
+                                  '    assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1\n'
+                                  '\n',
+                                  '\n'
+                                  '\n'
+                                  'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                  '    from tests.fin_v2_cohorts import call_scope\n'
+                                  '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                  '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                  '        for p in T.HANDOFFS:\n'
+                                  '            from tests import ci_v4_p0_scope as P0\n'
+                                  '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                  '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                  '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '                continue\n'
+                                  '            B1 = C06_APPROVAL._next()\n'
+                                  '            B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                  '            B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                  '            B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                  '            B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                  '            B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                  '            B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                  '            authority = (B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 '
+                                  'is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() '
+                                  'and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 '
+                                  'is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() '
+                                  'and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # '
+                                  'the further reviewed B1 substitution of this shared path\n'
+                                  '                         else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in '
+                                  'C06_APPROVAL.HANDOFFS else T)\n'
+                                  '            assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)\n'
+                                  '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                  '\n'
+                                  '\n'
+                                  'def test_registered_exactly_once_as_the_terminal_cohort_after_f04():\n'
+                                  '    assert (C.COHORT_MODULES[-5:] == ("tests.f03_financing_scope", "tests.t01e_remediation_scope", '
+                                  '"tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")) or (C.COHORT_MODULES in '
+                                  '(C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + '
+                                  '(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                  "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                  "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                  "('tests.ci_v4_p0_scope',))\n"
+                                  '                                                    and C06_APPROVAL.signature_ok())\n'
+                                  '    assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1\n'
+                                  '\n'),
+                                 ('\n'
+                                  '@pytest.mark.parametrize("name,fn", [\n'
+                                  '    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.ci_v4_full_recovery_scope\')", b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.fake_scope\')")),\n'
+                                  '    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b", \'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("f04_removed", lambda b: b.replace(b"\'tests.f04_financing_scope\', ", b"")),\n',
+                                  '\n'
+                                  '@pytest.mark.parametrize("name,fn", [\n'
+                                  '    ("duplicate_r04", lambda b: b.replace(b"\'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                  "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                  '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')", b"\'tests.ci_v4_lean_b2_scope\', '
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  '\'tests.ci_v5_gate_scope\', \'tests.fake_scope\')")),\n'
+                                  '    ("swapped_f04_r04", lambda b: b.replace(b"\'tests.f04_financing_scope\', \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b"\'tests.r04_ppa_scope\', \'tests.f04_financing_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("r04_missing", lambda b: b.replace(b", \'tests.r04_ppa_scope\', '
+                                  '\'tests.c06_cost_workspace_scope\'", b", \'tests.c06_cost_workspace_scope\'")),\n'
+                                  '    ("f04_removed", lambda b: b.replace(b"\'tests.f04_financing_scope\', ", b"")),\n')],
+ 'tests/test_t01e_remediation_scope.py': [('\n'
+                                           '\n'
+                                           'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                           '    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                           '    from tests import r03_ppa_scope as Y\n'
+                                           '    B1 = C06_APPROVAL._next()\n'
+                                           '    for p in T.HANDOFFS:\n'
+                                           '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                           '        B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                           '        B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                           '        B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                           '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                           '        B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                           '        if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS:            # the further '
+                                           'reviewed FULL-recovery substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B7.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS:            # the further '
+                                           'reviewed V5-3 substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B6.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS:            # the further '
+                                           'reviewed V5-2B substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B5.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS:            # the further '
+                                           'reviewed V5 bootstrap substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B4.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and '
+                                           'B3.signature_ok() and p in B3.HANDOFFS:            # the further reviewed B3 substitution of '
+                                           'this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B3.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the further '
+                                           'reviewed B2 substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the further '
+                                           'reviewed B1 substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == B1.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS:\n'
+                                           '            assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 '
+                                           'substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == W.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if Q.signature_ok() and p in Q.HANDOFFS:\n'
+                                           '            assert (ROOT / p).read_bytes() == Q.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        if Y.signature_ok() and p in Y.HANDOFFS:            # the further reviewed R03 '
+                                           'substitution of this shared path\n'
+                                           '            assert (ROOT / p).read_bytes() == Y.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '            continue\n'
+                                           '        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                           '        assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n'
+                                           '\n'
+                                           '\n'
+                                           'def '
+                                           'test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_successor_behind_it():\n'
+                                           '    i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")\n'
+                                           '    assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"\n'
+                                           '    assert (C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", '
+                                           '"tests.f04_financing_scope"),\n'
+                                           '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                           '"tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                           '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                           'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                           "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                           "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                           "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
+                                           '        and C06_APPROVAL.signature_ok())\n'
+                                           '    assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1\n'
+                                           '\n',
+                                           '\n'
+                                           '\n'
+                                           'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
+                                           '    from tests.fin_v2_cohorts import call_scope\n'
+                                           '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                           'mutation\n'
+                                           '        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()\n'
+                                           '        from tests import r03_ppa_scope as Y\n'
+                                           '        B1 = C06_APPROVAL._next()\n'
+                                           '        for p in T.HANDOFFS:\n'
+                                           '            from tests import ci_v4_p0_scope as P0\n'
+                                           '            if P0.signature_ok() and p in P0.HANDOFFS:\n'
+                                           '                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                           '            B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                           '            B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                           '            B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                           '            B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                           '            B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                           '            if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS:            # the '
+                                           'further reviewed FULL-recovery substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B7.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS:            # the '
+                                           'further reviewed V5-3 substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B6.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS:            # the '
+                                           'further reviewed V5-2B substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B5.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS:            # the '
+                                           'further reviewed V5 bootstrap substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B4.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B3 is not None and B2 is not None and B2.SUCCESSOR in C.COHORT_MODULES and '
+                                           'B3.signature_ok() and p in B3.HANDOFFS:            # the further reviewed B3 substitution of '
+                                           'this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B3.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS:            # the '
+                                           'further reviewed B2 substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B2.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS:            # the '
+                                           'further reviewed B1 substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == B1.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS:\n'
+                                           '                assert (ROOT / p).read_bytes() == C06_APPROVAL.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if W.signature_ok() and p in W.HANDOFFS:            # the latest reviewed R04 '
+                                           'substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == W.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if Q.signature_ok() and p in Q.HANDOFFS:\n'
+                                           '                assert (ROOT / p).read_bytes() == Q.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            if Y.signature_ok() and p in Y.HANDOFFS:            # the further reviewed R03 '
+                                           'substitution of this shared path\n'
+                                           '                assert (ROOT / p).read_bytes() == Y.expected_handoff(ROOT, p)\n'
+                                           '                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]\n'
+                                           '                continue\n'
+                                           '            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)\n'
+                                           '            assert T._blob((ROOT / p).read_bytes()) == T.manifest()["source_blobs"][p]\n'
+                                           '\n'
+                                           '\n'
+                                           'def '
+                                           'test_registered_exactly_once_directly_after_f03_with_only_the_reviewed_r03_successor_behind_it():\n'
+                                           '    i = C.COHORT_MODULES.index("tests.t01e_remediation_scope")\n'
+                                           '    assert C.COHORT_MODULES[i - 1] == "tests.f03_financing_scope"\n'
+                                           '    assert (C.COHORT_MODULES[i + 1:] in ((), ("tests.r03_ppa_scope",), ("tests.r03_ppa_scope", '
+                                           '"tests.f04_financing_scope"),\n'
+                                           '                                        ("tests.r03_ppa_scope", "tests.f04_financing_scope", '
+                                           '"tests.r04_ppa_scope"))) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
+                                           '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                           'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
+                                           "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                           "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                           "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                           "('tests.ci_v4_p0_scope',))\n"
+                                           '        and C06_APPROVAL.signature_ok())\n'
+                                           '    assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1\n'
+                                           '\n'),
+                                          ('\n'
+                                           '@pytest.mark.parametrize("name,fn", [\n'
+                                           '    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.r03_ppa_scope\'", b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'")),\n'
+                                           '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', '
+                                           "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                           '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\')", '
+                                           'b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                           "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                           '\'tests.fake_scope\')")),\n'
+                                           '    ("swapped_f03_t01e", lambda b: b.replace(b"\'tests.f03_financing_scope\', '
+                                           '\'tests.t01e_remediation_scope\'", b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.f03_financing_scope\'")),\n'
+                                           '    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', '
+                                           '\'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")),\n'
+                                           '    ("f03_removed", lambda b: b.replace(b"\'tests.f03_financing_scope\', ", b"")),\n',
+                                           '\n'
+                                           '@pytest.mark.parametrize("name,fn", [\n'
+                                           '    ("duplicate_t01e", lambda b: b.replace(b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.r03_ppa_scope\'", b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\'")),\n'
+                                           '    ("fake_extra", lambda b: b.replace(b"\'tests.ci_v4_lean_b2_scope\', '
+                                           "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                           '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_full_recovery_scope\', \'tests.ci_v4_p0_scope\')", '
+                                           'b"\'tests.ci_v4_lean_b2_scope\', \'tests.ci_v4_lean_b3_scope\', '
+                                           "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                           '\'tests.fake_scope\')")),\n'
+                                           '    ("swapped_f03_t01e", lambda b: b.replace(b"\'tests.f03_financing_scope\', '
+                                           '\'tests.t01e_remediation_scope\'", b"\'tests.t01e_remediation_scope\', '
+                                           '\'tests.f03_financing_scope\'")),\n'
+                                           '    ("t01e_missing", lambda b: b.replace(b", \'tests.t01e_remediation_scope\', '
+                                           '\'tests.r03_ppa_scope\'", b", \'tests.r03_ppa_scope\'")),\n'
+                                           '    ("f03_removed", lambda b: b.replace(b"\'tests.f03_financing_scope\', ", b"")),\n')],
+ 'tests/u1_scope.py': [("LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', "
+                        "'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', "
+                        "'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', "
+                        "'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')\n"
+                        '\n'
+                        '\n'
+                        "RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
+                        "'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', "
+                        "'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                        "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                        "'tests.ci_v4_full_recovery_scope')\n"
+                        '\n'
+                        '\n'
+                        'class _Discovered:\n',
+                        "LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', "
+                        "'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', "
+                        "'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', "
+                        "'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')\n"
+                        '\n'
+                        '\n'
+                        "RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', "
+                        "'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', "
+                        "'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                        "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')\n"
+                        '\n'
+                        '\n'
+                        'class _Discovered:\n')]}
+
+
+def expected_handoff(root, path):
+    """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
+    raw = _base_bytes(str(root), path).decode()
+    for old, new in HANDOFFS[path]:
+        if raw.count(old) != 1:
+            raise ValueError("reviewed handoff is missing or ambiguous")
+        raw = raw.replace(old, new)
+    return raw.encode()
+
+
+def reviewed_edits_ok(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        pins = manifest(root, ref).get("source_blobs", {})
+        for path in HANDOFFS:
+            actual = _read(root, path, ref)
+            if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):
+        return False
+
+
+_SCOPE = []
+
+
+@contextmanager
+def scoped():
+    if _SCOPE:
+        yield
+        return
+    _SCOPE.append({})
+    try:
+        yield
+    finally:
+        _SCOPE.pop()
+
+
+def _compute(root, ref, mode):
+    """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""
+    if mode == "exact":
+        return _signature_ok(root, ref, True) and _diff_ok(root, ref)
+    return _signature_ok(root, ref, mode)
+
+
+def _verdict(root, ref, closure):
+    key = (str(root), ref, closure)
+    if _SCOPE and key in _SCOPE[-1]:
+        return _SCOPE[-1][key]
+    value = _compute(root, ref, closure)
+    if _SCOPE:
+        _SCOPE[-1][key] = value
+    return value
+
+
+def signature_ok(repo=None, ref=None):
+    """Source/base/mode authority only: it never reads a foreign current map's bytes (the full closure alone judges those)."""
+    return _verdict(Path(repo) if repo is not None else ROOT, ref, False)
+
+
+def map_keys(repo=None, ref=None):
+    return tuple(MAP_KEYS)
+
+
+@lru_cache(maxsize=512)
+def _base_mode(root, path):
+    """Only immutable BASE entries are cached; evaluated source modes always come from the snapshot."""
+    return _git(Path(root), "ls-tree", BASE, "--", path).decode().split()[0]
+
+
+@lru_cache(maxsize=512)
+def _base_bytes(root, path):
+    """Bytes of an IMMUTABLE accepted-main (BASE) object. Never a working-tree or ref read, so a cached value can never go stale."""
+    return _git(Path(root), "show", BASE + ":" + path)
+
+
+@lru_cache(maxsize=8)
+def _base_tree(root):
+    return _git(Path(root), "rev-parse", BASE + "^{tree}").decode().strip()
+
+
+@lru_cache(maxsize=256)
+def _expected_blob(root, path):
+    """Blob id of the literal reviewed transformation of an immutable BASE blob (a pure function of BASE and this module's literals)."""
+    text = _base_bytes(root, path).decode()
+    for old, new in HANDOFFS[path]:
+        if text.count(old) != 1:
+            raise ValueError("reviewed edit is missing or ambiguous")
+        text = text.replace(old, new)
+    return _blob(text.encode())
+
+
+@lru_cache(maxsize=256)
+def _expected_map_blob(root, path, moved):
+    """Pure function of an immutable BASE map and the literal moved registry pin."""
+    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))
+
+
+def _snapshot(root, ref, paths):
+    """One read of the evaluated state: {path: blob} and {path: mode}. A committed ref is read with ONE ls-tree; the WORKING TREE is read from
+    disk and hashed here (Git blob framing over the current bytes), so a modified, replaced or deleted file is judged by what is really on disk, never by
+    HEAD. A symlink or non-file is skipped (so its pin fails) and an executable bit is reported as a bad mode."""
+    paths = sorted(paths)
+    blobs, modes = {}, {}
+    if ref is None:
+        for p in paths:
+            f = root / p
+            if f.is_symlink() or not f.is_file():
+                continue
+            blobs[p] = _blob(f.read_bytes())
+            modes[p] = "100755" if f.stat().st_mode & 0o111 else "100644"
+        return blobs, modes
+    for line in _git(root, "ls-tree", "-r", ref, "--", *paths).decode().splitlines():
+        meta, name = line.split("\t", 1)
+        mode, kind, blob = meta.split()
+        if kind == "blob":
+            blobs[name], modes[name] = blob, mode
+    return blobs, modes
+
+
+def _signature_ok(root, ref, closure=False):
+    """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""
+    try:
+        from tests.fin_v2_cohorts import COHORT_MODULES
+        if COHORT_MODULES != BASE_COHORTS + (__name__,):
+            return False
+        d = manifest(root, ref)
+        pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
+        if pins.get("tests/ci_v4_p0_scope.py") != _MODULE_BLOB:
+            return False
+        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
+            return False
+        if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:
+            return False
+        if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p
+                                           for p in OWNED_PATHS | {MANIFEST}):
+            return False
+        if not CI_PATHS <= (NEW | REPLACED) or any(p.startswith(NEW_ONLY_PREFIXES) and p not in CI_PATHS for p in OWNED_PATHS | {MANIFEST}):       # .github/ and tools/ only as the literal CI_PATHS
+            return False
+        _git(root, "merge-base", "--is-ancestor", BASE, ref or "HEAD")
+        key = str(root)
+        if _base_tree(key) != BASE_TREE:
+            return False
+        if any(_blob(_base_bytes(key, p)) != base[p] for p in base):          # recorded predecessor blobs are what accepted main holds
+            return False
+        if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):
+            return False
+        judged = {p for p in pins if closure or p not in CURRENT_MAPS}
+        current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
+        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
+            return False
+        owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
+        if any(modes.get(p) != "100644" for p in owned):
+            return False
+        if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
+            return False
+        if set(HANDOFFS) != HANDOFF_PATHS:
+            return False
+        for p in CURRENT_MAPS:
+            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                return False
+        if closure:
+            for p in CURRENT_MAPS:
+                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                    return False
+        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
+            return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
+        return False
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    return _verdict(Path(repo) if repo is not None else ROOT, ref, "exact")
+
+
+def _diff_ok(root, ref):
+    try:
+        allowed = OWNED_PATHS | {MANIFEST}
+        changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
+        if not changed <= allowed:
+            return False
+        if ref is None:
+            untracked = set(_git(root, "ls-files", "--others", "--exclude-standard").decode().splitlines())
+            if any(p not in allowed and not (p.startswith("evidence/") and p.endswith((".json", ".xml", ".png", ".txt", ".csv", ".html", ".zip")))
+                   for p in untracked):
+                return False
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def effective_pins(repo=None, ref=None, *, signature=False):
+    return dict(manifest(repo, ref).get("source_blobs", {}))
+
+
+def closure_paths(repo=None, ref=None):
+    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()
+
+
+def allowed_path(path, repo=None, ref=None):
+    return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)
+
+
+def ci_owns(path, repo=None, ref=None):
+    """A literal CI V5 path (the shadow workflow or a V5 tool) while this cohort is exact; never a wildcard CI admission."""
+    return path in CI_PATHS and exact_blobs_ok(repo, ref)
+
+
+def supersedes(path, value, repo=None, ref=None):
+    if path not in SUPERSEDED:
+        return False
+    # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
+    # files), so a signature-only verdict never makes the tree valid.
+    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+
+
+def nontrust_scope_authorized(changed, repo=None):
+    root = Path(repo) if repo is not None else ROOT
+    try:
+        if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
+            return False
+        actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())
+        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} and exact_blobs_ok(root)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def valid(repo=None, ref=None):
+    from tests.fin_v2_cohorts import valid as composite
+    return exact_blobs_ok(repo, ref) and composite(repo, ref)
+
+
+def matches(path, source=None, *, repo=None, ref=None):
+    pins = manifest(repo, ref).get("source_blobs", {})
+    if path not in pins or not valid(repo, ref):
+        return False
+    return source is None or _blob(source.encode() if isinstance(source, str) else source) == pins[path]
+
+
+def protected_blobs(repo=None, ref=None):
+    return {}

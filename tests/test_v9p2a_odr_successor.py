@@ -21,7 +21,11 @@ import v11_stage3_successor as V11
 ROOT = Path(__file__).resolve().parent.parent
 # Historical subject: the OD-R contract is judged on OD-R bytes - HEAD itself, or, only while HEAD is the complete recognised V10 successor,
 # its immutable OD-R checkpoint (main 0b57031a). Any other HEAD stays the subject and fails exactly as before; never relabelled.
-SUBJECT = V.historical_subject(ref=V11.historical_subject())
+# ONE outer read-only governance call at import (collection): the subject resolution walks the exact-source chain once, not per level,
+# and reads each immutable Git object once (tests/ci_immutable_git_reads.py); both memos are dropped when the block ends.
+from tests import ci_immutable_git_reads as _OBJECTS, fin_v2_cohorts as _COHORTS  # noqa: E402
+with _OBJECTS.scope(), _COHORTS.call_scope():
+    SUBJECT = V.historical_subject(ref=V11.historical_subject())
 SIX = tuple(sorted(O.ODR_AUTHORITIES))
 NEW_PATHS = ("financial_engine/shareholder_waterfall/model.py", "financial_engine/shl/maturity_authority.py",
              "financial_engine/shl/production.py")          # OD-R paths outside the twelve RC-7C paths

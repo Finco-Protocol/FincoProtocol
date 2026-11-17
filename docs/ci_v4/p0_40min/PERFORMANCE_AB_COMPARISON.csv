@@ -1,0 +1,8 @@
+variant,source,measurement,elapsed_s,git_calls,result,limitation
+unscoped_A,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_ONLY,58.33341324899811,3000,bounded_timeout_60s,"A bounded timeout, no measured complete-A speedup ratio; same local host, concurrent collection"
+one_outer_call_B,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_ONLY,11.647542159000295,1588,True,"A bounded timeout, no measured complete-A speedup ratio; same local host, concurrent collection"
+original_worktree,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_MUTATION_CONTROL,9.219570460001705,,True,Not a module or hosted timing
+real_mutation_next_call,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_MUTATION_CONTROL,0.8403136739943875,,False,Not a module or hosted timing
+immutable_head_while_worktree_mutated,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_MUTATION_CONTROL,28.278460299996368,,True,Not a module or hosted timing
+restored_next_call,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_MUTATION_CONTROL,3.367637265000667,,True,Not a module or hosted timing
+unknown_ref,955952c1bc16b21ce342121c5224a19d3e105aa7,LOCAL_MUTATION_CONTROL,0.0032513510013814084,,False,Not a module or hosted timing

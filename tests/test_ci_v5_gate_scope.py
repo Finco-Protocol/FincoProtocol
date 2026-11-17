@@ -132,25 +132,32 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
-    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
-    from tests import ci_v4_full_recovery_scope as FR
-    for p in T.HANDOFFS:
-        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)
-            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
-        else:
-            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-    for p in T.REPLACED:
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-    for ref in (None, "HEAD"):
-        with C.call_scope():
-            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+        from tests import ci_v4_full_recovery_scope as FR
+        for p in T.HANDOFFS:
+            from tests import ci_v4_p0_scope as P0
+            if P0.signature_ok() and p in P0.HANDOFFS:
+                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)
+                assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
+            else:
+                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+        for p in T.REPLACED:
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+        for ref in (None, "HEAD"):
+            with C.call_scope():
+                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
 
 
 def test_registered_exactly_once_after_v5_2b_with_only_the_reviewed_full_recovery_behind_it():
-    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1
-    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE module gained after this cohort; no hardcoded total
-    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR) + ('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 3                       # exactly ONE module gained after this cohort; no hardcoded total
+    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")
     assert H5.SUCCESSOR == T.__name__ and H5._next() is T and V5.SUCCESSOR == H5.__name__ and V5._next() is H5 and B3.SUCCESSOR == V5.__name__ and B3._next() is V5
     assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1
 
@@ -180,7 +187,7 @@ def test_current_maps_move_only_their_registry_and_u1_keys():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_full_recovery():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_gate_scope") == 1
+    assert U.RECONCILED_SUCCESSORS[-3:] == ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v5_gate_scope") == 1
 
 
 # -------------------------------------------------------------------------------------------------------------- tamper (committed refs)
@@ -210,11 +217,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')"
+    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')"
     for name, fn in (
-        ("duplicate_fr", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_full_recovery_scope')")),
+        ("duplicate_fr", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_g6_fr", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v5_gate_scope')")),
+        ("swapped_g6_fr", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_p0_scope')")),
         ("h5_missing", lambda b: b.replace(b", 'tests.ci_v5_hardening_scope'", b"")),
         ("g6_missing", lambda b: b.replace(b", 'tests.ci_v5_gate_scope'", b"")),
         ("fr_missing", lambda b: b.replace(b", 'tests.ci_v4_full_recovery_scope'", b"")),
@@ -344,19 +351,24 @@ def test_no_verdict_is_cached_across_refs_or_mutations(clone):
 def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):
     """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY accepted tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""
     from tests import ci_v4_full_recovery_scope as FR
+    from tests import ci_v4_p0_scope as P0
     exact = C.COHORT_MODULES
-    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",
-                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
-    layers = (K, B1, B2, B3, V5, H5, T, FR)
+    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",
+                          "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")
+    layers = (K, B1, B2, B3, V5, H5, T, FR, P0)
     with C.call_scope():
         assert all(m.signature_ok() for m in layers)
-    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]
-    head = exact[:-8]
+    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]
+    head = exact[:-9]
     variants = {"b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr), "b1_b2_swapped": head + (c06, b2, b1, b3, v5, h5, g6, fr), "b3_v5_swapped": head + (c06, b1, b2, v5, b3, h5, g6, fr),
                 "v5_h5_swapped": head + (c06, b1, b2, b3, h5, v5, g6, fr), "h5_g6_swapped": head + (c06, b1, b2, b3, v5, g6, h5, fr), "g6_duplicated": exact + (g6,),
                 "v5_duplicated": head + (c06, b1, b2, b3, v5, v5, h5, g6, fr), "fr_duplicated": exact + (fr,), "g6_fr_swapped": head + (c06, b1, b2, b3, v5, h5, fr, g6), "fr_dropped": head + (c06, b1, b2, b3, v5, h5, g6), "unknown_extra_cohort": exact + ("tests.not_a_reviewed_cohort",), "g6_before_c06": head + (g6, c06, b1, b2, b3, v5, h5, fr),
                 "c06_dropped": head + (b1, b2, b3, v5, h5, g6, fr), "b3_dropped": head + (c06, b1, b2, v5, h5, g6, fr), "b1_dropped": head + (c06, b2, b3, v5, h5, g6, fr),
                 "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr), "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr)}
+    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + ("tests.ci_v4_p0_scope",)
+                for name, value in variants.items()}
+    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),
+                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", "tests.ci_v4_full_recovery_scope"))
     for name, tail in variants.items():
         monkeypatch.setattr(C, "COHORT_MODULES", tail)
         for layer in layers:

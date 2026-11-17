@@ -77,35 +77,44 @@ def _git(*args):
     return subprocess.check_output(["git", *args], cwd=str(ROOT), stderr=subprocess.DEVNULL)
 
 
-def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
-    assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES
-    # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete signature
-    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-    with C.call_scope():
-        assert (C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
-            C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok()) or (
-            C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")
-            and G.signature_ok() and Z.signature_ok()) or (
-            C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
-            and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (
-            C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
-            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or (
-            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))
-                and C06_APPROVAL.signature_ok())
-    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
-    with C.call_scope():
-        assert F.exact_blobs_ok() is True
-    with C.call_scope():
-        assert F.signature_ok() is True
-    with C.call_scope():
-        assert C.valid() is True
+def _literal_registry(raw):
+    return next(ast.literal_eval(n.value) for n in ast.parse(raw).body
+                if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "COHORT_MODULES" for t in n.targets))
 
 
-def test_every_handoff_file_equals_its_reviewed_literal_substitution():
+def _accepted_p0_prefix():
+    # Independently recover the entire immutable 47-cohort main registry, starting at the original BESS02 registry.
+    accepted = _literal_registry(_git("show", F.BASE + ":tests/fin_v2_cohorts.py"))
+    assert accepted[-1] == "tests.bess02_scope"
+    prefix = accepted + (
+        "tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope",
+        "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope",
+        "tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope",
+        "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope",
+        "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
+    assert len(prefix) == 47
+    assert _literal_registry(_git("show", "955952c1bc16b21ce342121c5224a19d3e105aa7:tests/fin_v2_cohorts.py")) == prefix
+    return prefix
+
+
+def _p0():
+    """Only the literal registered P0 terminal, through the exact FULL-recovery chain and every predecessor."""
+    prefix = _accepted_p0_prefix()
+    if C.COHORT_MODULES != prefix + ("tests.ci_v4_p0_scope",):
+        return None
+    prior = _b7()
+    terminal = prior._next() if prior is not None else None
+    if (terminal is None or terminal.__name__ != "tests.ci_v4_p0_scope"
+            or terminal.BASE != "955952c1bc16b21ce342121c5224a19d3e105aa7"
+            or terminal.BASE_COHORTS != prefix or not terminal.signature_ok()
+            or not all(m.exact_blobs_ok() for m in C.cohorts())):
+        return None
+    return terminal
+
+
+def _historical_reviewed_handoff(p):
     from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-    for p in sorted(F.HANDOFFS):
-        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS
+    return (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS
                 else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
                 else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS
                 else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS
@@ -118,50 +127,100 @@ def test_every_handoff_file_equals_its_reviewed_literal_substitution():
                 else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS
                 else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS
                 else G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else F.expected_handoff(ROOT, p))
-        assert (ROOT / p).read_bytes() == want, p
+
+
+def _reviewed_handoff(p):
+    historical = _historical_reviewed_handoff(p)
+    terminal = _p0()
+    if terminal is None or p not in terminal.HANDOFFS:
+        return historical
+    predecessor = _git("show", terminal.BASE + ":" + p)
+    pins = terminal.manifest()
+    assert historical == predecessor                         # the older literal remains the authenticated intermediate
+    assert F._blob(predecessor) == pins["base_blobs"][p]
+    reviewed = terminal.expected_handoff(ROOT, p)             # immutable BASE plus reviewed literals; never disk as expectation
+    assert reviewed != predecessor
+    assert F._blob(reviewed) == pins["source_blobs"][p] == F.effective_pins()[p]
+    return reviewed
+
+
+def test_the_performance_leaf_is_exact_registered_and_the_composite_holds():
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        assert "tests.ci_v4_perf_scope" in C.COHORT_MODULES
+        # the leaf stays in its exact place; the only reviewed forward successor is F03, behind its own complete signature
+        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
+        with C.call_scope():
+            assert (_p0() is not None or ((C.COHORT_MODULES[-1] == "tests.ci_v4_perf_scope" or (
+                C.COHORT_MODULES[-2:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope") and G.signature_ok()) or (
+                C.COHORT_MODULES[-3:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope")
+                and G.signature_ok() and Z.signature_ok()) or (
+                C.COHORT_MODULES[-4:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
+                and G.signature_ok() and Z.signature_ok() and Y.signature_ok()) or (
+                C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
+                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or (
+                C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
+                and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))
+                    and C06_APPROVAL.signature_ok())))
+        assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
+        with C.call_scope():
+            assert F.exact_blobs_ok() is True
+            assert F.signature_ok() is True
+            assert C.valid() is True
+
+
+def test_every_handoff_file_equals_its_reviewed_literal_substitution():
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
+        for p in sorted(F.HANDOFFS):
+            want = (_reviewed_handoff(p))
+            assert (ROOT / p).read_bytes() == want, p
 
 
 def test_the_accepted_bess02_leaf_stays_exact_through_the_forward_handoff():
-    with C.call_scope():
-        assert B.signature_ok() is True
-    with C.call_scope():
-        assert B.reviewed_edits_ok() is True
-    with C.call_scope():
-        assert B.exact_blobs_ok() is True
-    assert B._next() is F
-    # the BESS02 closure now covers exactly its own paths plus this leaf's
-    assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()
-    assert "docs/ci_v4/module_weights.json" in B.closure_paths()
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        with C.call_scope():
+            assert B.signature_ok() is True
+            assert B.reviewed_edits_ok() is True
+            assert B.exact_blobs_ok() is True
+        assert B._next() is F
+        # the BESS02 closure now covers exactly its own paths plus this leaf's
+        assert B.closure_paths() == B.OWNED_PATHS | {B.MANIFEST} | F.closure_paths()
+        assert "docs/ci_v4/module_weights.json" in B.closure_paths()
 
 
 def test_the_registry_appends_exactly_one_reviewed_cohort_after_the_accepted_tail():
-    registry = _git("show", F.BASE + ":tests/fin_v2_cohorts.py")
-    accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
-                    if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
-                    and n.targets[0].id == "COHORT_MODULES")
-    assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact
-    from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-    own = accepted + ("tests.ci_v4_perf_scope",)
-    with C.call_scope():
-        assert ((C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
-                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
-                    and G.signature_ok() and Z.signature_ok())
-                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
-                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok())
-                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
-                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
-                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
-                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))
-                and C06_APPROVAL.signature_ok()))
-    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        registry = _git("show", F.BASE + ":tests/fin_v2_cohorts.py")
+        accepted = next(ast.literal_eval(n.value) for n in ast.parse(registry).body
+                        if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                        and n.targets[0].id == "COHORT_MODULES")
+        assert accepted[-1] == "tests.bess02_scope"  # the accepted BESS02 tail is intact
+        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
+        own = accepted + ("tests.ci_v4_perf_scope",)
+        with C.call_scope():
+            assert ((_p0() is not None or ((C.COHORT_MODULES == own or (C.COHORT_MODULES == own + ("tests.f03_financing_scope",) and G.signature_ok())
+                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope")
+                        and G.signature_ok() and Z.signature_ok())
+                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope")
+                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok())
+                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")
+                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok())
+                    or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", "tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", "tests.r04_ppa_scope")
+                        and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))
+                    and C06_APPROVAL.signature_ok()))))
+        assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1
 
 
 def test_the_accepted_bess02_handoff_expectations_are_still_governed_by_this_leaf():
-    # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed
-    # substitution; the other BESS02 handoff files it does not take over still hold literally.
-    for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):
-        assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p
-    assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        # the BESS02-era literal for the registry is superseded ONLY by this leaf's own reviewed
+        # substitution; the other BESS02 handoff files it does not take over still hold literally.
+        for p in sorted(set(B.HANDOFFS) - set(F.HANDOFFS)):
+            assert (ROOT / p).read_bytes() == B.expected_handoff(ROOT, p), p
+        assert "tests/fin_v2_cohorts.py" in F.HANDOFFS and "tests/fin_v2_cohorts.py" in B.HANDOFFS
 
 
 #: exactly the three pins a current map may carry for this leaf: the registry, the module weights and the PR3b1 guard whose
@@ -170,29 +229,30 @@ MOVED_MAP_KEYS = ("docs/ci_v4/module_weights.json", "tests/fin_v2_cohorts.py", "
 
 
 def test_the_current_maps_manifests_carry_exactly_the_reviewed_moved_pins_in_canonical_form():
-    assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS
-    nx = B._next_pins(ROOT, None)
-    pins = B.manifest()["source_blobs"]
-    cur = {p: nx.get(p, b) for p, b in pins.items()}
-    moved = B._next_moved(ROOT, None)
-    # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), never read from the leaf's own map logic
-    new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}
-    old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}
-    assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
-    from tests import f03_financing_scope as G
-    assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
-    assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
-    assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
-    for p in sorted(B.CURRENT_MAPS):
-        disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
-        base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
-        for k in MOVED_MAP_KEYS:                                                # a map records the OLD value only before, the NEW one after
-            if k in base:
-                assert base[k] == old[k] and disk[k] == new[k], (p, k)
-        assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p
-    # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set unchanged for every map
-    for p in sorted(B.CURRENT_MAPS):
-        assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        assert tuple(sorted(F.MAP_KEYS)) == MOVED_MAP_KEYS
+        nx = B._next_pins(ROOT, None)
+        pins = B.manifest()["source_blobs"]
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
+        moved = B._next_moved(ROOT, None)
+        # independently derived NEW value (hash of the bytes on disk) and OLD value (accepted BASE), never read from the leaf's own map logic
+        new = {k: F._blob((ROOT / k).read_bytes()) for k in MOVED_MAP_KEYS}
+        old = {k: F._blob(_git("show", F.BASE + ":" + k)) for k in MOVED_MAP_KEYS}
+        assert all(new[k] != old[k] for k in MOVED_MAP_KEYS)                       # every one of them genuinely moved
+        from tests import f03_financing_scope as G
+        assert {k: moved[k] for k in new} == new and F.effective_pins() == {**F.effective_pins(), **new}
+        assert set(moved) - set(new) <= set(G.map_keys())                       # the only other moved key is the reviewed F03 successor's
+        assert F.manifest()["source_blobs"] == {**F.manifest()["source_blobs"], **{k: v for k, v in new.items() if k not in G.effective_pins()}}
+        for p in sorted(B.CURRENT_MAPS):
+            disk = json.loads((ROOT / p).read_bytes())["source_blobs"]
+            base = json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]
+            for k in MOVED_MAP_KEYS:                                                # a map records the OLD value only before, the NEW one after
+                if k in base:
+                    assert base[k] == old[k] and disk[k] == new[k], (p, k)
+            assert (ROOT / p).read_bytes() == B.expected_map(ROOT, p, cur, moved), p
+        # a map moves no OTHER pin than these keys and the registry-era handed-off files: key set unchanged for every map
+        for p in sorted(B.CURRENT_MAPS):
+            assert set(json.loads((ROOT / p).read_bytes())["source_blobs"]) == set(json.loads(_git("show", F.BASE + ":" + p))["source_blobs"]), p
 
 
 def test_scheduler_weights_are_literal_projected_corrections_with_provenance():
@@ -223,16 +283,13 @@ def test_one_byte_of_drift_in_any_owned_path_fails_closed_and_restores(path):
         with C.call_scope():
             assert F.exact_blobs_ok() is False
         # a current map's bytes belong to the full proof only: the signature never reads a foreign manifest, every other path is in it
-        with C.call_scope():
             assert F.signature_ok() is (path in F.CURRENT_MAPS)
-        with C.call_scope():
             assert C.valid() is False
     finally:
         target.write_bytes(original)
     # a FRESH evaluation after the restore passes again; nothing was cached across the boundary
     with C.call_scope():
         assert F.exact_blobs_ok() is True
-    with C.call_scope():
         assert C.valid() is True
 
 
@@ -254,16 +311,13 @@ def test_a_forged_pin_in_the_leaf_manifest_fails_closed_and_restores():
 def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():
     original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()
     text = original.decode()
-    marker = ("'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
-              "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")
+    marker = ("'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")
     assert text.count(marker) == 1
     try:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", 'tests.fake_perf_scope')").encode())
         with C.call_scope():
             assert F.reviewed_edits_ok() is False
-        with C.call_scope():
             assert F.exact_blobs_ok() is False
-        with C.call_scope():
             assert C.valid() is False
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
@@ -280,7 +334,6 @@ def test_a_registry_deletion_of_the_accepted_bess_tail_fails_closed():
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(forged.encode())
         with C.call_scope():
             assert F.reviewed_edits_ok() is False and F.exact_blobs_ok() is False
-        with C.call_scope():
             assert B.reviewed_edits_ok() is False  # the accepted BESS02 tail may never be erased
     finally:
         (ROOT / "tests/fin_v2_cohorts.py").write_bytes(original)
@@ -294,7 +347,6 @@ def test_a_foreign_new_source_file_fails_the_closure_and_restores():
         extra.write_text('"""unreviewed"""\n', encoding="utf-8")
         with C.call_scope():
             assert F.exact_blobs_ok() is False
-        with C.call_scope():
             assert C.valid() is False
     finally:
         extra.unlink()
@@ -330,25 +382,15 @@ def test_no_forbidden_authority_joins_the_leaf():
 
 
 def test_the_accepted_main_version_of_every_handoff_file_is_retrievable_and_distinct_from_the_takeover():
-    for p in sorted(F.HANDOFFS):
-        base_bytes = _git("show", F.BASE + ":" + p)
-        now = (ROOT / p).read_bytes()
-        assert base_bytes != now, p                       # the takeover is real, not a no-op
-        from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
-        want = (_b7().expected_handoff(ROOT, p) if _b7() is not None and p in _b7().HANDOFFS
-                else _b6().expected_handoff(ROOT, p) if _b6() is not None and p in _b6().HANDOFFS
-                else _b5().expected_handoff(ROOT, p) if _b5() is not None and p in _b5().HANDOFFS
-                else _b4().expected_handoff(ROOT, p) if _b4() is not None and p in _b4().HANDOFFS
-                else _b3().expected_handoff(ROOT, p) if _b3() is not None and p in _b3().HANDOFFS
-                else _b2().expected_handoff(ROOT, p) if _b2() is not None and p in _b2().HANDOFFS
-                else _b1().expected_handoff(ROOT, p) if _b1() is not None and p in _b1().HANDOFFS
-                else C06_APPROVAL.expected_handoff(ROOT, p) if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS
-                else W.expected_handoff(ROOT, p) if W.signature_ok() and p in W.HANDOFFS
-                else Q.expected_handoff(ROOT, p) if Q.signature_ok() and p in Q.HANDOFFS
-                else Y.expected_handoff(ROOT, p) if Y.signature_ok() and p in Y.HANDOFFS
-                else Z.expected_handoff(ROOT, p) if Z.signature_ok() and p in Z.HANDOFFS
-                else G.expected_handoff(ROOT, p) if G.signature_ok() and p in G.HANDOFFS else F.expected_handoff(ROOT, p))
-        assert want == now                                # and equals exactly the reviewed substitution
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        for p in sorted(F.HANDOFFS):
+            base_bytes = _git("show", F.BASE + ":" + p)
+            now = (ROOT / p).read_bytes()
+            assert base_bytes != now, p                       # the takeover is real, not a no-op
+            from tests import f03_financing_scope as G, t01e_remediation_scope as Z, r03_ppa_scope as Y
+            want = (_reviewed_handoff(p))
+            assert want == now                                # and equals exactly the reviewed substitution
 
 
 # ---------------------------------------------------------------------------------------------
@@ -370,23 +412,22 @@ def _fresh_ok():
 
 
 def test_every_older_guard_reaches_the_reviewed_pins_through_one_hook_each():
-    for p in FROZEN_EDITS:
-        pin = F.manifest()["source_blobs"][p]
-        assert p in OB1.FROZEN and p not in OB1.SUPERSEDED
+    with C.call_scope():  # this complete enumeration only reads source; no fixture or mutation is inside
+        for p in FROZEN_EDITS:
+            pin = F.manifest()["source_blobs"][p]
+            assert p in OB1.FROZEN and p not in OB1.SUPERSEDED
+            with C.call_scope():
+                assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
+            assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin
+        # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own superseded set
+        pin = F.manifest()["source_blobs"][WEIGHTS]
         with C.call_scope():
-            assert F.supersedes(p, pin) is True and F.supersedes(p, "0" * 40) is False
-        assert F.base_blob(p) == F._blob(_git("show", F.BASE + ":" + p)) and F.base_blob(p) != pin
-    # the PR3b1 hook admits exactly the module-weights pin and nothing else outside its own superseded set
-    pin = F.manifest()["source_blobs"][WEIGHTS]
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, pin) is True
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
-    with C.call_scope():
-        assert U31.supersedes(WEIGHTS, "0" * 40) is False
-    for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/node_weights.json"):
-        with C.call_scope():
-            assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
+            assert U31.supersedes(WEIGHTS, pin) is True
+            assert U31.supersedes(WEIGHTS, F._blob(_git("show", F.BASE + ":" + WEIGHTS))) is False   # the OLD value is no longer accepted
+            assert U31.supersedes(WEIGHTS, "0" * 40) is False
+        for other in ("docs/ci_v4/node_split_policy.json", "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/node_weights.json"):
+            with C.call_scope():
+                assert U31.supersedes(other, F._blob((ROOT / other).read_bytes())) is False, other
 
 
 @pytest.mark.parametrize("path", FROZEN_EDITS)
@@ -480,3 +521,51 @@ def test_the_leaf_signature_never_evaluates_the_composite_or_a_predecessor_verdi
     assert not (called & {"valid", "matches", "exact_blobs_ok", "signature_ok", "call_scope", "cohorts", "supersedes"})
     imports = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     assert imports <= {"tests.fin_v2_cohorts", "tests.on_bess01_scope"}
+
+
+@pytest.mark.parametrize("attack", ("missing", "duplicate", "reordered", "inserted", "forged"))
+def test_p0_terminal_resolution_rejects_every_unreviewed_registry(monkeypatch, attack):
+    exact = C.COHORT_MODULES
+    variants = {
+        "missing": exact[:-1],
+        "duplicate": exact + ("tests.ci_v4_p0_scope",),
+        "reordered": exact[:-2] + (exact[-1], exact[-2]),
+        "inserted": exact[:-1] + ("tests.ci_v4_perf_scope", exact[-1]),
+        "forged": exact[:-1] + ("tests.ci_v4_p0_scope_forged",),
+    }
+    with C.call_scope():
+        assert _p0() is not None
+    try:
+        monkeypatch.setattr(C, "COHORT_MODULES", variants[attack])
+        with C.call_scope():
+            assert _p0() is None
+            assert not F.exact_blobs_ok() and not C.valid()
+    finally:
+        monkeypatch.setattr(C, "COHORT_MODULES", exact)
+    with C.call_scope():
+        assert _p0() is not None and F.exact_blobs_ok() and C.valid()
+
+
+@pytest.mark.parametrize("attack", ("wrong_pin", "forged_registry", "wrong_handoff"))
+def test_p0_handoff_resolution_rejects_changed_source_and_restores(attack):
+    from tests import ci_v4_p0_scope as P0
+    rel = P0.MANIFEST if attack == "wrong_pin" else P0.REGISTRY if attack == "forged_registry" else "tests/test_bess02_scope.py"
+    path = ROOT / rel
+    original = path.read_bytes()
+    with C.call_scope():
+        assert _p0() is P0
+    try:
+        if attack == "wrong_pin":
+            data = json.loads(original)
+            data["source_blobs"][P0.REGISTRY] = "0" * 40
+            path.write_bytes((json.dumps(data, indent=2, sort_keys=True) + "\n").encode())
+        else:
+            path.write_bytes(original + b"\n# unreviewed handoff\n")
+        with C.call_scope():
+            assert _p0() is None
+            assert not P0.signature_ok() and not F.exact_blobs_ok() and not C.valid()
+    finally:
+        path.write_bytes(original)
+    with C.call_scope():
+        assert _p0() is P0 and _reviewed_handoff(P0.REGISTRY) == (ROOT / P0.REGISTRY).read_bytes()
+    assert not C._CALL
