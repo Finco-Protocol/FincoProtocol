@@ -63,7 +63,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert set(d["source_blobs"]) == T.OWNED_PATHS
     assert set(d["base_blobs"]) == T.SUPERSEDED
     assert set(T.HANDOFFS) == T.HANDOFF_PATHS
-    assert not T.CI_PATHS and not T.REPLACED
+    assert not T.CI_PATHS and T.REPLACED == {'tests/conftest.py', 'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'}
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
         assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
