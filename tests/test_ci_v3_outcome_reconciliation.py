@@ -378,3 +378,245 @@ def test_only_the_d029_and_ws2_tuples_exist_as_accepted_states():
     assert set(prod.D029_BLOBS) == set(prod.WS2_TRUST_BLOBS) and all(prod.D029_BLOBS[k] != prod.WS2_TRUST_BLOBS[k] for k in prod.D029_BLOBS)
     assert not any(k in prod.WS2_TRUST_BLOBS for k in prod.D029_TRUST_CHANGED_BLOBS)
 
+
+
+# --------------------------------------------------------------------------------------------------------------------------------------
+# Correction C (2026-11-17): STATE C compares the historical WS-2 manifest pins with AUTHENTICATED HISTORICAL evidence (the reviewed pins the closed WF-03
+# cohort records for the same paths), never with a later blob; the current Trust state is proven through the closed exact-source chain. Nothing below
+# repins the WS-2 manifest, changes a D-029 constant, or admits an unreviewed value.
+# --------------------------------------------------------------------------------------------------------------------------------------
+WS2_MANIFEST_BLOB = "70ba41995ee7744fca9f3e86a63f5921a3b5da66"
+TRUST_TEST = "tests/test_trust_readiness_registry.py"
+HISTORICAL_TRUST_TEST_PIN = "eeb8302dce96e535e1ad9aa2a93b5a684197fdec"
+CURRENT_TRUST_TEST_BLOB = "cb8a6c12551600f55b6a9c8c75b1cef2f5f1c519"
+
+
+def _head():
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+
+
+def _state_c_inputs():
+    from tests import wf03_lifecycle_scope as F
+    facts = real_facts()
+    return F, facts, *run_evidence()
+
+
+def test_state_c_historical_pins_are_the_reviewed_cohort_pins_and_the_current_blob_is_the_later_pin():
+    F, facts, phases, native = _state_c_inputs()
+    reviewed = F.manifest(ROOT, _head())["source_blobs"]
+    keys = (*prod.WS2_TRUST_BLOBS, *prod.WS2_TRUST_EXTRA_BLOBS)
+    assert facts["ws2_manifest_pins"] == {p: reviewed[p] for p in keys}
+    # the WS-2 manifest was NOT repinned: its historical pin of the Trust registry test is still the one the WF-03 cohort reviewed
+    assert facts["ws2_manifest_pins"][TRUST_TEST] == HISTORICAL_TRUST_TEST_PIN and reviewed[TRUST_TEST] == HISTORICAL_TRUST_TEST_PIN
+    assert git_blob(prod.WS2_MANIFEST) == WS2_MANIFEST_BLOB == reviewed[prod.WS2_MANIFEST]
+    assert facts["wf03_state"]["current_blobs"][TRUST_TEST] == CURRENT_TRUST_TEST_BLOB == git_blob(TRUST_TEST)
+    assert F.accepts_ci_trust_state(facts, phases, native)
+    assert problems(facts=facts) == []
+
+
+def _historical_only(F, facts, monkeypatch):
+    """The WF-03-era state: every current Trust blob IS the reviewed pin (no later cohort involved). Accepted by the same predicate."""
+    reviewed = F.manifest(ROOT, _head())["source_blobs"]
+    actual = copy.deepcopy(facts["wf03_state"])
+    actual["current_blobs"] = {p: reviewed[p] for p in F.CI_TRUST_PATHS}
+    altered = copy.deepcopy(facts)
+    altered["wf03_state"] = actual
+    altered["blobs"] = {p: actual["current_blobs"][p] for p in altered["blobs"]}
+    altered["ws2_extra_blobs"] = {p: actual["current_blobs"][p] for p in altered["ws2_extra_blobs"]}
+    monkeypatch.setattr(F, "ci_source_facts", lambda: copy.deepcopy(actual))
+    return altered
+
+
+def test_state_c_accepts_the_historical_only_state_without_any_later_cohort(monkeypatch):
+    F, facts, phases, native = _state_c_inputs()
+    altered = _historical_only(F, facts, monkeypatch)
+    monkeypatch.setattr(F, "_wf06b_supersedes", lambda *a, **k: (_ for _ in ()).throw(AssertionError("a later cohort must not be consulted")))
+    assert F.accepts_ci_trust_state(altered, phases, native)
+
+
+def _one_byte(sha):
+    return sha[:-1] + ("0" if sha[-1] != "0" else "1")
+
+
+@pytest.mark.parametrize("path", sorted((*prod.WS2_TRUST_BLOBS, *prod.WS2_TRUST_EXTRA_BLOBS)))
+@pytest.mark.parametrize("how", ("one_byte", "wrong_sha", "later_blob", "missing_path", "none_value"))
+def test_state_c_rejects_every_mutation_of_a_historical_ws2_pin(path, how, monkeypatch):
+    F, facts, phases, native = _state_c_inputs()
+    pins = dict(facts["ws2_manifest_pins"])
+    if how == "one_byte":
+        pins[path] = _one_byte(pins[path])
+    elif how == "wrong_sha":
+        pins[path] = "0" * 40
+    elif how == "later_blob":
+        pins[path] = facts["wf03_state"]["current_blobs"][path]        # repinning to the later blob is exactly what is NOT acceptable when it differs
+        if pins[path] == facts["ws2_manifest_pins"][path]:
+            pytest.skip("this path has no later blob: the pin already equals the current blob")
+    elif how == "missing_path":
+        pins.pop(path)
+    else:
+        pins[path] = None
+    facts["ws2_manifest_pins"] = pins
+    assert not F.accepts_ci_trust_state(facts, phases, native)
+    assert problems(facts=facts)           # and the whole transition is therefore refused
+
+
+@pytest.mark.parametrize("name, mutate", (
+    ("extra path", lambda p: p.update({"app/trust_readiness/projection.py": "1" * 40})),
+    ("empty", lambda p: p.clear()),
+))
+def test_state_c_rejects_an_extra_or_empty_historical_pin_map(name, mutate):
+    F, facts, phases, native = _state_c_inputs()
+    mutate(facts["ws2_manifest_pins"])
+    assert not F.accepts_ci_trust_state(facts, phases, native), name
+    for bad in (None, [], "x"):
+        facts["ws2_manifest_pins"] = bad
+        assert not F.accepts_ci_trust_state(facts, phases, native)
+
+
+@pytest.mark.parametrize("name", ("pin_changed", "pin_removed", "ws2_manifest_pin_changed", "ws2_manifest_pin_removed", "pins_absent"))
+def test_state_c_rejects_an_altered_reviewed_cohort_record(name, monkeypatch):
+    F, facts, phases, native = _state_c_inputs()
+    real = F.manifest
+
+    def forged(repo=None, ref=None):
+        data = copy.deepcopy(real(repo, ref))
+        pins = data["source_blobs"]
+        if name == "pin_changed":
+            pins[TRUST_TEST] = CURRENT_TRUST_TEST_BLOB              # "the reviewed record says cb8a…" while the WS-2 manifest still holds eeb8…
+        elif name == "pin_removed":
+            pins.pop(TRUST_TEST)
+        elif name == "ws2_manifest_pin_changed":
+            pins[prod.WS2_MANIFEST] = "2" * 40
+        elif name == "ws2_manifest_pin_removed":
+            pins.pop(prod.WS2_MANIFEST)
+        else:
+            data = {}
+        return data
+    monkeypatch.setattr(F, "manifest", forged)
+    assert not F.accepts_ci_trust_state(facts, phases, native)
+
+
+@pytest.mark.parametrize("which", ("head", "worktree"))
+def test_state_c_rejects_ws2_manifest_bytes_that_are_not_the_reviewed_blob(which, monkeypatch):
+    F, facts, phases, native = _state_c_inputs()
+    real = F._read
+    head = _head()
+
+    def read(root, path, ref):
+        data = real(root, path, ref)
+        if path == prod.WS2_MANIFEST and (ref == head if which == "head" else ref is None):
+            return data + b" "
+        return data
+    monkeypatch.setattr(F, "_read", read)
+    assert not F.accepts_ci_trust_state(facts, phases, native)
+
+
+@pytest.mark.parametrize("path", sorted(WF03_TRUST_PATHS := ("app/trust_readiness/registry.py", "docs/readiness/02_data_handling.md",
+                                                             "docs/readiness/06_retention_and_deletion.md", "tests/test_trust_readiness_controls.py", TRUST_TEST)))
+def test_state_c_current_blob_must_be_the_reviewed_pin_or_the_exact_pin_of_a_later_cohort(path, monkeypatch):
+    F, facts, phases, native = _state_c_inputs()
+    assert path in F.CI_TRUST_PATHS
+    asked = []
+    real = F._wf06b_supersedes
+
+    def spy(p, value, root, ref):
+        asked.append((p, value))
+        return real(p, value, root, ref)
+
+    def with_current(value):
+        actual = copy.deepcopy(facts["wf03_state"])
+        actual["current_blobs"][path] = value
+        altered = copy.deepcopy(facts)
+        altered["wf03_state"] = actual
+        if path in altered["blobs"]:
+            altered["blobs"][path] = value
+        if path in altered["ws2_extra_blobs"]:
+            altered["ws2_extra_blobs"][path] = value
+        monkeypatch.setattr(F, "ci_source_facts", lambda: copy.deepcopy(actual))
+        return altered
+    monkeypatch.setattr(F, "_wf06b_supersedes", spy)
+    real_value = facts["wf03_state"]["current_blobs"][path]
+    assert F.accepts_ci_trust_state(with_current(real_value), phases, native)                    # control: the real current blob is accepted
+    for forged in ("0" * 40, _one_byte(real_value)):
+        asked.clear()
+        assert not F.accepts_ci_trust_state(with_current(forged), phases, native)
+        assert (path, forged) in asked, "rejected for the wrong reason: the later-cohort pin was never consulted"
+
+
+@pytest.mark.parametrize("how", ("failed", "skipped", "xfail", "native_failed", "native_missing", "missing", "setup_failed"))
+@pytest.mark.parametrize("index", range(3))
+def test_state_c_requires_each_same_run_evidence_node_to_have_really_passed(how, index):
+    from tests import wf03_lifecycle_scope as F
+    facts = real_facts()
+    phases, native = run_evidence()
+    node = F.CI_EVIDENCE_NODES[index]
+    if how == "failed":
+        phases[node] = ph(call="failed")
+    elif how == "skipped":
+        phases[node] = ph(call="skipped", reason="x")
+    elif how == "xfail":
+        phases[node] = ph(call="skipped", wasxfail="x")
+    elif how == "native_failed":
+        native[node] = ("failed", "")
+    elif how == "native_missing":
+        native.pop(node)
+    elif how == "setup_failed":
+        phases[node] = ph(setup="failed")
+    else:
+        phases.pop(node)
+    assert not F.accepts_ci_trust_state(facts, phases, native)
+
+
+def test_state_c_still_rejects_the_original_d029_and_ws2_tuples_as_state_c():
+    from tests import wf03_lifecycle_scope as F
+    facts = ws2_parent_facts()
+    assert facts["wf03_state"] is None and not F.accepts_ci_trust_state(facts, *ws2_run_evidence())      # A/B are accepted by their own predicates only
+    assert problems(facts=facts, run=ws2_run_evidence()) == []                                          # ... which are untouched
+    assert prod.WS2_TRUST_EXTRA_BLOBS == {TRUST_TEST: "69e0b15e0c4cfd36102d1442e577f7cc6d9b6516"}
+    assert prod.D029_TRUST_CHANGED_BLOBS == {"tests/test_trust_readiness_controls.py": "cd5b3114d9a11ca4507667a099bb853573d056d3"}
+
+
+# --- the closed exact-source chain itself (real Git objects, immutable refs; nothing is checked out or written to a ref) ---------------------
+def _mutated_ref(tmp_path, changes):
+    """A commit on top of HEAD whose tree differs only by ``changes`` ({path: bytes}); loose objects only, no ref, no worktree."""
+    env = {**__import__("os").environ, "GIT_INDEX_FILE": str(tmp_path / "index"), "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+
+    def run(*args, **kw):
+        return subprocess.run(["git", *args], cwd=ROOT, env=env, check=True, capture_output=True, **kw).stdout.decode().strip()
+    run("read-tree", "HEAD")
+    for path, data in changes.items():
+        blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=ROOT, env=env, input=data, check=True, capture_output=True).stdout.decode().strip()
+        run("update-index", "--add", "--cacheinfo", "100644," + blob + "," + path)
+    tree = run("write-tree")
+    return run("commit-tree", tree, "-p", "HEAD", "-m", "synthetic")
+
+
+def _head_bytes(path):
+    return subprocess.check_output(["git", "show", "HEAD:" + path], cwd=ROOT)
+
+
+def test_the_real_chain_accepts_head_and_rejects_every_arbitrary_trust_blob_and_extra_path(tmp_path):
+    from tests import wf03_lifecycle_scope as F
+    assert F.exact_blobs_ok(ROOT, _head())
+    for path in F.CI_TRUST_PATHS:
+        ref = _mutated_ref(tmp_path, {path: _head_bytes(path) + b"\n# unreviewed\n"})
+        assert not F.exact_blobs_ok(ROOT, ref), path
+    extra = _mutated_ref(tmp_path, {"app/trust_readiness/unreviewed_extra.py": b"x = 1\n"})
+    assert not F.valid(ROOT, extra)
+
+
+def test_the_real_chain_rejects_repinning_the_ws2_manifest_or_the_bess_predecessor(tmp_path):
+    from tests import wf03_lifecycle_scope as F
+    manifest = json.loads(_head_bytes(prod.WS2_MANIFEST))
+    manifest["source_blobs"][TRUST_TEST] = CURRENT_TRUST_TEST_BLOB            # the rejected "repin eeb8… -> cb8a…" shortcut
+    repin = _mutated_ref(tmp_path, {prod.WS2_MANIFEST: (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()})
+    assert not F.exact_blobs_ok(ROOT, repin) and not COHORTS.valid(ROOT, repin)
+    bess_path = "docs/bess_setup/SOURCE_SUCCESSOR.json"
+    bess = json.loads(_head_bytes(bess_path))
+    assert bess["base_blobs"][TRUST_TEST] == HISTORICAL_TRUST_TEST_PIN and bess["source_blobs"][TRUST_TEST] == CURRENT_TRUST_TEST_BLOB
+    for section in ("base_blobs", "source_blobs"):
+        forged = json.loads(_head_bytes(bess_path))
+        forged[section][TRUST_TEST] = "0" * 40
+        ref = _mutated_ref(tmp_path, {bess_path: (json.dumps(forged, indent=2, sort_keys=True) + "\n").encode()})
+        assert not COHORTS.valid(ROOT, ref), section

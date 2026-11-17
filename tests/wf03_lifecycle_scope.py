@@ -539,7 +539,16 @@ def accepts_ci_trust_state(facts,phases,native):
     if facts.get('blobs')!=expected: return False
     if facts.get('ws2_extra_blobs')!={p:pins[p] for p in P.WS2_TRUST_EXTRA_BLOBS}: return False
     if facts.get('record_blob')!=P.WS2_RECORD_BLOB or facts.get('ws2_receipt')!=P.ws2_expected_receipt(): return False
-    if facts.get('ws2_manifest_pins')!={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}: return False
+    # The WS-2 manifest is a historical attestation: its Trust pins are checked against the reviewed pins this closed cohort records for the same paths
+    # (the cohort verdict above authenticates them), never against a later blob; each current blob is that pin or the exact pin of a later cohort.
+    try:
+        head=_git(ROOT,'rev-parse','HEAD').decode().strip()
+        reviewed=manifest(ROOT,head).get('source_blobs',{})
+        held=facts.get('ws2_manifest_pins'); keys=(*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)
+        if not isinstance(held,dict) or set(held)!=set(keys) or any(not reviewed.get(p) or held[p]!=reviewed[p] for p in keys): return False
+        if not reviewed.get(P.WS2_MANIFEST) or any(_blob(_read(ROOT,P.WS2_MANIFEST,r))!=reviewed[P.WS2_MANIFEST] for r in (head,None)): return False
+        if any(pins[p]!=reviewed.get(p) and not _wf06b_supersedes(p,pins[p],ROOT,head) for p in CI_TRUST_PATHS): return False
+    except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError): return False
     parent={**P.WS2_TRUST_BLOBS,**P.WS2_TRUST_EXTRA_BLOBS,**P.D029_TRUST_CHANGED_BLOBS}
     if actual['parent_blobs']!=parent: return False
     for node in CI_EVIDENCE_NODES:
