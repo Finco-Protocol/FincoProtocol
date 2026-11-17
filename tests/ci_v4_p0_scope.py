@@ -649,11 +649,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
                                  "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, "
                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                 "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                 "'tests.ci_v4_p0_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, "
-                                 "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                 "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                 "'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                 "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                 "C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                 "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                 "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
                                  '        and C06_APPROVAL.signature_ok()))\n'
                                  "    assert C.COHORT_MODULES[len(own) - 3:len(own)] == ('tests.post432_l01_l02_scope', "
                                  "'tests.r02_ppa_ux_scope', 'tests.bess02_scope')\n"
@@ -693,12 +692,11 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                              "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), F.BASE_COHORTS + (F.__name__, "
                                              "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
                                              "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
-                                             "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'), F.BASE_COHORTS + (F.__name__, "
-                                             "F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
-                                             "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
-                                             "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') + "
-                                             "('tests.ci_v4_p0_scope',))       # C06 is followed by the reviewed B1, B2, B3, V5 bootstrap, "
-                                             'V5-2B and V5-3 successors\n'
+                                             "'tests.ci_v4_full_recovery_scope'), F.BASE_COHORTS + (F.__name__, F.SUCCESSOR, "
+                                             "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                             "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') "
+                                             "+ ('tests.ci_v4_p0_scope',))       # C06 is followed by the reviewed B1, B2, B3, V5 "
+                                             'bootstrap, V5-2B and V5-3 successors\n'
                                              '    assert C.COHORT_MODULES.count(F.__name__)==1\n'
                                              "    for ref in (None,'HEAD'):\n"
                                              '        with C.call_scope():\n'),
@@ -740,27 +738,7 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                              'if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in '
                                              'N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
                                              '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'
-                                             '    from tests import ci_v5_bootstrap_scope as V5\n'),
-                                            ('    with C.call_scope():\n'
-                                             '        assert not F.signature_ok(clone,F.BASE)\n'
-                                             '        for m in C.cohorts():\n'
-                                             "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never "
-                                             'attests an older accepted ref\n'
-                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
-                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
-                                             '        for path in (provider,editor):\n',
-                                             '    with C.call_scope():\n'
-                                             '        assert not F.signature_ok(clone,F.BASE)\n'
-                                             '        for m in C.cohorts():\n'
-                                             "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                             "'tests.ci_v4_p0_scope'):         # a successor never attests an older accepted ref\n"
-                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
-                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
-                                             '        for path in (provider,editor):\n')],
+                                             '    from tests import ci_v5_bootstrap_scope as V5\n')],
  'tests/test_ci_v4_full_recovery_scope.py': [('\n'
                                               '\n'
                                               'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
@@ -860,7 +838,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                               '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
                                               "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
                                               '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v5_gate_scope\')")),\n'
-                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n',
+                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                              '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                              '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", '
+                                              'b"")),\n',
                                               '\n'
                                               '\n'
                                               'def test_registry_mutations_are_rejected(clone):\n'
@@ -875,8 +856,12 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                               '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
                                               '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
                                               "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                              '\'tests.ci_v4_full_recovery_scope\', \'tests.ci_v5_gate_scope\')")),\n'
-                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'),
+                                              "'tests.ci_v4_full_recovery_scope', 'tests.ci_v5_gate_scope', "
+                                              '\'tests.ci_v4_p0_scope\')")),\n'
+                                              '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                              '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                              '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", '
+                                              'b"")),\n'),
                                              ('\n'
                                               'def '
                                               'test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
@@ -1256,15 +1241,14 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                         '"tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", '
                                         '"tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", '
                                         '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", '
-                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ("tests.ci_v5_hardening_scope", '
-                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") + (\'tests.ci_v4_p0_scope\',))\n'
+                                        '"tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), (\'tests.ci_v5_gate_scope\', '
+                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
                                         '    assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B\n'
                                         '    from tests import ci_v4_lean_b3_scope as T3\n'
                                         '    if T.SUCCESSOR in C.COHORT_MODULES:\n'
                                         '        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope", '
                                         '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", '
-                                        '"tests.ci_v4_full_recovery_scope" + (\'tests.ci_v4_p0_scope\',)) and T3.PREDECESSOR == '
-                                        '"tests/ci_v4_lean_b2_scope.py"\n'
+                                        '\'tests.ci_v4_p0_scope\') and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"\n'
                                         '\n'
                                         '\n'
                                         'def test_b1_c06_and_every_older_cohort_still_follow_the_chain():\n'),
@@ -1410,16 +1394,16 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                         "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope'), "
                                         "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope', "
                                         "'tests.ci_v5_gate_scope'), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "
-                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                        "'tests.ci_v4_p0_scope'), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "
-                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                        "'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1\n"
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                        "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v5_hardening_scope', "
+                                        "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',)) and "
+                                        'C.COHORT_MODULES.count(T.__name__) == 1\n'
                                         '    assert C.COHORT_MODULES[-3:] in (("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", '
                                         '"tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", '
                                         '"tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", '
                                         '"tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
-                                        '"tests.ci_v4_full_recovery_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
-                                        '"tests.ci_v4_full_recovery_scope") + (\'tests.ci_v4_p0_scope\',))\n'
+                                        '"tests.ci_v4_full_recovery_scope"), (\'tests.ci_v5_gate_scope\', '
+                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
                                         '    assert B.SUCCESSOR == T.__name__ and B._next() is T and B1.SUCCESSOR == B.__name__ and '
                                         'B1._next() is B\n'
                                         '\n'
@@ -1543,107 +1527,8 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                              '"docs/ci_v4/SOURCE_SUCCESSOR.json", "pinned"),\n'
                                              ']\n'
                                              'assert len({r[0] for r in ROWS}) == len(ROWS)\n')],
- 'tests/test_ci_v4_perf_scope.py': [('            C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or '
-                                     '(\n'
-                                     '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope")\n'
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
-                                     'W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), '
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), '
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
-                                     '                and C06_APPROVAL.signature_ok())\n'
-                                     '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'
-                                     '    with C.call_scope():\n',
-                                     '            C.COHORT_MODULES[-5:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok()) or '
-                                     '(\n'
-                                     '            C.COHORT_MODULES[-6:] == ("tests.ci_v4_perf_scope", "tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope")\n'
-                                     '            and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and Q.signature_ok() and '
-                                     'W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__,), '
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR), '
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
-                                     '                and C06_APPROVAL.signature_ok())\n'
-                                     '    assert len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n'
-                                     '    with C.call_scope():\n'),
-                                    ('                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok())\n'
-                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope")\n'
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
-                                     '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
-                                     'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'))\n"
-                                     '                and C06_APPROVAL.signature_ok()))\n'
-                                     '    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n'
-                                     '\n',
-                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope")\n'
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok())\n'
-                                     '                or (C.COHORT_MODULES == own + ("tests.f03_financing_scope", '
-                                     '"tests.t01e_remediation_scope", "tests.r03_ppa_scope", "tests.f04_financing_scope", '
-                                     '"tests.r04_ppa_scope")\n'
-                                     '                    and G.signature_ok() and Z.signature_ok() and Y.signature_ok() and '
-                                     'Q.signature_ok() and W.signature_ok())) or (C.COHORT_MODULES in (C06_APPROVAL.BASE_COHORTS + '
-                                     '(C06_APPROVAL.__name__,), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, '
-                                     'C06_APPROVAL.SUCCESSOR), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope'), "
-                                     'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                     "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                     "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                     "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                     "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                     "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))\n"
-                                     '                and C06_APPROVAL.signature_ok()))\n'
-                                     '    assert C.COHORT_MODULES.index("tests.bess02_scope") == len(accepted) - 1\n'
-                                     '\n'),
-                                    ('    original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()\n'
+ 'tests/test_ci_v4_perf_scope.py': [('def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():\n'
+                                     '    original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()\n'
                                      '    text = original.decode()\n'
                                      '    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', '
                                      '\'tests.f03_financing_scope\', "\n'
@@ -1656,11 +1541,11 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                      '    try:\n'
                                      '        (ROOT / "tests/fin_v2_cohorts.py").write_bytes(text.replace(marker, marker + ", '
                                      '\'tests.fake_perf_scope\')").encode())\n',
+                                     'def test_an_extra_or_forged_cohort_in_the_registry_fails_the_leaf_and_the_composite():\n'
                                      '    original = (ROOT / "tests/fin_v2_cohorts.py").read_bytes()\n'
                                      '    text = original.decode()\n'
                                      '    marker = ("\'tests.r02_ppa_ux_scope\', \'tests.bess02_scope\', \'tests.ci_v4_perf_scope\', '
-                                     '\'tests.f03_financing_scope\', "\n'
-                                     '              "\'tests.t01e_remediation_scope\', \'tests.r03_ppa_scope\', '
+                                     "'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', "
                                      "'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
                                      "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
                                      "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
@@ -1706,7 +1591,9 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                           '"tests.ci_v4_full_recovery_scope")\n'
                                           '    assert T._next() is H5 and T.SUCCESSOR == H5.__name__\n'
                                           '    assert B3.SUCCESSOR == T.__name__ and B3._next() is T and B2.SUCCESSOR == B3.__name__ and '
-                                          'B2._next() is B3\n',
+                                          'B2._next() is B3\n'
+                                          '    assert B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and '
+                                          'K._next() is B1\n',
                                           '\n'
                                           '\n'
                                           'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
@@ -1749,12 +1636,14 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                           'C.COHORT_MODULES.count(T.__name__) == 1\n'
                                           '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 5                       # exactly the '
                                           'reviewed V5-2B and V5-3 modules gained after the bootstrap; no hardcoded total\n'
-                                          '    assert C.COHORT_MODULES[-5:] == ("tests.ci_v4_lean_b3_scope", '
-                                          '"tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
-                                          '"tests.ci_v4_full_recovery_scope")\n'
+                                          "    assert C.COHORT_MODULES[-6:] == ('tests.ci_v4_lean_b3_scope', "
+                                          "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                          "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')\n"
                                           '    assert T._next() is H5 and T.SUCCESSOR == H5.__name__\n'
                                           '    assert B3.SUCCESSOR == T.__name__ and B3._next() is T and B2.SUCCESSOR == B3.__name__ and '
-                                          'B2._next() is B3\n'),
+                                          'B2._next() is B3\n'
+                                          '    assert B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and '
+                                          'K._next() is B1\n'),
                                          ('\n'
                                           'def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_v5_2b():\n'
                                           '    from tests import u1_scope as U\n'
@@ -1940,7 +1829,8 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                      '\n'
                                      'def test_registered_exactly_once_after_v5_2b_with_only_the_reviewed_full_recovery_behind_it():\n'
                                      '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
-                                     'T.SUCCESSOR)) and C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                     "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR) + ('tests.ci_v4_p0_scope',)) and "
+                                     'C.COHORT_MODULES.count(T.__name__) == 1\n'
                                      '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 3                       # exactly ONE '
                                      'module gained after this cohort; no hardcoded total\n'
                                      '    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", '
@@ -1984,7 +1874,9 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                      '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
                                      "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', "
                                      '\'tests.ci_v5_gate_scope\')")),\n'
-                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n',
+                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                     '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                     '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n',
                                      '\n'
                                      '\n'
                                      'def test_registry_mutations_are_rejected(clone):\n'
@@ -1999,8 +1891,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                      '        ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", \'tests.fake_scope\')")),\n'
                                      '        ("swapped_g6_fr", lambda b: b.replace(tail, b"\'tests.ci_v4_lean_b3_scope\', '
                                      "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v4_full_recovery_scope', "
-                                     '\'tests.ci_v5_gate_scope\')")),\n'
-                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'),
+                                     '\'tests.ci_v5_gate_scope\', \'tests.ci_v4_p0_scope\')")),\n'
+                                     '        ("h5_missing", lambda b: b.replace(b", \'tests.ci_v5_hardening_scope\'", b"")),\n'
+                                     '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
+                                     '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", b"")),\n'),
                                     ('def test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'
                                      '    """C06 -> B1 -> B2 -> B3 -> V5_BOOTSTRAP -> V5_2B -> V5_3 -> FULL_RECOVERY is the ONLY accepted '
                                      'tail: any permutation, duplicate, extra cohort or truncation fails every layer present."""\n'
@@ -2099,7 +1993,9 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                           '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
                                           '    assert T._next() is G6 and T.SUCCESSOR == G6.__name__\n'
                                           '    assert V5.SUCCESSOR == T.__name__ and V5._next() is T and B3.SUCCESSOR == V5.__name__ and '
-                                          'B3._next() is V5\n',
+                                          'B3._next() is V5\n'
+                                          '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                          'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n',
                                           '\n'
                                           '\n'
                                           'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
@@ -2133,17 +2029,19 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                           'def '
                                           'test_registered_exactly_once_after_the_v5_bootstrap_with_only_the_reviewed_v5_3_behind_it():\n'
                                           '    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, '
-                                          "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope', "
-                                          "'tests.ci_v4_p0_scope'), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "
-                                          "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',)) and "
-                                          'C.COHORT_MODULES.count(T.__name__) == 1\n'
+                                          "T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope'), "
+                                          "T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, 'tests.ci_v4_full_recovery_scope') + "
+                                          "('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1\n"
                                           '    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 4                       # exactly ONE '
                                           'module gained after this cohort; no hardcoded total\n'
-                                          '    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_bootstrap_scope", '
-                                          '"tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")\n'
+                                          "    assert C.COHORT_MODULES[-5:] == ('tests.ci_v5_bootstrap_scope', "
+                                          "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
+                                          "'tests.ci_v4_p0_scope')\n"
                                           '    assert T._next() is G6 and T.SUCCESSOR == G6.__name__\n'
                                           '    assert V5.SUCCESSOR == T.__name__ and V5._next() is T and B3.SUCCESSOR == V5.__name__ and '
-                                          'B3._next() is V5\n'),
+                                          'B3._next() is V5\n'
+                                          '    assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and '
+                                          'B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1\n'),
                                          ('\n'
                                           'def '
                                           'test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_3_gate():\n'
@@ -2331,11 +2229,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                         "'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
                                         "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
                                         "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
-                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'), C06_APPROVAL.BASE_COHORTS + "
-                                        "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
-                                        "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                        "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') + "
-                                        "('tests.ci_v4_p0_scope',))\n"
+                                        "'tests.ci_v4_full_recovery_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
+                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
+                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
+                                        "'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
                                         '        and C06_APPROVAL.signature_ok())\n'
                                         '\n'
                                         '\n'
@@ -2393,11 +2290,11 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                         "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
                                         'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
                                         "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                        "'tests.ci_v4_p0_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
-                                        "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
-                                        "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
-                                        "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                        'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                        "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                        "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                        "('tests.ci_v4_p0_scope',))\n"
                                         '        and C06_APPROVAL.signature_ok())\n'
                                         "    assert C.COHORT_MODULES.count('tests.f04_financing_scope')==1\n"
                                         "    for ref in (None,'HEAD'):\n"),
@@ -2422,7 +2319,14 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                         '        B1=C06_APPROVAL._next()\n'
                                         '        B2=B1._next() if B1 is not None and B1.signature_ok() else None\n'
                                         '        B3=B2._next() if B2 is not None and B2.signature_ok() else None\n')],
- 'tests/test_r02_ppa_ux_scope.py': [('    from tests import f03_financing_scope as G\n'
+ 'tests/test_r02_ppa_ux_scope.py': [('\n'
+                                     '\n'
+                                     'def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():\n'
+                                     '    import ast\n'
+                                     "    base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], "
+                                     'cwd=ROOT).decode()\n'
+                                     '    from tests import ci_v4_perf_scope as F\n'
+                                     '    from tests import f03_financing_scope as G\n'
                                      '    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
                                      "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
                                      "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',\n"
@@ -2432,18 +2336,114 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                      "'tests.ci_v4_full_recovery_scope') if m in C.COHORT_MODULES)\n"
                                      '    B1 = C06_APPROVAL._next()\n'
                                      '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
-                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n',
-                                     '    from tests import f03_financing_scope as G\n'
-                                     '    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
-                                     "    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
+                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                     '    B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                     '    B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                     '    B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                     '    B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                     '    if len(nxt) == 14 and B7 is not None and B7.signature_ok():\n'
+                                     '        expected = B7.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 13 and B6 is not None and B6.signature_ok():\n'
+                                     '        expected = B6.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 12 and B5 is not None and B5.signature_ok():\n'
+                                     '        expected = B5.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 11 and B4 is not None and B4.signature_ok():\n'
+                                     '        expected = B4.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 10 and B3 is not None and B3.signature_ok():\n'
+                                     '        expected = B3.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 9 and B2 is not None and B2.signature_ok():\n'
+                                     '        expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\n'
+                                     '        expected = B1.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 6 and W.signature_ok():\n'
+                                     '        expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 5 and Q.signature_ok():\n'
+                                     '        expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 4 and Y.signature_ok():\n'
+                                     '        expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 3 and Z.signature_ok():\n'
+                                     '        expected = Z.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 2 and G.signature_ok():\n'
+                                     '        expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    elif len(nxt) == 1 and F.signature_ok():\n'
+                                     '        expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected\n'
+                                     '    old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) '
+                                     "and n.targets[0].id == 'COHORT_MODULES')\n"
+                                     '    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
+                                     "    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and "
+                                     "core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n"
+                                     '\n'
+                                     '\n'
+                                     'def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():\n',
+                                     '\n'
+                                     '\n'
+                                     'def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():\n'
+                                     '    from tests.fin_v2_cohorts import call_scope\n'
+                                     '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation\n'
+                                     '        import ast\n'
+                                     "        base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], "
+                                     'cwd=ROOT).decode()\n'
+                                     '        from tests import ci_v4_perf_scope as F\n'
+                                     '        from tests import f03_financing_scope as G\n'
+                                     '        from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y\n'
+                                     "        nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', "
                                      "'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',\n"
-                                     "                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
+                                     "                                'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', "
                                      "'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
                                      "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
                                      "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') if m in C.COHORT_MODULES)\n"
-                                     '    B1 = C06_APPROVAL._next()\n'
-                                     '    B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
-                                     '    expected = N.expected_handoff(ROOT, X.REGISTRY)\n')],
+                                     '        B1 = C06_APPROVAL._next()\n'
+                                     '        B2 = B1._next() if B1 is not None and B1.signature_ok() else None\n'
+                                     '        expected = N.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        B3 = B2._next() if B2 is not None and B2.signature_ok() else None\n'
+                                     '        B4 = B3._next() if B3 is not None and B3.signature_ok() else None\n'
+                                     '        B5 = B4._next() if B4 is not None and B4.signature_ok() else None\n'
+                                     '        B6 = B5._next() if B5 is not None and B5.signature_ok() else None\n'
+                                     '        B7 = B6._next() if B6 is not None and B6.signature_ok() else None\n'
+                                     '        B8 = B7._next() if B7 is not None and B7.signature_ok() else None\n'
+                                     '        if len(nxt) == 15 and B8 is not None and B8.signature_ok():\n'
+                                     '            expected = B8.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 14 and B7 is not None and B7.signature_ok():\n'
+                                     '            expected = B7.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 13 and B6 is not None and B6.signature_ok():\n'
+                                     '            expected = B6.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 12 and B5 is not None and B5.signature_ok():\n'
+                                     '            expected = B5.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 11 and B4 is not None and B4.signature_ok():\n'
+                                     '            expected = B4.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 10 and B3 is not None and B3.signature_ok():\n'
+                                     '            expected = B3.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 9 and B2 is not None and B2.signature_ok():\n'
+                                     '            expected = B2.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 8 and B1 is not None and B1.signature_ok():\n'
+                                     '            expected = B1.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 7 and C06_APPROVAL.signature_ok():\n'
+                                     '            expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 6 and W.signature_ok():\n'
+                                     '            expected = W.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 5 and Q.signature_ok():\n'
+                                     '            expected = Q.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 4 and Y.signature_ok():\n'
+                                     '            expected = Y.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 3 and Z.signature_ok():\n'
+                                     '            expected = Z.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 2 and G.signature_ok():\n'
+                                     '            expected = G.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        elif len(nxt) == 1 and F.signature_ok():\n'
+                                     '            expected = F.expected_handoff(ROOT, X.REGISTRY)\n'
+                                     '        assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected\n'
+                                     '        old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, '
+                                     "ast.Assign) and n.targets[0].id == 'COHORT_MODULES')\n"
+                                     '        core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]\n'
+                                     "        assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and "
+                                     "core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)\n"
+                                     '\n'
+                                     '\n'
+                                     'def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():\n')],
  'tests/test_r03_ppa_scope.py': [('\n'
                                   '\n'
                                   'def test_signature_exactness_and_reviewed_substitutions_hold():\n'
@@ -2543,11 +2543,10 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                   "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), C06_APPROVAL.BASE_COHORTS + "
                                   "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
                                   "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
-                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'), "
-                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
-                                  "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                  "'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), C06_APPROVAL.BASE_COHORTS + "
+                                  "(C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                  "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                  "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + ('tests.ci_v4_p0_scope',))\n"
                                   '        and C06_APPROVAL.signature_ok())\n'
                                   '    assert C.COHORT_MODULES.count("tests.r03_ppa_scope") == 1\n'
                                   '\n'),
@@ -2668,11 +2667,11 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                   "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
                                   'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
                                   "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                  "'tests.ci_v4_p0_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, "
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                  'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
                                   "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                  "'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                  "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                  "('tests.ci_v4_p0_scope',))\n"
                                   '                                                    and C06_APPROVAL.signature_ok())\n'
                                   '    assert C.COHORT_MODULES.count("tests.r04_ppa_scope") == 1\n'
                                   '\n'),
@@ -2902,11 +2901,11 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                            "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope'), "
                                            'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
                                            "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
-                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', "
-                                           "'tests.ci_v4_p0_scope'), C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, "
-                                           "C06_APPROVAL.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', "
-                                           "'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', "
-                                           "'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') + ('tests.ci_v4_p0_scope',))\n"
+                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'), "
+                                           'C06_APPROVAL.BASE_COHORTS + (C06_APPROVAL.__name__, C06_APPROVAL.SUCCESSOR, '
+                                           "'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', "
+                                           "'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') + "
+                                           "('tests.ci_v4_p0_scope',))\n"
                                            '        and C06_APPROVAL.signature_ok())\n'
                                            '    assert C.COHORT_MODULES.count("tests.t01e_remediation_scope") == 1\n'
                                            '\n'),

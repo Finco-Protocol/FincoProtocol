@@ -93,53 +93,58 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
 
 
 def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one():
-    import ast
-    base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
-    from tests import ci_v4_perf_scope as F
-    from tests import f03_financing_scope as G
-    from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
-    nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
-                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') if m in C.COHORT_MODULES)
-    B1 = C06_APPROVAL._next()
-    B2 = B1._next() if B1 is not None and B1.signature_ok() else None
-    expected = N.expected_handoff(ROOT, X.REGISTRY)
-    B3 = B2._next() if B2 is not None and B2.signature_ok() else None
-    B4 = B3._next() if B3 is not None and B3.signature_ok() else None
-    B5 = B4._next() if B4 is not None and B4.signature_ok() else None
-    B6 = B5._next() if B5 is not None and B5.signature_ok() else None
-    B7 = B6._next() if B6 is not None and B6.signature_ok() else None
-    if len(nxt) == 14 and B7 is not None and B7.signature_ok():
-        expected = B7.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 13 and B6 is not None and B6.signature_ok():
-        expected = B6.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 12 and B5 is not None and B5.signature_ok():
-        expected = B5.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 11 and B4 is not None and B4.signature_ok():
-        expected = B4.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 10 and B3 is not None and B3.signature_ok():
-        expected = B3.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 9 and B2 is not None and B2.signature_ok():
-        expected = B2.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 8 and B1 is not None and B1.signature_ok():
-        expected = B1.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 7 and C06_APPROVAL.signature_ok():
-        expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 6 and W.signature_ok():
-        expected = W.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 5 and Q.signature_ok():
-        expected = Q.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 4 and Y.signature_ok():
-        expected = Y.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 3 and Z.signature_ok():
-        expected = Z.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 2 and G.signature_ok():
-        expected = G.expected_handoff(ROOT, X.REGISTRY)
-    elif len(nxt) == 1 and F.signature_ok():
-        expected = F.expected_handoff(ROOT, X.REGISTRY)
-    assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected
-    old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
-    core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]
-    assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        import ast
+        base = subprocess.check_output(['git', 'show', X.BASE + ':tests/fin_v2_cohorts.py'], cwd=ROOT).decode()
+        from tests import ci_v4_perf_scope as F
+        from tests import f03_financing_scope as G
+        from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
+        nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
+                                'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') if m in C.COHORT_MODULES)
+        B1 = C06_APPROVAL._next()
+        B2 = B1._next() if B1 is not None and B1.signature_ok() else None
+        expected = N.expected_handoff(ROOT, X.REGISTRY)
+        B3 = B2._next() if B2 is not None and B2.signature_ok() else None
+        B4 = B3._next() if B3 is not None and B3.signature_ok() else None
+        B5 = B4._next() if B4 is not None and B4.signature_ok() else None
+        B6 = B5._next() if B5 is not None and B5.signature_ok() else None
+        B7 = B6._next() if B6 is not None and B6.signature_ok() else None
+        B8 = B7._next() if B7 is not None and B7.signature_ok() else None
+        if len(nxt) == 15 and B8 is not None and B8.signature_ok():
+            expected = B8.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 14 and B7 is not None and B7.signature_ok():
+            expected = B7.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 13 and B6 is not None and B6.signature_ok():
+            expected = B6.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 12 and B5 is not None and B5.signature_ok():
+            expected = B5.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 11 and B4 is not None and B4.signature_ok():
+            expected = B4.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 10 and B3 is not None and B3.signature_ok():
+            expected = B3.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 9 and B2 is not None and B2.signature_ok():
+            expected = B2.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 8 and B1 is not None and B1.signature_ok():
+            expected = B1.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 7 and C06_APPROVAL.signature_ok():
+            expected = C06_APPROVAL.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 6 and W.signature_ok():
+            expected = W.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 5 and Q.signature_ok():
+            expected = Q.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 4 and Y.signature_ok():
+            expected = Y.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 3 and Z.signature_ok():
+            expected = Z.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 2 and G.signature_ok():
+            expected = G.expected_handoff(ROOT, X.REGISTRY)
+        elif len(nxt) == 1 and F.signature_ok():
+            expected = F.expected_handoff(ROOT, X.REGISTRY)
+        assert N.exact_blobs_ok() and (ROOT / X.REGISTRY).read_bytes() == expected
+        old = next(ast.literal_eval(n.value) for n in ast.parse(base).body if isinstance(n, ast.Assign) and n.targets[0].id == 'COHORT_MODULES')
+        core = C.COHORT_MODULES[:len(C.COHORT_MODULES) - len(nxt)]
+        assert C.COHORT_MODULES == old + ('tests.r02_ppa_ux_scope', 'tests.bess02_scope') + nxt and core[-6:] == TAIL + ('tests.bess02_scope',) and len(set(C.COHORT_MODULES)) == len(C.COHORT_MODULES)
 
 
 def test_predecessors_and_older_guards_follow_this_cohort_only_through_the_reviewed_handoffs():
