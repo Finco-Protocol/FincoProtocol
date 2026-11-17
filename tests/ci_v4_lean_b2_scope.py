@@ -671,6 +671,19 @@ def _snapshot(root, ref, paths):
     return blobs, modes
 
 
+def _p0_pins_frozen_edit(path, value, root, ref):
+    """P1 (post-#457): one of the two named CI V4 control blobs may differ from BASE only to the EXACT pin of the registered P0 terminal
+    (its signature holds and its manifest pins exactly this blob). Any other frozen path, blob or mode stays equal to BASE."""
+    try:
+        from tests.fin_v2_cohorts import COHORT_MODULES
+        if 'tests.ci_v4_p0_scope' not in COHORT_MODULES:
+            return False
+        from tests import ci_v4_p0_scope as P0
+        return value is not None and P0.supersedes(path, value, root, ref)
+    except (ImportError, OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
+        return False
+
+
 def _signature_ok(root, ref, closure=False):
     """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""
     try:
@@ -720,7 +733,9 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
+        if any((current.get(p) != _blob(_base_bytes(key, p)) and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
+                                                               and _p0_pins_frozen_edit(p, current.get(p), root, ref)))
+               or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):

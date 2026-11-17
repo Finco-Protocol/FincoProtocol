@@ -138,3 +138,99 @@ def test_foreign_path_fails_full_closure(subject):
             assert T.signature_ok(subject)
             assert not T.exact_blobs_ok(subject) and not C.valid(subject)
     finally: (subject / p).unlink()
+
+
+# ── P1 Correction A: the literal P0 hooks in historical cohorts admit nothing but the exact P0 pins ──────────────────────────────────
+P1_HOOKED = ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope",
+             "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
+
+
+def variant(root, edits):
+    """Commit a negative variant (edits: {path: callable(bytes)->bytes | 'chmod' | 'new:<bytes>'}); return (ref, restore)."""
+    head = git(root, "rev-parse", "HEAD").decode().strip()
+    for path, how in edits.items():
+        f = root / path
+        if how == "chmod":
+            f.chmod(f.stat().st_mode | 0o111)
+        elif isinstance(how, bytes):
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(how)
+        else:
+            f.write_bytes(how(f.read_bytes()))
+    git(root, "add", "-A")
+    git(root, "commit", "--quiet", "--allow-empty", "-m", "negative variant")
+    ref = git(root, "rev-parse", "HEAD").decode().strip()
+
+    def restore():
+        git(root, "reset", "--hard", "--quiet", head)
+        git(root, "clean", "-fdxq")
+    return ref, restore
+
+
+def verdicts(root, ref, names):
+    import importlib
+    with C.call_scope():
+        return {n: importlib.import_module(n).exact_blobs_ok(root, ref) for n in names}, C.valid(root, ref)
+
+
+def test_p1_hooks_are_literal_in_every_historical_cohort():
+    for name in P1_HOOKED:
+        path = "tests/%s.py" % name.split(".")[1]
+        src = (ROOT / path).read_text()
+        assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')" in src, path
+    v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
+    assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
+    assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
+            "'tests/test_ci_v4_nodes.py'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
+    gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
+    assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
+    assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
+    assert T.CI_PATHS <= T.NEW and not (T.CI_PATHS & T.REPLACED)
+
+
+@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json"])
+def test_a_foreign_control_blob_is_rejected_by_every_hooked_historical_cohort(subject, path):
+    ref, restore = variant(subject, {path: lambda b: b.replace(b'"', b'"', 1) + b"\n"})
+    try:
+        each, ok = verdicts(subject, ref, P1_HOOKED + ("tests.ci_v4_scope", T.__name__))
+        assert not ok and not any(each.values()), each
+    finally:
+        restore()
+
+
+def test_a_third_frozen_control_path_is_never_admitted(subject):
+    ref, restore = variant(subject, {"docs/ci_v4/ci-v4-policy.json": lambda b: b + b"\n"})
+    try:
+        each, ok = verdicts(subject, ref, P1_HOOKED)
+        assert not ok and not any(each.values()), each
+    finally:
+        restore()
+
+
+def test_a_mode_change_of_an_admitted_control_blob_is_rejected(subject):
+    ref, restore = variant(subject, {"docs/ci_v4/node_weights.json": "chmod"})
+    try:
+        each, ok = verdicts(subject, ref, P1_HOOKED)
+        assert not ok and not any(each.values()), each
+    finally:
+        restore()
+
+
+@pytest.mark.parametrize("path", [".github/workflows/ci_perf_guard_fast.yml", "tools/ci_perf_guard2.py", "tools/ci_v5_epoch_helper.py"])
+def test_a_ci_path_outside_the_two_literal_guard_paths_is_rejected(subject, path):
+    ref, restore = variant(subject, {path: b"# synthetic negative control\n"})
+    try:
+        each, ok = verdicts(subject, ref, ("tests.ci_v4_scope", T.__name__))
+        assert not ok and not each["tests.ci_v4_scope"], each
+    finally:
+        restore()
+
+
+def test_one_byte_in_the_p0_reviewed_ci_v4_scope_hook_is_rejected(subject):
+    ref, restore = variant(subject, {"tests/ci_v4_scope.py": lambda b: b.replace(b"P0.CI_PATHS if", b"P0.CI_PATHS  if", 1)})
+    try:
+        each, ok = verdicts(subject, ref, ("tests.ci_v5_gate_scope", T.__name__))
+        assert not ok and not each[T.__name__], each
+    finally:
+        restore()
