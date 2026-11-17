@@ -2,7 +2,16 @@
 import json
 
 import pytest
+from tests import fin_v2_cohorts as C
 from tests import wf03_lifecycle_scope as F
+
+
+@pytest.fixture(autouse=True)
+def one_governance_call_per_test():
+    """ONE outer governance call per test: each cohort verdict is computed once and dropped when the test ends (nothing is cached across tests,
+    refs or monkeypatches). The negative tests patch the reader BEFORE their first call, so no verdict can predate a mutation."""
+    with C.call_scope():
+        yield
 
 
 def test_b1_source_complete_and_predecessor_history_unchanged():
