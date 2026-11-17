@@ -11,30 +11,33 @@
 `ACTIVE` without `VERIFIED` means the controls exist, not that the target is met. If the first benign PR is over budget, the label is
 `PERFORMANCE_TARGET_NOT_MET` and the guard has done its job by blocking it.
 
-## Prerequisite (V4 governance)
+## Prerequisite (V4 governance): resolved in Correction A
 
-On `main` d32f4987, V4 governance rejects this PR's control paths (measured, see `00_EXECUTIVE_VERDICT_HR.md`):
+`99b8661b` was rejected by 44 cohorts. Correction A admits the P1 paths through finite literal handoffs inside the existing P0 terminal (no 49th cohort):
+- the FROZEN predicates of B1, B2, B3, V5 bootstrap, V5-2B, V5-3 and FULL recovery, and their tests, accept `node_split_policy.json` / `node_weights.json` **only** at the exact P0 pin;
+- the CI V4 cohort admits **only** `P0.CI_PATHS` (`ci_perf_guard.yml`, `ci_perf_guard.py`).
 
-- `docs/ci_v4/node_split_policy.json` and `docs/ci_v4/node_weights.json`: 44 cohorts reject them, because B1, B2, B3, V5 bootstrap, V5-2B, V5-3, FULL-recovery and P0 each hold an unconditional FROZEN equality to their BASE blob.
-- `.github/workflows/ci_perf_guard.yml` and `tools/ci_perf_guard.py`: 17 early cohorts reject any new `.github/` or `tools/` path.
+The central governance gate is PASS with 48/48 cohorts exact. Every other path, blob, mode or prefix is still rejected (negative tests in `tests/test_ci_v4_p0_scope.py`).
 
-The owner must decide between:
-- (a) an owner-authorised governance successor that teaches those FROZEN predicates and the CI-path hook to accept exactly these literal pins; or
-- (b) merging P1 with the V4 governance check red, explicitly overriding it once.
-
-The guard and the split cannot become `ACTIVE` before one of these happens.
+V4 trusts the terminal manifest `docs/ci_v4/p0_40min/SOURCE_SUCCESSOR.json`: a change that re-pins it consistently is accepted by self-consistency alone. This was already true before P1, and owner review of that file is the control.
 
 ## Owner steps after the merge (in order)
 
 1. **Confirm the guard runs.** On the next PR, open *Actions → CI performance budget guard*. One run per completed required workflow. The commit-status list of the PR head shows `CI Performance Budget` as `pending`, then `success` or `failure`.
 2. **Confirm the split is scheduled.** In that PR's *CI V4 PR → plan* artifact, `ci-v4-plan.json` must contain a `node_split.modules["tests/test_u1_scope.py"]` entry with `parts: 3`, and `schedule.workers` must be 4.
-3. **Make the guard required.** Settings → Branches → the `main` protection rule (or the ruleset) → *Require status checks to pass* → add **`CI Performance Budget`**. Choose the source "any" (it is a commit status, not a check run) and keep every existing required check.
+3. **Make the guard required.** Settings → Branches → the `main` protection rule (or the ruleset) → *Require status checks to pass* → add **`CI Performance Budget`**. Keep every existing required check. Where the ruleset offers it, restrict the expected source to the **GitHub Actions** app; otherwise "any". The sweep re-verifies every `success` within 15 minutes, and V4 rejects any new `.github/` path, so a status forged by another workflow does not survive.
    API equivalent, admin token only, run by the owner:
    ```
    gh api repos/Finco-Protocol/FincoProtocol/branches/main/protection/required_status_checks/contexts -X POST -f 'contexts[]=CI Performance Budget'
    ```
    This adds one context and removes nothing.
 4. **Verify.** Open one benign PR, such as a documentation typo that still needs its own exact-source admission. Record the guard's verdict and summary. Only an end-to-end ≤ 2,400 s `success` there makes the state `VERIFIED`.
+
+## Operational notes
+
+- **"Re-run failed jobs"** mixes attempts → `PERFORMANCE_UNVERIFIED` (fail-closed). Use a full re-run or push a new commit.
+- **Reopening a PR on an old head:** the clock starts at the first run's creation, so the result is `OVER_BUDGET`. Push a new commit.
+- **A transient GitHub API error** (429/5xx/rate-limit): no status is written and the guard run is red; the next event or sweep re-judges. It is never `success`.
 
 ## Rollback
 
