@@ -163,7 +163,7 @@ def test_the_weights_file_is_untouched_by_this_successor():
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_then_only_the_v5_bootstrap():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"))
+    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope"))
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b3_scope") == 1
 
 
@@ -282,13 +282,14 @@ def test_the_registry_tail_is_one_finite_sequence_for_c06_b1_b2_b3_the_v5_bootst
     from tests import ci_v5_hardening_scope as H
     from tests import ci_v5_gate_scope as G
     from tests import ci_v4_full_recovery_scope as FR
+    from tests import ci_v4_p0_scope as P0
     exact = C.COHORT_MODULES
-    assert exact[-8:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
-    layers = (K, B1, B, T, V, H, G, FR)
+    assert exact[-9:] == ("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")
+    layers = (K, B1, B, T, V, H, G, FR, P0)
     with C.call_scope():
         assert all(m.signature_ok() for m in layers)                       # state A: the pristine registry is accepted by every layer
-    c06, b1, b2, b3, v5, h5, g6, fr = exact[-8:]
-    head = exact[:-8]
+    c06, b1, b2, b3, v5, h5, g6, fr = exact[-9:-1]
+    head = exact[:-9]
     variants = {
         "b2_b3_swapped": head + (c06, b1, b3, b2, v5, h5, g6, fr),
         "b1_b2_swapped": head + (c06, b2, b1, b3, v5, h5, g6, fr),
@@ -309,6 +310,10 @@ def test_the_registry_tail_is_one_finite_sequence_for_c06_b1_b2_b3_the_v5_bootst
         "v5_dropped": head + (c06, b1, b2, b3, h5, g6, fr),
         "h5_dropped": head + (c06, b1, b2, b3, v5, g6, fr),
     }
+    variants = {name: value if "tests.ci_v4_p0_scope" in value else value + ("tests.ci_v4_p0_scope",)
+                for name, value in variants.items()}
+    variants.update(p0_dropped=exact[:-1], p0_duplicate=exact + ("tests.ci_v4_p0_scope",),
+                    p0_fr_swapped=exact[:-2] + ("tests.ci_v4_p0_scope", "tests.ci_v4_full_recovery_scope"))
     for name, tail in variants.items():
         monkeypatch.setattr(C, "COHORT_MODULES", tail)
         for layer in layers:
