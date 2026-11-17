@@ -99,6 +99,9 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
     assert not any(p.startswith((".github/", "tools/", "app/", "financial_engine/", "finco_core/", "domain/", "frontend/", "static/", "research/"))
                    for p in T.OWNED_PATHS | {T.MANIFEST})
     for path in T.FROZEN:
+        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json') and T._p0_pins_frozen_edit(
+                path, T._blob((ROOT / path).read_bytes()), ROOT, None):      # P1: exactly these two control blobs, only at the exact P0 pin
+            continue
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path
     assert {"tools/ci_v4_select.py", "docs/ci_v4/ci-v4-policy.json", ".github/workflows/ci_v4_pr.yml", "tools/ci_v4_aggregate.py",
             "tools/ci_v4_schedule.py", "docs/ci_v4/module_weights.json", "docs/ci_v4/node_split_policy.json"} <= set(T.FROZEN)

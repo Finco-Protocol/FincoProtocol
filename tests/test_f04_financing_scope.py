@@ -62,7 +62,12 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
         assert (ROOT/path).read_bytes()==authority.expected_handoff(ROOT,path)
     from tests import ci_v5_bootstrap_scope as V5
     from tests import ci_v5_gate_scope as GT
+    from tests import ci_v4_p0_scope as _P0
     for path in F.FROZEN:
+        if path == 'tests/ci_v4_scope.py' and _P0.signature_ok() and path in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)
+            assert (ROOT / path).read_bytes() == _P0.expected_handoff(ROOT, path)
+            assert F._blob((ROOT / path).read_bytes()) == _P0.manifest()['source_blobs'][path]
+            continue
         if GT.signature_ok() and path in GT.HANDOFFS:      # the V5-3 gate successor further substitutes this CI module (literal, pin-exact)
             assert (ROOT/path).read_bytes()==GT.expected_handoff(ROOT,path)
             assert F._blob((ROOT/path).read_bytes())==GT.manifest()['source_blobs'][path]
