@@ -104,48 +104,50 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
-    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
-    N = T._next()
-    N2 = N._next() if N is not None and N.signature_ok() else None
-    N3 = N2._next() if N2 is not None and N2.signature_ok() else None
-    N4 = N3._next() if N3 is not None and N3.signature_ok() else None
-    N5 = N4._next() if N4 is not None and N4.signature_ok() else None
-    N6 = N5._next() if N5 is not None and N5.signature_ok() else None
-    for p in T.HANDOFFS:
-        from tests import ci_v4_p0_scope as P0
-        if P0.signature_ok() and p in P0.HANDOFFS:
-            assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+        N = T._next()
+        N2 = N._next() if N is not None and N.signature_ok() else None
+        N3 = N2._next() if N2 is not None and N2.signature_ok() else None
+        N4 = N3._next() if N3 is not None and N3.signature_ok() else None
+        N5 = N4._next() if N4 is not None and N4.signature_ok() else None
+        N6 = N5._next() if N5 is not None and N5.signature_ok() else None
+        for p in T.HANDOFFS:
+            from tests import ci_v4_p0_scope as P0
+            if P0.signature_ok() and p in P0.HANDOFFS:
+                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further reviewed FULL-recovery substitution of this shared path
+                assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N5 is not None and N5.signature_ok() and p in N5.HANDOFFS:      # the further reviewed V5-3 substitution of this shared path
+                assert (ROOT / p).read_bytes() == N5.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the further reviewed V5-2B substitution of this shared path
+                assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the further reviewed V5 bootstrap substitution of this shared path
+                assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this shared path
+                assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path
+                assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further reviewed FULL-recovery substitution of this shared path
-            assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N5 is not None and N5.signature_ok() and p in N5.HANDOFFS:      # the further reviewed V5-3 substitution of this shared path
-            assert (ROOT / p).read_bytes() == N5.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N4 is not None and N4.signature_ok() and p in N4.HANDOFFS:      # the further reviewed V5-2B substitution of this shared path
-            assert (ROOT / p).read_bytes() == N4.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N3 is not None and N3.signature_ok() and p in N3.HANDOFFS:      # the further reviewed V5 bootstrap substitution of this shared path
-            assert (ROOT / p).read_bytes() == N3.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N2 is not None and N is not None and N.SUCCESSOR in C.COHORT_MODULES and N2.signature_ok() and p in N2.HANDOFFS:      # the further reviewed B3 substitution of this shared path
-            assert (ROOT / p).read_bytes() == N2.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if N is not None and N.signature_ok() and p in N.HANDOFFS:                  # the further reviewed B2 substitution of this shared path
-            assert (ROOT / p).read_bytes() == N.expected_handoff(ROOT, p)
-            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-    for ref in (None, "HEAD"):
-        with C.call_scope():
-            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and K.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
+        for ref in (None, "HEAD"):
+            with C.call_scope():
+                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and K.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_c06():

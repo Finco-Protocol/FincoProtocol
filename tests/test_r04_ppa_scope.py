@@ -106,24 +106,26 @@ def test_owned_set_is_finite_literal_and_has_no_forbidden_path():
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold():
-    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
-    for p in T.HANDOFFS:
-        from tests import ci_v4_p0_scope as P0
-        if P0.signature_ok() and p in P0.HANDOFFS:
-            assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+        for p in T.HANDOFFS:
+            from tests import ci_v4_p0_scope as P0
+            if P0.signature_ok() and p in P0.HANDOFFS:
+                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            B1 = C06_APPROVAL._next()
+            B2 = B1._next() if B1 is not None and B1.signature_ok() else None
+            B3 = B2._next() if B2 is not None and B2.signature_ok() else None
+            B4 = B3._next() if B3 is not None and B3.signature_ok() else None
+            B5 = B4._next() if B4 is not None and B4.signature_ok() else None
+            B6 = B5._next() if B5 is not None and B5.signature_ok() else None
+            B7 = B6._next() if B6 is not None and B6.signature_ok() else None
+            authority = (B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
+                         else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T)
+            assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        B1 = C06_APPROVAL._next()
-        B2 = B1._next() if B1 is not None and B1.signature_ok() else None
-        B3 = B2._next() if B2 is not None and B2.signature_ok() else None
-        B4 = B3._next() if B3 is not None and B3.signature_ok() else None
-        B5 = B4._next() if B4 is not None and B4.signature_ok() else None
-        B6 = B5._next() if B5 is not None and B5.signature_ok() else None
-        B7 = B6._next() if B6 is not None and B6.signature_ok() else None
-        authority = (B7 if B7 is not None and B7.signature_ok() and p in B7.HANDOFFS else B6 if B6 is not None and B6.signature_ok() and p in B6.HANDOFFS else B5 if B5 is not None and B5.signature_ok() and p in B5.HANDOFFS else B4 if B4 is not None and B4.signature_ok() and p in B4.HANDOFFS else B3 if B3 is not None and B3.signature_ok() and p in B3.HANDOFFS else B2 if B2 is not None and B2.signature_ok() and p in B2.HANDOFFS else B1 if B1 is not None and B1.signature_ok() and p in B1.HANDOFFS             # the further reviewed B1 substitution of this shared path
-                     else C06_APPROVAL if C06_APPROVAL.signature_ok() and p in C06_APPROVAL.HANDOFFS else T)
-        assert (ROOT / p).read_bytes() == authority.expected_handoff(ROOT, p)
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_f04():

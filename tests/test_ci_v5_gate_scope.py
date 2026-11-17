@@ -132,24 +132,26 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
 
 
 def test_signature_exactness_and_reviewed_substitutions_hold(clone):
-    assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
-    from tests import ci_v4_full_recovery_scope as FR
-    for p in T.HANDOFFS:
-        from tests import ci_v4_p0_scope as P0
-        if P0.signature_ok() and p in P0.HANDOFFS:
-            assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        assert T.signature_ok() and T.exact_blobs_ok() and T.reviewed_edits_ok()
+        from tests import ci_v4_full_recovery_scope as FR
+        for p in T.HANDOFFS:
+            from tests import ci_v4_p0_scope as P0
+            if P0.signature_ok() and p in P0.HANDOFFS:
+                assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+                assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+                continue
+            if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)
+                assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
+            else:
+                assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-            continue
-        if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor further substitutes this shared path (literal, pin-exact)
-            assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
-        else:
-            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-    for p in T.REPLACED:
-        assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
-    for ref in (None, "HEAD"):
-        with C.call_scope():
-            assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
+        for p in T.REPLACED:
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+        for ref in (None, "HEAD"):
+            with C.call_scope():
+                assert T.signature_ok(clone, ref) and T.exact_blobs_ok(clone, ref) and V5.exact_blobs_ok(clone, ref) and C.valid(clone, ref)
 
 
 def test_registered_exactly_once_after_v5_2b_with_only_the_reviewed_full_recovery_behind_it():
