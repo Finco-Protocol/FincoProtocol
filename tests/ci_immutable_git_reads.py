@@ -1,4 +1,4 @@
-"""Per-test, content-addressed memo for Git object reads named ONLY by full object ids (test infrastructure, never production).
+"""Scoped, content-addressed memo for Git object reads named ONLY by full object ids (test infrastructure, never production).
 
 Why: the exact-source governance chain re-reads the same immutable objects (``git show <full-sha>:<path>``) tens of thousands of
 times per test through 48 cohort modules (e.g. the unmemoised ``reviewed_edits_ok`` recursion). A Git object id is the hash of the
@@ -16,7 +16,8 @@ Fail-closed rules (each one is an attack test in tests/test_ci_immutable_git_rea
 * Replace refs, grafts or a shallow file disable the memo; so do GIT_DIR/GIT_OBJECT_DIRECTORY-style location overrides, ``env=``,
   ``input=`` or any other keyword, a substituted ``subprocess.run``/``Popen``, and calls from any thread other than the one that
   opened the scope.
-* Lifetime: one ``scope()`` (the per-test fixture in tests/conftest.py). The memo is dropped and ``subprocess.check_output`` restored
+* Lifetime: one explicit ``scope()`` block (today: the two import-time historical-subject resolutions in tests/test_v9p2a_odr_successor.py and
+  tests/test_rc7c_candidate_successor.py; tests/conftest.py is a protected path and is not used). The memo is dropped and ``subprocess.check_output`` restored
   when the outermost scope exits, also on exceptions. A caller that already substituted ``check_output`` keeps its substitute.
 * Verdicts are never memoised: every governance function recomputes its decision from the bytes on every call.
 """
@@ -212,7 +213,7 @@ def check_output(*popenargs, **kwargs):
 
 @contextlib.contextmanager
 def scope():
-    """One test: the memo exists only inside the OUTERMOST block of the opening thread and is dropped on exit (also on exceptions)."""
+    """One read-only block: the memo exists only inside the OUTERMOST block of the opening thread and is dropped on exit (also on exceptions)."""
     if _OWNER:
         yield
         return

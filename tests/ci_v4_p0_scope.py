@@ -25,9 +25,9 @@ BASE_COHORTS = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d
 NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p0_40min/CANDIDATE_PATH_MANIFEST.json', 'docs/ci_v4/p0_40min/CURRENT_STATE_AND_ROOT_CAUSE.md', 'docs/ci_v4/p0_40min/DESIGN_AND_SAFETY.md', 'docs/ci_v4/p0_40min/INVENTORY_RECONCILIATION.json', 'docs/ci_v4/p0_40min/NEGATIVE_TAMPER_EVIDENCE.md', 'docs/ci_v4/p0_40min/NEXT_OWNER_ACTIONS.md', 'docs/ci_v4/p0_40min/PERFORMANCE_AB_COMPARISON.csv', 'docs/ci_v4/p0_40min/WORKER_ASSIGNMENT_SIMULATION.csv', 'docs/ci_v4/p0_40min/base-governance.json', 'docs/ci_v4/p0_40min/cache-mutation-evidence.json', 'docs/ci_v4/p0_40min/candidate-tests.xml', 'docs/ci_v4/p0_40min/candidate/benchmark_scope.py', 'docs/ci_v4/p0_40min/candidate/full_coverage.py', 'docs/ci_v4/p0_40min/candidate/scoped_evaluate.py', 'docs/ci_v4/p0_40min/candidate/simulate_workers.py', 'docs/ci_v4/p0_40min/candidate/test_full_coverage.py', 'docs/ci_v4/p0_40min/targeted-tests.xml', 'docs/ci_v4/p0_40min/worker-simulation-summary.jsonl', 'docs/ci_v4/p0_40min/workflow-probe-governance.json', 'tests/ci_v4_p0_scope.py', 'tests/test_ci_v4_p0_scope.py',
                  'tests/ci_immutable_git_reads.py', 'tests/test_ci_immutable_git_reads.py'))
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
-# Correction E: one per-test autouse memo pair in tests/conftest.py (content-addressed Git object reads for every test; one read-only
-# call_scope for the reference-admission module only) and one read-only import-time scope at the two historical-subject sites.
-REPLACED = frozenset(('tests/conftest.py', 'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'))
+# Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
+# tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
+REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(())
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).

@@ -32,7 +32,7 @@ def repo(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _outside_any_scope():
-    # The suite-wide per-test scope (tests/conftest.py) is closed here so every attack opens its own scope from a clean state.
+    # Any enclosing scope is closed here so every attack opens its own scope from a clean state.
     saved_owner, saved_memo, saved_fn = list(M._OWNER), dict(M._MEMO), subprocess.check_output
     M._OWNER.clear()
     M._MEMO.clear()
@@ -359,6 +359,12 @@ def test_timeout_keyword_is_honoured_and_a_failure_with_stderr_is_not_memoised(r
     assert M.STATS["hits"] == 0 and M.STATS["misses"] == 0
 
 
-def test_the_suite_scope_is_active_for_every_test():
-    import tests.conftest as conftest
-    assert callable(getattr(conftest, "_immutable_git_reads_per_test", None))
+
+def test_only_the_two_import_time_sites_enter_the_memo_and_the_suite_conftest_is_untouched():
+    # tests/conftest.py is a protected, unowned path of the historical U1/U2/WF-06B guards: the memo is entered ONLY explicitly.
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    assert "ci_immutable_git_reads" not in (root / "tests/conftest.py").read_text(encoding="utf-8")
+    users = sorted(p.name for p in (root / "tests").glob("test_*.py")
+                   if p.name != Path(__file__).name and "_OBJECTS.scope()" in p.read_text(encoding="utf-8", errors="replace"))
+    assert users == ["test_rc7c_candidate_successor.py", "test_v9p2a_odr_successor.py"]
