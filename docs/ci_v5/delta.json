@@ -150,7 +150,7 @@
    "path": "tests/test_c06_cost_workspace_scope.py"
   },
   {
-   "blob": "93649cfd58e2149792dccc9a3f82517effe5ffab",
+   "blob": "beab47e4b43b38f177899b77a70f6277d06044d9",
    "class": "X",
    "mode": "100644",
    "op": "modify",
@@ -283,6 +283,6 @@
    "path": "tests/wf03_lifecycle_scope.py"
   }
  ],
- "result_inventory_sha256": "54f869793910cd36c35a33aef146ec41bdc7814590ae3d9da992b4b577636afd",
+ "result_inventory_sha256": "4d8ec3f5651d432d7c5a23f8bc2a525d7a55d66d22dffe1a94eda745ec16993b",
  "schema": "FINCO_CI_V5_DELTA_V2"
 }
