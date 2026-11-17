@@ -30,7 +30,11 @@ EIGHT = C.RC7C_UNCHANGED_RC7B_PATHS
 # Historical subject: the RC-7C contract is judged on RC-7C bytes - HEAD itself, or, only while HEAD is the complete recognised OD-R successor,
 # its immutable RC-7C integration checkpoint. Any other HEAD stays the subject and fails exactly as before. While HEAD is the complete recognised
 # V10 successor, OD-R itself is judged at its immutable V10 checkpoint first (chained, never relabelled).
-SUBJECT = O.historical_subject(ref=V.historical_subject(ref=V11.historical_subject()))
+# ONE outer read-only governance call at import (collection): the subject resolution walks the exact-source chain once, not per level,
+# and reads each immutable Git object once (tests/ci_immutable_git_reads.py); both memos are dropped when the block ends.
+from tests import ci_immutable_git_reads as _OBJECTS, fin_v2_cohorts as _COHORTS  # noqa: E402
+with _OBJECTS.scope(), _COHORTS.call_scope():
+    SUBJECT = O.historical_subject(ref=V.historical_subject(ref=V11.historical_subject()))
 
 
 def git(repo, *args, check=True):

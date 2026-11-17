@@ -43,6 +43,39 @@ def _suite_model_executor_lifecycle(request):
             f"{request.module.__name__}: model workers did not end on their own: {', '.join(forced)}")
 
 
+# ── Per-test content-addressed Git object reads (tests/ci_immutable_git_reads.py) ──────────────────────────────────────────────
+# Inside ONE test, a ``git`` read named only by full object ids (``git show <sha>:<path>`` and the other pure object forms) is answered
+# once and reused; the memo is dropped when the test ends. Worktree, index, symbolic-ref and every other read always run real git;
+# failures, other threads, substituted process layers, replace refs, grafts, shallow history and location overrides bypass it; adding,
+# pruning or repacking any object re-reads. No verdict is memoised. The attack tests are tests/test_ci_immutable_git_reads.py.
+@pytest.fixture(autouse=True)
+def _immutable_git_reads_per_test():
+    from tests import ci_immutable_git_reads
+
+    with ci_immutable_git_reads.scope():
+        yield
+
+
+# ── One read-only governance call per test, for an explicit literal module list ─────────────────────────────────────────
+# tests/test_ci_v3_reference_admission_successor.py evaluates the REAL D-029 / WS-2 / WF-03 State C source facts. Outside one
+# tests/fin_v2_cohorts.py::call_scope() every nested cohort re-derives its successors (hosted FULL 44047601863: ~4,450 s per test).
+# Its sibling tests/test_ci_v3_outcome_reconciliation.py already wraps each test in call_scope(); the module itself is byte-pinned
+# by the WF-03 / WS-2 cohorts, so the identical fixture lives here, applied ONLY to the literal module below. The memo is entered
+# around one test and dropped when it ends: nothing is cached across tests, refs, monkeypatches or mutations; no assertion changes.
+_ONE_GOVERNANCE_CALL_PER_TEST = frozenset(("tests.test_ci_v3_reference_admission_successor",))
+
+
+@pytest.fixture(autouse=True)
+def _one_governance_call_per_listed_test(request):
+    if request.module.__name__ not in _ONE_GOVERNANCE_CALL_PER_TEST:
+        yield
+        return
+    from tests import fin_v2_cohorts
+
+    with fin_v2_cohorts.call_scope():
+        yield
+
+
 def _thread_stacks(thread_ids) -> str:
     frames = sys._current_frames()
     import traceback
