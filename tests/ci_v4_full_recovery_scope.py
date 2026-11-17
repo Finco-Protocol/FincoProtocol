@@ -121,6 +121,7 @@ HANDOFF_PATHS = frozenset((
     'tests/test_r04_ppa_scope.py',
     'tests/test_t01e_remediation_scope.py',
     'tests/u1_scope.py',
+    'tests/wf03_lifecycle_scope.py',
 ))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
@@ -1531,6 +1532,21 @@ HANDOFFS = {
             '\n'
             "RECONCILED_SUCCESSORS = ('tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')\n"
             '\n')),
+    ],
+    'tests/wf03_lifecycle_scope.py': [
+        ((
+            "    if facts.get('ws2_manifest_pins')!={p:pins[p] for p in (*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)}: return False\n"),
+         (
+            '    # The WS-2 manifest is a historical attestation: its Trust pins are checked against the reviewed pins this closed cohort records for the same paths\n'
+            '    # (the cohort verdict above authenticates them), never against a later blob; each current blob is that pin or the exact pin of a later cohort.\n'
+            '    try:\n'
+            "        head=_git(ROOT,'rev-parse','HEAD').decode().strip()\n"
+            "        reviewed=manifest(ROOT,head).get('source_blobs',{})\n"
+            "        held=facts.get('ws2_manifest_pins'); keys=(*P.WS2_TRUST_BLOBS,*P.WS2_TRUST_EXTRA_BLOBS)\n"
+            '        if not isinstance(held,dict) or set(held)!=set(keys) or any(not reviewed.get(p) or held[p]!=reviewed[p] for p in keys): return False\n'
+            '        if not reviewed.get(P.WS2_MANIFEST) or any(_blob(_read(ROOT,P.WS2_MANIFEST,r))!=reviewed[P.WS2_MANIFEST] for r in (head,None)): return False\n'
+            '        if any(pins[p]!=reviewed.get(p) and not _wf06b_supersedes(p,pins[p],ROOT,head) for p in CI_TRUST_PATHS): return False\n'
+            '    except (OSError,ValueError,KeyError,TypeError,subprocess.CalledProcessError): return False\n')),
     ],
 }
 
