@@ -326,13 +326,17 @@ def test_allowed_path_is_gated_by_the_cohort_signature_and_never_admits_foreign_
 
 
 def test_supersession_is_pin_exact_and_cross_path_safe():
-    pins = T.manifest()["source_blobs"]
-    reg = pins[T.REGISTRY]
-    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
-    assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
-    assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
-    assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the accepted bootstrap-era registry blob is no longer current
-    assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE + ":docs/ci_v4/module_weights.json"))
+    from tests.fin_v2_cohorts import call_scope
+    with call_scope():  # one read-only enumeration; ends before any fixture teardown or mutation
+        pins = T.manifest()["source_blobs"]
+        reg = T.effective_pins()[T.REGISTRY]
+        assert reg != pins[T.REGISTRY]
+        assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY])  # superseded historical pin is not current authority
+        assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and P.supersedes(T.REGISTRY, reg)
+        assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * 40)
+        assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a real blob pinned for another path
+        assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the accepted bootstrap-era registry blob is no longer current
+        assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE + ":docs/ci_v4/module_weights.json"))
 
 
 def test_no_verdict_is_cached_across_refs_or_mutations(clone):

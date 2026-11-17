@@ -738,7 +738,30 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                              'if N is not None and F.SUCCESSOR in C.COHORT_MODULES and N.signature_ok() and path in '
                                              'N.HANDOFFS else F      # the further reviewed B1 substitution of this shared path\n'
                                              '        assert (ROOT/path).read_bytes()==later.expected_handoff(ROOT,path)\n'
-                                             '    from tests import ci_v5_bootstrap_scope as V5\n')],
+                                             '    from tests import ci_v5_bootstrap_scope as V5\n'),
+                                            ('    with C.call_scope():\n'
+                                             '        assert not F.signature_ok(clone,F.BASE)\n'
+                                             '        for m in C.cohorts():\n'
+                                             "            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never "
+                                             'attests an older accepted ref\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
+                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
+                                             '        for path in (provider,editor):\n',
+                                             '    with C.call_scope():\n'
+                                             '        assert not F.signature_ok(clone,F.BASE)\n'
+                                             '        for m in C.cohorts():\n'
+                                             "            if m.__name__ == 'tests.ci_v4_p0_scope':\n"
+                                             '                assert not m.signature_ok(clone, F.BASE)\n'
+                                             '                assert not m.exact_blobs_ok(clone, F.BASE)\n'
+                                             "            elif m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', "
+                                             "'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', "
+                                             "'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never "
+                                             'attests an older accepted ref\n'
+                                             '                assert m.exact_blobs_ok(clone,F.BASE),m.__name__\n'
+                                             '        assert B.ci_authority_ok(clone,F.BASE)\n'
+                                             '        for path in (provider,editor):\n')],
  'tests/test_ci_v4_full_recovery_scope.py': [('\n'
                                               '\n'
                                               'def test_signature_exactness_and_reviewed_substitutions_hold(clone):\n'
@@ -862,6 +885,50 @@ HANDOFFS = {'tests/c06_cost_workspace_scope.py': [("    if 'tests.ci_v4_full_rec
                                               '        ("g6_missing", lambda b: b.replace(b", \'tests.ci_v5_gate_scope\'", b"")),\n'
                                               '        ("fr_missing", lambda b: b.replace(b", \'tests.ci_v4_full_recovery_scope\'", '
                                               'b"")),\n'),
+                                             ('\n'
+                                              '\n'
+                                              'def test_supersession_is_pin_exact_and_cross_path_safe():\n'
+                                              '    pins = T.manifest()["source_blobs"]\n'
+                                              '    reg = pins[T.REGISTRY]\n'
+                                              '    assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and '
+                                              'B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and '
+                                              'P.supersedes(T.REGISTRY, reg)\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" * '
+                                              '40)\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a '
+                                              'real blob pinned for another path\n'
+                                              '    assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # the '
+                                              'accepted bootstrap-era registry blob is no longer current\n'
+                                              '    assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE + '
+                                              '":docs/ci_v4/module_weights.json"))\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_no_verdict_is_cached_across_refs_or_mutations(clone):\n',
+                                              '\n'
+                                              '\n'
+                                              'def test_supersession_is_pin_exact_and_cross_path_safe():\n'
+                                              '    from tests.fin_v2_cohorts import call_scope\n'
+                                              '    with call_scope():  # one read-only enumeration; ends before any fixture teardown or '
+                                              'mutation\n'
+                                              '        pins = T.manifest()["source_blobs"]\n'
+                                              '        reg = T.effective_pins()[T.REGISTRY]\n'
+                                              '        assert reg != pins[T.REGISTRY]\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, pins[T.REGISTRY])  # superseded historical pin '
+                                              'is not current authority\n'
+                                              '        assert V5.supersedes(T.REGISTRY, reg) and B3.supersedes(T.REGISTRY, reg) and '
+                                              'B2.supersedes(T.REGISTRY, reg) and K.supersedes(T.REGISTRY, reg) and '
+                                              'P.supersedes(T.REGISTRY, reg)\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, "0" * 40) and not K.supersedes(T.REGISTRY, "0" '
+                                              '* 40)\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, pins[T.PREDECESSOR])                       # a '
+                                              'real blob pinned for another path\n'
+                                              '        assert not V5.supersedes(T.REGISTRY, T.manifest()["base_blobs"][T.REGISTRY])    # '
+                                              'the accepted bootstrap-era registry blob is no longer current\n'
+                                              '        assert not V5.supersedes("docs/ci_v4/module_weights.json", _git("rev-parse", T.BASE '
+                                              '+ ":docs/ci_v4/module_weights.json"))\n'
+                                              '\n'
+                                              '\n'
+                                              'def test_no_verdict_is_cached_across_refs_or_mutations(clone):\n'),
                                              ('\n'
                                               'def '
                                               'test_the_registry_tail_is_one_finite_sequence_and_full_recovery_is_terminal(monkeypatch):\n'

@@ -159,7 +159,10 @@ def test_accepted_ref_preserves_all_preexisting_exact_guards_and_original_code(c
     with C.call_scope():
         assert not F.signature_ok(clone,F.BASE)
         for m in C.cohorts():
-            if m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never attests an older accepted ref
+            if m.__name__ == 'tests.ci_v4_p0_scope':
+                assert not m.signature_ok(clone, F.BASE)
+                assert not m.exact_blobs_ok(clone, F.BASE)
+            elif m.__name__ not in (F.__name__, F.SUCCESSOR, 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope'):         # a successor never attests an older accepted ref
                 assert m.exact_blobs_ok(clone,F.BASE),m.__name__
         assert B.ci_authority_ok(clone,F.BASE)
         for path in (provider,editor):
