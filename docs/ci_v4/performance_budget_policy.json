@@ -1,0 +1,73 @@
+{
+  "authority": "Read ONLY from the trusted default-branch checkout by .github/workflows/ci_perf_guard.yml (workflow_run / schedule). A pull request's own copy of this file is never read while judging that pull request; a change here takes effect only after an owner merge.",
+  "baseline": {
+    "file": "docs/ci_v4/performance_baseline.json",
+    "note": "Per-node regression baseline: authenticated hosted JUnit of CI V4 PR run 44147228493 (head ac84868e, 2,284 nodes). It is deliberately NOT docs/ci_v4/node_weights.json (a frozen V4 control whose U1 entries are ~6x stale). A node absent from the baseline is NEW: above new_node_without_baseline_seconds it fails until an owner-reviewed baseline refresh records it."
+  },
+  "exceptions": [
+    {
+      "approval": "PROPOSED in the P1 Draft PR; effective only when the owner merges this file (the merge is the review). Never extendable from a pull-request head.",
+      "evidence": "CI V4 PR run 44147228493 (head ac84868e), shard-2 JUnit artifact sha256 cb555d74d72564f768c722f8199de0daa52f3806dc017b0cb816ad975cac2f2e: 976.9 s",
+      "expires": "2027-01-31",
+      "max_seconds": 1100,
+      "node": "tests/test_u1_scope.py::test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort",
+      "reason": "Known pre-existing heavy U1 node (indivisible floor of the U1 split; target of the follow-up optimisation). Not a blanket waiver: exact node, cap and expiry."
+    }
+  ],
+  "junit": {
+    "artifact_name_pattern": "^ci-v4-shard-(\\d+)$",
+    "junit_member": "junit-shard-{index}.xml",
+    "max_artifact_bytes": 52428800,
+    "max_member_bytes": 33554432,
+    "meta_member": "shard-{index}.json",
+    "shard_job_name_pattern": "^shard-(\\d+)$",
+    "test_step_name_prefix": "Run the planned shard",
+    "time_consistency": {
+      "max_ratio": 1.03,
+      "min_ratio": 0.8,
+      "note": "Sum of JUnit testcase times / authentic GitHub duration of the shard's test step. JUnit is written by pull-request code, so node-level numbers are attestations; every budget decision that can be decided from GitHub's own timestamps is decided from them, and JUnit that disagrees with them is PERFORMANCE_UNVERIFIED."
+    },
+    "workflow": "CI V4 PR"
+  },
+  "limits": {
+    "end_to_end_seconds": 2400,
+    "new_node_without_baseline_seconds": 120,
+    "node_fail_seconds": 600,
+    "node_regression_fraction": 0.2,
+    "node_regression_min_seconds": 120,
+    "node_warn_seconds": 300,
+    "shard_job_seconds": 2040
+  },
+  "required_workflows": [
+    {
+      "name": "CI V4 PR",
+      "path": ".github/workflows/ci_v4_pr.yml"
+    },
+    {
+      "name": "Dependency Security Audit",
+      "path": ".github/workflows/dependency_security_audit.yml"
+    },
+    {
+      "name": "FIN-VAL F01 Financial Acceptance",
+      "path": ".github/workflows/finval_f01_acceptance.yml"
+    },
+    {
+      "name": "Governance Full History",
+      "path": ".github/workflows/governance_history.yml"
+    },
+    {
+      "name": "PR Compile and Safety Gate",
+      "path": ".github/workflows/pr_compile_and_safety.yml"
+    },
+    {
+      "name": "Protocol UI Browser Acceptance",
+      "path": ".github/workflows/protocol_ui_browser.yml"
+    }
+  ],
+  "schema": "FINCO_CI_PERFORMANCE_BUDGET_POLICY_V1",
+  "status_context": "CI Performance Budget",
+  "sweep": {
+    "cron_minutes": 15,
+    "note": "A scheduled sweep re-judges every open pull request's head; a head that is still pending once the end-to-end budget has elapsed becomes FAILURE, so a missing or stuck required run never leaves the status pending forever."
+  }
+}

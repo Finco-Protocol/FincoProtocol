@@ -1,0 +1,60 @@
+# CI Performance Budget guard: writes the commit status "CI Performance Budget" on a pull request's head SHA.
+#
+# Security properties (asserted by tests/test_ci_perf_guard.py):
+#   * triggers are ONLY `workflow_run` (completion of a required workflow) and `schedule` (the sweep). For both, GitHub runs THIS file and
+#     the code it checks out from the DEFAULT branch: a pull request can neither change the guard nor its policy for its own judgement;
+#   * the checkout is the default-branch commit (github.sha); no pull-request ref/sha is ever checked out, imported or executed;
+#     pull-request artifacts are read through the API as size-capped DATA and verified against GitHub's artifact digests;
+#   * least privilege: read actions/contents/pull-requests, write ONLY commit statuses; no secrets beyond the job token;
+#   * the job never waits or polls: one evaluation per event, bounded by timeout-minutes. A head still pending after the 40-minute
+#     budget becomes FAILURE at the next sweep, so the status can never stay pending forever.
+# Activation as a REQUIRED check is an owner step in branch protection (docs/ci_v4/p1_runtime/ACTIVATION_PROCEDURE.md).
+name: CI performance budget guard
+on:
+  workflow_run:
+    workflows:
+      - CI V4 PR
+      - Dependency Security Audit
+      - FIN-VAL F01 Financial Acceptance
+      - Governance Full History
+      - PR Compile and Safety Gate
+      - Protocol UI Browser Acceptance
+    types: [completed]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+permissions: {}
+concurrency:
+  group: ci-perf-guard-${{ github.event.workflow_run.head_sha || 'sweep' }}
+  cancel-in-progress: false
+jobs:
+  judge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Refuse anything but the default branch's own code
+        env:
+          REF: ${{ github.ref }}
+          DEFAULT: refs/heads/${{ github.event.repository.default_branch }}
+        run: test "$REF" = "$DEFAULT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Judge the pull-request head (trusted code; artifacts as data)
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -I tools/ci_perf_guard.py event
+      - name: Sweep open pull requests (pending -> terminal after the budget)
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -I tools/ci_perf_guard.py sweep
