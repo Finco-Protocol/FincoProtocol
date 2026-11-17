@@ -137,6 +137,11 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     from tests import ci_v4_full_recovery_scope as FR
     from tests import ci_v5_gate_scope as G6
     for p in T.HANDOFFS:
+        from tests import ci_v4_p0_scope as P0
+        if P0.signature_ok() and p in P0.HANDOFFS:
+            assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if FR.signature_ok() and p in FR.HANDOFFS:                       # the reviewed FULL-recovery successor substitutes the final state of this shared path (literal, pin-exact)
             assert (ROOT / p).read_bytes() == FR.expected_handoff(ROOT, p)
         elif G6.signature_ok() and p in G6.HANDOFFS:                       # the reviewed V5-3 successor substitutes the final state of this shared path (literal, pin-exact)
@@ -152,7 +157,7 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 
 def test_registered_exactly_once_after_b3_with_only_the_reviewed_v5_2b_behind_it():
-    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") + ('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1
     assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 4                       # exactly the reviewed V5-2B and V5-3 modules gained after the bootstrap; no hardcoded total
     assert C.COHORT_MODULES[-5:] == ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")
     assert T._next() is H5 and T.SUCCESSOR == H5.__name__
@@ -216,11 +221,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')"
+    tail = b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')"
     for name, fn in (
-        ("duplicate_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
+        ("duplicate_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_b3_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
+        ("swapped_b3_v5", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b2_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("v5_2b_missing", lambda b: b.replace(b", 'tests.ci_v5_hardening_scope'", b"")),
         ("v5_3_missing", lambda b: b.replace(b", 'tests.ci_v5_gate_scope'", b"")),
         ("fr_missing", lambda b: b.replace(b", 'tests.ci_v4_full_recovery_scope'", b"")),

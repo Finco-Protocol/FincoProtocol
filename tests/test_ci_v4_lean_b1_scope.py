@@ -112,6 +112,11 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
     N5 = N4._next() if N4 is not None and N4.signature_ok() else None
     N6 = N5._next() if N5 is not None and N5.signature_ok() else None
     for p in T.HANDOFFS:
+        from tests import ci_v4_p0_scope as P0
+        if P0.signature_ok() and p in P0.HANDOFFS:
+            assert (ROOT / p).read_bytes() == P0.expected_handoff(ROOT, p)
+            assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
+            continue
         if N6 is not None and N6.signature_ok() and p in N6.HANDOFFS:      # the further reviewed FULL-recovery substitution of this shared path
             assert (ROOT / p).read_bytes() == N6.expected_handoff(ROOT, p)
             assert T._blob((ROOT / p).read_bytes()) == T.effective_pins()[p]
@@ -148,7 +153,7 @@ def test_registered_exactly_once_as_the_terminal_cohort_after_c06():
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope"),
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"),
                                 T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"),
-                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope")) and C.COHORT_MODULES.count(T.__name__) == 1
+                                T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR, "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope") + ('tests.ci_v4_p0_scope',)) and C.COHORT_MODULES.count(T.__name__) == 1
     assert C.COHORT_MODULES[C.COHORT_MODULES.index(T.__name__) - 1] == "tests.c06_cost_workspace_scope"
     assert K.SUCCESSOR == T.__name__ and K._next() is T
 
@@ -194,11 +199,11 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')"
+    tail = b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')"
     for name, fn in (
-        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
+        ("duplicate", lambda b: b.replace(tail, b"'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),
-        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')")),
+        ("swapped_c06_b1", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b1_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("b1_missing", lambda b: b.replace(b", 'tests.ci_v4_lean_b1_scope'", b"")),
         ("c06_missing", lambda b: b.replace(b"'tests.c06_cost_workspace_scope', ", b"")),
         ("r04_removed", lambda b: b.replace(b"'tests.r04_ppa_scope', ", b"")),

@@ -99,7 +99,7 @@ def test_registry_keeps_every_accepted_cohort_in_order_and_appends_only_this_one
     from tests import f03_financing_scope as G
     from tests import t01e_remediation_scope as Z, r03_ppa_scope as Y
     nxt = tuple(m for m in ('tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope',
-                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope') if m in C.COHORT_MODULES)
+                            'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope') if m in C.COHORT_MODULES)
     B1 = C06_APPROVAL._next()
     B2 = B1._next() if B1 is not None and B1.signature_ok() else None
     expected = N.expected_handoff(ROOT, X.REGISTRY)
