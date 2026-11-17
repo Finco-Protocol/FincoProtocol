@@ -23,13 +23,21 @@ REGISTRY = "tests/fin_v2_cohorts.py"
 PREDECESSOR = 'tests/ci_v4_full_recovery_scope.py'
 BASE_COHORTS = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope', 'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope', 'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope', 'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope')
 NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p0_40min/CANDIDATE_PATH_MANIFEST.json', 'docs/ci_v4/p0_40min/CURRENT_STATE_AND_ROOT_CAUSE.md', 'docs/ci_v4/p0_40min/DESIGN_AND_SAFETY.md', 'docs/ci_v4/p0_40min/INVENTORY_RECONCILIATION.json', 'docs/ci_v4/p0_40min/NEGATIVE_TAMPER_EVIDENCE.md', 'docs/ci_v4/p0_40min/NEXT_OWNER_ACTIONS.md', 'docs/ci_v4/p0_40min/PERFORMANCE_AB_COMPARISON.csv', 'docs/ci_v4/p0_40min/WORKER_ASSIGNMENT_SIMULATION.csv', 'docs/ci_v4/p0_40min/base-governance.json', 'docs/ci_v4/p0_40min/cache-mutation-evidence.json', 'docs/ci_v4/p0_40min/candidate-tests.xml', 'docs/ci_v4/p0_40min/candidate/benchmark_scope.py', 'docs/ci_v4/p0_40min/candidate/full_coverage.py', 'docs/ci_v4/p0_40min/candidate/scoped_evaluate.py', 'docs/ci_v4/p0_40min/candidate/simulate_workers.py', 'docs/ci_v4/p0_40min/candidate/test_full_coverage.py', 'docs/ci_v4/p0_40min/targeted-tests.xml', 'docs/ci_v4/p0_40min/worker-simulation-summary.jsonl', 'docs/ci_v4/p0_40min/workflow-probe-governance.json', 'tests/ci_v4_p0_scope.py', 'tests/test_ci_v4_p0_scope.py',
-                 'tests/ci_immutable_git_reads.py', 'tests/test_ci_immutable_git_reads.py'))
+                 'tests/ci_immutable_git_reads.py', 'tests/test_ci_immutable_git_reads.py',
+                 # P1 (post-#457): the CI Performance Budget guard, its trusted policy/baseline/tests and the activation procedure.
+                 '.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py', 'docs/ci_v4/performance_budget_policy.json',
+                 'docs/ci_v4/performance_baseline.json', 'tests/test_ci_perf_guard.py', 'docs/ci_v4/p1_runtime/ACTIVATION_PROCEDURE.md',
+                 'docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md'))
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
-REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'))
+REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
+                      # P1: U1 node split (SPLIT_SAFE_FLOOR_LIMITED, isolation-proven) and its re-measured U1 node weights
+                      'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
+                      # P1: the closed split allowlist tests gain exactly U1 (with its evidence); U2/O1/Goal Seek stay unsplit
+                      'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
-CI_PATHS = frozenset(())
+CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py'))
 CURRENT_MAPS = frozenset((
@@ -52,7 +60,6 @@ FROZEN = (
     ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_full.yml", ".github/workflows/ci_v4_pr.yml",
     ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",
     "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",
-    "docs/ci_v4/node_split_policy.json", "docs/ci_v4/node_weights.json",
     "pytest.ini",
     "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",
     "tools/ci_v4_nodes.py", "tools/ci_v4_release_gate.py", "tools/ci_v4_schedule.py", "tools/ci_v4_select.py", "tools/ci_v4_shard.py",

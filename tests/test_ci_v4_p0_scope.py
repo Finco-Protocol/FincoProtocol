@@ -63,7 +63,10 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert set(d["source_blobs"]) == T.OWNED_PATHS
     assert set(d["base_blobs"]) == T.SUPERSEDED
     assert set(T.HANDOFFS) == T.HANDOFF_PATHS
-    assert not T.CI_PATHS and T.REPLACED == {'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py'}
+    assert T.REPLACED == {'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
+                          'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
+                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py'}
+    assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py'}      # literal, new, never a pattern
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
