@@ -142,7 +142,7 @@
     "tests/test_bess02_scope.py": "5a6a2e500660078f1048bf03e06a5c354b7b4964",
     "tests/test_c06_cost_workspace_scope.py": "af38acb63c448cafdab6a967307fa051a44bdd99",
     "tests/test_ci_immutable_git_reads.py": "f7de3cf066b5bc47c07cb34fa497a86d4e78fd46",
-    "tests/test_ci_perf_guard.py": "c95b738aa8124f2bf16ec8ec25fb77f5ca446fc6",
+    "tests/test_ci_perf_guard.py": "bf044ff34afd0edfed05b9a6f0454ce7e6035e55",
     "tests/test_ci_v4_activate.py": "98cafe6e3b39444f8962bc4f5ae2b8213d401552",
     "tests/test_ci_v4_full_recovery_scope.py": "50fd0a745fc0b2c6825bf7075750f3e751d44e98",
     "tests/test_ci_v4_lean_b1_scope.py": "20aac68983229fe5ccf9069a194f656938821f05",
@@ -164,7 +164,7 @@
     "tests/test_t01e_remediation_scope.py": "d3c6c41201a07e3401cd03c6400cba5b5e5c76df",
     "tests/test_v9p2a_odr_successor.py": "3dbdf33bfb43fbd0488e6a322da8d97cfc024125",
     "tests/u1_scope.py": "a259536ffe3d807d1f2438a4f2243f754e853a06",
-    "tools/ci_perf_guard.py": "8166261312303d14212ac598db43e31148f5dff1"
+    "tools/ci_perf_guard.py": "b4bb7a6b588ed2715396bf416e100f290da9837b"
   },
   "source_modes": {
     ".github/workflows/ci_perf_guard.yml": "100644",

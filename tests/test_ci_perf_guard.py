@@ -362,3 +362,257 @@ def test_the_repository_baseline_is_one_authenticated_hosted_run_and_not_the_fro
     over = {n: t for n, t in b["nodes"].items() if t > caps.get(n, POLICY["limits"]["node_fail_seconds"])}
     assert over == {}, over
     assert G.load_baseline(ROOT / POLICY["baseline"]["file"]) == {k: float(v) for k, v in b["nodes"].items()}
+
+
+# ── Correction A: public-safety reconciliation of the measured node ids ────────────────────────────────────────────────────────────
+AT = chr(64)
+DECORATOR_IDS = (
+    'tests/test_rc7b_quarterly_csrf_successor.py::test_no_extra_content_route_writer_or_run[\\n' + AT + 'router.post("/extra")\\n'
+    'async def extra():\\n    return None\\n]',
+    'tests/test_rc7b_quarterly_csrf_successor.py::test_security_and_route_mutations_fail_with_or_without_byte_check['
+    + AT + 'router.post("/workbook/calendar/operating-frequency")-' + AT + 'router.get("/workbook/calendar/operating-frequency")]',
+)
+MEASURED = ("docs/ci_v4/node_weights.json", "docs/ci_v4/performance_baseline.json")
+
+
+@pytest.mark.parametrize("rel", MEASURED)
+def test_the_measured_node_files_pass_the_unchanged_public_safety_scanner_raw(rel):
+    from tools import public_safety_scan as P
+    raw = (ROOT / rel).read_bytes()
+    assert AT.encode() not in raw and P.scan_file(rel, ROOT) == []
+
+
+@pytest.mark.parametrize("rel", MEASURED)
+def test_the_escaped_files_decode_to_the_exact_hosted_node_ids(rel):
+    data = json.loads((ROOT / rel).read_text())
+    nodes = data["nodes"] if "nodes" in data else data
+    # the two decorator-parametrised ids (hosted JUnit of CI V4 PR run 44147228493, shard artifact sha256 cb555d74...) survive byte-exact
+    assert all(n in nodes for n in DECORATOR_IDS)
+    assert sum(AT in n for n in nodes) == len(DECORATOR_IDS)
+    # JSON escaping is the only change: re-escaping the decoded object reproduces the committed bytes
+    canonical = json.dumps(data, indent=1, sort_keys=True) + "\n"
+    assert canonical.replace(AT, "\\u0040").encode() == (ROOT / rel).read_bytes()
+
+
+def test_a_real_email_like_identifier_still_fails_the_unchanged_scanner(tmp_path):
+    from tools import public_safety_scan as P
+    assert P.EMAIL_RE.pattern == rb"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+    leak = ("someone.private" + AT + "finco-internal.org").encode()
+    (tmp_path / "x.json").write_bytes(b'{"owner": "' + leak + b'"}')
+    assert P.scan_file("x.json", tmp_path) != []
+    # escaping is NOT a bypass for a real address in a JSON string value of these files: the guarded tests above pin the exact count
+    escaped = leak.replace(AT.encode(), b"\\u0040")
+    assert json.loads(b'{"owner": "' + escaped + b'"}')["owner"].encode() == leak
+
+
+# ── Correction A: guard security review (each finding is one attack) ──────────────────────────────────────────────────────────────
+def test_a_required_run_created_in_the_future_is_unverified_not_pending(w):
+    for r in w.runs:                                   # the clock starts at the EARLIEST creation, so every run is in the future
+        r["created_at"] = iso(60)
+    v = w.judge(minutes_now=10)
+    assert v["state"] == "failure" and "created in the future" in v["description"]
+
+
+def test_a_job_finishing_before_it_starts_or_in_the_future_is_unverified(w):
+    j = w.jobs[w.runs[0]["id"]][0]
+    j["completed_at"], j["started_at"] = iso(1), iso(5)
+    assert "inconsistent timestamps" in w.judge()["description"]
+    w2 = World()
+    w2.jobs[w2.runs[0]["id"]][0]["completed_at"] = iso(200)
+    assert "inconsistent timestamps" in w2.judge(minutes_now=40)["description"]
+
+
+def test_a_job_started_before_the_first_run_was_created_is_unverified(w):
+    w.jobs[w.runs[0]["id"]][0]["started_at"] = iso(-30)
+    assert "inconsistent timestamps" in w.judge()["description"]
+
+
+def test_a_cancelled_newest_run_is_failure_and_an_older_duplicate_never_shortens_the_clock(w):
+    old = dict(w.ci, id=1, created_at=iso(-20), status="completed", conclusion="success")
+    w.runs.append(old)
+    v = w.judge(minutes_now=40)
+    assert v["details"]["first_created_at"].startswith((T0 - dt.timedelta(minutes=20)).isoformat()[:16])   # older duplicate: earlier start
+    assert v["state"] == "failure" and "OVER_BUDGET" in v["description"]                                     # 26 + 20 > 40 min
+    w2 = World()
+    w2.runs.append(dict(w2.ci, id=99999, created_at=iso(1), conclusion="cancelled"))
+    assert "REQUIRED_WORKFLOW_NOT_SUCCESS" in w2.judge()["description"]
+
+
+def _zip(members):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_a_shard_zip_with_duplicate_members_is_unverified(w):
+    good = zipfile.ZipFile(io.BytesIO(w.blobs[5000]))
+    members = [(n, good.read(n)) for n in good.namelist()]
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        w.put_artifact(0, _zip(members + [("junit-shard-0.xml", b"<testsuites/>")]))
+    assert "duplicate member" in w.judge()["description"]
+
+
+def test_a_shard_zip_with_an_encrypted_member_is_unverified(w):
+    blob = bytearray(w.blobs[5000])
+    # set the "encrypted" general-purpose flag on every local and central header (the bytes stay otherwise intact)
+    for sig, off in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        i = blob.find(sig)
+        while i >= 0:
+            blob[i + off] |= 0x1
+            i = blob.find(sig, i + 4)
+    w.put_artifact(0, bytes(blob))
+    assert "encrypted member" in w.judge()["description"]
+
+
+def test_zip_slip_member_names_are_never_extracted_and_a_bomb_is_capped(w):
+    src = (ROOT / "tools/ci_perf_guard.py").read_text()
+    assert "extract" not in src and "open(" not in src.split("def _read_shard", 1)[1].split("\ndef ", 1)[0]
+    cfg = dict(POLICY["junit"], max_member_bytes=1000)
+    bomb = _zip([("junit-shard-0.xml", b"<testsuites>" + b" " * 10_000_000 + b"</testsuites>"), ("shard-0.json", b"{}"),
+                 ("../../etc/passwd", b"x")])
+    assert len(bomb) < 100_000
+    with pytest.raises(G.GuardError, match="too large"):
+        G._read_shard(bomb, 0, cfg)
+
+
+class _Resp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _Opener:
+    def __init__(self, body=b"{}", exc=None):
+        self.body, self.exc, self.seen = body, exc, []
+
+    def open(self, req, timeout=None):
+        self.seen.append(req)
+        if self.exc:
+            raise self.exc
+        return _Resp(self.body)
+
+
+def _http_error(code, headers=None):
+    import email.message
+    import urllib.error
+    m = email.message.Message()
+    for k, v in (headers or {}).items():
+        m[k] = v
+    return urllib.error.HTTPError("https://api.github.com/x", code, "x", m, None)
+
+
+@pytest.mark.parametrize("code,headers,kind", [
+    (429, {}, "TransientError"), (500, {}, "TransientError"), (502, {}, "TransientError"),
+    (403, {"X-RateLimit-Remaining": "0"}, "TransientError"), (403, {"Retry-After": "60"}, "TransientError"),
+    (403, {}, "GuardError"), (404, {}, "GuardError"), (410, {}, "GuardError"), (401, {}, "GuardError")])
+def test_api_failures_are_transient_only_when_retryable_and_never_success(code, headers, kind):
+    gh = G.GitHub("o/r", "t", opener=_Opener(exc=_http_error(code, headers)))
+    with pytest.raises(getattr(G, kind)):
+        gh.runs_for(SHA)
+
+
+def test_a_network_failure_is_transient():
+    import urllib.error
+    gh = G.GitHub("o/r", "t", opener=_Opener(exc=urllib.error.URLError("down")))
+    with pytest.raises(G.TransientError):
+        gh.open_pull_heads()
+
+
+def test_an_oversized_api_response_or_artifact_download_is_refused():
+    gh = G.GitHub("o/r", "t", opener=_Opener(body=b"x" * 2048))
+    with pytest.raises(G.GuardError, match="larger than"):
+        gh.download({"id": 1}, limit=1024)
+
+
+def test_only_api_paths_are_requested_and_the_token_never_follows_a_cross_host_redirect():
+    import urllib.request
+    gh = G.GitHub("o/r", "t", opener=_Opener())
+    with pytest.raises(G.GuardError):
+        gh._req("GET", "https://evil.example/steal")
+    h = G._NoCredentialRedirect()
+    req = urllib.request.Request("https://api.github.com/repos/o/r/actions/artifacts/1/zip", headers={"Authorization": "Bearer t"})
+    new = h.redirect_request(req, None, 302, "Found", {}, "https://blob.store.example/signed?sig=1")
+    assert all(k.lower() != "authorization" for k in new.headers) and "Authorization" not in new.unredirected_hdrs
+    same = h.redirect_request(req, None, 302, "Found", {}, "https://api.github.com/other")
+    assert any(k.lower() == "authorization" for k in same.headers)
+
+
+class _FakeGH:
+    """main() against a fake API: records written statuses."""
+
+    def __init__(self, heads, status=None, verdict=None, transient_on=None):
+        self.repo, self.heads, self.cur, self.written, self.verdict, self.transient_on = "o/r", heads, status, [], verdict, transient_on
+
+    def open_pull_heads(self):
+        if self.transient_on == "pulls":
+            raise G.TransientError("429")
+        return list(self.heads)
+
+    def status(self, sha, ctx):
+        return self.cur
+
+    def set_status(self, sha, state, desc, ctx, url):
+        if self.transient_on == "status":
+            raise G.TransientError("503")
+        self.written.append((sha, state, desc))
+
+
+def _run_main(monkeypatch, tmp_path, fake, mode, head=SHA, verdict=None):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.setenv("GH_TOKEN", "t")
+    monkeypatch.setattr(G, "GitHub", lambda repo, token: fake)
+    monkeypatch.setattr(G, "judge", verdict or (lambda gh, p, sha, now, b: G._verdict("success", "ok", {"first_created_at": "x"})))
+    ev = tmp_path / "event.json"
+    ev.write_text(json.dumps({"workflow_run": {"event": "pull_request", "head_sha": head}}))
+    return G.main([mode, "--event-path", str(ev), "--summary", str(tmp_path / "summary.md")])
+
+
+def test_an_event_for_a_head_that_is_not_an_open_pull_requests_current_head_writes_nothing(monkeypatch, tmp_path):
+    fake = _FakeGH(heads=["b" * 40])
+    assert _run_main(monkeypatch, tmp_path, fake, "event") == 0 and fake.written == []
+    fake2 = _FakeGH(heads=[SHA])
+    _run_main(monkeypatch, tmp_path, fake2, "event")
+    assert fake2.written == [(SHA, "success", "ok")]
+
+
+def test_the_sweep_reverifies_success_written_by_anyone_and_keeps_failure_terminal(monkeypatch, tmp_path):
+    spoof = _FakeGH(heads=[SHA], status={"state": "success"})
+    _run_main(monkeypatch, tmp_path, spoof, "sweep",
+              verdict=lambda gh, p, sha, now, b: G._verdict("failure", "OVER_BUDGET: real", {"first_created_at": "x"}))
+    assert spoof.written == [(SHA, "failure", "OVER_BUDGET: real")]
+    done = _FakeGH(heads=[SHA], status={"state": "failure"})
+    _run_main(monkeypatch, tmp_path, done, "sweep")
+    assert done.written == []
+
+
+def test_a_transient_api_failure_writes_no_status_and_fails_the_guard_run_visibly(monkeypatch, tmp_path):
+    fake = _FakeGH(heads=[SHA])
+
+    def boom(gh, p, sha, now, b):
+        raise G.TransientError("GitHub API 429 (retry later)")
+    assert _run_main(monkeypatch, tmp_path, fake, "sweep", verdict=boom) == 1 and fake.written == []
+    assert _run_main(monkeypatch, tmp_path, _FakeGH(heads=[SHA], transient_on="pulls"), "event") == 1
+    assert _run_main(monkeypatch, tmp_path, _FakeGH(heads=[SHA], transient_on="status"), "sweep") == 1
+
+
+def test_a_permanent_api_failure_is_failure_never_success(monkeypatch, tmp_path):
+    fake = _FakeGH(heads=[SHA])
+
+    def gone(gh, p, sha, now, b):
+        raise G.GuardError("GitHub API 404")
+    _run_main(monkeypatch, tmp_path, fake, "event", verdict=gone)
+    assert fake.written == [(SHA, "failure", "PERFORMANCE_UNVERIFIED: GitHub API 404")]
+
+
+def test_untrusted_node_ids_cannot_break_out_of_the_run_summary(monkeypatch, tmp_path):
+    fake = _FakeGH(heads=[SHA])
+    _run_main(monkeypatch, tmp_path, fake, "event", verdict=lambda gh, p, sha, now, b: G._verdict(
+        "failure", "NODE_OVER_LIMIT x```\n# injected", {"first_created_at": "x", "top20": [["a```b", 1]]}))
+    text = (tmp_path / "summary.md").read_text()
+    assert text.count("```") == 2

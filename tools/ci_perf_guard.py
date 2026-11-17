@@ -18,7 +18,10 @@ Terminal conditions (no waiting, no polling, no dependency on this guard's own c
 * PENDING only while some required run is missing or unfinished AND the budget since the first ``created_at`` has not elapsed;
 * FAILURE as soon as the budget has elapsed with anything missing/unfinished, or any rule above fails, or evidence is missing;
 * SUCCESS only when every rule holds on complete, authenticated evidence.
-The scheduled sweep re-judges every open pull request, so a stuck or never-created run turns PENDING into FAILURE.
+The scheduled sweep re-judges every open pull request head that is not already FAILURE (SUCCESS is re-verified, so a status posted by
+anything else is overwritten), so a stuck or never-created run turns PENDING into FAILURE. An old ``workflow_run`` event for a head that
+is no longer an open pull request's current head writes nothing. A transient API failure (429, 5xx, rate-limited 403, network) writes
+nothing: the existing absent/pending status keeps blocking, and the next event or sweep judges again; it is never SUCCESS.
 """
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -45,6 +49,14 @@ MAX_DESCRIPTION = 140
 
 class GuardError(Exception):
     """Evidence is missing, malformed or not authentic: the verdict is FAILURE (PERFORMANCE_UNVERIFIED), never PASS."""
+
+
+class TransientError(Exception):
+    """The GitHub API is temporarily unavailable (429, 5xx, rate-limited 403, network). No status is written: the existing status (absent
+    or pending, both of which block a required check) stays, and the next event or sweep judges again. Never turned into SUCCESS."""
+
+
+CLOCK_SKEW_SECONDS = 300
 
 
 # ── policy ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -116,6 +128,8 @@ def evaluate(policy, head_sha, runs, jobs, artifacts, now, baseline, fetch_artif
     if not every:
         return _verdict("pending", "waiting: no required run exists yet for this head", details)
     start = min(_ts(r["created_at"]) for r in every)
+    if (start - now).total_seconds() > CLOCK_SKEW_SECONDS:
+        return _verdict("failure", "PERFORMANCE_UNVERIFIED: a required run is created in the future (clock skew)", details)
     elapsed_now = (now - start).total_seconds()
     details["first_created_at"] = start.isoformat()
     missing, unfinished, latest = [], [], {}
@@ -150,6 +164,10 @@ def evaluate(policy, head_sha, runs, jobs, artifacts, now, baseline, fetch_artif
                 if j.get("conclusion") == "skipped":
                     continue
                 done = _ts(j["completed_at"])
+                begun = _ts(j["started_at"])
+                if done < begun or begun < start - _dt.timedelta(seconds=CLOCK_SKEW_SECONDS) \
+                        or (done - now).total_seconds() > CLOCK_SKEW_SECONDS:
+                    raise GuardError("job %s has inconsistent timestamps (clock skew or forged order)" % j.get("id"))
                 end = done if end is None or done > end else end
         if end is None:
             raise GuardError("no completed job")
@@ -253,7 +271,12 @@ def _test_step_seconds(job, prefix):
 def _read_shard(blob, index, cfg):
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         want = {cfg["junit_member"].format(index=index), cfg["meta_member"].format(index=index)}
+        names = [i.filename for i in z.infolist()]
+        if len(names) != len(set(names)):
+            raise GuardError("shard %d artifact has duplicate member names" % index)
         infos = {i.filename: i for i in z.infolist()}
+        if any(i.flag_bits & 0x1 for i in infos.values()):
+            raise GuardError("shard %d artifact has an encrypted member" % index)
         if not want <= set(infos):
             raise GuardError("shard %d artifact lacks %s" % (index, sorted(want - set(infos))))
         for name in want:
@@ -296,20 +319,53 @@ def _verdict(state, description, details):
 
 
 # ── GitHub client (read: runs, jobs, artifacts; write: one commit status) ──────────────────────────────────────────────────────────
+class _NoCredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect (the artifact download goes to signed blob storage) WITHOUT the job token on any other host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlsplit(newurl).netloc != urllib.parse.urlsplit(req.full_url).netloc:
+            for h in [k for k in new.headers if k.lower() == "authorization"]:
+                del new.headers[h]
+            new.unredirected_hdrs.pop("Authorization", None)
+        return new
+
+
+def classify_http_error(exc):
+    """TransientError for retryable API failures (429, 5xx, rate-limited 403, network); GuardError (fail closed) for everything else."""
+    if isinstance(exc, urllib.error.HTTPError):
+        hdrs = exc.headers or {}
+        if exc.code == 429 or exc.code >= 500 or (exc.code == 403 and (hdrs.get("Retry-After") or hdrs.get("X-RateLimit-Remaining") == "0")):
+            return TransientError("GitHub API %d (retry later)" % exc.code)
+        return GuardError("GitHub API %d" % exc.code)
+    return TransientError("network: %s" % getattr(exc, "reason", exc))
+
+
 class GitHub:
-    def __init__(self, repo, token, api="https://api.github.com"):
+    MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+
+    def __init__(self, repo, token, api="https://api.github.com", opener=None):
         if not re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", repo or ""):
             raise GuardError("bad repository")
         self.repo, self.token, self.api = repo, token, api
+        self.opener = opener or urllib.request.build_opener(_NoCredentialRedirect())
 
-    def _req(self, method, path, body=None, raw=False):
-        url = path if path.startswith("https://") else self.api + path
+    def _req(self, method, path, body=None, raw=False, limit=None):
+        if not path.startswith("/"):
+            raise GuardError("only API paths are requested")
+        url = self.api + path
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method, headers={
             "Authorization": "Bearer " + self.token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "finco-ci-perf-guard"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            payload = resp.read()
+        cap = limit or self.MAX_RESPONSE_BYTES
+        try:
+            with self.opener.open(req, timeout=60) as resp:
+                payload = resp.read(cap + 1)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise classify_http_error(exc) from None
+        if len(payload) > cap:
+            raise GuardError("API response larger than %d bytes" % cap)
         return payload if raw else json.loads(payload or b"null")
 
     def _pages(self, path, key):
@@ -331,8 +387,8 @@ class GitHub:
     def artifacts_for(self, run):
         return self._pages("/repos/%s/actions/runs/%d/artifacts" % (self.repo, run["id"]), "artifacts")
 
-    def download(self, artifact):
-        return self._req("GET", "/repos/%s/actions/artifacts/%d/zip" % (self.repo, artifact["id"]), raw=True)
+    def download(self, artifact, limit=None):
+        return self._req("GET", "/repos/%s/actions/artifacts/%d/zip" % (self.repo, artifact["id"]), raw=True, limit=limit)
 
     def open_pull_heads(self):
         return sorted({p["head"]["sha"] for p in self._pulls()})
@@ -363,7 +419,12 @@ def judge(gh, policy, head_sha, now, baseline):
     jobs = {r["id"]: gh.jobs_for(r) for r in done}
     junit_run = latest.get(policy["junit"]["workflow"])
     artifacts = {junit_run["id"]: gh.artifacts_for(junit_run)} if junit_run and junit_run.get("status") == "completed" else {}
-    return evaluate(policy, head_sha, runs, jobs, artifacts, now, baseline, gh.download)
+    cap = int(policy["junit"]["max_artifact_bytes"])
+    return evaluate(policy, head_sha, runs, jobs, artifacts, now, baseline, lambda a: gh.download(a, limit=cap))
+
+
+def _fence_safe(text):
+    return text.replace("`", "'")
 
 
 def load_baseline(path):
@@ -393,27 +454,48 @@ def main(argv=None):
         if wr.get("event") != "pull_request":
             print("not a pull_request run: nothing to judge")
             return 0
+        try:
+            open_heads = set(gh.open_pull_heads())
+        except TransientError as exc:
+            print("transient: %s; the next event or sweep judges again" % exc)
+            return 1
+        if wr.get("head_sha") not in open_heads:
+            print("not the current head of an open pull request: nothing to judge")
+            return 0                                   # a superseded/closed head never receives a status from an old event
         heads = [wr["head_sha"]]
     else:
-        heads = gh.open_pull_heads()
+        try:
+            heads = gh.open_pull_heads()
+        except TransientError as exc:
+            print("transient: %s; the next sweep judges again" % exc)
+            return 1
     rc = 0
     lines = []
     for sha in heads:
         if not SHA40.match(sha):
             continue
-        if a.mode == "sweep":
-            cur = gh.status(sha, policy["status_context"])
-            if cur is not None and cur.get("state") in ("success", "failure"):
-                continue                                   # already terminal; the sweep only resolves pending/absent heads
         try:
+            if a.mode == "sweep":
+                cur = gh.status(sha, policy["status_context"])
+                if cur is not None and cur.get("state") == "failure":
+                    continue                               # FAILURE is terminal; pending/absent are resolved and SUCCESS is re-verified
             v = judge(gh, policy, sha, now, baseline)
-        except (GuardError, urllib.error.URLError, KeyError, ValueError) as exc:
+        except TransientError as exc:
+            rc = 1
+            lines.append("%s TRANSIENT (no status written): %s" % (sha, exc))
+            continue
+        except (GuardError, KeyError, ValueError, TypeError) as exc:
             v = _verdict("failure", "PERFORMANCE_UNVERIFIED: %s" % exc, {})
         if a.mode == "sweep" and v["state"] == "pending" and "first_created_at" not in v["details"]:
             continue                                       # no required run exists for this head yet: nothing to measure, no status written
-        gh.set_status(sha, v["state"], v["description"], policy["status_context"], target)
-        lines.append("%s %s: %s" % (sha, v["state"].upper(), v["description"]))
-        lines.append("```json\n%s\n```" % json.dumps(v["details"], indent=1, sort_keys=True)[:60000])
+        try:
+            gh.set_status(sha, v["state"], v["description"], policy["status_context"], target)
+        except TransientError as exc:
+            rc = 1
+            lines.append("%s TRANSIENT (status not written): %s" % (sha, exc))
+            continue
+        lines.append("%s %s: %s" % (sha, v["state"].upper(), _fence_safe(v["description"])))
+        lines.append("```json\n%s\n```" % _fence_safe(json.dumps(v["details"], indent=1, sort_keys=True)[:60000]))
     text = "\n".join(lines) or "nothing to judge"
     print(text)
     if a.summary:
