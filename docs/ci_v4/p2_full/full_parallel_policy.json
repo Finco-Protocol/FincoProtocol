@@ -1,0 +1,40 @@
+{
+  "authority": "P2 FULL controller policy (Draft, owner review required). Changes only how the COMPLETE collection is distributed; it never selects, deselects or skips a node.",
+  "f01": {
+    "browser_cases": 4,
+    "native_cases": 20
+  },
+  "min_collected_nodes": 21000,
+  "node_split": {
+    "max_parts": 8,
+    "modules": {
+      "tests/test_rcux_governance.py": {
+        "isolation_proof": "No fixture of its own; module-level constants are read-only reads of committed sources at import; every test reads the real tree and asserts (no write, no git mutation, no env/cwd change). Suite autouse module fixtures (tests/conftest.py executor/acquisition lifecycle) are re-created per process. Measured: 41 nodes, 2169 s, heaviest node 284 s (run 41912154663).",
+        "source": "docs/ci_v4/node_split_policy.json (accepted, owner-reviewed)",
+        "verdict": "SPLIT_SAFE"
+      },
+      "tests/test_u1_scope.py": {
+        "isolation_proof": "P1 (post-#457, main d32f4987): module fixture _tree creates its own detached worktree per process (tmp_path_factory) and removes it at teardown; fixture wt runs reset --hard + clean -fdx after EVERY test, so no test depends on another's state (same pattern as tests/test_wf06b_scope.py). The one test that commits (test_evaluation_at_a_commit_ref_matches_the_working_tree_and_rejects_a_foreign_ref: an empty commit) leaves the tree identical. Measured: the exact 3 parts the trusted scheduler derives from run 44147228493 node times ([1 node 977 s], [44 nodes 718 s], [55 nodes 718 s]) each pass in an independent process and clone (1/1, 44/44, 55/55), plus a seeded random-order run of the whole module (docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md). Floor: test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort = 977 s of 2413 s (run 44147228493); splitting cannot shorten that node.",
+        "source": "docs/ci_v4/node_split_policy.json (accepted, owner-reviewed)",
+        "verdict": "SPLIT_SAFE_FLOOR_LIMITED"
+      },
+      "tests/test_wf06b_scope.py": {
+        "isolation_proof": "Module fixture _tree creates its own detached worktree under tmp_path_factory (one per process) and removes it at teardown; fixture wt resets --hard and cleans -fdx after EVERY test, so no test depends on another's state; non-wt tests only read the real tree. Floor: one node (test_no_path_outside_the_superseded_set_is_ever_admitted_by_supersession) took 6718 s of 8197 s (run 41856777361); splitting cannot shorten that node.",
+        "source": "docs/ci_v4/node_split_policy.json (accepted, owner-reviewed)",
+        "verdict": "SPLIT_SAFE_FLOOR_LIMITED"
+      }
+    },
+    "target_unit_s": 900
+  },
+  "schema": "FINCO_CI_FULL_PARALLEL_POLICY_V1",
+  "shard_timeout_s": 3000,
+  "skip_baseline": "docs/ci_v4/full_skip_baseline.json",
+  "workers": {
+    "max": 16,
+    "min": 8,
+    "min_gain_s_per_extra_worker": 120,
+    "note": "16 shards + plan/recollect/F01 stay within 20 concurrent hosted jobs (public-repository Free limit). Target = 2,400 s end-to-end budget minus plan (~420 s), shard setup (240 s), record (~120 s) and queueing.",
+    "per_worker_overhead_s": 240,
+    "target_test_critical_path_s": 1500
+  }
+}

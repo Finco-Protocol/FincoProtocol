@@ -65,8 +65,10 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert set(T.HANDOFFS) == T.HANDOFF_PATHS
     assert T.REPLACED == {'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                           'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
-                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py'}
-    assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py'}      # literal, new, never a pattern
+                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml'}
+    assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
+                          '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
+    assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
@@ -178,18 +180,19 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         path = "tests/%s.py" % name.split(".")[1]
         src = (ROOT / path).read_text()
         assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
-        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')" in src, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml')" in src, path
     v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
     assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
     assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
-            "'tests/test_ci_v4_nodes.py'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
+            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
     gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
-    assert T.CI_PATHS <= T.NEW and not (T.CI_PATHS & T.REPLACED)
+    assert T.P2_FROZEN_EDITS == ('.github/workflows/ci_v4_full.yml',)
+    assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS)      # P2: exactly one REPLACED CI path
 
 
-@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json"])
+@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml"])
 def test_a_foreign_control_blob_is_rejected_by_every_hooked_historical_cohort(subject, path):
     ref, restore = variant(subject, {path: lambda b: b.replace(b'"', b'"', 1) + b"\n"})
     try:
@@ -217,7 +220,8 @@ def test_a_mode_change_of_an_admitted_control_blob_is_rejected(subject):
         restore()
 
 
-@pytest.mark.parametrize("path", [".github/workflows/ci_perf_guard_fast.yml", "tools/ci_perf_guard2.py", "tools/ci_v5_epoch_helper.py"])
+@pytest.mark.parametrize("path", [".github/workflows/ci_perf_guard_fast.yml", "tools/ci_perf_guard2.py", "tools/ci_v5_epoch_helper.py",
+                                  ".github/workflows/ci_v4_full_fast.yml", "tools/ci_full_parallel_helper.py"])
 def test_a_ci_path_outside_the_two_literal_guard_paths_is_rejected(subject, path):
     ref, restore = variant(subject, {path: b"# synthetic negative control\n"})
     try:

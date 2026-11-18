@@ -1,5 +1,8 @@
-# CI V4 FULL regression: the unchanged CI V3 full regression (>21k nodes, all history/exactness checks) + F01 with native identity.
-# Nightly, on demand, and the mandatory input of the release gate (ci_v4_release_gate.yml) for the identical sha.
+# CI V4 FULL regression (P2): EVERY collected pytest node of this exact sha, in disjoint authenticated shards (tools/ci_full_parallel.py), + F01
+# (4-vertical browser + 20 native cases). Nightly, on demand, and the mandatory input of the release gate (ci_v4_release_gate.yml) for the identical sha.
+# Nothing is selected or skipped to fit a time budget: plan = ONE exact collection; record = executed == collected (disjoint union), every skip in the
+# reviewed baseline, every artifact of this attempt re-downloaded through the API and matched to GitHub's digest. The record is a claim: the release
+# gate and the V5 gate re-verify the GitHub run (repository, this workflow path, schedule/workflow_dispatch, branch main, exact sha, conclusion).
 name: CI V4 FULL
 on:
   schedule:
@@ -12,17 +15,113 @@ concurrency:
   group: ci-v4-full-${{ github.sha }}
   cancel-in-progress: false
 jobs:
-  v3-regression:
-    uses: ./.github/workflows/ci_v3_required_job.yml
-    with:
-      mode: control
-      tested-sha: ${{ github.sha }}
-      source-base: ${{ github.sha }}
-      merge-sha: ''
-      pr-number: ''
-    permissions:
-      contents: read
-      actions: read
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      workers: ${{ steps.plan.outputs.workers }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.16'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install (same runtime as every shard)
+        run: |
+          pip install -r requirements.txt -c constraints.txt
+          pip install -r requirements-ci-tests.txt -c constraints.txt
+      # Plan and outputs live OUTSIDE the checkout: an untracked path in the tested tree would (correctly) fail the exact-source cohorts.
+      - name: One exact collection of the whole suite; sealed adaptive plan (union == inventory, disjoint)
+        id: plan
+        run: |
+          python -m tools.ci_full_parallel plan --expected '${{ github.sha }}' --output "$RUNNER_TEMP/full/plan" --workdir "$RUNNER_TEMP/full/work" \
+            --weights docs/ci_v4/module_weights.json --weights docs/ci_v4/node_weights.json --weights docs/ci_v4/performance_baseline.json \
+            --weights docs/ci_v4/p2_full/full_node_weights.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-full-plan-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/full/plan/
+          if-no-files-found: error
+  recollect:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.16'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install
+        run: |
+          pip install -r requirements.txt -c constraints.txt
+          pip install -r requirements-ci-tests.txt -c constraints.txt
+      - name: Independent re-collection in a separate job (compared to the plan by the record)
+        run: python -m tools.ci_full_parallel recollect --expected '${{ github.sha }}' --output "$RUNNER_TEMP/full/recollect" --workdir "$RUNNER_TEMP/full/work"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-full-recollect-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/full/recollect/
+          if-no-files-found: error
+  shards:
+    needs: plan
+    runs-on: ubuntu-24.04
+    # hard ceiling only: each shard's pytest is also killed by its sealed per-shard limit (exit 124, recorded, never a pass)
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: shard-${{ matrix.index }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.16'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      # Same runtime as the CI V3 workers and CI V4 PR shards (no Playwright/Chromium): browser modules skip at collection and are listed SKIPPED,
+      # never PASS; only reviewed baseline skips are admitted. Browser acceptance runs in the F01 job.
+      - name: Install (Python deps + frontend node_modules)
+        run: |
+          pip install -r requirements.txt -c constraints.txt
+          pip install -r requirements-ci-tests.txt -c constraints.txt
+          (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-full-plan-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/full/plan
+      - name: Run exactly the sealed assignment (every assigned module's collection must equal the planned inventory first)
+        run: python -m tools.ci_full_parallel shard --plan "$RUNNER_TEMP/full/plan/plan.json" --index ${{ matrix.index }} --output "$RUNNER_TEMP/full/out"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ci-full-shard-${{ matrix.index }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/full/out/
+          if-no-files-found: error
   f01:
     uses: ./.github/workflows/ci_v4_f01_job.yml
     with:
@@ -30,7 +129,7 @@ jobs:
       run-native: true
   record:
     if: always()
-    needs: [v3-regression, f01]
+    needs: [plan, recollect, shards, f01]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -40,19 +139,17 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          pattern: public-*
-          path: evidence
-      - name: Bind FULL result to this exact sha/tree (fails closed)
+          python-version: '3.12.16'
+      - name: Authenticated strict FULL record bound to this exact sha/tree/run/attempt (fails closed)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m tools.ci_v4_full_record --sha '${{ github.sha }}' --evidence evidence --output record \
-            --result 'v3=${{ needs.v3-regression.result }}' --result 'f01=${{ needs.f01.result }}' \
-            --run-id '${{ github.run_id }}' --run-attempt '${{ github.run_attempt }}'
+          python -m tools.ci_full_parallel record --expected '${{ github.sha }}' --workers '${{ needs.plan.outputs.workers || 0 }}' \
+            --output "$RUNNER_TEMP/full/record" --result 'plan=${{ needs.plan.result }}' --result 'recollect=${{ needs.recollect.result }}' \
+            --result 'shards=${{ needs.shards.result }}' --result 'f01=${{ needs.f01.result }}'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: ci-v4-full-record
-          path: record/
+          path: ${{ runner.temp }}/full/record/
           if-no-files-found: error
