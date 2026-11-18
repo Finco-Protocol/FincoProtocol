@@ -60,7 +60,11 @@ def _login(client):
 
 
 def _create(client, name, template_source, country="HR", capacity="20"):
+    # FABLE-SEC-01: the legacy route now enforces the bound CSRF token (D07b);
+    # the positive client path supplies the token rendered into the form.
+    from tests.fable_pr1_csrf_client import fetch_create_csrf_token
     return client.post("/projects/create", data={
+        "csrf_token": fetch_create_csrf_token(client),
         "project_name": name,
         "project_type": "Solar",
         "template_source": template_source,

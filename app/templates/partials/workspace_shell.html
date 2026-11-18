@@ -15,6 +15,10 @@
 <!-- Hidden persistence form - mirrors legacy sidebar_input block -->
 <!-- Used by app.js for save/run/discard and inputs draft persistence -->
 <form id="main-form" style="display:none;" aria-hidden="true">
+  {# FABLE-SEC-01: session+project+operation-bound token for POST /scenarios/state/discard
+     (C1-Q-07 / D07c). app.js posts the whole FormData of this form, so the token travels
+     with the discard request; save/run/draft parsers ignore unknown extra fields. #}
+  <input type="hidden" name="csrf_token" value="{{ workspace_csrf_token or '' }}" />
   <input type="hidden" name="active_project" value="{{ form_data.get('active_project', '') }}" />
   <input type="hidden" name="project_name" value="{{ form_data.get('project_name', '') }}" />
   <input type="hidden" name="project_type" value="{{ form_data.get('project_type', '') }}" />

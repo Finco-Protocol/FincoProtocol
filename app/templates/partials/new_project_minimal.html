@@ -21,6 +21,8 @@
       hx-on:after-request=""
       class="create-form"
       id="new-project-minimal-form">
+  {# FABLE-SEC-01: session+operation-bound mutation token (C1-Q-07 / D07b). #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}" />
   <fieldset class="create-form-reference-picker">
     <legend>Reference model</legend>
     <label class="create-form-reference-card">
