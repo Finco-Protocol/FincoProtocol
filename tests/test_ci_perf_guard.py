@@ -616,3 +616,57 @@ def test_untrusted_node_ids_cannot_break_out_of_the_run_summary(monkeypatch, tmp
         "failure", "NODE_OVER_LIMIT x```\n# injected", {"first_created_at": "x", "top20": [["a```b", 1]]}))
     text = (tmp_path / "summary.md").read_text()
     assert text.count("```") == 2
+
+
+# ── Correction B: pagination truncation and symlink members ────────────────────────────────────────────────────────────────────────
+class _PagedOpener:
+    """Serves list pages: ``pages`` is a list of item lists; ``total`` is GitHub's total_count (None: omitted)."""
+
+    def __init__(self, key, pages, total=None):
+        self.key, self.pages, self.total, self.seen = key, pages, total, []
+
+    def open(self, req, timeout=None):
+        import urllib.parse
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(req.full_url).query)
+        page = int(q["page"][0])
+        self.seen.append(page)
+        items = self.pages[page - 1] if page <= len(self.pages) else []
+        body = {self.key: items}
+        if self.total is not None:
+            body["total_count"] = self.total
+        return _Resp(json.dumps(body).encode())
+
+
+def test_a_job_list_shorter_than_githubs_total_count_is_unverified_never_a_shorter_clock():
+    jobs = [{"id": i} for i in range(100)]
+    gh = G.GitHub("o/r", "t", opener=_PagedOpener("jobs", [jobs, jobs[:5]], total=180))
+    with pytest.raises(G.GuardError, match="incomplete"):
+        gh.jobs_for({"id": 1, "run_attempt": 1})
+    ok = G.GitHub("o/r", "t", opener=_PagedOpener("jobs", [jobs, jobs[:5]], total=105))
+    assert len(ok.jobs_for({"id": 1, "run_attempt": 1})) == 105
+
+
+def test_a_list_that_hits_the_page_cap_is_truncated_and_refused():
+    full = [{"id": i} for i in range(100)]
+    gh = G.GitHub("o/r", "t", opener=_PagedOpener("workflow_runs", [full] * 25))
+    with pytest.raises(G.GuardError, match="truncated"):
+        gh.runs_for(SHA)
+    pulls = G.GitHub("o/r", "t", opener=_PagedOpener("unused", []))
+    pulls._req = lambda method, path, **k: [{"head": {"sha": SHA}}] * 100
+    with pytest.raises(G.GuardError, match="truncated"):
+        pulls.open_pull_heads()
+
+
+def test_a_shard_zip_with_a_symlink_member_is_unverified(w):
+    good = zipfile.ZipFile(io.BytesIO(w.blobs[5000]))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for n in good.namelist():
+            info = zipfile.ZipInfo(n)
+            if n.startswith("junit"):
+                info.external_attr = (0o120777 << 16)
+                z.writestr(info, b"/etc/passwd")
+            else:
+                z.writestr(info, good.read(n))
+    w.put_artifact(0, buf.getvalue())
+    assert "symlink member" in w.judge()["description"]

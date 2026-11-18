@@ -277,6 +277,8 @@ def _read_shard(blob, index, cfg):
         infos = {i.filename: i for i in z.infolist()}
         if any(i.flag_bits & 0x1 for i in infos.values()):
             raise GuardError("shard %d artifact has an encrypted member" % index)
+        if any((i.external_attr >> 16) & 0o170000 == 0o120000 for i in infos.values()):
+            raise GuardError("shard %d artifact has a symlink member" % index)
         if not want <= set(infos):
             raise GuardError("shard %d artifact lacks %s" % (index, sorted(want - set(infos))))
         for name in want:
@@ -368,15 +370,29 @@ class GitHub:
             raise GuardError("API response larger than %d bytes" % cap)
         return payload if raw else json.loads(payload or b"null")
 
+    MAX_PAGES = 20
+
     def _pages(self, path, key):
-        out, page = [], 1
+        """Every item of a paginated list, or GuardError: a truncated list (page cap reached, or fewer items than GitHub's ``total_count``)
+        could hide a run, a late job or an artifact, so it is never judged (fail closed, never a shorter clock)."""
+        out, page, total = [], 1, None
         while True:
             sep = "&" if "?" in path else "?"
-            got = self._req("GET", "%s%sper_page=100&page=%d" % (path, sep, page))[key]
+            body = self._req("GET", "%s%sper_page=100&page=%d" % (path, sep, page))
+            got = body[key]
+            if not isinstance(got, list):
+                raise GuardError("API list %s is malformed" % key)
+            if isinstance(body.get("total_count"), int):
+                total = body["total_count"] if total is None else total
             out += got
-            if len(got) < 100 or page >= 20:
-                return out
+            if len(got) < 100:
+                break
+            if page >= self.MAX_PAGES:
+                raise GuardError("API list %s truncated at %d pages" % (key, page))
             page += 1
+        if total is not None and len(out) != total:
+            raise GuardError("API list %s incomplete: %d of total_count %d" % (key, len(out), total))
+        return out
 
     def runs_for(self, head_sha):
         return self._pages("/repos/%s/actions/runs?head_sha=%s&event=pull_request" % (self.repo, head_sha), "workflow_runs")
@@ -398,8 +414,10 @@ class GitHub:
         while True:
             got = self._req("GET", "/repos/%s/pulls?state=open&per_page=100&page=%d" % (self.repo, page))
             out += got
-            if len(got) < 100 or page >= 10:
+            if len(got) < 100:
                 return out
+            if page >= 10:
+                raise GuardError("open pull request list truncated at %d pages" % page)
             page += 1
 
     def status(self, head_sha, context):
