@@ -83,27 +83,31 @@ def test_every_earlier_router_state_remains_individually_admitted(layer):
     assert not [e for e in S.violations(historical) if e.startswith(ROUTER + ": unreviewed")]
 
 
+F01_DRIFT_PATHS = [p for p in F01.SOURCES if p != ROUTER]      # every non-router F01 path, in F01 order (literal source of truth: F01.SOURCES)
+
+
 def test_f01_scope_keeps_every_other_path_pinned_to_its_f01_blob():
-    """Every non-router F01 path: one byte of drift is refused. Each mutated source map is judged in its OWN registry call scope (Correction D,
-    post-#460): the scope memoises only verdicts about the unchanged on-disk tree (keyed by repo/ref), never the in-memory candidate bytes,
-    which every check still re-hashes and compares; it is closed before the next mutation. Positive control: the unmutated map passes."""
+    """Coverage and positive control of the per-path drift matrix below (Correction D, post-#460): the parametrized node covers EXACTLY every
+    non-router F01 path, and the unmutated map passes (so no negative can pass vacuously on an invalid tree)."""
     from tests import fin_v2_cohorts as C
     assert set(F01.SUCCESSORS) <= set(F01.SOURCES)
-    current = {p: (S.ROOT / p).read_bytes() for p in F01.SOURCES}
+    assert F01_DRIFT_PATHS == [p for p in F01.SOURCES if p != ROUTER] and len(F01_DRIFT_PATHS) == len(F01.SOURCES) - 1
     with C.call_scope():
-        assert F01.valid(sources=dict(current))
+        assert F01.valid(sources={p: (S.ROOT / p).read_bytes() for p in F01.SOURCES})
     assert not C._CALL and not C._ENTERING
-    checked = []
-    for path in F01.SOURCES:
-        if path == ROUTER:
-            continue
-        sources = dict(current)
-        sources[path] += b"\n"
-        with C.call_scope():
-            assert not F01.valid(sources=sources)
-        assert not C._CALL and not C._ENTERING
-        checked.append(path)
-    assert checked == [p for p in F01.SOURCES if p != ROUTER] and len(checked) == len(F01.SOURCES) - 1
+
+
+@pytest.mark.parametrize("path", F01_DRIFT_PATHS)
+def test_f01_scope_refuses_one_byte_of_drift_in_each_other_path(path):
+    """One byte of drift in ``path`` is refused by the canonical F01 validator. Each mutated map is judged in its OWN registry call scope: the
+    scope memoises only verdicts about the unchanged on-disk tree (keyed by repo/ref), never the in-memory candidate bytes, which every check
+    re-hashes and compares; it is closed before the test ends (Correction D: one node per path instead of one 454 s node)."""
+    from tests import fin_v2_cohorts as C
+    sources = {p: (S.ROOT / p).read_bytes() for p in F01.SOURCES}
+    sources[path] += b"\n"
+    with C.call_scope():
+        assert not F01.valid(sources=sources)
+    assert not C._CALL and not C._ENTERING
 
 
 def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():

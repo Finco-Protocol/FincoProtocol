@@ -174,7 +174,7 @@
     "tests/test_ci_v5_hardening_scope.py": "c12c4a7a1bd64c8ee11895ee87f60b1bb6b9adc5",
     "tests/test_f03_financing_scope.py": "9a8a249e5f3f4fb59c24bad97910c85370d342af",
     "tests/test_f04_financing_scope.py": "728f985e637a9b2cc3c1fab8480fb4d8ed60b454",
-    "tests/test_finv2_d01_governance.py": "81db6bd5ee076a1bd453b37f5bdb8e41969ca3cb",
+    "tests/test_finv2_d01_governance.py": "8f2f73092e191b909227fc94771d535d1a6b084f",
     "tests/test_investor_f4_p2_candidate.py": "21abb873df7aab7c983202b479597c567656ab00",
     "tests/test_p4_token_utility.py": "12c32df825247749add31ad6ce142068fe3eb9f9",
     "tests/test_r02_ppa_ux_scope.py": "6359facad3ecde46bfb6b2fd7b4cc10d731fe45d",
