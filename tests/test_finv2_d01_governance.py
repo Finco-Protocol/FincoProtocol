@@ -16,6 +16,7 @@ D01_SOURCE_HEAD = "f951174b8f55d25b758a3acae3d331cbdd30da8c"        # the review
 FIN_V2_3_SOURCE_HEAD = "65a04560592d84daf6439c0dc09a34456f5707a3"   # the reviewed FIN-V2-3 source head (PR #391)
 ROUTER = "app/v2/router.py"
 HANDLER = "v2_scenario_sensitivity_run"
+O1_PARENT_ROUTER_BLOB = "d1df6c7d8a3cb85ac43b1f47f39b93fe49268ec9"   # app/v2/router.py at 886f66bd^ (the WF-03 pinned state O1 built on)
 SOURCES = {p: (S.ROOT / p).read_text(encoding="utf-8") for p in S.BLOBS}
 
 
@@ -100,17 +101,27 @@ def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
         return {(type(n).__name__, getattr(n, "name", None) or ast.dump(n)): ast.dump(n) for n in tree.body}
 
     old, new = top(base), top(now)
-    assert set(old) == set(new)                                  # no handler/import/constant added or removed at module level
+    added = []
+    from tests import post413_o1_scope as O1
+    if O1.matches(ROUTER, SOURCES[ROUTER]):
+        # O1 reviewed successor (886f66bd, 2026-11-04), only while the O1 cohort pins this exact router blob: exactly one added helper
+        # (_contracts_base_token) and its two consumers. Any other added, removed or changed top-level node still fails.
+        added = [("FunctionDef", "_contracts_base_token")]
+    assert set(old) <= set(new) and sorted(set(new) - set(old)) == added      # nothing removed; only the exact reviewed O1 helper added
     changed = sorted(k for k in old if old[k] != new[k])
     expected = [("AsyncFunctionDef", HANDLER)]
     # WF-03 successor lineage: exactly two further handlers carry the archived / incomplete-creation guards, and only while the WF-03 cohort pins this
     # exact router blob. Nothing else may differ.
     from tests import wf03_lifecycle_scope as WF03
-    if WF03.matches(ROUTER, SOURCES[ROUTER]):
+    # O1 lineage (886f66bd): O1 pins the current router AND its exact parent router is the WF-03-admitted blob, so the WF-03 expectation carries over.
+    o1_lineage = bool(added) and WF03.matches(ROUTER, _blob_source(O1_PARENT_ROUTER_BLOB))
+    if WF03.matches(ROUTER, SOURCES[ROUTER]) or o1_lineage:
         expected = sorted(expected + [("AsyncFunctionDef", "v2_workbook"), ("AsyncFunctionDef", "v2_workbook_run")])
         # ON-08 successor (Financial Owner approvals 2026-10-31, Corrections B/E): the Run hook sits in v2_workbook_run (already listed); the Project Setup
         # horizon advisory adds exactly its helper and its two consumers (v2_workbook, already listed, and _render_htmx_sheet). Same exact-blob gate; nothing else.
         expected = sorted(expected + [("FunctionDef", "_ps_horizon_notice"), ("FunctionDef", "_render_htmx_sheet")])
+    if added:
+        expected = sorted(expected + [("AsyncFunctionDef", "v2_revenue_contracts"), ("FunctionDef", "_build_revenue_contract_editor")])
     assert changed == expected
 
 

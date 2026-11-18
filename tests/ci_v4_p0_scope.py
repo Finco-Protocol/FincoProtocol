@@ -44,7 +44,8 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       # P2: the FULL workflow runs the parallel controller instead of the unsharded CI V3 job (accepted BASE blob + exact new blob)
                       '.github/workflows/ci_v4_full.yml',
                       # post-#460: test-order pollution contained at its source (assertions unchanged; execution-bisected on shard 6 of run 44324970783)
-                      'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py'))
+                      'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
+                      'tests/test_finv2_d01_governance.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
