@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from app.model_v2.investor_f4 import EVIDENCE_KEY, parse_terms, validate_evidence
+from app.model_v2.investor_f4 import EVIDENCE_KEY, InvestorAgreementInputError, parse_terms, validate_evidence
 from app.workbook.investor_agreement_service import effective_raw, save_agreement, InvestorAgreementConflict
 
 router = APIRouter()
@@ -114,8 +114,15 @@ async def investor_save(request: Request):
         save_agreement(owner=owner, project_id=record.project_id,
             expected_hash=str(form.get("content_hash") or ""), raw=form.get("agreement", ""),
             remove=form.get("action") == "remove")
-    except (ValueError, TypeError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=409 if isinstance(exc, InvestorAgreementConflict) else 422)
+    except InvestorAgreementConflict as exc:
+        # Stable conflict text ("Working inputs or scenario changed; reload", ...).
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except InvestorAgreementInputError as exc:
+        # C1F-ERR-01: typed parse refusal with a stable generic message, 422.
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except (ValueError, TypeError):
+        # C1F-ERR-01 (B02): never echo interpreter text; bounded generic code.
+        return JSONResponse({"error": "INVESTOR_AGREEMENT_INPUT_INVALID"}, status_code=422)
     try:
         view, error = _load(request, code)
         if error:
