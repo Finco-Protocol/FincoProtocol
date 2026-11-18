@@ -30,7 +30,9 @@ NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p
                  'docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md',
                  # P2: parallel exact-inventory FULL controller, its policy, measured weights, tests and design note.
                  'tools/ci_full_parallel.py', 'tests/test_ci_full_parallel.py', 'docs/ci_v4/p2_full/full_parallel_policy.json',
-                 'docs/ci_v4/p2_full/full_node_weights.json', 'docs/ci_v4/p2_full/README.md', 'docs/ci_v4/p2_full/ISOLATION_EVIDENCE.json'))
+                 'docs/ci_v4/p2_full/full_node_weights.json', 'docs/ci_v4/p2_full/README.md', 'docs/ci_v4/p2_full/ISOLATION_EVIDENCE.json',
+                 # post-#460: per-NODE scope evidence (exact node ids; plain == scoped; mutation between calls detected)
+                 'docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json'))
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.

@@ -114,6 +114,15 @@ def validate_policy(p):
         _need(m.startswith("tests/test_") and m.endswith(".py") and "*" not in m and ".." not in m.split("/"), "scoped module must be a literal test path")
         _need(spec.get("verdict") == "READ_ONLY_PER_TEST_SCOPE_SAFE" and len(str(spec.get("proof", ""))) >= 80,
               "scoped module %s lacks a read-only proof" % m)
+    nodes = p.get("scoped_nodes")
+    _need(isinstance(nodes, dict), "scoped_nodes missing")
+    for n, spec in nodes.items():
+        mod, sep, name = n.partition("::")
+        _need(sep == "::" and mod.startswith("tests/test_") and mod.endswith(".py") and name and not set(n) & set("*?[]!{} \n,")
+              and ".." not in mod.split("/"), "scoped node must be one literal pytest node id (never a module or pattern): %r" % n)
+        _need(mod not in scoped, "scoped node %s is inside a scoped module (one allowlist per node)" % n)
+        _need(spec.get("verdict") == "READ_ONLY_PER_NODE_SCOPE_SAFE" and len(str(spec.get("proof", ""))) >= 80
+              and str(spec.get("source", "")).startswith("docs/ci_v4/p2_full/"), "scoped node %s lacks a read-only proof" % n)
     f01 = p.get("f01", {})
     _need(f01.get("browser_cases") == 4 and f01.get("native_cases") == 20, "F01 acceptance counts are fixed (4 browser, 20 native)")
     return p
@@ -138,6 +147,8 @@ def pytest_configure(config):
     _S["pid"] = os.getpid()
     _S["scoped"] = frozenset(m for m in os.environ.pop("FINCO_CI_FULL_SCOPED", "").split(",") if m)
     _S["scoped_calls"] = 0
+    _S["scoped_nodes"] = frozenset(n for n in os.environ.pop("FINCO_CI_FULL_SCOPED_NODES", "").split("\\n") if n)
+    _S["scoped_node_calls"] = []
 
 
 import contextlib
@@ -149,16 +160,24 @@ def pytest_runtest_call(item):
     """Literal allowlist only (policy ``scoped_modules``, each with a recorded read-only proof): the CALL phase of such a test is ONE outer
     governance call (tests.fin_v2_cohorts.call_scope, the scope the central gate itself uses) with content-addressed immutable Git reads
     (tests.ci_immutable_git_reads.scope). Both are dropped when the call returns: nothing is shared between tests, no assertion changes."""
-    if item.nodeid.split("::", 1)[0] not in _S.get("scoped", ()):
+    exact = item.nodeid in _S.get("scoped_nodes", ())       # policy ``scoped_nodes``: ONE literal node id, never its module
+    if not exact and item.nodeid.split("::", 1)[0] not in _S.get("scoped", ()):
         yield
         return
     from tests import fin_v2_cohorts as C
     from tests import ci_immutable_git_reads as M
+    _assert_closed = lambda: C._CALL or getattr(C, "_ENTERING", None)
+    if _assert_closed():
+        raise RuntimeError("a governance call scope is already open before a scoped test call")
     with contextlib.ExitStack() as stack:
         stack.enter_context(M.scope())
         stack.enter_context(C.call_scope())
         _S["scoped_calls"] += 1
+        if exact:
+            _S["scoped_node_calls"].append(item.nodeid)
         yield
+    if _assert_closed():
+        raise RuntimeError("a governance call scope outlived its test call")
 
 
 def pytest_sessionstart(session):
@@ -182,7 +201,9 @@ def pytest_unconfigure(config):
     s = _S["session"]
     with open(_S["path"], "w") as f:
         json.dump({"schema": "FINCO_CI_FULL_RECORDER_V1", "complete": True, "exitstatus": int(getattr(s, "exitstatus", -1)) if s else -1,
-                   "scoped_modules": sorted(_S.get("scoped", ())), "scoped_calls": _S.get("scoped_calls", 0), "nodes": _S["nodes"]}, f, sort_keys=True)
+                   "scoped_modules": sorted(_S.get("scoped", ())), "scoped_calls": _S.get("scoped_calls", 0),
+                   "scoped_nodes": sorted(_S.get("scoped_nodes", ())), "scoped_node_calls": list(_S.get("scoped_node_calls", ())),
+                   "nodes": _S["nodes"]}, f, sort_keys=True)
 '''
 
 
@@ -440,10 +461,25 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
             "weights_sources": weights["sources"], "workers": k, "simulation": simulate(units, policy),
             "split_modules": sorted({u["module"] for u in units if u["kind"] == "nodes"}),
             "scoped_modules": sorted(set(policy["scoped_modules"]) & set(inv["modules"])),
+            "scoped_nodes": planned_scoped_nodes(policy, inv),
             "shard_timeout_s": policy["shard_timeout_s"], "assignments": assignments}
     plan = seal(plan)
     verify_plan_against_inventory(plan, inv)
     return plan
+
+
+def planned_scoped_nodes(policy, inv):
+    """The literal ``scoped_nodes`` allowlist, each id required to be EXACTLY one collected node of this inventory (no generalisation)."""
+    collected = {n for spec in inv["modules"].values() for n in spec["node_ids"]}
+    missing = sorted(set(policy["scoped_nodes"]) - collected)
+    _need(not missing, "scoped node(s) not in the current collection: %s" % missing[:5])
+    return sorted(policy["scoped_nodes"])
+
+
+def shard_scoped_nodes(plan, a):
+    """The allowlisted nodes this shard actually executes (its kept nodes only)."""
+    kept = {n for entry in a["modules"].values() for n in entry["keep"]}
+    return sorted(set(plan["scoped_nodes"]) & kept)
 
 
 def verify_plan_against_inventory(plan, inv):
@@ -492,7 +528,8 @@ def run_shard(root, plan, index, out, timeout_s=None):
     _need(sorted(targets) == sorted(set(a["modules"]) | set(a["collection_skips"])), "shard order is not exactly its modules")
     scoped = sorted(set(a["modules"]) & set(plan["scoped_modules"]))
     env = _clean_env(FINCO_CI_V4_NODE_ASSIGN=str(assign_path), FINCO_CI_V4_NODE_EVIDENCE=str(evidence), PYTHONPATH=str(plugin_dir),
-                     FINCO_CI_FULL_SCOPED=",".join(scoped), **{RECORDER_ENV: str(phases)})
+                     FINCO_CI_FULL_SCOPED=",".join(scoped), FINCO_CI_FULL_SCOPED_NODES="\n".join(shard_scoped_nodes(plan, a)),
+                     **{RECORDER_ENV: str(phases)})
     limit = int(timeout_s or plan["shard_timeout_s"])
     t0 = time.monotonic()
     proc = subprocess.Popen(_pytest_base() + ["--junitxml", str(junit), *targets], cwd=root, env=env, start_new_session=True)
@@ -648,6 +685,12 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             _need(set(ph["nodes"]) == set(want), "shard %d recorded a different node set than assigned" % i)
             _need(ph.get("scoped_modules") == sorted(set(a["modules"]) & set(plan["scoped_modules"])),
                   "shard %d used a different per-test scope allowlist than the plan" % i)
+            sn = shard_scoped_nodes(plan, a)
+            _need(ph.get("scoped_nodes") == sn, "shard %d used a different per-node scope allowlist than the plan" % i)
+            calls = ph.get("scoped_node_calls")
+            ran_call = sorted(n for n in sn if "call" in ph["nodes"].get(n, {}).get("phases", {}))
+            _need(isinstance(calls, list) and len(calls) == len(set(calls)) and sorted(calls) == ran_call,
+                  "shard %d scoped-node calls differ from its allowlisted nodes that ran a call phase" % i)
             raw = _one(m, "junit-%d.xml" % i, "shard %d" % i)
             junit_digests.append(hashlib.sha256(raw).hexdigest())
             cases = parse_junit(raw)
@@ -700,7 +743,9 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
                       "inventory_nodes": inv["node_count"] if inv else None,
                       "collection_skip_modules": sorted(inv["collection_skips"]) if inv else None,
                       "profile_digest": inv["profile_digest"] if inv else None, "workers": plan["workers"] if plan else None,
-                      "split_modules": plan["split_modules"] if plan else None, "shards": shard_rows, "f01": f01,
+                      "split_modules": plan["split_modules"] if plan else None,
+                      "scoped_modules": plan["scoped_modules"] if plan else None, "scoped_nodes": plan.get("scoped_nodes") if plan else None,
+                      "shards": shard_rows, "f01": f01,
                       "artifacts": provenance, "authority_note": "a record is a claim; the release/V5 gates re-verify the GitHub run"}}
     return rec, problems
 
