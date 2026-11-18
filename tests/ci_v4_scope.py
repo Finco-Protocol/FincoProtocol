@@ -219,7 +219,11 @@ def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
         memo = _enclosing_call_memo()
         if memo is None:
-            return _exact_blobs_ok(repo, ref)
+            from tests import fin_v2_cohorts as _C
+            if _C._CALL:
+                return _exact_blobs_ok(repo, ref)
+            with _C.call_scope():      # Correction B (#458): ONE read-only verdict is ONE outer call; the scope ends when this call returns
+                return _exact_blobs_ok(repo, ref)
         shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key
         if shared not in memo:
             memo[shared] = _exact_blobs_ok(repo, ref)

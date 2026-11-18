@@ -234,3 +234,74 @@ def test_one_byte_in_the_p0_reviewed_ci_v4_scope_hook_is_rejected(subject):
         assert not ok and not each[T.__name__], each
     finally:
         restore()
+
+
+# ── Correction B: one read-only verdict = one call scope (function boundary); nothing outlives a call, nothing masks a mutation ──────────
+def _no_scope_open():
+    from tests import u1_scope as U, ci_v4_scope as V4
+    return not C._CALL and not U._SCOPE and not U._JOINING and not V4._SCOPE
+
+
+def test_cb_hooks_are_literal_and_bounded():
+    u1 = (ROOT / "tests/u1_scope.py").read_text()
+    assert u1.count("outer.enter_context(_C.call_scope())") == 1 and u1.count("_JOINING = []") == 1
+    v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
+    assert v4.count("with _C.call_scope():      # Correction B (#458)") == 1
+
+
+def test_cb_no_scope_state_outlives_a_verdict():
+    from tests import wf06b_scope as W, ci_v4_scope as V4, u1_scope as U
+    assert _no_scope_open()
+    assert W.exact_blobs_ok() and _no_scope_open()
+    assert V4.exact_blobs_ok() and _no_scope_open()
+    assert U.exact_blobs_ok() and _no_scope_open()
+
+
+def test_cb_an_exception_inside_the_u1_scope_closes_every_scope():
+    from tests import u1_scope as U
+
+    class Boom(Exception):
+        pass
+    with pytest.raises(Boom):
+        with U.scoped():
+            assert C._CALL and U._SCOPE
+            raise Boom()
+    assert _no_scope_open()
+
+
+def test_cb_a_mutation_between_two_verdicts_is_always_seen(subject):
+    from tests import wf06b_scope as W, ci_v4_scope as V4
+    with C.call_scope():
+        assert W.exact_blobs_ok(subject) and V4.exact_blobs_ok(subject)
+    for path, mod in (("tests/wf06b_scope.py", W), ("tests/ci_v4_scope.py", V4)):
+        f = subject / path
+        raw = f.read_bytes()
+        try:
+            assert mod.exact_blobs_ok(subject)                  # fresh call: its own scope
+            f.write_bytes(raw + b"\n# unreviewed\n")
+            assert not mod.exact_blobs_ok(subject), path       # the next call opens a NEW scope: the mutation is never masked
+            assert _no_scope_open()
+        finally:
+            f.write_bytes(raw)
+        assert mod.exact_blobs_ok(subject) and _no_scope_open()
+
+
+@pytest.mark.parametrize("forged", [False, True])
+def test_cb_scoped_and_unscoped_verdicts_are_identical(subject, forged):
+    from tests import wf06b_scope as W, ci_v4_scope as V4, u1_scope as U, post413_o1_scope as O
+    f = subject / "static/react/finco-react.js"
+    raw = f.read_bytes()
+    try:
+        if forged:
+            f.write_bytes(raw + b"\n/* forged */\n")
+        fresh = {m.__name__: m.exact_blobs_ok(subject) for m in (W, V4, U, O)}
+        with C.call_scope():
+            shared = {m.__name__: m.exact_blobs_ok(subject) for m in (W, V4, U, O)}
+        assert fresh == shared
+        if forged:
+            assert not fresh["tests.wf06b_scope"] and not fresh["tests.u1_scope"]
+        else:
+            assert all(fresh.values()), fresh
+    finally:
+        f.write_bytes(raw)
+    assert _no_scope_open()
