@@ -2,18 +2,9 @@
   "authority": "Read ONLY from the trusted default-branch checkout by .github/workflows/ci_perf_guard.yml (workflow_run / schedule). A pull request's own copy of this file is never read while judging that pull request; a change here takes effect only after an owner merge.",
   "baseline": {
     "file": "docs/ci_v4/performance_baseline.json",
-    "note": "Per-node regression baseline: authenticated hosted JUnit of CI V4 PR run 44147228493 (head ac84868e, 2,284 nodes). It is deliberately NOT docs/ci_v4/node_weights.json (a frozen V4 control whose U1 entries are ~6x stale). A node absent from the baseline is NEW: above new_node_without_baseline_seconds it fails until an owner-reviewed baseline refresh records it."
+    "note": "Per-node regression baseline: authenticated hosted JUnit of CI V4 PR runs 44147228493 (head ac84868e, 2,284 nodes) and 44269408688 (accepted #458 head 8726d206, 1,903 nodes; later run wins), 2,433 nodes in all. The former single U1 waiver (976.9 s node) is retired: that node measured 80.8 s on run 44269408688. It is deliberately NOT docs/ci_v4/node_weights.json (a frozen V4 control whose U1 entries are ~6x stale). A node absent from the baseline is NEW: above new_node_without_baseline_seconds it fails until an owner-reviewed baseline refresh records it."
   },
-  "exceptions": [
-    {
-      "approval": "PROPOSED in the P1 Draft PR; effective only when the owner merges this file (the merge is the review). Never extendable from a pull-request head.",
-      "evidence": "CI V4 PR run 44147228493 (head ac84868e), shard-2 JUnit artifact sha256 cb555d74d72564f768c722f8199de0daa52f3806dc017b0cb816ad975cac2f2e: 976.9 s",
-      "expires": "2027-01-31",
-      "max_seconds": 1100,
-      "node": "tests/test_u1_scope.py::test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort",
-      "reason": "Known pre-existing heavy U1 node (indivisible floor of the U1 split; target of the follow-up optimisation). Not a blanket waiver: exact node, cap and expiry."
-    }
-  ],
+  "exceptions": [],
   "junit": {
     "artifact_name_pattern": "^ci-v4-shard-(\\d+)$",
     "junit_member": "junit-shard-{index}.xml",
