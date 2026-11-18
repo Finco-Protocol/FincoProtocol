@@ -84,13 +84,26 @@ def test_every_earlier_router_state_remains_individually_admitted(layer):
 
 
 def test_f01_scope_keeps_every_other_path_pinned_to_its_f01_blob():
+    """Every non-router F01 path: one byte of drift is refused. Each mutated source map is judged in its OWN registry call scope (Correction D,
+    post-#460): the scope memoises only verdicts about the unchanged on-disk tree (keyed by repo/ref), never the in-memory candidate bytes,
+    which every check still re-hashes and compares; it is closed before the next mutation. Positive control: the unmutated map passes."""
+    from tests import fin_v2_cohorts as C
     assert set(F01.SUCCESSORS) <= set(F01.SOURCES)
+    current = {p: (S.ROOT / p).read_bytes() for p in F01.SOURCES}
+    with C.call_scope():
+        assert F01.valid(sources=dict(current))
+    assert not C._CALL and not C._ENTERING
+    checked = []
     for path in F01.SOURCES:
         if path == ROUTER:
             continue
-        sources = {p: (S.ROOT / p).read_bytes() for p in F01.SOURCES}
+        sources = dict(current)
         sources[path] += b"\n"
-        assert not F01.valid(sources=sources)
+        with C.call_scope():
+            assert not F01.valid(sources=sources)
+        assert not C._CALL and not C._ENTERING
+        checked.append(path)
+    assert checked == [p for p in F01.SOURCES if p != ROUTER] and len(checked) == len(F01.SOURCES) - 1
 
 
 def test_the_router_change_is_confined_to_the_one_driver_sensitivity_handler():
