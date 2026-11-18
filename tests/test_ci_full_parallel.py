@@ -15,7 +15,12 @@ from tools.ci_v4_nodes import ids_digest, junit_address
 ROOT = Path(__file__).resolve().parents[1]
 SHA, TREE = "a" * 40, "b" * 40
 RUN, ATTEMPT = 4242, 1
-PROFILE = "p" * 64
+CONFTESTS = {"c" * 64: "tests/", "d" * 64: "tests/sub/"}
+PROFILE_BODY = {"pytest": "9", "python": "3.12.16", "implementation": "CPython", "autoload_disabled": True,
+                "registrations": [{"module": "_pytest.main", "registration": "main", "implementation": "module", "file_sha256": "m" * 64},
+                                  {"module": "conftest", "registration": "<conftest>", "implementation": "module", "file_sha256": "c" * 64},
+                                  {"module": "conftest", "registration": "<conftest>", "implementation": "module", "file_sha256": "d" * 64}]}
+PROFILE = F.canonical_digest(PROFILE_BODY)
 
 
 def policy(**over):
@@ -35,7 +40,7 @@ def inventory(skip_modules=("tests/test_ui_browser.py",)):
             "tests/test_b.py": ["tests/test_b.py::test_x", "tests/test_b.py::test_skip"],
             "tests/test_big.py": ["tests/test_big.py::test_%d" % i for i in range(6)],
             "tests/sub/test_c.py": ["tests/sub/test_c.py::TestK::test_p[1]", "tests/sub/test_c.py::TestK::test_p[2]"]}
-    inv = {"schema": F.INVENTORY_SCHEMA, "tested_sha": SHA, "tested_tree": TREE, "profile": {}, "profile_digest": PROFILE,
+    inv = {"schema": F.INVENTORY_SCHEMA, "tested_sha": SHA, "tested_tree": TREE, "profile": PROFILE_BODY, "profile_digest": PROFILE,
            "modules": {m: {"node_ids": ids, "count": len(ids), "digest": ids_digest(ids)} for m, ids in mods.items()},
            "collection_skips": {m: "Skipped: playwright not installed in this workflow" for m in skip_modules},
            "node_count": sum(len(v) for v in mods.values())}
@@ -82,7 +87,9 @@ def artifacts(plan, inv, status=None):
         want = [n for m in sorted(a["modules"]) for n in a["modules"][m]["keep"]]
         st = {n: status.get(n, "skipped" if n in SKIPPED_NODES else "passed") for n in want}
         ev = {"schema": "FINCO_CI_V4_NODE_EVIDENCE_V1", "complete": True, "exitstatus": 0,
-              "binding": {"tested_sha": SHA, "tested_tree": TREE, "plan_digest": plan["digest"], "shard": i}, "profile_digest": PROFILE,
+              "binding": {"tested_sha": SHA, "tested_tree": TREE, "plan_digest": plan["digest"], "shard": i},
+              "profile": F.expected_shard_profile(PROFILE_BODY, a["order"], CONFTESTS),
+              "profile_digest": F.canonical_digest(F.expected_shard_profile(PROFILE_BODY, a["order"], CONFTESTS)),
               "collected": {m: {"count": e["count"], "digest": e["digest"]} for m, e in a["modules"].items()}, "kept": want,
               "nodes": {n: {"outcome": st[n], "phases": {}, "duration": 1.0} for n in want}}
         rec = F.seal({"schema": F.SHARD_SCHEMA, "shard": i, "tested_sha": SHA, "tested_tree": TREE, "plan_digest": plan["digest"],
@@ -97,7 +104,7 @@ RESULTS = {"plan": "success", "recollect": "success", "shards": "success", "f01"
 
 
 def record(contents, plan, pol=None, baseline=BASELINE, sha=SHA, results=RESULTS):
-    return F.build_record(contents, {}, pol or policy(), baseline, sha, TREE, RUN, ATTEMPT, results)
+    return F.build_record(contents, {}, pol or policy(), baseline, sha, TREE, RUN, ATTEMPT, results, CONFTESTS)
 
 
 # ── plan ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -225,7 +232,14 @@ def _attack(name, contents, plan, inv):
     elif name == "node_never_completed":
         ev = json.loads(sh0["nodes-0.json"]); ev["nodes"][node0]["outcome"] = "incomplete"; sh0["nodes-0.json"] = json.dumps(ev).encode()
     elif name == "other_plugin_profile":
-        ev = json.loads(sh0["nodes-0.json"]); ev["profile_digest"] = "q" * 64; sh0["nodes-0.json"] = json.dumps(ev).encode()
+        ev = json.loads(sh0["nodes-0.json"]); ev["profile"]["registrations"].append({"module": "evil", "registration": "evil",
+                                                                                     "implementation": "module", "file_sha256": None})
+        ev["profile_digest"] = F.canonical_digest(ev["profile"]); sh0["nodes-0.json"] = json.dumps(ev).encode()
+    elif name == "foreign_conftest_loaded":
+        ev = json.loads(sh0["nodes-0.json"]); ev["profile"] = copy.deepcopy(PROFILE_BODY)
+        if F.expected_shard_profile(PROFILE_BODY, plan["assignments"][0]["order"], CONFTESTS) == PROFILE_BODY:
+            ev["profile"]["registrations"][1]["file_sha256"] = "e" * 64
+        ev["profile_digest"] = F.canonical_digest(ev["profile"]); sh0["nodes-0.json"] = json.dumps(ev).encode()
     elif name == "recollection_differs":
         contents["recollect"]["inventory.json"] = json.dumps(inventory(skip_modules=())).encode()
     elif name == "plan_seal_tampered":
@@ -254,7 +268,7 @@ def _attack(name, contents, plan, inv):
 ATTACKS = ["single_case_forged_junit", "missing_shard", "stale_sha", "duplicate_node_across_shards", "skipped_reported_as_pass",
            "new_skip_outside_baseline", "failure", "artifact_replay_other_run", "shard_record_replayed_from_other_attempt", "shard_timeout",
            "shard_record_unsealed_edit", "incomplete_node_evidence", "node_never_completed", "other_plugin_profile", "recollection_differs",
-           "plan_seal_tampered", "f01_native_missing", "f01_browser_skipped", "job_not_success", "lost_artifact_member", "collection_skip_dropped",
+           "foreign_conftest_loaded", "plan_seal_tampered", "f01_native_missing", "f01_browser_skipped", "job_not_success", "lost_artifact_member", "collection_skip_dropped",
            "junit_dtd_entity"]
 
 
@@ -382,3 +396,17 @@ def test_full_workflow_structure():
         for step in job.get("steps", []):
             if "actions/checkout" in step.get("uses", ""):
                 assert step["with"]["persist-credentials"] is False and step["with"]["ref"] == "${{ github.sha }}"
+
+
+def test_shard_profile_keeps_only_ancestor_conftests():
+    only_top = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py"], CONFTESTS)
+    both = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py", "tests/sub/test_c.py"], CONFTESTS)
+    assert [r["file_sha256"] for r in only_top["registrations"]] == ["m" * 64, "c" * 64]
+    assert both == PROFILE_BODY
+    with pytest.raises(F.FullError, match="unknown conftest"):
+        F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py"], {"c" * 64: "tests/"})
+
+
+def test_conftest_map_of_the_real_checkout():
+    m = F.conftest_dirs(ROOT)
+    assert sorted(m.values()) == ["tests/", "tests/tax_reference_registry/"]

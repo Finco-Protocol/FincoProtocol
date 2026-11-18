@@ -147,7 +147,7 @@
     "tests/fin_v2_cohorts.py": "a037f0d2c56c4fb00b12f18da97ee2d8b2e3effd",
     "tests/test_bess02_scope.py": "5a6a2e500660078f1048bf03e06a5c354b7b4964",
     "tests/test_c06_cost_workspace_scope.py": "501ab9b723c2691db3f555e02be29d605412cde8",
-    "tests/test_ci_full_parallel.py": "e055053f51e7a17714a217f8e6793a885e9ff44f",
+    "tests/test_ci_full_parallel.py": "1428a6dc67f40c8e5341248b64f469b5f5408282",
     "tests/test_ci_immutable_git_reads.py": "f7de3cf066b5bc47c07cb34fa497a86d4e78fd46",
     "tests/test_ci_perf_guard.py": "e913e4b4b24400b5e2215c23bf5158039d1d07d2",
     "tests/test_ci_v4_activate.py": "98cafe6e3b39444f8962bc4f5ae2b8213d401552",
@@ -171,7 +171,7 @@
     "tests/test_t01e_remediation_scope.py": "4cfcbf2be818bbaf4fc05677a043c11e5263d960",
     "tests/test_v9p2a_odr_successor.py": "3dbdf33bfb43fbd0488e6a322da8d97cfc024125",
     "tests/u1_scope.py": "b498c542379e02e5c8f62d5e266609cb2a15b619",
-    "tools/ci_full_parallel.py": "4c3b1359ea8ab188a709e6e1ece9ff478212d61b",
+    "tools/ci_full_parallel.py": "fa919bd3a53a6d83582f1854bd3f94b20a50ce5b",
     "tools/ci_perf_guard.py": "f0fee13e948d852d202459a2d4818fad7df61238"
   },
   "source_modes": {

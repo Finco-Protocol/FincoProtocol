@@ -341,7 +341,12 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
         for m, entry in split.items():
             order = {n: j for j, n in enumerate(inv["modules"][m]["node_ids"])}
             entry["keep"] = sorted(entry["keep"], key=order.get)
-        assignments.append({"shard": i, "units": sorted(u["id"] for u in s), "predicted_s": round(load, 1),
+        per_module = collections.Counter()
+        for u in s:
+            per_module[u["module"]] += u["seconds"]
+        # heaviest modules first: the costly governance corpus runs early in a fresh process (order changes no assertion; each module is complete)
+        order = sorted(per_module, key=lambda m: (-per_module[m], m))
+        assignments.append({"shard": i, "units": sorted(u["id"] for u in s), "predicted_s": round(load, 1), "order": order,
                             "modules": split, "collection_skips": sorted(u["module"] for u in s if u["kind"] == "collection_skip")})
     plan = {"schema": PLAN_SCHEMA, "tier": "full", "tested_sha": inv["tested_sha"], "tested_tree": inv["tested_tree"],
             "repository": repo, "ref": ref, "event": event, "run_id": int(run_id), "run_attempt": int(run_attempt),
@@ -374,6 +379,9 @@ def verify_plan_against_inventory(plan, inv):
     _need(set(seen) == set(every), "plan union differs from the inventory (%d planned, %d collected)" % (len(seen), len(every)))
     _need(all(v == 1 for v in seen.values()), "a node is assigned to more than one shard")
     _need(set(skips) == set(inv["collection_skips"]) and all(v == 1 for v in skips.values()), "collection-skip modules not assigned exactly once")
+    for a in plan["assignments"]:
+        _need(sorted(a["order"]) == sorted(set(a["modules"]) | set(a["collection_skips"])) and len(a["order"]) == len(set(a["order"])),
+              "shard %d run order is not exactly its modules" % a["shard"])
     return True
 
 
@@ -391,7 +399,8 @@ def run_shard(root, plan, index, out, timeout_s=None):
               "plan_digest": plan["digest"], "shard": index, "whole": [], "split": a["modules"]}
     assign_path, evidence, junit = out / ("assign-%d.json" % index), out / ("nodes-%d.json" % index), out / ("junit-%d.xml" % index)
     assign_path.write_text(json.dumps(assign, sort_keys=True))
-    targets = sorted(set(a["modules"]) | set(a["collection_skips"]))
+    targets = list(a["order"])
+    _need(sorted(targets) == sorted(set(a["modules"]) | set(a["collection_skips"])), "shard order is not exactly its modules")
     env = _clean_env(FINCO_CI_V4_NODE_ASSIGN=str(assign_path), FINCO_CI_V4_NODE_EVIDENCE=str(evidence))
     limit = int(timeout_s or plan["shard_timeout_s"])
     t0 = time.monotonic()
@@ -494,7 +503,7 @@ def verify_f01(members, policy):
     return {"browser_financial_cases": len(browser), "browser_vertical_cases": policy["f01"]["browser_cases"], "native_cases": len(native)}
 
 
-def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id, run_attempt, results, finished_at=None):
+def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id, run_attempt, results, conftests, finished_at=None):
     """Pure verification of authenticated artifact contents. Returns (record, problems); conclusion is ``pass`` only with zero problems."""
     from tools.ci_v4_nodes import junit_address
     problems, counts, skipped = [], {"passed": 0, "failed": 0, "error": 0, "skipped": 0}, []
@@ -527,7 +536,8 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             _need(ev.get("complete") is True and ev.get("exitstatus") == 0, "shard %d node evidence incomplete" % i)
             _need(ev.get("binding") == {"tested_sha": sha, "tested_tree": tree, "plan_digest": plan["digest"], "shard": i},
                   "shard %d node evidence bound elsewhere" % i)
-            _need(ev.get("profile_digest") == plan["profile_digest"], "shard %d ran under another plugin profile" % i)
+            _need(ev.get("profile") == expected_shard_profile(inv["profile"], a["order"], conftests)
+                  and ev.get("profile_digest") == canonical_digest(ev.get("profile")), "shard %d ran under another plugin profile" % i)
             want = [n for mod in sorted(a["modules"]) for n in a["modules"][mod]["keep"]]
             for mod, entry in a["modules"].items():
                 _need(ev["collected"].get(mod) == {"count": entry["count"], "digest": entry["digest"]}, "shard %d collected %s differently" % (i, mod))
@@ -584,6 +594,30 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
                       "split_modules": plan["split_modules"] if plan else None, "shards": shard_rows, "f01": f01,
                       "artifacts": provenance, "authority_note": "a record is a claim; the release/V5 gates re-verify the GitHub run"}}
     return rec, problems
+
+
+def conftest_dirs(root):
+    """{sha256 of a tests/**/conftest.py at the checked-out commit: its directory ("tests/", "tests/sub/")}."""
+    out = {}
+    for rel in git(root, "ls-files", "--", "tests/conftest.py", "tests/**/conftest.py").splitlines():
+        out[hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest()] = rel[: -len("conftest.py")]
+    return out
+
+
+def expected_shard_profile(inv_profile, targets, conftests):
+    """The collection profile restricted to what a shard can legitimately load: every non-conftest registration unchanged, and exactly the
+    conftests whose directory is an ancestor of one of the shard's targets (pytest loads no other). Unknown conftest = mismatch."""
+    regs = []
+    for r in inv_profile["registrations"]:
+        if r.get("registration") == "<conftest>":
+            where = conftests.get(r.get("file_sha256"))
+            _need(where is not None, "collection loaded an unknown conftest")
+            if not any(t.startswith(where) for t in targets):
+                continue
+        regs.append(r)
+    body = {k: v for k, v in inv_profile.items() if k != "registrations"}
+    body["registrations"] = regs
+    return body
 
 
 def node_weights_from(contents, plan):
@@ -672,7 +706,7 @@ def main(argv=None):
                    "collected_nodes": 0, "junit_sha256": [], "strict": {"schema": STRICT_SCHEMA, "problems": [prov.get("error", "no artifacts")]}}
             problems = rec["strict"]["problems"]
         else:
-            rec, problems = build_record(contents, prov, policy, baseline, src["sha"], src["tree"], run_id, attempt, results)
+            rec, problems = build_record(contents, prov, policy, baseline, src["sha"], src["tree"], run_id, attempt, results, conftest_dirs(root))
             for i in range(a.workers):
                 m = contents.get("shard-%d" % i, {})
                 for k, v in m.items():
