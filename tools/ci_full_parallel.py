@@ -108,6 +108,12 @@ def validate_policy(p):
         _need(m.startswith("tests/") and m.endswith(".py") and "*" not in m and ".." not in m.split("/"), "split module must be a literal test path")
         _need(spec.get("verdict") in ("SPLIT_SAFE", "SPLIT_SAFE_FLOOR_LIMITED") and len(str(spec.get("isolation_proof", ""))) >= 40,
               "split module %s lacks a verdict / isolation proof" % m)
+    scoped = p.get("scoped_modules")
+    _need(isinstance(scoped, dict), "scoped_modules missing")
+    for m, spec in scoped.items():
+        _need(m.startswith("tests/test_") and m.endswith(".py") and "*" not in m and ".." not in m.split("/"), "scoped module must be a literal test path")
+        _need(spec.get("verdict") == "READ_ONLY_PER_TEST_SCOPE_SAFE" and len(str(spec.get("proof", ""))) >= 80,
+              "scoped module %s lacks a read-only proof" % m)
     f01 = p.get("f01", {})
     _need(f01.get("browser_cases") == 4 and f01.get("native_cases") == 20, "F01 acceptance counts are fixed (4 browser, 20 native)")
     return p
@@ -130,6 +136,29 @@ _S = {"path": None, "pid": None, "nodes": {}, "session": None}
 def pytest_configure(config):
     _S["path"] = os.environ.pop("FINCO_CI_FULL_RECORDER", None)
     _S["pid"] = os.getpid()
+    _S["scoped"] = frozenset(m for m in os.environ.pop("FINCO_CI_FULL_SCOPED", "").split(",") if m)
+    _S["scoped_calls"] = 0
+
+
+import contextlib
+import pytest
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """Literal allowlist only (policy ``scoped_modules``, each with a recorded read-only proof): the CALL phase of such a test is ONE outer
+    governance call (tests.fin_v2_cohorts.call_scope, the scope the central gate itself uses) with content-addressed immutable Git reads
+    (tests.ci_immutable_git_reads.scope). Both are dropped when the call returns: nothing is shared between tests, no assertion changes."""
+    if item.nodeid.split("::", 1)[0] not in _S.get("scoped", ()):
+        yield
+        return
+    from tests import fin_v2_cohorts as C
+    from tests import ci_immutable_git_reads as M
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(M.scope())
+        stack.enter_context(C.call_scope())
+        _S["scoped_calls"] += 1
+        yield
 
 
 def pytest_sessionstart(session):
@@ -153,7 +182,7 @@ def pytest_unconfigure(config):
     s = _S["session"]
     with open(_S["path"], "w") as f:
         json.dump({"schema": "FINCO_CI_FULL_RECORDER_V1", "complete": True, "exitstatus": int(getattr(s, "exitstatus", -1)) if s else -1,
-                   "nodes": _S["nodes"]}, f, sort_keys=True)
+                   "scoped_modules": sorted(_S.get("scoped", ())), "scoped_calls": _S.get("scoped_calls", 0), "nodes": _S["nodes"]}, f, sort_keys=True)
 '''
 
 
@@ -410,6 +439,7 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
             "collection_skip_count": len(inv["collection_skips"]), "policy_digest": canonical_digest(policy),
             "weights_sources": weights["sources"], "workers": k, "simulation": simulate(units, policy),
             "split_modules": sorted({u["module"] for u in units if u["kind"] == "nodes"}),
+            "scoped_modules": sorted(set(policy["scoped_modules"]) & set(inv["modules"])),
             "shard_timeout_s": policy["shard_timeout_s"], "assignments": assignments}
     plan = seal(plan)
     verify_plan_against_inventory(plan, inv)
@@ -460,8 +490,9 @@ def run_shard(root, plan, index, out, timeout_s=None):
     _need(plugin_sha == plan["plugin_sha256"], "shard plugin differs from the plugin that collected the plan inventory")
     targets = list(a["order"])
     _need(sorted(targets) == sorted(set(a["modules"]) | set(a["collection_skips"])), "shard order is not exactly its modules")
+    scoped = sorted(set(a["modules"]) & set(plan["scoped_modules"]))
     env = _clean_env(FINCO_CI_V4_NODE_ASSIGN=str(assign_path), FINCO_CI_V4_NODE_EVIDENCE=str(evidence), PYTHONPATH=str(plugin_dir),
-                     **{RECORDER_ENV: str(phases)})
+                     FINCO_CI_FULL_SCOPED=",".join(scoped), **{RECORDER_ENV: str(phases)})
     limit = int(timeout_s or plan["shard_timeout_s"])
     t0 = time.monotonic()
     proc = subprocess.Popen(_pytest_base() + ["--junitxml", str(junit), *targets], cwd=root, env=env, start_new_session=True)
@@ -470,11 +501,17 @@ def run_shard(root, plan, index, out, timeout_s=None):
         rc = proc.wait(timeout=limit)
     except subprocess.TimeoutExpired:
         timed_out = True
-        os.killpg(proc.pid, signal.SIGTERM)
-        try:
-            proc.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL); proc.wait()
+        # SIGINT first: pytest finishes the session (partial JUnit + phase record for diagnosis; the record still fails on timed_out)
+        for sig, grace in ((signal.SIGINT, 90), (signal.SIGTERM, 30), (signal.SIGKILL, None)):
+            try:
+                os.killpg(proc.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                proc.wait(timeout=grace)
+                break
+            except subprocess.TimeoutExpired:
+                continue
         rc = TIMEOUT_EXIT
     wall = round(time.monotonic() - t0, 1)
     rec = seal({"schema": SHARD_SCHEMA, "shard": index, "tested_sha": src["sha"], "tested_tree": src["tree"], "plan_digest": plan["digest"],
@@ -609,6 +646,8 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             _need(ph.get("schema") == RECORDER_SCHEMA and ph.get("complete") is True and ph.get("exitstatus") == 0,
                   "shard %d phase recorder incomplete" % i)
             _need(set(ph["nodes"]) == set(want), "shard %d recorded a different node set than assigned" % i)
+            _need(ph.get("scoped_modules") == sorted(set(a["modules"]) & set(plan["scoped_modules"])),
+                  "shard %d used a different per-test scope allowlist than the plan" % i)
             raw = _one(m, "junit-%d.xml" % i, "shard %d" % i)
             junit_digests.append(hashlib.sha256(raw).hexdigest())
             cases = parse_junit(raw)

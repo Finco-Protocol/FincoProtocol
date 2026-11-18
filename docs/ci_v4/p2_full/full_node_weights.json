@@ -1,6 +1,27 @@
 {
-  "modules": {},
-  "nodes": {},
+  "modules": {
+    "tests/fin_truth_b1/test_sensitivity_source.py": 77.6,
+    "tests/fin_truth_b1/test_source_successor.py": 40.1,
+    "tests/test_bess02_scope.py": 40.1,
+    "tests/test_c06_cost_workspace_scope.py": 90.6,
+    "tests/test_ci_process_lifecycle.py": 34.3,
+    "tests/test_ci_pytest_progress.py": 41.9,
+    "tests/test_ci_v3_outcome_reconciliation.py": 825.5,
+    "tests/test_ci_v3_real_adapter.py": 51.1,
+    "tests/test_ci_v3_reference_admission_successor.py": 17307.7,
+    "tests/test_ci_v4_full_recovery_scope.py": 104.4,
+    "tests/test_ci_v4_lean_b1_scope.py": 91.7,
+    "tests/test_ci_v4_lean_b2_scope.py": 94.1,
+    "tests/test_ci_v4_lean_b3_scope.py": 86.8,
+    "tests/test_ci_v4_lean_report.py": 39.0
+  },
+  "nodes": {
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[bad_historical_skip]": 3520.9,
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[false_native_pass]": 3518.7,
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_successor_test]": 3525.1,
+    "tests/test_ci_v3_reference_admission_successor.py::test_strict_historical_gate_is_not_relaxed": 3496.1,
+    "tests/test_ci_v3_reference_admission_successor.py::test_unreviewed_exact_trust_blob_cannot_admit_successor": 3247.0
+  },
   "schema": "FINCO_CI_FULL_NODE_WEIGHTS_V1",
-  "source": "EMPTY: no authentic current-head FULL measurement yet. The plan falls back to docs/ci_v4/module_weights.json, node_weights.json and performance_baseline.json (stale for the governance corpus; balance only, never acceptance). Refill from a hosted record measured-node-weights.json."
+  "source": "Hosted CI_PROGRESS of CI V4 FULL run 44269024819 (job 134680713630, main d32f4987, SEQUENTIAL unsharded, timed out at 3,095/26,149): the only current-head hosted FULL measurements. Pessimistic (one long process); balance input only, never an acceptance input. Every other module falls back to docs/ci_v4/module_weights.json / node_weights.json / performance_baseline.json."
 }

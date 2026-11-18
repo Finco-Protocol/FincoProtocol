@@ -1,0 +1,151 @@
+{
+ "evidence": [
+  {
+   "module": "tests/test_ci_v3_reference_admission_successor.py",
+   "node_ids": [
+    "tests/test_ci_v3_reference_admission_successor.py::test_strict_historical_gate_is_not_relaxed",
+    "tests/test_ci_v3_reference_admission_successor.py::test_unmodified_reference_is_still_admitted_strictly",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[second_changed_historical_node]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_successor_test]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[skipped_new_test]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[false_native_pass]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[bad_historical_skip]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_historical_native]",
+    "tests/test_ci_v3_reference_admission_successor.py::test_unreviewed_exact_trust_blob_cannot_admit_successor",
+    "tests/test_ci_v3_reference_admission_successor.py::test_d029_node_may_reproduce_its_original_historical_outcome_but_nothing_else_may"
+   ],
+   "recorder_plugin_sha256": "62e7a6bd92a3ec284aedadf7a0189adba7f5a23ecdbf36a5d6e731cc6b4a1275",
+   "runs": [
+    {
+     "label": "node00",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_strict_historical_gate_is_not_relaxed": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 21.2
+    },
+    {
+     "label": "node01",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_unmodified_reference_is_still_admitted_strictly": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 0.4
+    },
+    {
+     "label": "node02",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[second_changed_historical_node]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 0.4
+    },
+    {
+     "label": "node03",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_successor_test]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 20.3
+    },
+    {
+     "label": "node04",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[skipped_new_test]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 0.5
+    },
+    {
+     "label": "node05",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[false_native_pass]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 18.4
+    },
+    {
+     "label": "node06",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[bad_historical_skip]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 16.4
+    },
+    {
+     "label": "node07",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_historical_native]": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 0.5
+    },
+    {
+     "label": "node08",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_unreviewed_exact_trust_blob_cannot_admit_successor": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 17.8
+    },
+    {
+     "label": "node09",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_d029_node_may_reproduce_its_original_historical_outcome_but_nothing_else_may": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 1,
+     "wall_s": 0.5
+    },
+    {
+     "label": "whole_scoped",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_d029_node_may_reproduce_its_original_historical_outcome_but_nothing_else_may": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[bad_historical_skip]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[false_native_pass]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_historical_native]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_successor_test]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[second_changed_historical_node]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[skipped_new_test]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_strict_historical_gate_is_not_relaxed": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_unmodified_reference_is_still_admitted_strictly": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_unreviewed_exact_trust_blob_cannot_admit_successor": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 10,
+     "wall_s": 58.4
+    },
+    {
+     "label": "whole_plain",
+     "outcomes": {
+      "tests/test_ci_v3_reference_admission_successor.py::test_d029_node_may_reproduce_its_original_historical_outcome_but_nothing_else_may": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[bad_historical_skip]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[false_native_pass]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_historical_native]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[missing_successor_test]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[second_changed_historical_node]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_reference_successor_fails_closed_on_any_other_change[skipped_new_test]": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_strict_historical_gate_is_not_relaxed": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_unmodified_reference_is_still_admitted_strictly": "passed",
+      "tests/test_ci_v3_reference_admission_successor.py::test_unreviewed_exact_trust_blob_cannot_admit_successor": "passed"
+     },
+     "rc": 0,
+     "scoped_calls": 0,
+     "wall_s": 271.2
+    }
+   ]
+  }
+ ],
+ "schema": "FINCO_CI_FULL_ISOLATION_EVIDENCE_V1",
+ "scope": "LOCAL evidence (not hosted): subject = accepted main cd4a9a2aa49d63574402df3a68594acd3a414356 in a clean detached clone; Python 3.13.18; every node alone in a fresh pytest process with the materialized recorder (per-test scope ON), then the whole module scoped and plain. Outcomes from the independent phase recorder.",
+ "subject_sha": "cd4a9a2aa49d63574402df3a68594acd3a414356"
+}

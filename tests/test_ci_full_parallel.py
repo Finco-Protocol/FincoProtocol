@@ -31,6 +31,7 @@ def policy(**over):
     p["node_split"]["modules"]["tests/test_big.py"] = {"verdict": "SPLIT_SAFE", "isolation_proof": "synthetic: no shared state between nodes, each node is independent",
                                                          "source": "test"}
     p["node_split"]["target_unit_s"] = 60
+    p["scoped_modules"] = {"tests/test_a.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "synthetic: " + "x" * 80}}
     p.update(over)
     return F.validate_policy(p)
 
@@ -96,7 +97,8 @@ def artifacts(plan, inv, status=None):
                       "run_id": RUN, "run_attempt": ATTEMPT, "plugin_sha256": "f" * 64, "pytest_exit": 0, "timed_out": False, "limit_s": 3000, "wall_s": 12.0, "targets": []})
         phases = {"passed": {"setup": "passed", "call": "passed", "teardown": "passed"}, "skipped": {"setup": "skipped", "teardown": "passed"},
                   "failed": {"setup": "passed", "call": "failed", "teardown": "passed"}}
-        ph = {"schema": F.RECORDER_SCHEMA, "complete": True, "exitstatus": 0, "nodes": {n: {"phases": phases[st[n]], "duration": 1.0} for n in want}}
+        ph = {"schema": F.RECORDER_SCHEMA, "complete": True, "exitstatus": 0, "scoped_modules": sorted(set(a["modules"]) & set(plan["scoped_modules"])),
+              "scoped_calls": 0, "nodes": {n: {"phases": phases[st[n]], "duration": 1.0} for n in want}}
         contents["shard-%d" % i] = {"shard-%d.json" % i: json.dumps(rec).encode(), "nodes-%d.json" % i: json.dumps(ev).encode(),
                                     "phases-%d.json" % i: json.dumps(ph).encode(),
                                     "junit-%d.xml" % i: junit([case(n, st[n]) for n in want] + [coll_skip(m) for m in a["collection_skips"]])}
@@ -169,7 +171,10 @@ def test_partial_collection_below_the_floor_is_refused():
                                     lambda p: p.update(skip_baseline="docs/other.json"),
                                     lambda p: p["node_split"]["modules"].update({"tests/*.py": {"verdict": "SPLIT_SAFE", "isolation_proof": "x" * 50}}),
                                     lambda p: p["node_split"]["modules"].update({"tests/test_q.py": {"verdict": "SPLIT_SAFE", "isolation_proof": "short"}}),
-                                    lambda p: p["f01"].update(native_cases=19)])
+                                    lambda p: p["f01"].update(native_cases=19),
+                                    lambda p: p["scoped_modules"].update({"tests/test_x*.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "x" * 90}}),
+                                    lambda p: p["scoped_modules"].update({"tests/test_x.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "short"}}),
+                                    lambda p: p.pop("scoped_modules")])
 def test_policy_cannot_be_weakened(mutate):
     p = json.loads((ROOT / "docs/ci_v4/p2_full/full_parallel_policy.json").read_text())
     mutate(p)
@@ -177,11 +182,39 @@ def test_policy_cannot_be_weakened(mutate):
         F.validate_policy(p)
 
 
-def test_real_policy_splits_only_the_accepted_isolation_proven_modules():
+EVIDENCE = "docs/ci_v4/p2_full/ISOLATION_EVIDENCE.json"
+
+
+def _evidence(module):
+    d = json.loads((ROOT / EVIDENCE).read_text())
+    rows = [r for r in d["evidence"] if r["module"] == module]
+    assert len(rows) == 1, module
+    return rows[0]
+
+
+def test_real_policy_splits_only_isolation_proven_modules():
     p = F.load_policy()
     accepted = json.loads((ROOT / "docs/ci_v4/node_split_policy.json").read_text())["modules"]
-    assert set(p["node_split"]["modules"]) <= set(accepted)
-    assert all(p["node_split"]["modules"][m]["isolation_proof"] == accepted[m]["isolation_proof"] for m in p["node_split"]["modules"])
+    for m, spec in p["node_split"]["modules"].items():
+        if m in accepted:                                   # the accepted, owner-reviewed verdicts, copied verbatim
+            assert spec["isolation_proof"] == accepted[m]["isolation_proof"] and spec["verdict"] == accepted[m]["verdict"]
+            continue
+        assert spec["source"] == EVIDENCE                   # a P2 addition needs recorded local evidence: every node passes ALONE
+        ev = _evidence(m)
+        alone = [r for r in ev["runs"] if r["label"].startswith("node")]
+        assert sorted(n for r in alone for n in r["outcomes"]) == sorted(ev["node_ids"]) and len(alone) == len(ev["node_ids"])
+        assert all(r["rc"] == 0 and list(r["outcomes"].values()) == ["passed"] for r in alone)
+
+
+def test_real_policy_scopes_only_modules_with_scoped_equals_plain_evidence():
+    p = F.load_policy()
+    assert p["scoped_modules"], "the allowlist is literal and non-empty only with evidence"
+    for m, spec in p["scoped_modules"].items():
+        assert spec["source"] == EVIDENCE
+        ev = _evidence(m)
+        runs = {r["label"]: r for r in ev["runs"]}
+        assert runs["whole_scoped"]["outcomes"] == runs["whole_plain"]["outcomes"] and runs["whole_scoped"]["rc"] == runs["whole_plain"]["rc"] == 0
+        assert runs["whole_scoped"]["scoped_calls"] == len(ev["node_ids"]) and runs["whole_plain"]["scoped_calls"] == 0
     assert p["min_collected_nodes"] >= json.loads((ROOT / "docs/ci_v4/ci-v4-policy.json").read_text())["release_gate"]["full_min_collected_nodes"]
 
 
@@ -247,6 +280,9 @@ def _attack(name, contents, plan, inv):
         sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "recorder_missing_node":
         ph = json.loads(sh0["phases-0.json"]); del ph["nodes"][node0]; sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name == "scope_allowlist_widened":
+        ph = json.loads(sh0["phases-0.json"]); ph["scoped_modules"] = sorted(set(ph["scoped_modules"]) | {"tests/test_b.py"})
+        sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "recorder_incomplete":
         ph = json.loads(sh0["phases-0.json"]); ph["exitstatus"] = 1; sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "other_plugin_profile":
@@ -286,7 +322,7 @@ def _attack(name, contents, plan, inv):
 ATTACKS = ["single_case_forged_junit", "missing_shard", "stale_sha", "duplicate_node_across_shards", "skipped_reported_as_pass",
            "new_skip_outside_baseline", "failure", "artifact_replay_other_run", "shard_record_replayed_from_other_attempt", "shard_ran_other_plugin", "shard_timeout",
            "shard_record_unsealed_edit", "incomplete_node_evidence", "node_never_completed", "phase_record_lost_setup", "phase_recorded_twice",
-           "recorder_missing_node", "recorder_incomplete", "other_plugin_profile", "recollection_differs",
+           "recorder_missing_node", "recorder_incomplete", "scope_allowlist_widened", "other_plugin_profile", "recollection_differs",
            "foreign_conftest_loaded", "plan_seal_tampered", "f01_native_missing", "f01_browser_skipped", "job_not_success", "lost_artifact_member", "collection_skip_dropped",
            "junit_dtd_entity"]
 
@@ -429,3 +465,13 @@ def test_shard_profile_keeps_only_ancestor_conftests():
 def test_conftest_map_of_the_real_checkout():
     m = F.conftest_dirs(ROOT)
     assert sorted(m.values()) == ["tests/", "tests/tax_reference_registry/"]
+
+
+def test_recorder_scope_is_literal_per_call_and_never_outlives_a_test():
+    src = F.RECORDER_SOURCE
+    assert 'os.environ.pop("FINCO_CI_FULL_SCOPED"' in src and 'os.environ.pop("FINCO_CI_FULL_RECORDER"' in src
+    assert "def pytest_runtest_call(item):" in src and "hookwrapper=True" in src
+    assert "stack.enter_context(C.call_scope())" in src and "stack.enter_context(M.scope())" in src
+    body = src.split("def pytest_runtest_call(item):")[1].split("\ndef ")[0]
+    assert "pytest_runtest_setup" not in src and "pytest_runtest_teardown" not in src
+    assert "session" not in body and "_S[\"scoped\"] =" not in body      # the hook never widens its allowlist or keeps state across tests
