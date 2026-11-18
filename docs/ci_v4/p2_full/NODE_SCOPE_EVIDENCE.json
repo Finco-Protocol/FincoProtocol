@@ -1,1 +1,140 @@
-{}
+{
+  "nodes": {
+    "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_3_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": ".github/workflows/fin_v2_3_oracle.yml",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 1471.29
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "wall_s": 9.66
+      },
+      "sibling_modules_not_scoped": true
+    },
+    "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_r1_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": "app/run_integrity/reserve_coverage_evidence.py",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 1483.33
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "wall_s": 13.22
+      },
+      "sibling_modules_not_scoped": true
+    },
+    "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_rcux_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": "app/v2/react_capex.py",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 2486.79
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "wall_s": 14.99
+      },
+      "sibling_modules_not_scoped": true
+    }
+  },
+  "note": "LOCAL evidence (4-vCPU container, the three nodes measured concurrently), not a hosted timing claim. Plain and scoped each run alone in a fresh pytest process with the materialized recorder; mutation probe in a disposable clone.",
+  "schema": "FINCO_CI_FULL_NODE_SCOPE_EVIDENCE_V1",
+  "tested_head_parent_sha": "7e4caa095cf2f890352322d8c735071681e8cf89",
+  "tested_head_parent_tree": "0e0aacfa459d0d9887bdee49b0c406c5d801a133"
+}
