@@ -21,6 +21,15 @@ The central governance gate is PASS with 48/48 cohorts exact. Every other path, 
 
 V4 trusts the terminal manifest `docs/ci_v4/p0_40min/SOURCE_SUCCESSOR.json`: a change that re-pins it consistently is accepted by self-consistency alone. This was already true before P1, and owner review of that file is the control.
 
+## Post-merge status (main `3bf38edb`, merge of #458 at 2026-11-18 12:06 UTC)
+
+- The guard workflow is registered and `active` on `main`.
+- Its first live run (`44300831663`, a `workflow_run` from a `push` run on `main`) proved the effective token permissions: Actions, Contents, Metadata and PullRequests read; Statuses write. The default-branch ref guard passed, and the run judged nothing ("not a pull_request run").
+- The trusted selector selects `tests/test_u1_scope.py` only when `tests/u1_scope.py` or `tests/test_u1_scope.py` change. A U1 split can therefore be observed only on a PR that legitimately changes that U1 governance code; no such PR may be invented for the purpose.
+- **Before making the guard required:**
+  - The baseline is the union of two authenticated hosted runs, so far fewer selected nodes are new to it. A node above 120 s with no baseline still fails as `NODE_WITHOUT_BASELINE`.
+  - The single U1 waiver is retired, because that node now measures 80.8 s.
+
 ## Owner steps after the merge (in order)
 
 1. **Confirm the guard runs.** On the next PR, open *Actions → CI performance budget guard*. One run per completed required workflow. The commit-status list of the PR head shows `CI Performance Budget` as `pending`, then `success` or `failure`.

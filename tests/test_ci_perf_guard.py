@@ -298,11 +298,11 @@ def test_policy_cannot_raise_the_budget_or_hold_an_open_ended_exception():
         G.validate_policy(p)
 
 
-def test_the_repository_policy_is_the_40_minute_budget_with_one_exact_exception():
+def test_the_repository_policy_is_the_40_minute_budget_with_no_node_exception():
     assert POLICY["limits"]["end_to_end_seconds"] == 2400 and POLICY["limits"]["shard_job_seconds"] <= 2040
     assert POLICY["limits"]["node_fail_seconds"] == 600 and POLICY["limits"]["node_regression_fraction"] == 0.2
-    assert [e["node"] for e in POLICY["exceptions"]] == [
-        "tests/test_u1_scope.py::test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort"]
+    # the former U1 waiver (976.9 s, run 44147228493) is retired: the node measured 80.8 s on run 44269408688 (#458 head 8726d206)
+    assert POLICY["exceptions"] == []
 
 
 def test_required_workflows_exist_with_exact_names_and_run_on_every_pull_request():
@@ -349,15 +349,20 @@ def test_descriptions_fit_a_commit_status():
     assert len(w.judge(minutes_now=45)["description"]) <= 140
 
 
-def test_the_repository_baseline_is_one_authenticated_hosted_run_and_not_the_frozen_node_weights():
+def test_the_repository_baseline_is_two_authenticated_hosted_runs_and_not_the_frozen_node_weights():
     assert POLICY["baseline"]["file"] == "docs/ci_v4/performance_baseline.json"
     b = json.loads((ROOT / POLICY["baseline"]["file"]).read_text())
-    assert b["schema"] == "FINCO_CI_PERFORMANCE_BASELINE_V1" and b["source"]["run_id"] == 44147228493
-    assert b["source"]["head_sha"] == "ac84868ece17122b5a03e78b00dbd6f79b3e1869"
-    assert [a["artifact_sha256"] for a in b["source"]["artifacts"]] == [
-        "be50fb829d265e7f57b044b5556f1b51e14af3cfff53891a5f0b1277b0648e7c", "40004f31d3c12ad84bdb7d40b361f3cd6268fdc271609a87e995f39a4688b983",
-        "cb555d74d72564f768c722f8199de0daa52f3806dc017b0cb816ad975cac2f2e"]
-    assert len(b["nodes"]) == sum(a["testcases"] for a in b["source"]["artifacts"]) == 2284
+    assert b["schema"] == "FINCO_CI_PERFORMANCE_BASELINE_V1" and "source" not in b
+    assert [(s["run_id"], s["head_sha"]) for s in b["sources"]] == [
+        (44147228493, "ac84868ece17122b5a03e78b00dbd6f79b3e1869"), (44269408688, "8726d20616be097d95eb3289905679a19c2a0e62")]
+    assert [[a["artifact_sha256"] for a in s["artifacts"]] for s in b["sources"]] == [
+        ["be50fb829d265e7f57b044b5556f1b51e14af3cfff53891a5f0b1277b0648e7c", "40004f31d3c12ad84bdb7d40b361f3cd6268fdc271609a87e995f39a4688b983",
+         "cb555d74d72564f768c722f8199de0daa52f3806dc017b0cb816ad975cac2f2e"],
+        ["0aaec754842a20151aa6ddf6c344385bbcdc7b4032b4d914f70dfc2c5d56d857", "0e5595710a193f6193250b2b2ef2e2ae8a968bf10ef67bb4e79e8ad4552a9f30",
+         "2d958b559252cb9e135a3b2ec93c5abaa0970a95921aedbaa17883723ddf5936"]]
+    assert [sum(a["testcases"] for a in s["artifacts"]) for s in b["sources"]] == [2284, 1903]
+    assert len(b["nodes"]) == 2433                         # union; a node measured by the later run carries the later value
+    assert b["nodes"]["tests/test_u1_scope.py::test_an_older_cohort_accepts_a_superseded_blob_only_through_the_exact_cohort"] < 120
     caps = {e["node"]: e["max_seconds"] for e in POLICY["exceptions"]}
     over = {n: t for n, t in b["nodes"].items() if t > caps.get(n, POLICY["limits"]["node_fail_seconds"])}
     assert over == {}, over
