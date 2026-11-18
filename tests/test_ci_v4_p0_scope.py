@@ -65,7 +65,10 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert set(T.HANDOFFS) == T.HANDOFF_PATHS
     assert T.REPLACED == {'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                           'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
-                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml'}
+                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml',
+                          # post-#460: polluter containment (3) and the D01 O1-successor guard (1); literal, closed
+                          'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
+                          'tests/test_finv2_d01_governance.py'}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
