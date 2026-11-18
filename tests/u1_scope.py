@@ -195,6 +195,7 @@ def _owned_ok():
 
 
 _SCOPE = []
+_JOINING = []      # Correction B: set only while the registry's call scope is being entered from scoped(); never holds a verdict
 
 
 LATER_COHORTS = ('tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope', 'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope')
@@ -271,6 +272,16 @@ def scoped():
     """Within ONE outer governance call the result of ``exact_blobs_ok(root, ref)`` is computed once. Dropped on exit; never keeps bytes."""
     if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)
         yield
+        return
+    from tests import fin_v2_cohorts as _C
+    if not _C._CALL and not _JOINING:      # Correction B (#458): the outermost U1 scope IS one outer governance call; the registry's call scope
+        with ExitStack() as outer:         # is opened for exactly the same lifetime (it re-enters this function below) and closed with it
+            _JOINING.append(True)
+            try:
+                outer.enter_context(_C.call_scope())
+            finally:
+                _JOINING.pop()
+            yield
         return
     with ExitStack() as later:       # each later cohort's verdict is shared for the same outer call only (PR #414 call scope)
         for m in _later_modules():

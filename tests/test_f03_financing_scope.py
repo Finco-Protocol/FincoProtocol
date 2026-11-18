@@ -81,8 +81,12 @@ def test_f03_only_exact_f01_ci_handoffs_are_admitted():
     for p in sorted(F.REVIEWED_CI_HANDOFFS):
         raw = (ROOT / p).read_bytes()
         if v5 and p == "tests/ci_v4_scope.py":
-            gt = GT.signature_ok() and p in GT.HANDOFFS      # the V5-3 gate successor further substitutes this module (its literal _v5_ci_paths union)
-            assert raw == (GT.expected_handoff(ROOT, p) if gt else V5.expected_handoff(ROOT, p)) and V5._blob(raw) == (GT.manifest() if gt else V5.manifest())["source_blobs"][p]
+            from tests import ci_v4_p0_scope as _P0
+            if _P0.signature_ok() and p in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)
+                assert raw == _P0.expected_handoff(ROOT, p) and V5._blob(raw) == _P0.manifest()["source_blobs"][p]
+            else:
+                gt = GT.signature_ok() and p in GT.HANDOFFS      # the V5-3 gate successor further substitutes this module (its literal _v5_ci_paths union)
+                assert raw == (GT.expected_handoff(ROOT, p) if gt else V5.expected_handoff(ROOT, p)) and V5._blob(raw) == (GT.manifest() if gt else V5.manifest())["source_blobs"][p]
             raw = subprocess.check_output(["git", "show", V5.BASE + ":" + p], cwd=ROOT)
         assert F.reviewed_ci_handoffs_ok(path=p, actual=raw)
         assert not F.reviewed_ci_handoffs_ok(path=p, actual=raw + b"\\n# unreviewed\\n")

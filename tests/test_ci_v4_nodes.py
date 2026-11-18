@@ -197,11 +197,14 @@ def test_split_policy_is_a_closed_literal_allowlist(mutate):
 
 
 def test_repository_policy_is_the_closed_reviewed_allowlist():
-    """PR-B enables the required-gate use (authority only from the TRUSTED base, see tests/test_ci_v4_activate.py); the allowlist stays the two
-    proven modules - nothing else (U1/U2/O1, finance, Goal Seek) is split without separate isolation evidence."""
+    """PR-B enables the required-gate use (authority only from the TRUSTED base, see tests/test_ci_v4_activate.py); the allowlist is the
+    proven modules - nothing else (U2/O1, finance, Goal Seek) is split without separate isolation evidence. P1 (post-#457) adds U1 with its
+    own evidence (docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md)."""
     pol = S.load_node_split_policy()
     assert pol["enabled_in_required_pr_gate"] is True
-    assert set(pol["modules"]) == {"tests/test_rcux_governance.py", "tests/test_wf06b_scope.py"}
+    assert set(pol["modules"]) == {"tests/test_rcux_governance.py", "tests/test_wf06b_scope.py", "tests/test_u1_scope.py"}
+    assert pol["modules"]["tests/test_u1_scope.py"]["verdict"] == "SPLIT_SAFE_FLOOR_LIMITED"
+    assert "tests/test_u2_scope.py" in pol["not_split"] and "tests/test_post413_o1_scope.py" in pol["not_split"]
     for m in pol["modules"]:
         assert (ROOT / m).is_file()
     weights = json.loads((ROOT / "docs/ci_v4/node_weights.json").read_text())

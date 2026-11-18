@@ -151,7 +151,9 @@ def test_decide_reads_nothing_but_the_trusted_policy():
     real = S.load_node_split_policy()
     got = AC.decide(plan, real)
     assert got["decision"] == "collect" and got["eligible"] == ["tests/test_rcux_governance.py"]
-    assert AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
+    assert AC.decide({"pytest_modules": ["tests/test_u2_scope.py", "tests/test_goal_seek_v1.py"]}, real)["decision"] == "module_plan"
+    u1 = AC.decide({"pytest_modules": ["tests/test_u1_scope.py", "tests/test_goal_seek_v1.py"]}, real)       # P1: U1 is allowlisted with evidence
+    assert u1["decision"] == "collect" and u1["eligible"] == ["tests/test_u1_scope.py"]
 
 
 # ── sealing / invariants ──────────────────────────────────────────────────────────────────────────────────────────────────────────────

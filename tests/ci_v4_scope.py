@@ -97,6 +97,13 @@ def _pr2c_supersedes(path, value, root, ref):
         return False
     if S.supersedes(path, value, root, ref):
         return True
+    # P1 (post-#457): exactly four CI V4 control/test paths, only at the exact pin of the registered P0 terminal (its signature and manifest); never a prefix.
+    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py'):
+        from tests.fin_v2_cohorts import COHORT_MODULES
+        if 'tests.ci_v4_p0_scope' not in COHORT_MODULES:
+            return False
+        from tests import ci_v4_p0_scope as P0
+        return path in P0.REPLACED and P0.supersedes(path, value, root, ref)
     # Exact F03-reviewed successors of two CI V4 source paths only (the module and the internal F01 job); never a prefix.
     if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):
         return False
@@ -130,6 +137,9 @@ def _v5_ci_paths(root, ref):
     if 'tests.ci_v5_gate_scope' in COHORT_MODULES:      # the V5-3 gate successor admits ITS literal CI paths too (the separate pull_request_target gate workflow); no wildcard
         from tests import ci_v5_gate_scope as G
         out = out | (G.CI_PATHS if G.exact_blobs_ok(root, ref) else frozenset())
+    if 'tests.ci_v4_p0_scope' in COHORT_MODULES:      # P1 (post-#457): the P0 terminal admits ITS literal guard paths (workflow + tool) only; no wildcard
+        from tests import ci_v4_p0_scope as P0
+        out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())
     return out
 
 
@@ -209,7 +219,11 @@ def exact_blobs_ok(repo=None, ref=None):
     if not _SCOPE:
         memo = _enclosing_call_memo()
         if memo is None:
-            return _exact_blobs_ok(repo, ref)
+            from tests import fin_v2_cohorts as _C
+            if _C._CALL:
+                return _exact_blobs_ok(repo, ref)
+            with _C.call_scope():      # Correction B (#458): ONE read-only verdict is ONE outer call; the scope ends when this call returns
+                return _exact_blobs_ok(repo, ref)
         shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key
         if shared not in memo:
             memo[shared] = _exact_blobs_ok(repo, ref)
