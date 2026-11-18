@@ -115,13 +115,67 @@ def validate_policy(p):
 
 # ── collection ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-def _pytest_base(plugin_module="tools.ci_v4_nodes"):
+RECORDER = "finco_ci_full_recorder"
+RECORDER_ENV = "FINCO_CI_FULL_RECORDER"
+RECORDER_SCHEMA = "FINCO_CI_FULL_RECORDER_V1"
+# Independent per-node recorder. The accepted node plugin decides "active" from os.environ on EVERY report, so a test that deletes those
+# variables (tests/test_ci_v4_nodes.py's repo fixture does, via monkeypatch) silently loses its setup/call reports. This recorder binds its
+# output path ONCE at configure time and removes the variable from the environment (no child process inherits it), so no test can switch
+# it off; every phase report of this process is recorded. Materialized under a unique module name: no test imports it.
+RECORDER_SOURCE = '''"""FINCO CI FULL per-node phase recorder (materialized copy; see tools/ci_full_parallel.py)."""
+import json, os
+_S = {"path": None, "pid": None, "nodes": {}, "session": None}
+
+
+def pytest_configure(config):
+    _S["path"] = os.environ.pop("FINCO_CI_FULL_RECORDER", None)
+    _S["pid"] = os.getpid()
+
+
+def pytest_sessionstart(session):
+    _S["session"] = session
+
+
+def pytest_runtest_logreport(report):
+    if _S["path"] is None or os.getpid() != _S["pid"]:
+        return
+    rec = _S["nodes"].setdefault(report.nodeid, {"phases": {}, "duration": 0.0})
+    if report.when in rec["phases"]:
+        rec["phases"][report.when] = "duplicate"
+    else:
+        rec["phases"][report.when] = report.outcome
+    rec["duration"] = round(rec["duration"] + float(getattr(report, "duration", 0.0) or 0.0), 6)
+
+
+def pytest_unconfigure(config):
+    if _S["path"] is None or os.getpid() != _S["pid"]:
+        return
+    s = _S["session"]
+    with open(_S["path"], "w") as f:
+        json.dump({"schema": "FINCO_CI_FULL_RECORDER_V1", "complete": True, "exitstatus": int(getattr(s, "exitstatus", -1)) if s else -1,
+                   "nodes": _S["nodes"]}, f, sort_keys=True)
+'''
+
+
+def _pytest_base():
+    """The execution plugin is the unchanged accepted ``tools/ci_v4_nodes.py``, materialized under the unique module name of
+    ``tools.ci_v4_activate`` so that tests which exercise ``tools.ci_v4_nodes`` itself never touch the measuring instance; the independent
+    recorder (above) is loaded the same way in collection and execution (identical plugin profile)."""
     from tools.ci_v3_pytest_config import plugin_args
-    return [sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(), "-p", plugin_module]
+    from tools.ci_v4_activate import TRUSTED_PLUGIN
+    return [sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider", *plugin_args(), "-p", TRUSTED_PLUGIN, "-p", RECORDER]
+
+
+def plugin(root, workdir):
+    """(directory, SHA-256 over both materialized plugins) - the accepted node plugin and the recorder."""
+    from tools.ci_v4_activate import materialize_plugin
+    d, sha = materialize_plugin(Path(workdir), Path(root))
+    (d / (RECORDER + ".py")).write_text(RECORDER_SOURCE)
+    return d, hashlib.sha256((sha + "\0" + hashlib.sha256(RECORDER_SOURCE.encode()).hexdigest()).encode()).hexdigest()
 
 
 def _clean_env(**extra):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("FINCO_CI_V4_NODE_")}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("FINCO_CI_V4_NODE_", "FINCO_CI_FULL_"))}
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     env.update(extra)
     return env
@@ -181,8 +235,9 @@ def collect(root, workdir):
     _need(not git(root, "status", "--porcelain", "--untracked-files=normal", "--ignored=no"), "collection needs a clean checkout (no change, no untracked file)")
     workdir.mkdir(parents=True, exist_ok=True)
     raw_inv, junit = workdir / "collect.raw.json", workdir / "collect.xml"
+    plugin_dir, plugin_sha = plugin(root, workdir / "plugin")
     rc = subprocess.call(_pytest_base() + ["--collect-only", "--junitxml", str(junit)], cwd=root,
-                         env=_clean_env(FINCO_CI_V4_NODE_COLLECT=str(raw_inv)), stdout=subprocess.DEVNULL)
+                         env=_clean_env(FINCO_CI_V4_NODE_COLLECT=str(raw_inv), PYTHONPATH=str(plugin_dir)), stdout=subprocess.DEVNULL)
     _need(rc == 0 and raw_inv.is_file() and junit.is_file(), "full collection failed (pytest exit %s): no plan without a complete collection" % rc)
     raw = json.loads(raw_inv.read_text())
     _need(raw.get("complete") is True and raw.get("exitstatus") == 0, "collection incomplete")
@@ -197,7 +252,7 @@ def collect(root, workdir):
         modules[m] = {"node_ids": ids, "count": len(ids), "digest": ids_digest(ids)}
     _need(not set(skips) & set(modules), "a module both collected nodes and was skipped at collection")
     src = source(root)
-    inv = {"schema": INVENTORY_SCHEMA, "tested_sha": src["sha"], "tested_tree": src["tree"], "profile": raw["profile"],
+    inv = {"schema": INVENTORY_SCHEMA, "tested_sha": src["sha"], "tested_tree": src["tree"], "plugin_sha256": plugin_sha, "profile": raw["profile"],
            "profile_digest": raw["profile_digest"], "modules": modules, "collection_skips": skips,
            "node_count": sum(v["count"] for v in modules.values())}
     return seal(inv)
@@ -350,7 +405,8 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
                             "modules": split, "collection_skips": sorted(u["module"] for u in s if u["kind"] == "collection_skip")})
     plan = {"schema": PLAN_SCHEMA, "tier": "full", "tested_sha": inv["tested_sha"], "tested_tree": inv["tested_tree"],
             "repository": repo, "ref": ref, "event": event, "run_id": int(run_id), "run_attempt": int(run_attempt),
-            "inventory_digest": inv["digest"], "profile_digest": inv["profile_digest"], "node_count": inv["node_count"],
+            "inventory_digest": inv["digest"], "profile_digest": inv["profile_digest"], "plugin_sha256": inv["plugin_sha256"],
+            "node_count": inv["node_count"],
             "collection_skip_count": len(inv["collection_skips"]), "policy_digest": canonical_digest(policy),
             "weights_sources": weights["sources"], "workers": k, "simulation": simulate(units, policy),
             "split_modules": sorted({u["module"] for u in units if u["kind"] == "nodes"}),
@@ -398,10 +454,14 @@ def run_shard(root, plan, index, out, timeout_s=None):
     assign = {"schema": "FINCO_CI_V4_NODE_ASSIGN_V1", "tested_sha": plan["tested_sha"], "tested_tree": plan["tested_tree"],
               "plan_digest": plan["digest"], "shard": index, "whole": [], "split": a["modules"]}
     assign_path, evidence, junit = out / ("assign-%d.json" % index), out / ("nodes-%d.json" % index), out / ("junit-%d.xml" % index)
+    phases = out / ("phases-%d.json" % index)
     assign_path.write_text(json.dumps(assign, sort_keys=True))
+    plugin_dir, plugin_sha = plugin(root, out.parent / ("plugin-%d" % index))
+    _need(plugin_sha == plan["plugin_sha256"], "shard plugin differs from the plugin that collected the plan inventory")
     targets = list(a["order"])
     _need(sorted(targets) == sorted(set(a["modules"]) | set(a["collection_skips"])), "shard order is not exactly its modules")
-    env = _clean_env(FINCO_CI_V4_NODE_ASSIGN=str(assign_path), FINCO_CI_V4_NODE_EVIDENCE=str(evidence))
+    env = _clean_env(FINCO_CI_V4_NODE_ASSIGN=str(assign_path), FINCO_CI_V4_NODE_EVIDENCE=str(evidence), PYTHONPATH=str(plugin_dir),
+                     **{RECORDER_ENV: str(phases)})
     limit = int(timeout_s or plan["shard_timeout_s"])
     t0 = time.monotonic()
     proc = subprocess.Popen(_pytest_base() + ["--junitxml", str(junit), *targets], cwd=root, env=env, start_new_session=True)
@@ -418,7 +478,7 @@ def run_shard(root, plan, index, out, timeout_s=None):
         rc = TIMEOUT_EXIT
     wall = round(time.monotonic() - t0, 1)
     rec = seal({"schema": SHARD_SCHEMA, "shard": index, "tested_sha": src["sha"], "tested_tree": src["tree"], "plan_digest": plan["digest"],
-                "run_id": plan["run_id"], "run_attempt": plan["run_attempt"], "pytest_exit": rc, "timed_out": timed_out,
+                "run_id": plan["run_id"], "run_attempt": plan["run_attempt"], "plugin_sha256": plugin_sha, "pytest_exit": rc, "timed_out": timed_out,
                 "limit_s": limit, "wall_s": wall, "targets": targets})
     (out / ("shard-%d.json" % index)).write_text(json.dumps(rec, indent=1, sort_keys=True))
     print("FULL shard %d: exit=%s wall=%.1fs timed_out=%s" % (index, rc, wall, timed_out))
@@ -518,6 +578,7 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
         _need(plan["policy_digest"] == canonical_digest(policy), "plan was made under another policy")
         again = verify_inventory(json.loads(_one(contents["recollect"], "inventory.json", "recollect")))
         _need(again["digest"] == inv["digest"], "independent re-collection differs from the planned inventory")
+        _need(plan["plugin_sha256"] == inv["plugin_sha256"], "plan and inventory name different execution plugins")
         for name, r in sorted(results.items()):
             _need(r == "success", "job %s concluded %s" % (name, r))
         f01 = verify_f01(contents["f01"], policy)
@@ -529,7 +590,8 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             _need(m is not None, "shard %d artifact missing" % i)
             rec = check_seal(json.loads(_one(m, "shard-%d.json" % i, "shard %d" % i)), "shard %d record" % i)
             _need(rec["schema"] == SHARD_SCHEMA and rec["shard"] == i and rec["plan_digest"] == plan["digest"] and rec["tested_sha"] == sha
-                  and rec["tested_tree"] == tree and rec["run_id"] == int(run_id) and rec["run_attempt"] == int(run_attempt),
+                  and rec["tested_tree"] == tree and rec["run_id"] == int(run_id) and rec["run_attempt"] == int(run_attempt)
+                  and rec.get("plugin_sha256") == plan["plugin_sha256"],
                   "shard %d record is bound to another plan/source/run" % i)
             _need(not rec["timed_out"] and rec["pytest_exit"] == 0, "shard %d exit %s timed_out=%s" % (i, rec["pytest_exit"], rec["timed_out"]))
             ev = json.loads(_one(m, "nodes-%d.json" % i, "shard %d" % i))
@@ -542,7 +604,11 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             for mod, entry in a["modules"].items():
                 _need(ev["collected"].get(mod) == {"count": entry["count"], "digest": entry["digest"]}, "shard %d collected %s differently" % (i, mod))
             _need(set(ev["collected"]) == set(a["modules"]), "shard %d collected foreign modules" % i)
-            _need(sorted(ev["kept"]) == sorted(want) and set(ev["nodes"]) == set(want), "shard %d executed set != assigned set" % i)
+            _need(sorted(ev["kept"]) == sorted(want) and len(ev["kept"]) == len(set(ev["kept"])), "shard %d executed set != assigned set" % i)
+            ph = json.loads(_one(m, "phases-%d.json" % i, "shard %d" % i))
+            _need(ph.get("schema") == RECORDER_SCHEMA and ph.get("complete") is True and ph.get("exitstatus") == 0,
+                  "shard %d phase recorder incomplete" % i)
+            _need(set(ph["nodes"]) == set(want), "shard %d recorded a different node set than assigned" % i)
             raw = _one(m, "junit-%d.xml" % i, "shard %d" % i)
             junit_digests.append(hashlib.sha256(raw).hexdigest())
             cases = parse_junit(raw)
@@ -552,12 +618,16 @@ def build_record(contents, provenance, policy, skip_baseline, sha, tree, run_id,
             addr = {junit_address(n): n for n in want}
             _need(set(by_addr) == set(addr), "shard %d JUnit does not reconcile 1:1 with its assigned nodes" % i)
             jstatus = {addr[(c["classname"], c["name"])]: c for c in ordinary}
+            from tools.ci_v4_nodes import node_outcome
             for n in want:
-                st = ev["nodes"][n]["outcome"]
+                phase = ph["nodes"][n]["phases"]
+                _need(set(phase) <= {"setup", "call", "teardown"} and "duplicate" not in phase.values() and "teardown" in phase and "setup" in phase,
+                      "node %s has an incomplete or duplicated phase record" % n)
+                st = node_outcome(phase)
                 _need(st in ("passed", "skipped", "failed", "error"), "node %s did not complete (%s)" % (n, st))
                 _need(st == jstatus[n]["status"], "node %s: evidence %s but JUnit %s" % (n, st, jstatus[n]["status"]))
                 executed[n] += 1
-                node_status[n] = (st, ev["nodes"][n]["duration"], i)
+                node_status[n] = (st, ph["nodes"][n]["duration"], i)
             got_skips = collection_skips(cases)
             _need(set(got_skips) == set(a["collection_skips"]), "shard %d collection skips differ from the plan" % i)
             for mod in a["collection_skips"]:
@@ -626,7 +696,7 @@ def node_weights_from(contents, plan):
     for a in plan["assignments"]:
         m = contents.get("shard-%d" % a["shard"]) or {}
         try:
-            ev = json.loads(_one(m, "nodes-%d.json" % a["shard"], "weights"))
+            ev = json.loads(_one(m, "phases-%d.json" % a["shard"], "weights"))
         except FullError:
             continue
         for n, v in ev.get("nodes", {}).items():

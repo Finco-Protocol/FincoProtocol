@@ -2,5 +2,5 @@
   "modules": {},
   "nodes": {},
   "schema": "FINCO_CI_FULL_NODE_WEIGHTS_V1",
-  "source": "placeholder"
+  "source": "EMPTY: no authentic current-head FULL measurement yet. The plan falls back to docs/ci_v4/module_weights.json, node_weights.json and performance_baseline.json (stale for the governance corpus; balance only, never acceptance). Refill from a hosted record measured-node-weights.json."
 }

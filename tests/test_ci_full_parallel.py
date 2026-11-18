@@ -40,7 +40,7 @@ def inventory(skip_modules=("tests/test_ui_browser.py",)):
             "tests/test_b.py": ["tests/test_b.py::test_x", "tests/test_b.py::test_skip"],
             "tests/test_big.py": ["tests/test_big.py::test_%d" % i for i in range(6)],
             "tests/sub/test_c.py": ["tests/sub/test_c.py::TestK::test_p[1]", "tests/sub/test_c.py::TestK::test_p[2]"]}
-    inv = {"schema": F.INVENTORY_SCHEMA, "tested_sha": SHA, "tested_tree": TREE, "profile": PROFILE_BODY, "profile_digest": PROFILE,
+    inv = {"schema": F.INVENTORY_SCHEMA, "tested_sha": SHA, "tested_tree": TREE, "plugin_sha256": "f" * 64, "profile": PROFILE_BODY, "profile_digest": PROFILE,
            "modules": {m: {"node_ids": ids, "count": len(ids), "digest": ids_digest(ids)} for m, ids in mods.items()},
            "collection_skips": {m: "Skipped: playwright not installed in this workflow" for m in skip_modules},
            "node_count": sum(len(v) for v in mods.values())}
@@ -93,8 +93,12 @@ def artifacts(plan, inv, status=None):
               "collected": {m: {"count": e["count"], "digest": e["digest"]} for m, e in a["modules"].items()}, "kept": want,
               "nodes": {n: {"outcome": st[n], "phases": {}, "duration": 1.0} for n in want}}
         rec = F.seal({"schema": F.SHARD_SCHEMA, "shard": i, "tested_sha": SHA, "tested_tree": TREE, "plan_digest": plan["digest"],
-                      "run_id": RUN, "run_attempt": ATTEMPT, "pytest_exit": 0, "timed_out": False, "limit_s": 3000, "wall_s": 12.0, "targets": []})
+                      "run_id": RUN, "run_attempt": ATTEMPT, "plugin_sha256": "f" * 64, "pytest_exit": 0, "timed_out": False, "limit_s": 3000, "wall_s": 12.0, "targets": []})
+        phases = {"passed": {"setup": "passed", "call": "passed", "teardown": "passed"}, "skipped": {"setup": "skipped", "teardown": "passed"},
+                  "failed": {"setup": "passed", "call": "failed", "teardown": "passed"}}
+        ph = {"schema": F.RECORDER_SCHEMA, "complete": True, "exitstatus": 0, "nodes": {n: {"phases": phases[st[n]], "duration": 1.0} for n in want}}
         contents["shard-%d" % i] = {"shard-%d.json" % i: json.dumps(rec).encode(), "nodes-%d.json" % i: json.dumps(ev).encode(),
+                                    "phases-%d.json" % i: json.dumps(ph).encode(),
                                     "junit-%d.xml" % i: junit([case(n, st[n]) for n in want] + [coll_skip(m) for m in a["collection_skips"]])}
     return contents
 
@@ -214,7 +218,8 @@ def _attack(name, contents, plan, inv):
         ev = json.loads(sh1["nodes-1.json"]); ev["nodes"][node0] = {"outcome": "passed", "phases": {}, "duration": 1}; ev["kept"].append(node0)
         sh1["nodes-1.json"] = json.dumps(ev).encode()
     elif name == "skipped_reported_as_pass":
-        ev = json.loads(sh0["nodes-0.json"]); ev["nodes"][node0]["outcome"] = "skipped"; sh0["nodes-0.json"] = json.dumps(ev).encode()
+        ph = json.loads(sh0["phases-0.json"]); ph["nodes"][node0]["phases"] = {"setup": "skipped", "teardown": "passed"}
+        sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "new_skip_outside_baseline":
         return {"rebuild": {node0: "skipped"}}
     elif name == "failure":
@@ -223,6 +228,8 @@ def _attack(name, contents, plan, inv):
         p = json.loads(contents["plan"]["plan.json"]); p["run_id"] = RUN + 1; contents["plan"]["plan.json"] = json.dumps(F.seal(p)).encode()
     elif name == "shard_record_replayed_from_other_attempt":
         r = json.loads(sh0["shard-0.json"]); r["run_attempt"] = ATTEMPT + 1; sh0["shard-0.json"] = json.dumps(F.seal(r)).encode()
+    elif name == "shard_ran_other_plugin":
+        r = json.loads(sh0["shard-0.json"]); r["plugin_sha256"] = "0" * 64; sh0["shard-0.json"] = json.dumps(F.seal(r)).encode()
     elif name == "shard_timeout":
         r = json.loads(sh0["shard-0.json"]); r.update(timed_out=True, pytest_exit=124); sh0["shard-0.json"] = json.dumps(F.seal(r)).encode()
     elif name == "shard_record_unsealed_edit":
@@ -230,7 +237,18 @@ def _attack(name, contents, plan, inv):
     elif name == "incomplete_node_evidence":
         ev = json.loads(sh0["nodes-0.json"]); ev["complete"] = False; sh0["nodes-0.json"] = json.dumps(ev).encode()
     elif name == "node_never_completed":
-        ev = json.loads(sh0["nodes-0.json"]); ev["nodes"][node0]["outcome"] = "incomplete"; sh0["nodes-0.json"] = json.dumps(ev).encode()
+        ph = json.loads(sh0["phases-0.json"]); ph["nodes"][node0]["phases"] = {"setup": "passed", "teardown": "passed"}
+        sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name == "phase_record_lost_setup":
+        ph = json.loads(sh0["phases-0.json"]); ph["nodes"][node0]["phases"] = {"call": "passed", "teardown": "passed"}
+        sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name == "phase_recorded_twice":
+        ph = json.loads(sh0["phases-0.json"]); ph["nodes"][node0]["phases"]["call"] = "duplicate"
+        sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name == "recorder_missing_node":
+        ph = json.loads(sh0["phases-0.json"]); del ph["nodes"][node0]; sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name == "recorder_incomplete":
+        ph = json.loads(sh0["phases-0.json"]); ph["exitstatus"] = 1; sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "other_plugin_profile":
         ev = json.loads(sh0["nodes-0.json"]); ev["profile"]["registrations"].append({"module": "evil", "registration": "evil",
                                                                                      "implementation": "module", "file_sha256": None})
@@ -266,8 +284,9 @@ def _attack(name, contents, plan, inv):
 
 
 ATTACKS = ["single_case_forged_junit", "missing_shard", "stale_sha", "duplicate_node_across_shards", "skipped_reported_as_pass",
-           "new_skip_outside_baseline", "failure", "artifact_replay_other_run", "shard_record_replayed_from_other_attempt", "shard_timeout",
-           "shard_record_unsealed_edit", "incomplete_node_evidence", "node_never_completed", "other_plugin_profile", "recollection_differs",
+           "new_skip_outside_baseline", "failure", "artifact_replay_other_run", "shard_record_replayed_from_other_attempt", "shard_ran_other_plugin", "shard_timeout",
+           "shard_record_unsealed_edit", "incomplete_node_evidence", "node_never_completed", "phase_record_lost_setup", "phase_recorded_twice",
+           "recorder_missing_node", "recorder_incomplete", "other_plugin_profile", "recollection_differs",
            "foreign_conftest_loaded", "plan_seal_tampered", "f01_native_missing", "f01_browser_skipped", "job_not_success", "lost_artifact_member", "collection_skip_dropped",
            "junit_dtd_entity"]
 
