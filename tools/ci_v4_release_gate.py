@@ -17,6 +17,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from tools import ci_perf_guard as P
+
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -64,25 +66,31 @@ def verify_record(record, release_sha, release_tree, junit_files, release_gate_c
     return True
 
 
-def verify_run(run, record, repo_slug, release_sha, cfg):
+def verify_run(run, record, repo_slug, release_sha, cfg, jobs=None):
     """``run``: the GitHub Actions run JSON for record['run_id']. This is the authority the artifact record cannot forge."""
     _need(isinstance(run, dict) and run.get("id") == record.get("run_id"), "GitHub run id differs from the record")
     _need(run.get("head_sha") == release_sha, "GitHub run is for a different head sha")
     _need(run.get("conclusion") == "success" and run.get("status") == "completed", "GitHub run did not conclude success")
-    _need(str(run.get("path", "")).startswith(cfg["full_workflow_path"]), "run is not the FULL workflow")
+    _need(run.get("path") in (P.FULL_WORKFLOW_PATH, P.FULL_WORKFLOW_PATH + "@refs/heads/main")
+          and cfg["full_workflow_path"] == P.FULL_WORKFLOW_PATH, "run is not the FULL workflow")
+    _need(run.get("head_branch") == "main", "FULL must run on main")
     _need(run.get("event") in cfg["allowed_events"], "run event %r is not an allowed FULL trigger" % run.get("event"))
     _need((run.get("repository") or {}).get("full_name") == repo_slug, "run belongs to another repository")
     _need((run.get("head_repository") or {}).get("full_name") == repo_slug, "run was built from a fork")
-    _need(int(run.get("run_attempt", 1)) == int(record.get("run_attempt", 1)), "run attempt differs from the record")
-    return True
+    _need(type(record.get("run_attempt")) is int and record["run_attempt"] == run.get("run_attempt"),
+          "run attempt differs from the record")
+    try:
+        return P.verify_full_runtime(run, jobs)
+    except P.GuardError as exc:
+        raise GateError(str(exc)) from exc
 
 
-def gate(record, run, junit_files, release_sha, release_tree, repo_slug, policy, skip_baseline=None):
+def gate(record, run, junit_files, release_sha, release_tree, repo_slug, policy, skip_baseline=None, *, jobs=None):
     cfg = policy["release_gate"]
     verify_record(record, release_sha, release_tree, junit_files, cfg, skip_baseline=skip_baseline)
-    verify_run(run, record, repo_slug, release_sha, cfg)
+    elapsed = verify_run(run, record, repo_slug, release_sha, cfg, jobs)
     return {"verdict": "RELEASE_ALLOWED", "sha": release_sha, "tree": release_tree, "run_id": record["run_id"],
-            "skipped_ids": record["skipped_ids"], "collected_nodes": record["collected_nodes"]}
+            "skipped_ids": record["skipped_ids"], "collected_nodes": record["collected_nodes"], "full_elapsed_s": elapsed}
 
 
 def _api(url, token):
@@ -98,6 +106,7 @@ def main(argv=None):
     ap.add_argument("--junit-dir", required=True); ap.add_argument("--output", required=True)
     ap.add_argument("--git-dir", default=".")
     ap.add_argument("--run-json", help="test/offline: run JSON file; the workflow queries the API instead")
+    ap.add_argument("--jobs-json", help="test/offline: complete run-attempt jobs from GitHub")
     a = ap.parse_args(argv)
     try:
         policy = json.loads(Path(a.policy).read_text())
@@ -105,12 +114,17 @@ def main(argv=None):
         tree = subprocess.check_output(["git", "rev-parse", a.sha + "^{tree}"], cwd=a.git_dir, stderr=subprocess.DEVNULL).decode().strip()
         if a.run_json:
             run = json.loads(Path(a.run_json).read_text())
+            jobs = json.loads(Path(a.jobs_json).read_text()) if a.jobs_json else None
         else:
             token = os.environ.get("GH_TOKEN", "")
             _need(token, "GH_TOKEN required to verify the FULL run with GitHub")
             run = _api("https://api.github.com/repos/%s/actions/runs/%s" % (a.repo_slug, int(record["run_id"])), token)
+            try:
+                jobs = P.GitHub(a.repo_slug, token).full_jobs(run)
+            except (P.GuardError, P.TransientError, KeyError, ValueError, TypeError) as exc:
+                raise GateError("FULL_RUNTIME_UNVERIFIED: " + str(exc)) from exc
         baseline = json.loads((Path(a.git_dir) / policy["release_gate"]["skip_baseline"]).read_text())["skipped_nodes"]
-        out = gate(record, run, sorted(Path(a.junit_dir).glob("**/*.xml")), a.sha, tree, a.repo_slug, policy, baseline)
+        out = gate(record, run, sorted(Path(a.junit_dir).glob("**/*.xml")), a.sha, tree, a.repo_slug, policy, baseline, jobs=jobs)
     except (GateError, OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
         print("RELEASE BLOCKED (fail closed): %s" % exc, file=sys.stderr)
         Path(a.output).parent.mkdir(parents=True, exist_ok=True)
