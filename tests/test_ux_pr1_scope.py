@@ -39,6 +39,42 @@ def _effective_pin(path,historical):
             pin=signed['source_blobs'][path]
     return pin
 
+# The closed PR2a -> PR3b2 chain above describes the original UX handoff.
+# Nine paths moved again in the accepted registry after PR3b2. Review the
+# current assertion against the accepted Git checkpoint and composite.
+PR3B2_MERGE = '785024c752bbd1700d6051cf15115d9980d0b4a1'
+RECONCILIATION_HEAD = '411106af20d5b82cf474b8f80f4515740884a6b6'
+RECONCILIATION_TREE = 'c523a71441f3f3dc2f6489e2cc9ad9a00a8c633d'
+LATER_UX_PR1_PATHS = frozenset((
+    'frontend/src/app/CostWorkbench.tsx',
+    'frontend/src/app/WorkspaceView.tsx',
+    'frontend/src/app/editing/CostLinesGridView.tsx',
+    'static/react/finco-react.css',
+    'static/react/finco-react.js',
+    'tests/fin_v2_cohorts.py',
+    'tests/test_u2_scope.py',
+    'tests/u1_scope.py',
+    'tests/u2_scope.py',
+))
+
+
+def _later_ux_pr1_pins(root):
+    git(root, 'merge-base', '--is-ancestor', PR3B2_MERGE, RECONCILIATION_HEAD)
+    git(root, 'merge-base', '--is-ancestor', RECONCILIATION_HEAD, 'HEAD')
+    assert git(root, 'rev-parse', RECONCILIATION_HEAD + '^{tree}').strip() == RECONCILIATION_TREE
+    paths = set(git(root, 'diff', '--name-only', '--no-renames', PR3B2_MERGE,
+                    RECONCILIATION_HEAD, '--', *sorted(U.SUPERSEDED)).splitlines())
+    assert paths == LATER_UX_PR1_PATHS
+    entries = {}
+    for line in git(root, 'ls-tree', '-r', RECONCILIATION_HEAD, '--', *sorted(paths)).splitlines():
+        entry, path = line.split('\t', 1)
+        mode, kind, blob = entry.split()
+        assert (mode, kind) == ('100644', 'blob')
+        entries[path] = blob
+    assert set(entries) == paths
+    return entries
+
+
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
     with ExitStack() as scopes:
@@ -49,6 +85,7 @@ def test_exact_registered_and_historical_maps_immutable():
         assert all(m.exact_blobs_ok() for m in C.cohorts())
         d=U.manifest()
         assert set(d['source_blobs'])==U.OWNED_PATHS and set(d['base_blobs'])==U.SUPERSEDED
+        later_pins = _later_ux_pr1_pins(U.ROOT)
         for p in U.SUPERSEDED:
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
             hist=d['source_blobs'][p]
@@ -56,7 +93,9 @@ def test_exact_registered_and_historical_maps_immutable():
             assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40)
             if eff!=hist:  # a historical pin is preserved but no longer current authority
                 assert not U.supersedes(p,hist)
-            assert git(U.ROOT,'hash-object',p).strip()==eff
+            if p in later_pins:
+                assert git(U.ROOT, 'rev-parse', PR3B2_MERGE + ':' + p).strip() == eff
+            assert git(U.ROOT,'hash-object',p).strip()==later_pins.get(p, eff)
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
             assert {k:v for k,v in old.items() if k!='source_blobs'}=={k:v for k,v in now.items() if k!='source_blobs'}

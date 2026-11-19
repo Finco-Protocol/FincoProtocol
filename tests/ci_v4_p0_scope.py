@@ -34,7 +34,8 @@ NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p
                  # post-#460: per-NODE scope evidence (exact node ids; plain == scoped; mutation between calls detected)
                  'docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json',
                  'docs/model_v11/v11-stage3-release-successor-candidate.json',
-                 'tests/v11_stage3_release_successor.py', 'tests/test_v11_stage3_release_successor.py'))
+                 'tests/v11_stage3_release_successor.py', 'tests/test_v11_stage3_release_successor.py',
+                 'tests/mutation_security_browser_lineage.py', 'tests/test_mutation_security_browser_lineage.py'))
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
@@ -47,7 +48,7 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       '.github/workflows/ci_v4_full.yml',
                       # post-#460: test-order pollution contained at its source (assertions unchanged; execution-bisected on shard 6 of run 44324970783)
                       'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
-                      'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py'))
+                      'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
