@@ -3791,6 +3791,10 @@ _CURRENT_MAP_EXPECTATION_HANDOFF = ('        assert current==expected and set(or
 HANDOFFS['tests/test_c06_cost_workspace_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
 HANDOFFS['tests/test_f04_financing_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
 
+# Correction C: bind PR2C sibling-manifest supersession to the exact verified bytes.
+HANDOFFS['tests/u1_scope.py'] += [('    if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):\n        return True\n', "    if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            raw = _read(root, path, ref)\n            if _blob(raw) != value:\n                return False\n            baseline = S._base_fact(root, 'show', S.BASE + ':' + path)\n            if raw == baseline:\n                return True\n            expected = json.loads(baseline)\n            current = json.loads(raw)\n            old_pins, new_pins = expected['source_blobs'], current['source_blobs']\n            if set(old_pins) != set(new_pins) or old_pins == new_pins:\n                return False\n            old_pins.update(new_pins)\n            # PR2B's exact-source map preserves its original field order.\n            sort_keys = path != 'docs/react_migration/ux_pr2b/UX_PR2B_EXACT_SOURCE.json'\n            return raw == (json.dumps(expected, indent=2, sort_keys=sort_keys) + '\\n').encode()\n        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):\n            return False\n")]
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

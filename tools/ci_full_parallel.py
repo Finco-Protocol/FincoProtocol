@@ -50,6 +50,7 @@ STRICT_SCHEMA = "FINCO_CI_FULL_STRICT_RECORD_V1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 TIMEOUT_EXIT = 124
+FULL_E2E_BUDGET_S = 2400
 MAX_MEMBER_BYTES = 256 * 1024 * 1024
 
 
@@ -437,12 +438,47 @@ def choose_workers(units, policy):
     return best_k
 
 
+def require_feasible_workers(units, policy, weights, preferred, simulation):
+    """Use the same LPT forecasts as the plan, and refuse to launch if even the best bounded option is over budget."""
+    feasible = [
+        row for row in simulation if row["in_policy_range"]
+        and row["max_shard_s"] < policy["shard_timeout_s"]
+        and row["predicted_critical_path_s"] < FULL_E2E_BUDGET_S
+    ]
+    if any(row["workers"] == preferred for row in feasible):
+        return preferred
+    if feasible:
+        return feasible[0]["workers"]
+
+    options = [row for row in simulation if row["in_policy_range"]]
+    best = min(options, key=lambda row: row["max_shard_s"])
+    shards, loads = lpt(units, best["workers"])
+    critical = shards[loads.index(max(loads))]
+    culprits = []
+    for unit in critical[:3]:
+        detail = f'{unit["id"]} {unit["seconds"]:.1f}s'
+        secs = node_seconds(unit["module"], unit["node_ids"], weights)
+        if secs:
+            node = max(secs, key=secs.get)
+            detail += f" (heaviest node {node} {secs[node]:.1f}s)"
+        culprits.append(detail)
+    alternatives = ", ".join(f'{r["workers"]}: {r["max_shard_s"]:.1f}s shard / {r["predicted_critical_path_s"]:.1f}s path'
+                             for r in options)
+    raise FullError(
+        f'FULL_PLAN_RUNTIME_BLOCKED: best critical shard {best["max_shard_s"]:.1f}s '
+        f'(timeout {policy["shard_timeout_s"]}s), predicted path {best["predicted_critical_path_s"]:.1f}s '
+        f'(end-to-end budget {FULL_E2E_BUDGET_S}s). Critical units: {", ".join(culprits)}. '
+        f'Worker alternatives: {alternatives}. Weight sources: {", ".join(weights["sources"])}'
+    )
+
+
 def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
     verify_inventory(inv)
     _need(inv["node_count"] >= policy["min_collected_nodes"], "collected %d nodes < policy floor %d (partial collection)"
           % (inv["node_count"], policy["min_collected_nodes"]))
     units = units_for(inv, policy, weights)
-    k = choose_workers(units, policy)
+    simulation = simulate(units, policy)
+    k = require_feasible_workers(units, policy, weights, choose_workers(units, policy), simulation)
     shards, loads = lpt(units, k)
     assignments = []
     for i, (s, load) in enumerate(zip(shards, loads)):
@@ -469,7 +505,7 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
             "inventory_digest": inv["digest"], "profile_digest": inv["profile_digest"], "plugin_sha256": inv["plugin_sha256"],
             "node_count": inv["node_count"],
             "collection_skip_count": len(inv["collection_skips"]), "policy_digest": canonical_digest(policy),
-            "weights_sources": weights["sources"], "workers": k, "simulation": simulate(units, policy),
+            "weights_sources": weights["sources"], "workers": k, "simulation": simulation,
             "split_modules": sorted({u["module"] for u in units if u["kind"] == "nodes"}),
             "scoped_modules": sorted(set(policy["scoped_modules"]) & set(inv["modules"])),
             "scoped_nodes": planned_scoped_nodes(policy, inv),
@@ -786,16 +822,34 @@ def expected_shard_profile(inv_profile, targets, conftests):
 
 
 def node_weights_from(contents, plan):
-    """Measured per-node seconds of this run (input for the next plan's balance; never an acceptance input)."""
+    """Emit measurements only for assigned nodes with completed passing or skipped phases."""
     out = {}
     for a in plan["assignments"]:
-        m = contents.get("shard-%d" % a["shard"]) or {}
+        i = a["shard"]
+        m = contents.get("shard-%d" % i) or {}
         try:
-            ev = json.loads(_one(m, "phases-%d.json" % a["shard"], "weights"))
-        except FullError:
+            ev = json.loads(_one(m, "phases-%d.json" % i, "weights"))
+            rec = check_seal(json.loads(_one(m, "shard-%d.json" % i, "weights")), "shard weight source")
+        except (ValueError, KeyError, TypeError):
             continue
-        for n, v in ev.get("nodes", {}).items():
-            out[n] = round(float(v.get("duration", 0.0)), 3)
+        if (rec.get("schema") != SHARD_SCHEMA or rec.get("shard") != i or rec.get("plan_digest") != plan["digest"]
+                or any(rec.get(k) != plan[k] for k in ("tested_sha", "tested_tree", "run_id", "run_attempt"))
+                or not isinstance(ev, dict) or ev.get("schema") != RECORDER_SCHEMA
+                or not isinstance(ev.get("nodes"), dict)):
+            continue
+        assigned = {n for entry in a["modules"].values() for n in entry["keep"]}
+        for n, v in ev["nodes"].items():
+            if n not in assigned or not isinstance(v, dict) or not isinstance(v.get("phases"), dict):
+                continue
+            phases = v["phases"]
+            setup = phases.get("setup")
+            if phases.get("teardown") != "passed":
+                continue
+            completed = (setup == "passed" and phases.get("call") in ("passed", "skipped") and len(phases) == 3
+                         or setup == "skipped" and len(phases) == 2)
+            duration = v.get("duration")
+            if completed and type(duration) in (int, float) and math.isfinite(duration) and duration >= 0:
+                out[n] = round(duration, 3)
     return out
 
 
@@ -879,7 +933,9 @@ def main(argv=None):
                         (out / "junit").mkdir(exist_ok=True)
                         (out / "junit" / ("junit-%d.xml" % i)).write_bytes(v)
             try:
-                plan = json.loads(_one(contents["plan"], "plan.json", "plan"))
+                plan = check_seal(json.loads(_one(contents["plan"], "plan.json", "plan")), "weight plan")
+                _need((plan["tested_sha"], plan["tested_tree"], plan["run_id"], plan["run_attempt"])
+                      == (src["sha"], src["tree"], run_id, attempt), "weight plan belongs to another source or attempt")
                 (out / "measured-node-weights.json").write_text(json.dumps(
                     {"schema": "FINCO_CI_FULL_MEASURED_WEIGHTS_V1", "run_id": run_id, "run_attempt": attempt, "tested_sha": src["sha"],
                      "nodes": node_weights_from(contents, plan)}, sort_keys=True))

@@ -455,7 +455,25 @@ def supersedes(path, value, repo=None, ref=None):
     except ImportError:
         return _later_supersedes(path, value, repo, ref)
     if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):
-        return True
+        root = Path(repo) if repo is not None else ROOT
+        try:
+            raw = _read(root, path, ref)
+            if _blob(raw) != value:
+                return False
+            baseline = S._base_fact(root, 'show', S.BASE + ':' + path)
+            if raw == baseline:
+                return True
+            expected = json.loads(baseline)
+            current = json.loads(raw)
+            old_pins, new_pins = expected['source_blobs'], current['source_blobs']
+            if set(old_pins) != set(new_pins) or old_pins == new_pins:
+                return False
+            old_pins.update(new_pins)
+            # PR2B's exact-source map preserves its original field order.
+            sort_keys = path != 'docs/react_migration/ux_pr2b/UX_PR2B_EXACT_SOURCE.json'
+            return raw == (json.dumps(expected, indent=2, sort_keys=sort_keys) + '\n').encode()
+        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
+            return False
     return _later_supersedes(path, value, repo, ref)      # a path an older guard owns (e.g. WF-06B / tests/test_rcux_governance.py): the later cohort's exact pin only
 
 
