@@ -254,15 +254,17 @@ async def acquisition_save(request: Request):
         return JSONResponse({"error": str(exc), "status": STATUS}, status_code=422,
                             headers={"Cache-Control": "private, no-store"})
     except (ValueError, TypeError) as exc:
-        # Bounded generic rejection (C1F-ERR-01): never echo interpreter text.
-        # The real exception stays visible to server logs so a programming
-        # error is never silently converted into a bounded input rejection.
+        # Joint-correction review (2026-11-19): every client-reachable input
+        # path is now typed above, so a residual ValueError/TypeError is an
+        # UNEXPECTED internal fault. It must not be presented as user
+        # validation: controlled 500 with a safe external body and full
+        # server-side exception telemetry. Nothing caller-supplied (project
+        # code, form payload) is embedded in the log line.
         import logging
-        logging.getLogger(__name__).warning(
-            "ACQUISITION_SAVE_INPUT_REJECTED %s: %s: %s",
-            project, type(exc).__name__, exc)
-        return JSONResponse({"error": "ACQUISITION_INPUT_INVALID", "status": STATUS},
-                            status_code=422,
+        logging.getLogger(__name__).exception(
+            "ACQUISITION_SAVE_UNEXPECTED_ERROR type=%s", type(exc).__name__)
+        return JSONResponse({"error": "INTERNAL_ERROR", "status": STATUS},
+                            status_code=500,
                             headers={"Cache-Control": "private, no-store"})
 
 

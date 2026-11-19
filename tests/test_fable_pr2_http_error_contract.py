@@ -186,3 +186,53 @@ def test_investor_save_conflict_keeps_409_with_stable_text(env):
         agreement=json.dumps(document()), content_hash="stale"))
     assert r.status_code == 409
     assert r.json()["error"] == "Working inputs or scenario changed; reload"
+
+
+def test_acq_save_unexpected_programming_error_is_controlled_500(acq_env, monkeypatch, caplog):
+    """An unexpected internal fault is NOT presented as user validation: the
+    client gets a safe 500 body, nothing persists, and the server keeps full
+    telemetry without embedding caller-supplied values."""
+    import logging as _logging
+
+    def _bug(owner_id, project_id, document, case_id, expected_revision):
+        raise TypeError("internal contract violation (simulated programming error)")
+
+    import app.v2.acquisition_router as router_module
+    monkeypatch.setattr(router_module, "save_case", _bug)
+    form = {"project": "project-A", "csrf_token": acq_env[1], "history_id": "h-1",
+            "case_id": "", "expected_revision": "0", "closing_date": "2027-01-01",
+            "purchase_price_keur": "10", "transaction_costs_keur": "1",
+            "buyer_discount_rate": "0.1", "target_buyer_irr": "0.12",
+            "bid_lower_bound_keur": "5", "bid_upper_bound_keur": "15",
+            "closing_adjustment_keur": "0"}
+    with caplog.at_level(_logging.ERROR, logger="app.v2.acquisition_router"):
+        r = acq_env[0].post("/v2/valuation-acquisition/save", data=form)
+    assert r.status_code == 500
+    assert r.json()["error"] == "INTERNAL_ERROR"
+    assert "internal contract violation" not in r.text
+    from app.persistence.acquisition_repository import list_cases
+    assert list_cases(owner_id="owner-A", project_id="project-A") == []
+    recs = [rec for rec in caplog.records if "ACQUISITION_SAVE_UNEXPECTED_ERROR" in rec.getMessage()]
+    assert recs, "full server-side telemetry is retained"
+    assert "project-A" not in recs[0].getMessage(), "no caller-supplied identifiers in the log line"
+    assert recs[0].exc_info is not None, "traceback retained for telemetry"
+
+
+def test_investor_save_unexpected_programming_error_is_controlled_500(env, monkeypatch):
+    from tests.test_investor_f4_workspace import save, document, page
+    record = env.create()
+    assert save(env, record, document()).status_code == 200
+    import app.v2.investor_f4_router as router_module
+
+    def _bug(*a, **k):
+        raise TypeError("internal contract violation (simulated programming error)")
+
+    monkeypatch.setattr(router_module, "save_agreement", _bug)
+    html = page(env, record).text
+    r = env.client.post("/v2/workbook/investor/agreement", data=dict(
+        project=record.project_code, action="save",
+        content_hash=re.search(r'name="content_hash" value="([^"]*)"', html).group(1),
+        csrf_token=re.search(r'name="csrf_token" value="([^"]*)"', html).group(1),
+        agreement=json.dumps(document())), headers={"HX-Request": "true"})
+    assert r.status_code == 500
+    assert r.json()["error"] == "INTERNAL_ERROR"
