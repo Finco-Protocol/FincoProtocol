@@ -64,6 +64,11 @@
       "proof": "Read-only: reads module-level constants (LAYER, SOURCES: bytes read at import) and calls the pure successor predicates (WF04/WF03/WF06B/R1/U1/UX1/PR3 matches, S.violations, S.current_mutation_successor_valid) on the unchanged checkout; no monkeypatch, no write, no env/cwd change. Evidence: plain == scoped in fresh processes; a mutation between two separate calls is detected.",
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
       "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_wsv2_core_scope.py::test_closed_cohort_is_registered_exact_and_excludes_financial_authorities": {
+      "proof": "This exact positive test only reads the checkout and calls F.exact_blobs_ok(), F.valid() and C.valid(). Fresh plain and scoped processes match. A physical manifest change is detected in the next independent call. Mutating siblings stay outside the scope.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
     }
   },
   "shard_timeout_s": 3000,

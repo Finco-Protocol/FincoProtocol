@@ -235,6 +235,51 @@
         "wall_s": 14.99
       },
       "sibling_modules_not_scoped": true
+    },
+    "tests/test_wsv2_core_scope.py::test_closed_cohort_is_registered_exact_and_excludes_financial_authorities": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.wsv2_core_scope",
+        "commit": "4c84bbec528278edb1af2e3aebf4492eeb19200b",
+        "first": true,
+        "mutated": false,
+        "mutated_path": "docs/react_migration/rc_ux_completion/SOURCE_SUCCESSOR.json",
+        "restored": true,
+        "scope_left_open": false
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_wsv2_core_scope.py::test_closed_cohort_is_registered_exact_and_excludes_financial_authorities"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 76.2154
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_wsv2_core_scope.py::test_closed_cohort_is_registered_exact_and_excludes_financial_authorities"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_wsv2_core_scope.py::test_closed_cohort_is_registered_exact_and_excludes_financial_authorities"
+        ],
+        "wall_s": 29.8967
+      },
+      "sibling_modules_not_scoped": true
     }
   },
   "note": "LOCAL evidence (4-vCPU container, the three nodes measured concurrently), not a hosted timing claim. Plain and scoped each run alone in a fresh pytest process with the materialized recorder; mutation probe in a disposable clone.",

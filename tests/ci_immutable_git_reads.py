@@ -38,7 +38,7 @@ _LOCK = threading.Lock()
 _MEMO: dict = {}
 _OWNER: list = []          # [thread ident] of the outermost open scope; empty when no scope is open
 STATS = {"hits": 0, "misses": 0, "bypass": 0}
-_FANOUT = tuple("%02x" % i for i in range(256))
+_FANOUT = frozenset("%02x" % i for i in range(256))
 
 # Environment variables that change which repository, object store, history or object content a call sees: memo disabled.
 _RESOLUTION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -83,7 +83,13 @@ def _git_dir(cwd):
 def _generation(objects, depth=0):
     """Mtimes of an object store's directories: any added, pruned or repacked object changes at least one of them."""
     stamps = [_stat_id(objects), _stat_id(os.path.join(objects, "pack")), _stat_id(os.path.join(objects, "info"))]
-    stamps.extend(_stat_id(os.path.join(objects, d)) for d in _FANOUT)
+    # Packed checkouts can have no loose-object fan-out at all. Enumerating
+    # present entries avoids a failed stat for each absent prefix.
+    with os.scandir(objects) as entries:
+        names = sorted(entry.name for entry in entries if entry.name in _FANOUT)
+    loose = tuple((name, _stat_id(os.path.join(objects, name))) for name in names)
+    if _stat_id(objects) != stamps[0]:
+        raise OSError("Git object directory changed during enumeration")
     alternates = os.path.join(objects, "info", "alternates")
     alt = []
     if os.path.isfile(alternates) and depth < 3:
@@ -93,7 +99,7 @@ def _generation(objects, depth=0):
                 if line and not line.startswith("#"):
                     target = os.path.realpath(line if os.path.isabs(line) else os.path.join(objects, line))
                     alt.append((target, _generation(target, depth + 1)))
-    return (tuple(stamps), tuple(alt))
+    return (tuple(stamps), loose, tuple(alt))
 
 
 def _store_identity(cwd):
