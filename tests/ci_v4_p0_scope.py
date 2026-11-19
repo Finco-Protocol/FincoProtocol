@@ -59,7 +59,7 @@ CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guar
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py',
-                          'tests/test_ux_pr3b2_scope.py'))
+                          'tests/test_ux_pr3b2_scope.py', 'tests/bess02_scope.py'))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -3822,6 +3822,25 @@ HANDOFFS[UX_PR3B2_TEST] = [('def test_current_registered_cohort_and_unchanged_fi
   "            pytest.fail(f'unreviewed path has a successor pin: {path}')\n"
   '\n'
   "@pytest.mark.parametrize('kind'")]
+
+HANDOFFS['tests/bess02_scope.py'] = [('        N = _next()\n'
+  '        if N is not None and N.signature_ok(root, ref):\n'
+  '            return N.reviewed_edits_ok(root, ref) and all(\n'
+  '                _read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS if p not in '
+  'N.HANDOFFS)\n',
+  '        N = _next()\n'
+  '        if N is not None and N.signature_ok(root, ref):\n'
+  '            from tests import ci_v4_p0_scope as P0\n'
+  '            ux_test = P0.UX_PR3B2_TEST\n'
+  '            terminal_ux_handoff = (\n'
+  '                ux_test in P0.HANDOFFS and P0.signature_ok(root, ref)\n'
+  '                and _read(root, ux_test, ref) == P0.expected_handoff(root, ux_test)\n'
+  '            )\n'
+  '            return N.reviewed_edits_ok(root, ref) and all(\n'
+  '                _read(root, p, ref) == expected_handoff(root, p)\n'
+  '                for p in HANDOFFS if p not in N.HANDOFFS and not (p == ux_test and '
+  'terminal_ux_handoff)\n'
+  '            )\n')]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
