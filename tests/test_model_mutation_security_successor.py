@@ -228,7 +228,11 @@ def _without_r1_browser_layer(path, current):
         historical = candidate.verified_pre_r1_source(current)
         if historical is not None:
             return historical
-    if current.count(R1_BROWSER_WRAPPER) != 1 or not R1.matches(path, current):
+    if current.count(R1_BROWSER_WRAPPER) != 1:
+        return current
+    # R1.matches requires this exact pin as well as the composite verdict.
+    # Reject nonmatching in-memory variants before walking the live cohorts.
+    if S.git_blob(current) != R1.manifest().get("source_blobs", {}).get(path) or not R1.matches(path, current):
         return current
     pre = current.replace(R1_BROWSER_WRAPPER, "", 1)
     return pre if S.git_blob(pre) == R1.base_blob(path) else current
