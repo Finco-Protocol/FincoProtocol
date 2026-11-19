@@ -223,6 +223,10 @@ def base_blob(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
+    # The P0 terminal can delegate the one exact R1 security test source.
+    if path == 'tests/test_model_mutation_security_successor.py':
+        from tests import ci_v4_p0_scope as P0
+        return P0.r1_security_test_handoff(path, value, repo, ref)
     if path in ("frontend/src/app/editing/CostLinesGridView.tsx", "tests/ux_pr3b1_scope.py", "frontend/src/app/CostWorkbench.tsx"):
         from tests import c06_cost_workspace_scope as C06
         if C06.signature_ok(repo, ref) and C06.supersedes(path, value, repo, ref):
