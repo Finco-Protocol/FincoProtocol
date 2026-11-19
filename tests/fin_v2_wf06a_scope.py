@@ -263,10 +263,12 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         if not _followed_ok(root, ref, pins, data):
             return False
-        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
-        # Git lists each changed path once. A duplicated path is invalid input,
-        # even if a later successor owns the real change at that path.
-        if len(changed) != len(set(changed)):
+        comparison = ('--no-renames', BASE, *([ref] if ref else []), '--')
+        changed = _git(root, 'diff', '--name-only', *comparison).decode().splitlines()
+        # A list entry alone is not evidence of a delta. Check it against the
+        # NUL-delimited status records for the same base, subject and pathspec.
+        records = _git(root, 'diff', '--name-status', '-z', *comparison).decode().split('\0')
+        if records[-1] or len(records) != 2 * len(changed) + 1 or records[1:-1:2] != changed or len(changed) != len(set(changed)):
             return False
         if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) and not _wf06b_allows(p, root, ref) for p in changed):
             return False

@@ -4300,6 +4300,22 @@ HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
         '            and exact_blobs_ok(repo, ref))\n',
     ),
 ]
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        "        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()\n"
+        '        # Git lists each changed path once. A duplicated path is invalid input,\n'
+        '        # even if a later successor owns the real change at that path.\n'
+        '        if len(changed) != len(set(changed)):\n'
+        '            return False\n',
+        "        comparison = ('--no-renames', BASE, *([ref] if ref else []), '--')\n"
+        "        changed = _git(root, 'diff', '--name-only', *comparison).decode().splitlines()\n"
+        '        # A list entry alone is not evidence of a delta. Check it against the\n'
+        '        # NUL-delimited status records for the same base, subject and pathspec.\n'
+        "        records = _git(root, 'diff', '--name-status', '-z', *comparison).decode().split('\\0')\n"
+        '        if records[-1] or len(records) != 2 * len(changed) + 1 or records[1:-1:2] != changed or len(changed) != len(set(changed)):\n'
+        '            return False\n',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
