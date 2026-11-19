@@ -63,3 +63,10 @@ Remove only `V5 gate (trusted base)` from the required checks (Settings → Bran
 - `pull_request_target` is security-sensitive by nature: this job never checks out or executes the head and has read-only permissions, but any future edit that does would break that. The gate's structure is asserted by `tests/test_ci_v5_gate.py`.
 - The gate only evaluates on `opened / synchronize / reopened / ready_for_review`; after approving, re-run it.
 - The repository is **public**: nothing in this checklist or the evidence may contain secrets, private keys or client data.
+
+
+## CI runtime acceptance
+
+The trusted default-branch workflow publishes `CI Performance Budget` for the exact PR head. Require that commit status in strict mode bound to the GitHub Actions app, alongside all six V4 checks. The 2,100 s target is informational. The hard cap remains 2,400 s. The effective rules endpoint omits bypass actor information. Supply administrator-enforced branch protection and review settings when running the enforcement verifier.
+
+Both FULL witness consumers require the original GitHub attempt and all jobs for the exact source. Measure from GitHub run creation through the completed record job, including queue, planning, shard setup, independent recollection and F01. A fresh complete dispatch on accepted main is needed after a failed or incomplete attempt. A successful run above 2,400 s is ineligible for release or promotion.

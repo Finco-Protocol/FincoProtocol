@@ -51,7 +51,7 @@ class World:
             rid += 1
             self.runs.append({"id": rid, "name": w["name"], "path": w["path"], "head_sha": SHA, "event": "pull_request", "run_attempt": 1,
                               "status": "completed", "conclusion": "success", "created_at": iso(0)})
-            self.jobs[rid] = [self.job(rid, "build", 1, 20)]
+            self.jobs[rid] = [self.job(rid, G.MANDATORY_JOBS[w["name"]], 1, 20)]
         self.ci = next(r for r in self.runs if r["name"] == CI)
         self.cases = {0: [("tests/test_x.py::test_a", 550.0), ("tests/test_x.py::test_b", 300.0)],
                       1: [("tests/test_x.py::test_c", 450.0)]}
@@ -675,3 +675,97 @@ def test_a_shard_zip_with_a_symlink_member_is_unverified(w):
                 z.writestr(info, good.read(n))
     w.put_artifact(0, buf.getvalue())
     assert "symlink member" in w.judge()["description"]
+
+
+def full_run_timestamps():
+    return {"run_attempt": 1, "created_at": iso(0), "run_started_at": iso(1), "updated_at": iso(45)}
+
+
+def full_jobs_fixture(run, seconds=2399):
+    def stamp(s):
+        return iso(s / 60)
+
+    phases = [("plan", 70, 120), ("recollect", 130, 200), ("f01 / f01", 65, 2050)]
+    phases += [("shard-%d" % i, 125, 2180) for i in range(8)]
+    phases += [("record", 2200, seconds)]
+    return [{"id": i, "name": name, "run_id": run["id"], "run_attempt": 1, "head_sha": run["head_sha"],
+             "head_branch": "main", "workflow_name": "CI V4 FULL", "status": "completed", "conclusion": "success",
+             "started_at": stamp(start), "completed_at": stamp(end)}
+            for i, (name, start, end) in enumerate(phases, 1)]
+
+
+@pytest.mark.parametrize("seconds,state,target", [(2100, "success", "TARGET_MET"),
+    (2101, "success", "TARGET_WARNING"), (2400, "success", "TARGET_WARNING"), (2401, "failure", "TARGET_WARNING")])
+def test_operational_target_does_not_change_the_hard_pr_limit(w, seconds, state, target):
+    w.jobs[w.ci["id"]][-1]["completed_at"] = iso(seconds / 60)
+    verdict = w.judge(minutes_now=41)
+    assert verdict["state"] == state
+    assert verdict["details"]["target_state"] == target
+    assert verdict["details"]["trend"] == "TREND_UNVERIFIED"
+
+
+@pytest.mark.parametrize("conclusion", ["skipped", "neutral", "cancelled", None])
+def test_green_workflow_does_not_mask_a_mandatory_job(w, conclusion):
+    other = next(run for run in w.runs if run["name"] != CI)
+    w.jobs[other["id"]][0]["conclusion"] = conclusion
+    assert "mandatory job" in w.judge()["description"]
+
+
+@pytest.mark.parametrize("change", ["drop", "duplicate", "attempt", "sha", "skipped", "ordering", "timezone", "missing"])
+def test_full_runtime_requires_complete_ordered_same_attempt_jobs(change):
+    run = {"id": 77, "head_sha": SHA, **full_run_timestamps()}
+    jobs = full_jobs_fixture(run)
+    if change == "drop":
+        jobs.pop(3)
+    elif change == "duplicate":
+        jobs[3]["id"] = jobs[2]["id"]
+    elif change == "attempt":
+        jobs[3]["run_attempt"] = 2
+    elif change == "sha":
+        jobs[3]["head_sha"] = "b" * 40
+    elif change == "skipped":
+        jobs[3]["conclusion"] = "skipped"
+    elif change == "ordering":
+        jobs[-1]["started_at"] = iso(3)
+    elif change == "timezone":
+        jobs[-1]["completed_at"] = "2026-11-18T10:39:59"
+    else:
+        del run["created_at"]
+    with pytest.raises(G.GuardError, match="FULL_RUNTIME_UNVERIFIED"):
+        G.verify_full_runtime(run, jobs)
+
+
+@pytest.mark.parametrize("response", [{"jobs": []}, {"jobs": [], "total_count": 1}])
+def test_full_jobs_requires_complete_api_pagination(monkeypatch, response):
+    gh = G.GitHub("owner/repo", "unused")
+    monkeypatch.setattr(gh, "_req", lambda method, path: response)
+    with pytest.raises(G.GuardError, match="total_count|incomplete"):
+        gh.full_jobs({"id": 77, "run_attempt": 1})
+
+
+@pytest.mark.parametrize("variant", ["good", "other_head", "wrong_producer", "pending", "stale", "budget_failed"])
+def test_v5_deferral_consumes_commit_status_and_rechecks_the_budget(monkeypatch, variant):
+    gh = G.GitHub("owner/repo", "unused")
+    base = "b" * 40
+    status = {"sha": SHA, "statuses": [{"context": G.PERFORMANCE_CONTEXT, "state": "success", "created_at": iso(30),
+               "target_url": "https://github.com/owner/repo/actions/runs/9"}]}
+    run = {"id": 9, "path": ".github/workflows/ci_perf_guard.yml", "head_branch": "main", "head_sha": base,
+           "event": "workflow_run", "status": "completed", "conclusion": "success", "created_at": iso(29), "updated_at": iso(32),
+           "repository": {"full_name": gh.repo}, "head_repository": {"full_name": gh.repo}}
+    if variant == "other_head":
+        status["sha"] = base
+    if variant == "wrong_producer":
+        run["path"] = ".github/workflows/lookalike.yml"
+    if variant == "pending":
+        status["statuses"][0]["state"] = "pending"
+    if variant == "stale":
+        status["statuses"][0]["created_at"] = iso(28)
+    def get(_method, path):
+        return run if path.endswith("/runs/9") else status
+    monkeypatch.setattr(gh, "_req", get)
+    verdict = {"state": "success", "details": {"end_to_end_s": 1200, "first_created_at": iso(0)}}
+    if variant == "budget_failed":
+        verdict = {"state": "failure", "description": "OVER_BUDGET"}
+    monkeypatch.setattr(G, "judge", lambda *a: verdict)
+    ok, findings = G.verify_budget_for_deferral(gh, SHA, base, T0 + dt.timedelta(minutes=45))
+    assert ok == (variant == "good") and bool(findings) != ok

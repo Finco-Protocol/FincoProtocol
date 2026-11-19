@@ -69,9 +69,12 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           # post-#460: polluter containment (3) and the D01 O1-successor guard (1); literal, closed
                           'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
-                          'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST}
+                          'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST,
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml',
+                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
-                          '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
+                          '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml',
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
@@ -204,7 +207,8 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
     assert T.P2_FROZEN_EDITS == ('.github/workflows/ci_v4_full.yml',)
-    assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS)      # P2: exactly one REPLACED CI path
+    assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS) | {
+        'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml'}
 
 
 @pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml"])
@@ -406,3 +410,30 @@ def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
     with C.call_scope():
         assert U.exact_blobs_ok(subject)
     assert _no_scope_open()
+
+
+@pytest.mark.parametrize("control", ["baseline", "exception", "guard"])
+def test_runtime_budget_controls_reject_committed_policy_tampering(subject, control):
+    from tests import ci_immutable_git_reads as reads
+
+    def raise_baseline(raw):
+        data = json.loads(raw)
+        node = next(iter(data["nodes"]))
+        data["nodes"][node] += 10_000
+        return json.dumps(data).encode()
+
+    def add_exception(raw):
+        data = json.loads(raw)
+        data["exceptions"].append({"node": "tests/test_x.py::test_y", "max_seconds": 10_000, "expires": "2099-01-01"})
+        return json.dumps(data).encode()
+
+    controls = {
+        "baseline": ("docs/ci_v4/performance_baseline.json", raise_baseline),
+        "exception": ("docs/ci_v4/performance_budget_policy.json", add_exception),
+        "guard": (".github/workflows/ci_perf_guard.yml", lambda raw: raw.replace(b"workflow_run:", b"workflow_dispatch:", 1)),
+    }
+    path, transform = controls[control]
+    with reads.scope():
+        assert T.exact_blobs_ok(subject, "HEAD")
+        assert rejected(subject, path, transform)
+        assert T.exact_blobs_ok(subject, "HEAD")

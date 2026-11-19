@@ -166,7 +166,7 @@ def test_v4_linkage_requires_every_required_check_green_at_the_exact_head():
 
 # ---------------------------------------------------------------------------------------------------------------------------------- enforcement
 def good_protection():
-    contexts = [POLICY.GATE_CHECK_NAME, *POLICY.V4_REQUIRED_CHECKS]
+    contexts = [POLICY.GATE_CHECK_NAME, *POLICY.V4_REQUIRED_CHECKS, SH.P.PERFORMANCE_CONTEXT]
     return {"required_status_checks": {"strict": True, "contexts": contexts, "checks": [{"context": c, "app_id": 15368} for c in contexts]},
             "enforce_admins": {"enabled": True},
             "required_pull_request_reviews": {"require_code_owner_reviews": True, "dismiss_stale_reviews": True, "require_last_push_approval": True, "required_approving_review_count": 1}}
@@ -198,10 +198,13 @@ def test_enforcement_is_unverified_without_a_read_and_incomplete_without_every_p
 
 def test_enforcement_from_rulesets_requires_the_same_pieces():
     rules = [{"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": True,
-                                                              "required_status_checks": [{"context": c} for c in (POLICY.GATE_CHECK_NAME, *POLICY.V4_REQUIRED_CHECKS)]}},
+                                                              "required_status_checks": [{"context": c, "integration_id": 15368} for c in (POLICY.GATE_CHECK_NAME, *POLICY.V4_REQUIRED_CHECKS, SH.P.PERFORMANCE_CONTEXT)]}},
              {"type": "pull_request", "parameters": {"require_code_owner_review": True, "dismiss_stale_reviews_on_push": True, "require_last_push_approval": True,
                                                       "required_approving_review_count": 1}}]
-    assert SH.verify_enforcement(None, rules) == ("ENFORCEMENT_VERIFIED", [])
+    assert SH.verify_enforcement(None, rules)[0] == "ENFORCEMENT_INCOMPLETE"
+    protection = good_protection()
+    protection.pop("required_status_checks")
+    assert SH.verify_enforcement(protection, rules) == ("ENFORCEMENT_VERIFIED", [])
     broken = json.loads(json.dumps(rules))
     broken[0]["parameters"]["required_status_checks"].pop(0)
     assert SH.verify_enforcement(None, broken)[0] == "ENFORCEMENT_INCOMPLETE"
@@ -314,12 +317,15 @@ def make_head(w, base, files, delete=(), declare=True):
     return pre
 
 
+from tests.test_ci_perf_guard import full_jobs_fixture, full_run_timestamps
+
+
 REPO = "acme/widgets"
 
 
 def good_full_run(sha, run_id="1", **over):
     run = {"id": int(run_id), "status": "completed", "conclusion": "success", "head_sha": sha, "head_branch": "main", "event": "schedule", "path": ".github/workflows/ci_v4_full.yml@refs/heads/main",
-           "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO}}
+           "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO}, **full_run_timestamps()}
     run.update(over)
     return run
 
@@ -332,6 +338,9 @@ def run_gate(w, tmp_path, head, base, reviews, runs=None, *, author=AUTHOR, prov
     (out / "full.json").write_text(json.dumps(good_full_run(w["E"]) if full == "GOOD" else full))
     if monkeypatch is not None:
         monkeypatch.setattr(POLICY, "APPROVERS", approvers)
+        monkeypatch.setenv("GH_TOKEN", "test-only")
+        monkeypatch.setattr(SH.P.GitHub, "full_jobs", lambda self, run: full_jobs_fixture(run))
+        monkeypatch.setattr(SH.P, "verify_budget_for_deferral", lambda *a: (True, []))
     rc = SH.main(["gate", "--repo", str(w["r"].path), "--head-sha", head, "--head-ref", head_ref or "refs/remotes/pr/head", "--base-tip-sha", base, "--pr-author", author,
                   "--reviews-json", str(out / "reviews.json"), "--check-runs-json", str(out / "runs.json"), "--full-run-json", str(out / "full.json"), "--repo-name", REPO, "--tools-provenance", provenance, "--out-dir", str(out)])
     return rc, json.loads((out / "gate_decision.json").read_text())
@@ -494,7 +503,7 @@ def _witness(run_id="1", sha=None, status="PASS"):
     ("self_declared_pass_without_run_id", good_full_run("a" * 40), {"run_id": ""}, "SELF_DECLARED_WITNESS_NOT_GREEN"),
 ])
 def test_a_full_witness_is_valid_only_against_the_real_github_run(name, run, epoch_kw, fragment):
-    ok, findings = SH.verify_full_witness(run, _witness(**epoch_kw), REPO)
+    ok, findings = SH.verify_full_witness(run, _witness(**epoch_kw), REPO, full_jobs_fixture(run) if run else None)
     if fragment is None:
         assert ok and not findings, (name, findings)
     else:
@@ -585,7 +594,7 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert names.count(POLICY.GATE_CHECK_NAME) == 1, "the required-check name is produced by exactly one job in the whole repository's V5 workflows"
     gate = jobs["gate"]
     assert "if" not in gate and gate["name"] == POLICY.GATE_CHECK_NAME
-    assert gate["permissions"] == {"contents": "read", "pull-requests": "read", "checks": "read", "actions": "read"} and wf["permissions"] == {"contents": "read"}      # read-only: no write scope anywhere
+    assert gate["permissions"] == {"contents": "read", "pull-requests": "read", "checks": "read", "statuses": "read", "actions": "read"} and wf["permissions"] == {"contents": "read"}      # read-only: no write scope anywhere
     steps = gate["steps"]
     checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout"))
     assert "ref" not in checkout["with"] and "repository" not in checkout["with"], "the gate checks out the protected BASE (the default for this event), never the head"
@@ -603,3 +612,31 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert all(len(u.split("@")[1]) == 40 for u in (s["uses"] for s in steps if "uses" in s))
     assert "FINCO_CI_V5_DELTA_V2" in runs and "TRUSTED_BASE" in runs and "UNTRUSTED_TOOL_SOURCE" in runs
     assert "actions/runs/${FULL_RUN_ID}" in runs and "--full-run-json" in runs and "--repo-name" in runs, "the FULL witness is verified against the real run"
+
+
+@pytest.mark.parametrize("seconds,accepted", [(2399, True), (2400, True), (2401, False)])
+def test_v5_full_witness_cannot_use_a_late_green_run(seconds, accepted):
+    run = good_full_run("a" * 40)
+    ok, findings = SH.verify_full_witness(run, _witness(), REPO, full_jobs_fixture(run, seconds))
+    assert ok is accepted
+    if not accepted:
+        assert findings[0].startswith("FULL_RUNTIME_OVER_BUDGET")
+    assert not SH.verify_full_witness(run, _witness(), REPO)[0]
+
+
+def test_missing_performance_budget_context_cannot_verify_enforcement():
+    p = good_protection()
+    checks = p["required_status_checks"]
+    checks["contexts"].remove(SH.P.PERFORMANCE_CONTEXT)
+    checks["checks"] = [c for c in checks["checks"] if c["context"] != SH.P.PERFORMANCE_CONTEXT]
+    state, findings = SH.verify_enforcement(p, [])
+    assert state == "ENFORCEMENT_INCOMPLETE" and any("PERFORMANCE_BUDGET_NOT_REQUIRED" in f for f in findings)
+
+
+@pytest.mark.parametrize("app_id", [None, -1, 1])
+def test_unbound_or_counterfeit_budget_integration_is_incomplete(app_id):
+    protection = good_protection()
+    check = next(c for c in protection["required_status_checks"]["checks"] if c["context"] == SH.P.PERFORMANCE_CONTEXT)
+    check["app_id"] = app_id
+    state, findings = SH.verify_enforcement(protection)
+    assert state == "ENFORCEMENT_INCOMPLETE" and "PERFORMANCE_BUDGET_APP_OR_STRICT_POLICY_UNVERIFIED" in findings

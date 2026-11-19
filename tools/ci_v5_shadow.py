@@ -17,6 +17,7 @@ approval commit, a V4 check that is missing / skipped / red / for another sha, a
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import subprocess
@@ -26,6 +27,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ci_v5_b5 as B5  # noqa: E402
 import ci_v5_epoch as E  # noqa: E402
+import ci_perf_guard as P  # noqa: E402
 
 VERDICT_FILE, B5_FILE, V4_FILE, COMPARISON_FILE = "v5_verdict.json", "b5_report.json", "v4_result.json", "shadow_comparison.json"
 V4_RAW_FILE = "v4_governance_gate.json"
@@ -271,7 +273,7 @@ def v4_linkage(check_runs, head_sha, required=None):
         return False, ["CHECK_RUN_EVIDENCE_UNAVAILABLE"]
     findings = []
     for name in required:
-        runs = [r for r in check_runs if isinstance(r, dict) and r.get("name") == name and (r.get("head_sha") in (None, head_sha))]
+        runs = [r for r in check_runs if isinstance(r, dict) and r.get("name") == name and (r.get("head_sha") == head_sha)]
         if not runs:
             findings.append("MISSING:" + name)
             continue
@@ -290,11 +292,16 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
     if protection is None and rules is None:
         return "ENFORCEMENT_UNVERIFIED", ["PROTECTION_AND_RULESETS_NOT_READ"]
     contexts, strict, admins, reviews = set(), False, False, {}
+    performance_bound = False
+    actions_app_id = 15368
     if isinstance(protection, dict):
         rsc = protection.get("required_status_checks") or {}
         contexts |= set(rsc.get("contexts") or []) | {c.get("context") for c in (rsc.get("checks") or []) if isinstance(c, dict)}
         strict = bool(rsc.get("strict"))
-        admins = bool((protection.get("enforce_admins") or {}).get("enabled"))
+        performance_bound = strict and any(
+            c.get("context") == P.PERFORMANCE_CONTEXT and c.get("app_id") == actions_app_id
+            for c in rsc.get("checks", []) if isinstance(c, dict))
+        admins = (protection.get("enforce_admins") or {}).get("enabled") is True
         reviews = protection.get("required_pull_request_reviews") or {}
     if isinstance(rules, list):
         for rule in rules:
@@ -303,7 +310,11 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
             prm = rule.get("parameters") or {}
             if rule.get("type") == "required_status_checks":
                 contexts |= {c.get("context") for c in (prm.get("required_status_checks") or []) if isinstance(c, dict)}
-                strict = strict or bool(prm.get("strict_required_status_checks_policy"))
+                rule_strict = prm.get("strict_required_status_checks_policy") is True
+                strict = strict or rule_strict
+                performance_bound = performance_bound or (rule_strict and any(
+                    c.get("context") == P.PERFORMANCE_CONTEXT and c.get("integration_id") == actions_app_id
+                    for c in (prm.get("required_status_checks") or []) if isinstance(c, dict)))
             if rule.get("type") == "pull_request":
                 reviews = reviews or {"require_code_owner_reviews": prm.get("require_code_owner_review"), "dismiss_stale_reviews": prm.get("dismiss_stale_reviews_on_push"),
                                       "require_last_push_approval": prm.get("require_last_push_approval"),
@@ -312,10 +323,18 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
     if gate_name not in contexts:
         findings.append("GATE_NOT_REQUIRED:" + gate_name)
     findings += ["V4_CHECK_NOT_REQUIRED:" + n for n in v4_names if n not in contexts]
+    if P.PERFORMANCE_CONTEXT not in contexts:
+        findings.append("PERFORMANCE_BUDGET_NOT_REQUIRED:" + P.PERFORMANCE_CONTEXT)
+    elif not performance_bound:
+        findings.append("PERFORMANCE_BUDGET_APP_OR_STRICT_POLICY_UNVERIFIED")
     if not strict:
         findings.append("STRICT_UP_TO_DATE_OFF")
-    if not admins and not (isinstance(rules, list) and rules):
+    # The effective branch-rules list omits exceptions/bypass actors. The
+    # existence of a rule alone cannot attest that administrators are bound.
+    if not admins:
         findings.append("ADMINS_NOT_ENFORCED")
+    if any((reviews.get("bypass_pull_request_allowances") or {}).values()):
+        findings.append("PULL_REQUEST_REVIEW_BYPASS_ENABLED")
     if not reviews.get("require_code_owner_reviews"):
         findings.append("CODE_OWNER_REVIEW_NOT_REQUIRED")
     if not reviews.get("dismiss_stale_reviews"):
@@ -327,7 +346,7 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
     return ("ENFORCEMENT_VERIFIED", []) if not findings else ("ENFORCEMENT_INCOMPLETE", findings)
 
 
-def verify_full_witness(run, epoch, repo):
+def verify_full_witness(run, epoch, repo, jobs=None):
     """(ok, findings): the epoch's FULL witness is SELF-DECLARED JSON until it is checked against the REAL GitHub run. ``run`` is the API object
     ``GET /repos/{repo}/actions/runs/{run_id}`` fetched by the TRUSTED job (never data the PR supplies). It closes the false-attestation route: a witness is
     accepted only if that run exists, is the nightly/dispatched ``CI V4 FULL`` workflow of THIS repository's ``main`` (not a PR or fork run), completed with
@@ -345,7 +364,7 @@ def verify_full_witness(run, epoch, repo):
         findings.append("RUN_NOT_COMPLETED_SUCCESS:%s/%s" % (run.get("status"), run.get("conclusion")))
     if run.get("head_sha") != epoch.get("base_commit"):
         findings.append("RUN_SHA_IS_NOT_THE_EPOCH_COMMIT")
-    if not str(run.get("path", "")).startswith(".github/workflows/ci_v4_full.yml"):
+    if run.get("path") not in (P.FULL_WORKFLOW_PATH, P.FULL_WORKFLOW_PATH + "@refs/heads/main"):
         findings.append("RUN_IS_NOT_THE_FULL_WORKFLOW")
     if run.get("event") not in ("schedule", "workflow_dispatch"):
         findings.append("RUN_EVENT_NOT_SCHEDULE_OR_DISPATCH:" + str(run.get("event")))
@@ -354,6 +373,14 @@ def verify_full_witness(run, epoch, repo):
     for key in ("repository", "head_repository"):
         if (run.get(key) or {}).get("full_name") != repo:
             findings.append("RUN_%s_IS_NOT_THIS_REPOSITORY" % key.upper())
+    if not findings:
+        if declared.get("run_attempt", 1) != 1:
+            findings.append("FULL_RUNTIME_UNVERIFIED: epoch names an unsupported run attempt")
+        else:
+            try:
+                P.verify_full_runtime(run, jobs)
+            except P.GuardError as exc:
+                findings.append(str(exc))
     return (not findings), findings
 
 
@@ -451,11 +478,33 @@ def cmd_gate(a):
     try:
         epoch, _problems = E.load_epoch(git.run("show", a.base_tip_sha + ":" + E.TRUSTED_EPOCH_PATH))      # the BASE copy only, never the head's
         if epoch is not None and not epoch["legacy"]:
-            full_ok, full_find = verify_full_witness(_read_json(a.full_run_json), epoch, a.repo_name)
+            run = _read_json(a.full_run_json)
+            full_ok, full_find = verify_full_witness(run, epoch, a.repo_name)
+            # A legitimate candidate reaching the runtime check needs complete GitHub jobs.
+            if full_find == ["FULL_RUNTIME_UNVERIFIED: complete authenticated job data unavailable"]:
+                token = os.environ.get("GH_TOKEN")
+                if token:
+                    try:
+                        jobs = P.GitHub(a.repo_name, token).full_jobs(run)
+                        full_ok, full_find = verify_full_witness(run, epoch, a.repo_name, jobs)
+                    except (P.GuardError, P.TransientError, KeyError, ValueError, TypeError) as exc:
+                        full_find = ["FULL_RUNTIME_UNVERIFIED: " + str(exc)]
     except E.GitError:
         pass
     decision, reasons = decide(v5, state, v4_ok, head_matches=head_matches, tool_source_trusted=a.tools_provenance == "TRUSTED_BASE", full_witness_ok=full_ok)
-    rec = {"schema": GATE_SCHEMA, "decision": decision, "reasons": reasons, "integrity": v5["integrity"], "authorization": state, "authorization_source": source if state == "AUTHORIZATION_APPROVED" else "NONE",
+    performance_findings = []
+    if decision == "DEFERRED_TO_V4_VERIFIED":
+        token = os.environ.get("GH_TOKEN")
+        perf_ok = False
+        if token:
+            perf_ok, performance_findings = P.verify_budget_for_deferral(
+                P.GitHub(a.repo_name, token), a.head_sha, a.base_tip_sha, dt.datetime.now(dt.timezone.utc))
+        else:
+            performance_findings = ["PERFORMANCE_BUDGET_UNVERIFIED: GitHub token absent"]
+        if not perf_ok:
+            decision, reasons = decide(v5, state, False, head_matches=head_matches,
+                                       tool_source_trusted=a.tools_provenance == "TRUSTED_BASE", full_witness_ok=full_ok)
+    rec = {"schema": GATE_SCHEMA, "performance_findings": performance_findings, "decision": decision, "reasons": reasons, "integrity": v5["integrity"], "authorization": state, "authorization_source": source if state == "AUTHORIZATION_APPROVED" else "NONE",
            "authorization_findings": why, "v4_linkage": "V4_VERIFIED_AT_HEAD" if v4_ok else "V4_NOT_VERIFIED", "v4_findings": v4_find, "full_witness": "FULL_WITNESS_VERIFIED_AGAINST_GITHUB" if full_ok else "FULL_WITNESS_NOT_VERIFIED", "full_witness_findings": full_find,
            "enforcement": "ENFORCEMENT_UNVERIFIED", "enforcement_note": "the gate cannot read branch protection with a read token; the owner verifies with the `enforcement` subcommand",
            "head_sha": a.head_sha, "head_ref_sha": ref_sha, "base_tip_sha": a.base_tip_sha, "pr_author": a.pr_author, "epoch_sha": v5.get("epoch_sha"), "delta_digest": v5.get("delta_digest"),
