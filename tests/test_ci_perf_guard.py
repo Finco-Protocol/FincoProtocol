@@ -769,3 +769,10 @@ def test_v5_deferral_consumes_commit_status_and_rechecks_the_budget(monkeypatch,
     monkeypatch.setattr(G, "judge", lambda *a: verdict)
     ok, findings = G.verify_budget_for_deferral(gh, SHA, base, T0 + dt.timedelta(minutes=45))
     assert ok == (variant == "good") and bool(findings) != ok
+
+
+def test_skipped_planned_shard_cannot_hide_its_missing_artifact(w):
+    shard = next(job for job in w.jobs[w.ci["id"]] if job["name"] == "shard-1")
+    shard["conclusion"] = "skipped"
+    w.artifacts[w.ci["id"]] = w.artifacts[w.ci["id"]][:1]
+    assert "unsuccessful planned shard 1" in w.judge()["description"]

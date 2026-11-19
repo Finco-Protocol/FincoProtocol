@@ -198,11 +198,11 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         path = "tests/%s.py" % name.split(".")[1]
         src = (ROOT / path).read_text()
         assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
-        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml')" in src, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')" in src, path
     v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
     assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
     assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
-            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
+            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
     gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')

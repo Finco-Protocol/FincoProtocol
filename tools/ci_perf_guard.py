@@ -258,8 +258,11 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
     shard_jobs = {}
     for j in jobs[run["id"]]:
         m = re.match(cfg["shard_job_name_pattern"], j.get("name", ""))
-        if m and j.get("conclusion") != "skipped":
-            shard_jobs[int(m.group(1))] = j
+        if m:
+            index = int(m.group(1))
+            if index in shard_jobs or j.get("conclusion") != "success":
+                raise GuardError("duplicate or unsuccessful planned shard %d" % index)
+            shard_jobs[index] = j
     if not shard_jobs:
         raise GuardError("the CI V4 PR run has no shard job")
     over = {i: round((_ts(j["completed_at"]) - _ts(j["started_at"])).total_seconds()) for i, j in shard_jobs.items()}
@@ -281,7 +284,7 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
         arts[i] = a
     if set(arts) != set(shard_jobs):
         raise GuardError("shard artifacts %s do not match shard jobs %s" % (sorted(arts), sorted(shard_jobs)))
-    times, seen = {}, set()
+    times, seen, coverage = {}, set(), {}
     for i, a in sorted(arts.items()):
         if a.get("size_in_bytes", 0) > cfg["max_artifact_bytes"]:
             raise GuardError("artifact too large")
@@ -294,6 +297,7 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
             raise GuardError("shard %d metadata names another head/shard" % i)
         if meta.get("pytest_exit") != 0:
             raise GuardError("shard %d pytest exit %r" % (i, meta.get("pytest_exit")))
+        coverage[i] = {"modules": len(meta["modules"]), "nodes": len(cases)}
         step = _test_step_seconds(shard_jobs[i], cfg["test_step_name_prefix"])
         total = sum(t for _, t in cases)
         ratio = total / step if step > 0 else 0.0
@@ -306,6 +310,8 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
             seen.add(node)
             times[node] = t
     details["nodes"] = len(times)
+    details["shard_coverage"] = coverage
+    details["nodes_comparable_to_baseline"] = len(times.keys() & baseline.keys())
     top = sorted(times.items(), key=lambda kv: -kv[1])[:20]
     details["top20"] = [[n, round(t, 1)] for n, t in top]
     details["slowest_node_s"] = round(top[0][1], 1) if top else 0

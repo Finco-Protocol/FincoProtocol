@@ -343,6 +343,8 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
         findings.append("LAST_PUSH_APPROVAL_NOT_REQUIRED")
     if not (isinstance(reviews.get("required_approving_review_count"), int) and reviews["required_approving_review_count"] >= 1):
         findings.append("NO_APPROVING_REVIEW_REQUIRED")
+    if protection is None:
+        return "ENFORCEMENT_UNVERIFIED", findings
     return ("ENFORCEMENT_VERIFIED", []) if not findings else ("ENFORCEMENT_INCOMPLETE", findings)
 
 

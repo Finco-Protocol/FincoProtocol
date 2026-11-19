@@ -201,13 +201,13 @@ def test_enforcement_from_rulesets_requires_the_same_pieces():
                                                               "required_status_checks": [{"context": c, "integration_id": 15368} for c in (POLICY.GATE_CHECK_NAME, *POLICY.V4_REQUIRED_CHECKS, SH.P.PERFORMANCE_CONTEXT)]}},
              {"type": "pull_request", "parameters": {"require_code_owner_review": True, "dismiss_stale_reviews_on_push": True, "require_last_push_approval": True,
                                                       "required_approving_review_count": 1}}]
-    assert SH.verify_enforcement(None, rules)[0] == "ENFORCEMENT_INCOMPLETE"
+    assert SH.verify_enforcement(None, rules)[0] == "ENFORCEMENT_UNVERIFIED"
     protection = good_protection()
     protection.pop("required_status_checks")
     assert SH.verify_enforcement(protection, rules) == ("ENFORCEMENT_VERIFIED", [])
     broken = json.loads(json.dumps(rules))
     broken[0]["parameters"]["required_status_checks"].pop(0)
-    assert SH.verify_enforcement(None, broken)[0] == "ENFORCEMENT_INCOMPLETE"
+    assert SH.verify_enforcement(None, broken)[0] == "ENFORCEMENT_UNVERIFIED"
 
 
 def test_enforcement_cli_exit_codes(tmp_path):
@@ -640,3 +640,7 @@ def test_unbound_or_counterfeit_budget_integration_is_incomplete(app_id):
     check["app_id"] = app_id
     state, findings = SH.verify_enforcement(protection)
     assert state == "ENFORCEMENT_INCOMPLETE" and "PERFORMANCE_BUDGET_APP_OR_STRICT_POLICY_UNVERIFIED" in findings
+
+
+def test_rules_response_cannot_hide_a_branch_protection_403():
+    assert SH.verify_enforcement(None, [])[0] == "ENFORCEMENT_UNVERIFIED"
