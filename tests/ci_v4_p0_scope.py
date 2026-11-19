@@ -4261,6 +4261,45 @@ HANDOFFS.setdefault('tests/u1_scope.py', []).append((
         '\n'
         'def _p0_runtime_pin(',
 ))
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        "        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()\n",
+        "        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()\n"
+        '        # Git lists each changed path once. A duplicated path is invalid input,\n'
+        '        # even if a later successor owns the real change at that path.\n'
+        '        if len(changed) != len(set(changed)):\n'
+        '            return False\n',
+    ),
+    (
+        "    return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n",
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    return path in pins and pins[path] == value and exact_blobs_ok(repo, ref)\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
+    (
+        '    if not _delegable(path) or not exact_blobs_ok(repo, ref):\n'
+        '        return False\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path in pins:\n'
+        '        return pins[path] == value\n'
+        '    who = _union(root).get(path, [])\n'
+        '    return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value\n',
+        '    if not _delegable(path):\n'
+        '        return False\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path in pins:\n'
+        '        return pins[path] == value and exact_blobs_ok(repo, ref)\n'
+        '    try:\n'
+        '        who = _union(root).get(path, [])\n'
+        '    except (OSError, subprocess.CalledProcessError):\n'
+        '        return False\n'
+        '    return (len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value\n'
+        '            and exact_blobs_ok(repo, ref))\n',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

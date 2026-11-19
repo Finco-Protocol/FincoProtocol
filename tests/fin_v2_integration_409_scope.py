@@ -293,14 +293,18 @@ def allowed_path(path, repo=None, ref=None):
 def admits_pin(path, value, repo=None, ref=None):
     """True only while the seal is exact and ``value`` is the one blob this seal authorises for ``path`` (its literal pin, or the single owning PR's
     reviewed blob). It never admits a value for a path outside the union."""
-    if not _delegable(path) or not exact_blobs_ok(repo, ref):
+    if not _delegable(path):
         return False
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if path in pins:
-        return pins[path] == value
-    who = _union(root).get(path, [])
-    return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
+        return pins[path] == value and exact_blobs_ok(repo, ref)
+    try:
+        who = _union(root).get(path, [])
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return (len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
+            and exact_blobs_ok(repo, ref))
 
 
 def followed_manifest_ok(path, repo=None, ref=None):

@@ -263,7 +263,11 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         if not _followed_ok(root, ref, pins, data):
             return False
-        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        # Git lists each changed path once. A duplicated path is invalid input,
+        # even if a later successor owns the real change at that path.
+        if len(changed) != len(set(changed)):
+            return False
         if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) and not _wf06b_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
@@ -298,7 +302,8 @@ def matches(path, source=None, *, repo=None, ref=None):
 
 def pins_exactly(path, value, repo=None, ref=None):
     """True only while the whole cohort is exact and it pins ``path`` at exactly ``value`` (used by the bounded hooks of the older guards)."""
-    return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    pins = manifest(repo, ref).get('source_blobs', {})
+    return path in pins and pins[path] == value and exact_blobs_ok(repo, ref)
 
 
 def predecessor_repin(manifest_path, source, after, repo=None, ref=None):
