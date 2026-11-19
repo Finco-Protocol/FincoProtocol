@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools import ci_v4_release_gate as G
+from tests.test_ci_perf_guard import full_jobs_fixture, full_run_timestamps
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = json.loads((ROOT / "docs/ci_v4/ci-v4-policy.json").read_text())
@@ -34,13 +35,13 @@ def _record(junit, **over):
 
 def _run(**over):
     r = {"id": 77, "head_sha": SHA, "status": "completed", "conclusion": "success", "path": ".github/workflows/ci_v4_full.yml",
-         "event": "workflow_dispatch", "run_attempt": 1, "repository": {"full_name": SLUG}, "head_repository": {"full_name": SLUG}}
+         "event": "workflow_dispatch", "head_branch": "main", **full_run_timestamps(), "repository": {"full_name": SLUG}, "head_repository": {"full_name": SLUG}}
     r.update(over)
     return r
 
 
 def test_exact_full_pass_allows_release(junit):
-    out = G.gate(_record(junit), _run(), [junit], SHA, TREE, SLUG, POLICY)
+    out = G.gate(_record(junit), _run(), [junit], SHA, TREE, SLUG, POLICY, jobs=full_jobs_fixture(_run()))
     assert out["verdict"] == "RELEASE_ALLOWED"
 
 
@@ -58,14 +59,14 @@ def test_reviewed_baseline_skips_are_listed_and_allowed_but_new_or_extra_skips_b
     node = sorted(baseline)[0]
     j = _skip_junit(tmp_path, [node])
     rec = _record(j, counts={"passed": N - 1, "failed": 0, "error": 0, "skipped": 1}, skipped_ids=[node])
-    assert G.gate(rec, _run(), [j], SHA, TREE, SLUG, POLICY, baseline)["skipped_ids"] == [node]
+    assert G.gate(rec, _run(), [j], SHA, TREE, SLUG, POLICY, baseline, jobs=full_jobs_fixture(_run()))["skipped_ids"] == [node]
     with pytest.raises(G.GateError, match="baseline"):                       # same skip without the reviewed baseline
         G.gate(rec, _run(), [j], SHA, TREE, SLUG, POLICY, {})
     over = [node] * (baseline[node] + 1)                                     # more occurrences than reviewed
     j2 = _skip_junit(tmp_path, over)
     rec2 = _record(j2, counts={"passed": N - len(over), "failed": 0, "error": 0, "skipped": len(over)}, skipped_ids=over)
     with pytest.raises(G.GateError, match="baseline"):
-        G.gate(rec2, _run(), [j2], SHA, TREE, SLUG, POLICY, baseline)
+        G.gate(rec2, _run(), [j2], SHA, TREE, SLUG, POLICY, baseline, jobs=full_jobs_fixture(_run()))
 
 
 @pytest.mark.parametrize("over,msg", [
@@ -82,7 +83,7 @@ def test_reviewed_baseline_skips_are_listed_and_allowed_but_new_or_extra_skips_b
 ])
 def test_record_negatives_block(junit, over, msg):
     with pytest.raises(G.GateError, match=msg):
-        G.gate(_record(junit, **over), _run(), [junit], SHA, TREE, SLUG, POLICY)
+        G.gate(_record(junit, **over), _run(), [junit], SHA, TREE, SLUG, POLICY, jobs=full_jobs_fixture(_run()))
 
 
 @pytest.mark.parametrize("over", [
@@ -92,7 +93,7 @@ def test_record_negatives_block(junit, over, msg):
 ])
 def test_forged_or_wrong_run_blocks(junit, over):
     with pytest.raises(G.GateError):
-        G.gate(_record(junit), _run(**over), [junit], SHA, TREE, SLUG, POLICY)
+        G.gate(_record(junit), _run(**over), [junit], SHA, TREE, SLUG, POLICY, jobs=full_jobs_fixture(_run()))
 
 
 def test_record_counts_contradicted_by_junit_block(junit, tmp_path):
@@ -100,12 +101,12 @@ def test_record_counts_contradicted_by_junit_block(junit, tmp_path):
     other.write_text("<testsuite><testcase classname='a' name='b'><failure/></testcase></testsuite>")
     rec = _record(junit, junit_sha256=sorted([hashlib.sha256(junit.read_bytes()).hexdigest(), hashlib.sha256(other.read_bytes()).hexdigest()]))
     with pytest.raises(G.GateError):
-        G.gate(rec, _run(), [junit, other], SHA, TREE, SLUG, POLICY)
+        G.gate(rec, _run(), [junit, other], SHA, TREE, SLUG, POLICY, jobs=full_jobs_fixture(_run()))
 
 
 def test_short_sha_or_branch_name_is_refused(junit):
     with pytest.raises(G.GateError):
-        G.gate(_record(junit, tested_sha="main"), _run(head_sha="main"), [junit], "main", TREE, SLUG, POLICY)
+        G.gate(_record(junit, tested_sha="main"), _run(head_sha="main"), [junit], "main", TREE, SLUG, POLICY, jobs=full_jobs_fixture(_run()))
 
 
 def test_cli_blocks_without_github_verification(junit, tmp_path, monkeypatch):
@@ -116,3 +117,17 @@ def test_cli_blocks_without_github_verification(junit, tmp_path, monkeypatch):
     rc = G.main(["--sha", head, "--repo-slug", SLUG, "--policy", str(ROOT / "docs/ci_v4/ci-v4-policy.json"), "--record", str(rec),
                  "--junit-dir", str(junit.parent), "--output", str(out), "--git-dir", str(ROOT)])
     assert rc == 1 and json.loads(out.read_text())["verdict"] == "RELEASE_BLOCKED"
+
+
+@pytest.mark.parametrize("seconds,allowed", [(2399, True), (2400, True), (2401, False)])
+def test_release_checks_actual_github_full_elapsed(junit, seconds, allowed):
+    run = _run()
+    args = (_record(junit), run, [junit], SHA, TREE, SLUG, POLICY)
+    jobs = full_jobs_fixture(run, seconds)
+    if allowed:
+        assert G.gate(*args, jobs=jobs)["full_elapsed_s"] == seconds
+    else:
+        with pytest.raises(G.GateError, match="FULL_RUNTIME_OVER_BUDGET"):
+            G.gate(*args, jobs=jobs)
+    with pytest.raises(G.GateError, match="FULL_RUNTIME_UNVERIFIED"):
+        G.gate(*args)
