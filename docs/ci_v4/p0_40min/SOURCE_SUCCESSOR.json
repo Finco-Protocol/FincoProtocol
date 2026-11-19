@@ -170,7 +170,7 @@
     "tests/r04_ppa_global_cap/test_r04_allocation.py": "a7c97c6f0462adfe7a14159ef20bf22285203be3",
     "tests/test_bess02_scope.py": "5a6a2e500660078f1048bf03e06a5c354b7b4964",
     "tests/test_c06_cost_workspace_scope.py": "c814f3ca472d1eeb0f6fe0036cad3bfb0d6b8c85",
-    "tests/test_ci_full_parallel.py": "e1fa4ae83fbf433fded2d1c79624596d00ac7e38",
+    "tests/test_ci_full_parallel.py": "0669c6306a670f463a78cc902cfd71ac5db499ef",
     "tests/test_ci_immutable_git_reads.py": "f7de3cf066b5bc47c07cb34fa497a86d4e78fd46",
     "tests/test_ci_perf_guard.py": "e913e4b4b24400b5e2215c23bf5158039d1d07d2",
     "tests/test_ci_v4_activate.py": "98cafe6e3b39444f8962bc4f5ae2b8213d401552",
@@ -205,7 +205,7 @@
     "tests/u1_scope.py": "b52633f205db995a14e20bb96acc2a925f3604f1",
     "tests/ux_pr3b1_scope.py": "c377216f0f2e82b99aaa6bace7effc28a3964ad0",
     "tests/v11_stage3_release_successor.py": "3ae93b08088e444024fb9c1eabd8f943aa85c90d",
-    "tools/ci_full_parallel.py": "263da585c967dd4c22f680d30ca0d700751cdfc5",
+    "tools/ci_full_parallel.py": "5cce11333cafbdb6f22b73e0452ccd934f7179a2",
     "tools/ci_perf_guard.py": "f0fee13e948d852d202459a2d4818fad7df61238"
   },
   "source_modes": {

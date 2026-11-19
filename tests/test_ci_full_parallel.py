@@ -212,6 +212,30 @@ def test_plan_uses_a_feasible_worker_count_when_the_preferred_one_is_over_budget
     assert F.verify_plan_against_inventory(plan, inv)
 
 
+def test_measured_weights_keep_completed_nodes_in_a_timed_out_shard():
+    inv, plan = inventory(), make_plan()
+    contents = artifacts(plan, inv)
+    assignment = next(a for a in plan["assignments"] if SCOPED_NODE in F.shard_scoped_nodes(plan, a))
+    i = assignment["shard"]
+    shard = contents[f"shard-{i}"]
+    rec = json.loads(shard[f"shard-{i}.json"])
+    rec.update(pytest_exit=124, timed_out=True)
+    shard[f"shard-{i}.json"] = json.dumps(F.seal(rec)).encode()
+    phases = json.loads(shard[f"phases-{i}.json"])
+    phases["nodes"][SCOPED_NODE] = {"phases": {"setup": "passed"}, "duration": 0.0003}
+    phases["nodes"]["tests/foreign.py::test_foreign"] = {
+        "phases": {"setup": "passed", "call": "passed", "teardown": "passed"}, "duration": 0.001,
+    }
+    shard[f"phases-{i}.json"] = json.dumps(phases).encode()
+    weights = F.node_weights_from(contents, plan)
+    assert SCOPED_NODE not in weights and "tests/foreign.py::test_foreign" not in weights
+    assert weights["tests/test_b.py::test_skip"] == 1.0
+
+    rec["run_attempt"] += 1
+    shard[f"shard-{i}.json"] = json.dumps(F.seal(rec)).encode()
+    assert "tests/test_b.py::test_skip" not in F.node_weights_from(contents, plan)
+
+
 @pytest.mark.parametrize("mutate", [lambda p: p.update(schema="X"), lambda p: p["workers"].update(min=0),
                                     lambda p: p.update(skip_baseline="docs/other.json"),
                                     lambda p: p["node_split"]["modules"].update({"tests/*.py": {"verdict": "SPLIT_SAFE", "isolation_proof": "x" * 50}}),

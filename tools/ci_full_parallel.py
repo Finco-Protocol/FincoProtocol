@@ -822,16 +822,34 @@ def expected_shard_profile(inv_profile, targets, conftests):
 
 
 def node_weights_from(contents, plan):
-    """Measured per-node seconds of this run (input for the next plan's balance; never an acceptance input)."""
+    """Emit measurements only for assigned nodes with completed passing or skipped phases."""
     out = {}
     for a in plan["assignments"]:
-        m = contents.get("shard-%d" % a["shard"]) or {}
+        i = a["shard"]
+        m = contents.get("shard-%d" % i) or {}
         try:
-            ev = json.loads(_one(m, "phases-%d.json" % a["shard"], "weights"))
-        except FullError:
+            ev = json.loads(_one(m, "phases-%d.json" % i, "weights"))
+            rec = check_seal(json.loads(_one(m, "shard-%d.json" % i, "weights")), "shard weight source")
+        except (ValueError, KeyError, TypeError):
             continue
-        for n, v in ev.get("nodes", {}).items():
-            out[n] = round(float(v.get("duration", 0.0)), 3)
+        if (rec.get("schema") != SHARD_SCHEMA or rec.get("shard") != i or rec.get("plan_digest") != plan["digest"]
+                or any(rec.get(k) != plan[k] for k in ("tested_sha", "tested_tree", "run_id", "run_attempt"))
+                or not isinstance(ev, dict) or ev.get("schema") != RECORDER_SCHEMA
+                or not isinstance(ev.get("nodes"), dict)):
+            continue
+        assigned = {n for entry in a["modules"].values() for n in entry["keep"]}
+        for n, v in ev["nodes"].items():
+            if n not in assigned or not isinstance(v, dict) or not isinstance(v.get("phases"), dict):
+                continue
+            phases = v["phases"]
+            setup = phases.get("setup")
+            if phases.get("teardown") != "passed":
+                continue
+            completed = (setup == "passed" and phases.get("call") in ("passed", "skipped") and len(phases) == 3
+                         or setup == "skipped" and len(phases) == 2)
+            duration = v.get("duration")
+            if completed and type(duration) in (int, float) and math.isfinite(duration) and duration >= 0:
+                out[n] = round(duration, 3)
     return out
 
 
@@ -915,7 +933,9 @@ def main(argv=None):
                         (out / "junit").mkdir(exist_ok=True)
                         (out / "junit" / ("junit-%d.xml" % i)).write_bytes(v)
             try:
-                plan = json.loads(_one(contents["plan"], "plan.json", "plan"))
+                plan = check_seal(json.loads(_one(contents["plan"], "plan.json", "plan")), "weight plan")
+                _need((plan["tested_sha"], plan["tested_tree"], plan["run_id"], plan["run_attempt"])
+                      == (src["sha"], src["tree"], run_id, attempt), "weight plan belongs to another source or attempt")
                 (out / "measured-node-weights.json").write_text(json.dumps(
                     {"schema": "FINCO_CI_FULL_MEASURED_WEIGHTS_V1", "run_id": run_id, "run_attempt": attempt, "tested_sha": src["sha"],
                      "nodes": node_weights_from(contents, plan)}, sort_keys=True))
