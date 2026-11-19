@@ -135,11 +135,22 @@ def _owned_match(module, path, source, repo, ref):
 
 
 def protected_blobs(repo=None, ref=None):
-    if not valid(repo, ref):
-        return {}
-    merged = {}
-    for m in cohorts():
-        for p, b in m.manifest(repo, ref).get('source_blobs', {}).items():
-            if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):
-                merged[p] = b
-    return merged
+    from tests import ci_immutable_git_reads
+
+    root = Path(repo) if repo is not None else ROOT
+    if ref is not None:
+        # Snapshot a symbolic ref on every call. The verdict and each manifest
+        # read must describe the same commit, even if the ref moves afterward.
+        try:
+            ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return {}
+    with ci_immutable_git_reads.scope(), call_scope():
+        if not valid(root, ref):
+            return {}
+        merged = {}
+        for m in cohorts():
+            for p, b in m.manifest(root, ref).get('source_blobs', {}).items():
+                if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):
+                    merged[p] = b
+        return merged

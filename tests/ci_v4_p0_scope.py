@@ -4316,6 +4316,39 @@ HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
         '            return False\n',
     ),
 ]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        'def protected_blobs(repo=None, ref=None):\n'
+        '    if not valid(repo, ref):\n'
+        '        return {}\n'
+        '    merged = {}\n'
+        '    for m in cohorts():\n'
+        "        for p, b in m.manifest(repo, ref).get('source_blobs', {}).items():\n"
+        "            if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):\n"
+        '                merged[p] = b\n'
+        '    return merged\n',
+        'def protected_blobs(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if ref is not None:\n'
+        '        # Snapshot a symbolic ref on every call. The verdict and each manifest\n'
+        '        # read must describe the same commit, even if the ref moves afterward.\n'
+        '        try:\n'
+        "            ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()\n"
+        '        except (OSError, ValueError, subprocess.CalledProcessError):\n'
+        '            return {}\n'
+        '    with ci_immutable_git_reads.scope(), call_scope():\n'
+        '        if not valid(root, ref):\n'
+        '            return {}\n'
+        '        merged = {}\n'
+        '        for m in cohorts():\n'
+        "            for p, b in m.manifest(root, ref).get('source_blobs', {}).items():\n"
+        "                if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):\n"
+        '                    merged[p] = b\n'
+        '        return merged\n',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
