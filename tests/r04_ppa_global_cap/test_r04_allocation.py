@@ -315,13 +315,75 @@ def test_check_is_atomic_and_never_mutates_the_existing_book():
 
 
 # ---------------------------------------------------------------- isolation
+_R04_REGISTRY_REFERENCE = 'tests/c06_cost_workspace_scope.py'
+_P0_REGISTRY_REFERENCE = 'tests/ci_v4_p0_scope.py'
+_R04_PROVENANCE = frozenset((
+    'docs/r04_ppa_global_cap/SOURCE_SUCCESSOR.json',
+    'research/r04_ppa_global_cap/core.py',
+    'tests/r04_ppa_global_cap/oracle.py',
+))
+
+
+def _only_r04_provenance(source, expected=_R04_PROVENANCE):
+    # Only literal path constants in a reviewed test registry.
+    literals = [node.value for node in ast.walk(ast.parse(source))
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and 'r04_ppa_global_cap' in node.value]
+    return (len(literals) == len(expected) and set(literals) == expected
+            and source.count('r04_ppa_global_cap') == len(literals))
+
+
+def _r04_reference_is_allowed(path, verified_registries):
+    if path in verified_registries:
+        return True
+    return (path.startswith(('research/r04_ppa_global_cap/', 'tests/r04_ppa_global_cap/'))
+            or path in {'tests/r04_ppa_scope.py', 'tests/test_r04_ppa_scope.py'})
+
+
+def _r04_reference_paths(root):
+    import subprocess
+    return subprocess.check_output(
+        ["git", "grep", "-l", "r04_ppa_global_cap", "--", "*.py", "*.ts", "*.tsx", "*.js", "*.html"],
+        cwd=root, text=True,
+    ).splitlines()
+
+
 def test_the_candidate_is_isolated_not_wired_and_not_active():
     assert C.STATUS == {"active": False, "approved_for_finco": False, "wired_into_save_or_run": False}
     tree = ast.parse((ROOT / "research/r04_ppa_global_cap/core.py").read_text())
     imported = {n.module.split(".")[0] if isinstance(n, ast.ImportFrom) else a.name.split(".")[0]
                 for n in ast.walk(tree) for a in (n.names if isinstance(n, ast.Import) else [None]) if (isinstance(n, ast.Import) or isinstance(n, ast.ImportFrom))}
     assert not imported & {"app", "financial_engine", "finco_core", "domain", "main_web", "frontend"}
+    out = _r04_reference_paths(ROOT)
+    from tests import c06_cost_workspace_scope as scope, ci_v4_p0_scope as p0
+    registries = (
+        (_R04_REGISTRY_REFERENCE, _R04_PROVENANCE, scope.signature_ok),
+        (_P0_REGISTRY_REFERENCE, {p0.R04_ISOLATION_TEST}, p0.signature_ok),
+    )
+    verified = {path for path, provenance, signature_ok in registries
+                if signature_ok() and _only_r04_provenance((ROOT / path).read_text(), provenance)}
+    assert all(_r04_reference_is_allowed(path, verified) for path in out), out
+
+
+def test_r04_isolation_rejects_runtime_references_even_with_a_valid_registry(tmp_path):
     import subprocess
-    out = subprocess.run(["git", "grep", "-l", "r04_ppa_global_cap", "--", "*.py", "*.ts", "*.tsx", "*.js", "*.html"], cwd=ROOT,
-                         capture_output=True).stdout.decode().split()
-    assert all(p.startswith(("research/r04_ppa_global_cap/", "tests/r04_ppa_global_cap/", "tests/r04_ppa_scope.py", "tests/test_r04_ppa_scope.py")) for p in out), out
+    sources = {
+        'app/v2/save.py': 'from research.r04_ppa_global_cap import core\n',
+        'app/v2/run.py': 'import research.r04_ppa_global_cap.core\n',
+        'financial_engine/pricing.py': 'from research.r04_ppa_global_cap.core import allocate\n',
+        'static/react/finco-react.js': 'registry.r04_ppa_global_cap.allocate();\n',
+    }
+    subprocess.run(['git', 'init', '-q'], cwd=tmp_path, check=True)
+    for path, source in sources.items():
+        file = tmp_path / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(source)
+    subprocess.run(['git', 'add', '--', *sources], cwd=tmp_path, check=True)
+    references = _r04_reference_paths(tmp_path)
+    assert set(references) == sources.keys()
+    verified = {_R04_REGISTRY_REFERENCE, _P0_REGISTRY_REFERENCE}
+    assert not any(_r04_reference_is_allowed(path, verified) for path in references)
+    raw = (ROOT / _R04_REGISTRY_REFERENCE).read_text()
+    assert _only_r04_provenance(raw)
+    assert not _only_r04_provenance(raw + '\nimport research.r04_ppa_global_cap.core\n')
+    assert not _r04_reference_is_allowed(_R04_REGISTRY_REFERENCE, set())

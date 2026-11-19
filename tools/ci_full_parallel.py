@@ -410,19 +410,30 @@ def simulate(units, policy, counts=None):
 
 
 def choose_workers(units, policy):
-    """Smallest k in [min, max] whose predicted test critical path meets the target; otherwise grow while one more runner still saves at least
-    ``min_gain_s_per_extra_worker`` (no fixed count, no runner wasted on an indivisible floor)."""
+    """Meet the target with the fewest workers, or limit predicted overruns within the sealed worker range."""
     w = policy["workers"]
-    best_k, best = w["min"], max(lpt(units, w["min"])[1])
-    if best <= w["target_test_critical_path_s"]:
-        return best_k
-    for k in range(w["min"] + 1, w["max"] + 1):
-        crit = max(lpt(units, k)[1])
+    target = w["target_test_critical_path_s"]
+    timeout = policy["shard_timeout_s"]
+    options = [(k, lpt(units, k)[1]) for k in range(w["min"], w["max"] + 1)]
+    for k, loads in options:
+        if max(loads) <= target:
+            return k
+    best_k, initial_loads = options[0]
+    best = max(initial_loads)
+    for k, loads in options[1:]:
+        crit = max(loads)
         if best - crit < w["min_gain_s_per_extra_worker"]:
             break
         best_k, best = k, crit
-        if crit <= w["target_test_critical_path_s"]:
-            break
+    if best > timeout:
+        # One indivisible unit can keep max(loads) flat while the other
+        # shards still benefit. Score all loads against the sealed timeout.
+        def overrun(option):
+            k, loads = option
+            return (sum(max(0, load - timeout) for load in loads),
+                    sum(max(0, load - target) for load in loads), k)
+
+        return min(options, key=overrun)[0]
     return best_k
 
 

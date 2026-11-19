@@ -69,6 +69,33 @@ def _bad(root):
         return not C.valid(root)
 
 
+_P0_CI_PATHS = frozenset((
+    '.github/workflows/ci_perf_guard.yml', '.github/workflows/ci_v4_full.yml',
+    'tools/ci_perf_guard.py', 'tools/ci_full_parallel.py',
+))
+
+
+def _accepted_p0_ci_path(path, repo=None, ref=None):
+    from tests import ci_v4_p0_scope as P0
+    return path in _P0_CI_PATHS and P0.ci_owns(path, repo, ref)
+
+
+def test_r02_p0_ci_handoff_is_exact_and_closes_after_mutation(tree):
+    path = 'tools/ci_full_parallel.py'
+    with C.call_scope():
+        assert all(_accepted_p0_ci_path(p, tree) for p in _P0_CI_PATHS)
+        assert not _accepted_p0_ci_path('tools/unsigned.py', tree)
+        assert not _accepted_p0_ci_path('.github/workflows/unsigned.yml', tree)
+    raw = (tree / path).read_bytes()
+    (tree / path).write_bytes(raw + b"\n")
+    with C.call_scope():
+        assert not _accepted_p0_ci_path(path, tree)
+        assert _accepted_p0_ci_path(path, tree, 'HEAD')
+    (tree / path).write_bytes(raw)
+    with C.call_scope():
+        assert _accepted_p0_ci_path(path, tree)
+
+
 def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():
     from tests import f03_financing_scope as G
     from tests import ci_v5_bootstrap_scope as V5
@@ -84,7 +111,8 @@ def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_compo
     # no server, engine, writer, parser or security source moved; the WF-React-2 editor file and the revenue contract parser are byte-identical to BASE
     assert not [p for p in changed if p.startswith(('app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'tools/', 'scripts/'))
                 and not (N.exact_blobs_ok() and p in N.SOURCE_PATHS) and not (G.signature_ok() and p in G.SOURCE_PATHS)
-                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)
+                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)
+                and not _accepted_p0_ci_path(p)]
     for path in ('frontend/src/app/workflow/PPAEditorView.tsx', 'frontend/src/app/api.ts', 'frontend/src/app/editing/pendingEdits.ts'):
         assert _git(ROOT, 'rev-parse', 'HEAD:' + path) == _git(ROOT, 'rev-parse', X.BASE + ':' + path), path
     # the BESS01 guard stays at BASE except for the one reviewed CI-performance forward handoff of exactly those bytes
