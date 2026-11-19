@@ -18,6 +18,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -133,3 +134,91 @@ def test_missing_tax_schedules_declare_not_available_not_zero():
     assert block == {"status": "NOT_AVAILABLE",
                      "reason": "TAX_AND_CFADS_SCHEDULES_NOT_COMPUTED"}
     assert "0" not in str(block)
+
+
+from app.services.financial_core_evidence import _tax_provenance_evidence
+
+
+def _synthetic_schedules(period_indices, opening, closing):
+    """Minimal read-alike of TaxAndCfadsSchedules for the projection contract:
+    the block must mirror exactly what the schedules carry — including an
+    inconsistent or duplicated axis — and never invent or repair values."""
+    fields = {
+        "taxable_income_before_losses_audit_keur": tuple(float(i) for i in range(len(period_indices))),
+        "taxable_profit_after_losses_audit_keur": tuple(1.0 for _ in period_indices),
+        "tax_loss_opening_audit_keur": tuple(opening),
+        "tax_loss_used_audit_keur": tuple(0.0 for _ in period_indices),
+        "tax_loss_closing_audit_keur": tuple(closing),
+        "tax_depreciation_audit_keur": tuple(2.0 for _ in period_indices),
+        "cit_accrual_audit_keur": tuple(3.0 for _ in period_indices),
+        "cash_tax_current_period_audit_keur": tuple(3.0 for _ in period_indices),
+        "cash_tax_bridge_reconciliation_keur": tuple(0.0 for _ in period_indices),
+    }
+    return SimpleNamespace(period_indices=tuple(period_indices), **fields)
+
+
+def _clean_run_with(tax):
+    return SimpleNamespace(g2c_result=SimpleNamespace(
+        financing_result=SimpleNamespace(project_model_result=SimpleNamespace(tax_and_cfads=tax))))
+
+
+def test_inconsistent_loss_schedule_is_reported_not_repaired():
+    # closing != next opening: the reconciliation flag must say False, and the
+    # block must carry the inconsistent values EXACTLY as the schedules hold
+    # them (no silent continuity repair, no recomputation).
+    tax = _synthetic_schedules(
+        period_indices=[0, 1, 2],
+        opening=[10.0, 4.0, 4.0],   # opening[1] != closing[0]=5.0 -> inconsistent
+        closing=[5.0, 5.0, 5.0],
+    )
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    assert block["status"] == "CALCULATED_FROM_EXISTING_SCHEDULES"
+    assert block["reconciliation"]["loss_schedule_closing_equals_next_opening"] is False
+    rows = block["periods"]
+    assert [r["tax_loss_opening_audit_keur"] for r in rows] == [10.0, 4.0, 4.0]
+    assert [r["tax_loss_closing_audit_keur"] for r in rows] == [5.0, 5.0, 5.0]
+
+
+def test_duplicate_period_indices_are_mirrored_row_for_row():
+    # A duplicated period index (engine invariant violation upstream) is
+    # mirrored row for row: the projection never deduplicates or reindexes,
+    # so a consumer reconciling against the schedules sees the same anomaly.
+    tax = _synthetic_schedules(
+        period_indices=[1, 1, 2],
+        opening=[0.0, 0.0, 0.0],
+        closing=[0.0, 0.0, 0.0],
+    )
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    assert block["period_count"] == 3
+    assert [r["period_index"] for r in block["periods"]] == [1, 1, 2]
+    assert [r["cit_accrual_audit_keur"] for r in block["periods"]] == [3.0, 3.0, 3.0]
+
+
+def test_provenance_refuses_without_a_valid_run_binding():
+    # F2-NEW-03 binding contract: the sealed evidence (with the tax block) is
+    # only reachable through from_runtime_summary with the run's own identity;
+    # a foreign snapshot or composite hash fails closed with RUN_BINDING_MISMATCH.
+    evidence, entry = _sealed_fixture_evidence()
+    from app.services.financial_core_evidence import from_runtime_summary
+    tampered = {"financing_evidence": {"financial_core_v1": evidence,
+                                       "run_binding": {"snapshot_id": "other-run",
+                                                       "composite_hash": "f" * 64}}}
+    result = from_runtime_summary(tampered,
+                                  snapshot_id=entry.runtime_snapshot_id,
+                                  composite_hash=entry.composite_hash)
+    assert result["status"] == "RUN_BINDING_MISMATCH"
+
+
+def _sealed_fixture_evidence():
+    """Reuse the module fixture's sealed Run (single engine invocation)."""
+    return _SEALED[0], _SEALED[1]
+
+
+_SEALED = [None, None]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _capture_sealed(sealed):
+    _SEALED[0], _SEALED[1] = sealed
+    yield
+    _SEALED[0] = _SEALED[1] = None
