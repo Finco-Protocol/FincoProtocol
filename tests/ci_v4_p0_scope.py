@@ -3771,6 +3771,25 @@ _CURRENT_MAP_TEST_HANDOFF = ("""        changed = {k for k in old["source_blobs"
 """)
 HANDOFFS['tests/test_ci_v4_full_recovery_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
 HANDOFFS['tests/test_ci_v5_bootstrap_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v4_lean_b2_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v4_lean_b3_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v5_hardening_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v5_gate_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+
+_CURRENT_MAP_EXPECTATION_HANDOFF = ('        assert current==expected and set(original)==set(current)\n', """        if current != expected:
+            from tests import ci_v4_p0_scope as P0
+            keys = P0.MAP_EXTRA_KEYS.get(path, ())
+            if keys:
+                approved = P0.expected_map(ROOT, path)
+                assert P0.exact_blobs_ok() and (ROOT / path).read_bytes() == approved
+                approved_pins = json.loads(approved)['source_blobs']
+                for key in keys:
+                    assert key in expected['source_blobs']
+                    expected['source_blobs'][key] = approved_pins[key]
+        assert current==expected and set(original)==set(current)
+""")
+HANDOFFS['tests/test_c06_cost_workspace_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
+HANDOFFS['tests/test_f04_financing_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

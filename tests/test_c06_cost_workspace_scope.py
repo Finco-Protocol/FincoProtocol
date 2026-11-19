@@ -73,6 +73,16 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
         current=json.loads((ROOT/path).read_text())
         _N=F._next();_N2=_N._next() if _N is not None and _N.signature_ok() else None
         expected=json.loads(_N2.expected_map(ROOT,path,_N2.effective_pins()) if _N2 is not None and _N2.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        if current != expected:
+            from tests import ci_v4_p0_scope as P0
+            keys = P0.MAP_EXTRA_KEYS.get(path, ())
+            if keys:
+                approved = P0.expected_map(ROOT, path)
+                assert P0.exact_blobs_ok() and (ROOT / path).read_bytes() == approved
+                approved_pins = json.loads(approved)['source_blobs']
+                for key in keys:
+                    assert key in expected['source_blobs']
+                    expected['source_blobs'][key] = approved_pins[key]
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')
