@@ -76,6 +76,7 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -3794,6 +3795,215 @@ HANDOFFS['tests/test_f04_financing_scope.py'].append(_CURRENT_MAP_EXPECTATION_HA
 # Correction C: bind PR2C sibling-manifest supersession to the exact verified bytes.
 HANDOFFS['tests/u1_scope.py'] += [('    if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):\n        return True\n', "    if path in S.INTEGRATION_MANIFESTS and S.exact_blobs_ok(repo, ref) and S.allowed_path(path, repo, ref):\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            raw = _read(root, path, ref)\n            if _blob(raw) != value:\n                return False\n            baseline = S._base_fact(root, 'show', S.BASE + ':' + path)\n            if raw == baseline:\n                return True\n            expected = json.loads(baseline)\n            current = json.loads(raw)\n            old_pins, new_pins = expected['source_blobs'], current['source_blobs']\n            if set(old_pins) != set(new_pins) or old_pins == new_pins:\n                return False\n            old_pins.update(new_pins)\n            # PR2B's exact-source map preserves its original field order.\n            sort_keys = path != 'docs/react_migration/ux_pr2b/UX_PR2B_EXACT_SOURCE.json'\n            return raw == (json.dumps(expected, indent=2, sort_keys=sort_keys) + '\\n').encode()\n        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):\n            return False\n")]
 
+
+# Bind each reviewed runtime and browser-lineage edit to its immutable base.
+HANDOFFS.setdefault('tests/ci_v4_scope.py', []).extend([
+    (
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S\n'
+        '    except ImportError:\n'
+        '        return False\n'
+        '    if S.supersedes(path, value, root, ref):',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        return P0.supersedes(path, value, root, ref)\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S\n'
+        '    except ImportError:\n'
+        '        return False\n'
+        '    if S.supersedes(path, value, root, ref):',
+    ),
+    (
+        '        return P0.supersedes(path, value, root, ref)\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S',
+        '        if P0.supersedes(path, value, root, ref):\n'
+        '            return True\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S',
+    ),
+])
+HANDOFFS.setdefault('tests/fin_v2_integration_409_scope.py', []).extend([
+    (
+        '_RESULTS = {}\n'
+        '\n'
+        '\n',
+        '',
+    ),
+    (
+        'def _state_key(root, ref):\n'
+        '    """A key that changes whenever ANY byte of the evaluated state changes.\n'
+        '\n'
+        '    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,\n'
+        '    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new\n'
+        '    key and the exact check runs again. A cached verdict is therefore never reused for different bytes."""\n'
+        '    if ref is not None:\n'
+        "        sha = _rev(root, ref + '^{commit}')\n"
+        "        return None if sha is None else ('ref', str(root), sha)\n"
+        "    head = _rev(root, 'HEAD')\n"
+        "    digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()\n"
+        "    names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\\0')\n"
+        '    untracked = hashlib.sha1()\n'
+        '    for name in sorted(n for n in names if n):\n'
+        "        untracked.update(name + b'\\0')\n"
+        '        try:\n'
+        '            untracked.update((Path(root) / name.decode()).read_bytes())\n'
+        '        except OSError:\n'
+        "            untracked.update(b'<unreadable>')\n"
+        "    return ('wt', str(root), head, digest, untracked.hexdigest())\n"
+        '\n'
+        '\n'
+        '_SCOPE = []\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use\n'
+        '        memo = _SCOPE[-1]\n'
+        '        skey = (str(root), ref)\n'
+        '        if skey not in memo:\n'
+        '            memo[skey] = _cached_exact(root, repo, ref)\n'
+        '        return memo[skey]\n'
+        '    return _cached_exact(root, repo, ref)\n'
+        '\n'
+        '\n'
+        'def _cached_exact(root, repo, ref):\n'
+        '    try:\n'
+        '        key = _state_key(root, ref)\n'
+        '    except (OSError, subprocess.CalledProcessError):\n'
+        '        return False\n'
+        '    if key is None:\n'
+        '        return False\n'
+        '    if key not in _RESULTS:\n'
+        '        if len(_RESULTS) > 64:\n'
+        '            _RESULTS.clear()\n'
+        '        _RESULTS[key] = _exact_blobs_ok(repo, ref)\n'
+        '    return _RESULTS[key]\n'
+        '\n'
+        '\n',
+        '_SCOPE = []\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:\n'
+        '        # All downstream guards share a memo for this read-only evaluation.\n'
+        '        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '            return _scoped_exact(repo, ref)\n'
+        '    return _scoped_exact(repo, ref)\n'
+        '\n'
+        '\n'
+        'def _scoped_exact(repo, ref):\n'
+        '    if not _SCOPE:\n'
+        '        return _exact_blobs_ok(repo, ref)\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    memo = _SCOPE[-1]\n'
+        '    key = (str(root), ref)\n'
+        '    if key not in memo:\n'
+        '        memo[key] = _exact_blobs_ok(repo, ref)\n'
+        '    return memo[key]\n'
+        '\n'
+        '\n',
+    ),
+])
+HANDOFFS.setdefault('tests/fin_v2_wf06a_scope.py', []).extend([
+    (
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    if not _SCOPE:',
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:\n'
+        '        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '            return _scoped_exact(repo, ref)\n'
+        '    return _scoped_exact(repo, ref)\n'
+        '\n'
+        '\n'
+        'def _scoped_exact(repo, ref):\n'
+        '    if not _SCOPE:',
+    ),
+])
+HANDOFFS.setdefault('tests/test_wsv2_core_scope.py', []).extend([
+    (
+        'def browser_contract_ok(role, acceptance):\n'
+        '    marker =',
+        'def browser_contract_ok(role, acceptance):\n'
+        '    from tests.mutation_security_browser_lineage import verified_pre_r1_source\n'
+        '\n'
+        '    # Project the exact, authenticated current role onto the historical WF03\n'
+        '    # state whose WS1/WF04 registration this assertion checks.\n'
+        '    verified_role = verified_pre_r1_source(role, repo=F.ROOT)\n'
+        '    if verified_role is not None:\n'
+        '        role = verified_role\n'
+        '    marker =',
+    ),
+    (
+        'if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):',
+        'if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))\n'
+        '                and _additive_only(prior, role[:role.index(marker)])):',
+    ),
+    (
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n",
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):\n"
+        "        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'\n"
+        '        if later_import in role:\n'
+        "            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)\n",
+    ),
+])
+HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
+    (
+        '    # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root = Path(repo) if repo is not None else ROOT\n'
+        '        if P0.signature_ok(root, ref) and path in P0.HANDOFFS:\n'
+        "            # The frozen V4 baseline still carries WF06B's original integration pin.\n"
+        "            prior = json.loads(_object_fact(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))\n"
+        "            found.add(prior['source_blobs'][path])\n"
+        '    # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob',
+    ),
+    (
+        '    # PR2c Correction B: a governance manifest the exact tip cohort moves',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes(path, value, repo, ref):\n'
+        '            return True\n'
+        '    # PR2c Correction B: a governance manifest the exact tip cohort moves',
+    ),
+    (
+        '@scoped()\n'
+        'def historical_blobs(path, repo=None, ref=None):',
+        '_P0_RUNTIME_HANDOFFS = frozenset((\n'
+        "    'tests/fin_v2_integration_409_scope.py',\n"
+        "    'tests/fin_v2_wf06a_scope.py',\n"
+        "    'tests/test_wsv2_core_scope.py',\n"
+        '))\n'
+        '\n'
+        '\n'
+        '@scoped()\n'
+        'def historical_blobs(path, repo=None, ref=None):',
+    ),
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root =',
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root =',
+    ),
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes',
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes',
+    ),
+    (
+        "prior = json.loads(_object_fact(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
+        "prior = json.loads(_git(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
+    ),
+])
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

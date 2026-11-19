@@ -422,11 +422,25 @@ def base_blob(path, repo=None, ref=None):
     return manifest(repo, ref).get('base_blobs', {}).get(path)
 
 
+_P0_RUNTIME_HANDOFFS = frozenset((
+    'tests/fin_v2_integration_409_scope.py',
+    'tests/fin_v2_wf06a_scope.py',
+    'tests/test_wsv2_core_scope.py',
+))
+
+
 @scoped()
 def historical_blobs(path, repo=None, ref=None):
     """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
     data = manifest(repo, ref)
     found = {b for b in (data.get('base_blobs', {}).get(path), data.get('integration_blobs', {}).get(path)) if b}
+    if path in _P0_RUNTIME_HANDOFFS:
+        from tests import ci_v4_p0_scope as P0
+        root = Path(repo) if repo is not None else ROOT
+        if P0.signature_ok(root, ref) and path in P0.HANDOFFS:
+            # The frozen V4 baseline still carries WF06B's original integration pin.
+            prior = json.loads(_git(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))
+            found.add(prior['source_blobs'][path])
     # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob and re-verified it against git inside its own exact check; that
     # BASE blob is the reviewed state an older guard (WF-06B) may still hold. Only while that later cohort is exact, only for a path it supersedes.
     for later in _later_modules():
@@ -445,6 +459,10 @@ def supersedes(path, value, repo=None, ref=None):
             return False
         pin = manifest(repo, ref).get('source_blobs', {}).get(path)
         return pin == value or (pin is not None and _later_follows(path, value, pin, repo, ref))
+    if path in _P0_RUNTIME_HANDOFFS:
+        from tests import ci_v4_p0_scope as P0
+        if P0.supersedes(path, value, repo, ref):
+            return True
     # PR2c Correction B: a governance manifest the exact tip cohort moves (one of its
     # INTEGRATION_MANIFESTS) is admitted at its current bytes only while that cohort is
     # exact — its own sibling-leg check proves the manifest's only change is exactly the

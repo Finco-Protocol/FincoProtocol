@@ -254,6 +254,13 @@ def test_historical_record_or_unapproved_repin_cannot_be_resealed(tamper, monkey
 
 
 def browser_contract_ok(role, acceptance):
+    from tests.mutation_security_browser_lineage import verified_pre_r1_source
+
+    # Project the exact, authenticated current role onto the historical WF03
+    # state whose WS1/WF04 registration this assertion checks.
+    verified_role = verified_pre_r1_source(role, repo=F.ROOT)
+    if verified_role is not None:
+        role = verified_role
     marker = '# WS1 Workspace V2'
     expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
     # WF-04 successor lineage: the one later, separately governed block that may follow the WS1 import (tests/test_wf04_scope.py proves it exactly).
@@ -265,7 +272,8 @@ def browser_contract_ok(role, acceptance):
         # WF-03 successor lineage: the original role survives verbatim; the only difference is the separately governed, ADDITIVE WF-03 browser block
         # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.
         # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.
-        if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):
+        if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))
+                and _additive_only(prior, role[:role.index(marker)])):
             return False
     tree = ast.parse(acceptance)
     functions = tuple(n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))
@@ -282,6 +290,10 @@ def test_browser_registration_preserves_original_role_and_exact_new_exports():
     line = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
     assert not browser_contract_ok(role.replace(line, ''), acceptance)
     assert not browser_contract_ok(role + line + '\n', acceptance)
+    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):
+        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'
+        if later_import in role:
+            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\ndef ' + TESTS[1]))
 

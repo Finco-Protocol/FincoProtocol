@@ -231,6 +231,14 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:
+        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+            return _scoped_exact(repo, ref)
+    return _scoped_exact(repo, ref)
+
+
+def _scoped_exact(repo, ref):
     if not _SCOPE:
         return _exact_blobs_ok(repo, ref)
     key = (str(repo if repo is not None else ROOT), ref)
