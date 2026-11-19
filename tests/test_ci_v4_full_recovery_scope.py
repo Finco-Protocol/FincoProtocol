@@ -179,8 +179,13 @@ def test_current_maps_move_only_their_registry_and_u1_keys():
         old = json.loads(_git("show", T.BASE + ":" + p))
         cur = json.loads((ROOT / p).read_text())
         assert set(old) == set(cur) and all(old[k] == cur[k] for k in old if k != "source_blobs")
+        assert set(cur["source_blobs"]) == set(old["source_blobs"])
         changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
-        assert changed <= set(T.MAP_KEYS)
+        legacy_keys = set(T.MAP_KEYS)
+        if changed - legacy_keys:
+            from tests import ci_v4_p0_scope as P0
+            assert changed - legacy_keys <= set(P0.MAP_EXTRA_KEYS.get(p, ()))
+            assert P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p)
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
