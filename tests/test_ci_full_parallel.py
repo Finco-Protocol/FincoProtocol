@@ -170,6 +170,21 @@ def test_worker_count_is_adaptive_not_fixed():
     assert F.choose_workers(units, grow) > 1
 
 
+def test_indivisible_shard_does_not_hide_avoidable_overruns_on_other_shards():
+    pol = policy()
+    pol["workers"]["min"] = 2
+    pol["workers"]["target_test_critical_path_s"] = 1500
+    units = [{"id": str(i), "seconds": duration}
+             for i, duration in enumerate((3866, 1700, 1700, 1700, 1700))]
+    _, loads_at_two = F.lpt(units, 2)
+    chosen = F.choose_workers(units, pol)
+    _, loads_at_choice = F.lpt(units, chosen)
+    assert max(loads_at_choice) == 3866
+    assert sum(load > pol["shard_timeout_s"] for load in loads_at_choice) == 1
+    assert sum(max(0, load - pol["shard_timeout_s"]) for load in loads_at_choice) < sum(
+        max(0, load - pol["shard_timeout_s"]) for load in loads_at_two)
+
+
 def test_partial_collection_below_the_floor_is_refused():
     with pytest.raises(F.FullError, match="policy floor"):
         make_plan(pol=policy(min_collected_nodes=10 ** 6))
