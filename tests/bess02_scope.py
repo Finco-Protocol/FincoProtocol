@@ -83,16 +83,8 @@ def reviewed_edits_ok(repo=None, ref=None):
     try:
         N = _next()
         if N is not None and N.signature_ok(root, ref):
-            from tests import ci_v4_p0_scope as P0
-            ux_test = P0.UX_PR3B2_TEST
-            terminal_ux_handoff = (
-                ux_test in P0.HANDOFFS and P0.signature_ok(root, ref)
-                and _read(root, ux_test, ref) == P0.expected_handoff(root, ux_test)
-            )
             return N.reviewed_edits_ok(root, ref) and all(
-                _read(root, p, ref) == expected_handoff(root, p)
-                for p in HANDOFFS if p not in N.HANDOFFS and not (p == ux_test and terminal_ux_handoff)
-            )
+                _read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS if p not in N.HANDOFFS)
         return all(_read(root, p, ref) == expected_handoff(root, p) for p in HANDOFFS)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
         return False
