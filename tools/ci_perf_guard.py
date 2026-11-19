@@ -298,12 +298,18 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
         if meta.get("pytest_exit") != 0:
             raise GuardError("shard %d pytest exit %r" % (i, meta.get("pytest_exit")))
         coverage[i] = {"modules": len(meta["modules"]), "nodes": len(cases)}
-        step = _test_step_seconds(shard_jobs[i], cfg["test_step_name_prefix"])
+        job = shard_jobs[i]
+        step = _test_step(job, cfg["test_step_name_prefix"])
+        begun, done, uploaded = (_github_utc(value) for value in
+                                  (step.get("started_at"), step.get("completed_at"), a.get("created_at")))
+        if not (_github_utc(job.get("started_at")) <= begun < done <= uploaded <= _github_utc(job.get("completed_at"))):
+            raise GuardError("shard %d artifact is not bound to the latest attempt's successful test window" % i)
+        step_seconds = (done - begun).total_seconds()
         total = sum(t for _, t in cases)
-        ratio = total / step if step > 0 else 0.0
+        ratio = total / step_seconds
         tc = cfg["time_consistency"]
         if not tc["min_ratio"] <= ratio <= tc["max_ratio"]:
-            raise GuardError("shard %d JUnit time %.0fs disagrees with GitHub's test step %.0fs (ratio %.2f)" % (i, total, step, ratio))
+            raise GuardError("shard %d JUnit time %.0fs disagrees with GitHub's test step %.0fs (ratio %.2f)" % (i, total, step_seconds, ratio))
         for node, t in cases:
             if node in seen:
                 raise GuardError("node appears twice: " + node)
@@ -335,12 +341,14 @@ def _judge_tests(policy, head_sha, run, jobs, artifacts, now, baseline, fetch_ar
     return None
 
 
-def _test_step_seconds(job, prefix):
+def _test_step(job, prefix):
     steps = [s for s in job.get("steps", []) if str(s.get("name", "")).startswith(prefix)]
     if len(steps) != 1:
         raise GuardError("shard job %s: expected exactly one test step" % job.get("name"))
-    s = steps[0]
-    return (_ts(s["completed_at"]) - _ts(s["started_at"])).total_seconds()
+    step = steps[0]
+    if step.get("status") != "completed" or step.get("conclusion") != "success":
+        raise GuardError("shard job %s test step did not succeed" % job.get("name"))
+    return step
 
 
 def _read_shard(blob, index, cfg):

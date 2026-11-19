@@ -67,7 +67,7 @@ class World:
     def job(self, run_id, name, start, end, test_s=None, attempt=1):
         steps = []
         if test_s is not None:
-            steps = [{"name": "Run the planned shard (selected modules only)", "started_at": iso(start + 1),
+            steps = [{"name": "Run the planned shard (selected modules only)", "status": "completed", "conclusion": "success", "started_at": iso(start + 1),
                       "completed_at": (T0 + dt.timedelta(minutes=start + 1, seconds=test_s)).isoformat().replace("+00:00", "Z")}]
         return {"id": hash((run_id, name)) & 0xffffff, "run_id": run_id, "head_sha": SHA, "run_attempt": attempt, "name": name,
                 "status": "completed", "conclusion": "success", "started_at": iso(start), "completed_at": iso(end), "steps": steps}
@@ -75,8 +75,10 @@ class World:
     def put_artifact(self, i, blob, digest=None):
         aid = 5000 + i
         self.blobs[aid] = blob
+        job = next(j for j in self.jobs[self.ci["id"]] if j["name"] == f"shard-{i}")
         self.artifacts[self.ci["id"]] = [a for a in self.artifacts[self.ci["id"]] if a["name"] != "ci-v4-shard-%d" % i] + [{
             "id": aid, "name": "ci-v4-shard-%d" % i, "size_in_bytes": len(blob), "expired": False,
+            "created_at": job["completed_at"],
             "digest": digest or "sha256:" + hashlib.sha256(blob).hexdigest(), "workflow_run": {"id": self.ci["id"], "head_sha": SHA}}]
 
     def judge(self, minutes_now=40, policy=None, baseline=None):
@@ -233,10 +235,10 @@ def test_empty_or_corrupt_artifact_is_unverified(w):
 # ── per-node protection against slow tests ─────────────────────────────────────────────────────────────────────────────────────────
 def _slow(w, seconds, node="tests/test_x.py::test_c"):
     w.cases[1] = [(node, seconds)]
-    w.put_artifact(1, shard_zip(1, w.cases[1]))
     job = w.jobs[w.ci["id"]][2]
     job["steps"][0]["completed_at"] = (T0 + dt.timedelta(minutes=2, seconds=seconds)).isoformat().replace("+00:00", "Z")
     job["completed_at"] = (T0 + dt.timedelta(minutes=3, seconds=seconds)).isoformat().replace("+00:00", "Z")
+    w.put_artifact(1, shard_zip(1, w.cases[1]))
 
 
 def test_node_over_the_hard_limit_without_exception_is_failure(w):
@@ -776,3 +778,13 @@ def test_skipped_planned_shard_cannot_hide_its_missing_artifact(w):
     shard["conclusion"] = "skipped"
     w.artifacts[w.ci["id"]] = w.artifacts[w.ci["id"]][:1]
     assert "unsuccessful planned shard 1" in w.judge()["description"]
+
+
+def test_authentic_but_old_junit_cannot_satisfy_a_new_attempt(w):
+    w.ci["run_attempt"] = 2
+    for job in w.jobs[w.ci["id"]]:
+        job["run_attempt"] = 2
+    w.artifacts[w.ci["id"]][0]["created_at"] = iso(0.5)
+    verdict = w.judge()
+    assert verdict["state"] == "failure"
+    assert "latest attempt" in verdict["description"]
