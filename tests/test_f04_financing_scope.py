@@ -86,6 +86,16 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
         current=json.loads((ROOT/path).read_text())
         _B1=C06_APPROVAL._next();_B2=_B1._next() if _B1 is not None and _B1.signature_ok() else None;_B3=_B2._next() if _B2 is not None and _B2.signature_ok() else None
         expected=json.loads(_B3.expected_map(ROOT,path,_B3.effective_pins()) if _B3 is not None and _B2 is not None and _B2.SUCCESSOR in C.COHORT_MODULES and _B3.signature_ok() else _B2.expected_map(ROOT,path,_B2.effective_pins()) if _B2 is not None and _B2.signature_ok() else C06_APPROVAL.expected_map(ROOT,path,C06_APPROVAL.effective_pins()) if C06_APPROVAL.signature_ok() else F.expected_map(ROOT,path,F.effective_pins()))      # the CURRENT pins (a reviewed successor's registry pin wins)
+        if current != expected:
+            from tests import ci_v4_p0_scope as P0
+            keys = P0.MAP_EXTRA_KEYS.get(path, ())
+            if keys:
+                approved = P0.expected_map(ROOT, path)
+                assert P0.exact_blobs_ok() and (ROOT / path).read_bytes() == approved
+                approved_pins = json.loads(approved)['source_blobs']
+                for key in keys:
+                    assert key in expected['source_blobs']
+                    expected['source_blobs'][key] = approved_pins[key]
         assert current==expected and set(original)==set(current)
         assert set(original['source_blobs'])==set(current['source_blobs'])
         assert all(original[k]==current[k] for k in original if k!='source_blobs')

@@ -675,6 +675,16 @@ class TestAccessDecision:
 class TestNoHardcodedThreshold:
     """N. Missing min_balance env var → NOT_CONFIGURED (never a magic default)."""
 
+    @pytest.fixture(autouse=True)
+    def _restore_token_config_module(self):
+        """These tests reload app.protocol.token_config; a reload re-creates TokenConfig, so later tests in the same process would hold
+        another class identity (post-#460 FULL: test_finco_token_activation_readiness isinstance failure). Restore the exact namespace."""
+        import app.protocol.token_config as _tc
+        saved = dict(vars(_tc))
+        yield
+        vars(_tc).clear()
+        vars(_tc).update(saved)
+
     def test_missing_min_balance_is_not_configured(self, monkeypatch):
         monkeypatch.delenv("FINCO_ACCESS_MIN_BALANCE", raising=False)
         monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "http://localhost:8545")
