@@ -426,6 +426,7 @@ def base_blob(path, repo=None, ref=None):
 _P0_RUNTIME_HANDOFFS = frozenset((
     'tests/fin_v2_integration_409_scope.py',
     'tests/fin_v2_wf06a_scope.py',
+    'tests/test_fin_v2_integration_409_scope.py',
     'tests/test_wsv2_core_scope.py',
 ))
 
