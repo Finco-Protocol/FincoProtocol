@@ -195,7 +195,7 @@
     "tests/test_rc7c_candidate_successor.py": "4c9f8c8fa7f390ed9a930c4760493905312b98ee",
     "tests/test_t01e_remediation_scope.py": "4cfcbf2be818bbaf4fc05677a043c11e5263d960",
     "tests/test_tokenized_access_wiring.py": "f920b90dda579145fa13fa80be2a240ef6c716d5",
-    "tests/test_ux_pr1_scope.py": "09b4f57974d63d523e96a25145177b6be6510ea5",
+    "tests/test_ux_pr1_scope.py": "f27689ab6392b33ed769316238c1a3284a79a0eb",
     "tests/test_v11_stage3_release_authority.py": "f9f81fe8c9734b1f87b0c34c54ab07b6c398905c",
     "tests/test_v11_stage3_release_successor.py": "89b82594fcfb72013772b5679aeab21ee2802010",
     "tests/test_v9p2a_odr_successor.py": "3dbdf33bfb43fbd0488e6a322da8d97cfc024125",

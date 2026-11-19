@@ -162,11 +162,12 @@ def test_match_requires_exact_registered_source_and_named_ref(wt):
 
 
 def test_ci_artifacts_are_not_source_exemptions(wt):
-    evidence=wt/'evidence'/'ux-pr1-probe';evidence.mkdir(parents=True,exist_ok=True)
-    artifact=evidence/'source.json';artifact.write_text('{"synthetic": true}\n')
+    # The accepted BESS/ON closure recognizes a finite set of F01 outputs.
+    evidence=wt/'evidence'/'browser';evidence.mkdir(parents=True,exist_ok=True)
+    artifact=evidence/'solar.json';artifact.write_text('{"synthetic": true}\n')
     with C.call_scope():
         assert U.exact_blobs_ok(wt) and C.valid(wt)
-    for suffix in ('.py','.tsx','.mjs'):
+    for suffix in ('.json','.py','.tsx','.mjs'):
         source=evidence/('unsigned'+suffix);source.write_text('unsigned\n')
         with C.call_scope():
             assert not U.exact_blobs_ok(wt) and not C.valid(wt)
