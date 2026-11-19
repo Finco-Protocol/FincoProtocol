@@ -50,6 +50,7 @@ STRICT_SCHEMA = "FINCO_CI_FULL_STRICT_RECORD_V1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 TIMEOUT_EXIT = 124
+FULL_E2E_BUDGET_S = 2400
 MAX_MEMBER_BYTES = 256 * 1024 * 1024
 
 
@@ -437,12 +438,47 @@ def choose_workers(units, policy):
     return best_k
 
 
+def require_feasible_workers(units, policy, weights, preferred, simulation):
+    """Use the same LPT forecasts as the plan, and refuse to launch if even the best bounded option is over budget."""
+    feasible = [
+        row for row in simulation if row["in_policy_range"]
+        and row["max_shard_s"] < policy["shard_timeout_s"]
+        and row["predicted_critical_path_s"] < FULL_E2E_BUDGET_S
+    ]
+    if any(row["workers"] == preferred for row in feasible):
+        return preferred
+    if feasible:
+        return feasible[0]["workers"]
+
+    options = [row for row in simulation if row["in_policy_range"]]
+    best = min(options, key=lambda row: row["max_shard_s"])
+    shards, loads = lpt(units, best["workers"])
+    critical = shards[loads.index(max(loads))]
+    culprits = []
+    for unit in critical[:3]:
+        detail = f'{unit["id"]} {unit["seconds"]:.1f}s'
+        secs = node_seconds(unit["module"], unit["node_ids"], weights)
+        if secs:
+            node = max(secs, key=secs.get)
+            detail += f" (heaviest node {node} {secs[node]:.1f}s)"
+        culprits.append(detail)
+    alternatives = ", ".join(f'{r["workers"]}: {r["max_shard_s"]:.1f}s shard / {r["predicted_critical_path_s"]:.1f}s path'
+                             for r in options)
+    raise FullError(
+        f'FULL_PLAN_RUNTIME_BLOCKED: best critical shard {best["max_shard_s"]:.1f}s '
+        f'(timeout {policy["shard_timeout_s"]}s), predicted path {best["predicted_critical_path_s"]:.1f}s '
+        f'(end-to-end budget {FULL_E2E_BUDGET_S}s). Critical units: {", ".join(culprits)}. '
+        f'Worker alternatives: {alternatives}. Weight sources: {", ".join(weights["sources"])}'
+    )
+
+
 def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
     verify_inventory(inv)
     _need(inv["node_count"] >= policy["min_collected_nodes"], "collected %d nodes < policy floor %d (partial collection)"
           % (inv["node_count"], policy["min_collected_nodes"]))
     units = units_for(inv, policy, weights)
-    k = choose_workers(units, policy)
+    simulation = simulate(units, policy)
+    k = require_feasible_workers(units, policy, weights, choose_workers(units, policy), simulation)
     shards, loads = lpt(units, k)
     assignments = []
     for i, (s, load) in enumerate(zip(shards, loads)):
@@ -469,7 +505,7 @@ def make_plan(inv, policy, weights, run_id, run_attempt, ref, event, repo):
             "inventory_digest": inv["digest"], "profile_digest": inv["profile_digest"], "plugin_sha256": inv["plugin_sha256"],
             "node_count": inv["node_count"],
             "collection_skip_count": len(inv["collection_skips"]), "policy_digest": canonical_digest(policy),
-            "weights_sources": weights["sources"], "workers": k, "simulation": simulate(units, policy),
+            "weights_sources": weights["sources"], "workers": k, "simulation": simulation,
             "split_modules": sorted({u["module"] for u in units if u["kind"] == "nodes"}),
             "scoped_modules": sorted(set(policy["scoped_modules"]) & set(inv["modules"])),
             "scoped_nodes": planned_scoped_nodes(policy, inv),

@@ -190,6 +190,28 @@ def test_partial_collection_below_the_floor_is_refused():
         make_plan(pol=policy(min_collected_nodes=10 ** 6))
 
 
+@pytest.mark.parametrize("seconds, timeout", [(3100, 3000), (2395, 3000), (500, 500)])
+def test_plan_refuses_an_indivisible_runtime_overrun(seconds, timeout):
+    node = "tests/test_a.py::test_0"
+    weights = {**WEIGHTS, "nodes": {**WEIGHTS["nodes"], node: seconds}}
+    with pytest.raises(F.FullError, match="FULL_PLAN_RUNTIME_BLOCKED") as exc:
+        F.make_plan(inventory(), policy(shard_timeout_s=timeout), weights, RUN, ATTEMPT,
+                    "refs/heads/main", "workflow_dispatch", "Finco-Protocol/FincoProtocol")
+    for detail in (node, f"{seconds:.1f}s", "Worker alternatives:", "Weight sources: t"):
+        assert detail in str(exc.value)
+
+
+def test_plan_uses_a_feasible_worker_count_when_the_preferred_one_is_over_budget():
+    inv = inventory()
+    pol = policy()
+    pol["workers"]["min_gain_s_per_extra_worker"] = 3000
+    weights = {**WEIGHTS, "nodes": {}, "modules": {m: 1250 for m in inv["modules"]}}
+    plan = F.make_plan(inv, pol, weights, RUN, ATTEMPT, "refs/heads/main",
+                       "workflow_dispatch", "Finco-Protocol/FincoProtocol")
+    assert plan["workers"] > pol["workers"]["min"]
+    assert F.verify_plan_against_inventory(plan, inv)
+
+
 @pytest.mark.parametrize("mutate", [lambda p: p.update(schema="X"), lambda p: p["workers"].update(min=0),
                                     lambda p: p.update(skip_baseline="docs/other.json"),
                                     lambda p: p["node_split"]["modules"].update({"tests/*.py": {"verdict": "SPLIT_SAFE", "isolation_proof": "x" * 50}}),
