@@ -161,20 +161,34 @@ def test_match_requires_exact_registered_source_and_named_ref(wt):
         assert U.exact_blobs_ok(wt,'HEAD')
 
 
-def test_ci_artifacts_are_not_source_exemptions(wt):
+@pytest.fixture
+def f01_evidence_file(wt):
     # The accepted BESS/ON closure recognizes a finite set of F01 outputs.
-    evidence=wt/'evidence'/'browser';evidence.mkdir(parents=True,exist_ok=True)
-    artifact=evidence/'solar.json';artifact.write_text('{"synthetic": true}\n')
+    artifact = wt / 'evidence/browser/solar.json'
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text('{"synthetic": true}\n')
+    return artifact
+
+
+def test_ci_artifacts_are_not_source_exemptions(wt, f01_evidence_file):
     with C.call_scope():
         assert U.exact_blobs_ok(wt) and C.valid(wt)
-    for suffix in ('.json','.py','.tsx','.mjs'):
-        source=evidence/('unsigned'+suffix);source.write_text('unsigned\n')
-        with C.call_scope():
-            assert not U.exact_blobs_ok(wt) and not C.valid(wt)
-        source.unlink()
-    artifact.chmod(0o755)
+
+
+@pytest.mark.parametrize('suffix', ['.json', '.py', '.tsx', '.mjs'])
+def test_unreviewed_file_in_evidence_directory_fails_closed(wt, f01_evidence_file, suffix):
+    source = f01_evidence_file.with_name('unsigned' + suffix)
+    source.write_text('{}\n' if suffix == '.json' else 'unsigned\n')
     with C.call_scope():
-        assert not U.exact_blobs_ok(wt)
-    artifact.chmod(0o644);artifact.unlink();artifact.symlink_to(wt/'tests/ux_pr1_scope.py')
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+
+
+@pytest.mark.parametrize('kind', ['executable', 'symlink'])
+def test_invalid_evidence_file_mode_fails_closed(wt, f01_evidence_file, kind):
+    if kind == 'executable':
+        f01_evidence_file.chmod(0o755)
+    else:
+        f01_evidence_file.unlink()
+        f01_evidence_file.symlink_to(wt / 'tests/ux_pr1_scope.py')
     with C.call_scope():
         assert not U.exact_blobs_ok(wt)
