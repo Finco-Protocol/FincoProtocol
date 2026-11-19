@@ -36,6 +36,8 @@ NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p
                  'docs/model_v11/v11-stage3-release-successor-candidate.json',
                  'tests/v11_stage3_release_successor.py', 'tests/test_v11_stage3_release_successor.py',
                  'tests/mutation_security_browser_lineage.py', 'tests/test_mutation_security_browser_lineage.py'))
+R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
+
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
@@ -50,13 +52,14 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
                       'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                       'tests/test_model_mutation_security_successor.py',
-                      'tests/test_ux_pr3b2_scope.py', 'tests/r04_ppa_global_cap/test_r04_allocation.py'))
+                      R04_ISOLATION_TEST))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
-HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
+HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py',
+                          'tests/test_ux_pr3b2_scope.py'))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -121,7 +124,7 @@ def manifest(repo=None, ref=None):
 
 
 def expected_map(root, path, pins=None):
-    """Allow the registry and U1 keys and the two map-specific R1 test handoff pins."""
+    """Allow the registry and U1 keys and the map-specific R1 and UX handoff pins."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
     extra = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD, UX_PR3B2_TEST)}
@@ -3755,6 +3758,70 @@ HANDOFFS['tests/u1_scope.py'] = HANDOFFS.get('tests/u1_scope.py', []) + [("    i
 HANDOFFS['tests/ux_pr3b1_scope.py'] = [('def supersedes(path, value, repo=None, ref=None):\n', "def supersedes(path, value, repo=None, ref=None):\n    # The P0 terminal can delegate the one exact R1 security test source.\n    if path == 'tests/test_model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.r1_security_test_handoff(path, value, repo, ref)\n")]
 
 HANDOFFS['tests/test_r02_ppa_ux_scope.py'] += [('def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n', '_P0_CI_PATHS = frozenset((\n    \'.github/workflows/ci_perf_guard.yml\', \'.github/workflows/ci_v4_full.yml\',\n    \'tools/ci_perf_guard.py\', \'tools/ci_full_parallel.py\',\n))\n\n\ndef _accepted_p0_ci_path(path, repo=None, ref=None):\n    from tests import ci_v4_p0_scope as P0\n    return path in _P0_CI_PATHS and P0.ci_owns(path, repo, ref)\n\n\ndef test_r02_p0_ci_handoff_is_exact_and_closes_after_mutation(tree):\n    path = \'tools/ci_full_parallel.py\'\n    with C.call_scope():\n        assert all(_accepted_p0_ci_path(p, tree) for p in _P0_CI_PATHS)\n        assert not _accepted_p0_ci_path(\'tools/unsigned.py\', tree)\n        assert not _accepted_p0_ci_path(\'.github/workflows/unsigned.yml\', tree)\n    raw = (tree / path).read_bytes()\n    (tree / path).write_bytes(raw + b"\\n")\n    with C.call_scope():\n        assert not _accepted_p0_ci_path(path, tree)\n        assert _accepted_p0_ci_path(path, tree, \'HEAD\')\n    (tree / path).write_bytes(raw)\n    with C.call_scope():\n        assert _accepted_p0_ci_path(path, tree)\n\n\ndef test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n'), ("                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)", '                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)\n                and not _accepted_p0_ci_path(p)]')]
+
+# Preserve the historical UX assertion ASTs and extend only their reviewed input set.
+HANDOFFS[UX_PR3B2_TEST] = [('def test_current_registered_cohort_and_unchanged_financial_sources():\n',
+  '_LATER_SOURCES = {\n'
+  "    'tests.ci_v4_p0_scope': (\n"
+  "        '.github/workflows/ci_perf_guard.yml', '.github/workflows/ci_v4_full.yml',\n"
+  "        'tools/ci_full_parallel.py', 'tools/ci_perf_guard.py',\n"
+  '    ),\n'
+  "    'tests.f03_financing_scope': (\n"
+  "        '.github/workflows/ci_v4_f01_job.yml', '.github/workflows/finval_f01_acceptance.yml',\n"
+  "        'app/v2/f02_financing_period_evidence.py', 'app/v2/react_financing.py',\n"
+  '    ),\n'
+  "    'tests.ci_v5_gate_scope': (\n"
+  "        '.github/workflows/ci_v5_gate.yml', 'tools/ci_v5_candidate.py',\n"
+  "        'tools/ci_v5_epoch.py', 'tools/ci_v5_shadow.py',\n"
+  '    ),\n'
+  "    'tests.ci_v5_hardening_scope': ('.github/workflows/ci_v5_shadow.yml', "
+  "'tools/ci_v5_b5.py'),\n"
+  "    'tests.t01e_remediation_scope': ('tax_reference_registry/remediation.py',),\n"
+  '}\n'
+  '\n'
+  '\n'
+  'def _later_pins(root, ref=None):\n'
+  '    from pathlib import Path\n'
+  '    root = Path(root)\n'
+  '    recognized = set()\n'
+  '    for cohort in C.cohorts():\n'
+  '        paths = _LATER_SOURCES.get(cohort.__name__, ())\n'
+  '        if not paths or not cohort.exact_blobs_ok(root, ref):\n'
+  '            continue\n'
+  "        pins = cohort.manifest(root, ref).get('source_blobs', {})\n"
+  "        subject = ref or 'HEAD'\n"
+  "        rows = subprocess.check_output(['git', 'ls-tree', subject, '--', *paths], cwd=root, "
+  'text=True)\n'
+  "        entries = dict(row.split('\\t', 1)[::-1] for row in rows.splitlines())\n"
+  '        for path in paths:\n'
+  '            blob = pins.get(path)\n'
+  '            file = root / path\n'
+  "            if not blob or entries.get(path) != f'100644 blob {blob}':\n"
+  '                continue\n'
+  '            if ref is None and (not file.is_file() or file.is_symlink() or file.stat().st_mode '
+  '& 0o111\n'
+  '                                or cohort._blob(file.read_bytes()) != blob):\n'
+  '                continue\n'
+  '            recognized.add(path)\n'
+  '    return recognized\n'
+  '\n'
+  '\n'
+  'def test_current_registered_cohort_and_unchanged_financial_sources():\n'),
+ ("    assert not any(p.startswith(('app/'",
+  '    with C.call_scope():\n'
+  '        t01d |= _later_pins(F.ROOT)\n'
+  "    assert not any(p.startswith(('app/'"),
+ ("@pytest.mark.parametrize('kind'",
+  '\n'
+  "@pytest.mark.parametrize('path', [\n"
+  "    '.github/workflows/unsigned.yml', 'tools/unsigned.py', 'financial_engine/unsigned.py',\n"
+  '])\n'
+  'def test_unreviewed_financial_and_ci_paths_have_no_successor_pin(path):\n'
+  '    with C.call_scope():\n'
+  '        if path in _later_pins(F.ROOT):\n'
+  "            pytest.fail(f'unreviewed path has a successor pin: {path}')\n"
+  '\n'
+  "@pytest.mark.parametrize('kind'")]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
