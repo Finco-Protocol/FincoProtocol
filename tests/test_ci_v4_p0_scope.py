@@ -90,7 +90,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         original = json.loads(git(ROOT, "show", T.BASE + ":" + path))
         actual = json.loads((ROOT / path).read_bytes())
         moved = {key for key, value in original["source_blobs"].items() if actual["source_blobs"][key] != value}
-        assert {specific} | extra <= moved <= set(T.MAP_KEYS) | {specific} | extra
+        assert {specific} <= moved <= set(T.MAP_KEYS) | {specific}
         assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
