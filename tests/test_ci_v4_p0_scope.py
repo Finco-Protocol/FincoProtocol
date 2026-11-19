@@ -68,7 +68,8 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml',
                           # post-#460: polluter containment (3) and the D01 O1-successor guard (1); literal, closed
                           'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
-                          'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py'}
+                          'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
+                          'tests/test_model_mutation_security_successor.py'}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
@@ -80,6 +81,17 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         assert (ROOT / p).read_bytes() == git(ROOT, "show", T.BASE + ":" + p)
     for p in T.CURRENT_MAPS:
         assert (ROOT / p).read_bytes() == T.expected_map(ROOT, p)
+    with T.scoped():
+        pin = d["source_blobs"][T.R1_SECURITY_TEST]
+        assert T.r1_security_test_handoff(T.R1_SECURITY_TEST, pin)
+        assert not T.r1_security_test_handoff(T.R1_SECURITY_TEST, "0" * 40)
+        assert not T.r1_security_test_handoff(T.R1_DELEGATION_GUARD, pin)
+    for path, specific in ((T.R1_MAP, T.R1_SECURITY_TEST), (T.TAX_MAP, T.R1_DELEGATION_GUARD)):
+        original = json.loads(git(ROOT, "show", T.BASE + ":" + path))
+        actual = json.loads((ROOT / path).read_bytes())
+        moved = {key for key, value in original["source_blobs"].items() if actual["source_blobs"][key] != value}
+        assert specific in moved and moved <= set(T.MAP_KEYS) | {specific}
+        assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
 

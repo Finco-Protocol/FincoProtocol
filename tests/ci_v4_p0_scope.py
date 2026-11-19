@@ -48,13 +48,14 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       '.github/workflows/ci_v4_full.yml',
                       # post-#460: test-order pollution contained at its source (assertions unchanged; execution-bisected on shard 6 of run 44324970783)
                       'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
-                      'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py'))
+                      'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
+                      'tests/test_model_mutation_security_successor.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
-HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py'))
+HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -66,6 +67,11 @@ CURRENT_MAPS = frozenset((
     'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
 ))
 MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
+R1_MAP = 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+R1_SECURITY_TEST = 'tests/test_model_mutation_security_successor.py'
+TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
+R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -113,10 +119,12 @@ def manifest(repo=None, ref=None):
 
 
 def expected_map(root, path, pins=None):
-    """Only the finite current-source keys (MAP_KEYS: the registry and the U1 discovery guard) may move; all history stays unchanged."""
+    """Allow the registry and U1 keys and the two map-specific R1 test handoff pins."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
-    for key in MAP_KEYS:
+    extra = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
+    keys = (*MAP_KEYS, *extra.get(path, ()))
+    for key in keys:
         if key in d["source_blobs"]:
             d["source_blobs"][key] = pins[key]
     return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
@@ -3742,6 +3750,8 @@ HANDOFFS['tests/fin_v2_cohorts.py'] = HANDOFFS.get('tests/fin_v2_cohorts.py', []
 HANDOFFS['tests/u1_scope.py'] = HANDOFFS.get('tests/u1_scope.py', []) + [("    if not _C._CALL and not _JOINING:      # Correction B (#458): the outermost U1 scope IS one outer governance call; the registry's call scope\n", "    if not _C._CALL and not _C._ENTERING and not _JOINING:      # Correction B (#458) / B2: the outermost U1 scope IS one outer governance call; the registry's call scope\n")]
 
 
+HANDOFFS['tests/ux_pr3b1_scope.py'] = [('def supersedes(path, value, repo=None, ref=None):\n', "def supersedes(path, value, repo=None, ref=None):\n    # The P0 terminal can delegate the one exact R1 security test source.\n    if path == 'tests/test_model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.r1_security_test_handoff(path, value, repo, ref)\n")]
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
@@ -3803,7 +3813,7 @@ def signature_ok(repo=None, ref=None):
 
 
 def map_keys(repo=None, ref=None):
-    return tuple(MAP_KEYS)
+    return MAP_PIN_KEYS
 
 
 @lru_cache(maxsize=512)
@@ -3837,7 +3847,7 @@ def _expected_blob(root, path):
 @lru_cache(maxsize=256)
 def _expected_map_blob(root, path, moved):
     """Pure function of an immutable BASE map and the literal moved registry pin."""
-    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))
+    return _blob(expected_map(Path(root), path, dict(zip(MAP_PIN_KEYS, moved))))
 
 
 def _snapshot(root, ref, paths):
@@ -3901,11 +3911,11 @@ def _signature_ok(root, ref, closure=False):
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
         for p in CURRENT_MAPS:
-            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
@@ -3957,6 +3967,13 @@ def supersedes(path, value, repo=None, ref=None):
     # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
     # files), so a signature-only verdict never makes the tree valid.
     return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+
+
+def r1_security_test_handoff(path, value, repo=None, ref=None):
+    if path != R1_SECURITY_TEST or not exact_blobs_ok(repo, ref):
+        return False
+    pins = manifest(repo, ref).get("source_blobs", {})
+    return value is not None and pins.get(path) == value
 
 
 def nontrust_scope_authorized(changed, repo=None):

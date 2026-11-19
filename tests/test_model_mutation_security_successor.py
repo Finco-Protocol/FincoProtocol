@@ -222,7 +222,12 @@ def names_of(text):
 def _without_r1_browser_layer(path, current):
     """Post-#413 R1 layer: the role file may carry EXACTLY ONE additional wrapper (the two-tab PPA acceptance). It is admitted only while the closed R1
     cohort pins this exact blob, and only if removing that one wrapper reproduces the reviewed BASE (#413 main) blob recorded and git-verified by the cohort."""
+    from tests import mutation_security_browser_lineage as candidate
     from tests import post413_r1_scope as R1
+    if path == candidate.ROLE:
+        historical = candidate.verified_pre_r1_source(current)
+        if historical is not None:
+            return historical
     if current.count(R1_BROWSER_WRAPPER) != 1 or not R1.matches(path, current):
         return current
     pre = current.replace(R1_BROWSER_WRAPPER, "", 1)
