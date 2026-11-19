@@ -60,17 +60,23 @@ def _tax_provenance_evidence(clean_run):
         "cash_tax_current_period_audit_keur",
         "cash_tax_bridge_reconciliation_keur",
     )
+    period_count = len(getattr(tax, "period_indices", ()) or ())
+    if period_count == 0:
+        return {"status": "NOT_AVAILABLE",
+                "reason": "TAX_AND_CFADS_PERIOD_AXIS_EMPTY"}
     periods = []
     for row, idx in enumerate(tax.period_indices):
         entry = {"period_index": idx}
         for name in vectors:
             vector = getattr(tax, name)
-            # Only a genuinely non-computed vector is declared unknown; a
-            # computed value is passed through exactly as the engine wrote it.
+            # Only a genuinely non-computed / short / misaligned vector yields
+            # an explicit None per period — never a zero, never a fabricated
+            # value; a computed value is passed through exactly as the engine
+            # wrote it (including any nonfinite marker the engine produced).
             entry[name] = vector[row] if row < len(vector) else None
         periods.append(entry)
     computed = {name for name in vectors
-                if len(getattr(tax, name, ())) == len(tax.period_indices)}
+                if len(getattr(tax, name, ())) == period_count}
     missing = sorted(set(vectors) - computed)
     # Reconciliation over the SAME schedule values (no recomputation of tax):
     # a continuous loss schedule carries closing -> next opening unchanged.
@@ -80,8 +86,13 @@ def _tax_provenance_evidence(clean_run):
         i == 0 or opening[i] == closing[i - 1]
         for i in range(min(len(opening), len(closing)))
     ) if len(opening) == len(closing) else None
+    # Joint-correction review (2026-11-19): a partial trace is classified as
+    # PARTIAL, never presented as complete; the missing field list names the
+    # audit gap explicitly.
+    status = ("CALCULATED_FROM_EXISTING_SCHEDULES" if not missing
+              else "PARTIAL_SCHEDULE_COVERAGE")
     return {
-        "status": "CALCULATED_FROM_EXISTING_SCHEDULES",
+        "status": status,
         "authority": "PHASE_2B_TAX_AND_CFADS_SCHEDULES_READ_ONLY",
         "period_count": len(periods),
         "periods": periods,

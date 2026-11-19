@@ -222,3 +222,44 @@ def _capture_sealed(sealed):
     _SEALED[0], _SEALED[1] = sealed
     yield
     _SEALED[0] = _SEALED[1] = None
+
+
+def test_short_and_misaligned_vectors_are_explicit_none_and_status_partial():
+    """A vector shorter than the period axis yields an explicit per-period
+    None (never a zero) and the block is classified PARTIAL, never complete."""
+    tax = _synthetic_schedules(period_indices=[0, 1, 2], opening=[0.0, 0.0, 0.0], closing=[0.0, 0.0, 0.0])
+    # Truncate two vectors below the axis length (misaligned/short producer).
+    tax.tax_depreciation_audit_keur = (2.0, 2.0)
+    tax.cash_tax_bridge_reconciliation_keur = ()
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    assert block["status"] == "PARTIAL_SCHEDULE_COVERAGE"
+    assert set(block["not_available_fields"]) == {
+        "tax_depreciation_audit_keur", "cash_tax_bridge_reconciliation_keur"}
+    rows = block["periods"]
+    assert [r["tax_depreciation_audit_keur"] for r in rows] == [2.0, 2.0, None]
+    assert [r["cash_tax_bridge_reconciliation_keur"] for r in rows] == [None, None, None]
+    # Computed fields stay exactly what the engine wrote.
+    assert [r["cit_accrual_audit_keur"] for r in rows] == [3.0, 3.0, 3.0]
+
+
+def test_none_values_are_mirrored_not_zeroed():
+    tax = _synthetic_schedules(period_indices=[0, 1], opening=[0.0, 0.0], closing=[0.0, 0.0])
+    tax.taxable_income_before_losses_audit_keur = (10.0, None)
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    assert [r["taxable_income_before_losses_audit_keur"] for r in block["periods"]] == [10.0, None]
+
+
+def test_nonfinite_engine_values_are_mirrored_not_zeroed():
+    tax = _synthetic_schedules(period_indices=[0], opening=[0.0], closing=[0.0])
+    tax.tax_depreciation_audit_keur = (float("inf"),)
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    # The projection is read-only: the engine's own value is mirrored and the
+    # consumer/audit layer sees the anomaly instead of a fabricated zero.
+    assert block["periods"][0]["tax_depreciation_audit_keur"] == float("inf")
+
+
+def test_empty_period_axis_fails_closed():
+    tax = _synthetic_schedules(period_indices=[], opening=[], closing=[])
+    block = _tax_provenance_evidence(_clean_run_with(tax))
+    assert block == {"status": "NOT_AVAILABLE",
+                     "reason": "TAX_AND_CFADS_PERIOD_AXIS_EMPTY"}
