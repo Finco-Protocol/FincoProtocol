@@ -65,7 +65,11 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert set(T.HANDOFFS) == T.HANDOFF_PATHS
     assert T.REPLACED == {'tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                           'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
-                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml'}
+                          'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py', '.github/workflows/ci_v4_full.yml',
+                          # post-#460: polluter containment (3) and the D01 O1-successor guard (1); literal, closed
+                          'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
+                          'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
+                          'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
@@ -77,6 +81,17 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         assert (ROOT / p).read_bytes() == git(ROOT, "show", T.BASE + ":" + p)
     for p in T.CURRENT_MAPS:
         assert (ROOT / p).read_bytes() == T.expected_map(ROOT, p)
+    with T.scoped():
+        pin = d["source_blobs"][T.R1_SECURITY_TEST]
+        assert T.r1_security_test_handoff(T.R1_SECURITY_TEST, pin)
+        assert not T.r1_security_test_handoff(T.R1_SECURITY_TEST, "0" * 40)
+        assert not T.r1_security_test_handoff(T.R1_DELEGATION_GUARD, pin)
+    for path, specific in ((T.R1_MAP, T.R1_SECURITY_TEST), (T.TAX_MAP, T.R1_DELEGATION_GUARD)):
+        original = json.loads(git(ROOT, "show", T.BASE + ":" + path))
+        actual = json.loads((ROOT / path).read_bytes())
+        moved = {key for key, value in original["source_blobs"].items() if actual["source_blobs"][key] != value}
+        assert specific in moved and moved <= set(T.MAP_KEYS) | {specific}
+        assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
 
@@ -243,7 +258,7 @@ def test_one_byte_in_the_p0_reviewed_ci_v4_scope_hook_is_rejected(subject):
 # ── Correction B: one read-only verdict = one call scope (function boundary); nothing outlives a call, nothing masks a mutation ──────────
 def _no_scope_open():
     from tests import u1_scope as U, ci_v4_scope as V4
-    return not C._CALL and not U._SCOPE and not U._JOINING and not V4._SCOPE
+    return not C._CALL and not C._ENTERING and not U._SCOPE and not U._JOINING and not V4._SCOPE
 
 
 def test_cb_hooks_are_literal_and_bounded():
@@ -308,4 +323,86 @@ def test_cb_scoped_and_unscoped_verdicts_are_identical(subject, forged):
             assert all(fresh.values()), fresh
     finally:
         f.write_bytes(raw)
+    assert _no_scope_open()
+
+
+# ── Correction B2 (post-#460): BOTH entry orders open exactly ONE outer call; the entry marker never outlives entry, even on an exception ───
+def test_cb2_hooks_are_literal_and_bounded():
+    reg = (ROOT / "tests/fin_v2_cohorts.py").read_text()
+    u1 = (ROOT / "tests/u1_scope.py").read_text()
+    assert reg.count("_ENTERING = []") == 1 and reg.count("_ENTERING.append(True)") == 1 and reg.count("_ENTERING.pop()") == 1
+    assert reg.count("if _CALL or _ENTERING:") == 1
+    assert u1.count("if not _C._CALL and not _C._ENTERING and not _JOINING:") == 1
+
+
+def test_cb2_registry_first_entry_opens_exactly_one_outer_call():
+    from tests import u1_scope as U
+    assert _no_scope_open()
+    with C.call_scope():
+        assert len(C._CALL) == 1 and not C._ENTERING and len(U._SCOPE) == 1 and not U._JOINING
+        assert U.exact_blobs_ok() and len(C._CALL) == 1
+        with C.call_scope():
+            assert len(C._CALL) == 1 and len(U._SCOPE) == 1
+        with U.scoped():
+            assert len(C._CALL) == 1 and len(U._SCOPE) == 1
+    assert _no_scope_open()
+
+
+def test_cb2_u1_first_entry_opens_exactly_one_outer_call():
+    from tests import u1_scope as U
+    assert _no_scope_open()
+    with U.scoped():
+        assert len(C._CALL) == 1 and not C._ENTERING and len(U._SCOPE) == 1 and not U._JOINING
+        with C.call_scope():
+            assert len(C._CALL) == 1 and len(U._SCOPE) == 1
+    assert _no_scope_open()
+
+
+@pytest.mark.parametrize("first", ["registry", "u1"])
+def test_cb2_an_exception_in_the_block_unwinds_every_scope(first):
+    from tests import u1_scope as U
+
+    class Boom(Exception):
+        pass
+    with pytest.raises(Boom):
+        with (C.call_scope() if first == "registry" else U.scoped()):
+            assert len(C._CALL) == 1
+            raise Boom()
+    assert _no_scope_open()
+
+
+def test_cb2_an_exception_while_entering_a_cohort_clears_the_marker_and_every_entered_scope(monkeypatch):
+    from tests import u1_scope as U
+
+    class Boom(Exception):
+        pass
+
+    def broken():
+        raise Boom()
+    monkeypatch.setattr(T, "scoped", broken)          # the LAST registered cohort: every earlier scope (U1 included) is already entered
+    with pytest.raises(Boom):
+        with C.call_scope():
+            raise AssertionError("the block must never run when a cohort scope fails to enter")
+    assert _no_scope_open()
+    monkeypatch.undo()
+    with C.call_scope():                              # the next call is a NEW, complete outer call
+        assert len(C._CALL) == 1 and C.valid() is True
+    assert _no_scope_open()
+
+
+def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
+    from tests import u1_scope as U
+    f = subject / "tests/u1_scope.py"
+    raw = f.read_bytes()
+    with C.call_scope():
+        assert U.exact_blobs_ok(subject) and len(C._CALL) == 1
+    try:
+        f.write_bytes(raw + b"\n# unreviewed\n")
+        with C.call_scope():
+            assert len(C._CALL) == 1 and not U.exact_blobs_ok(subject)
+        assert _no_scope_open()
+    finally:
+        f.write_bytes(raw)
+    with C.call_scope():
+        assert U.exact_blobs_ok(subject)
     assert _no_scope_open()

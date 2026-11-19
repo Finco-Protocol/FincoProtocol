@@ -274,7 +274,7 @@ def scoped():
         yield
         return
     from tests import fin_v2_cohorts as _C
-    if not _C._CALL and not _JOINING:      # Correction B (#458): the outermost U1 scope IS one outer governance call; the registry's call scope
+    if not _C._CALL and not _C._ENTERING and not _JOINING:      # Correction B (#458) / B2: the outermost U1 scope IS one outer governance call; the registry's call scope
         with ExitStack() as outer:         # is opened for exactly the same lifetime (it re-enters this function below) and closed with it
             _JOINING.append(True)
             try:

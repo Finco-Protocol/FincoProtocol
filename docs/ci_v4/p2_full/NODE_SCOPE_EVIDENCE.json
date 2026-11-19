@@ -1,0 +1,244 @@
+{
+  "nodes": {
+    "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_3_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": ".github/workflows/fin_v2_3_oracle.yml",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 1471.29
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "wall_s": 9.66
+      },
+      "sibling_modules_not_scoped": true
+    },
+    "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_r1_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": "app/run_integrity/reserve_coverage_evidence.py",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 1483.33
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native"
+        ],
+        "wall_s": 13.22
+      },
+      "sibling_modules_not_scoped": true
+    },
+    "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.post413_r17_scope",
+        "different_checkout_valid": true,
+        "first": true,
+        "mutated": false,
+        "mutated_path": "docs/react_migration/post413_r17/P00.md",
+        "restored": true,
+        "scope_left_open": false,
+        "scoped_checkout_accepted_ref": true,
+        "wrong_ref_valid": false
+      },
+      "plain": {
+        "call_git_subprocesses": 8247,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 419.725901
+      },
+      "scoped": {
+        "call_git_subprocesses": 123,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "wall_s": 4.411095
+      },
+      "sibling_modules_not_scoped": true,
+      "tested_base_sha": "f98b9be0bf643c2761a8838a8ccfb1b5f1f9429f",
+      "tested_base_tree": "57622418072c4104d7fe3c8e367d5ab881295201",
+      "timing_method": "Local phase duration (setup + call + teardown), same baseline tree in two separate pytest processes with per-node phase recorder and CALL Git-child audit. Other nodes in each process ran serially. Concurrent diagnostic jobs may affect wall timings."
+    },
+    "tests/test_post413_r18_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.post413_r18_scope",
+        "different_checkout_valid": true,
+        "first": true,
+        "mutated": false,
+        "mutated_path": "docs/react_migration/post413_r18/P00.md",
+        "restored": true,
+        "scope_left_open": false,
+        "scoped_checkout_accepted_ref": true,
+        "wrong_ref_valid": false
+      },
+      "plain": {
+        "call_git_subprocesses": 6876,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_post413_r18_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 582.285174
+      },
+      "scoped": {
+        "call_git_subprocesses": 123,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_post413_r18_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_post413_r18_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path"
+        ],
+        "wall_s": 4.516096
+      },
+      "sibling_modules_not_scoped": true,
+      "tested_base_sha": "f98b9be0bf643c2761a8838a8ccfb1b5f1f9429f",
+      "tested_base_tree": "57622418072c4104d7fe3c8e367d5ab881295201",
+      "timing_method": "Local phase duration (setup + call + teardown), same baseline tree in two separate pytest processes with per-node phase recorder and CALL Git-child audit. Other nodes in each process ran serially. Concurrent diagnostic jobs may affect wall timings."
+    },
+    "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_rcux_scope",
+        "first": "True",
+        "mutated": "False",
+        "mutated_path": "app/v2/react_capex.py",
+        "restored": "True",
+        "scope_left_open": "False"
+      },
+      "plain": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 2486.79
+      },
+      "scoped": {
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned"
+        ],
+        "wall_s": 14.99
+      },
+      "sibling_modules_not_scoped": true
+    }
+  },
+  "note": "LOCAL evidence (4-vCPU container, the three nodes measured concurrently), not a hosted timing claim. Plain and scoped each run alone in a fresh pytest process with the materialized recorder; mutation probe in a disposable clone.",
+  "schema": "FINCO_CI_FULL_NODE_SCOPE_EVIDENCE_V1",
+  "tested_head_parent_sha": "7e4caa095cf2f890352322d8c735071681e8cf89",
+  "tested_head_parent_tree": "0e0aacfa459d0d9887bdee49b0c406c5d801a133"
+}
