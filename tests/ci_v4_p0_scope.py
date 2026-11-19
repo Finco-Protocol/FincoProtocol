@@ -4129,6 +4129,19 @@ HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
         '    return exact_blobs_ok(repo, ref)\n',
     ),
 ]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        '    try:\n'
+        '        with contextlib.ExitStack() as scopes:\n'
+        '            for m in mods:',
+        '    try:\n'
+        '        from tests import ci_immutable_git_reads\n'
+        '\n'
+        '        with contextlib.ExitStack() as scopes:\n'
+        '            scopes.enter_context(ci_immutable_git_reads.scope())\n'
+        '            for m in mods:',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

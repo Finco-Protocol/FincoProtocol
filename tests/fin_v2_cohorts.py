@@ -80,7 +80,10 @@ def _valid(repo=None, ref=None):
     if not mods:
         return False
     try:
+        from tests import ci_immutable_git_reads
+
         with contextlib.ExitStack() as scopes:
+            scopes.enter_context(ci_immutable_git_reads.scope())
             for m in mods:                      # one outer call: each cohort that offers a call-scope memo computes its exact check once
                 if callable(getattr(m, 'scoped', None)):
                     scopes.enter_context(m.scoped())
