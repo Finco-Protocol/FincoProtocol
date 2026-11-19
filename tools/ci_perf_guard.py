@@ -141,7 +141,7 @@ def verify_full_runtime(run, jobs, *, now=None):
             require(type(jid) is int and jid > 0 and jid not in seen and isinstance(name, str) and name not in by_name,
                     "duplicate or invalid job identity")
             seen.add(jid)
-            require(job.get("run_id") == run["id"] and type(job.get("run_attempt")) is int
+            require(type(job.get("run_id")) is int and job["run_id"] == run["id"] and type(job.get("run_attempt")) is int
                     and job["run_attempt"] == 1 and job.get("head_sha") == run["head_sha"]
                     and job.get("head_branch") == "main" and job.get("workflow_name") == "CI V4 FULL",
                     "job belongs to another source, workflow or attempt")

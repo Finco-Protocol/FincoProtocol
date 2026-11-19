@@ -198,7 +198,7 @@
     "tests/test_ci_v4_perf_scope.py": "64b005777966e1f83a1f67abed04f17185a3e674",
     "tests/test_ci_v4_release_gate.py": "64d7f449f7c84251ef7bf9ef29ce698d5c469591",
     "tests/test_ci_v5_bootstrap_scope.py": "833f9bc49d778655507db8739357e7864cc7a056",
-    "tests/test_ci_v5_gate.py": "7d3f4f37f4d5a9e95bda8e6fab442973451895e0",
+    "tests/test_ci_v5_gate.py": "e378c01cb7bb374533a475819bd97626dfd938dc",
     "tests/test_ci_v5_gate_scope.py": "db5366d7f2c8fc1b61d96ae000af48033cb09425",
     "tests/test_ci_v5_hardening_scope.py": "c33b99d4653ee32489974384c560d56eec3ccbfb",
     "tests/test_f03_financing_scope.py": "9a8a249e5f3f4fb59c24bad97910c85370d342af",
@@ -222,9 +222,9 @@
     "tests/ux_pr3b1_scope.py": "c377216f0f2e82b99aaa6bace7effc28a3964ad0",
     "tests/v11_stage3_release_successor.py": "3ae93b08088e444024fb9c1eabd8f943aa85c90d",
     "tools/ci_full_parallel.py": "5cce11333cafbdb6f22b73e0452ccd934f7179a2",
-    "tools/ci_perf_guard.py": "1eb16f350ba6b890ca1b6b1c6c7bdd508bf3ffe3",
+    "tools/ci_perf_guard.py": "97ffa346ed658b32eaa3be14e9d42d315da8d2be",
     "tools/ci_v4_release_gate.py": "5ceb87e12b4c809232c2506ee9d61ff05f3eae2d",
-    "tools/ci_v5_shadow.py": "69602cdaf26d42433fb240a7d36c58ba01553a52"
+    "tools/ci_v5_shadow.py": "603badaf92fdae8232788e1b2e09a0970666b178"
   },
   "source_modes": {
     ".github/workflows/ci_perf_guard.yml": "100644",

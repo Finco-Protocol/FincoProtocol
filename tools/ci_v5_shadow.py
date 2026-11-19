@@ -287,6 +287,8 @@ def verify_enforcement(protection=None, rules=None, gate_name=None, v4_names=Non
     """(state, findings) from the owner's READ of the live GitHub settings. ``None`` (HTTP 403 / not read) is ``ENFORCEMENT_UNVERIFIED``; a read that does
     not prove the gate is required alongside every V4 check, strict, with enforced admins and review hardening is ``ENFORCEMENT_INCOMPLETE``. A workflow
     existing or having run is never evidence. Only a complete read is ``ENFORCEMENT_VERIFIED``."""
+    if isinstance(protection, dict) and ("message" in protection or str(protection.get("status")) == "403"):
+        protection = None                     # gh can save a JSON error body even on HTTP 403
     gate_name = gate_name or E.POLICY.GATE_CHECK_NAME
     v4_names = tuple(E.POLICY.V4_REQUIRED_CHECKS if v4_names is None else v4_names)
     if protection is None and rules is None:

@@ -644,3 +644,4 @@ def test_unbound_or_counterfeit_budget_integration_is_incomplete(app_id):
 
 def test_rules_response_cannot_hide_a_branch_protection_403():
     assert SH.verify_enforcement(None, [])[0] == "ENFORCEMENT_UNVERIFIED"
+    assert SH.verify_enforcement({"status": "403", "message": "Resource not accessible by integration"}, [])[0] == "ENFORCEMENT_UNVERIFIED"
