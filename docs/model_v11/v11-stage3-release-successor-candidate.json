@@ -1,0 +1,154 @@
+{
+  "anchors": {
+    "candidate": {
+      "commit": "411106af20d5b82cf474b8f80f4515740884a6b6",
+      "tree": "c523a71441f3f3dc2f6489e2cc9ad9a00a8c633d"
+    },
+    "f01_workflow": {
+      "commit": "d17f46e5f3894dff59ff701c7b291bdf1e587891",
+      "tree": "80c62e2328ce78dc954649638a73abe86aa56fa5"
+    },
+    "fin_v2_3": {
+      "commit": "4a8b831aba22ace448660c7ebe7b63da1720b76c",
+      "tree": "f942f69d9e70bca468179a1817a2453903a753d6"
+    },
+    "fin_v2_integration": {
+      "commit": "70bcf693bdb2547fc1c0e5af685835689eb44d3e",
+      "tree": "f942f69d9e70bca468179a1817a2453903a753d6"
+    },
+    "fin_v2_r1": {
+      "commit": "02067fd7fcb12ab670a4fcb17bdf5fd9fcce7866",
+      "tree": "dcfaaea0d3ed74bb612c4f9529636990ad11056f"
+    },
+    "historical_release": {
+      "commit": "93c549e160772acd8258c26556bd46ff9ca29156",
+      "tree": "920c899b3e769fededcfc45253c8cc51b1a6f095"
+    }
+  },
+  "decision": "RELEASE_SUCCESSOR_PENDING_OWNER_REVIEW",
+  "paths": {
+    ".github/workflows/finval_f01_acceptance.yml": {
+      "accepted": {
+        "blob": "a0b0e65cb3da4a3490fc5392342fc7298ca3244b",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "d17f46e5f3894dff59ff701c7b291bdf1e587891"
+    },
+    "financial_engine/adapters/project_inputs.py": {
+      "accepted": {
+        "blob": "48346ad0ca9c0d3621fd872e7916f04641457e47",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "d97ae939559cbd6e031414192fa23fc40be1110f",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/dsra/forward_coverage.py": {
+      "accepted": {
+        "blob": "4d109a9a1e95282d6adf3a474e4b42f7273bd69d",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/dsra/reserve_authority.py": {
+      "accepted": {
+        "blob": "569dbe5be70446ac8b7c6f8f1982de5366897f96",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/dsra/target.py": {
+      "accepted": {
+        "blob": "f47ad9d561fd4f622fdea718584b7119e06771dc",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "6bd91a34f9b8810b8969d31db1e34a53ed2be42b",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/shl/timing_contract.py": {
+      "accepted": {
+        "blob": "bfce31d7f6cd22ce427e1911eab8bcbc5e1a894b",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/valuation/loan_life.py": {
+      "accepted": {
+        "blob": "7fab11b07200c1f1beab3bfe337f8a0de0b876bf",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/valuation/model.py": {
+      "accepted": {
+        "blob": "64214b44d825a8573ee50cf46193602787bcea57",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "45a9f6eb3eec1d8d18840c67a818915bae0ce048",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "financial_engine/valuation/sponsor.py": {
+      "accepted": {
+        "blob": "5311a6954d178cde0584348ef76b849e0d8d9b3c",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "finco_core/inputs/_models.py": {
+      "accepted": {
+        "blob": "48f55cacff08d5aaeaad52ae28c0e70a07ad4e7f",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "a48139b9e2aed875d6f3a8358f2c53e9489983c7",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "finco_core/inputs/serialization.py": {
+      "accepted": {
+        "blob": "6ccb4a370699ffe04e544c0bc7de0fbcc715fcfe",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "7e678450304467fce435d6052e78af76171b03f7",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "finco_core/inputs/shl_timing.py": {
+      "accepted": {
+        "blob": "928398d65635c3df99d0490eaf12d1cea009bed5",
+        "mode": "100644"
+      },
+      "historical": null,
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    },
+    "finco_core/inputs/valuation.py": {
+      "accepted": {
+        "blob": "2187c56f4f4278124e3053b286be22d9c5eddd72",
+        "mode": "100644"
+      },
+      "historical": {
+        "blob": "7805f014f2a1489014eec1c90156c784e9016b2a",
+        "mode": "100644"
+      },
+      "source": "70bcf693bdb2547fc1c0e5af685835689eb44d3e"
+    }
+  },
+  "schema": "FINCO_V11_RELEASE_SUCCESSOR_CANDIDATE_V1"
+}

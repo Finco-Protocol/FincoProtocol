@@ -17,6 +17,7 @@ import pytest
 import quarterly_candidate_recognition as R
 import v11_stage3_release_authority as A
 import v11_stage3_successor as V
+import v11_stage3_release_successor as successor
 from test_v11_stage3_successor import mutate, show  # noqa: F401 - shared synthetic-commit harness
 from test_v11_stage3_successor import head, repo  # noqa: F401 - fixtures
 
@@ -141,11 +142,17 @@ def test_a_changed_runtime_identity_is_rejected(repo, tmp_path, head):  # noqa: 
 
 @pytest.mark.parametrize("path", ["deploy/scripts/backup.sh", "app/services/run_service.py", "deploy/systemd/finco-staging.service"])
 def test_a_new_unreleased_activation_surface_is_rejected_while_the_release_stays_exact(repo, tmp_path, head, path):  # noqa: F811
-    ref = mutate(repo, tmp_path, head, {path: show(repo, head, path) + b"\n# FINCO native_v11 stage3_run\n"})
+    marker = b"\n# FINCO native_v11 stage3_run\n"
+    historical = successor.HISTORICAL_RELEASE
+    ref = mutate(repo, tmp_path, historical, {path: show(repo, historical, path) + marker})
     assert A.release_violations(repo=repo, ref=ref) == []                   # the released surface itself is intact
     problems = V.v11_violations(repo=repo, ref=ref)
     assert f"V11_STAGE3_ACTIVATION_SURFACE: {[path]}" in problems, problems
     assert R.recognized_state(repo=repo, ref=ref) is None
+
+    assert successor.candidate_violations(repo=repo, ref=head) == []
+    ref = mutate(repo, tmp_path, head, {path: show(repo, head, path) + marker})
+    assert successor.candidate_violations(repo=repo, ref=ref) == ["V11_SUCCESSOR_UNREVIEWED_ACTIVATION_SURFACE"]
 
 
 def test_exact_bytes_without_ancestry_are_rejected(repo, tmp_path, head):  # noqa: F811
