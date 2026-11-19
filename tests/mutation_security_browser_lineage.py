@@ -34,7 +34,9 @@ WF03_REF, WF03_BLOB = HISTORY[5]
 WF03_IMPORT = b"from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser  # noqa: F401\n"
 WF03_ADAPTER = (
     b"from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser as _wf03_browser  # noqa: F401\n"
-    b"\n\n@pytest.fixture\ndef wf03_browser(request):\n"
+    b"\n\n"
+    b"@pytest.fixture\n"
+    b"def wf03_browser(request):\n"
     b"    # Keep the helper module unchanged and the selected cases individually attributable.\n"
     b'    pytest.importorskip("playwright.sync_api", reason="playwright not installed in this workflow")\n'
     b'    return request.getfixturevalue("_wf03_browser")\n'

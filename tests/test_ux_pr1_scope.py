@@ -90,11 +90,13 @@ def test_exact_registered_and_historical_maps_immutable():
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
             hist=d['source_blobs'][p]
             eff=_effective_pin(p,hist)
-            assert U.supersedes(p,eff) and not U.supersedes(p,'0'*40)
-            if eff!=hist:  # a historical pin is preserved but no longer current authority
-                assert not U.supersedes(p,hist)
+            lineage_ref = PR3B2_MERGE if p in later_pins else None
+            assert U.supersedes(p,eff,ref=lineage_ref) and not U.supersedes(p,'0'*40,ref=lineage_ref)
+            if eff!=hist:  # a historical pin cannot supersede an accepted later pin
+                assert not U.supersedes(p,hist,ref=lineage_ref)
             if p in later_pins:
                 assert git(U.ROOT, 'rev-parse', PR3B2_MERGE + ':' + p).strip() == eff
+                assert not U.supersedes(p,'0'*40)
             assert git(U.ROOT,'hash-object',p).strip()==later_pins.get(p, eff)
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
