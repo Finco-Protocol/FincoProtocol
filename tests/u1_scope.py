@@ -372,7 +372,8 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         # C06 Correction C: the finite signed successor may move these exact U1 pins (bounded, like the PR2c hook below);
         # history remains untouched and the tip cohort's own signature proves the extent of every moved pin.
         if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref)
-               and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):
+               and not _c06_correction_c_pin(p, current[p], root, ref)
+               and not _p0_runtime_pin(p, current[p], root, ref) for p, sha in pins.items()):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -429,6 +430,13 @@ _P0_RUNTIME_HANDOFFS = frozenset((
 ))
 
 
+def _p0_runtime_pin(path, value, repo, ref):
+    if path not in _P0_RUNTIME_HANDOFFS:
+        return False
+    from tests import ci_v4_p0_scope as P0
+    return P0.supersedes(path, value, repo, ref)
+
+
 @scoped()
 def historical_blobs(path, repo=None, ref=None):
     """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
@@ -454,15 +462,13 @@ def historical_blobs(path, repo=None, ref=None):
 @scoped()
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
+    if _p0_runtime_pin(path, value, repo, ref):
+        return True
     if path in SUPERSEDED:
         if not exact_blobs_ok(repo, ref):
             return False
         pin = manifest(repo, ref).get('source_blobs', {}).get(path)
         return pin == value or (pin is not None and _later_follows(path, value, pin, repo, ref))
-    if path in _P0_RUNTIME_HANDOFFS:
-        from tests import ci_v4_p0_scope as P0
-        if P0.supersedes(path, value, repo, ref):
-            return True
     # PR2c Correction B: a governance manifest the exact tip cohort moves (one of its
     # INTEGRATION_MANIFESTS) is admitted at its current bytes only while that cohort is
     # exact — its own sibling-leg check proves the manifest's only change is exactly the

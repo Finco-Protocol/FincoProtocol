@@ -76,7 +76,7 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
-HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py'))
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4002,6 +4002,64 @@ HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
     (
         "prior = json.loads(_object_fact(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
         "prior = json.loads(_git(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
+    ),
+])
+HANDOFFS.setdefault('tests/post413_r1_scope.py', []).extend([
+    (
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+        'def _browser_registration_follows(path, value, root, ref):\n'
+        "    if path != 'tests/test_wsv2_core_scope.py':\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, value, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+    ),
+    (
+        'if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):',
+        'if any(_blob(_read(root, p, ref)) != sha and not _browser_registration_follows(p, _blob(_read(root, p, ref)), root, ref)\n'
+        '                   for p, sha in pins.items()):',
+    ),
+    (
+        'if listed != pins:',
+        'if set(listed) != set(pins) or any(listed[p] != sha and not _browser_registration_follows(p, listed[p], root, ref)\n'
+        '                                                for p, sha in pins.items()):',
+    ),
+])
+HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
+    (
+        'and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):',
+        'and not _c06_correction_c_pin(p, current[p], root, ref)\n'
+        '               and not _p0_runtime_pin(p, current[p], root, ref) for p, sha in pins.items()):',
+    ),
+    (
+        '@scoped()\n'
+        'def historical_blobs(',
+        'def _p0_runtime_pin(path, value, repo, ref):\n'
+        '    if path not in _P0_RUNTIME_HANDOFFS:\n'
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, value, repo, ref)\n'
+        '\n'
+        '\n'
+        '@scoped()\n'
+        'def historical_blobs(',
+    ),
+    (
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes(path, value, repo, ref):\n'
+        '            return True\n',
+        '',
+    ),
+    (
+        '    if path in SUPERSEDED:\n'
+        '        if not exact_blobs_ok(repo, ref):',
+        '    if _p0_runtime_pin(path, value, repo, ref):\n'
+        '        return True\n'
+        '    if path in SUPERSEDED:\n'
+        '        if not exact_blobs_ok(repo, ref):',
     ),
 ])
 
