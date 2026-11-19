@@ -5,28 +5,74 @@ import subprocess
 import pytest
 from tests import ux_pr3b2_scope as F, ux_pr3b1_scope as E, fin_v2_cohorts as C
 
+_LATER_SOURCES = {
+    'tests.ci_v4_p0_scope': (
+        '.github/workflows/ci_perf_guard.yml', '.github/workflows/ci_v4_full.yml',
+        'tools/ci_full_parallel.py', 'tools/ci_perf_guard.py',
+    ),
+    'tests.f03_financing_scope': (
+        '.github/workflows/ci_v4_f01_job.yml', '.github/workflows/finval_f01_acceptance.yml',
+        'app/v2/f02_financing_period_evidence.py', 'app/v2/react_financing.py',
+    ),
+    'tests.ci_v5_gate_scope': (
+        '.github/workflows/ci_v5_gate.yml', 'tools/ci_v5_candidate.py',
+        'tools/ci_v5_epoch.py', 'tools/ci_v5_shadow.py',
+    ),
+    'tests.ci_v5_hardening_scope': ('.github/workflows/ci_v5_shadow.yml', 'tools/ci_v5_b5.py'),
+    'tests.t01e_remediation_scope': ('tax_reference_registry/remediation.py',),
+}
+
+
+def _later_pins(root, ref=None):
+    from pathlib import Path
+    root = Path(root)
+    recognized = set()
+    for cohort in C.cohorts():
+        paths = _LATER_SOURCES.get(cohort.__name__, ())
+        if not paths or not cohort.exact_blobs_ok(root, ref):
+            continue
+        pins = cohort.manifest(root, ref).get('source_blobs', {})
+        subject = ref or 'HEAD'
+        rows = subprocess.check_output(['git', 'ls-tree', subject, '--', *paths], cwd=root, text=True)
+        entries = dict(row.split('\t', 1)[::-1] for row in rows.splitlines())
+        for path in paths:
+            blob = pins.get(path)
+            file = root / path
+            if not blob or entries.get(path) != f'100644 blob {blob}':
+                continue
+            if ref is None and (not file.is_file() or file.is_symlink() or file.stat().st_mode & 0o111
+                                or cohort._blob(file.read_bytes()) != blob):
+                continue
+            recognized.add(path)
+    return recognized
+
+
 def test_current_registered_cohort_and_unchanged_financial_sources():
     with C.call_scope():
         assert F.exact_blobs_ok() and E.exact_blobs_ok() and C.valid()
-    assert F.__name__ in C.COHORT_MODULES
-    assert os.environ.get('FINCO_SAVE_ALL_PROFILE_ENABLED','0')=='0'
-    changed=subprocess.check_output(['git','diff','--name-only',F.BASE],cwd=F.ROOT,text=True).splitlines()
-    try:
-        from tests import tax_reference_registry_scope as T
-        t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
-    except ImportError:
-        t01d=frozenset()
-    from tests import on_bess01_scope as B
-    t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
-    from tests import post432_l01_l02_scope as L
-    t01d = t01d | (L.SOURCE_PATHS if L.exact_blobs_ok() else frozenset())      # post-#434 L01/L02: exactly its two pinned presentation sources, only while that cohort is exact
-    from tests import bess02_scope as N
-    t01d = t01d | (N.SOURCE_PATHS if N.exact_blobs_ok() else frozenset())
-    assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
-    old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
-    assert (F.ROOT/E.MANIFEST).read_bytes()==old
-    for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
-        assert (F.ROOT/p).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+p],cwd=F.ROOT)
+        assert F.__name__ in C.COHORT_MODULES
+        assert os.environ.get('FINCO_SAVE_ALL_PROFILE_ENABLED','0')=='0'
+        changed=subprocess.check_output(['git','diff','--name-only',F.BASE],cwd=F.ROOT,text=True).splitlines()
+        try:
+            from tests import tax_reference_registry_scope as T
+            t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
+        except ImportError:
+            t01d=frozenset()
+        from tests import on_bess01_scope as B
+        t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
+        from tests import post432_l01_l02_scope as L
+        t01d = t01d | (L.SOURCE_PATHS if L.exact_blobs_ok() else frozenset())      # post-#434 L01/L02: exactly its two pinned presentation sources, only while that cohort is exact
+        from tests import bess02_scope as N
+        t01d = t01d | (N.SOURCE_PATHS if N.exact_blobs_ok() else frozenset())
+        later = _later_pins(F.ROOT)
+        assert later == {path for paths in _LATER_SOURCES.values() for path in paths}
+        assert not later & {'tools/unsigned.py', '.github/workflows/unsigned.yml', 'financial_engine/unsigned.py'}
+        t01d |= later
+        assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
+        old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
+        assert (F.ROOT/E.MANIFEST).read_bytes()==old
+        for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
+            assert (F.ROOT/p).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+p],cwd=F.ROOT)
 
 @pytest.mark.parametrize('kind',['byte','foreign_discard_bridge','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
 def test_source_and_scope_tamper_fail_closed(kind):

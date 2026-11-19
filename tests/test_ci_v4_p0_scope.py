@@ -69,7 +69,8 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           # post-#460: polluter containment (3) and the D01 O1-successor guard (1); literal, closed
                           'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
-                          'tests/test_model_mutation_security_successor.py'}
+                          'tests/test_model_mutation_security_successor.py', 'tests/test_ux_pr3b2_scope.py',
+                          'tests/r04_ppa_global_cap/test_r04_allocation.py'}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'}   # P2: the FULL workflow + its parallel controller
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
@@ -90,7 +91,8 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         original = json.loads(git(ROOT, "show", T.BASE + ":" + path))
         actual = json.loads((ROOT / path).read_bytes())
         moved = {key for key, value in original["source_blobs"].items() if actual["source_blobs"][key] != value}
-        assert specific in moved and moved <= set(T.MAP_KEYS) | {specific}
+        extra = {T.UX_PR3B2_TEST} if path == T.TAX_MAP else set()
+        assert {specific} | extra <= moved <= set(T.MAP_KEYS) | {specific} | extra
         assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")

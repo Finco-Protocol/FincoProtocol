@@ -315,6 +315,30 @@ def test_check_is_atomic_and_never_mutates_the_existing_book():
 
 
 # ---------------------------------------------------------------- isolation
+_R04_REGISTRY_REFERENCE = 'tests/c06_cost_workspace_scope.py'
+_R04_PROVENANCE = frozenset((
+    'docs/r04_ppa_global_cap/SOURCE_SUCCESSOR.json',
+    'research/r04_ppa_global_cap/core.py',
+    'tests/r04_ppa_global_cap/oracle.py',
+))
+
+
+def _only_r04_provenance(source):
+    # Only the three literal path constants in the reviewed test registry.
+    literals = [node.value for node in ast.walk(ast.parse(source))
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and 'r04_ppa_global_cap' in node.value]
+    return (len(literals) == len(_R04_PROVENANCE) and set(literals) == _R04_PROVENANCE
+            and source.count('r04_ppa_global_cap') == len(literals))
+
+
+def _r04_reference_is_allowed(path, registry_is_provenance):
+    if path == _R04_REGISTRY_REFERENCE:
+        return registry_is_provenance
+    return (path.startswith(('research/r04_ppa_global_cap/', 'tests/r04_ppa_global_cap/'))
+            or path in {'tests/r04_ppa_scope.py', 'tests/test_r04_ppa_scope.py'})
+
+
 def test_the_candidate_is_isolated_not_wired_and_not_active():
     assert C.STATUS == {"active": False, "approved_for_finco": False, "wired_into_save_or_run": False}
     tree = ast.parse((ROOT / "research/r04_ppa_global_cap/core.py").read_text())
@@ -324,4 +348,16 @@ def test_the_candidate_is_isolated_not_wired_and_not_active():
     import subprocess
     out = subprocess.run(["git", "grep", "-l", "r04_ppa_global_cap", "--", "*.py", "*.ts", "*.tsx", "*.js", "*.html"], cwd=ROOT,
                          capture_output=True).stdout.decode().split()
-    assert all(p.startswith(("research/r04_ppa_global_cap/", "tests/r04_ppa_global_cap/", "tests/r04_ppa_scope.py", "tests/test_r04_ppa_scope.py")) for p in out), out
+    from tests import c06_cost_workspace_scope as scope
+    registry_is_provenance = (scope.signature_ok() and
+                              _only_r04_provenance((ROOT / _R04_REGISTRY_REFERENCE).read_text()))
+    assert all(_r04_reference_is_allowed(path, registry_is_provenance) for path in out), out
+
+
+def test_r04_isolation_rejects_runtime_references_even_with_a_valid_registry():
+    for path in ('app/v2/save.py', 'app/v2/run.py', 'financial_engine/pricing.py', 'static/react/finco-react.js'):
+        assert not _r04_reference_is_allowed(path, True)
+    raw = (ROOT / _R04_REGISTRY_REFERENCE).read_text()
+    assert _only_r04_provenance(raw)
+    assert not _only_r04_provenance(raw + '\nimport research.r04_ppa_global_cap.core\n')
+    assert not _r04_reference_is_allowed(_R04_REGISTRY_REFERENCE, False)

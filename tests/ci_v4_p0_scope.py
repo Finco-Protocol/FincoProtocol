@@ -49,7 +49,8 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       # post-#460: test-order pollution contained at its source (assertions unchanged; execution-bisected on shard 6 of run 44324970783)
                       'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
                       'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
-                      'tests/test_model_mutation_security_successor.py'))
+                      'tests/test_model_mutation_security_successor.py',
+                      'tests/test_ux_pr3b2_scope.py', 'tests/r04_ppa_global_cap/test_r04_allocation.py'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
@@ -71,7 +72,8 @@ R1_MAP = 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
 R1_SECURITY_TEST = 'tests/test_model_mutation_security_successor.py'
 TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
-MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
+UX_PR3B2_TEST = 'tests/test_ux_pr3b2_scope.py'
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, UX_PR3B2_TEST)
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -122,7 +124,7 @@ def expected_map(root, path, pins=None):
     """Allow the registry and U1 keys and the two map-specific R1 test handoff pins."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
-    extra = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
+    extra = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD, UX_PR3B2_TEST)}
     keys = (*MAP_KEYS, *extra.get(path, ()))
     for key in keys:
         if key in d["source_blobs"]:
@@ -3751,6 +3753,8 @@ HANDOFFS['tests/u1_scope.py'] = HANDOFFS.get('tests/u1_scope.py', []) + [("    i
 
 
 HANDOFFS['tests/ux_pr3b1_scope.py'] = [('def supersedes(path, value, repo=None, ref=None):\n', "def supersedes(path, value, repo=None, ref=None):\n    # The P0 terminal can delegate the one exact R1 security test source.\n    if path == 'tests/test_model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.r1_security_test_handoff(path, value, repo, ref)\n")]
+
+HANDOFFS['tests/test_r02_ppa_ux_scope.py'] += [('def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n', '_P0_CI_PATHS = frozenset((\n    \'.github/workflows/ci_perf_guard.yml\', \'.github/workflows/ci_v4_full.yml\',\n    \'tools/ci_perf_guard.py\', \'tools/ci_full_parallel.py\',\n))\n\n\ndef _accepted_p0_ci_path(path, repo=None, ref=None):\n    from tests import ci_v4_p0_scope as P0\n    return path in _P0_CI_PATHS and P0.ci_owns(path, repo, ref)\n\n\ndef test_r02_p0_ci_handoff_is_exact_and_closes_after_mutation(tree):\n    path = \'tools/ci_full_parallel.py\'\n    with C.call_scope():\n        assert all(_accepted_p0_ci_path(p, tree) for p in _P0_CI_PATHS)\n        assert not _accepted_p0_ci_path(\'tools/unsigned.py\', tree)\n        assert not _accepted_p0_ci_path(\'.github/workflows/unsigned.yml\', tree)\n    raw = (tree / path).read_bytes()\n    (tree / path).write_bytes(raw + b"\\n")\n    with C.call_scope():\n        assert not _accepted_p0_ci_path(path, tree)\n        assert _accepted_p0_ci_path(path, tree, \'HEAD\')\n    (tree / path).write_bytes(raw)\n    with C.call_scope():\n        assert _accepted_p0_ci_path(path, tree)\n\n\ndef test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n'), ("                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)", '                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)\n                and not _accepted_p0_ci_path(p)]')]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

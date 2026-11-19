@@ -29,7 +29,7 @@
     "tests/tax_reference_registry/test_schema_and_currency.py": "05821ab7038e6276dd255c5baff48f10a9aee4ad",
     "tests/tax_reference_registry_scope.py": "83e48df7db1eafacc5907e51934cb35a5e8b9893",
     "tests/test_tax_reference_registry_scope.py": "d5853a75dab4f0f2ef215a1129fffdbe79980806",
-    "tests/test_ux_pr3b2_scope.py": "a20ec352a577c6edeb4302205d675cf0435200e6",
+    "tests/test_ux_pr3b2_scope.py": "ddcc29bd358a051df43b56ba9ec1c89547ab5a39",
     "tests/ux_pr3b1_scope.py": "c377216f0f2e82b99aaa6bace7effc28a3964ad0",
     "tests/ux_pr3b2_scope.py": "ff91b0a5fd3a000c4f68b51abcc395d58d3f071a"
   }
