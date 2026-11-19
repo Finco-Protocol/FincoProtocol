@@ -41,6 +41,16 @@ def decision(resource: R, kind: str) -> CryptoAccessDecision:
     }[kind]
 
 
+@pytest.fixture(autouse=True)
+def _contain_global_decimal_context():
+    """The detail route lazily imports finco_radar.venues.deepstate_live, which sets the process-global decimal precision at import
+    (production behaviour, unchanged here). Restore the caller's context after each test so it never leaks into later tests (post-#460 FULL)."""
+    import decimal
+    saved = decimal.getcontext().copy()
+    yield
+    decimal.setcontext(saved)
+
+
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     db_path = tmp_path / "venues.db"

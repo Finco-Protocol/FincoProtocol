@@ -6,7 +6,7 @@ Full FINCO checkout regression remains mandatory after publishing Draft PR.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, getcontext
+from decimal import Decimal, getcontext, localcontext
 from pathlib import Path
 import copy
 import json
@@ -21,7 +21,12 @@ from app.model_v2.investor_f4_candidate.p2_evaluator import (
     CANONICAL_RECEIPT_SOURCE, evaluate_p2_candidate, validate_candidate_projection,
 )
 
-getcontext().prec=45
+@pytest.fixture(autouse=True)
+def _decimal_precision_45():
+    """Identical arithmetic (precision 45) for every test of this module, without changing the process-global context at import (post-#460 FULL)."""
+    with localcontext() as ctx:
+        ctx.prec = 45
+        yield
 D=Decimal
 POLICIES={
     "preferred_method":"SIMPLE_ON_UNRETURNED_CAPITAL", "day_count":"ACT_365_FIXED",

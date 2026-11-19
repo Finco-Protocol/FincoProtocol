@@ -30,7 +30,14 @@ NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p
                  'docs/ci_v4/p1_runtime/NODE_SPLIT_ISOLATION_PROOF.md',
                  # P2: parallel exact-inventory FULL controller, its policy, measured weights, tests and design note.
                  'tools/ci_full_parallel.py', 'tests/test_ci_full_parallel.py', 'docs/ci_v4/p2_full/full_parallel_policy.json',
-                 'docs/ci_v4/p2_full/full_node_weights.json', 'docs/ci_v4/p2_full/README.md', 'docs/ci_v4/p2_full/ISOLATION_EVIDENCE.json'))
+                 'docs/ci_v4/p2_full/full_node_weights.json', 'docs/ci_v4/p2_full/README.md', 'docs/ci_v4/p2_full/ISOLATION_EVIDENCE.json',
+                 # post-#460: per-NODE scope evidence (exact node ids; plain == scoped; mutation between calls detected)
+                 'docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json',
+                 'docs/model_v11/v11-stage3-release-successor-candidate.json',
+                 'tests/v11_stage3_release_successor.py', 'tests/test_v11_stage3_release_successor.py',
+                 'tests/mutation_security_browser_lineage.py', 'tests/test_mutation_security_browser_lineage.py'))
+R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
+
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
@@ -40,13 +47,18 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       # P1: the closed split allowlist tests gain exactly U1 (with its evidence); U2/O1/Goal Seek stay unsplit
                       'tests/test_ci_v4_nodes.py', 'tests/test_ci_v4_activate.py',
                       # P2: the FULL workflow runs the parallel controller instead of the unsharded CI V3 job (accepted BASE blob + exact new blob)
-                      '.github/workflows/ci_v4_full.yml'))
+                      '.github/workflows/ci_v4_full.yml',
+                      # post-#460: test-order pollution contained at its source (assertions unchanged; execution-bisected on shard 6 of run 44324970783)
+                      'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
+                      'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
+                      'tests/test_model_mutation_security_successor.py',
+                      R04_ISOLATION_TEST))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
-HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py'))
+HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
 CURRENT_MAPS = frozenset((
     'docs/ci_v4/SOURCE_SUCCESSOR.json',
     'docs/react_migration/g10_d8/G10_D8_EXACT_SOURCE.json',
@@ -58,6 +70,12 @@ CURRENT_MAPS = frozenset((
     'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
 ))
 MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
+R1_MAP = 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
+R1_SECURITY_TEST = 'tests/test_model_mutation_security_successor.py'
+TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
+R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
+MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -105,10 +123,11 @@ def manifest(repo=None, ref=None):
 
 
 def expected_map(root, path, pins=None):
-    """Only the finite current-source keys (MAP_KEYS: the registry and the U1 discovery guard) may move; all history stays unchanged."""
+    """Allow the registry and U1 keys and the two map-specific R1 test handoff pins."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
-    for key in MAP_KEYS:
+    keys = (*MAP_KEYS, *MAP_EXTRA_KEYS.get(path, ()))
+    for key in keys:
         if key in d["source_blobs"]:
             d["source_blobs"][key] = pins[key]
     return (json.dumps(d, sort_keys=True, indent=2) + "\n").encode()
@@ -3728,6 +3747,49 @@ HANDOFFS['tests/test_f03_financing_scope.py'] = HANDOFFS.get('tests/test_f03_fin
 HANDOFFS['tests/u1_scope.py'] = HANDOFFS.get('tests/u1_scope.py', []) + [('_SCOPE = []\n', "_SCOPE = []\n_JOINING = []      # Correction B: set only while the registry's call scope is being entered from scoped(); never holds a verdict\n"), ("    if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)\n        yield\n        return\n    with ExitStack() as later:       # each later cohort's verdict is shared for the same outer call only (PR #414 call scope)\n", "    if _SCOPE:        # a nested enter shares the outermost memo (never outlives the outermost exit, never shared between separate outer calls)\n        yield\n        return\n    from tests import fin_v2_cohorts as _C\n    if not _C._CALL and not _JOINING:      # Correction B (#458): the outermost U1 scope IS one outer governance call; the registry's call scope\n        with ExitStack() as outer:         # is opened for exactly the same lifetime (it re-enters this function below) and closed with it\n            _JOINING.append(True)\n            try:\n                outer.enter_context(_C.call_scope())\n            finally:\n                _JOINING.pop()\n            yield\n        return\n    with ExitStack() as later:       # each later cohort's verdict is shared for the same outer call only (PR #414 call scope)\n")]
 HANDOFFS['tests/ci_v4_scope.py'] = HANDOFFS.get('tests/ci_v4_scope.py', []) + [("    if not _SCOPE:\n        memo = _enclosing_call_memo()\n        if memo is None:\n            return _exact_blobs_ok(repo, ref)\n        shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key\n", "    if not _SCOPE:\n        memo = _enclosing_call_memo()\n        if memo is None:\n            from tests import fin_v2_cohorts as _C\n            if _C._CALL:\n                return _exact_blobs_ok(repo, ref)\n            with _C.call_scope():      # Correction B (#458): ONE read-only verdict is ONE outer call; the scope ends when this call returns\n                return _exact_blobs_ok(repo, ref)\n        shared = ('tests.ci_v4_scope.exact_blobs_ok',) + key\n")]
 
+# Correction B2 (post-#460): the registry's call_scope enters each cohort's scoped() BEFORE its own memo exists; the U1 scope then saw no call
+# and opened a SECOND outer call (depth 2). One literal entry marker, cleared in finally, closes that entry order; nothing is cached across calls.
+HANDOFFS['tests/fin_v2_cohorts.py'] = HANDOFFS.get('tests/fin_v2_cohorts.py', []) + [('_CALL = []      # one memo per OUTERMOST call_scope; empty outside every call scope (nothing is ever kept across calls)\n', "_CALL = []      # one memo per OUTERMOST call_scope; empty outside every call scope (nothing is ever kept across calls)\n_ENTERING = []      # Correction B2: set ONLY while the outermost call_scope enters the cohorts' scopes (before its memo exists); never holds a verdict\n"), ("    if _CALL:           # a nested block shares the outermost memo\n        yield\n        return\n    with contextlib.ExitStack() as scopes:\n        for m in cohorts():\n            if callable(getattr(m, 'scoped', None)):\n                scopes.enter_context(m.scoped())\n        _CALL.append({})\n", "    if _CALL or _ENTERING:      # a nested block (or a cohort scope entered by THIS call) shares the outermost memo\n        yield\n        return\n    with contextlib.ExitStack() as scopes:\n        _ENTERING.append(True)      # Correction B2: a cohort's scoped() entered here never opens a second outer call\n        try:\n            for m in cohorts():\n                if callable(getattr(m, 'scoped', None)):\n                    scopes.enter_context(m.scoped())\n        finally:\n            _ENTERING.pop()\n        _CALL.append({})\n")]
+HANDOFFS['tests/u1_scope.py'] = HANDOFFS.get('tests/u1_scope.py', []) + [("    if not _C._CALL and not _JOINING:      # Correction B (#458): the outermost U1 scope IS one outer governance call; the registry's call scope\n", "    if not _C._CALL and not _C._ENTERING and not _JOINING:      # Correction B (#458) / B2: the outermost U1 scope IS one outer governance call; the registry's call scope\n")]
+
+
+HANDOFFS['tests/ux_pr3b1_scope.py'] = [('def supersedes(path, value, repo=None, ref=None):\n', "def supersedes(path, value, repo=None, ref=None):\n    # The P0 terminal can delegate the one exact R1 security test source.\n    if path == 'tests/test_model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.r1_security_test_handoff(path, value, repo, ref)\n")]
+
+HANDOFFS['tests/test_r02_ppa_ux_scope.py'] += [('def test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n', '_P0_CI_PATHS = frozenset((\n    \'.github/workflows/ci_perf_guard.yml\', \'.github/workflows/ci_v4_full.yml\',\n    \'tools/ci_perf_guard.py\', \'tools/ci_full_parallel.py\',\n))\n\n\ndef _accepted_p0_ci_path(path, repo=None, ref=None):\n    from tests import ci_v4_p0_scope as P0\n    return path in _P0_CI_PATHS and P0.ci_owns(path, repo, ref)\n\n\ndef test_r02_p0_ci_handoff_is_exact_and_closes_after_mutation(tree):\n    path = \'tools/ci_full_parallel.py\'\n    with C.call_scope():\n        assert all(_accepted_p0_ci_path(p, tree) for p in _P0_CI_PATHS)\n        assert not _accepted_p0_ci_path(\'tools/unsigned.py\', tree)\n        assert not _accepted_p0_ci_path(\'.github/workflows/unsigned.yml\', tree)\n    raw = (tree / path).read_bytes()\n    (tree / path).write_bytes(raw + b"\\n")\n    with C.call_scope():\n        assert not _accepted_p0_ci_path(path, tree)\n        assert _accepted_p0_ci_path(path, tree, \'HEAD\')\n    (tree / path).write_bytes(raw)\n    with C.call_scope():\n        assert _accepted_p0_ci_path(path, tree)\n\n\ndef test_cohort_is_exact_literal_ui_only_and_leaves_backend_and_the_legacy_component_untouched():\n'), ("                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)]            # the one-time V5 bootstrap's literal CI paths (shadow workflow + V5 tools)", '                and not (V5.signature_ok() and p in V5.CI_PATHS) and not (GT.signature_ok() and p in GT.CI_PATHS)\n                and not _accepted_p0_ci_path(p)]')]
+
+_CURRENT_MAP_TEST_HANDOFF = ("""        changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
+        assert changed <= set(T.MAP_KEYS)
+        assert all(cur["source_blobs"][k] == pins[k] for k in changed)
+""", """        assert set(cur["source_blobs"]) == set(old["source_blobs"])
+        changed = {k for k in old["source_blobs"] if old["source_blobs"][k] != cur["source_blobs"][k]}
+        legacy_keys = set(T.MAP_KEYS)
+        if changed - legacy_keys:
+            from tests import ci_v4_p0_scope as P0
+            assert changed - legacy_keys <= set(P0.MAP_EXTRA_KEYS.get(p, ()))
+            assert P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p)
+        assert all(cur["source_blobs"][k] == pins[k] for k in changed)
+""")
+HANDOFFS['tests/test_ci_v4_full_recovery_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v5_bootstrap_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v4_lean_b2_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v4_lean_b3_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v5_hardening_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+HANDOFFS['tests/test_ci_v5_gate_scope.py'].append(_CURRENT_MAP_TEST_HANDOFF)
+
+_CURRENT_MAP_EXPECTATION_HANDOFF = ('        assert current==expected and set(original)==set(current)\n', """        if current != expected:
+            from tests import ci_v4_p0_scope as P0
+            keys = P0.MAP_EXTRA_KEYS.get(path, ())
+            if keys:
+                approved = P0.expected_map(ROOT, path)
+                assert P0.exact_blobs_ok() and (ROOT / path).read_bytes() == approved
+                approved_pins = json.loads(approved)['source_blobs']
+                for key in keys:
+                    assert key in expected['source_blobs']
+                    expected['source_blobs'][key] = approved_pins[key]
+        assert current==expected and set(original)==set(current)
+""")
+HANDOFFS['tests/test_c06_cost_workspace_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
+HANDOFFS['tests/test_f04_financing_scope.py'].append(_CURRENT_MAP_EXPECTATION_HANDOFF)
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
@@ -3790,7 +3852,7 @@ def signature_ok(repo=None, ref=None):
 
 
 def map_keys(repo=None, ref=None):
-    return tuple(MAP_KEYS)
+    return MAP_PIN_KEYS
 
 
 @lru_cache(maxsize=512)
@@ -3824,7 +3886,7 @@ def _expected_blob(root, path):
 @lru_cache(maxsize=256)
 def _expected_map_blob(root, path, moved):
     """Pure function of an immutable BASE map and the literal moved registry pin."""
-    return _blob(expected_map(Path(root), path, dict(zip(MAP_KEYS, moved))))
+    return _blob(expected_map(Path(root), path, dict(zip(MAP_PIN_KEYS, moved))))
 
 
 def _snapshot(root, ref, paths):
@@ -3888,11 +3950,11 @@ def _signature_ok(root, ref, closure=False):
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
         for p in CURRENT_MAPS:
-            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_KEYS)):
+                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
@@ -3944,6 +4006,13 @@ def supersedes(path, value, repo=None, ref=None):
     # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
     # files), so a signature-only verdict never makes the tree valid.
     return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+
+
+def r1_security_test_handoff(path, value, repo=None, ref=None):
+    if path != R1_SECURITY_TEST or not exact_blobs_ok(repo, ref):
+        return False
+    pins = manifest(repo, ref).get("source_blobs", {})
+    return value is not None and pins.get(path) == value
 
 
 def nontrust_scope_authorized(changed, repo=None):
