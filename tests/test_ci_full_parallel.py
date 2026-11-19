@@ -175,7 +175,7 @@ def test_indivisible_shard_does_not_hide_avoidable_overruns_on_other_shards():
     pol["workers"]["min"] = 2
     pol["workers"]["target_test_critical_path_s"] = 1500
     units = [{"id": str(i), "seconds": duration}
-             for i, duration in enumerate((3866, 1700, 1700, 1700, 1700))]
+             for i, duration in enumerate((3866, 1700, 1700, 1700))]
     _, loads_at_two = F.lpt(units, 2)
     chosen = F.choose_workers(units, pol)
     _, loads_at_choice = F.lpt(units, chosen)

@@ -170,7 +170,7 @@
     "tests/r04_ppa_global_cap/test_r04_allocation.py": "a7c97c6f0462adfe7a14159ef20bf22285203be3",
     "tests/test_bess02_scope.py": "5a6a2e500660078f1048bf03e06a5c354b7b4964",
     "tests/test_c06_cost_workspace_scope.py": "501ab9b723c2691db3f555e02be29d605412cde8",
-    "tests/test_ci_full_parallel.py": "37a5a688265a19136e487308c4d073f845d16541",
+    "tests/test_ci_full_parallel.py": "445e2731ad21ce8a879ae2a3b4a09206c7ae48db",
     "tests/test_ci_immutable_git_reads.py": "f7de3cf066b5bc47c07cb34fa497a86d4e78fd46",
     "tests/test_ci_perf_guard.py": "e913e4b4b24400b5e2215c23bf5158039d1d07d2",
     "tests/test_ci_v4_activate.py": "98cafe6e3b39444f8962bc4f5ae2b8213d401552",
