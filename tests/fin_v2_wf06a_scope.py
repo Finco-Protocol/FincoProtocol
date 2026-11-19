@@ -280,16 +280,20 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def valid(repo=None, ref=None):
-    from tests.fin_v2_cohorts import valid as composite_valid
-    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+
+    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)
 
 
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
-    if path not in pins or not valid(repo, ref):
+    if path not in pins:
         return False
     raw = source.encode() if isinstance(source, str) else source
-    return source is None or _blob(raw) == pins[path]
+    if raw is not None and _blob(raw) != pins[path]:
+        return False
+    return valid(repo, ref)
 
 
 def pins_exactly(path, value, repo=None, ref=None):

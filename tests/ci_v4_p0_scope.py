@@ -4074,6 +4074,61 @@ HANDOFFS['tests/post413_r1_scope.py'] += [
         "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):",
     ),
 ]
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        'def valid(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '\n'
+        '    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+    (
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins or not valid(repo, ref):\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    return source is None or _blob(raw) == pins[path]\n',
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    if raw is not None and _blob(raw) != pins[path]:\n'
+        '        return False\n'
+        '    return valid(repo, ref)\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        'def valid(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '\n'
+        '    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+    (
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if not exact_blobs_ok(root, ref):\n'
+        '        return False\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    return source is None or _blob(raw) == pins[path]\n',
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    if raw is not None and _blob(raw) != pins[path]:\n'
+        '        return False\n'
+        '    return exact_blobs_ok(repo, ref)\n',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
