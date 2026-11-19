@@ -146,7 +146,8 @@ def test_shared_pin_and_historical_map_tamper_fail_closed(path,wt):
     with C.call_scope():
         assert not U.exact_blobs_ok(wt) and not C.valid(wt)
     p.write_bytes(old);d=json.loads(old);d['base']='0'*40;p.write_text(json.dumps(d)+'\n')
-    assert not U.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)
 
 def test_match_requires_exact_registered_source_and_named_ref(wt):
     from tests import wf06b_scope as W
@@ -156,7 +157,8 @@ def test_match_requires_exact_registered_source_and_named_ref(wt):
     (wt/p).write_bytes(raw+b'\n')
     with C.call_scope():
         assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)
-    assert U.exact_blobs_ok(wt,'HEAD')
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt,'HEAD')
 
 
 def test_ci_artifacts_are_not_source_exemptions(wt):
@@ -166,8 +168,12 @@ def test_ci_artifacts_are_not_source_exemptions(wt):
         assert U.exact_blobs_ok(wt) and C.valid(wt)
     for suffix in ('.py','.tsx','.mjs'):
         source=evidence/('unsigned'+suffix);source.write_text('unsigned\n')
-        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not U.exact_blobs_ok(wt) and not C.valid(wt)
         source.unlink()
-    artifact.chmod(0o755);assert not U.exact_blobs_ok(wt)
+    artifact.chmod(0o755)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)
     artifact.chmod(0o644);artifact.unlink();artifact.symlink_to(wt/'tests/ux_pr1_scope.py')
-    assert not U.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt)
