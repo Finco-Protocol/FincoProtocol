@@ -327,7 +327,10 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_immutable_git_reads
+
     with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)
+        later.enter_context(ci_immutable_git_reads.scope())
         for m in _later_modules():
             later.enter_context(m.scoped())
         return _exact_blobs_ok_inner(repo, ref)

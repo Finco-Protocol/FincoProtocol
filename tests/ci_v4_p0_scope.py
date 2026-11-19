@@ -4349,6 +4349,28 @@ HANDOFFS['tests/fin_v2_cohorts.py'] += [
         '        return merged\n',
     ),
 ]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        '    with contextlib.ExitStack() as scopes:\n'
+        '        _ENTERING.append(True)',
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    with contextlib.ExitStack() as scopes:\n'
+        '        scopes.enter_context(ci_immutable_git_reads.scope())\n'
+        '        _ENTERING.append(True)',
+    ),
+]
+HANDOFFS['tests/u1_scope.py'] += [
+    (
+        '    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)\n'
+        '        for m in _later_modules():',
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)\n'
+        '        later.enter_context(ci_immutable_git_reads.scope())\n'
+        '        for m in _later_modules():',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

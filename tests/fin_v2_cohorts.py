@@ -49,7 +49,10 @@ def call_scope():
     if _CALL or _ENTERING:      # a nested block (or a cohort scope entered by THIS call) shares the outermost memo
         yield
         return
+    from tests import ci_immutable_git_reads
+
     with contextlib.ExitStack() as scopes:
+        scopes.enter_context(ci_immutable_git_reads.scope())
         _ENTERING.append(True)      # Correction B2: a cohort's scoped() entered here never opens a second outer call
         try:
             for m in cohorts():
