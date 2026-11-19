@@ -1,8 +1,21 @@
 """Exact-source tests for the proposed security browser role successor."""
+import subprocess
+
 import pytest
 
 from tests import mutation_security_browser_lineage as lineage
-from test_v11_stage3_successor import head, mutate, repo, show  # noqa: F401
+
+
+@pytest.fixture(scope="module")
+def role_tree(tmp_path_factory):
+    tree = tmp_path_factory.mktemp("security-browser-lineage") / "tree"
+    subprocess.run(["git", "worktree", "add", "--detach", str(tree), "HEAD"],
+                   cwd=lineage.ROOT, check=True, capture_output=True)
+    try:
+        yield tree
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", str(tree)],
+                       cwd=lineage.ROOT, check=True, capture_output=True)
 
 
 def test_browser_role_candidate_matches_merged_sources():
@@ -14,44 +27,38 @@ def test_browser_role_candidate_matches_merged_sources():
     assert lineage.verified_pre_r1_source(current + "\n") is None
 
 
-@pytest.mark.parametrize("change", ["one-byte", "missing", "foreign", "renamed", "semantics", "stale", "import-drift"])
-def test_candidate_role_rejects_unreviewed_changes(repo, tmp_path, head, change):  # noqa: F811
-    role = lineage.ROLE
-    original = show(repo, head, role)
-    changes = {role: original + b"\n"}
-    error = "SECURITY_ROLE_CURRENT"
-    if change == "missing":
-        changes = {role: None}
-    elif change == "foreign":
-        changes = {role: b"# unrelated file\n"}
-    elif change == "renamed":
-        changes = {role: None, "tests/test_renamed_browser_role.py": original}
-    elif change == "semantics":
-        changes = {role: original.replace(lineage.WF03_ADAPTER, lineage.WF03_IMPORT, 1)}
-        assert changes[role] != original
-    elif change == "stale":
-        changes = {role: show(repo, lineage.HISTORY[-2][0], role)}
-    elif change == "import-drift":
-        path = "tests/model_react_pr3b2_acceptance.py"
-        changes = {path: show(repo, head, path) + b"\n"}
-        error = "SECURITY_ROLE_IMPORT_SOURCE"
-    ref = mutate(repo, tmp_path, head, changes)
-    assert lineage.role_violations(repo=repo, ref=ref) == [error]
-
-
-def test_candidate_rejects_executable_browser_role_in_worktree(tmp_path):
-    # Copy the exact role and make it executable. The validator reads Git history
-    # from the real repository and rejects the evaluated file before any import.
-    import subprocess
-
-    subprocess.run(["git", "worktree", "add", "--detach", str(tmp_path / "tree"), "HEAD"],
-                   cwd=lineage.ROOT, check=True, capture_output=True)
-    tree = tmp_path / "tree"
+@pytest.mark.parametrize("change", ["one-byte", "missing", "foreign", "renamed", "semantics", "stale", "import-drift", "mode"])
+def test_candidate_role_rejects_unreviewed_changes(role_tree, change):
+    role = role_tree / lineage.ROLE
+    imported = role_tree / "tests/model_react_pr3b2_acceptance.py"
+    renamed = role.with_name("test_renamed_browser_role.py")
+    original = role.read_bytes()
+    expected = "SECURITY_ROLE_CURRENT"
+    assert lineage.role_violations(repo=role_tree) == []
     try:
-        role = tree / lineage.ROLE
-        assert lineage.role_violations(repo=tree) == []
-        role.chmod(0o755)
-        assert lineage.role_violations(repo=tree) == ["SECURITY_ROLE_CURRENT"]
+        if change == "one-byte":
+            role.write_bytes(original + b"\n")
+        elif change == "missing":
+            role.unlink()
+        elif change == "foreign":
+            role.write_bytes(b"# unrelated file\n")
+        elif change == "renamed":
+            role.rename(renamed)
+        elif change == "semantics":
+            modified = original.replace(lineage.WF03_ADAPTER, lineage.WF03_IMPORT, 1)
+            assert modified != original
+            role.write_bytes(modified)
+        elif change == "stale":
+            role.write_bytes(lineage._git(role_tree, "show", f"{lineage.HISTORY[-2][0]}:{lineage.ROLE}"))
+        elif change == "import-drift":
+            imported.write_bytes(imported.read_bytes() + b"\n")
+            expected = "SECURITY_ROLE_IMPORT_SOURCE"
+        elif change == "mode":
+            role.chmod(0o755)
+        assert lineage.role_violations(repo=role_tree) == [expected]
     finally:
-        subprocess.run(["git", "worktree", "remove", "--force", str(tree)],
-                       cwd=lineage.ROOT, check=True, capture_output=True)
+        if role.exists():
+            role.chmod(0o644)
+        renamed.unlink(missing_ok=True)
+        subprocess.run(["git", "restore", "--", lineage.ROLE, str(imported.relative_to(role_tree))],
+                       cwd=role_tree, check=True, capture_output=True)
