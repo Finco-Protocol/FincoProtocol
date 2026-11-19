@@ -36,6 +36,7 @@ def _git(root, *args):
 
 
 _CALL = []      # one memo per OUTERMOST call_scope; empty outside every call scope (nothing is ever kept across calls)
+_ENTERING = []      # Correction B2: set ONLY while the outermost call_scope enters the cohorts' scopes (before its memo exists); never holds a verdict
 
 
 @contextlib.contextmanager
@@ -45,13 +46,17 @@ def call_scope():
     RC-UX cohort ran ~11.6k git processes for the same answer the scoped composite gives in ~280). The composite verdict of ``valid`` is shared
     the same way inside the block. Everything is dropped when the OUTERMOST block exits (each cohort's ``scoped()`` drops its memo there); nothing
     is cached across calls, worktrees, refs, monkeypatches, commits or mutations: callers use it only around a read-only enumeration."""
-    if _CALL:           # a nested block shares the outermost memo
+    if _CALL or _ENTERING:      # a nested block (or a cohort scope entered by THIS call) shares the outermost memo
         yield
         return
     with contextlib.ExitStack() as scopes:
-        for m in cohorts():
-            if callable(getattr(m, 'scoped', None)):
-                scopes.enter_context(m.scoped())
+        _ENTERING.append(True)      # Correction B2: a cohort's scoped() entered here never opens a second outer call
+        try:
+            for m in cohorts():
+                if callable(getattr(m, 'scoped', None)):
+                    scopes.enter_context(m.scoped())
+        finally:
+            _ENTERING.pop()
         _CALL.append({})
         try:
             yield

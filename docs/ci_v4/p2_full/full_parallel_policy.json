@@ -39,6 +39,23 @@
       "verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE"
     }
   },
+  "scoped_nodes": {
+    "tests/test_fin_v2_3_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "proof": "Read-only: calls only F.valid() on the unchanged checkout, F.valid(tmp_path) on a fresh EMPTY directory (a different memo key) and three F.matches() rejections; no monkeypatch, no write, no commit, no env/cwd change. Its module siblings DO monkeypatch F._read and are never scoped. Evidence: plain == scoped in fresh processes; a mutation between two separate calls is detected.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_fin_v2_r1_scope.py::test_exact_cohort_requires_history_and_does_not_activate_native": {
+      "proof": "Read-only: calls only F.valid()/C.valid() on the unchanged checkout, F.valid(tmp_path) on a fresh EMPTY directory and F.matches()/C.matches() rejections; no monkeypatch, no write, no commit, no env/cwd change. Its module siblings DO monkeypatch F._read and are never scoped. Evidence: plain == scoped in fresh processes; a mutation between two separate calls is detected.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned": {
+      "proof": "Read-only: reads module-level constants (LAYER, SOURCES: bytes read at import) and calls the pure successor predicates (WF04/WF03/WF06B/R1/U1/UX1/PR3 matches, S.violations, S.current_mutation_successor_valid) on the unchanged checkout; no monkeypatch, no write, no env/cwd change. Evidence: plain == scoped in fresh processes; a mutation between two separate calls is detected.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    }
+  },
   "shard_timeout_s": 3000,
   "skip_baseline": "docs/ci_v4/full_skip_baseline.json",
   "workers": {

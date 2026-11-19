@@ -23,6 +23,9 @@ PROFILE_BODY = {"pytest": "9", "python": "3.12.16", "implementation": "CPython",
 PROFILE = F.canonical_digest(PROFILE_BODY)
 
 
+SCOPED_NODE = "tests/test_b.py::test_x"      # synthetic: ONE node of a module whose sibling (test_skip) is never scoped
+
+
 def policy(**over):
     p = json.loads((ROOT / "docs/ci_v4/p2_full/full_parallel_policy.json").read_text())
     p = copy.deepcopy(p)
@@ -32,6 +35,7 @@ def policy(**over):
                                                          "source": "test"}
     p["node_split"]["target_unit_s"] = 60
     p["scoped_modules"] = {"tests/test_a.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "synthetic: " + "x" * 80}}
+    p["scoped_nodes"] = {SCOPED_NODE: {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "synthetic: " + "y" * 80, "source": "docs/ci_v4/p2_full/test"}}
     p.update(over)
     return F.validate_policy(p)
 
@@ -99,6 +103,10 @@ def artifacts(plan, inv, status=None):
                   "failed": {"setup": "passed", "call": "failed", "teardown": "passed"}}
         ph = {"schema": F.RECORDER_SCHEMA, "complete": True, "exitstatus": 0, "scoped_modules": sorted(set(a["modules"]) & set(plan["scoped_modules"])),
               "scoped_calls": 0, "nodes": {n: {"phases": phases[st[n]], "duration": 1.0} for n in want}}
+        sn = F.shard_scoped_nodes(plan, a)
+        ph["scoped_nodes"] = sn
+        ph["scoped_node_calls"] = [n for n in sn if "call" in ph["nodes"][n]["phases"]]
+        ph["scoped_calls"] = len(ph["scoped_node_calls"])
         contents["shard-%d" % i] = {"shard-%d.json" % i: json.dumps(rec).encode(), "nodes-%d.json" % i: json.dumps(ev).encode(),
                                     "phases-%d.json" % i: json.dumps(ph).encode(),
                                     "junit-%d.xml" % i: junit([case(n, st[n]) for n in want] + [coll_skip(m) for m in a["collection_skips"]])}
@@ -174,7 +182,16 @@ def test_partial_collection_below_the_floor_is_refused():
                                     lambda p: p["f01"].update(native_cases=19),
                                     lambda p: p["scoped_modules"].update({"tests/test_x*.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "x" * 90}}),
                                     lambda p: p["scoped_modules"].update({"tests/test_x.py": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "short"}}),
-                                    lambda p: p.pop("scoped_modules")])
+                                    lambda p: p.pop("scoped_modules"),
+                                    lambda p: p.pop("scoped_nodes"),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::test_*": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::test_[ab]": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::test_y": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "short", "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::test_y": {"verdict": "READ_ONLY_PER_TEST_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}}),
+                                    lambda p: p["scoped_nodes"].update({"tests/test_x.py::test_y": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "elsewhere"}}),
+                                    lambda p: p["scoped_nodes"].update({sorted(p["scoped_modules"])[0] + "::test_z": {"verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE", "proof": "x" * 90, "source": "docs/ci_v4/p2_full/x"}})])
 def test_policy_cannot_be_weakened(mutate):
     p = json.loads((ROOT / "docs/ci_v4/p2_full/full_parallel_policy.json").read_text())
     mutate(p)
@@ -283,6 +300,23 @@ def _attack(name, contents, plan, inv):
     elif name == "scope_allowlist_widened":
         ph = json.loads(sh0["phases-0.json"]); ph["scoped_modules"] = sorted(set(ph["scoped_modules"]) | {"tests/test_b.py"})
         sh0["phases-0.json"] = json.dumps(ph).encode()
+    elif name in ("scoped_node_allowlist_widened", "scoped_node_allowlist_dropped", "scoped_node_call_missing", "scoped_node_call_forged",
+                  "scoped_node_call_duplicated"):
+        k = next("shard-%d" % a["shard"] for a in plan["assignments"] if F.shard_scoped_nodes(plan, a))
+        sh = contents[k]
+        f = next(x for x in sh if x.startswith("phases-"))
+        ph = json.loads(sh[f])
+        if name == "scoped_node_allowlist_widened":
+            ph["scoped_nodes"] = sorted(set(ph["scoped_nodes"]) | {"tests/test_b.py::test_skip"})
+        elif name == "scoped_node_allowlist_dropped":
+            ph["scoped_nodes"] = []
+        elif name == "scoped_node_call_missing":
+            ph["scoped_node_calls"] = []
+        elif name == "scoped_node_call_forged":
+            ph["scoped_node_calls"] = ph["scoped_node_calls"] + ["tests/test_b.py::test_skip"]
+        else:
+            ph["scoped_node_calls"] = ph["scoped_node_calls"] * 2
+        sh[f] = json.dumps(ph).encode()
     elif name == "recorder_incomplete":
         ph = json.loads(sh0["phases-0.json"]); ph["exitstatus"] = 1; sh0["phases-0.json"] = json.dumps(ph).encode()
     elif name == "other_plugin_profile":
@@ -324,7 +358,8 @@ ATTACKS = ["single_case_forged_junit", "missing_shard", "stale_sha", "duplicate_
            "shard_record_unsealed_edit", "incomplete_node_evidence", "node_never_completed", "phase_record_lost_setup", "phase_recorded_twice",
            "recorder_missing_node", "recorder_incomplete", "scope_allowlist_widened", "other_plugin_profile", "recollection_differs",
            "foreign_conftest_loaded", "plan_seal_tampered", "f01_native_missing", "f01_browser_skipped", "job_not_success", "lost_artifact_member", "collection_skip_dropped",
-           "junit_dtd_entity"]
+           "junit_dtd_entity", "scoped_node_allowlist_widened", "scoped_node_allowlist_dropped", "scoped_node_call_missing",
+           "scoped_node_call_forged", "scoped_node_call_duplicated"]
 
 
 @pytest.mark.parametrize("name", ATTACKS)
@@ -475,3 +510,47 @@ def test_recorder_scope_is_literal_per_call_and_never_outlives_a_test():
     body = src.split("def pytest_runtest_call(item):")[1].split("\ndef ")[0]
     assert "pytest_runtest_setup" not in src and "pytest_runtest_teardown" not in src
     assert "session" not in body and "_S[\"scoped\"] =" not in body      # the hook never widens its allowlist or keeps state across tests
+
+
+# ── per-node scope (post-#460): exact node ids only, each present in the current complete collection, bound plan → shard → recorder ─────
+def test_scoped_node_is_planned_only_as_its_exact_id_and_never_widens_to_its_module():
+    plan = make_plan()
+    assert plan["scoped_nodes"] == [SCOPED_NODE]
+    holders = [a for a in plan["assignments"] if F.shard_scoped_nodes(plan, a)]
+    assert len(holders) == 1 and F.shard_scoped_nodes(plan, holders[0]) == [SCOPED_NODE]
+    assert "tests/test_b.py" not in plan["scoped_modules"]
+
+
+def test_a_scoped_node_missing_from_the_current_collection_refuses_the_plan():
+    pol = policy()
+    pol["scoped_nodes"]["tests/test_b.py::test_x_renamed"] = dict(pol["scoped_nodes"][SCOPED_NODE])
+    with pytest.raises(F.FullError, match="not in the current collection"):
+        make_plan(pol=F.validate_policy(pol))
+
+
+def test_positive_record_binds_the_scoped_nodes():
+    inv, plan = inventory(), make_plan()
+    rec, problems = record(artifacts(plan, inv), plan)
+    assert problems == [] and rec["strict"]["scoped_nodes"] == [SCOPED_NODE]
+
+
+def test_recorder_per_node_scope_is_exact_and_fails_closed_on_a_leaked_scope():
+    src = F.RECORDER_SOURCE
+    assert 'os.environ.pop("FINCO_CI_FULL_SCOPED_NODES"' in src
+    body = src.split("def pytest_runtest_call(item):")[1].split("\ndef ")[0]
+    assert 'exact = item.nodeid in _S.get("scoped_nodes", ())' in body
+    assert body.count('raise RuntimeError(') == 2                    # an open scope before, or a scope outliving, the call is an error
+    assert '_S["scoped_nodes"] =' not in body and "startswith" not in body and "fnmatch" not in body
+
+
+def test_real_policy_scopes_only_nodes_with_scoped_equals_plain_evidence():
+    p = F.load_policy()
+    ev = json.loads((ROOT / "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json").read_text())
+    assert ev["schema"] == "FINCO_CI_FULL_NODE_SCOPE_EVIDENCE_V1"
+    assert set(p["scoped_nodes"]) == set(ev["nodes"]) and p["scoped_nodes"]
+    for n, spec in p["scoped_nodes"].items():
+        assert spec["source"] == "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json"
+        r = ev["nodes"][n]
+        assert r["plain"]["outcome"] == r["scoped"]["outcome"] == "passed" and r["plain"]["rc"] == r["scoped"]["rc"] == 0
+        assert r["scoped"]["scoped_node_calls"] == [n] and r["plain"]["scoped_node_calls"] == []
+        assert r["mutation_between_calls_detected"] is True and r["sibling_modules_not_scoped"] is True
