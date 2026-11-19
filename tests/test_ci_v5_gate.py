@@ -589,6 +589,12 @@ def test_gate_workflow_cannot_be_rewritten_by_the_pr_and_never_executes_the_head
     assert set(on) == {"pull_request_target"} and on["pull_request_target"]["branches"] == ["main"] and list(jobs) == ["gate"]
     assert on["pull_request_target"]["types"] == ["opened", "synchronize", "reopened", "ready_for_review"]
     shadow = yaml.safe_load((ROOT / ".github/workflows/ci_v5_shadow.yml").read_text())
+    for job in ("verdict", "compare"):
+        commands = "\n".join(step.get("run", "") for step in shadow["jobs"][job]["steps"])
+        files = next(line.split('"')[1].split() for line in commands.splitlines() if line.startswith('FILES="'))
+        assert "tools/ci_perf_guard.py" in files
+        assert 'git archive "$TIP" $FILES' in commands
+
     assert set(shadow.get("on", shadow.get(True))) == {"pull_request"} and "gate" not in shadow["jobs"]
     names = [j.get("name") for f in (wf, shadow) for j in f["jobs"].values()]
     assert names.count(POLICY.GATE_CHECK_NAME) == 1, "the required-check name is produced by exactly one job in the whole repository's V5 workflows"

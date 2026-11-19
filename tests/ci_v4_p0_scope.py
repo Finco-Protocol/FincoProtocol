@@ -53,13 +53,13 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                       'tests/test_model_mutation_security_successor.py',
                       R04_ISOLATION_TEST,
-                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml',
+                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                       'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py',
-                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml'))
+                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
 CURRENT_MAPS = frozenset((
