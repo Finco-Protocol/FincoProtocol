@@ -5,6 +5,7 @@ import subprocess
 import pytest
 from tests import ux_pr1_scope as U
 from tests import fin_v2_cohorts as C
+from tests import ci_immutable_git_reads as immutable_git
 
 def git(root,*args):
     return subprocess.check_output(['git',*args],cwd=root,text=True,stderr=subprocess.STDOUT)
@@ -18,7 +19,9 @@ def tree(tmp_path_factory):
 
 @pytest.fixture
 def wt(tree):
-    yield tree
+    # Cache only immutable Git objects across the mutations of this case.
+    with immutable_git.scope():
+        yield tree
     git(tree,'reset','--hard','-q')
     git(tree,'clean','-fdxq')
 
@@ -106,13 +109,17 @@ def test_exact_registered_and_historical_maps_immutable():
 
 @pytest.mark.parametrize('path',sorted(U.OWNED_PATHS))
 def test_unsigned_byte_fails_closed(path,wt):
-    assert U.exact_blobs_ok(wt)
+    # Each tree state gets a fresh verdict, even within the same test.
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt)
     p=wt/path;p.write_bytes(p.read_bytes()+b'\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
 
 @pytest.mark.parametrize('change',['missing','extra','base','tree','history','mode','foreign','deregister'])
 def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):
-    assert U.exact_blobs_ok(wt)
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt)
     path=wt/U.MANIFEST;d=json.loads(path.read_text())
     if change=='missing':d['source_blobs'].pop(next(iter(d['source_blobs'])))
     elif change=='extra':d['source_blobs']['financial_engine/new.py']='0'*40
@@ -125,7 +132,8 @@ def test_forgery_foreign_modes_and_registration_fail_closed(change,wt):
         p=wt/'tests/fin_v2_cohorts.py';p.write_text(p.read_text().replace(", 'tests.ux_pr1_scope'",''))
     path.write_text(json.dumps(d,indent=2)+'\n')
     try:
-        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+        with C.call_scope():
+            assert not U.exact_blobs_ok(wt) and not C.valid(wt)
     finally:
         # core.filemode=false makes reset preserve a pure executable-mode mutation.
         (wt/'frontend/src/app/WorkspaceView.tsx').chmod(0o644)
@@ -135,23 +143,27 @@ def test_shared_pin_and_historical_map_tamper_fail_closed(path,wt):
     p=wt/path;d=json.loads(p.read_text());old=p.read_bytes()
     owned=next(k for k in d['source_blobs'] if k in U.OWNED_PATHS)
     d['source_blobs'][owned]='0'*40;p.write_text(json.dumps(d)+'\n')
-    assert not U.exact_blobs_ok(wt) and not C.valid(wt)
+    with C.call_scope():
+        assert not U.exact_blobs_ok(wt) and not C.valid(wt)
     p.write_bytes(old);d=json.loads(old);d['base']='0'*40;p.write_text(json.dumps(d)+'\n')
     assert not U.exact_blobs_ok(wt)
 
 def test_match_requires_exact_registered_source_and_named_ref(wt):
     from tests import wf06b_scope as W
     p='frontend/src/app/workflow/WorkflowBar.tsx';raw=(wt/p).read_bytes()
-    assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)
+    with C.call_scope():
+        assert U.matches(p,raw,repo=wt) and W.matches(p,raw,repo=wt)
     (wt/p).write_bytes(raw+b'\n')
-    assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)
+    with C.call_scope():
+        assert not U.matches(p,raw,repo=wt) and not W.matches(p,raw,repo=wt)
     assert U.exact_blobs_ok(wt,'HEAD')
 
 
 def test_ci_artifacts_are_not_source_exemptions(wt):
     evidence=wt/'evidence'/'ux-pr1-probe';evidence.mkdir(parents=True,exist_ok=True)
     artifact=evidence/'source.json';artifact.write_text('{"synthetic": true}\n')
-    assert U.exact_blobs_ok(wt) and C.valid(wt)
+    with C.call_scope():
+        assert U.exact_blobs_ok(wt) and C.valid(wt)
     for suffix in ('.py','.tsx','.mjs'):
         source=evidence/('unsigned'+suffix);source.write_text('unsigned\n')
         assert not U.exact_blobs_ok(wt) and not C.valid(wt)
