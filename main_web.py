@@ -1025,10 +1025,17 @@ def _issue_legacy_route_csrf(request: Request, project: str, purpose: str) -> st
     """Issue a session+project+operation-bound CSRF token for a legacy route.
 
     Returns "" for unauthenticated requests; the routes redirect those to
-    /login before any token is needed."""
+    /login before any token is needed. A real server-side issuance fault is
+    fail-closed (empty token -> later 403) but never hidden: it is logged
+    with the exception TYPE only — no exception text, token or session
+    material is written to the log."""
     try:
         return _csrf_issue_token(request, project, purpose=purpose)
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(
+            "LEGACY_ROUTE_CSRF_ISSUE_FAILED purpose=%s project_bound=%s exc=%s",
+            purpose, bool(project), type(exc).__name__)
         return ""
 
 

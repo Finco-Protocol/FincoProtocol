@@ -242,3 +242,31 @@ def test_workspace_main_form_carries_discard_token():
     # The discard JS posts the whole FormData of #main-form, so the token travels.
     js = (REPO / "static/app.js").read_text(encoding="utf-8")
     assert "new FormData(form)" in js and "'/scenarios/state/discard'" in js
+
+
+def test_issuance_fault_fails_closed_and_is_logged(client, monkeypatch, caplog):
+    """A real server-side token-issuance fault must never render a usable
+    form or silently vanish: the page shows no token, the POST is denied 403
+    with zero mutation, and the fault is logged by TYPE (no token/session
+    material in the log record)."""
+    import logging as _logging
+    import main_web
+
+    def _boom(request, project, purpose):
+        raise RuntimeError("simulated issuance fault")
+
+    monkeypatch.setattr(main_web, "_csrf_issue_token", _boom)
+    with caplog.at_level(_logging.ERROR, logger="main_web"):
+        page = client.get("/projects/new")
+        assert page.status_code == 200
+        m = re.search(r'name="csrf_token" value="([^"]*)"', page.text)
+        assert m is not None and m.group(1) == "", "fail-closed: no token rendered on issuance fault"
+        r = client.post("/projects/create", data=dict(_CREATE_FORM),
+                        headers={"HX-Request": "true"})
+        assert r.status_code == 403
+        assert _user_project_codes(client) == []
+    records = [rec for rec in caplog.records if "LEGACY_ROUTE_CSRF_ISSUE_FAILED" in rec.getMessage()]
+    assert records, "the issuance fault must be logged"
+    line = records[0].getMessage()
+    assert "simulated issuance fault" not in line, "no exception text in the log"
+    assert "RuntimeError" in line and "token" not in line.split("exc=")[1]
