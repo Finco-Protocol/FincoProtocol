@@ -50,29 +50,36 @@ def _later_pins(root, ref=None):
 def test_current_registered_cohort_and_unchanged_financial_sources():
     with C.call_scope():
         assert F.exact_blobs_ok() and E.exact_blobs_ok() and C.valid()
-        assert F.__name__ in C.COHORT_MODULES
-        assert os.environ.get('FINCO_SAVE_ALL_PROFILE_ENABLED','0')=='0'
-        changed=subprocess.check_output(['git','diff','--name-only',F.BASE],cwd=F.ROOT,text=True).splitlines()
-        try:
-            from tests import tax_reference_registry_scope as T
-            t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
-        except ImportError:
-            t01d=frozenset()
-        from tests import on_bess01_scope as B
-        t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
-        from tests import post432_l01_l02_scope as L
-        t01d = t01d | (L.SOURCE_PATHS if L.exact_blobs_ok() else frozenset())      # post-#434 L01/L02: exactly its two pinned presentation sources, only while that cohort is exact
-        from tests import bess02_scope as N
-        t01d = t01d | (N.SOURCE_PATHS if N.exact_blobs_ok() else frozenset())
-        later = _later_pins(F.ROOT)
-        assert later == {path for paths in _LATER_SOURCES.values() for path in paths}
-        assert not later & {'tools/unsigned.py', '.github/workflows/unsigned.yml', 'financial_engine/unsigned.py'}
-        t01d |= later
-        assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
-        old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
-        assert (F.ROOT/E.MANIFEST).read_bytes()==old
-        for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
-            assert (F.ROOT/p).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+p],cwd=F.ROOT)
+    assert F.__name__ in C.COHORT_MODULES
+    assert os.environ.get('FINCO_SAVE_ALL_PROFILE_ENABLED','0')=='0'
+    changed=subprocess.check_output(['git','diff','--name-only',F.BASE],cwd=F.ROOT,text=True).splitlines()
+    try:
+        from tests import tax_reference_registry_scope as T
+        t01d=T.SOURCE_PATHS if T.exact_blobs_ok() else frozenset()   # the one bounded successor: its exact, literal, pinned package files only
+    except ImportError:
+        t01d=frozenset()
+    from tests import on_bess01_scope as B
+    t01d = t01d | (B.APP_PATHS if B.exact_blobs_ok() else frozenset())
+    from tests import post432_l01_l02_scope as L
+    t01d = t01d | (L.SOURCE_PATHS if L.exact_blobs_ok() else frozenset())      # post-#434 L01/L02: exactly its two pinned presentation sources, only while that cohort is exact
+    from tests import bess02_scope as N
+    t01d = t01d | (N.SOURCE_PATHS if N.exact_blobs_ok() else frozenset())
+    with C.call_scope():
+        t01d |= _later_pins(F.ROOT)
+    assert not any(p.startswith(('app/','financial_engine/','finco_core/','domain/','.github/','tools/','revenue_reference_core/','tax_reference_registry/')) and p not in t01d for p in changed)
+    old=subprocess.check_output(['git','show',F.BASE+':'+E.MANIFEST],cwd=F.ROOT)
+    assert (F.ROOT/E.MANIFEST).read_bytes()==old
+    for p in ('frontend/src/app/editing/wsv2Extensions.tsx', 'frontend/src/app/editing/saveAll.ts', 'frontend/src/app/editing/pendingEdits.ts'):
+        assert (F.ROOT/p).read_bytes()==subprocess.check_output(['git','show',F.BASE+':'+p],cwd=F.ROOT)
+
+
+@pytest.mark.parametrize('path', [
+    '.github/workflows/unsigned.yml', 'tools/unsigned.py', 'financial_engine/unsigned.py',
+])
+def test_unreviewed_financial_and_ci_paths_have_no_successor_pin(path):
+    with C.call_scope():
+        if path in _later_pins(F.ROOT):
+            pytest.fail(f'unreviewed path has a successor pin: {path}')
 
 @pytest.mark.parametrize('kind',['byte','foreign_discard_bridge','mode','symlink','manifest','base','tree','base_blob','unrelated','protected','registration'])
 def test_source_and_scope_tamper_fail_closed(kind):
