@@ -4062,6 +4062,18 @@ HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
         '        if not exact_blobs_ok(repo, ref):',
     ),
 ])
+HANDOFFS['tests/ci_v4_scope.py'] += [
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':",
+        "    if path in ('tests/fin_v2_integration_409_scope.py', 'tests/post413_r1_scope.py'):",
+    ),
+]
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    if path != 'tests/test_wsv2_core_scope.py':",
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):",
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

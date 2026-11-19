@@ -174,7 +174,7 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _browser_registration_follows(path, value, root, ref):
-    if path != 'tests/test_wsv2_core_scope.py':
+    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):
         return False
     from tests import ci_v4_p0_scope as P0
     return P0.supersedes(path, value, root, ref)
