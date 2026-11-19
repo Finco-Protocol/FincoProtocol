@@ -253,8 +253,14 @@ async def acquisition_save(request: Request):
     except AcquisitionInputError as exc:
         return JSONResponse({"error": str(exc), "status": STATUS}, status_code=422,
                             headers={"Cache-Control": "private, no-store"})
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         # Bounded generic rejection (C1F-ERR-01): never echo interpreter text.
+        # The real exception stays visible to server logs so a programming
+        # error is never silently converted into a bounded input rejection.
+        import logging
+        logging.getLogger(__name__).warning(
+            "ACQUISITION_SAVE_INPUT_REJECTED %s: %s: %s",
+            project, type(exc).__name__, exc)
         return JSONResponse({"error": "ACQUISITION_INPUT_INVALID", "status": STATUS},
                             status_code=422,
                             headers={"Cache-Control": "private, no-store"})

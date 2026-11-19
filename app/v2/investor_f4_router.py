@@ -120,8 +120,14 @@ async def investor_save(request: Request):
     except InvestorAgreementInputError as exc:
         # C1F-ERR-01: typed parse refusal with a stable generic message, 422.
         return JSONResponse({"error": str(exc)}, status_code=422)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         # C1F-ERR-01 (B02): never echo interpreter text; bounded generic code.
+        # The real exception stays visible to server logs so a programming
+        # error is never silently converted into a bounded input rejection.
+        import logging
+        logging.getLogger(__name__).warning(
+            "INVESTOR_AGREEMENT_SAVE_REJECTED %s: %s: %s",
+            code, type(exc).__name__, exc)
         return JSONResponse({"error": "INVESTOR_AGREEMENT_INPUT_INVALID"}, status_code=422)
     try:
         view, error = _load(request, code)
