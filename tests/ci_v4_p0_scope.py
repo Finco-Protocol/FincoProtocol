@@ -4834,6 +4834,17 @@ HANDOFFS['tests/test_wsv2_core_scope.py'].append((
 ))
 
 
+HANDOFFS['tests/test_wsv2_core_scope.py'].append((
+    "    monkeypatch.setattr(F, '_read', altered)\n"
+    "    assert not F.exact_blobs_ok() and not C.valid()\n\n\n"
+    "@pytest.mark.parametrize('drop', (False, True))\n",
+    "    monkeypatch.setattr(F, '_read', altered)\n"
+    "    with C.call_scope():\n"
+    "        assert not F.exact_blobs_ok() and not C.valid()\n\n\n"
+    "@pytest.mark.parametrize('drop', (False, True))\n",
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

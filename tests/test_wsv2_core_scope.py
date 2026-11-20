@@ -61,7 +61,8 @@ def test_every_owned_byte_and_deletion_fails_closed(path, operation, monkeypatch
         return original(root, p, ref)
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.exact_blobs_ok() and not C.valid()
+    with C.call_scope():
+        assert not F.exact_blobs_ok() and not C.valid()
 
 
 @pytest.mark.parametrize('drop', (False, True))
