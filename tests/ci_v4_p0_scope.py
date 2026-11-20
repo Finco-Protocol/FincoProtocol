@@ -4566,30 +4566,6 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
     ),
 ]
 
-HANDOFFS['tests/test_wsv2_core_scope.py'] += [
-    (
-        "    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
-        '        assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n',
-        '    with C.call_scope():\n'
-        "        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
-        '            assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n',
-    ),
-    (
-        '    assert F.exact_blobs_ok()\n'
-        '    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
-        '        assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
-        "    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
-        "                     'tests/test_new_unreviewed.py'):\n"
-        '        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n',
-        '    with C.call_scope():\n'
-        '        assert F.exact_blobs_ok()\n'
-        '        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
-        '            assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
-        "        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
-        "                         'tests/test_new_unreviewed.py'):\n"
-        '            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n',
-    ),
-]
 
 HANDOFFS['tests/post413_o1_scope.py'] = [
     (
@@ -4653,6 +4629,102 @@ HANDOFFS['tests/post413_o1_scope.py'] = [
         '    with P0.scoped():\n'
         "        return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n"
         '\n'
+        '\n',
+    ),
+]
+
+HANDOFFS['tests/test_wsv2_core_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():\n'
+        "    old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))\n",
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():\n'
+        "    old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))\n",
+    ),
+    (
+        '\n'
+        'def browser_contract_ok(role, acceptance):\n'
+        "    marker = '# WS1 Workspace V2'\n"
+        "    expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'\n",
+        '\n'
+        'def browser_contract_ok(role, acceptance):\n'
+        '    from tests.mutation_security_browser_lineage import verified_pre_r1_source\n'
+        '\n'
+        '    # Project the exact, authenticated current role onto the historical WF03\n'
+        '    # state whose WS1/WF04 registration this assertion checks.\n'
+        '    verified_role = verified_pre_r1_source(role, repo=F.ROOT)\n'
+        '    if verified_role is not None:\n'
+        '        role = verified_role\n'
+        "    marker = '# WS1 Workspace V2'\n"
+        "    expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'\n",
+    ),
+    (
+        '        # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.\n'
+        '        # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.\n'
+        '        if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):\n'
+        '            return False\n'
+        '    tree = ast.parse(acceptance)\n',
+        '        # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.\n'
+        '        # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.\n'
+        '        if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))\n'
+        '                and _additive_only(prior, role[:role.index(marker)])):\n'
+        '            return False\n'
+        '    tree = ast.parse(acceptance)\n',
+    ),
+    (
+        "    assert not browser_contract_ok(role.replace(line, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\\ndef ' + TESTS[1]))\n",
+        "    assert not browser_contract_ok(role.replace(line, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):\n"
+        "        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'\n"
+        '        if later_import in role:\n'
+        "            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\\ndef ' + TESTS[1]))\n",
+    ),
+    (
+        '\n'
+        'def test_ws2_admission_is_not_a_wildcard(monkeypatch):\n'
+        "    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '        assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n'
+        '    original = F._git\n'
+        '\n',
+        '\n'
+        'def test_ws2_admission_is_not_a_wildcard(monkeypatch):\n'
+        '    with C.call_scope():\n'
+        "        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '            assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n'
+        '    original = F._git\n'
+        '\n',
+    ),
+    (
+        'def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):\n'
+        '    from tests import fin_v2_wf06a_scope as WF06A\n'
+        '    assert F.exact_blobs_ok()\n'
+        '    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '        assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                     'tests/test_new_unreviewed.py'):\n"
+        '        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n'
+        '    git = F._git\n'
+        '\n',
+        'def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):\n'
+        '    from tests import fin_v2_wf06a_scope as WF06A\n'
+        '    with C.call_scope():\n'
+        '        assert F.exact_blobs_ok()\n'
+        '        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '            assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                         'tests/test_new_unreviewed.py'):\n"
+        '            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n'
+        '    git = F._git\n'
         '\n',
     ),
 ]

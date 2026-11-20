@@ -191,6 +191,7 @@ def _additive_only(prior, current):
                 if line.startswith('-') and not line.startswith('---')]
 
 
+@C.call_scope()
 def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():
     old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))
     sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}
