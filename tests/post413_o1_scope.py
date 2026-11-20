@@ -210,7 +210,7 @@ def exact_blobs_ok(repo=None, ref=None):
 def _pin_matches(path, actual, expected, root, ref):
     if actual == expected:
         return True
-    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'):
+    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):
         return False
     from tests import ci_v4_p0_scope as P0
     return P0.supersedes(path, actual, root, ref)

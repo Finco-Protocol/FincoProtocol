@@ -80,7 +80,7 @@ R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
-                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py',
+                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
@@ -4487,6 +4487,37 @@ HANDOFFS['tests/test_post413_o1_scope.py'] += [
         "            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest\n"
         '            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest\n'
         '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved\n',
+    ),
+]
+
+HANDOFFS['tests/test_post413_r1_scope.py'] = [
+    (
+        '\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n',
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n',
+    ),
+    (
+        '\n'
+        'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+        '\n'
+        '@C.call_scope()\n'
+        'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+    ),
+]
+
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):\n",
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+    ),
+]
+
+HANDOFFS['tests/post413_o1_scope.py'] += [
+    (
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'):\n",
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
     ),
 ]
 
