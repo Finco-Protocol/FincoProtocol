@@ -50,6 +50,11 @@
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
       "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
     },
+    "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed": {
+      "proof": "This literal positive checks finance allow-list decisions and authority states using read-only assertions. It has no file writes, monkeypatch, commit, or fixture. Independent physical and committed source tampering is rejected after the compared scope exits. Sibling tests remain ordinary executions.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
     "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path": {
       "proof": "Read-only call over the actual checkout. Reads the finite cohort manifest and exercises R.supersedes/U.supersedes against exact, forged and unrelated pins. No fixture, worktree write, commit, monkeypatch or environment change. Mutating sibling nodes are excluded.",
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
