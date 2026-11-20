@@ -36,6 +36,12 @@ TESTS = (
 )
 
 
+def _assert_ws_and_registry_reject():
+    with C.call_scope():
+        assert not C.exact_blobs_ok(F) and not C.valid()
+
+
+@C.call_scope()
 def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():
     assert F.__name__ in C.COHORT_MODULES and F in C.cohorts()
     assert F.exact_blobs_ok() and F.valid() and C.valid()
@@ -61,7 +67,8 @@ def test_every_owned_byte_and_deletion_fails_closed(path, operation, monkeypatch
         return original(root, p, ref)
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.exact_blobs_ok() and not C.valid()
+    with C.call_scope():
+        assert not C.exact_blobs_ok(F) and not C.valid()
 
 
 @pytest.mark.parametrize('drop', (False, True))
@@ -80,7 +87,7 @@ def test_manifest_cannot_add_or_drop_any_pin(drop, monkeypatch):
         return raw
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('payload', ([], None, {'source_blobs': None}, {'source_blobs': []}))
@@ -96,7 +103,8 @@ def test_malformed_manifest_shapes_return_false(payload, monkeypatch):
         return original(root, path, ref)
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.manifest() and not F.exact_blobs_ok() and not C.valid()
+    assert not F.manifest()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('path', (
@@ -117,13 +125,13 @@ def test_unapproved_changed_or_untracked_path_is_refused(path, monkeypatch):
         return result
 
     monkeypatch.setattr(F, '_git', extra)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('attribute', ('BASE', 'AUTHORIZATION_HEAD'))
 def test_wrong_or_missing_ancestry_fails_closed(attribute, monkeypatch):
     monkeypatch.setattr(F, attribute, '0' * 40)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 def test_absent_or_unregistered_cohort_cannot_be_silently_omitted(monkeypatch):
@@ -141,6 +149,7 @@ def test_absent_or_unregistered_cohort_cannot_be_silently_omitted(monkeypatch):
     assert not C.valid()
 
 
+@C.call_scope()
 def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():
     path = 'tests/test_model_mutation_security_successor.py'
     assert path in F.OWNED_PATHS
@@ -191,6 +200,7 @@ def _additive_only(prior, current):
                 if line.startswith('-') and not line.startswith('---')]
 
 
+@C.call_scope()
 def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():
     old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))
     sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}
@@ -218,6 +228,7 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
     assert S.violations(sources) == [] and S.current_mutation_successor_valid()
 
 
+@C.call_scope()
 def test_predecessor_manifest_pins_and_metadata_remain_verbatim():
     assert F._historical_manifests_ok(F.ROOT, None)
     for path in F.PREDECESSOR_MANIFESTS:
@@ -254,6 +265,13 @@ def test_historical_record_or_unapproved_repin_cannot_be_resealed(tamper, monkey
 
 
 def browser_contract_ok(role, acceptance):
+    from tests.mutation_security_browser_lineage import verified_pre_r1_source
+
+    # Project the exact, authenticated current role onto the historical WF03
+    # state whose WS1/WF04 registration this assertion checks.
+    verified_role = verified_pre_r1_source(role, repo=F.ROOT)
+    if verified_role is not None:
+        role = verified_role
     marker = '# WS1 Workspace V2'
     expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
     # WF-04 successor lineage: the one later, separately governed block that may follow the WS1 import (tests/test_wf04_scope.py proves it exactly).
@@ -265,7 +283,8 @@ def browser_contract_ok(role, acceptance):
         # WF-03 successor lineage: the original role survives verbatim; the only difference is the separately governed, ADDITIVE WF-03 browser block
         # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.
         # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.
-        if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):
+        if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))
+                and _additive_only(prior, role[:role.index(marker)])):
             return False
     tree = ast.parse(acceptance)
     functions = tuple(n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))
@@ -275,6 +294,7 @@ def browser_contract_ok(role, acceptance):
         token in acceptance for token in ('importorskip', 'pytest.skip', 'mark.skip', 'skipif', 'xfail', 'autouse'))
 
 
+@C.call_scope()
 def test_browser_registration_preserves_original_role_and_exact_new_exports():
     role = (F.ROOT / ROLE).read_text()
     acceptance = (F.ROOT / ACCEPTANCE).read_text()
@@ -282,6 +302,10 @@ def test_browser_registration_preserves_original_role_and_exact_new_exports():
     line = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'
     assert not browser_contract_ok(role.replace(line, ''), acceptance)
     assert not browser_contract_ok(role + line + '\n', acceptance)
+    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):
+        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'
+        if later_import in role:
+            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))
     assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\ndef ' + TESTS[1]))
 
@@ -300,6 +324,33 @@ def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
     assert 'app/v2/router.py' not in changed and 'app/v2/post_run_context.py' not in changed
 
 
+def _owner_approved_acceptance_pin(path, pin):
+    from tests import u1_scope as U1, ux_pr1_scope as UX1, ux_pr3b1_scope as UX3B1
+
+    owner = None
+    predecessor = WS1_ACCEPTED_MERGE
+    for cohort, ref in (
+        (U1, '2c63750929477c618444e9d056030e054cc3a41c'),
+        (UX1, '713c0daf434dd79616f5a07451de6accddde93e0'),
+        (UX3B1, '4e22f330d97eec66befcbb5df6dc4e1529ae6835'),
+    ):
+        if path not in cohort.SUPERSEDED:
+            continue
+        F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, cohort.BASE)
+        F._git(F.ROOT, 'merge-base', '--is-ancestor', cohort.BASE, ref)
+        signed = cohort.manifest(ref=ref)
+        assert signed['base'] == cohort.BASE and signed['base_blobs'][path] == pin
+        assert F._git(F.ROOT, 'ls-tree', cohort.BASE, '--', path).decode().strip() == f'100644 blob {pin}\t{path}'
+        pin = signed['source_blobs'][path]
+        assert F._git(F.ROOT, 'ls-tree', ref, '--', path).decode().strip() == f'100644 blob {pin}\t{path}'
+        predecessor, owner = ref, cohort
+    F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, 'HEAD')
+    if owner is not None:
+        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)
+    return pin
+
+
+@C.call_scope()
 def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
     assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE
     assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS
@@ -309,10 +360,7 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
                 or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid
         original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
         current = F._read(F.ROOT, path, None).decode()
-        from tests import u1_scope as U1
-        # the cohort pin, or (PR #413) the exact later U1 state of a path U1 supersedes while the cohort pin still equals the BASE blob U1 recorded
-        assert (S.git_blob(current) == pins[path]
-                or (path in U1.SUPERSEDED and U1.supersedes(path, S.git_blob(current)) and U1.base_blob(path) == pins[path])), path
+        assert S.git_blob(current) == _owner_approved_acceptance_pin(path, pins[path]), path
         def tests(text):
             return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])
                     for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]
@@ -336,7 +384,8 @@ def test_generated_ci_evidence_does_not_turn_valid_financial_sources_into_unrevi
             return found + artifact.encode() + b'\n'
         return found
     monkeypatch.setattr(F, '_git', with_generated_evidence)
-    assert F.exact_blobs_ok() and C.valid()
+    with C.call_scope():
+        assert F.exact_blobs_ok() and C.valid()
 
 
 @pytest.mark.parametrize('unreviewed', ('evidence/rogue.py', 'evidence/rogue.ts',
@@ -349,7 +398,7 @@ def test_untracked_source_is_still_strictly_rejected(unreviewed, monkeypatch):
             return found + unreviewed.encode() + b'\n'
         return found
     monkeypatch.setattr(F, '_git', with_unreviewed_source)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 # ── WS-2 admission is bounded: only the separately registered, exact WS-2 cohort, only its enumerated paths ──
@@ -362,8 +411,9 @@ def test_ws2_paths_are_admitted_only_while_the_ws2_cohort_is_registered_and_exac
 
 
 def test_ws2_admission_is_not_a_wildcard(monkeypatch):
-    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):
-        assert not F._ws2_allows(rogue, F.ROOT, None), rogue
+    with C.call_scope():
+        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):
+            assert not F._ws2_allows(rogue, F.ROOT, None), rogue
     original = F._git
 
     def with_rogue(root, *args):
@@ -410,12 +460,13 @@ def test_the_ws2_exact_check_runs_once_per_outer_call_and_is_never_shared(monkey
 # ── WF-06A (PR #406, Owner Correction B): additive controls for the bounded hook ──────────────────────────────────────────────────────────
 def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):
     from tests import fin_v2_wf06a_scope as WF06A
-    assert F.exact_blobs_ok()
-    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):
-        assert F._wf06a_allows(owned, F.ROOT, None), owned
-    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',
-                     'tests/test_new_unreviewed.py'):
-        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger
+    with C.call_scope():
+        assert F.exact_blobs_ok()
+        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):
+            assert F._wf06a_allows(owned, F.ROOT, None), owned
+        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',
+                         'tests/test_new_unreviewed.py'):
+            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger
     git = F._git
 
     def extra(root, *args):

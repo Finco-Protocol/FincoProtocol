@@ -70,10 +70,10 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tests/test_p4_token_utility.py', 'tests/test_tokenized_access_wiring.py', 'tests/test_investor_f4_p2_candidate.py',
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                           'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST,
-                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml',
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                           'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
-                          '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml',
+                          '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
@@ -97,6 +97,29 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
+
+
+def test_o1_historical_test_pin_requires_exact_sibling_and_source(subject):
+    sibling = "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json"
+    test_path = "tests/test_post413_o1_scope.py"
+    head = git(subject, "rev-parse", "HEAD").decode().strip()
+    historical = T.manifest(subject, head)["base_blobs"][test_path]
+    assert T.o1_historical_test_pin(sibling, test_path, historical, subject, head)
+    assert not T.o1_historical_test_pin(T.R1_MAP, test_path, historical, subject, head)
+    assert not T.o1_historical_test_pin(sibling, T.R1_SECURITY_TEST, historical, subject, head)
+    assert not T.o1_historical_test_pin(sibling, test_path, "0" * 40, subject, head)
+    manifest = subject / sibling
+    raw = manifest.read_bytes()
+    manifest.write_bytes(raw + b"\n")
+    try:
+        assert not T.o1_historical_test_pin(sibling, test_path, historical, subject)
+        assert T.o1_historical_test_pin(sibling, test_path, historical, subject, head)
+        git(subject, "add", "--", sibling)
+        git(subject, "commit", "--quiet", "-m", "Alter O1 sibling bytes")
+        assert not T.o1_historical_test_pin(sibling, test_path, historical, subject, "HEAD")
+    finally:
+        git(subject, "reset", "--hard", "--quiet", head)
+    assert T.o1_historical_test_pin(sibling, test_path, historical, subject)
 
 
 @pytest.mark.parametrize("path", sorted(T.OWNED_PATHS | {T.MANIFEST}))
@@ -208,7 +231,7 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
     assert T.P2_FROZEN_EDITS == ('.github/workflows/ci_v4_full.yml',)
     assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS) | {
-        'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml'}
+        'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
 
 
 @pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml"])
@@ -396,6 +419,7 @@ def test_cb2_an_exception_while_entering_a_cohort_clears_the_marker_and_every_en
 
 def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
     from tests import u1_scope as U
+    head = git(subject, 'rev-parse', 'HEAD').decode().strip()
     f = subject / "tests/u1_scope.py"
     raw = f.read_bytes()
     with C.call_scope():
@@ -403,12 +427,14 @@ def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
     try:
         f.write_bytes(raw + b"\n# unreviewed\n")
         with C.call_scope():
-            assert len(C._CALL) == 1 and not U.exact_blobs_ok(subject)
+            assert len(C._CALL) == 1 and not C.exact_blobs_ok(U, subject)
+            assert not C.valid(subject)
+            assert C.valid(subject, head)
         assert _no_scope_open()
     finally:
         f.write_bytes(raw)
     with C.call_scope():
-        assert U.exact_blobs_ok(subject)
+        assert C.exact_blobs_ok(U, subject) and C.valid(subject)
     assert _no_scope_open()
 
 

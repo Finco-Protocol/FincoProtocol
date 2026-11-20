@@ -53,13 +53,13 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                       'tests/test_model_mutation_security_successor.py',
                       R04_ISOLATION_TEST,
-                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml',
+                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                       'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py',
-                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml'))
+                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
 CURRENT_MAPS = frozenset((
@@ -79,6 +79,10 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
+                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
+                            'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
+                            'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -3888,6 +3892,1262 @@ HANDOFFS.setdefault('tests/test_ci_v4_full_recovery_scope.py', []).extend([
     ),
 ])
 
+# Bind each reviewed runtime and browser-lineage edit to its immutable base.
+HANDOFFS.setdefault('tests/ci_v4_scope.py', []).extend([
+    (
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S\n'
+        '    except ImportError:\n'
+        '        return False\n'
+        '    if S.supersedes(path, value, root, ref):',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        return P0.supersedes(path, value, root, ref)\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S\n'
+        '    except ImportError:\n'
+        '        return False\n'
+        '    if S.supersedes(path, value, root, ref):',
+    ),
+    (
+        '        return P0.supersedes(path, value, root, ref)\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S',
+        '        if P0.supersedes(path, value, root, ref):\n'
+        '            return True\n'
+        '    try:\n'
+        '        from tests import ux_pr2c_scope as S',
+    ),
+])
+HANDOFFS.setdefault('tests/fin_v2_integration_409_scope.py', []).extend([
+    (
+        '_RESULTS = {}\n'
+        '\n'
+        '\n',
+        '',
+    ),
+    (
+        'def _state_key(root, ref):\n'
+        '    """A key that changes whenever ANY byte of the evaluated state changes.\n'
+        '\n'
+        '    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,\n'
+        '    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new\n'
+        '    key and the exact check runs again. A cached verdict is therefore never reused for different bytes."""\n'
+        '    if ref is not None:\n'
+        "        sha = _rev(root, ref + '^{commit}')\n"
+        "        return None if sha is None else ('ref', str(root), sha)\n"
+        "    head = _rev(root, 'HEAD')\n"
+        "    digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()\n"
+        "    names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\\0')\n"
+        '    untracked = hashlib.sha1()\n'
+        '    for name in sorted(n for n in names if n):\n'
+        "        untracked.update(name + b'\\0')\n"
+        '        try:\n'
+        '            untracked.update((Path(root) / name.decode()).read_bytes())\n'
+        '        except OSError:\n'
+        "            untracked.update(b'<unreadable>')\n"
+        "    return ('wt', str(root), head, digest, untracked.hexdigest())\n"
+        '\n'
+        '\n'
+        '_SCOPE = []\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use\n'
+        '        memo = _SCOPE[-1]\n'
+        '        skey = (str(root), ref)\n'
+        '        if skey not in memo:\n'
+        '            memo[skey] = _cached_exact(root, repo, ref)\n'
+        '        return memo[skey]\n'
+        '    return _cached_exact(root, repo, ref)\n'
+        '\n'
+        '\n'
+        'def _cached_exact(root, repo, ref):\n'
+        '    try:\n'
+        '        key = _state_key(root, ref)\n'
+        '    except (OSError, subprocess.CalledProcessError):\n'
+        '        return False\n'
+        '    if key is None:\n'
+        '        return False\n'
+        '    if key not in _RESULTS:\n'
+        '        if len(_RESULTS) > 64:\n'
+        '            _RESULTS.clear()\n'
+        '        _RESULTS[key] = _exact_blobs_ok(repo, ref)\n'
+        '    return _RESULTS[key]\n'
+        '\n'
+        '\n',
+        '_SCOPE = []\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:\n'
+        '        # All downstream guards share a memo for this read-only evaluation.\n'
+        '        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '            return _scoped_exact(repo, ref)\n'
+        '    return _scoped_exact(repo, ref)\n'
+        '\n'
+        '\n'
+        'def _scoped_exact(repo, ref):\n'
+        '    if not _SCOPE:\n'
+        '        return _exact_blobs_ok(repo, ref)\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    memo = _SCOPE[-1]\n'
+        '    key = (str(root), ref)\n'
+        '    if key not in memo:\n'
+        '        memo[key] = _exact_blobs_ok(repo, ref)\n'
+        '    return memo[key]\n'
+        '\n'
+        '\n',
+    ),
+])
+HANDOFFS.setdefault('tests/fin_v2_wf06a_scope.py', []).extend([
+    (
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    if not _SCOPE:',
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:\n'
+        '        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '            return _scoped_exact(repo, ref)\n'
+        '    return _scoped_exact(repo, ref)\n'
+        '\n'
+        '\n'
+        'def _scoped_exact(repo, ref):\n'
+        '    if not _SCOPE:',
+    ),
+])
+HANDOFFS.setdefault('tests/test_wsv2_core_scope.py', []).extend([
+    (
+        'def browser_contract_ok(role, acceptance):\n'
+        '    marker =',
+        'def browser_contract_ok(role, acceptance):\n'
+        '    from tests.mutation_security_browser_lineage import verified_pre_r1_source\n'
+        '\n'
+        '    # Project the exact, authenticated current role onto the historical WF03\n'
+        '    # state whose WS1/WF04 registration this assertion checks.\n'
+        '    verified_role = verified_pre_r1_source(role, repo=F.ROOT)\n'
+        '    if verified_role is not None:\n'
+        '        role = verified_role\n'
+        '    marker =',
+    ),
+    (
+        'if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):',
+        'if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))\n'
+        '                and _additive_only(prior, role[:role.index(marker)])):',
+    ),
+    (
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n",
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):\n"
+        "        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'\n"
+        '        if later_import in role:\n'
+        "            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)\n",
+    ),
+])
+HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
+    (
+        '    # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root = Path(repo) if repo is not None else ROOT\n'
+        '        if P0.signature_ok(root, ref) and path in P0.HANDOFFS:\n'
+        "            # The frozen V4 baseline still carries WF06B's original integration pin.\n"
+        "            prior = json.loads(_object_fact(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))\n"
+        "            found.add(prior['source_blobs'][path])\n"
+        '    # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob',
+    ),
+    (
+        '    # PR2c Correction B: a governance manifest the exact tip cohort moves',
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes(path, value, repo, ref):\n'
+        '            return True\n'
+        '    # PR2c Correction B: a governance manifest the exact tip cohort moves',
+    ),
+    (
+        '@scoped()\n'
+        'def historical_blobs(path, repo=None, ref=None):',
+        '_P0_RUNTIME_HANDOFFS = frozenset((\n'
+        "    'tests/fin_v2_integration_409_scope.py',\n"
+        "    'tests/fin_v2_wf06a_scope.py',\n"
+        "    'tests/test_wsv2_core_scope.py',\n"
+        '))\n'
+        '\n'
+        '\n'
+        '@scoped()\n'
+        'def historical_blobs(path, repo=None, ref=None):',
+    ),
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root =',
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        root =',
+    ),
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':\n"
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes',
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes',
+    ),
+    (
+        "prior = json.loads(_object_fact(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
+        "prior = json.loads(_git(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))",
+    ),
+])
+HANDOFFS.setdefault('tests/post413_r1_scope.py', []).extend([
+    (
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+        'def _browser_registration_follows(path, value, root, ref):\n'
+        "    if path != 'tests/test_wsv2_core_scope.py':\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, value, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+    ),
+    (
+        'if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):',
+        'if any(_blob(_read(root, p, ref)) != sha and not _browser_registration_follows(p, _blob(_read(root, p, ref)), root, ref)\n'
+        '                   for p, sha in pins.items()):',
+    ),
+    (
+        'if listed != pins:',
+        'if set(listed) != set(pins) or any(listed[p] != sha and not _browser_registration_follows(p, listed[p], root, ref)\n'
+        '                                                for p, sha in pins.items()):',
+    ),
+])
+HANDOFFS.setdefault('tests/u1_scope.py', []).extend([
+    (
+        'and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):',
+        'and not _c06_correction_c_pin(p, current[p], root, ref)\n'
+        '               and not _p0_runtime_pin(p, current[p], root, ref) for p, sha in pins.items()):',
+    ),
+    (
+        '@scoped()\n'
+        'def historical_blobs(',
+        'def _p0_runtime_pin(path, value, repo, ref):\n'
+        '    if path not in _P0_RUNTIME_HANDOFFS:\n'
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, value, repo, ref)\n'
+        '\n'
+        '\n'
+        '@scoped()\n'
+        'def historical_blobs(',
+    ),
+    (
+        '    if path in _P0_RUNTIME_HANDOFFS:\n'
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        if P0.supersedes(path, value, repo, ref):\n'
+        '            return True\n',
+        '',
+    ),
+    (
+        '    if path in SUPERSEDED:\n'
+        '        if not exact_blobs_ok(repo, ref):',
+        '    if _p0_runtime_pin(path, value, repo, ref):\n'
+        '        return True\n'
+        '    if path in SUPERSEDED:\n'
+        '        if not exact_blobs_ok(repo, ref):',
+    ),
+])
+HANDOFFS['tests/ci_v4_scope.py'] += [
+    (
+        "    if path == 'tests/fin_v2_integration_409_scope.py':",
+        "    if path in ('tests/fin_v2_integration_409_scope.py', 'tests/post413_r1_scope.py'):",
+    ),
+]
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    if path != 'tests/test_wsv2_core_scope.py':",
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):",
+    ),
+]
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        'def valid(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '\n'
+        '    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+    (
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins or not valid(repo, ref):\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    return source is None or _blob(raw) == pins[path]\n',
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    if raw is not None and _blob(raw) != pins[path]:\n'
+        '        return False\n'
+        '    return valid(repo, ref)\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        'def valid(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads, fin_v2_cohorts\n'
+        '\n'
+        '    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+    (
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if not exact_blobs_ok(root, ref):\n'
+        '        return False\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    return source is None or _blob(raw) == pins[path]\n',
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    if path not in pins:\n'
+        '        return False\n'
+        '    raw = source.encode() if isinstance(source, str) else source\n'
+        '    if raw is not None and _blob(raw) != pins[path]:\n'
+        '        return False\n'
+        '    return exact_blobs_ok(repo, ref)\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        '    try:\n'
+        '        with contextlib.ExitStack() as scopes:\n'
+        '            for m in mods:',
+        '    try:\n'
+        '        from tests import ci_immutable_git_reads\n'
+        '\n'
+        '        with contextlib.ExitStack() as scopes:\n'
+        '            scopes.enter_context(ci_immutable_git_reads.scope())\n'
+        '            for m in mods:',
+    ),
+]
+HANDOFFS.setdefault('tests/test_fin_v2_integration_409_scope.py', []).append((
+        '    (wt / "evidence" / "merge-tree.json").write_text("{}")\n'
+        '    assert INT.exact_blobs_ok(wt) is True                                                  # what the hosted workflows write before the tests run\n',
+        '    from tools.ci_merge_tree_guard import prove_merge_tree\n'
+        '\n'
+        '    proof = wt / "evidence" / "merge-tree.json"\n'
+        '    proof.write_text("{}")\n'
+        '    assert INT.exact_blobs_ok(wt) is False  # a JSON filename alone supplies no attestation\n'
+        '    proof.write_text(json.dumps(prove_merge_tree(git("rev-parse", "HEAD", cwd=wt), git_run=lambda *args: git(*args, cwd=wt))))\n'
+        '    assert INT.exact_blobs_ok(wt) is True   # exact source evidence generated by the same tool used in CI\n',
+))
+HANDOFFS.setdefault('tests/u1_scope.py', []).append((
+        "    'tests/fin_v2_wf06a_scope.py',\n"
+        "    'tests/test_wsv2_core_scope.py',\n"
+        '))\n'
+        '\n'
+        '\n'
+        'def _p0_runtime_pin(',
+        "    'tests/fin_v2_wf06a_scope.py',\n"
+        "    'tests/test_fin_v2_integration_409_scope.py',\n"
+        "    'tests/test_wsv2_core_scope.py',\n"
+        '))\n'
+        '\n'
+        '\n'
+        'def _p0_runtime_pin(',
+))
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        "        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()\n",
+        "        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()\n"
+        '        # Git lists each changed path once. A duplicated path is invalid input,\n'
+        '        # even if a later successor owns the real change at that path.\n'
+        '        if len(changed) != len(set(changed)):\n'
+        '            return False\n',
+    ),
+    (
+        "    return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n",
+        "    pins = manifest(repo, ref).get('source_blobs', {})\n"
+        '    return path in pins and pins[path] == value and exact_blobs_ok(repo, ref)\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_integration_409_scope.py'] += [
+    (
+        '    if not _delegable(path) or not exact_blobs_ok(repo, ref):\n'
+        '        return False\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path in pins:\n'
+        '        return pins[path] == value\n'
+        '    who = _union(root).get(path, [])\n'
+        '    return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value\n',
+        '    if not _delegable(path):\n'
+        '        return False\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        "    pins = manifest(root, ref).get('source_blobs', {})\n"
+        '    if path in pins:\n'
+        '        return pins[path] == value and exact_blobs_ok(repo, ref)\n'
+        '    try:\n'
+        '        who = _union(root).get(path, [])\n'
+        '    except (OSError, subprocess.CalledProcessError):\n'
+        '        return False\n'
+        '    return (len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value\n'
+        '            and exact_blobs_ok(repo, ref))\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_wf06a_scope.py'] += [
+    (
+        "        changed = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()\n"
+        '        # Git lists each changed path once. A duplicated path is invalid input,\n'
+        '        # even if a later successor owns the real change at that path.\n'
+        '        if len(changed) != len(set(changed)):\n'
+        '            return False\n',
+        "        comparison = ('--no-renames', BASE, *([ref] if ref else []), '--')\n"
+        "        changed = _git(root, 'diff', '--name-only', *comparison).decode().splitlines()\n"
+        '        # A list entry alone is not evidence of a delta. Check it against the\n'
+        '        # NUL-delimited status records for the same base, subject and pathspec.\n'
+        "        records = _git(root, 'diff', '--name-status', '-z', *comparison).decode().split('\\0')\n"
+        '        if records[-1] or len(records) != 2 * len(changed) + 1 or records[1:-1:2] != changed or len(changed) != len(set(changed)):\n'
+        '            return False\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        'def protected_blobs(repo=None, ref=None):\n'
+        '    if not valid(repo, ref):\n'
+        '        return {}\n'
+        '    merged = {}\n'
+        '    for m in cohorts():\n'
+        "        for p, b in m.manifest(repo, ref).get('source_blobs', {}).items():\n"
+        "            if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):\n"
+        '                merged[p] = b\n'
+        '    return merged\n',
+        'def protected_blobs(repo=None, ref=None):\n'
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    if ref is not None:\n'
+        '        # Snapshot a symbolic ref on every call. The verdict and each manifest\n'
+        '        # read must describe the same commit, even if the ref moves afterward.\n'
+        '        try:\n'
+        "            ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()\n"
+        '        except (OSError, ValueError, subprocess.CalledProcessError):\n'
+        '            return {}\n'
+        '    with ci_immutable_git_reads.scope(), call_scope():\n'
+        '        if not valid(root, ref):\n'
+        '            return {}\n'
+        '        merged = {}\n'
+        '        for m in cohorts():\n'
+        "            for p, b in m.manifest(root, ref).get('source_blobs', {}).items():\n"
+        "                if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):\n"
+        '                    merged[p] = b\n'
+        '        return merged\n',
+    ),
+]
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        '    with contextlib.ExitStack() as scopes:\n'
+        '        _ENTERING.append(True)',
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    with contextlib.ExitStack() as scopes:\n'
+        '        scopes.enter_context(ci_immutable_git_reads.scope())\n'
+        '        _ENTERING.append(True)',
+    ),
+]
+HANDOFFS['tests/u1_scope.py'] += [
+    (
+        '    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)\n'
+        '        for m in _later_modules():',
+        '    from tests import ci_immutable_git_reads\n'
+        '\n'
+        '    with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)\n'
+        '        later.enter_context(ci_immutable_git_reads.scope())\n'
+        '        for m in _later_modules():',
+    ),
+]
+
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n",
+        '    if path not in SUPERSEDED:\n'
+        '        return False\n'
+        "    pin = manifest(repo, ref).get('source_blobs', {}).get(path)\n"
+        '    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    ),
+    (
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        '    from tests import fin_v2_cohorts\n'
+        '\n'
+        '    with fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+]
+
+
+
+
+HANDOFFS['tests/ux_pr2b_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2c_scope.py'] = [
+    (
+        '            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref) for p in old):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref)\n'
+        '                   and not P0.o1_historical_test_pin(sibling, p, new[p], root, ref) for p in old):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr1_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2a_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
+    ),
+    (
+        '    return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)\n'
+        'def matches(path,source=None,*,repo=None,ref=None):\n',
+        '    return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)\n'
+        '\n'
+        '\n'
+        '_unshared_exact_blobs_ok = exact_blobs_ok\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import call_scope\n'
+        '\n'
+        '    # Each standalone check gets one read-only delegation scope. Its verdicts\n'
+        '    # are discarded before a caller can mutate the worktree and check again.\n'
+        '    with call_scope():\n'
+        '        return _unshared_exact_blobs_ok(repo, ref)\n'
+        '\n'
+        '\n'
+        'def matches(path,source=None,*,repo=None,ref=None):\n',
+    ),
+]
+
+
+
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py'):\n",
+        "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+    ),
+]
+
+
+
+
+
+
+
+HANDOFFS['tests/test_post413_r1_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
+    ),
+]
+
+
+HANDOFFS['tests/test_post413_o1_scope.py'] = [
+    (
+        '"""\n'
+        'import ast\n'
+        'from contextlib import ExitStack\n'
+        'import json\n'
+        'from pathlib import Path\n',
+        '"""\n'
+        'import ast\n'
+        'import json\n'
+        'from pathlib import Path\n',
+    ),
+    (
+        '\n'
+        '\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()\n',
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()\n',
+    ),
+    (
+        '\n'
+        'def _u2_signed_later_pins(repo=None, ref=None):\n'
+        '    from tests import u2_scope as U2\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
+        '\n'
+        'def _u2_signed_later_pins(repo=None, ref=None):\n'
+        '    from tests import c06_cost_workspace_scope as C06\n'
+        '    from tests import u2_scope as U2\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
+    ),
+    (
+        "    signed = U2.manifest(root, ref)['source_blobs']\n"
+        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n"
+        '    return {p: signed[p] for p in U2_LATER_PRESENTATION\n'
+        '            if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED\n'
+        '            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)\n'
+        '            and U2._blob(U2._read(root, p, ref)) == signed[p]}\n'
+        '\n'
+        '\n',
+        "    signed = U2.manifest(root, ref)['source_blobs']\n"
+        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n"
+        "    c06_base = C06.manifest(root, ref).get('base_blobs', {})\n"
+        '\n'
+        '    def follows_u2(path):\n'
+        '        current = U2._blob(U2._read(root, path, ref))\n'
+        '        return current == signed[path] or (c06_base.get(path) == signed[path] and C06.supersedes(path, current, root, ref))\n'
+        '\n'
+        '    return {p: signed[p] for p in U2_LATER_PRESENTATION\n'
+        '            if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED\n'
+        '            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)\n'
+        '            and follows_u2(p)}\n'
+        '\n'
+        '\n',
+    ),
+    (
+        '\n'
+        'def _audit_shared_sibling_pins(repo=None, ref=None):\n'
+        '    # No mutation inside this outer call; every verdict is discarded before any tamper control runs.\n'
+        '    with ExitStack() as scopes:\n'
+        '        for cohort in C.cohorts():\n'
+        "            if callable(getattr(cohort, 'scoped', None)):\n"
+        '                scopes.enter_context(cohort.scoped())\n'
+        '        return _audit_shared_sibling_pins_in_scope(repo, ref)\n'
+        '\n'
+        '\n'
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        "    pins = O.manifest(root, ref)['source_blobs']\n",
+        '\n'
+        'def _audit_shared_sibling_pins(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        '    if ref is not None:\n'
+        "        ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').strip()\n"
+        '    # Reuse immutable Git reads in this audit and discard every verdict before any tamper control writes.\n'
+        '    with C.call_scope():\n'
+        '        return _audit_shared_sibling_pins_in_scope(root, ref)\n'
+        '\n'
+        '\n'
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        "    pins = O.manifest(root, ref)['source_blobs']\n",
+    ),
+    (
+        '        ux2_moved = (moved & set(later_ux2)) - ux3_moved\n'
+        "        ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's\n"
+        '        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))\n'
+        "        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest\n"
+        "        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest\n",
+        '        ux2_moved = (moved & set(later_ux2)) - ux3_moved\n'
+        "        ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's\n"
+        '        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()\n'
+        "        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest\n"
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n'
+        '        assert moved == admitted, (manifest, sorted(moved - admitted))\n'
+        "        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest\n"
+        "        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest\n",
+    ),
+]
+
+
+HANDOFFS['tests/post413_o1_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+        '\n'
+        '\n'
+        'def _pin_matches(path, actual, expected, root, ref):\n'
+        '    if actual == expected:\n'
+        '        return True\n'
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, actual, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+    ),
+    (
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+    ),
+    (
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if listed != pins:\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
+    ),
+    (
+        'def supersedes(path, value, repo=None, ref=None):\n'
+        '    """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""\n'
+        "    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n"
+        '\n'
+        '\n',
+        'def supersedes(path, value, repo=None, ref=None):\n'
+        '    """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""\n'
+        '    if path not in SUPERSEDED:\n'
+        '        return False\n'
+        "    pin = manifest(repo, ref).get('source_blobs', {}).get(path)\n"
+        '    if pin is None or pin != value:\n'
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '\n'
+        '    with P0.scoped():\n'
+        "        return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n"
+        '\n'
+        '\n',
+    ),
+]
+
+HANDOFFS['tests/test_wsv2_core_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():\n'
+        "    old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))\n",
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_original_presentation_and_security_dictionaries_are_immutable_and_individually_admitted():\n'
+        "    old = ast.parse(F._read(F.ROOT, 'tests/model_mutation_security_successor.py', F.AUTHORIZATION_HEAD))\n",
+    ),
+    (
+        '\n'
+        'def browser_contract_ok(role, acceptance):\n'
+        "    marker = '# WS1 Workspace V2'\n"
+        "    expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'\n",
+        '\n'
+        'def browser_contract_ok(role, acceptance):\n'
+        '    from tests.mutation_security_browser_lineage import verified_pre_r1_source\n'
+        '\n'
+        '    # Project the exact, authenticated current role onto the historical WF03\n'
+        '    # state whose WS1/WF04 registration this assertion checks.\n'
+        '    verified_role = verified_pre_r1_source(role, repo=F.ROOT)\n'
+        '    if verified_role is not None:\n'
+        '        role = verified_role\n'
+        "    marker = '# WS1 Workspace V2'\n"
+        "    expected = 'from tests.model_react_wsv2_acceptance import *  # noqa: E402,F401,F403'\n",
+    ),
+    (
+        '        # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.\n'
+        '        # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.\n'
+        '        if not ((_wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE))) and _additive_only(prior, role[:role.index(marker)])):\n'
+        '            return False\n'
+        '    tree = ast.parse(acceptance)\n',
+        '        # (no original line removed or changed), and only while the WF-03 cohort pins this exact module.\n'
+        '        # #419 Correction K: or the exact pin of the registered, exact later cohort (R1 two-tab acceptance) - still ADDITIVE ONLY.\n'
+        '        if not ((verified_role is not None or _wf03().matches(ROLE, role) or _later_state(ROLE, role, _admitted(ROLE)))\n'
+        '                and _additive_only(prior, role[:role.index(marker)])):\n'
+        '            return False\n'
+        '    tree = ast.parse(acceptance)\n',
+    ),
+    (
+        "    assert not browser_contract_ok(role.replace(line, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\\ndef ' + TESTS[1]))\n",
+        "    assert not browser_contract_ok(role.replace(line, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role + line + '\\n', acceptance)\n"
+        "    for module in ('model_react_ux_pr2b_acceptance', 'model_react_pr3b1_acceptance', 'model_react_pr3b2_acceptance'):\n"
+        "        later_import = f'from tests.{module} import *  # noqa: E402,F401,F403'\n"
+        '        if later_import in role:\n'
+        "            assert not browser_contract_ok(role.replace(later_import, ''), acceptance)\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], 'def missing_test'))\n"
+        "    assert not browser_contract_ok(role, acceptance.replace('def ' + TESTS[1], '@pytest.mark.skip\\ndef ' + TESTS[1]))\n",
+    ),
+    (
+        '\n'
+        'def test_ws2_admission_is_not_a_wildcard(monkeypatch):\n'
+        "    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '        assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n'
+        '    original = F._git\n'
+        '\n',
+        '\n'
+        'def test_ws2_admission_is_not_a_wildcard(monkeypatch):\n'
+        '    with C.call_scope():\n'
+        "        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '            assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n'
+        '    original = F._git\n'
+        '\n',
+    ),
+    (
+        'def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):\n'
+        '    from tests import fin_v2_wf06a_scope as WF06A\n'
+        '    assert F.exact_blobs_ok()\n'
+        '    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '        assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                     'tests/test_new_unreviewed.py'):\n"
+        '        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n'
+        '    git = F._git\n'
+        '\n',
+        'def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):\n'
+        '    from tests import fin_v2_wf06a_scope as WF06A\n'
+        '    with C.call_scope():\n'
+        '        assert F.exact_blobs_ok()\n'
+        '        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '            assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                         'tests/test_new_unreviewed.py'):\n"
+        '            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n'
+        '    git = F._git\n'
+        '\n',
+    ),
+]
+
+HANDOFFS['tests/test_post413_o1_scope.py'].append((
+    "    _flip(wt / path)\n"
+    "    assert not O.exact_blobs_ok(wt)\n"
+    "    assert not O.matches(path, (wt / path).read_bytes(), repo=wt)\n"
+    "    _git(wt, 'checkout', '--', path)\n"
+    "    assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity\n",
+    "    _flip(wt / path)\n"
+    "    with C.call_scope():\n"
+    "        assert not O.exact_blobs_ok(wt)\n"
+    "        assert not O.matches(path, (wt / path).read_bytes(), repo=wt)\n"
+    "    _git(wt, 'checkout', '--', path)\n"
+    "    with C.call_scope():\n"
+    "        assert O.exact_blobs_ok(wt)\n",
+))
+HANDOFFS['tests/test_wsv2_core_scope.py'].extend([
+    (
+        'def test_browser_registration_preserves_original_role_and_exact_new_exports():\n',
+        '@C.call_scope()\ndef test_browser_registration_preserves_original_role_and_exact_new_exports():\n',
+    ),
+    (
+        'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n',
+        '@C.call_scope()\ndef test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n',
+    ),
+])
+
+
+HANDOFFS['tests/test_wsv2_core_scope.py'].append((
+    '@C.call_scope()\n'
+    'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n'
+    '    assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE\n'
+    '    assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS\n'
+    "    pins = F.manifest()['source_blobs']\n"
+    '    for path in OWNER_APPROVED_ACCEPTANCE:\n'
+    '        assert (pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state\n'
+    '                or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid\n'
+    '        original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()\n'
+    '        current = F._read(F.ROOT, path, None).decode()\n'
+    '        from tests import u1_scope as U1\n'
+    '        # the cohort pin, or (PR #413) the exact later U1 state of a path U1 supersedes while the cohort pin still equals the BASE blob U1 recorded\n'
+    '        assert (S.git_blob(current) == pins[path]\n'
+    '                or (path in U1.SUPERSEDED and U1.supersedes(path, S.git_blob(current)) and U1.base_blob(path) == pins[path])), path\n'
+    '        def tests(text):\n'
+    '            return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])\n'
+    "                    for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]\n"
+    '        assert tests(original) == tests(current), path\n'
+    "        assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current\n"
+    '        if path in S.BLOBS:\n'
+    '            sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}\n'
+    '            assert S.violations(sources) == []\n'
+    '            mutated = dict(sources)\n'
+    "            mutated[path] = current + '\\n'\n"
+    '            assert S.violations(mutated)\n'
+,
+    'def _owner_approved_acceptance_pin(path, pin):\n'
+    '    from tests import u1_scope as U1, ux_pr1_scope as UX1, ux_pr3b1_scope as UX3B1\n'
+    '\n'
+    '    owner = None\n'
+    '    predecessor = WS1_ACCEPTED_MERGE\n'
+    '    for cohort, ref in (\n'
+    "        (U1, '2c63750929477c618444e9d056030e054cc3a41c'),\n"
+    "        (UX1, '713c0daf434dd79616f5a07451de6accddde93e0'),\n"
+    "        (UX3B1, '4e22f330d97eec66befcbb5df6dc4e1529ae6835'),\n"
+    '    ):\n'
+    '        if path not in cohort.SUPERSEDED:\n'
+    '            continue\n'
+    "        F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, cohort.BASE)\n"
+    "        F._git(F.ROOT, 'merge-base', '--is-ancestor', cohort.BASE, ref)\n"
+    '        signed = cohort.manifest(ref=ref)\n'
+    "        assert signed['base'] == cohort.BASE and signed['base_blobs'][path] == pin\n"
+    "        assert F._git(F.ROOT, 'ls-tree', cohort.BASE, '--', path).decode().strip() == f'100644 blob {pin}\\t{path}'\n"
+    "        pin = signed['source_blobs'][path]\n"
+    "        assert F._git(F.ROOT, 'ls-tree', ref, '--', path).decode().strip() == f'100644 blob {pin}\\t{path}'\n"
+    '        predecessor, owner = ref, cohort\n'
+    "    F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, 'HEAD')\n"
+    '    if owner is not None:\n'
+    '        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n'
+    '    return pin\n'
+    '\n'
+    '\n'
+    '@C.call_scope()\n'
+    'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n'
+    '    assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE\n'
+    '    assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS\n'
+    "    pins = F.manifest()['source_blobs']\n"
+    '    for path in OWNER_APPROVED_ACCEPTANCE:\n'
+    '        assert (pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state\n'
+    '                or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid\n'
+    '        original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()\n'
+    '        current = F._read(F.ROOT, path, None).decode()\n'
+    '        assert S.git_blob(current) == _owner_approved_acceptance_pin(path, pins[path]), path\n'
+    '        def tests(text):\n'
+    '            return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])\n'
+    "                    for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]\n"
+    '        assert tests(original) == tests(current), path\n'
+    "        assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current\n"
+    '        if path in S.BLOBS:\n'
+    '            sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}\n'
+    '            assert S.violations(sources) == []\n'
+    '            mutated = dict(sources)\n'
+    "            mutated[path] = current + '\\n'\n"
+    '            assert S.violations(mutated)\n'
+
+))
+
+
+HANDOFFS['tests/test_wsv2_core_scope.py'].append((
+    "    monkeypatch.setattr(F, '_read', altered)\n"
+    "    assert not F.exact_blobs_ok() and not C.valid()\n\n\n"
+    "@pytest.mark.parametrize('drop', (False, True))\n",
+    "    monkeypatch.setattr(F, '_read', altered)\n"
+    "    with C.call_scope():\n"
+    "        assert not F.exact_blobs_ok() and not C.valid()\n\n\n"
+    "@pytest.mark.parametrize('drop', (False, True))\n",
+))
+
+
+HANDOFFS['tests/post413_o1_scope.py'].append((
+    'def _exact_blobs_ok(repo=None, ref=None):\n'
+    '    root = Path(repo) if repo is not None else ROOT\n',
+    'def _exact_blobs_ok(repo=None, ref=None):\n'
+    '    from tests import ci_v4_p0_scope as P0, ci_v4_scope\n'
+    '\n'
+    '    # All paths in this check describe one evaluated checkout or commit.\n'
+    '    with P0.scoped(), ci_v4_scope.scoped():\n'
+    '        return _inspect_exact_blobs(repo, ref)\n'
+    '\n'
+    '\n'
+    'def _inspect_exact_blobs(repo, ref):\n'
+    '    root = Path(repo) if repo is not None else ROOT\n',
+))
+
+
+HANDOFFS['tests/test_post413_o1_scope.py'].append((
+    '    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]\n',
+    '    with C.call_scope():\n'
+    '        assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]\n',
+))
+
+
+HANDOFFS['tests/test_post413_o1_scope.py'].extend([
+    (
+        'import subprocess\n'
+        '\n'
+        'import pytest\n',
+        'import subprocess\n'
+        'from time import monotonic\n'
+        '\n'
+        'import pytest\n',
+    ),
+    (
+        "@pytest.fixture(scope='module')\n"
+        'def _tree(tmp_path_factory):\n',
+        '@pytest.fixture(autouse=True)\n'
+        'def _report_o1_progress(request):\n'
+        "    terminal = request.config.pluginmanager.get_plugin('terminalreporter')\n"
+        '    start = monotonic()\n'
+        '    if terminal is not None:\n'
+        "        terminal.write_line(f'[O1] start {request.node.nodeid}')\n"
+        '    yield\n'
+        '    if terminal is not None:\n'
+        "        terminal.write_line(f'[O1] finish {request.node.nodeid} ({monotonic() - start:.1f}s)')\n"
+        '\n'
+        '\n'
+        "@pytest.fixture(scope='module')\n"
+        'def _tree(tmp_path_factory):\n',
+    ),
+])
+
+
+HANDOFFS['tests/test_ux_pr2a_scope.py'] = [(
+    "    evidence = wt / 'evidence' / 'ux-pr2a-probe'; evidence.mkdir(parents=True, exist_ok=True)\n"
+    "    artifact = evidence / 'source.json'; artifact.write_text('{\"synthetic\": true}\\n')\n",
+    "    evidence = wt / 'evidence'\n"
+    "    evidence.mkdir(exist_ok=True)\n"
+    "    artifact = evidence / 'native.xml'\n"
+    "    artifact.write_text('<testsuites/>\\n')\n",
+)]
+
+HANDOFFS['tests/ux_pr2a_scope.py'] += [
+    (
+        '        for p,sha in pins.items():\n'
+        '            if _blob(_read(root,p,ref))!=sha and not pin_ok3(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref):\n',
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        for p,sha in pins.items():\n'
+        '            blob = _blob(_read(root, p, ref))\n'
+        '            if (blob != sha and not pin_ok3(p, blob) and not _pr3b1_pin(p, blob, root, ref)\n'
+        '                    and not P0.ux_pr2a_artifact_test_pin(p, blob, root, ref)):\n',
+    ),
+    (
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p])',
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p])',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2b_scope.py'] += [
+    (
+        '        for p,sha in pins.items():\n'
+        '            if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref,signature=not closure):\n',
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        for p,sha in pins.items():\n'
+        '            blob = _blob(_read(root, p, ref))\n'
+        '            if (blob != sha and not pin_ok4(p, blob) and not _pr3b1_pin(p, blob, root, ref, signature=not closure)\n'
+        '                    and not P0.ux_pr2a_artifact_test_pin(p, blob, root, ref)):\n',
+    ),
+    (
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
+    ),
+]
+
+
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n',
+        'def exact_blobs_ok(cohort, repo=None, ref=None):\n'
+        '    """Check a cohort directly and retain its rejection for this read-only call."""\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    verdict = cohort.exact_blobs_ok(root, ref)\n'
+        '    if verdict is False and _CALL:\n'
+        "        _CALL[-1].setdefault(('rejected-cohorts', str(root), ref), set()).add(cohort)\n"
+        '    return verdict\n'
+        '\n'
+        '\n'
+        'def valid(repo=None, ref=None):\n',
+    ),
+    (
+        '    mods = cohorts()\n'
+        '    if not mods:\n'
+        '        return False\n',
+        '    mods = cohorts()\n'
+        '    if not mods:\n'
+        '        return False\n'
+        '    if _CALL:\n'
+        "        rejected = _CALL[-1].get(('rejected-cohorts', str(root), ref), ())\n"
+        '        if any(m in rejected for m in mods):\n'
+        '            return False\n',
+    ),
+]
+
+HANDOFFS['tests/test_wsv2_core_scope.py'] += [
+    (
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    with C.call_scope():\n'
+        '        assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    with C.call_scope():\n'
+        '        assert not C.exact_blobs_ok(F) and not C.valid()\n',
+    ),
+    (
+        'def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():\n',
+        '@C.call_scope()\n'
+        'def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():\n',
+    ),
+    (
+        'def test_predecessor_manifest_pins_and_metadata_remain_verbatim():\n',
+        '@C.call_scope()\n'
+        'def test_predecessor_manifest_pins_and_metadata_remain_verbatim():\n',
+    ),
+]
+
+HANDOFFS['tests/test_finval_f01_scope.py'] = [
+    (
+        'from tests import finval_f01_scope as F\n',
+        'from tests import fin_v2_cohorts as C\n'
+        'from tests import finval_f01_scope as F\n',
+    ),
+    (
+        '    assert F.valid()\n',
+        '    with C.call_scope():\n'
+        '        assert F.valid()\n',
+    ),
+    (
+        '    assert not F.valid(sources=sources)\n'
+        '    del sources[path]\n'
+        '    assert not F.valid(sources=sources)\n',
+        '    with C.call_scope():\n'
+        '        assert not F.valid(sources=sources)\n'
+        '    del sources[path]\n'
+        '    with C.call_scope():\n'
+        '        assert not F.valid(sources=sources)\n',
+    ),
+]
+
+
+HANDOFFS['tests/u1_scope.py'].append((
+    '_P0_RUNTIME_HANDOFFS = frozenset((\n',
+    '_P0_RUNTIME_HANDOFFS = frozenset((\n'
+    "    'tests/wsv2_core_scope.py',\n",
+))
+
+HANDOFFS['tests/wsv2_core_scope.py'] = [
+    (
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+        'def _owned_pins_match(root, ref, pins):\n'
+        '    mismatches = []\n'
+        '    for path, expected in pins.items():\n'
+        '        blob = _blob(_read(root, path, ref))\n'
+        '        if blob != expected:\n'
+        '            mismatches.append((path, blob))\n'
+        '\n'
+        '    if ref is None and mismatches:\n'
+        '        paths = [path for path, _ in mismatches]\n'
+        '        committed = {}\n'
+        "        for entry in _git(root, 'ls-tree', '-r', '-z', 'HEAD', '--', *paths).decode().split('\\0'):\n"
+        '            if entry:\n'
+        "                mode_type_blob, path = entry.split('\\t', 1)\n"
+        '                committed[path] = mode_type_blob.split()[2]\n'
+        '        # HEAD only orders checks. Even a committed mismatch needs the exact successor proof.\n'
+        '        mismatches.sort(key=lambda item: committed.get(item[0]) == item[1])\n'
+        '\n'
+        '    return all(_wf06b_supersedes(path, blob, root, ref) for path, blob in mismatches)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+    ),
+    (
+        '        if any(_blob(_read(root, p, ref)) != b and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, b in pins.items()):\n',
+        '        if not _owned_pins_match(root, ref, pins):\n',
+    ),
+]
+
+
+HANDOFFS['tests/test_wsv2_core_scope.py'] += [
+    (
+        'def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():\n',
+        'def _assert_ws_and_registry_reject():\n'
+        '    with C.call_scope():\n'
+        '        assert not C.exact_blobs_ok(F) and not C.valid()\n'
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        '    assert not F.manifest() and not F.exact_blobs_ok() and not C.valid()\n',
+        '    assert not F.manifest()\n'
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', extra)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', extra)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, attribute, '0' * 40)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, attribute, '0' * 40)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', with_generated_evidence)\n"
+        '    assert F.exact_blobs_ok() and C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', with_generated_evidence)\n"
+        '    with C.call_scope():\n'
+        '        assert F.exact_blobs_ok() and C.valid()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', with_unreviewed_source)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', with_unreviewed_source)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+]
+
+
+HANDOFFS['tests/test_fin_v2_integration_409_scope.py'].append((
+    'def test_correction_b_positive_on_the_genuine_integrated_head():\n'
+    '    from tests import wf04_scope as W\n'
+    '    for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):\n'
+    '        assert W._downstream_allows(path, W.ROOT, None) is True, path\n'
+    '    for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):         # the exact reviewed pin of each pinned path passes\n'
+    '        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path       # (a manifest never pins itself, so none is probed here)\n',
+    'def test_correction_b_positive_on_the_genuine_integrated_head():\n'
+    '    from tests.fin_v2_cohorts import call_scope\n'
+    '    from tests import wf04_scope as W\n'
+    '    with call_scope():\n'
+    '        for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):\n'
+    '            assert W._downstream_allows(path, W.ROOT, None) is True, path\n'
+    '        for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):\n'
+    '            assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path\n',
+))
+
+HANDOFFS['tests/test_post413_r1_scope.py'].append((
+    'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+    '@C.call_scope()\n'
+    'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
@@ -4105,11 +5365,27 @@ def supersedes(path, value, repo=None, ref=None):
     return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
 
 
+def ux_pr2a_artifact_test_pin(path, value, repo=None, ref=None):
+    """Admit only the reviewed artifact fixture source, leaving the historical pins intact."""
+    return path == 'tests/test_ux_pr2a_scope.py' and supersedes(path, value, repo, ref)
+
+
 def r1_security_test_handoff(path, value, repo=None, ref=None):
     if path != R1_SECURITY_TEST or not exact_blobs_ok(repo, ref):
         return False
     pins = manifest(repo, ref).get("source_blobs", {})
     return value is not None and pins.get(path) == value
+
+
+def o1_historical_test_pin(sibling, path, value, repo=None, ref=None):
+    """Keep the reviewed O1 audit blob in its historical manifest after the literal source handoff."""
+    if (sibling, path) != ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'):
+        return False
+    root = Path(repo) if repo is not None else ROOT
+    if not exact_blobs_ok(root, ref):
+        return False
+    historical = json.loads(_base_bytes(str(root), sibling))['source_blobs'][path]
+    return value == historical == _blob(_base_bytes(str(root), path))
 
 
 def nontrust_scope_authorized(changed, repo=None):

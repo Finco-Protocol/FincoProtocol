@@ -42,6 +42,7 @@ def _flip(path):
     path.write_bytes(path.read_bytes() + b'\n')
 
 
+@C.call_scope()
 def test_positive_cohort_is_exact_registered_and_closed():
     assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()
     assert R.__name__ in C.COHORT_MODULES and R in C.cohorts() and R.protected_blobs() == {}
@@ -62,6 +63,7 @@ def test_base_is_the_merged_413_main_and_history_is_recorded_not_rewritten():
         assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob
 
 
+@C.call_scope()
 def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
     pins = R.manifest()['source_blobs']
     for path in (EDITOR, BUNDLE, ROLE):

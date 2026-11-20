@@ -88,6 +88,112 @@
       },
       "sibling_modules_not_scoped": true
     },
+    "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_r1_scope",
+        "committed": false,
+        "mutated_commit": "d775e4b5b3b3fc3408368724ac1099ff892c713a",
+        "original": "f1877e95c69ced6966cf923e6f9a6cdd9384d7ad",
+        "path": "tests/test_finance_integrity_governance.py",
+        "physical": false,
+        "plain": true,
+        "restored": true,
+        "scope_left_open": false
+      },
+      "plain": {
+        "git_subprocesses": 68741,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 2733.716
+      },
+      "recorder_sha256": "6f2e2146563c7c38131881e2be254fbf091919a81398e2d9dc1832c69495745d",
+      "runner_note": "Separate sequential Python 3.12.16 processes on the same detached source and CPU affinity. The shared container load may vary. Timing and Git invocation counts are local diagnostics, not scheduler weights.",
+      "scoped": {
+        "git_subprocesses": 3808,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed"
+        ],
+        "wall_s": 40.899
+      },
+      "sibling_modules_not_scoped": true,
+      "tested_sha": "f1877e95c69ced6966cf923e6f9a6cdd9384d7ad",
+      "tested_tree": "8e6906f0d6bf33642fbac55fb4225e8dfcaa708a"
+    },
+    "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files": {
+      "mutation_between_calls_detected": true,
+      "mutation_probe": {
+        "cohort": "tests.fin_v2_r1_scope",
+        "committed": false,
+        "mutated_commit": "50f0bce861c84080a5c3a6ea065656973b3d3d06",
+        "original": "5d0cf2182f489b901491b28347455b8fdfdcc7ae",
+        "path": "tests/test_finance_integrity_governance.py",
+        "physical": false,
+        "plain": true,
+        "restored": true,
+        "scope_left_open": false
+      },
+      "plain": {
+        "git_subprocesses": 36444,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files"
+        ],
+        "scoped_calls": 0,
+        "scoped_node_calls": [],
+        "wall_s": 2401.495
+      },
+      "recorder_sha256": "6f2e2146563c7c38131881e2be254fbf091919a81398e2d9dc1832c69495745d",
+      "runner_note": "Separate sequential Python 3.12.16 processes on the same detached source and CPU affinity. The shared container load may vary. Timing and Git invocation counts are local diagnostics, not scheduler weights.",
+      "scoped": {
+        "git_subprocesses": 3806,
+        "outcome": "passed",
+        "phases": {
+          "call": "passed",
+          "setup": "passed",
+          "teardown": "passed"
+        },
+        "rc": 0,
+        "recorded_nodes": [
+          "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files"
+        ],
+        "scoped_calls": 1,
+        "scoped_node_calls": [
+          "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files"
+        ],
+        "wall_s": 79.114
+      },
+      "sibling_modules_not_scoped": true,
+      "tested_sha": "5d0cf2182f489b901491b28347455b8fdfdcc7ae",
+      "tested_tree": "1362f6cbd35ddb9882aa195000f645b9ee540118"
+    },
     "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path": {
       "mutation_between_calls_detected": true,
       "mutation_probe": {

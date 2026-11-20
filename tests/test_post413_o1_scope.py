@@ -4,10 +4,10 @@ Every negative mutates a real checkout of the committed HEAD (shared object data
 real composite registry; each negative is followed by a restoration proof. The checks need only git objects, so they stay fast.
 """
 import ast
-from contextlib import ExitStack
 import json
 from pathlib import Path
 import subprocess
+from time import monotonic
 
 import pytest
 
@@ -27,6 +27,17 @@ SIBLINGS = {
 
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.STDOUT).decode()
+
+
+@pytest.fixture(autouse=True)
+def _report_o1_progress(request):
+    terminal = request.config.pluginmanager.get_plugin('terminalreporter')
+    start = monotonic()
+    if terminal is not None:
+        terminal.write_line(f'[O1] start {request.node.nodeid}')
+    yield
+    if terminal is not None:
+        terminal.write_line(f'[O1] finish {request.node.nodeid} ({monotonic() - start:.1f}s)')
 
 
 @pytest.fixture(scope='module')
@@ -51,6 +62,7 @@ def _flip(path):
     path.write_bytes(path.read_bytes() + b'\n')
 
 
+@C.call_scope()
 def test_positive_cohort_is_exact_registered_and_closed():
     assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()
     assert O.__name__ in C.COHORT_MODULES and O in C.cohorts() and O.__name__ in U.LATER_COHORTS and O.protected_blobs() == {}
@@ -142,6 +154,7 @@ def _ci_v4_own_later_paths(repo=None, ref=None):
 
 
 def _u2_signed_later_pins(repo=None, ref=None):
+    from tests import c06_cost_workspace_scope as C06
     from tests import u2_scope as U2
     root = Path(repo) if repo is not None else O.ROOT
     _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
@@ -149,10 +162,16 @@ def _u2_signed_later_pins(repo=None, ref=None):
         return {}
     signed = U2.manifest(root, ref)['source_blobs']
     historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']
+    c06_base = C06.manifest(root, ref).get('base_blobs', {})
+
+    def follows_u2(path):
+        current = U2._blob(U2._read(root, path, ref))
+        return current == signed[path] or (c06_base.get(path) == signed[path] and C06.supersedes(path, current, root, ref))
+
     return {p: signed[p] for p in U2_LATER_PRESENTATION
             if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED
             and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)
-            and U2._blob(U2._read(root, p, ref)) == signed[p]}
+            and follows_u2(p)}
 
 
 # UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.
@@ -194,15 +213,17 @@ def _ux_pr2c_signed_later_pins(repo=None, ref=None):
 
 
 def _audit_shared_sibling_pins(repo=None, ref=None):
-    # No mutation inside this outer call; every verdict is discarded before any tamper control runs.
-    with ExitStack() as scopes:
-        for cohort in C.cohorts():
-            if callable(getattr(cohort, 'scoped', None)):
-                scopes.enter_context(cohort.scoped())
-        return _audit_shared_sibling_pins_in_scope(repo, ref)
+    root = Path(repo) if repo is not None else O.ROOT
+    if ref is not None:
+        ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').strip()
+    # Reuse immutable Git reads in this audit and discard every verdict before any tamper control writes.
+    with C.call_scope():
+        return _audit_shared_sibling_pins_in_scope(root, ref)
 
 
 def _audit_shared_sibling_pins_in_scope(repo, ref):
+    from tests import ci_v4_p0_scope as P0
+
     root = Path(repo) if repo is not None else O.ROOT
     pins = O.manifest(root, ref)['source_blobs']
     moved_total = 0
@@ -225,7 +246,10 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         ux3_moved = moved & set(later_ux3)                   # a path UX-PR2c supersedes is judged against PR2c's pin
         ux2_moved = (moved & set(later_ux2)) - ux3_moved
         ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's
-        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))
+        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()
+        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest
+        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved
+        assert moved == admitted, (manifest, sorted(moved - admitted))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
         assert all(now['source_blobs'][p] == later_ux[p] for p in ux_moved), manifest
@@ -319,10 +343,12 @@ def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(
 @pytest.mark.parametrize('path', sorted(O.OWNED_PATHS))
 def test_one_byte_in_each_owned_source_fails_closed(wt, path):
     _flip(wt / path)
-    assert not O.exact_blobs_ok(wt)
-    assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt)
+        assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
     _git(wt, 'checkout', '--', path)
-    assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt)
 
 
 def test_modified_manifest_missing_or_extra_pin_and_wrong_base_fail_closed(wt):
@@ -448,7 +474,8 @@ def test_ux_pr1_browser_fixture_shared_pin_is_exact_at_the_evaluated_ref(wt):
     assert path in UX_PR1_LATER_SHARED and path in UX.OWNED_PATHS and path in UX.SUPERSEDED
     before = _audit_shared_sibling_pins(wt, 'HEAD')
     from tests import ux_pr2b_scope as UX3
-    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]
+    with C.call_scope():
+        assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]
     original = (wt / path).read_bytes()
     _flip(wt / path)
     with pytest.raises(AssertionError):

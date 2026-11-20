@@ -231,6 +231,14 @@ def scoped():
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:
+        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+            return _scoped_exact(repo, ref)
+    return _scoped_exact(repo, ref)
+
+
+def _scoped_exact(repo, ref):
     if not _SCOPE:
         return _exact_blobs_ok(repo, ref)
     key = (str(repo if repo is not None else ROOT), ref)
@@ -255,7 +263,13 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         if not _followed_ok(root, ref, pins, data):
             return False
-        changed = _git(root, 'diff', '--name-only', BASE, *([ref] if ref else []), '--').decode().splitlines()
+        comparison = ('--no-renames', BASE, *([ref] if ref else []), '--')
+        changed = _git(root, 'diff', '--name-only', *comparison).decode().splitlines()
+        # A list entry alone is not evidence of a delta. Check it against the
+        # NUL-delimited status records for the same base, subject and pathspec.
+        records = _git(root, 'diff', '--name-status', '-z', *comparison).decode().split('\0')
+        if records[-1] or len(records) != 2 * len(changed) + 1 or records[1:-1:2] != changed or len(changed) != len(set(changed)):
+            return False
         if any(p not in OWNED_PATHS and p != MANIFEST and not _integration_allows(p, root, ref) and not _wf06b_allows(p, root, ref) for p in changed):
             return False
         if ref is None:
@@ -272,21 +286,26 @@ def allowed_path(path, repo=None, ref=None):
 
 
 def valid(repo=None, ref=None):
-    from tests.fin_v2_cohorts import valid as composite_valid
-    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+
+    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)
 
 
 def matches(path, source=None, *, repo=None, ref=None):
     pins = manifest(repo, ref).get('source_blobs', {})
-    if path not in pins or not valid(repo, ref):
+    if path not in pins:
         return False
     raw = source.encode() if isinstance(source, str) else source
-    return source is None or _blob(raw) == pins[path]
+    if raw is not None and _blob(raw) != pins[path]:
+        return False
+    return valid(repo, ref)
 
 
 def pins_exactly(path, value, repo=None, ref=None):
     """True only while the whole cohort is exact and it pins ``path`` at exactly ``value`` (used by the bounded hooks of the older guards)."""
-    return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    pins = manifest(repo, ref).get('source_blobs', {})
+    return path in pins and pins[path] == value and exact_blobs_ok(repo, ref)
 
 
 def predecessor_repin(manifest_path, source, after, repo=None, ref=None):

@@ -327,7 +327,10 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_immutable_git_reads
+
     with ExitStack() as later:       # one verdict per later cohort for this U1 check (dropped on exit)
+        later.enter_context(ci_immutable_git_reads.scope())
         for m in _later_modules():
             later.enter_context(m.scoped())
         return _exact_blobs_ok_inner(repo, ref)
@@ -372,7 +375,8 @@ def _exact_blobs_ok_inner(repo=None, ref=None):
         # C06 Correction C: the finite signed successor may move these exact U1 pins (bounded, like the PR2c hook below);
         # history remains untouched and the tip cohort's own signature proves the extent of every moved pin.
         if any(current[p] != sha and not _later_follows(p, current[p], sha, root, ref)
-               and not _c06_correction_c_pin(p, current[p], root, ref) for p, sha in pins.items()):
+               and not _c06_correction_c_pin(p, current[p], root, ref)
+               and not _p0_runtime_pin(p, current[p], root, ref) for p, sha in pins.items()):
             return False
         # 4. nothing outside the literal set changed since BASE; protected prefixes can never move
         changed_since_base = _git(root, 'diff', '--name-only', '--no-renames', BASE, *([ref] if ref else []), '--').decode().splitlines()
@@ -422,11 +426,34 @@ def base_blob(path, repo=None, ref=None):
     return manifest(repo, ref).get('base_blobs', {}).get(path)
 
 
+_P0_RUNTIME_HANDOFFS = frozenset((
+    'tests/wsv2_core_scope.py',
+    'tests/fin_v2_integration_409_scope.py',
+    'tests/fin_v2_wf06a_scope.py',
+    'tests/test_fin_v2_integration_409_scope.py',
+    'tests/test_wsv2_core_scope.py',
+))
+
+
+def _p0_runtime_pin(path, value, repo, ref):
+    if path not in _P0_RUNTIME_HANDOFFS:
+        return False
+    from tests import ci_v4_p0_scope as P0
+    return P0.supersedes(path, value, repo, ref)
+
+
 @scoped()
 def historical_blobs(path, repo=None, ref=None):
     """The reviewed blobs an older cohort may still pin for a superseded path: main at #410 (BASE) or main at #414 (INTEGRATION)."""
     data = manifest(repo, ref)
     found = {b for b in (data.get('base_blobs', {}).get(path), data.get('integration_blobs', {}).get(path)) if b}
+    if path in _P0_RUNTIME_HANDOFFS:
+        from tests import ci_v4_p0_scope as P0
+        root = Path(repo) if repo is not None else ROOT
+        if P0.signature_ok(root, ref) and path in P0.HANDOFFS:
+            # The frozen V4 baseline still carries WF06B's original integration pin.
+            prior = json.loads(_git(root, 'show', P0.BASE + ':docs/react_migration/wf06b_a_plus/SOURCE_SUCCESSOR.json'))
+            found.add(prior['source_blobs'][path])
     # A registered later cohort that supersedes ``path`` has recorded its #413 BASE blob and re-verified it against git inside its own exact check; that
     # BASE blob is the reviewed state an older guard (WF-06B) may still hold. Only while that later cohort is exact, only for a path it supersedes.
     for later in _later_modules():
@@ -440,6 +467,8 @@ def historical_blobs(path, repo=None, ref=None):
 @scoped()
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
+    if _p0_runtime_pin(path, value, repo, ref):
+        return True
     if path in SUPERSEDED:
         if not exact_blobs_ok(repo, ref):
             return False

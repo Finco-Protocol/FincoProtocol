@@ -123,63 +123,33 @@ def _union_cached(root):
     return {k: tuple(v) for k, v in owners.items()}
 
 
-_RESULTS = {}
-
-
 @lru_cache(maxsize=4096)
 def _immutable_blob(root, sha, path):
     """Blob of ``path`` at an immutable commit (None if absent). Commits never change, so this is cached for the process."""
     return _rev(Path(root), f'{sha}:{path}')
 
 
-def _state_key(root, ref):
-    """A key that changes whenever ANY byte of the evaluated state changes.
-
-    An explicit ref is an immutable commit. For the working tree the key is HEAD + the hash of every tracked difference (``git diff HEAD --binary``,
-    staged or not, including deletions and mode changes) + the names and contents of every untracked file, so one flipped byte anywhere yields a new
-    key and the exact check runs again. A cached verdict is therefore never reused for different bytes."""
-    if ref is not None:
-        sha = _rev(root, ref + '^{commit}')
-        return None if sha is None else ('ref', str(root), sha)
-    head = _rev(root, 'HEAD')
-    digest = hashlib.sha1(_git(root, 'diff', 'HEAD', '--no-ext-diff', '--binary', '--')).hexdigest()
-    names = _git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0')
-    untracked = hashlib.sha1()
-    for name in sorted(n for n in names if n):
-        untracked.update(name + b'\0')
-        try:
-            untracked.update((Path(root) / name.decode()).read_bytes())
-        except OSError:
-            untracked.update(b'<unreadable>')
-    return ('wt', str(root), head, digest, untracked.hexdigest())
-
-
 _SCOPE = []
 
 
 def exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+    if not fin_v2_cohorts._CALL and not fin_v2_cohorts._ENTERING:
+        # All downstream guards share a memo for this read-only evaluation.
+        with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+            return _scoped_exact(repo, ref)
+    return _scoped_exact(repo, ref)
+
+
+def _scoped_exact(repo, ref):
+    if not _SCOPE:
+        return _exact_blobs_ok(repo, ref)
     root = Path(repo) if repo is not None else ROOT
-    if _SCOPE:       # one outer governance call (single-threaded, nothing is written meanwhile): the same call-scope memo the older cohorts use
-        memo = _SCOPE[-1]
-        skey = (str(root), ref)
-        if skey not in memo:
-            memo[skey] = _cached_exact(root, repo, ref)
-        return memo[skey]
-    return _cached_exact(root, repo, ref)
-
-
-def _cached_exact(root, repo, ref):
-    try:
-        key = _state_key(root, ref)
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    if key is None:
-        return False
-    if key not in _RESULTS:
-        if len(_RESULTS) > 64:
-            _RESULTS.clear()
-        _RESULTS[key] = _exact_blobs_ok(repo, ref)
-    return _RESULTS[key]
+    memo = _SCOPE[-1]
+    key = (str(root), ref)
+    if key not in memo:
+        memo[key] = _exact_blobs_ok(repo, ref)
+    return memo[key]
 
 
 @contextmanager
@@ -323,14 +293,18 @@ def allowed_path(path, repo=None, ref=None):
 def admits_pin(path, value, repo=None, ref=None):
     """True only while the seal is exact and ``value`` is the one blob this seal authorises for ``path`` (its literal pin, or the single owning PR's
     reviewed blob). It never admits a value for a path outside the union."""
-    if not _delegable(path) or not exact_blobs_ok(repo, ref):
+    if not _delegable(path):
         return False
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
     if path in pins:
-        return pins[path] == value
-    who = _union(root).get(path, [])
-    return len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
+        return pins[path] == value and exact_blobs_ok(repo, ref)
+    try:
+        who = _union(root).get(path, [])
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return (len(who) == 1 and _immutable_blob(str(root), SOURCES[who[0]][0], path) == value
+            and exact_blobs_ok(repo, ref))
 
 
 def followed_manifest_ok(path, repo=None, ref=None):
@@ -353,19 +327,20 @@ def owns(path, repo=None, ref=None):
 
 
 def valid(repo=None, ref=None):
-    from tests.fin_v2_cohorts import valid as composite_valid
-    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+    from tests import ci_immutable_git_reads, fin_v2_cohorts
+
+    with ci_immutable_git_reads.scope(), fin_v2_cohorts.call_scope():
+        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)
 
 
 def matches(path, source=None, *, repo=None, ref=None):
-    root = Path(repo) if repo is not None else ROOT
-    if not exact_blobs_ok(root, ref):
-        return False
-    pins = manifest(root, ref).get('source_blobs', {})
+    pins = manifest(repo, ref).get('source_blobs', {})
     if path not in pins:
         return False
     raw = source.encode() if isinstance(source, str) else source
-    return source is None or _blob(raw) == pins[path]
+    if raw is not None and _blob(raw) != pins[path]:
+        return False
+    return exact_blobs_ok(repo, ref)
 
 
 def protected_blobs(repo=None, ref=None):

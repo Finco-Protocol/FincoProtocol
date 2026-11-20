@@ -59,6 +59,35 @@ LATER_UX_PR1_PATHS = frozenset((
     'tests/u1_scope.py',
     'tests/u2_scope.py',
 ))
+ACCEPTED_RUNTIME_HEAD = '305b3553536680e567c608e4ebd3b166ef3d32a7'
+REVIEWED_RUNTIME_HEAD = '0d648a03915f2f42959082610281b9617484550e'
+REVIEWED_O1_PHASE = (
+    '85fa95c569728a7bbcbf57ccad122a4af4febf63',
+    'f709969121e26c55332aef262ae50c673a616844',
+)
+CURRENT_O1_PHASE_BLOB = '9d02e58a2c6c0b6f76c4c6ec8994ec1b02cfff00'
+RUNTIME_HANDOFF_PINS = {
+    'tests/u1_scope.py': (
+        '77707d87ec3aee5d919f9a5f0468983286280ab1',
+        'b52633f205db995a14e20bb96acc2a925f3604f1',
+        'e1cb7445168cd8e71151e0222f202b50d4a5036a',
+    ),
+    'tests/fin_v2_cohorts.py': (
+        'f39ca2c065216672288e840889fd8e6be9399f50',
+        'f39ca2c065216672288e840889fd8e6be9399f50',
+        'c80dd99eb29c860cd16a957d30f79888488bfe6a',
+    ),
+    'tests/test_post413_o1_scope.py': (
+        '40b935e1cdd342452a60f0d5e1ebf6865be95041',
+        '40b935e1cdd342452a60f0d5e1ebf6865be95041',
+        '50ae69884bc625d3317a89eaed207735d46f277b',
+    ),
+}
+CURRENT_RUNTIME_PINS = {
+    'tests/test_post413_o1_scope.py': CURRENT_O1_PHASE_BLOB,
+    'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
+    'tests/u1_scope.py': 'a4b7f3e728dae845ac9c51cdfa90408a4b8e1608',
+}
 
 
 def _later_ux_pr1_pins(root):
@@ -78,6 +107,34 @@ def _later_ux_pr1_pins(root):
     return entries
 
 
+def _runtime_handoff_pin(root, path, historical):
+    if path not in RUNTIME_HANDOFF_PINS:
+        return historical
+    from tests import ci_v4_p0_scope as P0
+
+    original, accepted, reviewed = RUNTIME_HANDOFF_PINS[path]
+    assert historical == original
+    lineage = [(RECONCILIATION_HEAD, original), (ACCEPTED_RUNTIME_HEAD, accepted), (REVIEWED_RUNTIME_HEAD, reviewed)]
+    o1_manifest = 'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json'
+    if path == 'tests/test_post413_o1_scope.py':
+        assert P0.o1_historical_test_pin(o1_manifest, path, accepted, root)
+        lineage.append(REVIEWED_O1_PHASE)
+    else:
+        approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
+        assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
+    latest_ref, reviewed = lineage[-1]
+    current = CURRENT_RUNTIME_PINS.get(path, reviewed)
+    lineage.append(('HEAD', current))
+    for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
+        git(root, 'merge-base', '--is-ancestor', predecessor, successor)
+    for ref, blob in lineage:
+        assert git(root, 'ls-tree', ref, '--', path).strip() == f'100644 blob {blob}\t{path}'
+    successor = json.loads(git(root, 'show', latest_ref + ':' + P0.MANIFEST))
+    assert successor['source_blobs'][path] == reviewed and successor['source_modes'][path] == '100644'
+    assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, current, root)
+    return current
+
+
 def test_exact_registered_and_historical_maps_immutable():
     # One immutable outer call; drop every memo before the tamper tests mutate bytes.
     with ExitStack() as scopes:
@@ -93,19 +150,41 @@ def test_exact_registered_and_historical_maps_immutable():
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
             hist=d['source_blobs'][p]
             eff=_effective_pin(p,hist)
-            lineage_ref = PR3B2_MERGE if p in later_pins else None
+            lineage_ref = PR3B2_MERGE if p in later_pins or p in RUNTIME_HANDOFF_PINS else None
             assert U.supersedes(p,eff,ref=lineage_ref) and not U.supersedes(p,'0'*40,ref=lineage_ref)
             if eff!=hist:  # a historical pin cannot supersede an accepted later pin
                 assert not U.supersedes(p,hist,ref=lineage_ref)
             if p in later_pins:
                 assert git(U.ROOT, 'rev-parse', PR3B2_MERGE + ':' + p).strip() == eff
                 assert not U.supersedes(p,'0'*40)
-            assert git(U.ROOT,'hash-object',p).strip()==later_pins.get(p, eff)
+            current_pin = _runtime_handoff_pin(U.ROOT, p, later_pins.get(p, eff))
+            assert git(U.ROOT, 'hash-object', '--no-filters', p).strip() == current_pin
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
             assert {k:v for k,v in old.items() if k!='source_blobs'}=={k:v for k,v in now.items() if k!='source_blobs'}
         for p in ('app/v2/save_all_commands.py','financial_engine/x.py','.github/workflows/ci_v4_pr.yml','frontend/src/app/editing/pendingEdits.ts'):
             assert not U.allowed_path(p) and not U.matches(p)
+
+
+def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
+    path = 'tests/u1_scope.py'
+    historical = RUNTIME_HANDOFF_PINS[path][0]
+    with C.call_scope():
+        assert _runtime_handoff_pin(wt, path, historical) == CURRENT_RUNTIME_PINS[path]
+    source = wt / path
+    source.write_bytes(source.read_bytes() + b'\n')
+    with C.call_scope(), pytest.raises(AssertionError):
+        _runtime_handoff_pin(wt, path, historical)
+    original_head = git(wt, 'rev-parse', 'HEAD').strip()
+    try:
+        git(wt, 'add', '--', path)
+        git(wt, '-c', 'user.name=UX scope test', '-c', 'user.email=noreply@users.noreply.github.com',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Alter the live runtime handoff')
+        with C.call_scope(), pytest.raises(AssertionError):
+            _runtime_handoff_pin(wt, path, historical)
+    finally:
+        git(wt, 'reset', '--hard', '-q', original_head)
+
 
 @pytest.mark.parametrize('path',sorted(U.OWNED_PATHS))
 def test_unsigned_byte_fails_closed(path,wt):

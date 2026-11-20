@@ -320,7 +320,8 @@ def test_guard_workflow_runs_only_trusted_default_branch_code_with_least_privile
     text = (ROOT / ".github/workflows/ci_perf_guard.yml").read_text()
     doc = yaml.safe_load(text)
     on = doc.get("on", doc.get(True))
-    assert set(on) == {"workflow_run", "schedule"}
+    assert set(on) == {"workflow_run", "schedule", "workflow_dispatch"}
+    assert on["workflow_dispatch"] is None
     assert sorted(on["workflow_run"]["workflows"]) == sorted(w["name"] for w in POLICY["required_workflows"])
     assert on["workflow_run"]["types"] == ["completed"]
     assert doc["permissions"] == {}
@@ -331,6 +332,8 @@ def test_guard_workflow_runs_only_trusted_default_branch_code_with_least_privile
     assert len(checkout) == 1 and checkout[0]["with"] == {"ref": "${{ github.sha }}", "persist-credentials": False}
     assert "head_sha }}" not in json.dumps(checkout) and "pull_request_target" not in text and "head.ref" not in text
     assert re.search(r"test \"\$REF\" = \"\$DEFAULT\"", text)
+    sweep = next(s for s in job["steps"] if s.get("run") == "python -I tools/ci_perf_guard.py sweep")
+    assert sweep["if"] == "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     for s in job["steps"]:
         if "run" in s and "ci_perf_guard" in s["run"]:
             assert s["run"].startswith("python -I tools/ci_perf_guard.py ")

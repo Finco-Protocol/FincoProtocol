@@ -49,7 +49,10 @@ def call_scope():
     if _CALL or _ENTERING:      # a nested block (or a cohort scope entered by THIS call) shares the outermost memo
         yield
         return
+    from tests import ci_immutable_git_reads
+
     with contextlib.ExitStack() as scopes:
+        scopes.enter_context(ci_immutable_git_reads.scope())
         _ENTERING.append(True)      # Correction B2: a cohort's scoped() entered here never opens a second outer call
         try:
             for m in cohorts():
@@ -62,6 +65,15 @@ def call_scope():
             yield
         finally:
             _CALL.pop()
+
+
+def exact_blobs_ok(cohort, repo=None, ref=None):
+    """Check a cohort directly and retain its rejection for this read-only call."""
+    root = Path(repo) if repo is not None else ROOT
+    verdict = cohort.exact_blobs_ok(root, ref)
+    if verdict is False and _CALL:
+        _CALL[-1].setdefault(('rejected-cohorts', str(root), ref), set()).add(cohort)
+    return verdict
 
 
 def valid(repo=None, ref=None):
@@ -79,8 +91,15 @@ def _valid(repo=None, ref=None):
     mods = cohorts()
     if not mods:
         return False
+    if _CALL:
+        rejected = _CALL[-1].get(('rejected-cohorts', str(root), ref), ())
+        if any(m in rejected for m in mods):
+            return False
     try:
+        from tests import ci_immutable_git_reads
+
         with contextlib.ExitStack() as scopes:
+            scopes.enter_context(ci_immutable_git_reads.scope())
             for m in mods:                      # one outer call: each cohort that offers a call-scope memo computes its exact check once
                 if callable(getattr(m, 'scoped', None)):
                     scopes.enter_context(m.scoped())
@@ -132,11 +151,22 @@ def _owned_match(module, path, source, repo, ref):
 
 
 def protected_blobs(repo=None, ref=None):
-    if not valid(repo, ref):
-        return {}
-    merged = {}
-    for m in cohorts():
-        for p, b in m.manifest(repo, ref).get('source_blobs', {}).items():
-            if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):
-                merged[p] = b
-    return merged
+    from tests import ci_immutable_git_reads
+
+    root = Path(repo) if repo is not None else ROOT
+    if ref is not None:
+        # Snapshot a symbolic ref on every call. The verdict and each manifest
+        # read must describe the same commit, even if the ref moves afterward.
+        try:
+            ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return {}
+    with ci_immutable_git_reads.scope(), call_scope():
+        if not valid(root, ref):
+            return {}
+        merged = {}
+        for m in cohorts():
+            for p, b in m.manifest(root, ref).get('source_blobs', {}).items():
+                if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):
+                    merged[p] = b
+        return merged

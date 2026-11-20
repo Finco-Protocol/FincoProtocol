@@ -41,7 +41,7 @@ jobs:
           TIP="$(git rev-parse --verify refs/remotes/origin/main^{commit})"
           TRUSTED="$RUNNER_TEMP/trusted_v5"
           mkdir -p "$TRUSTED"
-          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tests/ci_v4_lean_report.py"
+          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tools/ci_perf_guard.py tests/ci_v4_lean_report.py"
           if git show "$TIP:tools/ci_v5_epoch.py" 2>/dev/null | grep -q "FINCO_CI_V5_DELTA_V2" && git cat-file -e "$TIP:tests/ci_v4_lean_report.py" 2>/dev/null; then
             git archive "$TIP" $FILES | tar -x -C "$TRUSTED"
             echo "provenance=TRUSTED_BASE" >> "$GITHUB_OUTPUT"
@@ -118,7 +118,7 @@ jobs:
           TIP="$(git rev-parse --verify refs/remotes/origin/main^{commit})"
           TRUSTED="$RUNNER_TEMP/trusted_v5"
           mkdir -p "$TRUSTED"
-          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py"
+          FILES="tools/ci_v5_epoch.py tools/ci_v5_b5.py tools/ci_v5_shadow.py tools/ci_perf_guard.py"
           if git show "$TIP:tools/ci_v5_epoch.py" 2>/dev/null | grep -q "FINCO_CI_V5_DELTA_V2"; then
             git archive "$TIP" $FILES | tar -x -C "$TRUSTED"
             echo "provenance=TRUSTED_BASE" >> "$GITHUB_OUTPUT"
