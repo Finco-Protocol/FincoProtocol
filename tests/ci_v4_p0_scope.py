@@ -4845,6 +4845,22 @@ HANDOFFS['tests/test_wsv2_core_scope.py'].append((
 ))
 
 
+HANDOFFS['tests/post413_o1_scope.py'].append((
+    'def _exact_blobs_ok(repo=None, ref=None):\n'
+    '    root = Path(repo) if repo is not None else ROOT\n',
+    'def _exact_blobs_ok(repo=None, ref=None):\n'
+    '    from tests import ci_v4_p0_scope as P0, ci_v4_scope\n'
+    '\n'
+    '    # All paths in this check describe one evaluated checkout or commit.\n'
+    '    with P0.scoped(), ci_v4_scope.scoped():\n'
+    '        return _inspect_exact_blobs(repo, ref)\n'
+    '\n'
+    '\n'
+    'def _inspect_exact_blobs(repo, ref):\n'
+    '    root = Path(repo) if repo is not None else ROOT\n',
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

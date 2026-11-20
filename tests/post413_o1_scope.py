@@ -217,6 +217,14 @@ def _pin_matches(path, actual, expected, root, ref):
 
 
 def _exact_blobs_ok(repo=None, ref=None):
+    from tests import ci_v4_p0_scope as P0, ci_v4_scope
+
+    # All paths in this check describe one evaluated checkout or commit.
+    with P0.scoped(), ci_v4_scope.scoped():
+        return _inspect_exact_blobs(repo, ref)
+
+
+def _inspect_exact_blobs(repo, ref):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
     pins, base_blobs = data.get('source_blobs', {}), data.get('base_blobs', {})
