@@ -79,7 +79,8 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
-HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py'))
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
+                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4390,6 +4391,50 @@ HANDOFFS['tests/post413_r1_scope.py'] += [
     ),
 ]
 
+
+HANDOFFS['tests/post413_o1_scope.py'] = [
+    (
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+        '\n'
+        'def _pin_matches(path, actual, expected, root, ref):\n'
+        '    if actual == expected:\n'
+        '        return True\n'
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'):\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, actual, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+    ),
+    (
+        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
+        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n',
+    ),
+    (
+        '            if listed != pins:\n',
+        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n',
+    ),
+]
+
+HANDOFFS['tests/test_post413_o1_scope.py'] = [
+    (
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
+    ),
+    (
+        '        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))\n',
+        '        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()\n'
+        "        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest\n"
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n'
+        '        assert moved == admitted, (manifest, sorted(moved - admitted))\n',
+    ),
+]
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

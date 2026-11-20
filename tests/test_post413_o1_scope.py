@@ -203,6 +203,8 @@ def _audit_shared_sibling_pins(repo=None, ref=None):
 
 
 def _audit_shared_sibling_pins_in_scope(repo, ref):
+    from tests import ci_v4_p0_scope as P0
+
     root = Path(repo) if repo is not None else O.ROOT
     pins = O.manifest(root, ref)['source_blobs']
     moved_total = 0
@@ -225,7 +227,10 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         ux3_moved = moved & set(later_ux3)                   # a path UX-PR2c supersedes is judged against PR2c's pin
         ux2_moved = (moved & set(later_ux2)) - ux3_moved
         ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's
-        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))
+        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()
+        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest
+        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved
+        assert moved == admitted, (manifest, sorted(moved - admitted))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
         assert all(now['source_blobs'][p] == later_ux[p] for p in ux_moved), manifest
