@@ -71,7 +71,11 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                           'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST,
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'}
+                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
+                          # post-#471 (owner decision 2026-11-20): the reviewed skip baseline, one count-one SKIPPED_NOT_PASSED deferral; nothing else of the V4 policy moved
+                          'docs/ci_v4/full_skip_baseline.json'}
+    assert 'docs/ci_v4/full_skip_baseline.json' not in T.FROZEN and 'docs/ci_v4/full_skip_baseline.json' not in T.CI_PATHS
+    assert {'docs/ci_v4/ci-v4-policy.json', 'docs/ci_v4/module_weights.json'} <= set(T.FROZEN)      # every other V4 policy control blob stays byte-equal to BASE
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
@@ -221,11 +225,12 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         path = "tests/%s.py" % name.split(".")[1]
         src = (ROOT / path).read_text()
         assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
-        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')" in src, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')" in src, path
     v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
     assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
     assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
-            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
+            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', "
+            "'docs/ci_v4/full_skip_baseline.json'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
     gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
@@ -234,7 +239,8 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
 
 
-@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml"])
+@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml",
+                                  "docs/ci_v4/full_skip_baseline.json"])        # any baseline bytes other than the single reviewed one-key blob are refused by every cohort
 def test_a_foreign_control_blob_is_rejected_by_every_hooked_historical_cohort(subject, path):
     ref, restore = variant(subject, {path: lambda b: b.replace(b'"', b'"', 1) + b"\n"})
     try:

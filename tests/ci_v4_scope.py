@@ -102,7 +102,7 @@ def _pr2c_supersedes(path, value, root, ref):
     if S.supersedes(path, value, root, ref):
         return True
     # P1 (post-#457): exactly four CI V4 control/test paths, only at the exact pin of the registered P0 terminal (its signature and manifest); never a prefix.
-    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):
+    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json'):
         from tests.fin_v2_cohorts import COHORT_MODULES
         if 'tests.ci_v4_p0_scope' not in COHORT_MODULES:
             return False
