@@ -128,8 +128,10 @@ def test_altered_pr1_predecessor_module_or_manifest_fails_closed(wt):
 
 
 def test_ci_artifacts_are_not_source_exemptions(wt):
-    evidence = wt / 'evidence' / 'ux-pr2a-probe'; evidence.mkdir(parents=True, exist_ok=True)
-    artifact = evidence / 'source.json'; artifact.write_text('{"synthetic": true}\n')
+    evidence = wt / 'evidence'
+    evidence.mkdir(exist_ok=True)
+    artifact = evidence / 'native.xml'
+    artifact.write_text('<testsuites/>\n')
     assert U.exact_blobs_ok(wt) and C.valid(wt)
     for suffix in ('.py', '.tsx', '.mjs'):
         source = evidence / ('unsigned' + suffix); source.write_text('unsigned\n')

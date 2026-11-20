@@ -81,7 +81,8 @@ MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
-                            'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py'))
+                            'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
+                            'tests/test_ux_pr2a_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4918,6 +4919,50 @@ HANDOFFS['tests/test_post413_o1_scope.py'].extend([
 ])
 
 
+HANDOFFS['tests/test_ux_pr2a_scope.py'] = [(
+    "    evidence = wt / 'evidence' / 'ux-pr2a-probe'; evidence.mkdir(parents=True, exist_ok=True)\n"
+    "    artifact = evidence / 'source.json'; artifact.write_text('{\"synthetic\": true}\\n')\n",
+    "    evidence = wt / 'evidence'\n"
+    "    evidence.mkdir(exist_ok=True)\n"
+    "    artifact = evidence / 'native.xml'\n"
+    "    artifact.write_text('<testsuites/>\\n')\n",
+)]
+
+HANDOFFS['tests/ux_pr2a_scope.py'] += [
+    (
+        '        for p,sha in pins.items():\n'
+        '            if _blob(_read(root,p,ref))!=sha and not pin_ok3(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref):\n',
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        for p,sha in pins.items():\n'
+        '            blob = _blob(_read(root, p, ref))\n'
+        '            if (blob != sha and not pin_ok3(p, blob) and not _pr3b1_pin(p, blob, root, ref)\n'
+        '                    and not P0.ux_pr2a_artifact_test_pin(p, blob, root, ref)):\n',
+    ),
+    (
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p])',
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p])',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2b_scope.py'] += [
+    (
+        '        for p,sha in pins.items():\n'
+        '            if _blob(_read(root,p,ref))!=sha and not pin_ok4(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref,signature=not closure):\n',
+        '        from tests import ci_v4_p0_scope as P0\n'
+        '        for p,sha in pins.items():\n'
+        '            blob = _blob(_read(root, p, ref))\n'
+        '            if (blob != sha and not pin_ok4(p, blob) and not _pr3b1_pin(p, blob, root, ref, signature=not closure)\n'
+        '                    and not P0.ux_pr2a_artifact_test_pin(p, blob, root, ref)):\n',
+    ),
+    (
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
+    ),
+]
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
@@ -5133,6 +5178,11 @@ def supersedes(path, value, repo=None, ref=None):
     # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
     # files), so a signature-only verdict never makes the tree valid.
     return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+
+
+def ux_pr2a_artifact_test_pin(path, value, repo=None, ref=None):
+    """Admit only the reviewed artifact fixture source, leaving the historical pins intact."""
+    return path == 'tests/test_ux_pr2a_scope.py' and supersedes(path, value, repo, ref)
 
 
 def r1_security_test_handoff(path, value, repo=None, ref=None):

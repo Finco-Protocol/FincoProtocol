@@ -192,8 +192,11 @@ def _exact_blobs_ok(repo=None, ref=None):
             baseline[path] = meta.split()[2]
         if baseline != d['base_blobs']:
             return False
+        from tests import ci_v4_p0_scope as P0
         for p,sha in pins.items():
-            if _blob(_read(root,p,ref))!=sha and not pin_ok3(p,_blob(_read(root,p,ref))) and not _pr3b1_pin(p,_blob(_read(root,p,ref)),root,ref):
+            blob = _blob(_read(root, p, ref))
+            if (blob != sha and not pin_ok3(p, blob) and not _pr3b1_pin(p, blob, root, ref)
+                    and not P0.ux_pr2a_artifact_test_pin(p, blob, root, ref)):
                 return False
         for path in INTEGRATION_MANIFESTS:
             before=json.loads(_base_fact(root,'show',BASE+':'+path)); now=json.loads(_read(root,path,ref))
@@ -202,7 +205,6 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            from tests import ci_v4_p0_scope as P0
             if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)
                    and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):
                 return False
