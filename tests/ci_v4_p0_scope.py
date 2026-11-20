@@ -4755,6 +4755,85 @@ HANDOFFS['tests/test_wsv2_core_scope.py'].extend([
 ])
 
 
+HANDOFFS['tests/test_wsv2_core_scope.py'].append((
+    '@C.call_scope()\n'
+    'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n'
+    '    assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE\n'
+    '    assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS\n'
+    "    pins = F.manifest()['source_blobs']\n"
+    '    for path in OWNER_APPROVED_ACCEPTANCE:\n'
+    '        assert (pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state\n'
+    '                or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid\n'
+    '        original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()\n'
+    '        current = F._read(F.ROOT, path, None).decode()\n'
+    '        from tests import u1_scope as U1\n'
+    '        # the cohort pin, or (PR #413) the exact later U1 state of a path U1 supersedes while the cohort pin still equals the BASE blob U1 recorded\n'
+    '        assert (S.git_blob(current) == pins[path]\n'
+    '                or (path in U1.SUPERSEDED and U1.supersedes(path, S.git_blob(current)) and U1.base_blob(path) == pins[path])), path\n'
+    '        def tests(text):\n'
+    '            return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])\n'
+    "                    for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]\n"
+    '        assert tests(original) == tests(current), path\n'
+    "        assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current\n"
+    '        if path in S.BLOBS:\n'
+    '            sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}\n'
+    '            assert S.violations(sources) == []\n'
+    '            mutated = dict(sources)\n'
+    "            mutated[path] = current + '\\n'\n"
+    '            assert S.violations(mutated)\n'
+,
+    'def _owner_approved_acceptance_pin(path, pin):\n'
+    '    from tests import u1_scope as U1, ux_pr1_scope as UX1, ux_pr3b1_scope as UX3B1\n'
+    '\n'
+    '    owner = None\n'
+    '    predecessor = WS1_ACCEPTED_MERGE\n'
+    '    for cohort, ref in (\n'
+    "        (U1, '2c63750929477c618444e9d056030e054cc3a41c'),\n"
+    "        (UX1, '713c0daf434dd79616f5a07451de6accddde93e0'),\n"
+    "        (UX3B1, '4e22f330d97eec66befcbb5df6dc4e1529ae6835'),\n"
+    '    ):\n'
+    '        if path not in cohort.SUPERSEDED:\n'
+    '            continue\n'
+    "        F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, cohort.BASE)\n"
+    "        F._git(F.ROOT, 'merge-base', '--is-ancestor', cohort.BASE, ref)\n"
+    '        signed = cohort.manifest(ref=ref)\n'
+    "        assert signed['base'] == cohort.BASE and signed['base_blobs'][path] == pin\n"
+    "        assert F._git(F.ROOT, 'ls-tree', cohort.BASE, '--', path).decode().strip() == f'100644 blob {pin}\\t{path}'\n"
+    "        pin = signed['source_blobs'][path]\n"
+    "        assert F._git(F.ROOT, 'ls-tree', ref, '--', path).decode().strip() == f'100644 blob {pin}\\t{path}'\n"
+    '        predecessor, owner = ref, cohort\n'
+    "    F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, 'HEAD')\n"
+    '    if owner is not None:\n'
+    '        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n'
+    '    return pin\n'
+    '\n'
+    '\n'
+    '@C.call_scope()\n'
+    'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n'
+    '    assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE\n'
+    '    assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS\n'
+    "    pins = F.manifest()['source_blobs']\n"
+    '    for path in OWNER_APPROVED_ACCEPTANCE:\n'
+    '        assert (pins[path] in {S.WSV2_ACCEPTANCE_SUCCESSORS[path], S.WSV2_EDITING_SUCCESSORS.get(path)}   # the WS-1 state or the exact reviewed WS-2 state\n'
+    '                or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid\n'
+    '        original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()\n'
+    '        current = F._read(F.ROOT, path, None).decode()\n'
+    '        assert S.git_blob(current) == _owner_approved_acceptance_pin(path, pins[path]), path\n'
+    '        def tests(text):\n'
+    '            return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])\n'
+    "                    for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]\n"
+    '        assert tests(original) == tests(current), path\n'
+    "        assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current\n"
+    '        if path in S.BLOBS:\n'
+    '            sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}\n'
+    '            assert S.violations(sources) == []\n'
+    '            mutated = dict(sources)\n'
+    "            mutated[path] = current + '\\n'\n"
+    '            assert S.violations(mutated)\n'
+
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

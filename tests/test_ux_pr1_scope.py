@@ -61,6 +61,10 @@ LATER_UX_PR1_PATHS = frozenset((
 ))
 ACCEPTED_RUNTIME_HEAD = '305b3553536680e567c608e4ebd3b166ef3d32a7'
 REVIEWED_RUNTIME_HEAD = '0d648a03915f2f42959082610281b9617484550e'
+REVIEWED_O1_PHASE = (
+    '85fa95c569728a7bbcbf57ccad122a4af4febf63',
+    'f709969121e26c55332aef262ae50c673a616844',
+)
 RUNTIME_HANDOFF_PINS = {
     'tests/u1_scope.py': (
         '77707d87ec3aee5d919f9a5f0468983286280ab1',
@@ -104,18 +108,21 @@ def _runtime_handoff_pin(root, path, historical):
 
     original, accepted, reviewed = RUNTIME_HANDOFF_PINS[path]
     assert historical == original
-    ancestry = (RECONCILIATION_HEAD, ACCEPTED_RUNTIME_HEAD, REVIEWED_RUNTIME_HEAD, 'HEAD')
-    for predecessor, successor in zip(ancestry, ancestry[1:]):
-        git(root, 'merge-base', '--is-ancestor', predecessor, successor)
-    for ref, blob in zip(ancestry, (original, accepted, reviewed, reviewed)):
-        assert git(root, 'ls-tree', ref, '--', path).strip() == f'100644 blob {blob}\t{path}'
+    lineage = [(RECONCILIATION_HEAD, original), (ACCEPTED_RUNTIME_HEAD, accepted), (REVIEWED_RUNTIME_HEAD, reviewed)]
     o1_manifest = 'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json'
     if path == 'tests/test_post413_o1_scope.py':
         assert P0.o1_historical_test_pin(o1_manifest, path, accepted, root)
+        lineage.append(REVIEWED_O1_PHASE)
     else:
         approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
         assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
-    successor = json.loads(git(root, 'show', REVIEWED_RUNTIME_HEAD + ':' + P0.MANIFEST))
+    latest_ref, reviewed = lineage[-1]
+    lineage.append(('HEAD', reviewed))
+    for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
+        git(root, 'merge-base', '--is-ancestor', predecessor, successor)
+    for ref, blob in lineage:
+        assert git(root, 'ls-tree', ref, '--', path).strip() == f'100644 blob {blob}\t{path}'
+    successor = json.loads(git(root, 'show', latest_ref + ':' + P0.MANIFEST))
     assert successor['source_blobs'][path] == reviewed and successor['source_modes'][path] == '100644'
     assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, reviewed, root)
     return reviewed

@@ -314,6 +314,32 @@ def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
     assert 'app/v2/router.py' not in changed and 'app/v2/post_run_context.py' not in changed
 
 
+def _owner_approved_acceptance_pin(path, pin):
+    from tests import u1_scope as U1, ux_pr1_scope as UX1, ux_pr3b1_scope as UX3B1
+
+    owner = None
+    predecessor = WS1_ACCEPTED_MERGE
+    for cohort, ref in (
+        (U1, '2c63750929477c618444e9d056030e054cc3a41c'),
+        (UX1, '713c0daf434dd79616f5a07451de6accddde93e0'),
+        (UX3B1, '4e22f330d97eec66befcbb5df6dc4e1529ae6835'),
+    ):
+        if path not in cohort.SUPERSEDED:
+            continue
+        F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, cohort.BASE)
+        F._git(F.ROOT, 'merge-base', '--is-ancestor', cohort.BASE, ref)
+        signed = cohort.manifest(ref=ref)
+        assert signed['base'] == cohort.BASE and signed['base_blobs'][path] == pin
+        assert F._git(F.ROOT, 'ls-tree', cohort.BASE, '--', path).decode().strip() == f'100644 blob {pin}\t{path}'
+        pin = signed['source_blobs'][path]
+        assert F._git(F.ROOT, 'ls-tree', ref, '--', path).decode().strip() == f'100644 blob {pin}\t{path}'
+        predecessor, owner = ref, cohort
+    F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, 'HEAD')
+    if owner is not None:
+        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)
+    return pin
+
+
 @C.call_scope()
 def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
     assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE
@@ -324,10 +350,7 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
                 or _wf03().matches(path, (F.ROOT / path).read_bytes()))                                 # or the exact WF-03 state while its cohort is valid
         original = F._read(F.ROOT, path, F.AUTHORIZATION_HEAD).decode()
         current = F._read(F.ROOT, path, None).decode()
-        from tests import u1_scope as U1
-        # the cohort pin, or (PR #413) the exact later U1 state of a path U1 supersedes while the cohort pin still equals the BASE blob U1 recorded
-        assert (S.git_blob(current) == pins[path]
-                or (path in U1.SUPERSEDED and U1.supersedes(path, S.git_blob(current)) and U1.base_blob(path) == pins[path])), path
+        assert S.git_blob(current) == _owner_approved_acceptance_pin(path, pins[path]), path
         def tests(text):
             return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])
                     for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]
