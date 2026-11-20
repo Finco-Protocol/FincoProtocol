@@ -81,7 +81,7 @@ MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py',
-                            'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py'))
+                            'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4452,6 +4452,24 @@ HANDOFFS['tests/ux_pr2c_scope.py'] = [
         '            from tests import ci_v4_p0_scope as P0\n'
         '            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref)\n'
         '                   and not P0.o1_historical_test_pin(sibling, p, new[p], root, ref) for p in old):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr1_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2a_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
     ),
 ]
 

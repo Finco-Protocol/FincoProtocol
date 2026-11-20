@@ -223,7 +223,9 @@ def _exact_blobs_ok(repo=None, ref=None):
             old,new=before['source_blobs'],now['source_blobs']
             if set(old)!=set(new):
                 return False
-            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):
+            from tests import ci_v4_p0_scope as P0
+            if any(not (p in pins and new[p]==pins[p]) and not pin_ok2(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)
+                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):
                 return False
         changed=_git(root,'diff','--name-only','--no-renames',BASE,*([ref] if ref else []),'--').decode().splitlines()
         if any(p not in permitted and not owns2(p) and not _pr3b1_owns(p,root,ref) for p in changed):
