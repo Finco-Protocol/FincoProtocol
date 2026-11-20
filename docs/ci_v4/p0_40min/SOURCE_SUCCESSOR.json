@@ -201,7 +201,7 @@
     "tests/ci_v4_lean_b1_scope.py": "713bbd14dff0cd4763cbd3d12ae3cf935bf040ec",
     "tests/ci_v4_lean_b2_scope.py": "688d176bca39e19a648748859f9e128de89b975f",
     "tests/ci_v4_lean_b3_scope.py": "3422ab0d802f1bf7807da53d772bce2e7518bb4b",
-    "tests/ci_v4_p0_scope.py": "63c198adb7b10051b6862fd04ac7c507031907e8",
+    "tests/ci_v4_p0_scope.py": "e5b8848de11f7d1156cb1c2b61fa87ae53cff16a",
     "tests/ci_v4_scope.py": "f90e923e0695836c03f4dbf771b96bb7c57c2950",
     "tests/ci_v5_bootstrap_scope.py": "eaa1b8a51bd4e5866c9cf539401311fbe66b9888",
     "tests/ci_v5_gate_scope.py": "5c5394968701a1f5217ff2b32024c39e72f49a96",

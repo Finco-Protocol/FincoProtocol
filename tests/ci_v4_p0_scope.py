@@ -4868,7 +4868,34 @@ HANDOFFS['tests/test_post413_o1_scope.py'].append((
 ))
 
 
-HANDOFFS['tests/test_post413_o1_scope.py'].extend([('import subprocess\n\nimport pytest\n', 'import subprocess\nfrom time import monotonic\n\nimport pytest\n'), ("@pytest.fixture(scope='module')\ndef _tree(tmp_path_factory):\n", "@pytest.fixture(autouse=True)\ndef _report_o1_progress(request):\n    terminal = request.config.pluginmanager.get_plugin('terminalreporter')\n    start = monotonic()\n    if terminal is not None:\n        terminal.write_line(f'[O1] start {request.node.nodeid}')\n    yield\n    if terminal is not None:\n        terminal.write_line(f'[O1] finish {request.node.nodeid} ({monotonic() - start:.1f}s)')\n\n\n@pytest.fixture(scope='module')\ndef _tree(tmp_path_factory):\n")])
+HANDOFFS['tests/test_post413_o1_scope.py'].extend([
+    (
+        'import subprocess\n'
+        '\n'
+        'import pytest\n',
+        'import subprocess\n'
+        'from time import monotonic\n'
+        '\n'
+        'import pytest\n',
+    ),
+    (
+        "@pytest.fixture(scope='module')\n"
+        'def _tree(tmp_path_factory):\n',
+        '@pytest.fixture(autouse=True)\n'
+        'def _report_o1_progress(request):\n'
+        "    terminal = request.config.pluginmanager.get_plugin('terminalreporter')\n"
+        '    start = monotonic()\n'
+        '    if terminal is not None:\n'
+        "        terminal.write_line(f'[O1] start {request.node.nodeid}')\n"
+        '    yield\n'
+        '    if terminal is not None:\n'
+        "        terminal.write_line(f'[O1] finish {request.node.nodeid} ({monotonic() - start:.1f}s)')\n"
+        '\n'
+        '\n'
+        "@pytest.fixture(scope='module')\n"
+        'def _tree(tmp_path_factory):\n',
+    ),
+])
 
 
 def expected_handoff(root, path):
