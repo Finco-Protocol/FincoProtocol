@@ -4393,49 +4393,7 @@ HANDOFFS['tests/post413_r1_scope.py'] += [
 ]
 
 
-HANDOFFS['tests/post413_o1_scope.py'] = [
-    (
-        '\n'
-        'def _exact_blobs_ok(repo=None, ref=None):\n',
-        '\n'
-        'def _pin_matches(path, actual, expected, root, ref):\n'
-        '    if actual == expected:\n'
-        '        return True\n'
-        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'):\n"
-        '        return False\n'
-        '    from tests import ci_v4_p0_scope as P0\n'
-        '    return P0.supersedes(path, actual, root, ref)\n'
-        '\n'
-        '\n'
-        'def _exact_blobs_ok(repo=None, ref=None):\n',
-    ),
-    (
-        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n',
-        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n',
-    ),
-    (
-        '            if listed != pins:\n',
-        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n',
-    ),
-]
 
-HANDOFFS['tests/test_post413_o1_scope.py'] = [
-    (
-        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
-        '    root = Path(repo) if repo is not None else O.ROOT\n',
-        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
-        '    from tests import ci_v4_p0_scope as P0\n'
-        '\n'
-        '    root = Path(repo) if repo is not None else O.ROOT\n',
-    ),
-    (
-        '        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))\n',
-        '        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()\n'
-        "        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest\n"
-        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n'
-        '        assert moved == admitted, (manifest, sorted(moved - admitted))\n',
-    ),
-]
 
 HANDOFFS['tests/ux_pr2b_scope.py'] = [
     (
@@ -4473,39 +4431,7 @@ HANDOFFS['tests/ux_pr2a_scope.py'] = [
     ),
 ]
 
-HANDOFFS['tests/test_post413_o1_scope.py'] += [
-    (
-        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n',
-        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
-        '    from tests import c06_cost_workspace_scope as C06\n',
-    ),
-    (
-        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n',
-        "        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()\n"
-        '        for path in c06_moved:\n'
-        '            # U2 retains the exact predecessor of the current, separately reviewed C06 source.\n'
-        "            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest\n"
-        '            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest\n'
-        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved\n',
-    ),
-]
 
-HANDOFFS['tests/test_post413_r1_scope.py'] = [
-    (
-        '\n'
-        'def test_positive_cohort_is_exact_registered_and_closed():\n',
-        '\n'
-        '@C.call_scope()\n'
-        'def test_positive_cohort_is_exact_registered_and_closed():\n',
-    ),
-    (
-        '\n'
-        'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
-        '\n'
-        '@C.call_scope()\n'
-        'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
-    ),
-]
 
 HANDOFFS['tests/post413_r1_scope.py'] += [
     (
@@ -4514,65 +4440,132 @@ HANDOFFS['tests/post413_r1_scope.py'] += [
     ),
 ]
 
-HANDOFFS['tests/post413_o1_scope.py'] += [
+
+
+
+
+HANDOFFS['tests/post413_o1_scope.py'] = [
     (
-        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'):\n",
-        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+        '\n'
+        '\n'
+        'def _pin_matches(path, actual, expected, root, ref):\n'
+        '    if actual == expected:\n'
+        '        return True\n'
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, actual, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+    ),
+    (
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+    ),
+    (
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if listed != pins:\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
     ),
 ]
 
-HANDOFFS['tests/test_post413_o1_scope.py'] += [
+HANDOFFS['tests/test_post413_o1_scope.py'] = [
     (
-        "            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest\n",
-        "            assert now['source_blobs'][path] == C06.manifest(root, ref).get('base_blobs', {}).get(path), manifest\n",
-    ),
-]
-
-HANDOFFS['tests/test_post413_o1_scope.py'] += [
-    (
-        'def _u2_signed_later_pins(repo=None, ref=None):\n',
+        '\n'
         'def _u2_signed_later_pins(repo=None, ref=None):\n'
-        '    from tests import c06_cost_workspace_scope as C06\n',
+        '    from tests import u2_scope as U2\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
+        '\n'
+        'def _u2_signed_later_pins(repo=None, ref=None):\n'
+        '    from tests import c06_cost_workspace_scope as C06\n'
+        '    from tests import u2_scope as U2\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n',
     ),
     (
-        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n",
+        "    signed = U2.manifest(root, ref)['source_blobs']\n"
+        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n"
+        '    return {p: signed[p] for p in U2_LATER_PRESENTATION\n'
+        '            if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED\n'
+        '            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)\n'
+        '            and U2._blob(U2._read(root, p, ref)) == signed[p]}\n'
+        '\n'
+        '\n',
+        "    signed = U2.manifest(root, ref)['source_blobs']\n"
         "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n"
         "    c06_base = C06.manifest(root, ref).get('base_blobs', {})\n"
         '\n'
         '    def follows_u2(path):\n'
         '        current = U2._blob(U2._read(root, path, ref))\n'
         '        return current == signed[path] or (c06_base.get(path) == signed[path] and C06.supersedes(path, current, root, ref))\n'
+        '\n'
+        '    return {p: signed[p] for p in U2_LATER_PRESENTATION\n'
+        '            if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED\n'
+        '            and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)\n'
+        '            and follows_u2(p)}\n'
+        '\n'
         '\n',
     ),
     (
-        '            and U2._blob(U2._read(root, p, ref)) == signed[p]}\n',
-        '            and follows_u2(p)}\n',
-    ),
-    (
+        '\n'
         'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
-        '    from tests import c06_cost_workspace_scope as C06\n',
-        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n',
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        "    pins = O.manifest(root, ref)['source_blobs']\n",
+        '\n'
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        "    pins = O.manifest(root, ref)['source_blobs']\n",
     ),
     (
-        "        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()\n"
-        '        for path in c06_moved:\n'
-        '            # U2 retains the exact predecessor of the current, separately reviewed C06 source.\n'
-        "            assert now['source_blobs'][path] == C06.manifest(root, ref).get('base_blobs', {}).get(path), manifest\n"
-        '            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest\n'
-        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved\n',
-        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n',
+        '        ux2_moved = (moved & set(later_ux2)) - ux3_moved\n'
+        "        ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's\n"
+        '        assert moved == own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved, (manifest, sorted(moved - own_moved - ci_moved - u2_moved - ux_moved - ux2_moved))\n'
+        "        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest\n"
+        "        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest\n",
+        '        ux2_moved = (moved & set(later_ux2)) - ux3_moved\n'
+        "        ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's\n"
+        '        p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()\n'
+        "        assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest\n"
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n'
+        '        assert moved == admitted, (manifest, sorted(moved - admitted))\n'
+        "        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest\n"
+        "        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest\n",
     ),
 ]
 
-HANDOFFS['tests/test_post413_r1_scope.py'] += [
+HANDOFFS['tests/test_post413_r1_scope.py'] = [
     (
-        "        assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob\n"
         '\n'
         '\n'
-        '@C.call_scope()\n',
-        "        assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob\n"
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
         '\n'
-        '\n',
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
     ),
 ]
 
