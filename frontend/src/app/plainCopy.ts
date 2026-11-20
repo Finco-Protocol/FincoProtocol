@@ -31,7 +31,7 @@ const PLAIN_BY_FIELD: Record<string, string> = {
 /** C06 Correction C product-truth rule: a field hint is product text shown on a saved, canonical project. Any help
  *  copy carrying prototype/demo/synthetic wording (registry provenance meta-language) is by definition engineer-oriented:
  *  it stays available behind the Technical-note disclosure and is never presented as the visible hint of a live field. */
-const PRODUCT_TRUTH_SIGNS = /\b(synthetic|prototype|fictional|illustrative|DEMO-FIXED|demo)\b/i;
+const PRODUCT_TRUTH_SIGNS = /\b(synthetic|prototype|fictional|illustrative|demo)\b/i;
 
 export function plainFieldHelp(fieldId: string, helpText: string | null | undefined): FieldHelp {
   const raw = (helpText ?? "").trim();
