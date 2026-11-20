@@ -65,6 +65,7 @@ REVIEWED_O1_PHASE = (
     '85fa95c569728a7bbcbf57ccad122a4af4febf63',
     'f709969121e26c55332aef262ae50c673a616844',
 )
+CURRENT_O1_PHASE_BLOB = '43ea2c1b0bc3042130d00decf0a1a0a8116f5677'
 RUNTIME_HANDOFF_PINS = {
     'tests/u1_scope.py': (
         '77707d87ec3aee5d919f9a5f0468983286280ab1',
@@ -117,15 +118,16 @@ def _runtime_handoff_pin(root, path, historical):
         approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
         assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
     latest_ref, reviewed = lineage[-1]
-    lineage.append(('HEAD', reviewed))
+    current = CURRENT_O1_PHASE_BLOB if path == 'tests/test_post413_o1_scope.py' else reviewed
+    lineage.append(('HEAD', current))
     for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
         git(root, 'merge-base', '--is-ancestor', predecessor, successor)
     for ref, blob in lineage:
         assert git(root, 'ls-tree', ref, '--', path).strip() == f'100644 blob {blob}\t{path}'
     successor = json.loads(git(root, 'show', latest_ref + ':' + P0.MANIFEST))
     assert successor['source_blobs'][path] == reviewed and successor['source_modes'][path] == '100644'
-    assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, reviewed, root)
-    return reviewed
+    assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, current, root)
+    return current
 
 
 def test_exact_registered_and_historical_maps_immutable():

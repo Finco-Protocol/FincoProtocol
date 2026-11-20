@@ -4861,6 +4861,13 @@ HANDOFFS['tests/post413_o1_scope.py'].append((
 ))
 
 
+HANDOFFS['tests/test_post413_o1_scope.py'].append((
+    '    assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]\n',
+    '    with C.call_scope():\n'
+    '        assert _ux_pr1_signed_later_pins(wt)[path] == UX3.effective_pins(wt)[path]\n',
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
