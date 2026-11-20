@@ -254,12 +254,17 @@ def base_blob(path, repo=None, ref=None):
 
 def supersedes(path, value, repo=None, ref=None):
     """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""
-    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value
+    if path not in SUPERSEDED:
+        return False
+    pin = manifest(repo, ref).get('source_blobs', {}).get(path)
+    return pin is not None and pin == value and exact_blobs_ok(repo, ref)
 
 
 def valid(repo=None, ref=None):
-    from tests.fin_v2_cohorts import valid as composite_valid
-    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)
+    from tests import fin_v2_cohorts
+
+    with fin_v2_cohorts.call_scope():
+        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)
 
 
 def matches(path, source=None, *, repo=None, ref=None):

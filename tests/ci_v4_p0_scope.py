@@ -4372,6 +4372,25 @@ HANDOFFS['tests/u1_scope.py'] += [
     ),
 ]
 
+HANDOFFS['tests/post413_r1_scope.py'] += [
+    (
+        "    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n",
+        '    if path not in SUPERSEDED:\n'
+        '        return False\n'
+        "    pin = manifest(repo, ref).get('source_blobs', {}).get(path)\n"
+        '    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    ),
+    (
+        '    from tests.fin_v2_cohorts import valid as composite_valid\n'
+        '    return exact_blobs_ok(repo, ref) and composite_valid(repo, ref)\n',
+        '    from tests import fin_v2_cohorts\n'
+        '\n'
+        '    with fin_v2_cohorts.call_scope():\n'
+        '        return exact_blobs_ok(repo, ref) and fin_v2_cohorts.valid(repo, ref)\n',
+    ),
+]
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
