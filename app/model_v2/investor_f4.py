@@ -78,6 +78,13 @@ class AgreementTerms:
         return hashlib.sha256(self.to_json().encode("utf-8")).hexdigest()
 
 
+class InvestorAgreementInputError(ValueError):
+    """Interpreter-level input parse failure (C1F-ERR-01): stable generic text.
+
+    The router maps this to HTTP 422 and never echoes the underlying Python
+    interpreter message (json/date) to the client."""
+
+
 def parse_terms(raw) -> AgreementTerms | None:
     if raw in (None, ""):
         return None
@@ -90,7 +97,16 @@ def parse_terms(raw) -> AgreementTerms | None:
             result[key] = value
         return result
 
-    obj = json.loads(raw, object_pairs_hook=unique) if isinstance(raw, str) else raw
+    if isinstance(raw, str):
+        # C1F-ERR-01 (B02): malformed JSON used to surface the interpreter text
+        # "Expecting property name enclosed in double quotes..." to the client.
+        try:
+            obj = json.loads(raw, object_pairs_hook=unique)
+        except json.JSONDecodeError as exc:
+            raise InvestorAgreementInputError(
+                "F4 agreement payload is not valid JSON") from exc
+    else:
+        obj = raw
     _keys(obj, ("schema_version", "agreement_id", "version", "currency", "unit",
                 "policy", "investors", "contributions"))
     if type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
@@ -120,7 +136,14 @@ def parse_terms(raw) -> AgreementTerms | None:
         _keys(row, ("investor_id", "cash_date", "amount_keur"))
         if not isinstance(row["cash_date"], str):
             raise ValueError("Contribution date must be explicit ISO date")
-        c = Contribution(row["investor_id"], date.fromisoformat(row["cash_date"]), row["amount_keur"])
+        # C1F-ERR-01 (B02): an unparseable ISO date used to surface the
+        # interpreter text ("month must be in 1..12", "Invalid isoformat ...").
+        try:
+            cash_date = date.fromisoformat(row["cash_date"])
+        except ValueError as exc:
+            raise InvestorAgreementInputError(
+                "Contribution date must be explicit ISO date") from exc
+        c = Contribution(row["investor_id"], cash_date, row["amount_keur"])
         if c.investor_id not in by_id:
             raise ValueError("Contribution investor is not in agreement")
         contributions.append(c)
