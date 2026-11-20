@@ -203,6 +203,7 @@ def _audit_shared_sibling_pins(repo=None, ref=None):
 
 
 def _audit_shared_sibling_pins_in_scope(repo, ref):
+    from tests import c06_cost_workspace_scope as C06
     from tests import ci_v4_p0_scope as P0
 
     root = Path(repo) if repo is not None else O.ROOT
@@ -229,7 +230,12 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's
         p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()
         assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest
-        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved
+        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()
+        for path in c06_moved:
+            # U2 retains the exact predecessor of the current, separately reviewed C06 source.
+            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest
+            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest
+        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved
         assert moved == admitted, (manifest, sorted(moved - admitted))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest

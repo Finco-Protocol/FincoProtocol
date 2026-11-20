@@ -4473,6 +4473,23 @@ HANDOFFS['tests/ux_pr2a_scope.py'] = [
     ),
 ]
 
+HANDOFFS['tests/test_post413_o1_scope.py'] += [
+    (
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n',
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    from tests import c06_cost_workspace_scope as C06\n',
+    ),
+    (
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n',
+        "        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()\n"
+        '        for path in c06_moved:\n'
+        '            # U2 retains the exact predecessor of the current, separately reviewed C06 source.\n'
+        "            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest\n"
+        '            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest\n'
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved\n',
+    ),
+]
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
