@@ -4490,7 +4490,33 @@ HANDOFFS['tests/post413_o1_scope.py'] = [
     ),
 ]
 
+
+HANDOFFS['tests/test_post413_r1_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
+    ),
+]
+
 HANDOFFS['tests/test_post413_o1_scope.py'] = [
+    (
+        '"""\n'
+        'import ast\n'
+        'from contextlib import ExitStack\n'
+        'import json\n'
+        'from pathlib import Path\n',
+        '"""\n'
+        'import ast\n'
+        'import json\n'
+        'from pathlib import Path\n',
+    ),
     (
         '\n'
         'def _u2_signed_later_pins(repo=None, ref=None):\n'
@@ -4528,9 +4554,27 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
     ),
     (
         '\n'
+        'def _audit_shared_sibling_pins(repo=None, ref=None):\n'
+        '    # No mutation inside this outer call; every verdict is discarded before any tamper control runs.\n'
+        '    with ExitStack() as scopes:\n'
+        '        for cohort in C.cohorts():\n'
+        "            if callable(getattr(cohort, 'scoped', None)):\n"
+        '                scopes.enter_context(cohort.scoped())\n'
+        '        return _audit_shared_sibling_pins_in_scope(repo, ref)\n'
+        '\n'
+        '\n'
         'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
         '    root = Path(repo) if repo is not None else O.ROOT\n'
         "    pins = O.manifest(root, ref)['source_blobs']\n",
+        '\n'
+        'def _audit_shared_sibling_pins(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else O.ROOT\n'
+        '    if ref is not None:\n'
+        "        ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').strip()\n"
+        '    # Reuse immutable Git reads in this audit and discard every verdict before any tamper control writes.\n'
+        '    with C.call_scope():\n'
+        '        return _audit_shared_sibling_pins_in_scope(root, ref)\n'
+        '\n'
         '\n'
         'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
         '    from tests import ci_v4_p0_scope as P0\n'
@@ -4552,20 +4596,6 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
         '        assert moved == admitted, (manifest, sorted(moved - admitted))\n'
         "        assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest\n"
         "        assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest\n",
-    ),
-]
-
-HANDOFFS['tests/test_post413_r1_scope.py'] = [
-    (
-        '\n'
-        '\n'
-        'def test_positive_cohort_is_exact_registered_and_closed():\n'
-        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
-        '\n'
-        '\n'
-        '@C.call_scope()\n'
-        'def test_positive_cohort_is_exact_registered_and_closed():\n'
-        '    assert R.exact_blobs_ok() and R.valid() and C.valid() and U.exact_blobs_ok()\n',
     ),
 ]
 

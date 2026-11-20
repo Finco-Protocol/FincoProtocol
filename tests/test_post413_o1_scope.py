@@ -4,7 +4,6 @@ Every negative mutates a real checkout of the committed HEAD (shared object data
 real composite registry; each negative is followed by a restoration proof. The checks need only git objects, so they stay fast.
 """
 import ast
-from contextlib import ExitStack
 import json
 from pathlib import Path
 import subprocess
@@ -201,12 +200,12 @@ def _ux_pr2c_signed_later_pins(repo=None, ref=None):
 
 
 def _audit_shared_sibling_pins(repo=None, ref=None):
-    # No mutation inside this outer call; every verdict is discarded before any tamper control runs.
-    with ExitStack() as scopes:
-        for cohort in C.cohorts():
-            if callable(getattr(cohort, 'scoped', None)):
-                scopes.enter_context(cohort.scoped())
-        return _audit_shared_sibling_pins_in_scope(repo, ref)
+    root = Path(repo) if repo is not None else O.ROOT
+    if ref is not None:
+        ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').strip()
+    # Reuse immutable Git reads in this audit and discard every verdict before any tamper control writes.
+    with C.call_scope():
+        return _audit_shared_sibling_pins_in_scope(root, ref)
 
 
 def _audit_shared_sibling_pins_in_scope(repo, ref):
