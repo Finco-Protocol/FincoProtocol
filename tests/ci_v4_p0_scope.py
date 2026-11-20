@@ -4429,6 +4429,26 @@ HANDOFFS['tests/ux_pr2a_scope.py'] = [
         '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok3(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
         '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
     ),
+    (
+        '    return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)\n'
+        'def matches(path,source=None,*,repo=None,ref=None):\n',
+        '    return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)\n'
+        '\n'
+        '\n'
+        '_unshared_exact_blobs_ok = exact_blobs_ok\n'
+        '\n'
+        '\n'
+        'def exact_blobs_ok(repo=None, ref=None):\n'
+        '    from tests.fin_v2_cohorts import call_scope\n'
+        '\n'
+        '    # Each standalone check gets one read-only delegation scope. Its verdicts\n'
+        '    # are discarded before a caller can mutate the worktree and check again.\n'
+        '    with call_scope():\n'
+        '        return _unshared_exact_blobs_ok(repo, ref)\n'
+        '\n'
+        '\n'
+        'def matches(path,source=None,*,repo=None,ref=None):\n',
+    ),
 ]
 
 

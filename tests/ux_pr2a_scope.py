@@ -255,6 +255,20 @@ def supersedes(path,value,repo=None,ref=None):
 def valid(repo=None,ref=None):
     from tests.fin_v2_cohorts import valid as composite_valid
     return exact_blobs_ok(repo,ref) and composite_valid(repo,ref)
+
+
+_unshared_exact_blobs_ok = exact_blobs_ok
+
+
+def exact_blobs_ok(repo=None, ref=None):
+    from tests.fin_v2_cohorts import call_scope
+
+    # Each standalone check gets one read-only delegation scope. Its verdicts
+    # are discarded before a caller can mutate the worktree and check again.
+    with call_scope():
+        return _unshared_exact_blobs_ok(repo, ref)
+
+
 def matches(path,source=None,*,repo=None,ref=None):
     pins=manifest(repo,ref).get('source_blobs',{})
     raw=source.encode() if isinstance(source,str) else source
