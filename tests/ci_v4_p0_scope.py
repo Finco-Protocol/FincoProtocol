@@ -80,7 +80,8 @@ R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
 MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
-                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py'))
+                            'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py',
+                            'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4436,6 +4437,24 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
     ),
 ]
 
+HANDOFFS['tests/ux_pr2b_scope.py'] = [
+    (
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref) for p in old if new[p]!=old[p]):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p]) and not _pr3b1_pin(p,new[p],root,ref)\n'
+        '                   and not P0.o1_historical_test_pin(path, p, new[p], root, ref) for p in old if new[p]!=old[p]):\n',
+    ),
+]
+
+HANDOFFS['tests/ux_pr2c_scope.py'] = [
+    (
+        '            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref) for p in old):\n',
+        '            from tests import ci_v4_p0_scope as P0\n'
+        '            if any(new[p] != old[p] and (p not in pins or new[p] != pins[p]) and not _pr3b1_pin(p, new[p], root, ref)\n'
+        '                   and not P0.o1_historical_test_pin(sibling, p, new[p], root, ref) for p in old):\n',
+    ),
+]
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
@@ -4658,6 +4677,17 @@ def r1_security_test_handoff(path, value, repo=None, ref=None):
         return False
     pins = manifest(repo, ref).get("source_blobs", {})
     return value is not None and pins.get(path) == value
+
+
+def o1_historical_test_pin(sibling, path, value, repo=None, ref=None):
+    """Keep the reviewed O1 audit blob in its historical manifest after the literal source handoff."""
+    if (sibling, path) != ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'):
+        return False
+    root = Path(repo) if repo is not None else ROOT
+    if not exact_blobs_ok(root, ref):
+        return False
+    historical = json.loads(_base_bytes(str(root), sibling))['source_blobs'][path]
+    return value == historical == _blob(_base_bytes(str(root), path))
 
 
 def nontrust_scope_authorized(changed, repo=None):
