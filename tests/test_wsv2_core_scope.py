@@ -36,6 +36,12 @@ TESTS = (
 )
 
 
+def _assert_ws_and_registry_reject():
+    with C.call_scope():
+        assert not C.exact_blobs_ok(F) and not C.valid()
+
+
+@C.call_scope()
 def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():
     assert F.__name__ in C.COHORT_MODULES and F in C.cohorts()
     assert F.exact_blobs_ok() and F.valid() and C.valid()
@@ -81,7 +87,7 @@ def test_manifest_cannot_add_or_drop_any_pin(drop, monkeypatch):
         return raw
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('payload', ([], None, {'source_blobs': None}, {'source_blobs': []}))
@@ -97,7 +103,8 @@ def test_malformed_manifest_shapes_return_false(payload, monkeypatch):
         return original(root, path, ref)
 
     monkeypatch.setattr(F, '_read', altered)
-    assert not F.manifest() and not F.exact_blobs_ok() and not C.valid()
+    assert not F.manifest()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('path', (
@@ -118,13 +125,13 @@ def test_unapproved_changed_or_untracked_path_is_refused(path, monkeypatch):
         return result
 
     monkeypatch.setattr(F, '_git', extra)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 @pytest.mark.parametrize('attribute', ('BASE', 'AUTHORIZATION_HEAD'))
 def test_wrong_or_missing_ancestry_fails_closed(attribute, monkeypatch):
     monkeypatch.setattr(F, attribute, '0' * 40)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 def test_absent_or_unregistered_cohort_cannot_be_silently_omitted(monkeypatch):
@@ -377,7 +384,8 @@ def test_generated_ci_evidence_does_not_turn_valid_financial_sources_into_unrevi
             return found + artifact.encode() + b'\n'
         return found
     monkeypatch.setattr(F, '_git', with_generated_evidence)
-    assert F.exact_blobs_ok() and C.valid()
+    with C.call_scope():
+        assert F.exact_blobs_ok() and C.valid()
 
 
 @pytest.mark.parametrize('unreviewed', ('evidence/rogue.py', 'evidence/rogue.ts',
@@ -390,7 +398,7 @@ def test_untracked_source_is_still_strictly_rejected(unreviewed, monkeypatch):
             return found + unreviewed.encode() + b'\n'
         return found
     monkeypatch.setattr(F, '_git', with_unreviewed_source)
-    assert not F.exact_blobs_ok() and not C.valid()
+    _assert_ws_and_registry_reject()
 
 
 # ── WS-2 admission is bounded: only the separately registered, exact WS-2 cohort, only its enumerated paths ──

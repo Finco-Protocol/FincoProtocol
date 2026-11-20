@@ -5074,6 +5074,56 @@ HANDOFFS['tests/wsv2_core_scope.py'] = [
 ]
 
 
+HANDOFFS['tests/test_wsv2_core_scope.py'] += [
+    (
+        'def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():\n',
+        'def _assert_ws_and_registry_reject():\n'
+        '    with C.call_scope():\n'
+        '        assert not C.exact_blobs_ok(F) and not C.valid()\n'
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_closed_cohort_is_registered_exact_and_excludes_financial_authorities():\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        '    assert not F.manifest() and not F.exact_blobs_ok() and not C.valid()\n',
+        '    assert not F.manifest()\n'
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', extra)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', extra)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, attribute, '0' * 40)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, attribute, '0' * 40)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', with_generated_evidence)\n"
+        '    assert F.exact_blobs_ok() and C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', with_generated_evidence)\n"
+        '    with C.call_scope():\n'
+        '        assert F.exact_blobs_ok() and C.valid()\n',
+    ),
+    (
+        "    monkeypatch.setattr(F, '_git', with_unreviewed_source)\n"
+        '    assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_git', with_unreviewed_source)\n"
+        '    _assert_ws_and_registry_reject()\n',
+    ),
+]
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
