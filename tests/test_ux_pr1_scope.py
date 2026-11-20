@@ -59,6 +59,20 @@ LATER_UX_PR1_PATHS = frozenset((
     'tests/u1_scope.py',
     'tests/u2_scope.py',
 ))
+ACCEPTED_RUNTIME_HEAD = '305b3553536680e567c608e4ebd3b166ef3d32a7'
+REVIEWED_RUNTIME_HEAD = 'e5cc7f95799da4b779f3cae8a76ddd5d50d8d9bd'
+RUNTIME_HANDOFF_PINS = {
+    'tests/u1_scope.py': (
+        '77707d87ec3aee5d919f9a5f0468983286280ab1',
+        'b52633f205db995a14e20bb96acc2a925f3604f1',
+        'e1cb7445168cd8e71151e0222f202b50d4a5036a',
+    ),
+    'tests/fin_v2_cohorts.py': (
+        'f39ca2c065216672288e840889fd8e6be9399f50',
+        'f39ca2c065216672288e840889fd8e6be9399f50',
+        'c80dd99eb29c860cd16a957d30f79888488bfe6a',
+    ),
+}
 
 
 def _later_ux_pr1_pins(root):
@@ -76,6 +90,24 @@ def _later_ux_pr1_pins(root):
         entries[path] = blob
     assert set(entries) == paths
     return entries
+
+
+def _runtime_handoff_pin(root, path, historical):
+    if path not in RUNTIME_HANDOFF_PINS:
+        return historical
+    from tests import ci_v4_p0_scope as P0
+
+    original, accepted, reviewed = RUNTIME_HANDOFF_PINS[path]
+    assert historical == original
+    ancestry = (RECONCILIATION_HEAD, ACCEPTED_RUNTIME_HEAD, REVIEWED_RUNTIME_HEAD, 'HEAD')
+    for predecessor, successor in zip(ancestry, ancestry[1:]):
+        git(root, 'merge-base', '--is-ancestor', predecessor, successor)
+    for ref, blob in zip(ancestry, (original, accepted, reviewed, reviewed)):
+        assert git(root, 'ls-tree', ref, '--', path).strip() == f'100644 blob {blob}\t{path}'
+    approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
+    assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
+    assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, reviewed, root)
+    return reviewed
 
 
 def test_exact_registered_and_historical_maps_immutable():
@@ -100,12 +132,34 @@ def test_exact_registered_and_historical_maps_immutable():
             if p in later_pins:
                 assert git(U.ROOT, 'rev-parse', PR3B2_MERGE + ':' + p).strip() == eff
                 assert not U.supersedes(p,'0'*40)
-            assert git(U.ROOT,'hash-object',p).strip()==later_pins.get(p, eff)
+            current_pin = _runtime_handoff_pin(U.ROOT, p, later_pins.get(p, eff))
+            assert git(U.ROOT, 'hash-object', '--no-filters', p).strip() == current_pin
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
             assert {k:v for k,v in old.items() if k!='source_blobs'}=={k:v for k,v in now.items() if k!='source_blobs'}
         for p in ('app/v2/save_all_commands.py','financial_engine/x.py','.github/workflows/ci_v4_pr.yml','frontend/src/app/editing/pendingEdits.ts'):
             assert not U.allowed_path(p) and not U.matches(p)
+
+
+def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
+    path = 'tests/u1_scope.py'
+    historical = RUNTIME_HANDOFF_PINS[path][0]
+    with C.call_scope():
+        assert _runtime_handoff_pin(wt, path, historical) == RUNTIME_HANDOFF_PINS[path][2]
+    source = wt / path
+    source.write_bytes(source.read_bytes() + b'\n')
+    with C.call_scope(), pytest.raises(AssertionError):
+        _runtime_handoff_pin(wt, path, historical)
+    original_head = git(wt, 'rev-parse', 'HEAD').strip()
+    try:
+        git(wt, 'add', '--', path)
+        git(wt, '-c', 'user.name=UX scope test', '-c', 'user.email=scope@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Alter the live runtime handoff')
+        with C.call_scope(), pytest.raises(AssertionError):
+            _runtime_handoff_pin(wt, path, historical)
+    finally:
+        git(wt, 'reset', '--hard', '-q', original_head)
+
 
 @pytest.mark.parametrize('path',sorted(U.OWNED_PATHS))
 def test_unsigned_byte_fails_closed(path,wt):
