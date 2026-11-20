@@ -233,7 +233,7 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()
         for path in c06_moved:
             # U2 retains the exact predecessor of the current, separately reviewed C06 source.
-            assert now['source_blobs'][path] == C06.base_blob(path, root, ref), manifest
+            assert now['source_blobs'][path] == C06.manifest(root, ref).get('base_blobs', {}).get(path), manifest
             assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest
         admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved
         assert moved == admitted, (manifest, sorted(moved - admitted))
