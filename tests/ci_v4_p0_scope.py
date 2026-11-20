@@ -5374,6 +5374,10 @@ def _signature_ok(root, ref, closure=False):
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
         if pins.get("tests/ci_v4_p0_scope.py") != _MODULE_BLOB:
             return False
+        # Bind the independently reviewed count-one exception, even if a candidate
+        # changes both the baseline bytes and the pin in its own manifest.
+        if pins.get("docs/ci_v4/full_skip_baseline.json") != "d5e91b8a07d63dd5a2ef7b483e7e0893c7fedf0e":
+            return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
         if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:

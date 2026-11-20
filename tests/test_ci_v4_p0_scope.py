@@ -131,6 +131,36 @@ def test_one_byte_in_each_owned_file_fails_closed(subject, path):
     assert rejected(subject, path, lambda b: b + b"\n"), path
 
 
+def test_tax_skip_budget_expansion_fails_even_with_a_matching_manifest_pin(subject):
+    baseline_path = "docs/ci_v4/full_skip_baseline.json"
+    key = "tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation"
+    head = git(subject, "rev-parse", "HEAD").decode().strip()
+    baseline = json.loads((subject / baseline_path).read_bytes())
+    assert baseline["skipped_nodes"][key] == 1
+    baseline["skipped_nodes"][key] = 2
+    baseline["total"] += 1
+    raw = (json.dumps(baseline, indent=1, sort_keys=True) + "\n").encode()
+    manifest = T.manifest(subject)
+    manifest["source_blobs"][baseline_path] = T._blob(raw)
+    try:
+        (subject / baseline_path).write_bytes(raw)
+        (subject / T.MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        with C.call_scope():
+            assert not T.signature_ok(subject)
+            assert not T.exact_blobs_ok(subject)
+            assert not C.valid(subject)
+            assert T.exact_blobs_ok(subject, head)
+        git(subject, "add", "--", baseline_path, T.MANIFEST)
+        git(subject, "commit", "--quiet", "-m", "Increase the private tax skip limit")
+        with C.call_scope():
+            assert not T.signature_ok(subject, "HEAD")
+            assert not T.exact_blobs_ok(subject, "HEAD")
+            assert not C.valid(subject, "HEAD")
+    finally:
+        git(subject, "reset", "--hard", "--quiet", head)
+    assert T.exact_blobs_ok(subject)
+
+
 @pytest.mark.parametrize("attack", ["base", "tree", "pin", "mode", "extra", "authorization"])
 def test_forged_source_manifest_is_rejected(subject, attack):
     def change(raw):
