@@ -4444,51 +4444,6 @@ HANDOFFS['tests/post413_r1_scope.py'] += [
 
 
 
-HANDOFFS['tests/post413_o1_scope.py'] = [
-    (
-        '\n'
-        '\n'
-        'def _exact_blobs_ok(repo=None, ref=None):\n'
-        '    root = Path(repo) if repo is not None else ROOT\n',
-        '\n'
-        '\n'
-        'def _pin_matches(path, actual, expected, root, ref):\n'
-        '    if actual == expected:\n'
-        '        return True\n'
-        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n"
-        '        return False\n'
-        '    from tests import ci_v4_p0_scope as P0\n'
-        '    return P0.supersedes(path, actual, root, ref)\n'
-        '\n'
-        '\n'
-        'def _exact_blobs_ok(repo=None, ref=None):\n'
-        '    root = Path(repo) if repo is not None else ROOT\n',
-    ),
-    (
-        '        # 3. one exact blob per owned path\n'
-        '        if ref is None:\n'
-        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n'
-        '                return False\n'
-        '        else:\n',
-        '        # 3. one exact blob per owned path\n'
-        '        if ref is None:\n'
-        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n'
-        '                return False\n'
-        '        else:\n',
-    ),
-    (
-        "                meta, name = line.split('\\t', 1)\n"
-        '                listed[name] = meta.split()[2]\n'
-        '            if listed != pins:\n'
-        '                return False\n'
-        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
-        "                meta, name = line.split('\\t', 1)\n"
-        '                listed[name] = meta.split()[2]\n'
-        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n'
-        '                return False\n'
-        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
-    ),
-]
 
 
 HANDOFFS['tests/test_post413_r1_scope.py'] = [
@@ -4633,6 +4588,72 @@ HANDOFFS['tests/test_wsv2_core_scope.py'] += [
         "        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
         "                         'tests/test_new_unreviewed.py'):\n"
         '            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n',
+    ),
+]
+
+HANDOFFS['tests/post413_o1_scope.py'] = [
+    (
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+        '\n'
+        '\n'
+        'def _pin_matches(path, actual, expected, root, ref):\n'
+        '    if actual == expected:\n'
+        '        return True\n'
+        "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n"
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '    return P0.supersedes(path, actual, root, ref)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n'
+        '    root = Path(repo) if repo is not None else ROOT\n',
+    ),
+    (
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+        '        # 3. one exact blob per owned path\n'
+        '        if ref is None:\n'
+        '            if any(not _pin_matches(p, _blob(_read(root, p, ref)), sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        '        else:\n',
+    ),
+    (
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if listed != pins:\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
+        "                meta, name = line.split('\\t', 1)\n"
+        '                listed[name] = meta.split()[2]\n'
+        '            if set(listed) != set(pins) or any(not _pin_matches(p, listed[p], sha, root, ref) for p, sha in pins.items()):\n'
+        '                return False\n'
+        "        # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)\n",
+    ),
+    (
+        'def supersedes(path, value, repo=None, ref=None):\n'
+        '    """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""\n'
+        "    return path in SUPERSEDED and exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n"
+        '\n'
+        '\n',
+        'def supersedes(path, value, repo=None, ref=None):\n'
+        '    """Bounded supersession for the older guards: true only for a path of ``SUPERSEDED``, only while this cohort is exact, only for its exact pin."""\n'
+        '    if path not in SUPERSEDED:\n'
+        '        return False\n'
+        "    pin = manifest(repo, ref).get('source_blobs', {}).get(path)\n"
+        '    if pin is None or pin != value:\n'
+        '        return False\n'
+        '    from tests import ci_v4_p0_scope as P0\n'
+        '\n'
+        '    with P0.scoped():\n'
+        "        return exact_blobs_ok(repo, ref) and manifest(repo, ref).get('source_blobs', {}).get(path) == value\n"
+        '\n'
+        '\n',
     ),
 ]
 
