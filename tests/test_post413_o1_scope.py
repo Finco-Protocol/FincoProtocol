@@ -50,6 +50,7 @@ def _flip(path):
     path.write_bytes(path.read_bytes() + b'\n')
 
 
+@C.call_scope()
 def test_positive_cohort_is_exact_registered_and_closed():
     assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()
     assert O.__name__ in C.COHORT_MODULES and O in C.cohorts() and O.__name__ in U.LATER_COHORTS and O.protected_blobs() == {}

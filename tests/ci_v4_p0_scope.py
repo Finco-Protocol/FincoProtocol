@@ -4505,6 +4505,7 @@ HANDOFFS['tests/test_post413_r1_scope.py'] = [
     ),
 ]
 
+
 HANDOFFS['tests/test_post413_o1_scope.py'] = [
     (
         '"""\n'
@@ -4516,6 +4517,17 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
         'import ast\n'
         'import json\n'
         'from pathlib import Path\n',
+    ),
+    (
+        '\n'
+        '\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()\n',
+        '\n'
+        '\n'
+        '@C.call_scope()\n'
+        'def test_positive_cohort_is_exact_registered_and_closed():\n'
+        '    assert O.exact_blobs_ok() and O.valid() and C.valid() and U.exact_blobs_ok()\n',
     ),
     (
         '\n'
