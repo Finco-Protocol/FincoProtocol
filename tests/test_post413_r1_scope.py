@@ -63,7 +63,6 @@ def test_base_is_the_merged_413_main_and_history_is_recorded_not_rewritten():
         assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob
 
 
-@C.call_scope()
 def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():
     pins = R.manifest()['source_blobs']
     for path in (EDITOR, BUNDLE, ROLE):

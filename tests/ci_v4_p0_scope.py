@@ -4528,6 +4528,54 @@ HANDOFFS['tests/test_post413_o1_scope.py'] += [
     ),
 ]
 
+HANDOFFS['tests/test_post413_o1_scope.py'] += [
+    (
+        'def _u2_signed_later_pins(repo=None, ref=None):\n',
+        'def _u2_signed_later_pins(repo=None, ref=None):\n'
+        '    from tests import c06_cost_workspace_scope as C06\n',
+    ),
+    (
+        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n",
+        "    historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']\n"
+        "    c06_base = C06.manifest(root, ref).get('base_blobs', {})\n"
+        '\n'
+        '    def follows_u2(path):\n'
+        '        current = U2._blob(U2._read(root, path, ref))\n'
+        '        return current == signed[path] or (c06_base.get(path) == signed[path] and C06.supersedes(path, current, root, ref))\n'
+        '\n',
+    ),
+    (
+        '            and U2._blob(U2._read(root, p, ref)) == signed[p]}\n',
+        '            and follows_u2(p)}\n',
+    ),
+    (
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n'
+        '    from tests import c06_cost_workspace_scope as C06\n',
+        'def _audit_shared_sibling_pins_in_scope(repo, ref):\n',
+    ),
+    (
+        "        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()\n"
+        '        for path in c06_moved:\n'
+        '            # U2 retains the exact predecessor of the current, separately reviewed C06 source.\n'
+        "            assert now['source_blobs'][path] == C06.manifest(root, ref).get('base_blobs', {}).get(path), manifest\n"
+        '            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest\n'
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved\n',
+        '        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved\n',
+    ),
+]
+
+HANDOFFS['tests/test_post413_r1_scope.py'] += [
+    (
+        "        assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob\n"
+        '\n'
+        '\n'
+        '@C.call_scope()\n',
+        "        assert _git(R.ROOT, 'rev-parse', R.BASE + ':' + path).strip() == blob\n"
+        '\n'
+        '\n',
+    ),
+]
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

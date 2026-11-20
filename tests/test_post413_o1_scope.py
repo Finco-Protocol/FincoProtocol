@@ -142,6 +142,7 @@ def _ci_v4_own_later_paths(repo=None, ref=None):
 
 
 def _u2_signed_later_pins(repo=None, ref=None):
+    from tests import c06_cost_workspace_scope as C06
     from tests import u2_scope as U2
     root = Path(repo) if repo is not None else O.ROOT
     _, registered = _tuple_assignment(O._read(root, 'tests/fin_v2_cohorts.py', ref), 'COHORT_MODULES')
@@ -149,10 +150,16 @@ def _u2_signed_later_pins(repo=None, ref=None):
         return {}
     signed = U2.manifest(root, ref)['source_blobs']
     historical = json.loads(_git(root, 'show', O.BASE + ':' + U2.MANIFEST))['source_blobs']
+    c06_base = C06.manifest(root, ref).get('base_blobs', {})
+
+    def follows_u2(path):
+        current = U2._blob(U2._read(root, path, ref))
+        return current == signed[path] or (c06_base.get(path) == signed[path] and C06.supersedes(path, current, root, ref))
+
     return {p: signed[p] for p in U2_LATER_PRESENTATION
             if p not in O.OWNED_PATHS and p in U2.PRESENTATION_PATHS and p in U2.SUPERSEDED
             and signed[p] != historical.get(p) and U2.supersedes(p, signed[p], root, ref)
-            and U2._blob(U2._read(root, p, ref)) == signed[p]}
+            and follows_u2(p)}
 
 
 # UX-PR1 admits only these literal current sibling pins, authenticated by its exact cohort.
@@ -203,7 +210,6 @@ def _audit_shared_sibling_pins(repo=None, ref=None):
 
 
 def _audit_shared_sibling_pins_in_scope(repo, ref):
-    from tests import c06_cost_workspace_scope as C06
     from tests import ci_v4_p0_scope as P0
 
     root = Path(repo) if repo is not None else O.ROOT
@@ -230,12 +236,7 @@ def _audit_shared_sibling_pins_in_scope(repo, ref):
         ux_moved = (moved & set(later_ux)) - ux2_moved - ux3_moved       # a path UX-PR2a supersedes is judged against PR2a's pin, not PR1's
         p0_moved = moved & {P0.R1_SECURITY_TEST} if manifest == P0.R1_MAP else set()
         assert all(P0.r1_security_test_handoff(p, now['source_blobs'][p], root, ref) for p in p0_moved), manifest
-        c06_moved = moved & {'frontend/src/app/CostWorkbench.tsx'} if manifest == U2_MANIFEST else set()
-        for path in c06_moved:
-            # U2 retains the exact predecessor of the current, separately reviewed C06 source.
-            assert now['source_blobs'][path] == C06.manifest(root, ref).get('base_blobs', {}).get(path), manifest
-            assert C06.supersedes(path, O._blob(O._read(root, path, ref)), root, ref), manifest
-        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved | c06_moved
+        admitted = own_moved | ci_moved | u2_moved | ux_moved | ux2_moved | ux3_moved | p0_moved
         assert moved == admitted, (manifest, sorted(moved - admitted))
         assert all(now['source_blobs'][p] == pins[p] for p in own_moved), manifest
         assert all(now['source_blobs'][p] == later_u2[p] for p in u2_moved), manifest
