@@ -164,7 +164,7 @@ def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
     original_head = git(wt, 'rev-parse', 'HEAD').strip()
     try:
         git(wt, 'add', '--', path)
-        git(wt, '-c', 'user.name=UX scope test', '-c', 'user.email=scope@example.invalid',
+        git(wt, '-c', 'user.name=UX scope test', '-c', 'user.email=noreply@users.noreply.github.com',
             '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Alter the live runtime handoff')
         with C.call_scope(), pytest.raises(AssertionError):
             _runtime_handoff_pin(wt, path, historical)
