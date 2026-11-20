@@ -5153,6 +5153,16 @@ HANDOFFS['tests/test_r04_ppa_scope.py'].append((
     "        if p in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and p in _P0.HANDOFFS:\n",
 ))
 
+HANDOFFS['tests/test_r03_ppa_scope.py'].append((
+    "        if p == 'tests/ci_v4_scope.py' and _P0.signature_ok() and p in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)\n",
+    "        if p in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and p in _P0.HANDOFFS:\n",
+))
+
+HANDOFFS['tests/test_t01e_remediation_scope.py'].append((
+    "        if p == 'tests/ci_v4_scope.py' and _P0.signature_ok() and p in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)\n",
+    "        if p in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and p in _P0.HANDOFFS:\n",
+))
+
 HANDOFFS['tests/test_f04_financing_scope.py'].append((
     "        if path == 'tests/ci_v4_scope.py' and _P0.signature_ok() and path in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)\n",
     "        if path in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and path in _P0.HANDOFFS:\n",
