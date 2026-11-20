@@ -41,6 +41,8 @@
       class="ps-compare-form"
       id="new-project-form"
       data-prefill-url="/projects/new/defaults">
+  {# FABLE-SEC-01: session+operation-bound mutation token (C1-Q-07 / D07b). #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}" />
   <label class="ps-compare-label">
     Project name
     <input type="text" name="project_name" id="np-project_name" value="{{ submitted.project_name or '' }}" required />

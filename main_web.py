@@ -64,6 +64,13 @@ from app.auth import (
     resolve_request_session,
 )
 
+# FABLE-SEC-01 (C1-Q-07 / D07b/D07c): the legacy mutating routes reuse the
+# canonical session+project+operation-bound CSRF primitive.
+from app.workbook.financing_csrf import (
+    extract_bound_token as _csrf_extract_bound_token,
+    issue_token as _csrf_issue_token,
+)
+
 # Import persistence
 from app.persistence.repository import (
     _now_utc,
@@ -1000,6 +1007,44 @@ def _collect_form_snapshot(form) -> dict:
         snapshot[RATE_UNIT_KEY] = form.get(RATE_UNIT_KEY)
         assert_rate_unit(snapshot)
     return snapshot
+
+
+# ── FABLE-SEC-01 (C1-Q-07 / D07b / D07c) ─────────────────────────────────────
+# The two legacy mutating routes (`POST /projects/create` and
+# `POST /scenarios/state/discard`) previously accepted requests without a CSRF
+# token (protection rested on the SameSite=Lax session cookie alone). Both now
+# reuse the canonical FINCO session+project+operation-bound token primitive
+# (app.workbook.financing_csrf) and its proven validator
+# (app.auth.validate_csrf_token) — no second token standard, no default-permit
+# rule, no token in a query string.
+_LEGACY_CREATE_CSRF_PURPOSE = "projects-create-v1"
+_LEGACY_DISCARD_CSRF_PURPOSE = "workspace-draft-discard-v1"
+
+
+def _issue_legacy_route_csrf(request: Request, project: str, purpose: str) -> str:
+    """Issue a session+project+operation-bound CSRF token for a legacy route.
+
+    Returns "" for unauthenticated requests; the routes redirect those to
+    /login before any token is needed. A real server-side issuance fault is
+    fail-closed (empty token -> later 403) but never hidden: it is logged
+    with the exception TYPE only — no exception text, token or session
+    material is written to the log."""
+    try:
+        return _csrf_issue_token(request, project, purpose=purpose)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(
+            "LEGACY_ROUTE_CSRF_ISSUE_FAILED purpose=%s project_bound=%s exc=%s",
+            purpose, bool(project), type(exc).__name__)
+        return ""
+
+
+def _legacy_route_csrf_ok(request: Request, project: str, supplied, purpose: str) -> bool:
+    """Validate a supplied legacy-route CSRF token against the session, the
+    project and the operation. Deny by default; never contains internals."""
+    return validate_csrf_token(
+        _csrf_extract_bound_token(request, project, supplied, purpose=purpose)
+    )
 
 
 def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
@@ -3320,6 +3365,11 @@ async def index(request: Request, project: str | None = None):
             "workspace_state": workspace_state,
             "workspace_state_meta": _workspace_state_meta(workspace_state),
             "active_project_code": project_record.project_code,
+            # FABLE-SEC-01: session+project+operation-bound token carried by the
+            # hidden #main-form persistence form for POST /scenarios/state/discard.
+            "workspace_csrf_token": _issue_legacy_route_csrf(
+                request, project_record.project_code, _LEGACY_DISCARD_CSRF_PURPOSE
+            ),
             # Phase P2-FIX-6: C2 first-edit UX. The state
             # banner uses this flag to decide whether
             # to render the 'Create editable copy' button
@@ -4156,6 +4206,8 @@ async def new_project_form(request: Request):
             # Canonical country catalogue — imported, never duplicated.
             "country_options": _country_options_for_create(),
             "tax_template_label": _generic_tax_template_label(),
+            # FABLE-SEC-01: session+operation-bound token for POST /projects/create.
+            "csrf_token": _issue_legacy_route_csrf(request, "", _LEGACY_CREATE_CSRF_PURPOSE),
         },
     )
 
@@ -4227,6 +4279,8 @@ async def new_project_form_prefilled(
             "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "validation_errors": [],
             "submitted": submitted,
+            # FABLE-SEC-01: session+operation-bound token for POST /projects/create.
+            "csrf_token": _issue_legacy_route_csrf(request, "", _LEGACY_CREATE_CSRF_PURPOSE),
         },
     )
 
@@ -4535,6 +4589,8 @@ async def create_project_route(
     interest_rate_pct: str = Form(""),
     tenor_years: str = Form(""),
     target_dscr: str = Form("1.20"),
+    # FABLE-SEC-01: bound mutation token issued with the rendered create form.
+    csrf_token: str = Form(""),
 ):
     """Create a new project.
 
@@ -4568,6 +4624,15 @@ async def create_project_route(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    # FABLE-SEC-01 (D07b): reject the mutation before any side effect when the
+    # session+operation-bound CSRF token is missing, stale or foreign. The
+    # denial body is generic (no internals, no token material).
+    if not _legacy_route_csrf_ok(request, "", csrf_token, _LEGACY_CREATE_CSRF_PURPOSE):
+        return JSONResponse(
+            {"error": "Invalid or missing security token. Reload the page and try again."},
+            status_code=403,
+        )
 
     # P6.7 — demo session rate limiting for project creation
     if user.is_demo:
@@ -4631,8 +4696,16 @@ async def create_project_route(
         get_or_create_base_case_scenario=get_or_create_base_case_scenario,
         governance_snapshot=_governance_snapshot,
         replay_metadata_for_project=_replay_metadata_for_project,
-        new_project_validation_error_context=_new_project_validation_error_context,
-        new_project_minimal_validation_error_context=_new_project_minimal_validation_error_context,
+        # FABLE-SEC-01: validation-error re-renders must carry a fresh bound
+        # token so the corrected resubmission can succeed.
+        new_project_validation_error_context=lambda submitted, errors: {
+            **_new_project_validation_error_context(submitted, errors),
+            "csrf_token": _issue_legacy_route_csrf(request, "", _LEGACY_CREATE_CSRF_PURPOSE),
+        },
+        new_project_minimal_validation_error_context=lambda submitted, errors: {
+            **_new_project_minimal_validation_error_context(submitted, errors),
+            "csrf_token": _issue_legacy_route_csrf(request, "", _LEGACY_CREATE_CSRF_PURPOSE),
+        },
         template_source_label=_template_source_label,
         render_template_response=templates.TemplateResponse,
     )
@@ -4779,6 +4852,17 @@ async def discard_workspace_draft_endpoint(request: Request):
         return JSONResponse({"error": "Login required"}, status_code=401)
 
     form = await request.form()
+    # FABLE-SEC-01 (D07c): reject the discard before any side effect when the
+    # session+project+operation-bound CSRF token is missing, stale, foreign or
+    # bound to another project. The denial body is generic.
+    if not _legacy_route_csrf_ok(
+        request, str(form.get("active_project") or ""), form.get("csrf_token"),
+        _LEGACY_DISCARD_CSRF_PURPOSE,
+    ):
+        return JSONResponse(
+            {"error": "Invalid or missing security token. Reload the page and try again."},
+            status_code=403,
+        )
     deps = ScenarioStateRouteDeps(
         collect_form_snapshot=_collect_form_snapshot,
         project_workspace_from_snapshot=_project_workspace_from_snapshot,

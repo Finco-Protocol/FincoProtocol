@@ -13,7 +13,10 @@ VERTICALS = [("generic_solar_reference", "Solar"), ("generic_wind_reference", "W
 
 
 def _create(client, name, template, country, project_type, capacity="20"):
-    return client.post("/projects/create", data={"project_name": name, "project_type": project_type, "template_source": template,
+    # FABLE-SEC-01: the legacy route now enforces the bound CSRF token (D07b);
+    # the positive client path supplies the token rendered into the form.
+    from tests.fable_pr1_csrf_client import fetch_create_csrf_token
+    return client.post("/projects/create", data={"csrf_token": fetch_create_csrf_token(client), "project_name": name, "project_type": project_type, "template_source": template,
                                                   "country_market": country, "capacity_mw": capacity}, follow_redirects=False)
 
 
