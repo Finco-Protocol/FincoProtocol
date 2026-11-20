@@ -118,7 +118,10 @@ def _runtime_handoff_pin(root, path, historical):
         approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
         assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
     latest_ref, reviewed = lineage[-1]
-    current = CURRENT_O1_PHASE_BLOB if path == 'tests/test_post413_o1_scope.py' else reviewed
+    current = {
+        'tests/test_post413_o1_scope.py': CURRENT_O1_PHASE_BLOB,
+        'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
+    }.get(path, reviewed)
     lineage.append(('HEAD', current))
     for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
         git(root, 'merge-base', '--is-ancestor', predecessor, successor)

@@ -419,6 +419,7 @@ def test_cb2_an_exception_while_entering_a_cohort_clears_the_marker_and_every_en
 
 def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
     from tests import u1_scope as U
+    head = git(subject, 'rev-parse', 'HEAD').decode().strip()
     f = subject / "tests/u1_scope.py"
     raw = f.read_bytes()
     with C.call_scope():
@@ -426,12 +427,14 @@ def test_cb2_a_mutation_between_two_registry_calls_is_seen(subject):
     try:
         f.write_bytes(raw + b"\n# unreviewed\n")
         with C.call_scope():
-            assert len(C._CALL) == 1 and not U.exact_blobs_ok(subject)
+            assert len(C._CALL) == 1 and not C.exact_blobs_ok(U, subject)
+            assert not C.valid(subject)
+            assert C.valid(subject, head)
         assert _no_scope_open()
     finally:
         f.write_bytes(raw)
     with C.call_scope():
-        assert U.exact_blobs_ok(subject)
+        assert C.exact_blobs_ok(U, subject) and C.valid(subject)
     assert _no_scope_open()
 
 
