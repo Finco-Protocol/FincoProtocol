@@ -4611,6 +4611,31 @@ HANDOFFS['tests/test_post413_o1_scope.py'] = [
     ),
 ]
 
+HANDOFFS['tests/test_wsv2_core_scope.py'] += [
+    (
+        "    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '        assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n',
+        '    with C.call_scope():\n'
+        "        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):\n"
+        '            assert not F._ws2_allows(rogue, F.ROOT, None), rogue\n',
+    ),
+    (
+        '    assert F.exact_blobs_ok()\n'
+        '    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '        assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                     'tests/test_new_unreviewed.py'):\n"
+        '        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n',
+        '    with C.call_scope():\n'
+        '        assert F.exact_blobs_ok()\n'
+        '        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):\n'
+        '            assert F._wf06a_allows(owned, F.ROOT, None), owned\n'
+        "        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',\n"
+        "                         'tests/test_new_unreviewed.py'):\n"
+        '            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger\n',
+    ),
+]
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

@@ -374,8 +374,9 @@ def test_ws2_paths_are_admitted_only_while_the_ws2_cohort_is_registered_and_exac
 
 
 def test_ws2_admission_is_not_a_wildcard(monkeypatch):
-    for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):
-        assert not F._ws2_allows(rogue, F.ROOT, None), rogue
+    with C.call_scope():
+        for rogue in ('app/v2/new_writer.py', 'frontend/src/app/editing/rogue.ts', 'frontend/src/app/rogue.tsx', 'tests/new_financial_test.py'):
+            assert not F._ws2_allows(rogue, F.ROOT, None), rogue
     original = F._git
 
     def with_rogue(root, *args):
@@ -422,12 +423,13 @@ def test_the_ws2_exact_check_runs_once_per_outer_call_and_is_never_shared(monkey
 # ── WF-06A (PR #406, Owner Correction B): additive controls for the bounded hook ──────────────────────────────────────────────────────────
 def test_wf06a_hook_admits_only_the_closed_cohort_and_only_while_it_is_exact(monkeypatch):
     from tests import fin_v2_wf06a_scope as WF06A
-    assert F.exact_blobs_ok()
-    for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):
-        assert F._wf06a_allows(owned, F.ROOT, None), owned
-    for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',
-                     'tests/test_new_unreviewed.py'):
-        assert not F._wf06a_allows(stranger, F.ROOT, None), stranger
+    with C.call_scope():
+        assert F.exact_blobs_ok()
+        for owned in sorted(WF06A.PRESENTATION_PATHS | WF06A.GOVERNANCE_PATHS):
+            assert F._wf06a_allows(owned, F.ROOT, None), owned
+        for stranger in ('frontend/src/app/NewUnreviewed.tsx', 'frontend/src/app/WorkspaceView.tsx', 'app/v2/router.py', 'financial_engine/x.py',
+                         'tests/test_new_unreviewed.py'):
+            assert not F._wf06a_allows(stranger, F.ROOT, None), stranger
     git = F._git
 
     def extra(root, *args):
