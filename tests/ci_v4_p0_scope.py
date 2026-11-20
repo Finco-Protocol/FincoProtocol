@@ -82,7 +82,7 @@ MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
-                            'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py'))
+                            'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -5032,6 +5032,44 @@ HANDOFFS['tests/test_finval_f01_scope.py'] = [
         '    del sources[path]\n'
         '    with C.call_scope():\n'
         '        assert not F.valid(sources=sources)\n',
+    ),
+]
+
+
+HANDOFFS['tests/u1_scope.py'].append((
+    '_P0_RUNTIME_HANDOFFS = frozenset((\n',
+    '_P0_RUNTIME_HANDOFFS = frozenset((\n'
+    "    'tests/wsv2_core_scope.py',\n",
+))
+
+HANDOFFS['tests/wsv2_core_scope.py'] = [
+    (
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+        'def _owned_pins_match(root, ref, pins):\n'
+        '    mismatches = []\n'
+        '    for path, expected in pins.items():\n'
+        '        blob = _blob(_read(root, path, ref))\n'
+        '        if blob != expected:\n'
+        '            mismatches.append((path, blob))\n'
+        '\n'
+        '    if ref is None and mismatches:\n'
+        '        paths = [path for path, _ in mismatches]\n'
+        '        committed = {}\n'
+        "        for entry in _git(root, 'ls-tree', '-r', '-z', 'HEAD', '--', *paths).decode().split('\\0'):\n"
+        '            if entry:\n'
+        "                mode_type_blob, path = entry.split('\\t', 1)\n"
+        '                committed[path] = mode_type_blob.split()[2]\n'
+        '        # HEAD only orders checks. Even a committed mismatch needs the exact successor proof.\n'
+        '        mismatches.sort(key=lambda item: committed.get(item[0]) == item[1])\n'
+        '\n'
+        '    return all(_wf06b_supersedes(path, blob, root, ref) for path, blob in mismatches)\n'
+        '\n'
+        '\n'
+        'def _exact_blobs_ok(repo=None, ref=None):\n',
+    ),
+    (
+        '        if any(_blob(_read(root, p, ref)) != b and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, b in pins.items()):\n',
+        '        if not _owned_pins_match(root, ref, pins):\n',
     ),
 ]
 

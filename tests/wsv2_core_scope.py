@@ -291,6 +291,26 @@ def exact_blobs_ok(repo=None, ref=None):
         _WS2_SCOPE.pop()
 
 
+def _owned_pins_match(root, ref, pins):
+    mismatches = []
+    for path, expected in pins.items():
+        blob = _blob(_read(root, path, ref))
+        if blob != expected:
+            mismatches.append((path, blob))
+
+    if ref is None and mismatches:
+        paths = [path for path, _ in mismatches]
+        committed = {}
+        for entry in _git(root, 'ls-tree', '-r', '-z', 'HEAD', '--', *paths).decode().split('\0'):
+            if entry:
+                mode_type_blob, path = entry.split('\t', 1)
+                committed[path] = mode_type_blob.split()[2]
+        # HEAD only orders checks. Even a committed mismatch needs the exact successor proof.
+        mismatches.sort(key=lambda item: committed.get(item[0]) == item[1])
+
+    return all(_wf06b_supersedes(path, blob, root, ref) for path, blob in mismatches)
+
+
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
@@ -299,7 +319,7 @@ def _exact_blobs_ok(repo=None, ref=None):
     try:
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
         _git(root, 'merge-base', '--is-ancestor', AUTHORIZATION_HEAD, ref or 'HEAD')
-        if any(_blob(_read(root, p, ref)) != b and not _wf06b_supersedes(p, _blob(_read(root, p, ref)), root, ref) for p, b in pins.items()):
+        if not _owned_pins_match(root, ref, pins):
             return False
         if not _historical_manifests_ok(root, ref):
             return False

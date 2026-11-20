@@ -121,6 +121,7 @@ def _runtime_handoff_pin(root, path, historical):
     current = {
         'tests/test_post413_o1_scope.py': CURRENT_O1_PHASE_BLOB,
         'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
+        'tests/u1_scope.py': 'a4b7f3e728dae845ac9c51cdfa90408a4b8e1608',
     }.get(path, reviewed)
     lineage.append(('HEAD', current))
     for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
