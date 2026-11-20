@@ -99,6 +99,29 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert not T.allowed_path("tools/ci_v4_extra.py")
 
 
+def test_o1_historical_test_pin_requires_exact_sibling_and_source(subject):
+    sibling = "docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json"
+    test_path = "tests/test_post413_o1_scope.py"
+    head = git(subject, "rev-parse", "HEAD").decode().strip()
+    historical = T.manifest(subject, head)["base_blobs"][test_path]
+    assert T.o1_historical_test_pin(sibling, test_path, historical, subject, head)
+    assert not T.o1_historical_test_pin(T.R1_MAP, test_path, historical, subject, head)
+    assert not T.o1_historical_test_pin(sibling, T.R1_SECURITY_TEST, historical, subject, head)
+    assert not T.o1_historical_test_pin(sibling, test_path, "0" * 40, subject, head)
+    manifest = subject / sibling
+    raw = manifest.read_bytes()
+    manifest.write_bytes(raw + b"\n")
+    try:
+        assert not T.o1_historical_test_pin(sibling, test_path, historical, subject)
+        assert T.o1_historical_test_pin(sibling, test_path, historical, subject, head)
+        git(subject, "add", "--", sibling)
+        git(subject, "commit", "--quiet", "-m", "Alter O1 sibling bytes")
+        assert not T.o1_historical_test_pin(sibling, test_path, historical, subject, "HEAD")
+    finally:
+        git(subject, "reset", "--hard", "--quiet", head)
+    assert T.o1_historical_test_pin(sibling, test_path, historical, subject)
+
+
 @pytest.mark.parametrize("path", sorted(T.OWNED_PATHS | {T.MANIFEST}))
 def test_one_byte_in_each_owned_file_fails_closed(subject, path):
     assert rejected(subject, path, lambda b: b + b"\n"), path
