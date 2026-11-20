@@ -67,6 +67,15 @@ def call_scope():
             _CALL.pop()
 
 
+def exact_blobs_ok(cohort, repo=None, ref=None):
+    """Check a cohort directly and retain its rejection for this read-only call."""
+    root = Path(repo) if repo is not None else ROOT
+    verdict = cohort.exact_blobs_ok(root, ref)
+    if verdict is False and _CALL:
+        _CALL[-1].setdefault(('rejected-cohorts', str(root), ref), set()).add(cohort)
+    return verdict
+
+
 def valid(repo=None, ref=None):
     key = ('valid', str(repo if repo is not None else ROOT), ref)
     if _CALL and key in _CALL[-1]:
@@ -82,6 +91,10 @@ def _valid(repo=None, ref=None):
     mods = cohorts()
     if not mods:
         return False
+    if _CALL:
+        rejected = _CALL[-1].get(('rejected-cohorts', str(root), ref), ())
+        if any(m in rejected for m in mods):
+            return False
     try:
         from tests import ci_immutable_git_reads
 

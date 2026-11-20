@@ -82,7 +82,7 @@ MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
-                            'tests/test_ux_pr2a_scope.py'))
+                            'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -4959,6 +4959,79 @@ HANDOFFS['tests/ux_pr2b_scope.py'] += [
         '            from tests import ci_v4_p0_scope as P0\n'
         '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
         '            if any(not (p in pins and new[p]==pins[p]) and not pin_ok4(p,new[p])',
+    ),
+]
+
+
+HANDOFFS['tests/fin_v2_cohorts.py'] += [
+    (
+        'def valid(repo=None, ref=None):\n',
+        'def exact_blobs_ok(cohort, repo=None, ref=None):\n'
+        '    """Check a cohort directly and retain its rejection for this read-only call."""\n'
+        '    root = Path(repo) if repo is not None else ROOT\n'
+        '    verdict = cohort.exact_blobs_ok(root, ref)\n'
+        '    if verdict is False and _CALL:\n'
+        "        _CALL[-1].setdefault(('rejected-cohorts', str(root), ref), set()).add(cohort)\n"
+        '    return verdict\n'
+        '\n'
+        '\n'
+        'def valid(repo=None, ref=None):\n',
+    ),
+    (
+        '    mods = cohorts()\n'
+        '    if not mods:\n'
+        '        return False\n',
+        '    mods = cohorts()\n'
+        '    if not mods:\n'
+        '        return False\n'
+        '    if _CALL:\n'
+        "        rejected = _CALL[-1].get(('rejected-cohorts', str(root), ref), ())\n"
+        '        if any(m in rejected for m in mods):\n'
+        '            return False\n',
+    ),
+]
+
+HANDOFFS['tests/test_wsv2_core_scope.py'] += [
+    (
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    with C.call_scope():\n'
+        '        assert not F.exact_blobs_ok() and not C.valid()\n',
+        "    monkeypatch.setattr(F, '_read', altered)\n"
+        '    with C.call_scope():\n'
+        '        assert not C.exact_blobs_ok(F) and not C.valid()\n',
+    ),
+    (
+        'def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():\n',
+        '@C.call_scope()\n'
+        'def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():\n',
+    ),
+    (
+        'def test_predecessor_manifest_pins_and_metadata_remain_verbatim():\n',
+        '@C.call_scope()\n'
+        'def test_predecessor_manifest_pins_and_metadata_remain_verbatim():\n',
+    ),
+]
+
+HANDOFFS['tests/test_finval_f01_scope.py'] = [
+    (
+        'from tests import finval_f01_scope as F\n',
+        'from tests import fin_v2_cohorts as C\n'
+        'from tests import finval_f01_scope as F\n',
+    ),
+    (
+        '    assert F.valid()\n',
+        '    with C.call_scope():\n'
+        '        assert F.valid()\n',
+    ),
+    (
+        '    assert not F.valid(sources=sources)\n'
+        '    del sources[path]\n'
+        '    assert not F.valid(sources=sources)\n',
+        '    with C.call_scope():\n'
+        '        assert not F.valid(sources=sources)\n'
+        '    del sources[path]\n'
+        '    with C.call_scope():\n'
+        '        assert not F.valid(sources=sources)\n',
     ),
 ]
 

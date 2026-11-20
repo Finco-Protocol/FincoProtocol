@@ -62,7 +62,7 @@ def test_every_owned_byte_and_deletion_fails_closed(path, operation, monkeypatch
 
     monkeypatch.setattr(F, '_read', altered)
     with C.call_scope():
-        assert not F.exact_blobs_ok() and not C.valid()
+        assert not C.exact_blobs_ok(F) and not C.valid()
 
 
 @pytest.mark.parametrize('drop', (False, True))
@@ -142,6 +142,7 @@ def test_absent_or_unregistered_cohort_cannot_be_silently_omitted(monkeypatch):
     assert not C.valid()
 
 
+@C.call_scope()
 def test_correction_e_d029_role_pin_is_additive_and_preserves_negative_controls():
     path = 'tests/test_model_mutation_security_successor.py'
     assert path in F.OWNED_PATHS
@@ -220,6 +221,7 @@ def test_original_presentation_and_security_dictionaries_are_immutable_and_indiv
     assert S.violations(sources) == [] and S.current_mutation_successor_valid()
 
 
+@C.call_scope()
 def test_predecessor_manifest_pins_and_metadata_remain_verbatim():
     assert F._historical_manifests_ok(F.ROOT, None)
     for path in F.PREDECESSOR_MANIFESTS:
