@@ -83,6 +83,11 @@ RUNTIME_HANDOFF_PINS = {
         '50ae69884bc625d3317a89eaed207735d46f277b',
     ),
 }
+CURRENT_RUNTIME_PINS = {
+    'tests/test_post413_o1_scope.py': CURRENT_O1_PHASE_BLOB,
+    'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
+    'tests/u1_scope.py': 'a4b7f3e728dae845ac9c51cdfa90408a4b8e1608',
+}
 
 
 def _later_ux_pr1_pins(root):
@@ -118,11 +123,7 @@ def _runtime_handoff_pin(root, path, historical):
         approved = json.loads(git(root, 'show', ACCEPTED_RUNTIME_HEAD + ':' + P0.MANIFEST))
         assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
     latest_ref, reviewed = lineage[-1]
-    current = {
-        'tests/test_post413_o1_scope.py': CURRENT_O1_PHASE_BLOB,
-        'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
-        'tests/u1_scope.py': 'a4b7f3e728dae845ac9c51cdfa90408a4b8e1608',
-    }.get(path, reviewed)
+    current = CURRENT_RUNTIME_PINS.get(path, reviewed)
     lineage.append(('HEAD', current))
     for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
         git(root, 'merge-base', '--is-ancestor', predecessor, successor)
@@ -169,7 +170,7 @@ def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
     path = 'tests/u1_scope.py'
     historical = RUNTIME_HANDOFF_PINS[path][0]
     with C.call_scope():
-        assert _runtime_handoff_pin(wt, path, historical) == RUNTIME_HANDOFF_PINS[path][2]
+        assert _runtime_handoff_pin(wt, path, historical) == CURRENT_RUNTIME_PINS[path]
     source = wt / path
     source.write_bytes(source.read_bytes() + b'\n')
     with C.call_scope(), pytest.raises(AssertionError):
