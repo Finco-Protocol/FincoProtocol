@@ -5,7 +5,7 @@
 #              honestly labelled UNTRUSTED_TOOL_SOURCE (it can never be an integrity pass).
 #   v4       : the accepted V4 central governance gate. It executes PR-head Python, so it is isolated in its own job and judges nothing.
 #   compare  : trusted-base code only; reads the two artifacts as DATA and writes the comparison + job summary.
-# The PR comparison remains read-only, with no secrets and no privileged PR trigger. A future authoritative lane needs an
+# Still `on: pull_request` (a PR can edit this file), still contents: read, no secrets, no privileged PR trigger. A future authoritative lane needs an
 # immutable organization-required workflow or a reviewed privileged trigger; neither is introduced here (docs/ci_v5/README.md, owner steps).
 # Delete this single file to remove V5 shadow entirely; V4 is untouched.
 name: CI V5 shadow (not required)
@@ -13,21 +13,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      optimized_only:
-        description: Run the complete candidate modules with the approved FULL scopes
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
-  group: ci-v5-shadow-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ci-v5-shadow-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
   verdict:
     name: v5-verdict (git objects only)
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -76,7 +69,6 @@ jobs:
           retention-days: 14
   v4-comparison:
     name: v4-comparison (runs PR-head code, isolated)
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -105,7 +97,7 @@ jobs:
   compare:
     name: compare (trusted code, artifacts as data)
     needs: [verdict, v4-comparison]
-    if: always() && github.event_name == 'pull_request'
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -160,81 +152,3 @@ jobs:
           path: ${{ runner.temp }}/ci_v5_out
           if-no-files-found: warn
           retention-days: 14
-  runtime-benchmark:
-    name: Whole-module runtime (${{ matrix.module }})
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/post468-full-closure'
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        module:
-          - fin_v2_integration_409_scope
-          - fin_v2_wf06a_scope
-          - finance_integrity_governance
-          - wsv2_core_scope
-          - post413_r1_scope
-          - post413_o1_scope
-          - model_mutation_security_successor
-    env:
-      BASE_SHA: 305b3553536680e567c608e4ebd3b166ef3d32a7
-      TEST_MODULE: tests/test_${{ matrix.module }}.py
-      OPTIMIZED_ONLY: ${{ inputs.optimized_only }}
-      PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12.16'
-      - name: Compare both exact trees on the same runner
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/runtime-benchmark"
-          mkdir "$out"
-          git merge-base --is-ancestor "$BASE_SHA" HEAD
-          git diff --exit-code "$BASE_SHA" HEAD -- requirements.txt requirements-ci-tests.txt constraints.txt pytest.ini
-          git worktree add --detach "$RUNNER_TEMP/runtime-base" "$BASE_SHA"
-          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
-          lscpu > "$out/runner-cpu.txt"
-          python -m pip freeze > "$out/dependencies.txt"
-          python -c 'from tools.ci_full_parallel import RECORDER_SOURCE; print(RECORDER_SOURCE)' > "$out/finco_benchmark_recorder.py"
-          run_module() (
-            mode="$1"
-            cd "$2"
-            git log -1 --format='%H %T' > "$out/$mode.source"
-            export PYTHONPATH="$PWD:$out" FINCO_CI_FULL_RECORDER="$out/$mode.phases.json"
-            if [[ "$mode" == optimized ]]; then
-              export FINCO_CI_FULL_SCOPED_NODES="$(python -c 'import os; from tools.ci_full_parallel import load_policy; print("\n".join(n for n in load_policy()["scoped_nodes"] if n.split("::", 1)[0] == os.environ["TEST_MODULE"]))')"
-              export FINCO_CI_FULL_SCOPED="$(python -c 'import os; from tools.ci_full_parallel import load_policy; m = os.environ["TEST_MODULE"]; print(m if m in load_policy()["scoped_modules"] else "")')"
-            fi
-            python -m pytest -p finco_benchmark_recorder "$TEST_MODULE" --junitxml="$out/$mode.xml" --durations=0
-          )
-          run_module optimized "$GITHUB_WORKSPACE"
-          if [[ "$OPTIMIZED_ONLY" != true ]]; then
-            run_module plain "$RUNNER_TEMP/runtime-base"
-          fi
-          python - "$out" <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-          out = Path(sys.argv[1])
-          modes = ('optimized',) if os.environ['OPTIMIZED_ONLY'] == 'true' else ('optimized', 'plain')
-          runs = [json.loads((out / f'{mode}.phases.json').read_text()) for mode in modes]
-          optimized = runs[0]
-          assert sorted(optimized['scoped_node_calls']) == list(optimized['scoped_nodes'])
-          for run in runs:
-              assert run['complete'] and run['exitstatus'] == 0
-              assert run['nodes'] and run['nodes'].keys() == optimized['nodes'].keys()
-              for node in run['nodes'].values():
-                  assert node['phases'] == dict.fromkeys(('setup', 'call', 'teardown'), 'passed')
-              print(f"{len(run['nodes'])} passed nodes, {sum(n['duration'] for n in run['nodes'].values()):.3f}s total phase time")
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: whole-module-runtime-${{ matrix.module }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/runtime-benchmark/
-          if-no-files-found: error
