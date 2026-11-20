@@ -60,7 +60,7 @@ LATER_UX_PR1_PATHS = frozenset((
     'tests/u2_scope.py',
 ))
 ACCEPTED_RUNTIME_HEAD = '305b3553536680e567c608e4ebd3b166ef3d32a7'
-REVIEWED_RUNTIME_HEAD = 'e5cc7f95799da4b779f3cae8a76ddd5d50d8d9bd'
+REVIEWED_RUNTIME_HEAD = '0d648a03915f2f42959082610281b9617484550e'
 RUNTIME_HANDOFF_PINS = {
     'tests/u1_scope.py': (
         '77707d87ec3aee5d919f9a5f0468983286280ab1',
@@ -71,6 +71,11 @@ RUNTIME_HANDOFF_PINS = {
         'f39ca2c065216672288e840889fd8e6be9399f50',
         'f39ca2c065216672288e840889fd8e6be9399f50',
         'c80dd99eb29c860cd16a957d30f79888488bfe6a',
+    ),
+    'tests/test_post413_o1_scope.py': (
+        '40b935e1cdd342452a60f0d5e1ebf6865be95041',
+        '40b935e1cdd342452a60f0d5e1ebf6865be95041',
+        '50ae69884bc625d3317a89eaed207735d46f277b',
     ),
 }
 
@@ -125,7 +130,7 @@ def test_exact_registered_and_historical_maps_immutable():
             assert d['base_blobs'][p]==git(U.ROOT,'rev-parse',U.BASE+':'+p).strip()
             hist=d['source_blobs'][p]
             eff=_effective_pin(p,hist)
-            lineage_ref = PR3B2_MERGE if p in later_pins else None
+            lineage_ref = PR3B2_MERGE if p in later_pins or p in RUNTIME_HANDOFF_PINS else None
             assert U.supersedes(p,eff,ref=lineage_ref) and not U.supersedes(p,'0'*40,ref=lineage_ref)
             if eff!=hist:  # a historical pin cannot supersede an accepted later pin
                 assert not U.supersedes(p,hist,ref=lineage_ref)
