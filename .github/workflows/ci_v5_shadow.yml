@@ -193,8 +193,9 @@ jobs:
             cd "$2"
             git log -1 --format='%H %T' > "$out/$mode.source"
             export PYTHONPATH="$PWD:$out" FINCO_CI_FULL_RECORDER="$out/$mode.phases.json"
-            if [[ "$mode" == optimized && "$TEST_MODULE" == tests/test_finance_integrity_governance.py ]]; then
-              export FINCO_CI_FULL_SCOPED_NODES='tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files'
+            if [[ "$mode" == optimized ]]; then
+              export FINCO_CI_FULL_SCOPED_NODES="$(python -c 'import os; from tools.ci_full_parallel import load_policy; print("\n".join(n for n in load_policy()["scoped_nodes"] if n.split("::", 1)[0] == os.environ["TEST_MODULE"]))')"
+              export FINCO_CI_FULL_SCOPED="$(python -c 'import os; from tools.ci_full_parallel import load_policy; m = os.environ["TEST_MODULE"]; print(m if m in load_policy()["scoped_modules"] else "")')"
             fi
             python -m pytest -p finco_benchmark_recorder "$TEST_MODULE" --junitxml="$out/$mode.xml" --durations=0
           )
@@ -207,6 +208,7 @@ jobs:
           out = Path(sys.argv[1])
           a, b = (json.loads((out / f'{mode}.phases.json').read_text()) for mode in ('plain', 'optimized'))
           assert a['nodes'].keys() == b['nodes'].keys() and a['nodes']
+          assert b['scoped_node_calls'] == [node for node in b['nodes'] if node in b['scoped_nodes']]
           for run in (a, b):
               assert run['complete'] and run['exitstatus'] == 0
               for node in run['nodes'].values():
