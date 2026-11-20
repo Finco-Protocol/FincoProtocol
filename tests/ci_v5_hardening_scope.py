@@ -1325,6 +1325,10 @@ def _signature_ok(root, ref, closure=False):
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
+        # The forward overlay can replace the live workflow, but this pin remains the
+        # exact V5-2B workflow recorded at the immutable merge of PR #454.
+        if pins[".github/workflows/ci_v5_shadow.yml"] != "ae4a65b3e28efc890a6ba6d537e3d9b945953620":
+            return False
         if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:
             return False
         if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p

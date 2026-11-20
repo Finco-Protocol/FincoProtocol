@@ -5148,6 +5148,12 @@ HANDOFFS['tests/test_post413_r1_scope.py'].append((
 ))
 
 
+HANDOFFS['tests/ci_v5_hardening_scope.py'].append((
+    '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n            return False\n',
+    '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n            return False\n        # The forward overlay can replace the live workflow, but this pin remains the\n        # exact V5-2B workflow recorded at the immutable merge of PR #454.\n        if pins[".github/workflows/ci_v5_shadow.yml"] != "ae4a65b3e28efc890a6ba6d537e3d9b945953620":\n            return False\n',
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
