@@ -167,7 +167,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [fin_v2_integration_409_scope, fin_v2_wf06a_scope, finance_integrity_governance]
+        module:
+          - fin_v2_integration_409_scope
+          - fin_v2_wf06a_scope
+          - finance_integrity_governance
+          - wsv2_core_scope
+          - post413_r1_scope
+          - post413_o1_scope
+          - model_mutation_security_successor
     env:
       BASE_SHA: 305b3553536680e567c608e4ebd3b166ef3d32a7
       TEST_MODULE: tests/test_${{ matrix.module }}.py

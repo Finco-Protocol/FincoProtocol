@@ -153,7 +153,7 @@
     ".github/workflows/ci_perf_guard.yml": "20812bbb519c4a29e7f2f2db00b0de4696f9cc30",
     ".github/workflows/ci_v4_full.yml": "2611c75bf7ca4db020a06b997a1fa913cf921e4d",
     ".github/workflows/ci_v5_gate.yml": "7a9bbdfa21dd19ca1db63a12fabe30d15b9f89b9",
-    ".github/workflows/ci_v5_shadow.yml": "5bbf4074b7ea9460603afc71e9fd2f1cec963719",
+    ".github/workflows/ci_v5_shadow.yml": "e1d59866b8a784d9bdf0cc78c9677214de3b25f6",
     "docs/ci_v4/SOURCE_SUCCESSOR.json": "74ba2eb3e93ba0bc34213e6dfca0fe0531495c91",
     "docs/ci_v4/node_split_policy.json": "83652cdeba3a561a88da279ac94c3ddb24423af0",
     "docs/ci_v4/node_weights.json": "3658829699c04f259c7052446d8d8ff3c5660173",
