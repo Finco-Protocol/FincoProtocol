@@ -73,13 +73,18 @@ CURRENT_MAPS = frozenset((
     'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
 ))
 REACT_BUNDLE_PATH = 'static/react/finco-react.js'
-MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py', REACT_BUNDLE_PATH)
+MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
 R1_MAP = 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
 R1_SECURITY_TEST = 'tests/test_model_mutation_security_successor.py'
 TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
-MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
-MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
+MAP_EXTRA_KEYS = {
+    'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json': (REACT_BUNDLE_PATH,),
+    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH),
+    'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json': (REACT_BUNDLE_PATH,),
+    TAX_MAP: (R1_DELEGATION_GUARD,),
+}
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
