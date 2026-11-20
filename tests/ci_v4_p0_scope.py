@@ -4729,6 +4729,32 @@ HANDOFFS['tests/test_wsv2_core_scope.py'] = [
     ),
 ]
 
+HANDOFFS['tests/test_post413_o1_scope.py'].append((
+    "    _flip(wt / path)\n"
+    "    assert not O.exact_blobs_ok(wt)\n"
+    "    assert not O.matches(path, (wt / path).read_bytes(), repo=wt)\n"
+    "    _git(wt, 'checkout', '--', path)\n"
+    "    assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity\n",
+    "    _flip(wt / path)\n"
+    "    with C.call_scope():\n"
+    "        assert not O.exact_blobs_ok(wt)\n"
+    "        assert not O.matches(path, (wt / path).read_bytes(), repo=wt)\n"
+    "    _git(wt, 'checkout', '--', path)\n"
+    "    with C.call_scope():\n"
+    "        assert O.exact_blobs_ok(wt)\n",
+))
+HANDOFFS['tests/test_wsv2_core_scope.py'].extend([
+    (
+        'def test_browser_registration_preserves_original_role_and_exact_new_exports():\n',
+        '@C.call_scope()\ndef test_browser_registration_preserves_original_role_and_exact_new_exports():\n',
+    ),
+    (
+        'def test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n',
+        '@C.call_scope()\ndef test_owner_approved_acceptance_exact_pins_identity_and_rejection():\n',
+    ),
+])
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()

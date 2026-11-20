@@ -284,6 +284,7 @@ def browser_contract_ok(role, acceptance):
         token in acceptance for token in ('importorskip', 'pytest.skip', 'mark.skip', 'skipif', 'xfail', 'autouse'))
 
 
+@C.call_scope()
 def test_browser_registration_preserves_original_role_and_exact_new_exports():
     role = (F.ROOT / ROLE).read_text()
     acceptance = (F.ROOT / ACCEPTANCE).read_text()
@@ -313,6 +314,7 @@ def test_ws1_diff_has_no_financial_run_integrity_or_ws2_source_change():
     assert 'app/v2/router.py' not in changed and 'app/v2/post_run_context.py' not in changed
 
 
+@C.call_scope()
 def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
     assert set(S.WSV2_ACCEPTANCE_SUCCESSORS) == OWNER_APPROVED_ACCEPTANCE
     assert OWNER_APPROVED_ACCEPTANCE <= F.OWNED_PATHS

@@ -331,10 +331,12 @@ def test_the_ci_v4_later_exception_is_literal_bounded_and_needs_an_exact_cohort(
 @pytest.mark.parametrize('path', sorted(O.OWNED_PATHS))
 def test_one_byte_in_each_owned_source_fails_closed(wt, path):
     _flip(wt / path)
-    assert not O.exact_blobs_ok(wt)
-    assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
+    with C.call_scope():
+        assert not O.exact_blobs_ok(wt)
+        assert not O.matches(path, (wt / path).read_bytes(), repo=wt)
     _git(wt, 'checkout', '--', path)
-    assert O.exact_blobs_ok(wt)                                                                  # restoring the bytes restores validity
+    with C.call_scope():
+        assert O.exact_blobs_ok(wt)
 
 
 def test_modified_manifest_missing_or_extra_pin_and_wrong_base_fail_closed(wt):
