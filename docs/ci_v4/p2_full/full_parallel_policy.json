@@ -55,6 +55,11 @@
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
       "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
     },
+    "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files": {
+      "proof": "The exact stream guard test reads the live allow-list and candidate authority state during one read-only call. It has no file writes, monkeypatch, commit, fixture or environment changes. Its plain and scoped executions agree. Fresh physical and committed source changes are rejected after the scope exits.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
     "tests/test_post413_r17_scope.py::test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path": {
       "proof": "Read-only call over the actual checkout. Reads the finite cohort manifest and exercises R.supersedes/U.supersedes against exact, forged and unrelated pins. No fixture, worktree write, commit, monkeypatch or environment change. Mutating sibling nodes are excluded.",
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",

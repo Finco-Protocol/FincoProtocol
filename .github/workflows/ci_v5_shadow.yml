@@ -14,10 +14,15 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      optimized_only:
+        description: Run the complete candidate modules with the approved FULL scopes
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: ci-v5-shadow-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-v5-shadow-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 jobs:
   verdict:
@@ -166,6 +171,7 @@ jobs:
     env:
       BASE_SHA: 305b3553536680e567c608e4ebd3b166ef3d32a7
       TEST_MODULE: tests/test_${{ matrix.module }}.py
+      OPTIMIZED_ONLY: ${{ inputs.optimized_only }}
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -200,17 +206,22 @@ jobs:
             python -m pytest -p finco_benchmark_recorder "$TEST_MODULE" --junitxml="$out/$mode.xml" --durations=0
           )
           run_module optimized "$GITHUB_WORKSPACE"
-          run_module plain "$RUNNER_TEMP/runtime-base"
+          if [[ "$OPTIMIZED_ONLY" != true ]]; then
+            run_module plain "$RUNNER_TEMP/runtime-base"
+          fi
           python - "$out" <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
           out = Path(sys.argv[1])
-          a, b = (json.loads((out / f'{mode}.phases.json').read_text()) for mode in ('plain', 'optimized'))
-          assert a['nodes'].keys() == b['nodes'].keys() and a['nodes']
-          assert b['scoped_node_calls'] == [node for node in b['nodes'] if node in b['scoped_nodes']]
-          for run in (a, b):
+          modes = ('optimized',) if os.environ['OPTIMIZED_ONLY'] == 'true' else ('optimized', 'plain')
+          runs = [json.loads((out / f'{mode}.phases.json').read_text()) for mode in modes]
+          optimized = runs[0]
+          assert sorted(optimized['scoped_node_calls']) == list(optimized['scoped_nodes'])
+          for run in runs:
               assert run['complete'] and run['exitstatus'] == 0
+              assert run['nodes'] and run['nodes'].keys() == optimized['nodes'].keys()
               for node in run['nodes'].values():
                   assert node['phases'] == dict.fromkeys(('setup', 'call', 'teardown'), 'passed')
               print(f"{len(run['nodes'])} passed nodes, {sum(n['duration'] for n in run['nodes'].values()):.3f}s total phase time")
