@@ -52,6 +52,7 @@
     "tests/test_fin_v2_3_numerical.py": 35.604,
     "tests/test_fin_v2_integration_409_scope.py": 872.963,
     "tests/test_fin_v2_wf06a_scope.py": 255.253,
+    "tests/test_finance_integrity_governance.py": 126.119,
     "tests/test_financing_f1_sources_uses.py": 14.114,
     "tests/test_financing_f37_instrument_su.py": 113.178,
     "tests/test_financing_f3_contract_candidate.py": 2.6,
@@ -2068,9 +2069,13 @@
     "tests/test_fin_val_b2_c1_recovery_finite_opex.py::TestReactRecovery::test_react_repair_refuses_invalid_stale_forged_and_cross_session_requests": 0.405,
     "tests/test_fin_val_b2_c1_recovery_finite_opex.py::TestRecoveryGateDoesNotPreemptTypedScopeRefusals::test_an_unknown_non_quarterly_error_is_still_reported_and_not_repairable": 0.0,
     "tests/test_fin_val_b2_c1_recovery_finite_opex.py::TestRecoveryGateDoesNotPreemptTypedScopeRefusals::test_typed_quarterly_refusal_is_not_an_unreadable_draft": 0.0,
-    "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed": 1890.155,
-    "tests/test_finance_integrity_governance.py::test_core_and_radar_have_no_exception": 112.21,
-    "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files": 929.735,
+    "tests/test_finance_integrity_governance.py::test_allow_list_entries_exist": 0.0,
+    "tests/test_finance_integrity_governance.py::test_approved_engine_paths_are_allowed": 11.511,
+    "tests/test_finance_integrity_governance.py::test_candidate_state_never_widens_the_released_allow_list": 48.508,
+    "tests/test_finance_integrity_governance.py::test_core_and_radar_have_no_exception": 48.061,
+    "tests/test_finance_integrity_governance.py::test_stream_guard_exemption_covers_only_allow_listed_engine_files": 17.703,
+    "tests/test_finance_integrity_governance.py::test_this_branch_stays_within_the_governance_contract": 0.336,
+    "tests/test_finance_integrity_governance.py::test_unrelated_engine_modules_stay_protected": 0.0,
     "tests/test_financing_f1_sources_uses.py::test_corrupted_run_bound_finance_numbers_fail_closed": 1.032,
     "tests/test_financing_f1_sources_uses.py::test_no_auth_no_cross_owner_no_unscoped_historical": 2.832,
     "tests/test_financing_f1_sources_uses.py::test_real_solar_wind_last_run_and_immutable_history[solar]": 2.516,
@@ -4946,5 +4951,5 @@
     "tests/test_yield_live_v1.py::TestWebProvenance::test_default_explorer_is_live_only_and_never_lists_reference_fixtures": 3.651
   },
   "schema": "FINCO_CI_FULL_NODE_WEIGHTS_V1",
-  "source": "Prior sources: CI_PROGRESS run 44269024819 and measured-node-weights.json run 44324970783. Correction A: refresh timings from digest-authenticated FULL run 44491804302 attempt 1 (main f98b9be0). Whole-module totals require complete phase coverage; partial modules retain their older fallback except documented exact scoped-node savings. Optimized node weights are estimates padded to twice their local recorded duration with a 10 s floor. Missing/incomplete observations retain fallback; weights affect balance only. PR #469: the retained historical Integration-409 module weight (3866.343s) is superseded for FULL balance by the complete successful module-only GitHub Actions job 136232054978 from run 44719522748, head 0532143b8e6e14375fbe3aa41d02e0725d88afa5 tree e936c0318e5c8a17d16e488838b6e909f6b3dc53, artifact 14622765170 (sha256:d3b4ce217cea697c66797cb009e2935a67bd6fdd37b88be7615b11d019069a91). All 46 nodes passed, exact node digest 55d97461bb322aff9237b859abacc9f7ecb4ff75eb79121dfd82bf9f121898fa, pytest phases 872.963s and execution wall 874.4s. The original module inventory, historical source and test budgets are retained. WF06A uses the complete 43-node passing sample from GitHub Actions run 44719522748, job 136232054881, exact SHA 0532143b8e6e14375fbe3aa41d02e0725d88afa5 tree e936c0318e5c8a17d16e488838b6e909f6b3dc53, artifact 14623437558 (sha256:1db63174b961c6f2be80e2b83efa3f86cf1b5610df670d9e83ed71f13f098094). Node digest f05d3e393e528d63603b580c9bb6490250355a5948bcdba2815c2e6ae2039c31. The recorded pytest setup/call/teardown total is 255.253s."
+  "source": "Prior sources: CI_PROGRESS run 44269024819 and measured-node-weights.json run 44324970783. Correction A: refresh timings from digest-authenticated FULL run 44491804302 attempt 1 (main f98b9be0). Whole-module totals require complete phase coverage; partial modules retain their older fallback except documented exact scoped-node savings. Optimized node weights are estimates padded to twice their local recorded duration with a 10 s floor. Missing/incomplete observations retain fallback; weights affect balance only. PR #469: the retained historical Integration-409 module weight (3866.343s) is superseded for FULL balance by the complete successful module-only GitHub Actions job 136232054978 from run 44719522748, head 0532143b8e6e14375fbe3aa41d02e0725d88afa5 tree e936c0318e5c8a17d16e488838b6e909f6b3dc53, artifact 14622765170 (sha256:d3b4ce217cea697c66797cb009e2935a67bd6fdd37b88be7615b11d019069a91). All 46 nodes passed, exact node digest 55d97461bb322aff9237b859abacc9f7ecb4ff75eb79121dfd82bf9f121898fa, pytest phases 872.963s and execution wall 874.4s. The original module inventory, historical source and test budgets are retained. WF06A uses the complete 43-node passing sample from GitHub Actions run 44719522748, job 136232054881, exact SHA 0532143b8e6e14375fbe3aa41d02e0725d88afa5 tree e936c0318e5c8a17d16e488838b6e909f6b3dc53, artifact 14623437558 (sha256:1db63174b961c6f2be80e2b83efa3f86cf1b5610df670d9e83ed71f13f098094). Node digest f05d3e393e528d63603b580c9bb6490250355a5948bcdba2815c2e6ae2039c31. The recorded pytest setup/call/teardown total is 255.253s. PR #469 measured authority over corresponding historical module and per-node weights. tests/test_finance_integrity_governance.py: whole-module GitHub Actions run 44725718340, job 136252497190, artifact 14623248765 sha256:84010f6a3e75e06c83b8bc183a11095e5f9374bf65ae7c6c49f28848666c6c96, optimized SHA f5580e66d7c2734176a86f51170f325edeba5ae0, 7 passing node IDs (020ec5ede618e966770d6245fe425c9d86dfa568e0bbc8a3085ea0098b83c1c1), optimized 126.119s."
 }
