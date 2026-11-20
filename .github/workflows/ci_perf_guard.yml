@@ -1,13 +1,12 @@
 # CI Performance Budget guard: writes the commit status "CI Performance Budget" on a pull request's head SHA.
 #
 # Security properties (asserted by tests/test_ci_perf_guard.py):
-#   * triggers are ONLY `workflow_run` (completion of a required workflow) and `schedule` (the sweep). For both, GitHub runs THIS file and
+#   * completion, scheduled sweep, and manual sweep use THIS file and
 #     the code it checks out from the DEFAULT branch: a pull request can neither change the guard nor its policy for its own judgement;
 #   * the checkout is the default-branch commit (github.sha); no pull-request ref/sha is ever checked out, imported or executed;
 #     pull-request artifacts are read through the API as size-capped DATA and verified against GitHub's artifact digests;
 #   * least privilege: read actions/contents/pull-requests, write ONLY commit statuses; no secrets beyond the job token;
-#   * the job never waits or polls: one evaluation per event, bounded by timeout-minutes. A head still pending after the 40-minute
-#     budget becomes FAILURE at the next sweep, so the status can never stay pending forever.
+#   * the job never waits or polls. When GitHub delays scheduled events, an operator can dispatch the same default-branch sweep.
 # Activation as a REQUIRED check is an owner step in branch protection (docs/ci_v4/p1_runtime/ACTIVATION_PROCEDURE.md).
 name: CI performance budget guard
 on:
@@ -22,6 +21,7 @@ on:
     types: [completed]
   schedule:
     - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
 permissions: {}
 concurrency:
   group: ci-perf-guard-${{ github.event.workflow_run.head_sha || 'sweep' }}
@@ -54,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python -I tools/ci_perf_guard.py event
       - name: Sweep open pull requests (pending -> terminal after the budget)
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -I tools/ci_perf_guard.py sweep

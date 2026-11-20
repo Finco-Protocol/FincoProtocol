@@ -7,6 +7,7 @@ import ast
 import json
 from pathlib import Path
 import subprocess
+from time import monotonic
 
 import pytest
 
@@ -26,6 +27,17 @@ SIBLINGS = {
 
 def _git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.STDOUT).decode()
+
+
+@pytest.fixture(autouse=True)
+def _report_o1_progress(request):
+    terminal = request.config.pluginmanager.get_plugin('terminalreporter')
+    start = monotonic()
+    if terminal is not None:
+        terminal.write_line(f'[O1] start {request.node.nodeid}')
+    yield
+    if terminal is not None:
+        terminal.write_line(f'[O1] finish {request.node.nodeid} ({monotonic() - start:.1f}s)')
 
 
 @pytest.fixture(scope='module')
