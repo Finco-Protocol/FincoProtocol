@@ -294,11 +294,13 @@ def head_blob(path):
 
 
 def test_correction_b_positive_on_the_genuine_integrated_head():
+    from tests.fin_v2_cohorts import call_scope
     from tests import wf04_scope as W
-    for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):
-        assert W._downstream_allows(path, W.ROOT, None) is True, path
-    for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):         # the exact reviewed pin of each pinned path passes
-        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path       # (a manifest never pins itself, so none is probed here)
+    with call_scope():
+        for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):
+            assert W._downstream_allows(path, W.ROOT, None) is True, path
+        for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):
+            assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path
 
 
 def test_correction_b_seal_never_owns_or_admits_a_wf06a_owned_path():

@@ -5124,6 +5124,30 @@ HANDOFFS['tests/test_wsv2_core_scope.py'] += [
 ]
 
 
+HANDOFFS['tests/test_fin_v2_integration_409_scope.py'].append((
+    'def test_correction_b_positive_on_the_genuine_integrated_head():\n'
+    '    from tests import wf04_scope as W\n'
+    '    for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):\n'
+    '        assert W._downstream_allows(path, W.ROOT, None) is True, path\n'
+    '    for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):         # the exact reviewed pin of each pinned path passes\n'
+    '        assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path       # (a manifest never pins itself, so none is probed here)\n',
+    'def test_correction_b_positive_on_the_genuine_integrated_head():\n'
+    '    from tests.fin_v2_cohorts import call_scope\n'
+    '    from tests import wf04_scope as W\n'
+    '    with call_scope():\n'
+    '        for path in WF06A_PATHS + (SEAL_ONLY_PATH, B1_PATH, "main_web.py"):\n'
+    '            assert W._downstream_allows(path, W.ROOT, None) is True, path\n'
+    '        for path in (WF06A_PATH, "static/react/finco-react.js", B1_PATH, "main_web.py"):\n'
+    '            assert W._downstream_pin(path, head_blob(path), W.ROOT, None) is True, path\n',
+))
+
+HANDOFFS['tests/test_post413_r1_scope.py'].append((
+    'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+    '@C.call_scope()\n'
+    'def test_supersession_is_bounded_to_the_exact_pin_of_a_superseded_path():\n',
+))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
