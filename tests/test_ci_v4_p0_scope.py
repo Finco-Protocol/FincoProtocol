@@ -85,6 +85,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         'tests/test_data_center_browser_acceptance.py', 'tests/test_model_golden_flows_browser.py',
         'tests/test_model_react_poc_browser_acceptance.py', 'tests/test_model_v7_diagnostics_browser.py',
         'tests/test_radar_n04_browser.py', 'tests/test_sc34_workflow_journeys_browser.py',
+        'tests/model_mutation_security_successor.py',
     }
     assert 'docs/ci_v4/full_skip_baseline.json' not in T.FROZEN and 'docs/ci_v4/full_skip_baseline.json' not in T.CI_PATHS
     assert {'docs/ci_v4/ci-v4-policy.json', 'docs/ci_v4/module_weights.json'} <= set(T.FROZEN)      # every other V4 policy control blob stays byte-equal to BASE
