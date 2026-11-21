@@ -647,3 +647,22 @@ def test_uncommitted_edit_is_saved_before_a_deactivate_runs(make):
     s.page.wait_for_timeout(1500)
     assert [p[0] for p in posts][:2] == ["update", "deactivate"]       # saved first, then the structural action
     assert s.db_amount(rid1) == 6543
+
+
+def test_failed_row_save_cancels_waiting_deactivate(make):
+    s = make("u-grid-deact-refusal")
+    s.open("capex")
+    posts = _record_line_posts(s)
+    row_id = s.rid(1)
+    previous = s.db_amount(row_id)
+    s.page.route("**/v2/capex/line/update", lambda route: route.fulfill(status=409, body="{}"))
+    s.amount(1).click()
+    s.page.keyboard.type("6543")
+    with s.page.expect_response(lambda response: "/capex/line/update" in response.url) as response:
+        s.rows().nth(0).locator("button.v2-capex-deactivate-btn").click()
+    assert response.value.status == 409
+    s.page.wait_for_selector(f"#{row_id}[data-save-state='failed']")
+    s.wait_idle(timeout=30000)
+    assert [kind for kind, _ in posts] == ["update"]
+    assert s.amount(1).input_value() == "6543"
+    assert s.db_amount(row_id) == previous

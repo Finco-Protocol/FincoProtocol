@@ -174,6 +174,30 @@
     return false;
   };
 
+  // A click can arrive after blur started a row save and invalidated this
+  // sheet. Replay only if that save succeeds and its own view is still current.
+  var deferredDeactivate = new WeakMap();
+  function deferDeactivate(target, sheet, ticket) {
+    var button = target.closest && target.closest('.v2-capex-deactivate-btn, .v2-opex-deactivate-btn');
+    var active = activeId && document.getElementById(activeId);
+    if (stageMode || !button || !active || !sheet.contains(active) || !sheet.contains(button) ||
+        deferredDeactivate.get(button) === ticket.generation) return;
+    var row = button.closest(ROW);
+    var id = button.getAttribute('data-testid');
+    if (!row || !id) return;
+    var rowId = row.id;
+    deferredDeactivate.set(button, ticket.generation);
+    window.v2CostGridWhenIdle(function () {
+      deferredDeactivate.delete(button);
+      var now = window.FincoModelViews.capture();
+      if (!sheet.isConnected || sheet.closest('[hidden]') || sheet.dataset.modelViewState !== 'loaded' ||
+          now.project !== ticket.project || now.generation !== ticket.generation) return;
+      var fresh = document.getElementById(rowId);
+      var control = fresh && sheet.contains(fresh) && fresh.querySelector('[data-testid="' + id + '"]');
+      if (control) control.click();
+    });
+  }
+
   function finishFailed(row, message) {
     var id = row.id;
     var snap = snapshots[id] || { vals: {} };
@@ -296,6 +320,7 @@
   });
 
   // ── htmx lifecycle ───────────────────────────────────────────────────────────────
+  var sheetViews = new Map();
   document.addEventListener('htmx:beforeSwap', function (e) {
     var d = e.detail || {};
     var target = d.target;
@@ -316,12 +341,12 @@
       var openMap = {};
       qsa('details[data-group-code]', target).forEach(function (dd) { openMap[dd.getAttribute('data-group-code')] = dd.open; });
       var f2 = document.activeElement && target.contains(document.activeElement) ? document.activeElement : null;
-      target.__view = {
-        id: target.id, open: openMap, y: window.scrollY,
-        top: target.scrollTop, focusId: f2 && f2.closest(ROW) ? f2.closest(ROW).id : null,
+      var batch = window.__v2CostBatch;
+      var y = batch && target.id === 'v2-sheet-' + batch.sheet ? batch.scrollY : window.scrollY;
+      sheetViews.set(target.id, {
+        open: openMap, y: y, focusId: f2 && f2.closest(ROW) ? f2.closest(ROW).id : null,
         focusName: f2 ? f2.name : null
-      };
-      window.__v2CostView = target.__view;
+      });
     }
   });
 
@@ -332,19 +357,20 @@
     if (t.matches(ROW)) { rowSettled(t); return; }
     if (t.matches('[data-cost-grid]')) {
       syncTokens(t.querySelector('[id^="v2-cost-authority-"]'));
-      var v = window.__v2CostView;
-      if (v && v.id === t.id) {
+      var v = sheetViews.get(t.id);
+      if (v) {
+        sheetViews.delete(t.id);
         qsa('details[data-group-code]', t).forEach(function (dd) {
           var code = dd.getAttribute('data-group-code');
           if (Object.prototype.hasOwnProperty.call(v.open, code)) dd.open = v.open[code];
         });
+        if (t.closest('[hidden]')) return;
         window.scrollTo(0, v.y);
         if (v.focusId) {
           var r = document.getElementById(v.focusId);
           var inp = r && r.querySelector('input[name="' + v.focusName + '"]');
           if (inp) inp.focus({ preventScroll: true });
         }
-        window.__v2CostView = null;
       }
     }
   });
@@ -592,7 +618,8 @@
     // The request source must survive the swap (events from a detached element never reach document).
     var source = document.getElementById('v2-workbook-shell') || document.body;
     var payload = JSON.stringify(rows.map(lineOf));
-    window.__v2CostBatch = { rows: rows.map(function (r) { return r.id; }), sheet: sheet, others: others, project: project, source: source };
+    window.__v2CostBatch = { rows: rows.map(function (r) { return r.id; }), sheet: sheet, others: others,
+      project: project, source: source, scrollY: window.scrollY };
     window.htmx.ajax('POST', '/v2/workbook/grid/cost-lines/save', {
       source: source, target: '#v2-sheet-' + sheet, swap: 'outerHTML',
       values: { project: project, csrf_token: csrf, workbook_version: tokens.version, content_hash: tokens.hash,
@@ -600,23 +627,55 @@
     });
   }
 
+  function refreshSavedSibling(ctx) {
+    var sheet = ctx.sheet === 'capex' ? 'opex' : 'capex';
+    var target = '#v2-sheet-' + sheet;
+    var root = document.querySelector(target);
+    var views = window.FincoModelViews;
+    var tokens = liveTokens();
+    if (!root || !views || !tokens) return Promise.resolve(false);
+    var ticket = views.capture();
+    if (ticket.project !== ctx.project || !ticket.hash || ticket.hash !== tokens.hash) return Promise.resolve(false);
+    var source = document.createElement('span');
+    source.hidden = true;
+    document.body.appendChild(source);
+    var accepted = false;
+    source.addEventListener('htmx:beforeOnLoad', function (event) {
+      var xhr = event.detail.xhr;
+      accepted = views.isCurrent(ticket) && root === document.querySelector(target) &&
+        xhr.status === 200 && xhr.getResponseHeader('X-Finco-View-Hash') === ticket.hash;
+      if (!accepted) event.preventDefault();
+    });
+    var url = '/v2/workbook/grid/sheet?presentation_only=1&project=' + encodeURIComponent(ticket.project) +
+      '&content_hash=' + encodeURIComponent(ticket.hash) + '&sheet=' + sheet;
+    return window.htmx.ajax('GET', url, { source: source, target: target, swap: 'outerHTML' })
+      .then(function () { source.remove(); return accepted && root !== document.querySelector(target); },
+            function () { source.remove(); return false; });
+  }
+
   function finishBatch(ok, detail) {
     var ctx = window.__v2CostBatch;
     if (!ctx) return;
     window.__v2CostBatch = null;
-    batchInFlight = false;
-    setReadonly(false);
     if (ok) {
       stageMessage('');
-      pendingStageMsg = 'Saved ' + ctx.rows.length + ' lines together · Last Run is now STALE — run the model to refresh results.';
-      if (ctx.others) {         // the sheet that was NOT swapped carries stale row versions: refresh it too
-        var other = ctx.sheet === 'capex' ? 'opex' : 'capex';
-        var root = document.getElementById('v2-sheet-' + other);
-        if (root) window.htmx.ajax('GET', '/v2/workbook/grid/sheet?project=' + encodeURIComponent(ctx.project) + '&sheet=' + other,
-          { source: '#v2-sheet-' + other, target: '#v2-sheet-' + other, swap: 'outerHTML' });
+      var message = 'Saved ' + ctx.rows.length + ' lines together · Last Run is now STALE — run the model to refresh results.';
+      if (ctx.others) {
+        refreshSavedSibling(ctx).then(function (refreshed) {
+          batchInFlight = false;
+          setReadonly(false);
+          updateStagebars();
+          stageMessage(refreshed ? message : 'Saved edits. Refresh the other cost sheet before editing it again.');
+        });
+      } else {
+        batchInFlight = false;
+        setReadonly(false);
+        pendingStageMsg = message;
       }
       return;
     }
+    batchInFlight = false;
+    setReadonly(false);
     var body = {};
     try { body = JSON.parse((detail && detail.xhr && detail.xhr.responseText) || '{}'); } catch (_) { body = {}; }
     var byKey = {};
@@ -721,5 +780,6 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updateStagebars); else updateStagebars();
 
-  window.v2CostGrid = { focusGroup: focusGroup, busy: gridBusy, state: function () { return { active: activeId, queued: queue.slice(), staged: stagedRows().map(function (r) { return r.id; }), stageMode: stageMode, batch: batchInFlight }; } };
+  window.v2CostGrid = { focusGroup: focusGroup, busy: gridBusy, deferDeactivate: deferDeactivate,
+    state: function () { return { active: activeId, queued: queue.slice(), staged: stagedRows().map(function (r) { return r.id; }), stageMode: stageMode, batch: batchInFlight }; } };
 }());

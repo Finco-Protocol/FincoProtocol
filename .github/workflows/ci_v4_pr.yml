@@ -106,9 +106,9 @@ jobs:
         if: steps.decide.outputs.collect == 'true' && steps.chromium.outputs.required == 'true'
         run: &install_pr_chromium |
           set -euo pipefail
-          python -m pip install playwright==1.63.0
-          python -m playwright install chromium --with-deps
-          python - <<'PY'
+          python -I -m pip install playwright==1.63.0
+          python -I -m playwright install chromium --with-deps
+          python -I - <<'PY'
           from importlib.metadata import version
           from playwright.sync_api import sync_playwright
 

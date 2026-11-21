@@ -130,6 +130,9 @@ jobs:
           name: ci-full-plan-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/full/plan
       - name: Run exactly the sealed assignment (every assigned module's collection must equal the planned inventory first)
+        env:
+          FINCO_VISUAL_CAPTURE: '1'
+          FINCO_VISUAL_CAPTURE_DIR: ${{ runner.temp }}/full/out/visual-capture
         run: python -m tools.ci_full_parallel shard --plan "$RUNNER_TEMP/full/plan/plan.json" --index ${{ matrix.index }} --output "$RUNNER_TEMP/full/out"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

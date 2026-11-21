@@ -273,6 +273,36 @@ def test_cross_sheet_batch_then_single_row_edit_has_no_false_409(make):
     assert "data-cost-error" not in single.value.text()
 
 
+def test_cross_sheet_batch_does_not_install_a_mismatched_sibling_response(make):
+    s = make("u-cross-stale-refresh")
+    s.open("capex")
+    s.stage_on()
+    capex_id = s.row_ids("capex", 1)[0]
+    s.type_amounts("capex", ["501"])
+    s.page.evaluate("document.getElementById('tab-opex').click()")
+    s.page.wait_for_selector("#v2-sheet-opex form[data-cost-row]", state="attached")
+    s.open_groups("opex")
+    s.kind = "opex"
+    opex_id = s.row_ids("opex", 1)[0]
+    s.type_amounts("opex", ["61"])
+    s.page.locator("#v2-sheet-capex").evaluate("(sheet) => { sheet.dataset.testOriginalSheet = 'true'; }")
+
+    def mismatched(route):
+        response = route.fetch()
+        route.fulfill(response=response, headers={**response.headers, "x-finco-view-hash": "mismatch"})
+
+    s.page.route("**/grid/sheet?presentation_only=1&**&sheet=capex", mismatched)
+    with s.page.expect_response(lambda r: "/cost-lines/save" in r.url) as response:
+        s.page.locator("#v2-sheet-opex [data-cost-stage-save]").click()
+    assert response.value.status == 200
+    s.page.wait_for_function("!window.v2CostGrid.state().batch")
+    assert s.page.locator("#v2-sheet-capex").get_attribute("data-test-original-sheet") == "true"
+    assert "Refresh the other cost sheet" in s.page.locator("#v2-sheet-opex [data-cost-stage-msg]").inner_text()
+    assert len(s.posts_to("/cost-lines/save")) == 1
+    assert s.db_amounts("capex", [capex_id]) == [501.0]
+    assert s.db_amounts("opex", [opex_id]) == [61.0]
+
+
 def test_stage_mode_off_keeps_the_existing_per_row_autosave(make):
     s = make("u-off")
     s.open("capex")

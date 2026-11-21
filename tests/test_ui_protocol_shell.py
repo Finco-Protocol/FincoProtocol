@@ -2277,7 +2277,7 @@ class TestApiBetaBrowser:
 @pytest.mark.skipif(os.getenv("FINCO_VISUAL_CAPTURE") != "1", reason="visual artifact capture is enabled in CI")
 def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     """Capture actual rendered product surfaces at this workflow's checked-out HEAD."""
-    out = REPO / "artifacts" / "saas-visual"
+    out = Path(os.environ.get("FINCO_VISUAL_CAPTURE_DIR", REPO / "artifacts")) / "saas-visual"
     out.mkdir(parents=True, exist_ok=True)
     page = browser.new_page(viewport={"width": 1280, "height": 900})
     _auth_cookie(live_url, page)
@@ -2409,7 +2409,7 @@ def test_reference_driven_correction_a_23_capture_journey(
     from app.radar_ui import router as _radar_router
     from app.services.reference_seed_service import create_reference_seeded_project
 
-    out = REPO / "artifacts" / "reference-driven-correction-a"
+    out = Path(os.environ.get("FINCO_VISUAL_CAPTURE_DIR", REPO / "artifacts")) / "reference-driven-correction-a"
     out.mkdir(parents=True, exist_ok=True)
 
     page = browser.new_page(viewport={"width": 1280, "height": 900})

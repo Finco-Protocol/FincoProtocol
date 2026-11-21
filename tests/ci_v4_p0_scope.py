@@ -44,19 +44,22 @@ R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
 # Correction E admits the exact changes audited from d605fac5. The separate
 # reviewed digests also reject a paired source and manifest edit.
 BROWSER_REPAIR_BLOBS = {
+    'static/js/model_view_refresh.js': '9830e621a6f77b1d5ce15c35f257d2adf2d0c5bf',
+    'static/js/cost_staging.js': '1ac7326e97c0407d0c386b56e828850570fcaca4',
     'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
     'app/v2/opex_router.py': '5f346c0ca97a1c4cafab30bd3f6ea4391e0b0861',
-    'tests/test_cost_batch_save_browser_v1.py': '63391a4bb472f9c8d37251fdbb59c5004c3903ba',
-    'tests/test_cost_editing_ux_v2_browser.py': '3ced8f0191d4fe8f855443ea497f2fb036979509',
-    'tests/test_cost_grid_editing_browser_v1.py': '92fd166709cdb4925c95b752d4f115515f88a7e4',
+    'tests/test_cost_batch_save_browser_v1.py': '47eb26d4a8afe4c8e6dc88aa22b0abaaf0c22de7',
+    'tests/test_cost_editing_ux_v2_browser.py': '6715d3820a9a755fb066916d03159993a1569ec7',
+    'tests/test_cost_grid_editing_browser_v1.py': 'd6dc005e9e0c6d95c7c35cddf6b5dd6fbd103913',
     'tests/test_jev_panel_browser.py': '8c7e3f3c3a726a00a8d5de88c6ea5ad3b0bce1e5',
-    'tests/test_m3_two_driver_sensitivity_browser.py': 'cad96e217aa20f2078a5b01707ec671fa9bd6364',
+    'tests/test_m3_two_driver_sensitivity_browser.py': 'ad206e41a530a7d2e351db6b66305e1e2c0f8945',
     'tests/test_model_trust_pack_browser.py': '121c375f77c60bef55713d1c170894947e6989b1',
     'tests/test_p3_browser_acceptance.py': 'b472153960561fe5041df195bcdbee8a2a2eb77e',
     'tests/test_radar_r3_liquidity.py': 'cdb689add60f91ab8371e0794aca0c97db12b77f',
-    'tests/test_ui_protocol_shell.py': '61ca1d2825fb32543ead97788b79d0f35ad09d5a',
+    'tests/test_ui_protocol_shell.py': 'ffde62258729e1d4bff05fd26b56d3630bc47602',
 }
-COST_RESPONSE_ROUTERS = frozenset(('app/v2/capex_router.py', 'app/v2/opex_router.py'))
+COST_PRESENTATION_PATHS = frozenset(('app/v2/capex_router.py', 'app/v2/opex_router.py',
+                                     'static/js/cost_staging.js', 'static/js/model_view_refresh.js'))
 REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                       # P1: U1 node split (SPLIT_SAFE_FLOOR_LIMITED, isolation-proven) and its re-measured U1 node weights
                       'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
@@ -110,8 +113,9 @@ HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_
                             'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
 HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_3_scope.py', 'tests/fin_v2_r1_scope.py', 'tests/fin_v2_pr394_corr_scope.py', 'tests/fin_v2_ci_scope.py', 'tests/fin_v2_wsv2_scope.py'))
+FULL_VISUAL_WORKFLOW_BLOB = '6f9adcb481a3375d5ab2fd67a85cbb0341e2dc60'
 PR_CHROMIUM_WORKFLOW = '.github/workflows/ci_v4_pr.yml'
-PR_CHROMIUM_WORKFLOW_BLOB = '95f8c9aac8a88550eb802836ee96f383d7b76b6c'
+PR_CHROMIUM_WORKFLOW_BLOB = 'db9ee712680b5480e0f8f0ef462e9b7cf125d030'
 REPLACED |= BROWSER_REPAIR_BLOBS.keys() | {PR_CHROMIUM_WORKFLOW}
 CI_PATHS |= {PR_CHROMIUM_WORKFLOW}
 HANDOFF_PATHS |= {'tests/test_ux_pr2c_scope.py'}
@@ -5474,6 +5478,8 @@ def _signature_ok(root, ref, closure=False):
         # changes both the baseline bytes and the pin in its own manifest.
         if pins.get("docs/ci_v4/full_skip_baseline.json") != "d5e91b8a07d63dd5a2ef7b483e7e0893c7fedf0e":
             return False
+        if pins.get('.github/workflows/ci_v4_full.yml') != FULL_VISUAL_WORKFLOW_BLOB:
+            return False
         if pins.get(PR_CHROMIUM_WORKFLOW) != PR_CHROMIUM_WORKFLOW_BLOB:
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
@@ -5482,7 +5488,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:
             return False
-        if not NEW.isdisjoint(base) or any((p.startswith(FORBIDDEN) and p not in COST_RESPONSE_ROUTERS)
+        if not NEW.isdisjoint(base) or any((p.startswith(FORBIDDEN) and p not in COST_PRESENTATION_PATHS)
                                            or p.startswith("/") or ".." in p.split("/") or "*" in p
                                            for p in OWNED_PATHS | {MANIFEST}):
             return False

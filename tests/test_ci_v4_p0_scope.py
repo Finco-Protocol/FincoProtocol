@@ -75,6 +75,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           # post-#471 (owner decision 2026-11-20): the reviewed skip baseline, one count-one SKIPPED_NOT_PASSED deferral; nothing else of the V4 policy moved
                           'docs/ci_v4/full_skip_baseline.json', '.github/workflows/ci_v4_pr.yml'} | {
         'app/v2/capex_router.py', 'app/v2/opex_router.py',
+        'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
         'tests/test_cost_batch_save_browser_v1.py', 'tests/test_cost_editing_ux_v2_browser.py',
         'tests/test_cost_grid_editing_browser_v1.py', 'tests/test_jev_panel_browser.py',
         'tests/test_m3_two_driver_sensitivity_browser.py', 'tests/test_model_trust_pack_browser.py',
@@ -89,6 +90,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert {p for p in T.OWNED_PATHS if p.startswith(T.FORBIDDEN)} == {
         'app/v2/capex_router.py', 'app/v2/opex_router.py',
+        'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
     }
     assert all("*" not in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
@@ -279,7 +281,7 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
 
 
 def test_correction_e_rejects_physical_and_committed_paired_repins(subject):
-    for path in (".github/workflows/ci_v4_pr.yml", "app/v2/capex_router.py", "app/v2/opex_router.py"):
+    for path in (".github/workflows/ci_v4_pr.yml", *sorted(T.COST_PRESENTATION_PATHS)):
         source = (subject / path).read_bytes()
         altered = source + b"\n"
         with C.call_scope():

@@ -114,6 +114,9 @@
     var view=viewOf(event.target);if(!view || !view.editable)return;
     var node=document.getElementById(view.id);
     if(node.dataset.modelViewState==='loaded')return;
+    if(event.type==='click' && window.v2CostGrid){
+      window.v2CostGrid.deferDeactivate(event.target, node, capture());
+    }
     event.preventDefault();event.stopImmediatePropagation();schedule();
   }
   // An edit made outside the Construction timing component can never be covered by that component's own Save.

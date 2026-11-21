@@ -15,6 +15,7 @@ import pytest
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from tests.test_cost_batch_save_browser_v1 import Session, browser, live_server  # noqa: E402,F401
+from playwright.sync_api import expect  # noqa: E402
 
 SHOTS = os.environ.get("M3_SCREENSHOT_DIR")
 
@@ -127,13 +128,17 @@ def test_error_messages_are_visible_and_leave_no_results(make):
     response = _run_and_wait(s, timeout=30000)
     assert response.status == 422
     err = s.page.locator('[data-testid="matrix-error"]')
-    err.wait_for(state="visible")
-    assert "MATRIX_DRIVER_DUPLICATE" in err.inner_text() and "Nothing was changed" in err.inner_text()
+    expect(err).to_have_attribute("data-code", "MATRIX_DRIVER_DUPLICATE")
+    expect(err).to_contain_text("Nothing was changed")
+    assert s.page.locator('[data-testid="matrix-table"]').count() == 0
+    _open_sensitivity(s)
+    s.page.select_option('[data-testid="matrix-driver-a"]', "capex")
     s.page.select_option('[data-testid="matrix-driver-b"]', "opex")
     s.page.fill('[data-testid="matrix-levels-a"]', "1,2")
     response = _run_and_wait(s, timeout=30000)
     assert response.status == 422
-    assert "MATRIX_LEVEL_COUNT" in s.page.locator('[data-testid="matrix-error"]').inner_text()
+    expect(err).to_have_attribute("data-code", "MATRIX_LEVEL_COUNT")
+    expect(err).to_contain_text("Nothing was changed")
     assert s.page.locator('[data-testid="matrix-table"]').count() == 0
     _shot(s, "m3-error-desktop.png")
 
