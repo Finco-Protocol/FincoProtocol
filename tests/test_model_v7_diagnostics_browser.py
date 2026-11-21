@@ -110,23 +110,20 @@ def test_visible_save_refresh_and_late_read_cannot_overwrite_new_run(live_server
         page.wait_for_timeout(150)
         assert json.loads(page.locator('[data-md-payload]').text_content()) == current
         # Save through the canonical form while Diagnostics remains visible.
-        # Save through the real field protocol while Diagnostics remains
-        # visible: the canonical run form carries no workbook-update CSRF token,
-        # so a hand-rolled POST of its fields is refused and never saves.  The
-        # Project Setup field form carries the page-issued update token and the
-        # current composite hash — exactly what a visible Save submits.
-        response = page.evaluate("""() => {
-          const marker = document.querySelector(
-            'form.v2-field-form input[name="field_id"][value="project_setup.technical.p50_hours"]');
-          const fieldForm = marker && marker.closest('form');
-          if (!fieldForm) return false;
-          const value = fieldForm.querySelector('input[name="value"]');
-          if (!value) return false;
-          value.value = '1549';
-          fieldForm.requestSubmit();
-          return true;
-        }""")
-        assert response, "the Project Setup p50 field form must exist in the workbook DOM"
+        # Save through the canonical grid protocol while Diagnostics remains
+        # visible: stage the scalar edit on the Input Grid, return to the
+        # Diagnostics sheet, then commit with the grid Save keyboard contract.
+        # (Per-sheet field forms belong to hidden views whose lazy-view gate
+        # consumes submits while the view is not loaded — the canonical save
+        # path for a scalar while another sheet is visible is the grid batch
+        # writer, which also publishes the freshness the loader consumes.)
+        activate_destination(page, 'tab-input-grid')
+        cell = page.locator('.ig-input[data-ig-field="project_setup.technical.p50_hours"]')
+        cell.fill('1549'); cell.press('Enter')
+        page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 1')
+        activate_destination(page, 'tab-diagnostics')
+        page.keyboard.press('Control+S')
+        page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
         page.wait_for_function("() => document.querySelector('#v2-sheet-diagnostics').dataset.state === 'STALE'")
         page.wait_for_selector('[data-md-payload]', state='attached')
         assert json.loads(page.locator('[data-md-payload]').text_content())['identity'] == current['identity']

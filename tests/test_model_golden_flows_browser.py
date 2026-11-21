@@ -163,9 +163,28 @@ def _save_p50_hours(page, value: float) -> None:
         '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
     )
     row.locator('input[name="value"]').fill(str(value))
+    hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
     row.get_by_role("button", name="Save").click()
     page.locator('[data-testid="overview-status-stale"], .v2-runtime-dirty').first.wait_for(
         state="attached"
+    )
+    _wait_run_hash_refreshed(page, hash_before)
+
+
+def _wait_run_hash_refreshed(page, old_hash: str, timeout_ms: int = 15_000) -> None:
+    """Wait until the canonical run form carries a content_hash different from
+    ``old_hash``.
+
+    A Working Copy save responds with the HX-Trigger workbook-field-saved event
+    that updates every run-form hash input; a Run clicked before that update
+    lands carries the pre-save hash and is refused by the pre-engine CAS.
+    HX-Trigger fires after the response settles, so this also guarantees the
+    OOB-refreshed run controls are wired before Run is clicked.
+    """
+    page.wait_for_function(
+        "old => { const el = document.querySelector('#v2-canonical-run-form input[name=content_hash]');"
+        " return !!el && !!el.value && el.value !== old; }",
+        arg=old_hash, timeout=timeout_ms,
     )
 
 
@@ -285,7 +304,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         assert len(golden_app["calls"]) == calls_before_export
         assert scenario_run[2] != changed[2]
 
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
         library_row = page.locator("tr", has_text=name)
         assert library_row.get_by_text("Working copy").count() == 1
@@ -390,6 +409,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         p50_row = page.locator(
             '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
         )
+        hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
         p50_row.get_by_role("button", name="Save").click()
         # After save, OOB banner swaps in — wait for any banner to confirm save completed
         page.locator(
@@ -397,6 +417,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         ).first.wait_for(state="attached", timeout=15_000)
 
         # ── 8. Run exactly once ───────────────────────────────────────────────
+        _wait_run_hash_refreshed(page, hash_before)
         calls_before_run = len(calls)
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -442,7 +463,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         )
 
         # ── 11. Navigate away via toolbar back ───────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
 
         # ── 12. Reopen working copy ───────────────────────────────────────────
@@ -541,7 +562,9 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
         new_p50 = p50_before * 1.10
 
         p50_row.locator('input[name="value"]').fill(str(new_p50))
+        hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
         p50_row.get_by_role("button", name="Save").click()
+        _wait_run_hash_refreshed(page, hash_before)
         # Wait for stale state to appear after save (DO NOT click Run)
         page.locator('[data-testid="overview-status-stale"], .v2-runtime-dirty').first.wait_for(
             state="attached", timeout=15_000
@@ -600,7 +623,7 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
             )
 
         # ── 6. Navigate away and reopen ──────────────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
 
         calls_before_reopen = len(calls)

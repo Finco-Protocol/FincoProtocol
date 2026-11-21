@@ -117,7 +117,8 @@ def test_stale_react_hash_run_is_refused(browser, react_enabled):
         assert response.ok, response.text()
         assert "v2_err" in final_url, (
             f"a stale composite hash must be refused by the pre-engine CAS, got {final_url}")
-        assert "Draft changed since page loaded" in final_url, final_url
+        from urllib.parse import unquote_plus
+        assert "Draft changed since page loaded" in unquote_plus(final_url), final_url
         # the refusal ran nothing: the workspace has no committed runtime
         ws = context.request.get(
             f"{react_enabled}/v2/model-react/workspace?project={record.project_code}")

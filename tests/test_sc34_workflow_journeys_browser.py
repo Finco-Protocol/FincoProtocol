@@ -86,6 +86,27 @@ def test_project_rename_is_coherent_in_the_browser(live_server, browser):
 def test_shortened_horizon_journey_notice_navigation_refusal_and_recovery(live_server, browser):
     s = Session(live_server, browser, "sc34-j-horizon")
     page = s.page
+    # The horizon journey needs a project whose persisted SHL indices stay
+    # authoritative: a project created through the public New Project flow
+    # (factory_template origin) is outside the ON-08 generic working-copy
+    # lineage, so the Run uses the stored maturity — the notice is justified
+    # and the fail-closed refusal applies.  A generic working copy seeded from
+    # the reference would re-derive its indices at Run (ON-08) and the notice
+    # is deliberately suppressed for it.
+    page.goto(live_server + "/")
+    page.get_by_role("link", name="Model", exact=True).click()
+    page.wait_for_url("**/library")
+    page.locator("a.fo-library-cta-new").click()
+    page.wait_for_url("**/projects/new")
+    page.locator('input[name="template_source"][value="generic_solar_reference"]').check()
+    page.locator("#npm-project_name").fill("SC34 Horizon Journey")
+    page.locator("#npm-capacity_mw").fill("40")
+    page.get_by_role("button", name="Create project").click()
+    page.wait_for_url("**/v2/workbook?project=**")
+    from app.persistence.projects_repository import get_project_record
+    _project_code = page.url.split("project=", 1)[1].split("&", 1)[0]
+    s.rec = get_project_record(user_id=s.uid, project_code=_project_code)
+    assert s.rec is not None, "the New Project flow must persist the journey project"
     activate_destination(page, "tab-project-setup")
     # a committed Run first, so there is a previous result to protect
     with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run") and r.request.method == "POST", timeout=240000):
