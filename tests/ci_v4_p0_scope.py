@@ -5520,7 +5520,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
             return False
-        if pins.get('tests/test_ci_v4_p0_scope.py') != 'd0a111e53fd3f6b2efa1261e3151f6fcb3a507b1':
+        if pins.get('tests/test_ci_v4_p0_scope.py') != 'bada3af62387a1c382b438b6a5993d97097a0174':
             return False
         if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
             return False

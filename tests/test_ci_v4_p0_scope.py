@@ -129,8 +129,9 @@ def test_mutation_inventory_successor_requires_exact_history_and_index(subject):
     pin = T.manifest(subject)['source_blobs'][path]
     historical = R1.manifest(subject)['source_blobs'][path]
     assert historical == git(subject, 'rev-parse', T.BASE + ':' + path).decode().strip()
-    assert R1.supersedes(path, pin, subject)
-    assert not T.mutation_inventory_handoff(pin, '0' * 40, subject)
+    with C.call_scope():
+        assert R1.supersedes(path, pin, subject)
+        assert not T.mutation_inventory_handoff(pin, '0' * 40, subject)
     source = subject / path
     raw = source.read_bytes()
     try:
@@ -145,7 +146,7 @@ def test_mutation_inventory_successor_requires_exact_history_and_index(subject):
         git(subject, 'restore', '--staged', '--', path)
         source.write_bytes(raw)
     foreign_path = 'README.md'
-    assert foreign_path not in T.OWNED_PATHS | T.FROZEN
+    assert foreign_path not in T.OWNED_PATHS and foreign_path not in T.FROZEN
     foreign = subject / foreign_path
     original = foreign.read_bytes()
     try:
