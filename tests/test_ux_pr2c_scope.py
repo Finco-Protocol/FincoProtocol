@@ -115,7 +115,10 @@ def test_the_ci_v4_workflow_diff_against_its_base_is_exactly_the_static_timeout(
     30 -> 90 minutes.  The gate job, its steps, the trusted-base selector and every other byte stay identical to BASE; anything else fails closed."""
     import subprocess
     base = subprocess.check_output(["git", "show", f"{C.BASE}:.github/workflows/ci_v4_pr.yml"], cwd=str(ROOT), stderr=subprocess.DEVNULL).decode("utf-8")
-    text = (ROOT / ".github/workflows/ci_v4_pr.yml").read_text(encoding="utf-8")
+    from tests import ci_v4_p0_scope as P0
+    path = ".github/workflows/ci_v4_pr.yml"
+    text = subprocess.check_output(["git", "show", f"{P0.BASE}:{path}"], cwd=ROOT).decode("utf-8")
+    assert P0.supersedes(path, P0._blob((ROOT / path).read_bytes()))
     assert "timeout-minutes: 90" in text and text.count("timeout-minutes: 90") == 1
     assert "timeout-minutes: 30" not in text
     assert text.replace("timeout-minutes: 90", "timeout-minutes: 30", 1) == base

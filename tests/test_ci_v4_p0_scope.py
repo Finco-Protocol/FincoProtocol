@@ -73,15 +73,24 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
                           'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
                           # post-#471 (owner decision 2026-11-20): the reviewed skip baseline, one count-one SKIPPED_NOT_PASSED deferral; nothing else of the V4 policy moved
-                          'docs/ci_v4/full_skip_baseline.json'}
+                          'docs/ci_v4/full_skip_baseline.json', '.github/workflows/ci_v4_pr.yml'} | {
+        'app/v2/capex_router.py', 'app/v2/opex_router.py',
+        'tests/test_cost_batch_save_browser_v1.py', 'tests/test_cost_editing_ux_v2_browser.py',
+        'tests/test_cost_grid_editing_browser_v1.py', 'tests/test_jev_panel_browser.py',
+        'tests/test_m3_two_driver_sensitivity_browser.py', 'tests/test_model_trust_pack_browser.py',
+        'tests/test_p3_browser_acceptance.py', 'tests/test_radar_r3_liquidity.py', 'tests/test_ui_protocol_shell.py',
+    }
     assert 'docs/ci_v4/full_skip_baseline.json' not in T.FROZEN and 'docs/ci_v4/full_skip_baseline.json' not in T.CI_PATHS
     assert {'docs/ci_v4/ci-v4-policy.json', 'docs/ci_v4/module_weights.json'} <= set(T.FROZEN)      # every other V4 policy control blob stays byte-equal to BASE
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v4_pr.yml'}
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
-    assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
+    assert {p for p in T.OWNED_PATHS if p.startswith(T.FORBIDDEN)} == {
+        'app/v2/capex_router.py', 'app/v2/opex_router.py',
+    }
+    assert all("*" not in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
         assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
     for p in T.FROZEN:
@@ -255,18 +264,50 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         path = "tests/%s.py" % name.split(".")[1]
         src = (ROOT / path).read_text()
         assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
-        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')" in src, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')" in src, path
     v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
     assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
     assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
-            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', "
+            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', "
             "'docs/ci_v4/full_skip_baseline.json'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
     gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
     assert T.P2_FROZEN_EDITS == ('.github/workflows/ci_v4_full.yml',)
     assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS) | {
-        'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
+        '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
+
+
+def test_correction_e_rejects_physical_and_committed_paired_repins(subject):
+    for path in (".github/workflows/ci_v4_pr.yml", "app/v2/capex_router.py", "app/v2/opex_router.py"):
+        source = (subject / path).read_bytes()
+        altered = source + b"\n"
+        with C.call_scope():
+            assert T.supersedes(path, T._blob(source), subject, "HEAD")
+            assert T.exact_blobs_ok(subject)
+        manifest = subject / T.MANIFEST
+        original_manifest = manifest.read_bytes()
+        forged = json.loads(original_manifest)
+        forged["source_blobs"][path] = T._blob(altered)
+        forged_manifest = (json.dumps(forged, indent=2, sort_keys=True) + "\n").encode()
+        try:
+            (subject / path).write_bytes(altered)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+            manifest.write_bytes(forged_manifest)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+                assert not T.supersedes(path, T._blob(altered), subject)
+        finally:
+            (subject / path).write_bytes(source)
+            manifest.write_bytes(original_manifest)
+        ref, restore = variant(subject, {path: altered, T.MANIFEST: forged_manifest})
+        try:
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject, ref)
+                assert not C.valid(subject, ref)
+        finally:
+            restore()
 
 
 @pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml",
