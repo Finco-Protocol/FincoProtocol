@@ -152,20 +152,27 @@
     var detail=event.detail||{},cfg=detail.requestConfig||{};
     if(String(cfg.verb).toLowerCase()!=='post' || !/^\/v2\/(workbook|capex|opex)\//.test(String(cfg.path||'')))return;
     var sourceView=viewOf(detail.elt||event.target);
-    var isRun=String(cfg.path||'').split('?')[0]==='/v2/workbook/run';
+    var path=String(cfg.path||'').split('?')[0];
+    var isRun=path==='/v2/workbook/run';
     var previousHealth=document.getElementById('v2-model-health');
     pendingWrites.add(detail.xhr);invalidate();
-    var writeGeneration=generation;
+    var writeTicket=capture();
     detail.xhr.addEventListener('loadend',function(){
       pendingWrites.delete(detail.xhr);
       var health=document.getElementById('v2-model-health');
-      if(isRun && detail.xhr.status===200 && generation===writeGeneration &&
+      if(isRun && detail.xhr.status===200 && generation===writeTicket.generation &&
          health && health!==previousHealth && health.dataset.state==='CURRENT')sharedReadyGeneration=generation;
       // Existing cost writers update one row plus authorized OOB identities,
       // not the whole sheet. Keep their remaining drafts and keyboard focus.
-      if(sourceView && sourceView.editable && detail.xhr.status===200 && generation===writeGeneration){
+      // A rejected contract submission leaves the server identity unchanged and the editor's draft in place.
+      // Keep that editor loaded so the scheduled presentation read cannot overwrite the draft or block a correction.
+      var refusedContracts=path==='/v2/workbook/revenue/contracts' && detail.xhr.status===422 && current(writeTicket);
+      if(sourceView && sourceView.editable && (detail.xhr.status===200 || refusedContracts) && generation===writeTicket.generation){
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
+          if(refusedContracts && sourceView.name==='revenue'){
+            sourceView.dirty=!!node.querySelector('form[data-revenue-editor][data-dirty="true"]');
+          }
           // The Investor agreement is one form saved as a whole: after a successful save its edits are persisted, not an unsaved draft that
           // would keep the sheet permanently pending after the next Run. Row writers (cost grids) keep their remaining drafts untouched.
           if(sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
