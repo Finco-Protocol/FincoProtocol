@@ -78,6 +78,9 @@ CORRECTION_F_BLOBS = {
     'tests/test_model_v7_diagnostics_browser.py': '37cb5d247ef256d6c3bb60f65bd4e4e4d73a9452',
     'tests/test_radar_n04_browser.py': '4d68e71b1798d490fd93d59d44555c0e98250672',
     'tests/test_sc34_workflow_journeys_browser.py': '14f77711ffa34c731ca4bdc60ff654f6b16f7739',
+    # The mutation-inventory module itself moves once: its Correction F successor admits the
+    # re-pinned project-setup template and is re-pinned through the R1 map key above.
+    'tests/model_mutation_security_successor.py': 'd18ea69a588b0e93fce4b09e2d102f1e2c179610',
 }
 REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                       # P1: U1 node split (SPLIT_SAFE_FLOOR_LIMITED, isolation-proven) and its re-measured U1 node weights
@@ -121,11 +124,12 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {
     'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json': (REACT_BUNDLE_PATH,),
-    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH),
+    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH, 'tests/model_mutation_security_successor.py'),
     'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json': (REACT_BUNDLE_PATH,),
     TAX_MAP: (R1_DELEGATION_GUARD,),
 }
-MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH)
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH,
+                'tests/model_mutation_security_successor.py')
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
