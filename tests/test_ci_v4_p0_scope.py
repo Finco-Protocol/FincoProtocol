@@ -144,6 +144,19 @@ def test_mutation_inventory_successor_requires_exact_history_and_index(subject):
     finally:
         git(subject, 'restore', '--staged', '--', path)
         source.write_bytes(raw)
+    foreign_path = 'README.md'
+    assert foreign_path not in T.OWNED_PATHS | T.FROZEN
+    foreign = subject / foreign_path
+    original = foreign.read_bytes()
+    try:
+        foreign.write_bytes(original + b'\n')
+        git(subject, 'add', '--', foreign_path)
+        foreign.write_bytes(original)
+        with C.call_scope():
+            assert not T.exact_blobs_ok(subject)
+    finally:
+        git(subject, 'restore', '--staged', '--', foreign_path)
+        foreign.write_bytes(original)
     with C.call_scope():
         assert T.exact_blobs_ok(subject)
         assert R1.supersedes(path, pin, subject)

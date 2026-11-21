@@ -5520,7 +5520,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
             return False
-        if pins.get('tests/test_ci_v4_p0_scope.py') != '72561e693c032fb579df9e0c7af228c8c17cb998':
+        if pins.get('tests/test_ci_v4_p0_scope.py') != 'd0a111e53fd3f6b2efa1261e3151f6fcb3a507b1':
             return False
         if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
             return False
@@ -5604,6 +5604,9 @@ def _diff_ok(root, ref):
     try:
         allowed = OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
+        if ref is None:
+            staged = _git(root, "diff", "--cached", "--name-only", "--no-renames", "-z", BASE, "--")
+            changed.update(filter(None, staged.decode().split("\0")))
         if not changed <= allowed:
             return False
         if ref is None:
