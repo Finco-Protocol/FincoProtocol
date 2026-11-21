@@ -64,7 +64,7 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     from tests import ci_v5_gate_scope as GT
     from tests import ci_v4_p0_scope as _P0
     for path in F.FROZEN:
-        if path == 'tests/ci_v4_scope.py' and _P0.signature_ok() and path in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)
+        if path in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and path in _P0.HANDOFFS:
             assert (ROOT / path).read_bytes() == _P0.expected_handoff(ROOT, path)
             assert F._blob((ROOT / path).read_bytes()) == _P0.manifest()['source_blobs'][path]
             continue
