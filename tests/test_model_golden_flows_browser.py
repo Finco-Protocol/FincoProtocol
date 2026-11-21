@@ -264,11 +264,16 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         assert page.locator('[data-testid="returns-last-run-scenario"]').inner_text() == scenario_name
 
         calls_before_compare = len(golden_app["calls"])
-        _click_tab(page, "tab-compare", "panel-compare")
-        # GF-F03: fresh-on-open — Compare must reflect current scenario state
-        # WITHOUT a page reload.  The tab HTMX GET fires on click; wait for it.
-        page.wait_for_load_state("networkidle", timeout=15_000)
-        page.locator(".v2-compare-chip").first.wait_for(state="visible", timeout=10_000)
+        # GF-F03: opening Compare fetches and renders the current scenarios
+        # without a page reload. The initial markup already contains Base.
+        with page.expect_response(
+            lambda response: response.request.method == "GET"
+            and response.url.split("?", 1)[0].endswith("/v2/workbook/scenarios/compare")
+        ) as refreshed_compare:
+            _click_tab(page, "tab-compare", "panel-compare")
+        assert refreshed_compare.value.ok
+        scenario_chip_fresh = page.locator(".v2-compare-chip", has_text=scenario_name)
+        scenario_chip_fresh.wait_for(state="visible", timeout=10_000)
         chips = page.locator(".v2-compare-chip")
         assert chips.count() >= 2, (
             "Compare tab must show ≥2 chips after fresh-on-open GET; "
@@ -277,7 +282,6 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         # Base case chip carries the v2-scenario-base-badge marker
         base_chip = page.locator(".v2-compare-chip .v2-scenario-base-badge")
         assert base_chip.count() >= 1, "Base Case chip must be present (v2-scenario-base-badge)"
-        scenario_chip_fresh = page.locator(".v2-compare-chip", has_text=scenario_name)
         assert scenario_chip_fresh.count() >= 1, (
             f"Scenario '{scenario_name}' chip must appear after tab click (GF-F03)"
         )

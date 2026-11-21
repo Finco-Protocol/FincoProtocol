@@ -73,7 +73,7 @@ CORRECTION_F_BLOBS = {
     'static/js/workbook_v2.js': 'ed76fa5ec332c0ddc6c74f1c980c71ce54ecf49c',
     'static/css/model_diagnostics_v2.css': '08f068dd14086a43133c8888f718706fd10689f1',
     'tests/test_data_center_browser_acceptance.py': '4813332b601cd188656ff939ede34574dacb779f',
-    'tests/test_model_golden_flows_browser.py': '6a3b2330425f9bf5d3eb54528ce1cfe7fa0a1dc8',
+    'tests/test_model_golden_flows_browser.py': '501ba3dac8a1a4b688afbf44354fe4412b510559',
     'tests/test_model_react_poc_browser_acceptance.py': '815f255a9d10e613683961a79e527e50668a02cb',
     'tests/test_model_v7_diagnostics_browser.py': '37cb5d247ef256d6c3bb60f65bd4e4e4d73a9452',
     'tests/test_radar_n04_browser.py': '4d68e71b1798d490fd93d59d44555c0e98250672',
