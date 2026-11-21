@@ -389,12 +389,6 @@
     }
   },
   "note": "LOCAL evidence (4-vCPU container, the three nodes measured concurrently), not a hosted timing claim. Plain and scoped each run alone in a fresh pytest process with the materialized recorder; mutation probe in a disposable clone.",
-  "post_473_read_only_proof": {
-    "tests/test_rcm_governance.py::test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted": "Checks the six real RC-M paths and their exact delegation, plus a supplied one-byte drift in memory. Neither tracked source, refs, fixtures nor Git environment change.",
-    "tests/test_rcux_governance.py::test_the_workspace_router_changes_only_by_the_one_rcux_include_and_reviewed_wording": "Reads the workspace router and checks the accepted include and wording. No mutable fixture, edits or ref changes.",
-    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_exact_baseline_and_exact_new_content": "Checks committed predecessor blobs and the live registry. Constructs expected text in memory, then validates immutable checkpoint ancestry and exact source. No writes or monkeypatch.",
-    "tests/test_wf06b_scope.py::test_base_is_the_integrated_409_main_and_history_is_recorded_not_rewritten": "Reads the manifest, immutable BASE, and current diff. Enumerates later cohort exactness without writes or mutable fixtures."
-  },
   "schema": "FINCO_CI_FULL_NODE_SCOPE_EVIDENCE_V1",
   "tested_head_parent_sha": "7e4caa095cf2f890352322d8c735071681e8cf89",
   "tested_head_parent_tree": "0e0aacfa459d0d9887bdee49b0c406c5d801a133"
