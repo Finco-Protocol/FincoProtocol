@@ -72,17 +72,24 @@ CURRENT_MAPS = frozenset((
     'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json',
     'docs/tax_reference_registry/SOURCE_SUCCESSOR.json',
 ))
+REACT_BUNDLE_PATH = 'static/react/finco-react.js'
 MAP_KEYS = ('tests/fin_v2_cohorts.py', 'tests/u1_scope.py')
 R1_MAP = 'docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json'
 R1_SECURITY_TEST = 'tests/test_model_mutation_security_successor.py'
 TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
-MAP_EXTRA_KEYS = {R1_MAP: (R1_SECURITY_TEST,), TAX_MAP: (R1_DELEGATION_GUARD,)}
-MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD)
+MAP_EXTRA_KEYS = {
+    'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json': (REACT_BUNDLE_PATH,),
+    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH),
+    'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json': (REACT_BUNDLE_PATH,),
+    TAX_MAP: (R1_DELEGATION_GUARD,),
+}
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
                             'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
+HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -133,6 +140,7 @@ def expected_map(root, path, pins=None):
     """Allow the registry and U1 keys and the two map-specific R1 test handoff pins."""
     d = json.loads(_base_bytes(str(root), path))
     pins = manifest(root).get("source_blobs", {}) if pins is None else pins
+    pins = {**pins, REACT_BUNDLE_PATH: C06_REVIEWED_PRODUCT_BLOBS[REACT_BUNDLE_PATH]}
     keys = (*MAP_KEYS, *MAP_EXTRA_KEYS.get(path, ()))
     for key in keys:
         if key in d["source_blobs"]:
@@ -5148,6 +5156,18 @@ HANDOFFS['tests/test_post413_r1_scope.py'].append((
 ))
 
 
+HANDOFFS['tests/ci_v5_hardening_scope.py'].append((
+    '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n            return False\n',
+    '        if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:\n            return False\n        # The forward overlay can replace the live workflow, but this pin remains the\n        # exact V5-2B workflow recorded at the immutable merge of PR #454.\n        if pins[".github/workflows/ci_v5_shadow.yml"] != "ae4a65b3e28efc890a6ba6d537e3d9b945953620":\n            return False\n',
+))
+
+
+HANDOFFS['tests/test_v11_stage3_successor.py'] = [(
+    '    path = V.F01_TEST_ONLY_WORKFLOW\n    assert V.blob(path) == V.F01_TEST_ONLY_BLOB\n    assert V._exact_f01_nonactivation_workflow(path, head, V.ROOT)\n    assert V.v11_violations() == []\n',
+    '    from tests import f03_financing_scope as F03\n\n    path = V.F01_TEST_ONLY_WORKFLOW\n    assert path == F03.CI_WORKFLOW\n    assert V.blob(path, F03.BASE) == V.F01_TEST_ONLY_BLOB\n    assert V._exact_f01_nonactivation_workflow(path, F03.BASE, V.ROOT)\n    assert F03.reviewed_workflow_ok(V.ROOT, head)\n    assert F03.reviewed_workflow_ok(V.ROOT)\n    assert V.v11_violations() == []\n',
+)]
+
+
 HANDOFFS['tests/test_r04_ppa_scope.py'].append((
     "        if p == 'tests/ci_v4_scope.py' and _P0.signature_ok() and p in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)\n",
     "        if p in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and p in _P0.HANDOFFS:\n",
@@ -5327,12 +5347,14 @@ def _signature_ok(root, ref, closure=False):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
+        map_pins = {**pins, REACT_BUNDLE_PATH: C06_REVIEWED_PRODUCT_BLOBS[REACT_BUNDLE_PATH]}
+        moved = tuple(map_pins[k] for k in MAP_PIN_KEYS)
         for p in CURRENT_MAPS:
-            if pins[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
+            if pins[p] != _expected_map_blob(key, p, moved):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, tuple(pins[k] for k in MAP_PIN_KEYS)):
+                if current[p] != _expected_map_blob(key, p, moved):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
@@ -5345,9 +5367,24 @@ def exact_blobs_ok(repo=None, ref=None):
     return _verdict(Path(repo) if repo is not None else ROOT, ref, "exact")
 
 
+C06_REVIEWED_PRODUCT_BLOBS = {
+    'frontend/src/app/plainCopy.ts': '10f8d4d970f3eb72e6dcac58240646e350e4dea2',
+    REACT_BUNDLE_PATH: '4c29bb7dcb93e2ccdb841b257334fafff6233e6d',
+}
+
+
+def _c06_product_paths(root, ref):
+    # C06 owns the source and served bundle. The closure admits only the pair
+    # of exact blobs, with both paths present as regular, non-executable files.
+    blobs, modes = _snapshot(root, ref, C06_REVIEWED_PRODUCT_BLOBS)
+    if blobs == C06_REVIEWED_PRODUCT_BLOBS and all(mode == "100644" for mode in modes.values()):
+        return frozenset(C06_REVIEWED_PRODUCT_BLOBS)
+    return frozenset()
+
+
 def _diff_ok(root, ref):
     try:
-        allowed = OWNED_PATHS | {MANIFEST}
+        allowed = OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= allowed:
             return False
@@ -5362,14 +5399,19 @@ def _diff_ok(root, ref):
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return dict(manifest(repo, ref).get("source_blobs", {}))
+    return {**manifest(repo, ref).get("source_blobs", {}), **C06_REVIEWED_PRODUCT_BLOBS}
 
 
 def closure_paths(repo=None, ref=None):
-    return OWNED_PATHS | {MANIFEST} if signature_ok(repo, ref) else frozenset()
+    root = Path(repo) if repo is not None else ROOT
+    if not signature_ok(root, ref):
+        return frozenset()
+    return OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
 
 
 def allowed_path(path, repo=None, ref=None):
+    if path in C06_REVIEWED_PRODUCT_BLOBS:
+        return path in closure_paths(repo, ref)
     return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)
 
 
@@ -5415,7 +5457,7 @@ def nontrust_scope_authorized(changed, repo=None):
         if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
             return False
         actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())
-        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} and exact_blobs_ok(root)
+        return bool(actual) and actual == set(changed) and actual <= OWNED_PATHS | {MANIFEST} | C06_REVIEWED_PRODUCT_BLOBS.keys() and exact_blobs_ok(root)
     except (OSError, subprocess.CalledProcessError):
         return False
 

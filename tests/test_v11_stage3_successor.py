@@ -201,9 +201,14 @@ def test_stage3_default_changed_to_candidate_is_rejected(repo, tmp_path, head):
 # read-only ownership checks is not an activation path. Its exact reviewed
 # content is recognized as test-only, and every mutation is rejected.
 def test_finval_f01_acceptance_is_exact_nonactivation_workflow(head):
+    from tests import f03_financing_scope as F03
+
     path = V.F01_TEST_ONLY_WORKFLOW
-    assert V.blob(path) == V.F01_TEST_ONLY_BLOB
-    assert V._exact_f01_nonactivation_workflow(path, head, V.ROOT)
+    assert path == F03.CI_WORKFLOW
+    assert V.blob(path, F03.BASE) == V.F01_TEST_ONLY_BLOB
+    assert V._exact_f01_nonactivation_workflow(path, F03.BASE, V.ROOT)
+    assert F03.reviewed_workflow_ok(V.ROOT, head)
+    assert F03.reviewed_workflow_ok(V.ROOT)
     assert V.v11_violations() == []
 
 
