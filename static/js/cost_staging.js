@@ -321,6 +321,7 @@
 
   // ── htmx lifecycle ───────────────────────────────────────────────────────────────
   var sheetViews = new Map();
+  var presentationReads = new WeakSet();
   document.addEventListener('htmx:beforeSwap', function (e) {
     var d = e.detail || {};
     var target = d.target;
@@ -342,7 +343,8 @@
       qsa('details[data-group-code]', target).forEach(function (dd) { openMap[dd.getAttribute('data-group-code')] = dd.open; });
       var f2 = document.activeElement && target.contains(document.activeElement) ? document.activeElement : null;
       var batch = window.__v2CostBatch;
-      var y = batch && target.id === 'v2-sheet-' + batch.sheet ? batch.scrollY : window.scrollY;
+      var y = batch && !batch.userScrolled && target.id === 'v2-sheet-' + batch.sheet ?
+        batch.scrollY : window.scrollY;
       sheetViews.set(target.id, {
         open: openMap, y: y, focusId: f2 && f2.closest(ROW) ? f2.closest(ROW).id : null,
         focusName: f2 ? f2.name : null
@@ -356,7 +358,11 @@
     if (t.id && t.id.indexOf('v2-cost-authority-') === 0) { syncTokens(t); return; }
     if (t.matches(ROW)) { rowSettled(t); return; }
     if (t.matches('[data-cost-grid]')) {
-      syncTokens(t.querySelector('[id^="v2-cost-authority-"]'));
+      // The guarded read matched an already-installed identity. Its settle
+      // event must not roll back tokens installed by another write.
+      if (!presentationReads.has(e.detail && e.detail.xhr)) {
+        syncTokens(t.querySelector('[id^="v2-cost-authority-"]'));
+      }
       var v = sheetViews.get(t.id);
       if (v) {
         sheetViews.delete(t.id);
@@ -618,14 +624,21 @@
     // The request source must survive the swap (events from a detached element never reach document).
     var source = document.getElementById('v2-workbook-shell') || document.body;
     var payload = JSON.stringify(rows.map(lineOf));
+    var generation = window.FincoModelViews && window.FincoModelViews.generation();
     window.__v2CostBatch = { rows: rows.map(function (r) { return r.id; }), sheet: sheet, others: others,
-      project: project, source: source, scrollY: window.scrollY };
+      project: project, source: source, scrollY: window.scrollY, generation: generation };
     window.htmx.ajax('POST', '/v2/workbook/grid/cost-lines/save', {
       source: source, target: '#v2-sheet-' + sheet, swap: 'outerHTML',
       values: { project: project, csrf_token: csrf, workbook_version: tokens.version, content_hash: tokens.hash,
                 sheet: sheet, payload: payload }
     });
   }
+
+  function noteSaveScroll(event) {
+    if (event.isTrusted && window.__v2CostBatch) window.__v2CostBatch.userScrolled = true;
+  }
+  window.addEventListener('wheel', noteSaveScroll, { passive: true });
+  window.addEventListener('touchmove', noteSaveScroll, { passive: true });
 
   function refreshSavedSibling(ctx) {
     var sheet = ctx.sheet === 'capex' ? 'opex' : 'capex';
@@ -635,7 +648,8 @@
     var tokens = liveTokens();
     if (!root || !views || !tokens) return Promise.resolve(false);
     var ticket = views.capture();
-    if (ticket.project !== ctx.project || !ticket.hash || ticket.hash !== tokens.hash) return Promise.resolve(false);
+    if (ticket.project !== ctx.project || !ticket.hash || ticket.hash !== tokens.hash ||
+        ticket.generation !== ctx.generation + 1) return Promise.resolve(false);
     var source = document.createElement('span');
     source.hidden = true;
     document.body.appendChild(source);
@@ -644,6 +658,7 @@
       var xhr = event.detail.xhr;
       accepted = views.isCurrent(ticket) && root === document.querySelector(target) &&
         xhr.status === 200 && xhr.getResponseHeader('X-Finco-View-Hash') === ticket.hash;
+      presentationReads.add(xhr);
       if (!accepted) event.preventDefault();
     });
     var url = '/v2/workbook/grid/sheet?presentation_only=1&project=' + encodeURIComponent(ticket.project) +

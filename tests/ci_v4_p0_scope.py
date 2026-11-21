@@ -45,7 +45,7 @@ R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
 # reviewed digests also reject a paired source and manifest edit.
 BROWSER_REPAIR_BLOBS = {
     'static/js/model_view_refresh.js': '9830e621a6f77b1d5ce15c35f257d2adf2d0c5bf',
-    'static/js/cost_staging.js': '1ac7326e97c0407d0c386b56e828850570fcaca4',
+    'static/js/cost_staging.js': 'c3edddadbd46aa3d4ffc913a0cf22da244ead3d8',
     'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
     'app/v2/opex_router.py': '5f346c0ca97a1c4cafab30bd3f6ea4391e0b0861',
     'tests/test_cost_batch_save_browser_v1.py': '47eb26d4a8afe4c8e6dc88aa22b0abaaf0c22de7',
