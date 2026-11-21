@@ -202,6 +202,10 @@ def _wf06b_supersedes(path, value, root, ref):
         from tests import wf06b_scope as W
     except ImportError:
         return False
+    if path == 'tests/test_model_react_poc_browser_acceptance.py':
+        from tests import ci_v4_p0_scope as P0
+        return (P0.supersedes(path, value, root, ref)
+                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))
     return W.supersedes(path, value, root, ref)
 
 

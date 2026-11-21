@@ -79,7 +79,7 @@ CORRECTION_F_BLOBS = {
     'tests/test_radar_n04_browser.py': '4d68e71b1798d490fd93d59d44555c0e98250672',
     'tests/test_sc34_workflow_journeys_browser.py': '14f77711ffa34c731ca4bdc60ff654f6b16f7739',
     # The mutation-inventory module itself moves once: its Correction F successor admits the
-    # re-pinned project-setup template and is re-pinned through the R1 map key above.
+    # exact project-setup template through the P0 handoff, preserving historical R1 pins.
     'tests/model_mutation_security_successor.py': 'd18ea69a588b0e93fce4b09e2d102f1e2c179610',
 }
 REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
@@ -124,12 +124,11 @@ TAX_MAP = 'docs/tax_reference_registry/SOURCE_SUCCESSOR.json'
 R1_DELEGATION_GUARD = 'tests/ux_pr3b1_scope.py'
 MAP_EXTRA_KEYS = {
     'docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json': (REACT_BUNDLE_PATH,),
-    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH, 'tests/model_mutation_security_successor.py'),
+    R1_MAP: (R1_SECURITY_TEST, REACT_BUNDLE_PATH),
     'docs/react_migration/u2_workbench/U2_EXACT_SOURCE.json': (REACT_BUNDLE_PATH,),
     TAX_MAP: (R1_DELEGATION_GUARD,),
 }
-MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH,
-                'tests/model_mutation_security_successor.py')
+MAP_PIN_KEYS = (*MAP_KEYS, R1_SECURITY_TEST, R1_DELEGATION_GUARD, REACT_BUNDLE_PATH)
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_v2_wf06a_scope.py', 'tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_fin_v2_integration_409_scope.py',
                             'tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py',
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
@@ -138,7 +137,7 @@ HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_3_scope.py', 'tests/fin_v2_r1_scope.py', 'tests/fin_v2_pr394_corr_scope.py', 'tests/fin_v2_ci_scope.py', 'tests/fin_v2_wsv2_scope.py'))
 FULL_VISUAL_WORKFLOW_BLOB = '6f9adcb481a3375d5ab2fd67a85cbb0341e2dc60'
 PR_CHROMIUM_WORKFLOW = '.github/workflows/ci_v4_pr.yml'
-PR_CHROMIUM_WORKFLOW_BLOB = '3bc29970a850ca5fd8f0e93ef4a8fb663d92623c'
+PR_CHROMIUM_WORKFLOW_BLOB = '35e05ad6c3a82f3845bfabc573a13b0f1d8a8164'
 REPLACED |= BROWSER_REPAIR_BLOBS.keys() | {PR_CHROMIUM_WORKFLOW}
 REPLACED |= CORRECTION_F_BLOBS.keys()
 CI_PATHS |= {PR_CHROMIUM_WORKFLOW}
@@ -5368,6 +5367,19 @@ HANDOFFS['tests/test_ux_pr2c_scope.py'] = HANDOFFS.get('tests/test_ux_pr2c_scope
     '    from tests import ci_v4_p0_scope as P0\n    path = ".github/workflows/ci_v4_pr.yml"\n    text = subprocess.check_output(["git", "show", f"{P0.BASE}:{path}"], cwd=ROOT).decode("utf-8")\n    assert P0.supersedes(path, P0._blob((ROOT / path).read_bytes()))\n')]
 
 
+# The reviewed mutation inventory has a source successor, while both historical maps keep their pins.
+HANDOFFS['tests/post413_r1_scope.py'].append(("    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+    "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py',\n                    'tests/test_post413_r1_scope.py', 'tests/model_mutation_security_successor.py'):\n"))
+HANDOFFS['tests/ux_pr2c_scope.py'].append(("    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n",
+    "    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py',\n                'tests/model_mutation_security_successor.py'):\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    "    if path == 'tests/model_mutation_security_successor.py' and pin != value:\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, repo, ref)\n                and P0.manifest(repo, ref)['base_blobs'].get(path) == pin\n                and exact_blobs_ok(repo, ref))\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
+HANDOFFS['tests/wsv2_core_scope.py'].append(('    return W.supersedes(path, value, root, ref)\n',
+    "    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n    return W.supersedes(path, value, root, ref)\n"))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
@@ -5507,6 +5519,8 @@ def _signature_ok(root, ref, closure=False):
         if pins.get(PR_CHROMIUM_WORKFLOW) != PR_CHROMIUM_WORKFLOW_BLOB:
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
+            return False
+        if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False

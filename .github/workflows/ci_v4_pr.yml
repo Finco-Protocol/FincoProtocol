@@ -80,30 +80,35 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          import re
           from pathlib import Path
 
           with open('evidence/ci-v4-plan.json') as file:
               plan = json.load(file)
-          # Fail-closed audit over the closed selection set: every selected
-          # module is classified from its own source (a missing or unreadable
-          # module fails the step), and a module that pulls in playwright in
-          # any form is provisioned the pinned Chromium runtime. The
-          # classification only controls provisioning; it cannot add, remove
-          # or skip an assignment, and an assigned browser unit whose shard
-          # was not provisioned still fails collection, never silently passes.
-          playwright_use = re.compile(
-              r"importorskip\(\s*['\"]playwright['\"]|from\s+playwright|import\s+playwright")
-          needs, classified = [], 0
-          for module in plan['pytest_modules']:
-              source = Path(module).read_text(encoding='utf-8')
-              classified += 1
-              if playwright_use.search(source):
-                  needs.append(module)
-          needs.sort()
-          print('required=' + str(bool(needs)).lower())
-          print('modules=' + json.dumps(needs))
-          print('classified=' + str(classified))
+          if plan.get('schema') != 'FINCO_CI_V4_PLAN_V1':
+              raise ValueError('Unrecognized trusted PR plan')
+          modules = plan['pytest_modules']
+          if not isinstance(modules, list) or not modules or any(not isinstance(m, str) for m in modules):
+              raise ValueError('Invalid pytest module selection')
+          if len(set(modules)) != len(modules):
+              raise ValueError('Duplicate pytest module selection')
+          if set(modules) != {module for shard in plan['schedule']['shards'] for module in shard}:
+              raise ValueError('Module selection differs from the trusted schedule')
+          subject = Path('subject').resolve(strict=True)
+          for module in modules:
+              relative = Path(module)
+              if (relative.is_absolute() or relative.as_posix() != module or '..' in relative.parts
+                  or len(relative.parts) < 2 or relative.parts[0] != 'tests' or relative.suffix != '.py'):
+                  raise ValueError(f'Invalid selected test path: {module!r}')
+              source = (subject / relative).resolve(strict=True)
+              if not source.is_relative_to(subject / 'tests') or not source.is_file():
+                  raise ValueError(f'Selected test is outside the tested source: {module!r}')
+              source.read_text(encoding='utf-8')
+          # Shared and dynamically loaded fixtures cannot be ruled out by an
+          # import scan. Provision for every selected module; keep assignment
+          # and node verification entirely with the trusted base.
+          print('required=true')
+          print('modules=' + json.dumps(sorted(modules)))
+          print('classified=' + str(len(modules)))
           PY
       - name: Install the tested head's test dependencies (only for an exact node collection)
         if: steps.decide.outputs.collect == 'true'
@@ -148,7 +153,8 @@ jobs:
               {'index': i, 'chromium': bool(chromium_modules.intersection(modules))}
               for i, modules in enumerate(shards)
           ]}
-          assert {module for shard in shards for module in shard} >= chromium_modules
+          if {module for shard in shards for module in shard} != chromium_modules:
+              raise ValueError('Sealed schedule differs from the validated module selection')
           print('tier=' + p['tier'])
           print('matrix=' + json.dumps(matrix))
           print('pr_chromium=' + str(bool(chromium_modules)).lower())
