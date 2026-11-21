@@ -343,9 +343,15 @@
 
   window.v2FieldBlur = function (event) {
     var input = event.target;
+    // A swap detaches the focused element and the browser then commits its
+    // pending change and fires blur on the REMOVED node. That teardown sequence
+    // is not a user edit — resubmitting from it would navigate away mid-swap.
+    if (!input.isConnected) return;
     if (input.getAttribute('data-pending') === 'true') {
       var form = input.closest('form');
-      if (form) { _markSaving(form); v2ClearPending(input); form.requestSubmit(); }
+      if (form && !form.classList.contains('htmx-request')) {
+        _markSaving(form); v2ClearPending(input); form.requestSubmit();
+      }
     }
   };
 
