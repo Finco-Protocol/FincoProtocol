@@ -296,7 +296,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         page.locator("#v2-compare-submit-btn:not([disabled])").wait_for(state="visible", timeout=10_000)
         page.locator("#v2-compare-submit-btn").click()
         page.locator(".v2-compare-table").wait_for()
-        assert page.locator('[data-testid="cmp-project_irr-delta"]').inner_text().strip() != "—"
+        assert page.locator('[data-testid="cmp-project_irr-delta-s2"]').inner_text().strip() != "—"
 
         calls_before_export = len(golden_app["calls"])
         with page.expect_download(timeout=120_000) as download_info:
