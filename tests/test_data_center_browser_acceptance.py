@@ -277,16 +277,30 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
             '[data-field-id="revenue.ppa.base_tariff"]'
         ).count() == 0, "PPA tariff field must not render in DC scenario tab"
 
-        # Debt tab: actual gearing + actual senior tiles after run
+        # Debt tab: financing-evidence fact list after run.  The persisted Last
+        # Run renders "Actual sized Senior debt" and "Actual gearing (Last Run)"
+        # in the debt-kpi-bar definition list (raw persisted authority; the
+        # legacy kpi tiles are only a compatibility fallback and are not
+        # rendered while financing evidence is defined).
         activate_destination(page, "tab-debt")
         debt_panel = page.locator("#panel-debt")
         debt_panel.wait_for(state="visible")
-        actual_senior = debt_panel.locator('[data-testid="debt-kpi-actual-senior"]')
-        actual_senior.wait_for(state="attached", timeout=15_000)
-        assert actual_senior.is_visible(), "Actual Senior Debt tile must be visible after run"
-        actual_gearing = debt_panel.locator('[data-testid="debt-kpi-actual-gearing"]')
-        actual_gearing.wait_for(state="attached", timeout=15_000)
-        assert actual_gearing.is_visible(), "Actual Gearing tile must be visible after run"
+        debt_facts = debt_panel.locator('[data-testid="debt-kpi-bar"]')
+        debt_facts.wait_for(state="visible", timeout=15_000)
+        senior_row = debt_facts.locator("div", has_text="Actual sized Senior debt").first
+        senior_row.wait_for(state="visible", timeout=15_000)
+        senior_display = senior_row.locator("dd").inner_text().strip()
+        assert senior_display != "Not available" and "kEUR" in senior_display \
+            and any(ch.isdigit() for ch in senior_display), (
+            f"Actual Senior Debt metric must be visible and numeric after run, got {senior_display!r}"
+        )
+        gearing_row = debt_facts.locator("div", has_text="Actual gearing (Last Run)").first
+        gearing_row.wait_for(state="visible", timeout=15_000)
+        gearing_display = gearing_row.locator("dd").inner_text().strip()
+        assert gearing_display != "Not available" and "%" in gearing_display \
+            and any(ch.isdigit() for ch in gearing_display), (
+            f"Actual Gearing metric must be visible and numeric after run, got {gearing_display!r}"
+        )
         debt_text = debt_panel.inner_text()
         assert "Max. gearing cap" in debt_text, (
             "Debt tab must show 'Max. gearing cap' label (input cap, not realized gearing)"
@@ -379,24 +393,28 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         )
         kpi_irr_before = page.locator('[data-testid="kpi-project-irr"]').inner_text()
 
-        # Navigate to revenue tab.  Each sheet panel is an iframe that
-        # navigates to ?sheet=<id> asynchronously when its tab is first
-        # activated — wait for the revenue frame before probing it.
+        # Navigate to revenue through the governed destination control.  The
+        # workbook renders every sheet inline in the same document: activation
+        # deep-links the URL hash (#revenue) and unhides #panel-revenue; there
+        # is no top-level ?sheet= navigation and no revenue iframe.
         activate_destination(page, "tab-revenue")
-        page.wait_for_url("**/v2/workbook?project=**&sheet=revenue**", timeout=30_000)
-        revenue_frame = next(
-            f for f in page.frames if "sheet=revenue" in (f.url or "")
+        page.locator("#panel-revenue").wait_for(state="visible", timeout=30_000)
+        assert page.locator("#tab-revenue").get_attribute("aria-selected") == "true", (
+            "Revenue tab must be the selected visible destination"
         )
-        revenue_frame.locator(
-            '[data-field-id="revenue.data_center.service_price"]'
+        assert page.url.split("#", 1)[-1] == "revenue", (
+            f"Revenue activation must deep-link the #revenue hash, got {page.url!r}"
+        )
+        page.locator(
+            '#panel-revenue [data-field-id="revenue.data_center.service_price"]'
         ).wait_for(state="visible", timeout=30_000)
 
         # Revenue should be clean after the run
-        revenue_frame.locator(
-            '[data-testid="revenue-state-clean"]'
+        page.locator(
+            '#panel-revenue [data-testid="revenue-state-clean"]'
         ).wait_for(state="visible", timeout=30_000)
-        assert revenue_frame.locator(
-            '[data-testid="revenue-state-clean"]'
+        assert page.locator(
+            '#panel-revenue [data-testid="revenue-state-clean"]'
         ).count() >= 1, "Revenue state must be 'clean' immediately after a run"
 
         # DC_SECOND_EDIT_AFTER_HTMX_SWAP

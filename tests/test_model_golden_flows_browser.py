@@ -20,6 +20,8 @@ pytest.importorskip("uvicorn")
 
 from playwright.sync_api import sync_playwright
 
+from tests.model_workspace_navigation import activate_destination
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -98,9 +100,42 @@ def _page(browser, golden_app, *, user_id: str):
     return page
 
 
+_LAZY_SHEET_ROOTS = {
+    "panel-project-setup": "v2-sheet-project-setup",
+    "panel-inputs": "v2-sheet-inputs",
+    "panel-revenue": "v2-sheet-revenue",
+    "panel-capex": "v2-sheet-capex",
+    "panel-opex": "v2-sheet-opex",
+    "panel-debt": "v2-sheet-debt",
+    "panel-investor": "v2-sheet-investor",
+    "panel-tax": "v2-sheet-tax",
+    "panel-returns": "v2-sheet-returns",
+    "panel-fs": "v2-sheet-financial-statements",
+    "panel-outputs": "v2-sheet-outputs",
+    "panel-run-history": "v2-sheet-run-history",
+}
+
+
 def _click_tab(page, tab_id: str, panel_id: str) -> None:
-    page.locator(f"#{tab_id}").click()
+    """Activate a workbook destination through the governed public navigation.
+
+    The bare #tab-* buttons are hidden compatibility aliases under the Option C
+    navigation; the visible affordance is the governed destination control
+    (tests/model_workspace_navigation.py::activate_destination).  Sheets under
+    the lazy-view refresh swap in their presentation render after activation:
+    interacting before the view reports 'loaded' races the view gate (a submit
+    during 'pending' is consumed, and a dirty view then refuses to reload), so
+    wait for the sheet root to report loaded before driving its controls.
+    """
+    activate_destination(page, tab_id)
     page.locator(f"#{panel_id}").wait_for(state="visible")
+    sheet_root = _LAZY_SHEET_ROOTS.get(panel_id)
+    if sheet_root:
+        page.wait_for_function(
+            "sheetId => { const el = document.getElementById(sheetId);"
+            " return !el || el.dataset.modelViewState === 'loaded'; }",
+            arg=sheet_root, timeout=30_000,
+        )
 
 
 def _metric_text(page, testid: str) -> str:
@@ -172,10 +207,15 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         for tab, panel, marker in (
             ("tab-overview", "panel-overview", '[data-testid="kpi-project-irr"]'),
             ("tab-debt", "panel-debt", "#v2-sheet-senior-debt"),
-            ("tab-fs", "panel-fs", "#v2-sheet-financial-statements"),
+            # tab-fs is the governed compatibility alias of tab-outputs: the
+            # Financial Statements sheet is superseded by the persisted
+            # "Statements & Debt" output workspace, whose canonical state badge
+            # is the successor marker of the legacy statements sheet root.
+            ("tab-fs", "panel-outputs", '[data-testid="outputs-state"]'),
             ("tab-returns", "panel-returns", '[data-testid="returns-authority-bar"]'),
         ):
             _click_tab(page, tab, panel)
+            page.locator(marker).first.wait_for(state="attached", timeout=30_000)
             assert page.locator(marker).count() == 1
 
         _click_tab(page, "tab-scenarios", "panel-scenarios")
@@ -189,7 +229,12 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
             page.locator(".v2-toolbar-scenario-link", has_text=scenario_name).wait_for()
         row = page.locator(".v2-scenario-row", has_text=scenario_name)
         row.get_by_role("button", name="Edit").click()
-        page.locator("#ov-p50_hours").fill(str(initial_p50 * 1.35))
+        # The canonical scenario override authority is the PPA tariff only
+        # (data-testid="override-authority-hint"); P50-hours is a reference-only
+        # control (disabled, data-unbound) and the Working Copy grid owns it.
+        # The solar reference base tariff is 60 EUR/MWh; +35% is a real causal
+        # revenue change the Run must reflect.
+        page.locator("#ov-tariff_eur_mwh").fill("81")
         page.locator("#v2-scenario-override-form").get_by_role(
             "button", name="Save overrides"
         ).click()

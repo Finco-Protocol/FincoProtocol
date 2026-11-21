@@ -130,32 +130,46 @@ def _assert_contained(page, label: str):
 
 
 def test_n04_mobile_and_desktop_containment(live_url, browser):
+    """N04 successor on the R-LIVE surface (Correction F).
+
+    The legacy /radar snapshot page with its request-path refresh button was
+    replaced by R-LIVE: ``GET /radar`` redirects to ``/radar/r-live`` and
+    acquisition moved to the background collector authority, whose immutable
+    snapshot store the presentation reads without ever blocking on live RPC.
+    The N04 containment contract survives unchanged across the shell, the
+    snapshot table and the per-asset detail shell at 390 px and 1440 px; the
+    acquisition contract is asserted in its new form — zero request-path
+    acquisitions while rendering (the collector's one-snapshot semantics stay
+    owned by the pinned lifecycle authority tests).
+    """
     url, calls_box = live_url
     page = browser.new_page(viewport={"width": 390, "height": 844})
     try:
-        # 1. page shell
+        # 1. page shell — the /radar entry lands on the R-LIVE surface
         page.goto(f"{url}/radar", wait_until="domcontentloaded")
+        assert "/radar/r-live" in page.url, (
+            "the /radar entry must redirect into the R-LIVE surface"
+        )
         page.wait_for_selector(".radar")
         _assert_contained(page, "390px page shell")
 
-        # 2. refresh -> snapshot panels (htmx intercepts the form submit)
-        page.click("button.refresh-btn")
-        page.wait_for_selector('[data-panel="snapshot"]', timeout=15000)
-        _assert_contained(page, "390px refreshed panels")
+        # 2. snapshot-first table: cold start renders the approved registry rows
+        #    with typed loading placeholders — never a fabricated snapshot
+        page.wait_for_selector('[data-testid="rlive-table"]', timeout=15000)
+        _assert_contained(page, "390px snapshot table")
 
-        # 3. open the Evidence Inspector
-        page.click('a.inspector-link[href*="reference.price"]')
-        page.wait_for_selector(".inspector", timeout=15000)
-        _assert_contained(page, "390px Evidence Inspector")
+        # 3. per-asset detail shell (the Inspector successor surface)
+        row_link = page.locator('[data-testid="rlive-table"] a[href*="/radar/r-live/"]').first
+        row_link.click()
+        page.wait_for_selector(".radar-main", timeout=15000)
+        _assert_contained(page, "390px asset detail shell")
 
-        # snapshot binding: one acquisition, one snapshot id everywhere
-        ids = set(re.findall(r"acq-snap:[0-9a-f]{64}", page.content()))
-        assert len(calls_box) == 1
-        assert len(ids) == 1
-        snapshot_id = ids.pop()
-        assert page.content().count(snapshot_id) >= 3
+        # 4. request-path acquisition refusal: rendering never calls a provider
+        assert calls_box == [], (
+            "R-LIVE presentation must not acquire on the request path"
+        )
 
-        # 4. desktop non-regression
+        # 5. desktop non-regression
         page.set_viewport_size({"width": 1440, "height": 900})
         page.wait_for_timeout(150)
         _assert_contained(page, "1440px desktop")
