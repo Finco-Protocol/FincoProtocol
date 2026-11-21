@@ -5369,13 +5369,13 @@ HANDOFFS['tests/test_ux_pr2c_scope.py'] = HANDOFFS.get('tests/test_ux_pr2c_scope
 
 # The reviewed mutation inventory has a source successor, while both historical maps keep their pins.
 HANDOFFS['tests/post413_r1_scope.py'].append(("    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
-    "    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py',\n                    'tests/test_post413_r1_scope.py', 'tests/model_mutation_security_successor.py'):\n"))
+    "    if path == 'tests/model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(value, manifest(root, ref)['source_blobs'].get(path), root, ref)\n    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n"))
 HANDOFFS['tests/ux_pr2c_scope.py'].append(("    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n",
-    "    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py',\n                'tests/model_mutation_security_successor.py'):\n"))
+    "    if path == 'tests/model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(blob, manifest(repo, ref)['source_blobs'].get(path), repo, ref)\n    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n"))
 
 
 HANDOFFS['tests/post413_r1_scope.py'].append(('    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
-    "    if path == 'tests/model_mutation_security_successor.py' and pin != value:\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, repo, ref)\n                and P0.manifest(repo, ref)['base_blobs'].get(path) == pin\n                and exact_blobs_ok(repo, ref))\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
+    "    if path == 'tests/model_mutation_security_successor.py' and pin != value:\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(value, pin, repo, ref) and exact_blobs_ok(repo, ref)\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
 HANDOFFS['tests/wsv2_core_scope.py'].append(('    return W.supersedes(path, value, root, ref)\n',
     "    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n    return W.supersedes(path, value, root, ref)\n"))
 
@@ -5520,6 +5520,8 @@ def _signature_ok(root, ref, closure=False):
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
             return False
+        if pins.get('tests/test_ci_v4_p0_scope.py') != '189891325525863619c67f1acb22f316ba1d8464':
+            return False
         if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
@@ -5547,6 +5549,18 @@ def _signature_ok(root, ref, closure=False):
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
             return False
+        if closure and ref is None:
+            paths = owned | set(FROZEN)
+            rows = _git(root, "ls-files", "--stage", "-z", "--", *sorted(paths)).decode().split("\0")
+            staged = {}
+            for row in filter(None, rows):
+                meta, path = row.split("\t", 1)
+                mode, blob, stage = meta.split()
+                if stage != "0" or path in staged:
+                    return False
+                staged[path] = (mode, blob)
+            if staged != {path: (modes[path], current[path]) for path in paths}:
+                return False
         if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
@@ -5635,6 +5649,15 @@ def supersedes(path, value, repo=None, ref=None):
 def ux_pr2a_artifact_test_pin(path, value, repo=None, ref=None):
     """Admit only the reviewed artifact fixture source, leaving the historical pins intact."""
     return path == 'tests/test_ux_pr2a_scope.py' and supersedes(path, value, repo, ref)
+
+
+def mutation_inventory_handoff(value, predecessor, repo=None, ref=None):
+    """Bind the Correction F inventory to its exact historical R1 source."""
+    path = 'tests/model_mutation_security_successor.py'
+    root = Path(repo) if repo is not None else ROOT
+    return (predecessor == _blob(_base_bytes(str(root), path))
+            and value == CORRECTION_F_BLOBS[path]
+            and exact_blobs_ok(root, ref))
 
 
 def r1_security_test_handoff(path, value, repo=None, ref=None):

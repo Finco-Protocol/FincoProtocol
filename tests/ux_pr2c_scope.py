@@ -306,8 +306,10 @@ def _pr3b1():
 
 
 def _pr3b1_pin(path, blob, repo=None, ref=None):
-    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py',
-                'tests/model_mutation_security_successor.py'):
+    if path == 'tests/model_mutation_security_successor.py':
+        from tests import ci_v4_p0_scope as P0
+        return P0.mutation_inventory_handoff(blob, manifest(repo, ref)['source_blobs'].get(path), repo, ref)
+    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):
         from tests import ci_v4_p0_scope as P0
         return P0.supersedes(path, blob, repo, ref)
     # Correction B: one finite signed C06 source handoff, independent of historical PR3b1 membership.

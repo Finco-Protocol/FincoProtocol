@@ -80,6 +80,11 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         'tests/test_cost_grid_editing_browser_v1.py', 'tests/test_jev_panel_browser.py',
         'tests/test_m3_two_driver_sensitivity_browser.py', 'tests/test_model_trust_pack_browser.py',
         'tests/test_p3_browser_acceptance.py', 'tests/test_radar_r3_liquidity.py', 'tests/test_ui_protocol_shell.py',
+        'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+        'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css',
+        'tests/test_data_center_browser_acceptance.py', 'tests/test_model_golden_flows_browser.py',
+        'tests/test_model_react_poc_browser_acceptance.py', 'tests/test_model_v7_diagnostics_browser.py',
+        'tests/test_radar_n04_browser.py', 'tests/test_sc34_workflow_journeys_browser.py',
     }
     assert 'docs/ci_v4/full_skip_baseline.json' not in T.FROZEN and 'docs/ci_v4/full_skip_baseline.json' not in T.CI_PATHS
     assert {'docs/ci_v4/ci-v4-policy.json', 'docs/ci_v4/module_weights.json'} <= set(T.FROZEN)      # every other V4 policy control blob stays byte-equal to BASE
@@ -91,6 +96,8 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert {p for p in T.OWNED_PATHS if p.startswith(T.FORBIDDEN)} == {
         'app/v2/capex_router.py', 'app/v2/opex_router.py',
         'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
+        'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+        'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css',
     }
     assert all("*" not in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
@@ -112,6 +119,33 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
+
+
+def test_mutation_inventory_successor_requires_exact_history_and_index(subject):
+    from tests import post413_r1_scope as R1
+
+    path = 'tests/model_mutation_security_successor.py'
+    pin = T.manifest(subject)['source_blobs'][path]
+    historical = R1.manifest(subject)['source_blobs'][path]
+    assert historical == git(subject, 'rev-parse', T.BASE + ':' + path).decode().strip()
+    assert R1.supersedes(path, pin, subject)
+    assert not T.mutation_inventory_handoff(pin, '0' * 40, subject)
+    source = subject / path
+    raw = source.read_bytes()
+    try:
+        source.write_bytes(raw + b'\n')
+        git(subject, 'add', '--', path)
+        source.write_bytes(raw)
+        with C.call_scope():
+            assert T.signature_ok(subject)
+            assert not T.exact_blobs_ok(subject)
+            assert not R1.supersedes(path, pin, subject)
+    finally:
+        git(subject, 'restore', '--staged', '--', path)
+        source.write_bytes(raw)
+    with C.call_scope():
+        assert T.exact_blobs_ok(subject)
+        assert R1.supersedes(path, pin, subject)
 
 
 def test_o1_historical_test_pin_requires_exact_sibling_and_source(subject):
