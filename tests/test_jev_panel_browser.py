@@ -7,11 +7,13 @@ import os
 import socket
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 playwright_sync = pytest.importorskip("playwright.sync_api", reason="playwright required")
+from playwright.sync_api import expect
 
 import test_jev_radar_intelligence as base
 import test_jev_shadow_universe_security as sec
@@ -30,7 +32,7 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="module")
-def jev_app():
+def jev_app(tmp_path_factory):
     """Minimal app: the real R-LIVE page + real public/intelligence routers, no startup seeding."""
     import uvicorn
     from fastapi import FastAPI
@@ -38,12 +40,20 @@ def jev_app():
     from app.api.v1_1 import institutional
     from app.api.v1_1.r_live_intelligence_router import router as intel_router
     from app.api.v1_1.r_live_public_router import router as public_router
+    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore
     from app.radar_ui.r_live_router import router as page_router
 
     mp = pytest.MonkeyPatch()
     mp.setenv("FINCO_JEV_INTELLIGENCE_ENABLED", "1")
     mp.setenv("FINCO_JEV_INTELLIGENCE_MODE", "VISIBLE")
     mp.setenv("TYPESAFE_API_KEY", base.SECRET)
+    snapshot_path = tmp_path_factory.mktemp("jev-snapshot") / "snapshot.sqlite"
+    mp.setenv("R_LIVE_SNAPSHOT_DB_PATH", str(snapshot_path))
+    # The page loads the canonical snapshot rather than the explicit refresh route.
+    snapshot_time = datetime.now(timezone.utc)
+    state, data = sec.real_current(CID, retrieved=snapshot_time)
+    with RLiveSnapshotStore() as store:
+        assert store.write_batch([(CID, state, data)], collected_at=snapshot_time) == 1
     holder = {"current": sec.real_current(CID), "transport": base.FakeTransport()}
     mp.setattr(institutional, "get_r_live", lambda uid: copy.deepcopy(holder["current"]))
     mp.setattr(service, "default_ranges_provider", lambda _c, _a: base.ranges())
@@ -65,7 +75,11 @@ def jev_app():
         time.sleep(0.05)
     assert server.started, "JEV browser fixture server did not start"
     try:
-        yield {"url": f"http://127.0.0.1:{port}", "holder": holder}
+        yield {
+            "url": f"http://127.0.0.1:{port}",
+            "holder": holder,
+            "snapshot_premium": f"{float(data['b1_0_premium']['value_bps']):+.1f} bps",
+        }
     finally:
         server.should_exit = True
         thread.join(10)
@@ -125,8 +139,8 @@ def test_available_panel_is_labelled_experimental_and_canonical_data_remains(bro
             assert forbidden.lower() not in text.lower(), forbidden
         # canonical FINCO evidence is still present and distinct from the interpretation
         assert page.locator("#detail-live-block").count() == 1
-        assert page.locator("#detail-premium").inner_text().strip() not in ("", "—")
-        assert page.locator('[data-testid="detail-status-badge"]').inner_text().strip().upper() == "AVAILABLE"
+        expect(page.locator("#detail-premium")).to_have_text(jev_app["snapshot_premium"])
+        expect(page.locator('[data-testid="detail-status-badge"]')).to_have_text("LIVE")
         _no_overflow(page)
     finally:
         page.close()
@@ -154,7 +168,7 @@ def test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar
         for raw in ("HTTP_5XX", "TIMEOUT", "JEV_", "Traceback", "Exception"):
             assert raw not in status, raw
         assert "color:red" not in (panel.get_attribute("style") or "").lower()
-        assert page.locator("#detail-premium").inner_text().strip() not in ("", "—")  # canonical intact
+        expect(page.locator("#detail-premium")).to_have_text(jev_app["snapshot_premium"])
         _no_overflow(page)
     finally:
         page.close()
@@ -208,7 +222,7 @@ def test_intelligence_endpoint_http_failure_keeps_page_usable(browser, jev_app, 
     try:
         assert page.locator('[data-testid="jev-intelligence-panel"]').get_attribute("data-jev-state") == "UNAVAILABLE"
         assert "/secret/path" not in page.content()
-        assert page.locator("#detail-premium").inner_text().strip() not in ("", "—")
+        expect(page.locator("#detail-premium")).to_have_text(jev_app["snapshot_premium"])
         _no_overflow(page)
     finally:
         page.close()

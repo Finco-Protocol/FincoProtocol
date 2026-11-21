@@ -913,7 +913,9 @@ def test_50_r0_r1_r2_source_behavior_unchanged() -> None:
     # R0: canonical size-impact formula unchanged.
     assert quote_size_impact_bps(quotes[0], quotes[1]) == Decimal("1250")
     # R2: directional GAP formula and side binding unchanged.
-    obs = STANDARD_OBSERVATIONS[0]
+    # Compute both values under the same Decimal context. Other test modules
+    # can change the context after STANDARD_OBSERVATIONS is built at import.
+    obs = observations_for(quotes)[0]
     expected_gap = ((Decimal("125") / Decimal("105")) - Decimal("1")) * Decimal("10000")
     assert obs.reference_side is ReferenceSide.ASK
     assert obs.gap_bps == expected_gap

@@ -70,3 +70,14 @@ Remove only `V5 gate (trusted base)` from the required checks (Settings → Bran
 The trusted default-branch workflow publishes `CI Performance Budget` for the exact PR head. Require that commit status in strict mode bound to the GitHub Actions app, alongside all six V4 checks. The 2,100 s target is informational. The hard cap remains 2,400 s. The effective rules endpoint omits bypass actor information. Supply administrator-enforced branch protection and review settings when running the enforcement verifier.
 
 Both FULL witness consumers require the original GitHub attempt and all jobs for the exact source. Measure from GitHub run creation through the completed record job, including queue, planning, shard setup, independent recollection and F01. A fresh complete dispatch on accepted main is needed after a failed or incomplete attempt. A successful run above 2,400 s is ineligible for release or promotion.
+
+## Deferred private T01-B/C tax dataset reconciliation
+
+Owner decision 2026-11-20: the private T01-B/C 34-jurisdiction / 634-row reconciliation is DEFERRED until after V5 activation. This is an informed acceptance of the limited risk that FULL and release may run without validating those private tax-reference input rows. It is **not** a pass, not an inventory change, and not a weakening of any other gate.
+
+- The only accommodation is ONE runtime skip, count 1, in `docs/ci_v4/full_skip_baseline.json`: `tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation`, reason `PRIVATE_T01_BC_DATASET_DEFERRED_POST_V5`, reported everywhere as `SKIPPED_NOT_PASSED`. Any second occurrence, any other tax/browser/financial skip, a missing, failed or incompletely executed node, or a changed test still blocks FULL and the release gate. The 67 collection skips are a separate category and are unchanged.
+- The baseline schema has no expiry field and none was added. The allowance is therefore tracked here as an owner-owned obligation: it ends no later than the first post-activation tax-dataset validation workstream and must not become permanent.
+- [ ] Locate the authentic source CSV in the T01-B/C/D/E or Fable Phase 1B private evidence and validate its provenance and checksum. No synthetic or summary-derived reconstruction may be presented as the original. Evidence: the recorded checksum and the provenance note.
+- [ ] Confirm 34 jurisdictions and 634 rows (documented rejected rows included). Evidence: the loader's own counts.
+- [ ] Provide the file to the approved runner so `TAX_REF_PRIVATE_DATASET` is an actual file path, never publishing the CSV, a secret or a private artifact on GitHub. Run the unmodified test with the real data. Evidence: a JUnit in which `test_private_34_634_reconciliation` is `passed`, not `skipped`.
+- [ ] Remove the baseline entry in a new reviewed, V4-governed PR with independent reviewer sign-off, and record the closure. Evidence: the merged PR and the sign-off.

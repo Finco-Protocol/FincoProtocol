@@ -5,6 +5,9 @@ on:
   pull_request:
 permissions:
   contents: read
+# test_ui_protocol_shell is a no-skip module when it is selected by the base.
+env:
+  FINCO_VISUAL_CAPTURE: '1'
 concurrency:
   group: ci-v4-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -18,6 +21,7 @@ jobs:
       needs_browser: ${{ steps.plan.outputs.needs_browser }}
       needs_native: ${{ steps.plan.outputs.needs_native }}
       node_split: ${{ steps.plan.outputs.node_split }}
+      pr_chromium: ${{ steps.plan.outputs.pr_chromium }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -71,12 +75,52 @@ jobs:
             echo "trusted base has no node-split activation: the sealed module plan is used unchanged"
             echo "collect=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Determine Chromium requirements from the trusted selection
+        id: chromium
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+
+          with open('evidence/ci-v4-plan.json') as file:
+              plan = json.load(file)
+          # Literal modules reviewed for this runtime profile. This list only
+          # controls provisioning. It cannot add, remove or skip an assignment.
+          chromium_modules = {
+              'tests/test_cost_batch_save_browser_v1.py',
+              'tests/test_cost_editing_ux_v2_browser.py',
+              'tests/test_cost_grid_editing_browser_v1.py',
+              'tests/test_jev_panel_browser.py',
+              'tests/test_m3_two_driver_sensitivity_browser.py',
+              'tests/test_model_trust_pack_browser.py',
+              'tests/test_p3_browser_acceptance.py',
+              'tests/test_ui_protocol_shell.py',
+          }
+          selected = sorted(chromium_modules.intersection(plan['pytest_modules']))
+          print('required=' + str(bool(selected)).lower())
+          print('modules=' + json.dumps(selected))
+          PY
       - name: Install the tested head's test dependencies (only for an exact node collection)
         if: steps.decide.outputs.collect == 'true'
         working-directory: subject
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+      - name: Pinned Playwright and Chromium for exact node collection
+        if: steps.decide.outputs.collect == 'true' && steps.chromium.outputs.required == 'true'
+        run: &install_pr_chromium |
+          set -euo pipefail
+          python -I -m pip install playwright==1.63.0
+          python -I -m playwright install chromium --with-deps
+          python -I - <<'PY'
+          from importlib.metadata import version
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch()
+              print(f"Playwright {version('playwright')}, Chromium {browser.version}")
+              print(f"Playwright-managed Chromium: {playwright.chromium.executable_path}")
+              browser.close()
+          PY
       - name: Exact node collection at the tested head (trusted plugin) and trusted split; selection unchanged, plan re-sealed
         if: steps.decide.outputs.collect == 'true'
         env:
@@ -84,12 +128,24 @@ jobs:
         run: (cd trusted && python -m tools.ci_v4_activate apply --plan ../evidence/ci-v4-plan.json --subject ../subject --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --evidence ../evidence --trusted-sha "$BASE_SHA")
       - name: Plan outputs
         id: plan
+        env:
+          CHROMIUM_MODULES: ${{ steps.chromium.outputs.modules }}
         run: |
           python - <<'PYCODE' >> "$GITHUB_OUTPUT"
-          import json
+          import json, os
           p = json.load(open('evidence/ci-v4-plan.json'))
+          chromium_modules = set(json.loads(os.environ['CHROMIUM_MODULES']))
+          shards = p['schedule']['shards']
+          if 'node_split' in p:
+              shards = [[unit['module'] for unit in units] for units in p['schedule']['units']]
+          matrix = {'include': [
+              {'index': i, 'chromium': bool(chromium_modules.intersection(modules))}
+              for i, modules in enumerate(shards)
+          ]}
+          assert {module for shard in shards for module in shard} >= chromium_modules
           print('tier=' + p['tier'])
-          print('matrix=' + json.dumps({'index': list(range(len(p['schedule']['shards'])))}))
+          print('matrix=' + json.dumps(matrix))
+          print('pr_chromium=' + str(bool(chromium_modules)).lower())
           print('needs_browser=' + str(p['needs_browser']).lower())
           print('needs_native=' + str(p['needs_native_docker']).lower())
           print('node_split=' + str('node_split' in p).lower())
@@ -161,14 +217,14 @@ jobs:
         with:
           name: ci-v4-plan
           path: ${{ runner.temp }}/ci-v4/plan
-      # Same runtime as the CI V3 workers (no Playwright/Chromium): browser modules skip exactly as in V3 and are listed SKIPPED (not PASS).
-      # Browser acceptance stays in the F01 job and the mandatory browser roles. Several browser modules that V3 never executes are stale
-      # (e.g. mutation posts without CSRF -> 403); enabling Chromium here is a separate, owner-approved follow-up (docs/ci_v4/FINAL_REPORT_HR.md).
-      - name: Install (Python deps + frontend node_modules, as in the CI V3 runtime image)
+      - name: Install Python dependencies and frontend node_modules
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
           (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
+      - name: Pinned Playwright and Chromium for the assigned browser modules
+        if: matrix.chromium
+        run: *install_pr_chromium
       # Plan and output live OUTSIDE the checkout: an untracked directory in the tested tree would (correctly) make the exact-source cohorts fail.
       # A node plan is executed by the TRUSTED base executor and plugin, extracted from the base commit OUTSIDE the tested checkout.
       - name: Trusted base tools for a node plan
@@ -181,6 +237,7 @@ jobs:
           test -f "$RUNNER_TEMP/trusted/tools/ci_v4_activate.py"
       - name: Run the planned shard (selected modules only; exact node ids for a node plan)
         env:
+          FINCO_VISUAL_CAPTURE_DIR: ${{ runner.temp }}/ci-v4/out/visual-capture
           NODE_SPLIT: ${{ needs.plan.outputs.node_split }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -248,6 +305,9 @@ jobs:
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+      - name: Pinned Playwright and Chromium for independent re-collection
+        if: needs.plan.outputs.node_split == 'true' && needs.plan.outputs.pr_chromium == 'true'
+        run: *install_pr_chromium
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: ci-v4-shard-*

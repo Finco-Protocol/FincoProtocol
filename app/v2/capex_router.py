@@ -143,6 +143,7 @@ def _render_capex_sheet_with_oob(
     oob += chr(10) + build_post_save_ui_state(
         ws_fresh=ws, project_record=project_record, project=project,
         workspace_owner=workspace_owner, include_runtime_bars=False,
+        request=request,
         projection=projection,
     )
     run_controls_html = _tmpl.get_template("partials/_v2_run_controls.html").render({
