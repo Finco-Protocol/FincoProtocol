@@ -9,7 +9,10 @@
 [data-md2-compare-row][data-classification="NEW"] strong{color:#b91c1c}[data-md2-compare-row][data-classification="RESOLVED"] strong{color:#126442}
 
 /* V2 tables reuse the V1 look under their own class names so V1 selectors keep their meaning. */
-.md2-scroll{max-width:100%;overflow:auto;max-height:480px}.md2-matrix{border-collapse:separate;border-spacing:0;font:12px ui-monospace,monospace;white-space:nowrap;min-width:100%}
+/* Containment: the sheet root clips stray layout overflow so a wide matrix can never widen
+   the shell ancestors (the data itself scrolls inside .md2-scroll, which keeps overflow-x:auto). */
+.md-workspace{overflow-x:clip}
+.md2-scroll{max-width:100%;overflow-x:auto;overflow-y:auto;max-height:480px}.md2-matrix{border-collapse:separate;border-spacing:0;font:12px ui-monospace,monospace;white-space:nowrap;min-width:100%}
 .md2-matrix th,.md2-matrix td{padding:7px 9px;border-bottom:1px solid var(--md-border);text-align:right;background:var(--md-bg)!important;color:var(--md-fg)}.md2-matrix thead th{position:sticky;top:0;background:var(--md-bg);z-index:2}
 .md2-matrix th:first-child{position:sticky;left:0;z-index:1;background:var(--md-bg);text-align:left;min-width:220px;max-width:280px;white-space:normal}.md2-matrix thead th:first-child{z-index:3}
 .md2-matrix small{display:block;opacity:.8;margin-top:4px}.md2-matrix th button{width:100%;text-align:left}
