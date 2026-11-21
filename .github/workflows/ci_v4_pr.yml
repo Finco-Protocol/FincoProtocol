@@ -5,6 +5,9 @@ on:
   pull_request:
 permissions:
   contents: read
+# test_ui_protocol_shell is a no-skip module when it is selected by the base.
+env:
+  FINCO_VISUAL_CAPTURE: '1'
 concurrency:
   group: ci-v4-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -234,6 +237,7 @@ jobs:
           test -f "$RUNNER_TEMP/trusted/tools/ci_v4_activate.py"
       - name: Run the planned shard (selected modules only; exact node ids for a node plan)
         env:
+          FINCO_VISUAL_CAPTURE_DIR: ${{ runner.temp }}/ci-v4/out/visual-capture
           NODE_SPLIT: ${{ needs.plan.outputs.node_split }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |

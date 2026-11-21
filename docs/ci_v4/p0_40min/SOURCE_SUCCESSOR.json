@@ -202,7 +202,7 @@
   "source_blobs": {
     ".github/workflows/ci_perf_guard.yml": "de003e8423fc27ff0d830c7f3a950dea45978e8b",
     ".github/workflows/ci_v4_full.yml": "6f9adcb481a3375d5ab2fd67a85cbb0341e2dc60",
-    ".github/workflows/ci_v4_pr.yml": "db9ee712680b5480e0f8f0ef462e9b7cf125d030",
+    ".github/workflows/ci_v4_pr.yml": "e842330d22deeb65a577c581396129d8f87acf61",
     ".github/workflows/ci_v5_gate.yml": "7a9bbdfa21dd19ca1db63a12fabe30d15b9f89b9",
     ".github/workflows/ci_v5_shadow.yml": "b2b1d7af30cb4e186893c2c3b48140b8232145b5",
     "app/v2/capex_router.py": "73a665c1fd81f17136f8acd543b4d17ae2147bb2",
@@ -257,7 +257,7 @@
     "tests/ci_v4_lean_b1_scope.py": "c6d8719568dc9266fd44cf3f22d935f098b9f721",
     "tests/ci_v4_lean_b2_scope.py": "d72e8616953ad3e828630612f2cb4aa08b82c200",
     "tests/ci_v4_lean_b3_scope.py": "b9b712eb10e81a115179b85670a44e4e6ee78d3c",
-    "tests/ci_v4_p0_scope.py": "684b954398bfd7e4282844db0e6094a6f996f686",
+    "tests/ci_v4_p0_scope.py": "67ac5da7ea33a63662c883851b81bcb59e4e195c",
     "tests/ci_v4_scope.py": "2a232480e35fb5ccba610e43f82d610818b7d33c",
     "tests/ci_v5_bootstrap_scope.py": "4600e77236c4df30b3ded8ff69165a6f0ced30dc",
     "tests/ci_v5_gate_scope.py": "0384f81c066fa70b116a315b3e61ab5d510f0cfb",
