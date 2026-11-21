@@ -80,24 +80,30 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
+          import re
+          from pathlib import Path
 
           with open('evidence/ci-v4-plan.json') as file:
               plan = json.load(file)
-          # Literal modules reviewed for this runtime profile. This list only
-          # controls provisioning. It cannot add, remove or skip an assignment.
-          chromium_modules = {
-              'tests/test_cost_batch_save_browser_v1.py',
-              'tests/test_cost_editing_ux_v2_browser.py',
-              'tests/test_cost_grid_editing_browser_v1.py',
-              'tests/test_jev_panel_browser.py',
-              'tests/test_m3_two_driver_sensitivity_browser.py',
-              'tests/test_model_trust_pack_browser.py',
-              'tests/test_p3_browser_acceptance.py',
-              'tests/test_ui_protocol_shell.py',
-          }
-          selected = sorted(chromium_modules.intersection(plan['pytest_modules']))
-          print('required=' + str(bool(selected)).lower())
-          print('modules=' + json.dumps(selected))
+          # Fail-closed audit over the closed selection set: every selected
+          # module is classified from its own source (a missing or unreadable
+          # module fails the step), and a module that pulls in playwright in
+          # any form is provisioned the pinned Chromium runtime. The
+          # classification only controls provisioning; it cannot add, remove
+          # or skip an assignment, and an assigned browser unit whose shard
+          # was not provisioned still fails collection, never silently passes.
+          playwright_use = re.compile(
+              r"importorskip\(\s*['\"]playwright['\"]|from\s+playwright|import\s+playwright")
+          needs, classified = [], 0
+          for module in plan['pytest_modules']:
+              source = Path(module).read_text(encoding='utf-8')
+              classified += 1
+              if playwright_use.search(source):
+                  needs.append(module)
+          needs.sort()
+          print('required=' + str(bool(needs)).lower())
+          print('modules=' + json.dumps(needs))
+          print('classified=' + str(classified))
           PY
       - name: Install the tested head's test dependencies (only for an exact node collection)
         if: steps.decide.outputs.collect == 'true'

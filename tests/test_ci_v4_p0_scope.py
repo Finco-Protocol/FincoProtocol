@@ -312,6 +312,38 @@ def test_correction_e_rejects_physical_and_committed_paired_repins(subject):
             restore()
 
 
+def test_correction_f_rejects_physical_and_committed_paired_repins(subject):
+    for path in sorted(T.CORRECTION_F_BLOBS):
+        source = (subject / path).read_bytes()
+        altered = source + b"\n"
+        with C.call_scope():
+            assert T.supersedes(path, T._blob(source), subject, "HEAD")
+            assert T.exact_blobs_ok(subject)
+        manifest = subject / T.MANIFEST
+        original_manifest = manifest.read_bytes()
+        forged = json.loads(original_manifest)
+        forged["source_blobs"][path] = T._blob(altered)
+        forged_manifest = (json.dumps(forged, indent=2, sort_keys=True) + "\n").encode()
+        try:
+            (subject / path).write_bytes(altered)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+            manifest.write_bytes(forged_manifest)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+                assert not T.supersedes(path, T._blob(altered), subject)
+        finally:
+            (subject / path).write_bytes(source)
+            manifest.write_bytes(original_manifest)
+        ref, restore = variant(subject, {path: altered, T.MANIFEST: forged_manifest})
+        try:
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject, ref)
+                assert not C.valid(subject, ref)
+        finally:
+            restore()
+
+
 @pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml",
                                   "docs/ci_v4/full_skip_baseline.json"])        # any baseline bytes other than the single reviewed one-key blob are refused by every cohort
 def test_a_foreign_control_blob_is_rejected_by_every_hooked_historical_cohort(subject, path):

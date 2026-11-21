@@ -59,7 +59,26 @@ BROWSER_REPAIR_BLOBS = {
     'tests/test_ui_protocol_shell.py': 'ffde62258729e1d4bff05fd26b56d3630bc47602',
 }
 COST_PRESENTATION_PATHS = frozenset(('app/v2/capex_router.py', 'app/v2/opex_router.py',
-                                     'static/js/cost_staging.js', 'static/js/model_view_refresh.js'))
+                                     'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
+                                     'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+                                     'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css'))
+# Correction F admits the exact browser-runtime and test-successor changes audited
+# from 047d51d6: the governed-navigation test successors, the swap-teardown blur
+# guard, the BESS loader placement, the diagnostics containment and the
+# fail-closed Chromium derivation in the PR workflow. The separate reviewed
+# digests also reject a paired source and manifest edit.
+CORRECTION_F_BLOBS = {
+    'app/templates/v2/partials/sheet_project_setup.html': '45ced98aa22394ee2167f7cc2ff55ba8d43cab70',
+    'app/templates/v2/workbook.html': '94b9f61f0eeed25dcb0568dc745537f409fce256',
+    'static/js/workbook_v2.js': 'ed76fa5ec332c0ddc6c74f1c980c71ce54ecf49c',
+    'static/css/model_diagnostics_v2.css': '08f068dd14086a43133c8888f718706fd10689f1',
+    'tests/test_data_center_browser_acceptance.py': '4813332b601cd188656ff939ede34574dacb779f',
+    'tests/test_model_golden_flows_browser.py': '6a3b2330425f9bf5d3eb54528ce1cfe7fa0a1dc8',
+    'tests/test_model_react_poc_browser_acceptance.py': '815f255a9d10e613683961a79e527e50668a02cb',
+    'tests/test_model_v7_diagnostics_browser.py': '37cb5d247ef256d6c3bb60f65bd4e4e4d73a9452',
+    'tests/test_radar_n04_browser.py': '4d68e71b1798d490fd93d59d44555c0e98250672',
+    'tests/test_sc34_workflow_journeys_browser.py': '14f77711ffa34c731ca4bdc60ff654f6b16f7739',
+}
 REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                       # P1: U1 node split (SPLIT_SAFE_FLOOR_LIMITED, isolation-proven) and its re-measured U1 node weights
                       'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
@@ -115,8 +134,9 @@ HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
 HANDOFF_PATHS |= frozenset(('tests/fin_v2_3_scope.py', 'tests/fin_v2_r1_scope.py', 'tests/fin_v2_pr394_corr_scope.py', 'tests/fin_v2_ci_scope.py', 'tests/fin_v2_wsv2_scope.py'))
 FULL_VISUAL_WORKFLOW_BLOB = '6f9adcb481a3375d5ab2fd67a85cbb0341e2dc60'
 PR_CHROMIUM_WORKFLOW = '.github/workflows/ci_v4_pr.yml'
-PR_CHROMIUM_WORKFLOW_BLOB = 'e842330d22deeb65a577c581396129d8f87acf61'
+PR_CHROMIUM_WORKFLOW_BLOB = '3bc29970a850ca5fd8f0e93ef4a8fb663d92623c'
 REPLACED |= BROWSER_REPAIR_BLOBS.keys() | {PR_CHROMIUM_WORKFLOW}
+REPLACED |= CORRECTION_F_BLOBS.keys()
 CI_PATHS |= {PR_CHROMIUM_WORKFLOW}
 HANDOFF_PATHS |= {'tests/test_ux_pr2c_scope.py'}
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
