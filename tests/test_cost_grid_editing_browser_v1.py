@@ -431,8 +431,10 @@ def test_first_save_after_a_scenario_switch_has_no_false_409(make):
     s = make("u-grid-scen")
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
     s.page.wait_for_selector("#tab-scenarios", state="attached")
+    s.page.locator("#tab-scenarios").evaluate("(tab) => tab.click()")
+    token = s.page.locator('.v2-scenario-create-form input[name="csrf_token"]').input_value()
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                            form={"project": s.rec.project_code, "scenario_name": "Grid Case"},
+                            form={"project": s.rec.project_code, "scenario_name": "Grid Case", "csrf_token": token},
                             headers={"HX-Request": "true"})
     assert r.status == 200
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")

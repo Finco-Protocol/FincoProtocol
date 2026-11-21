@@ -98,7 +98,7 @@ def test_run_certificate_browser_1280(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         _set_auth_cookie(context, app_server)
         page = context.new_page()
@@ -147,7 +147,7 @@ def test_run_certificate_browser_390(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 390, "height": 844})
         _set_auth_cookie(context, app_server)
         page = context.new_page()
@@ -193,7 +193,7 @@ def test_run_certificate_browser_contextual_journey(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         _set_auth_cookie(context, app_server)
         page = context.new_page()

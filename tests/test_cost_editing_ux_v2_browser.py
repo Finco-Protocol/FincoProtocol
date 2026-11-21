@@ -255,6 +255,7 @@ def _concurrent_row_edit(s, row_index, amount):
         "project": s.rec.project_code, "sub_line_id": row.get_attribute("data-sub-line-id"),
         "label": row.locator('input[name="label"]').input_value(), "amount_keur": amount,
         "row_version": row.locator('input[name="row_version"]').input_value(),
+        "csrf_token": row.locator('input[name="csrf_token"]').input_value(),
         "workbook_version": tokens[1], "content_hash": tokens[0]}, headers={"HX-Request": "true"})
     assert resp.status == 200
 
@@ -321,8 +322,10 @@ def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
 # ── nothing is lost to a scenario switch or a Run ───────────────────────────────────────────
 
 def _make_scenario(s):
+    s.page.locator("#tab-scenarios").evaluate("(tab) => tab.click()")
+    token = s.page.locator('.v2-scenario-create-form input[name="csrf_token"]').input_value()
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                            form={"project": s.rec.project_code, "scenario_name": "UX Case"},
+                            form={"project": s.rec.project_code, "scenario_name": "UX Case", "csrf_token": token},
                             headers={"HX-Request": "true"})
     assert r.status == 200
     s.open("capex")

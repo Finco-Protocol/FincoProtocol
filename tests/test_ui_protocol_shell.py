@@ -2111,35 +2111,26 @@ class TestApiBetaBrowser:
         page.close()
 
     def test_api_b04_placeholders_not_links(self, live_url, browser):
-        """API-B04: Docs is a live nav link; Roadmap/$FINCO stay placeholders.
-
-        Contract aligned with PR #87 (product documentation surface): Docs
-        became a real navigation anchor; Roadmap and $FINCO remain
-        non-interactive placeholders.
-        """
+        """API-B04: Docs is primary; Roadmap and $FINCO are reachable through More."""
         page = browser.new_page(viewport={"width": 1280, "height": 900})
-        page.goto(f"{live_url}/api")
-        page.wait_for_load_state("domcontentloaded")
-        nav_text = page.inner_text(".proto-nav")
-        for label in ("Docs", "Roadmap", "$FINCO"):
-            assert label in nav_text, f"Nav item '{label}' not in nav"
-        # Docs is LIVE — must be an anchor pointing to /docs
-        docs_link = page.query_selector('a[href="/docs"]')
-        assert docs_link is not None, (
-            "Docs nav item must be an anchor to /docs (Docs is live, not a placeholder)"
-        )
-        # Roadmap and $FINCO remain placeholders — spans, not anchors
-        for label in ("Roadmap", "$FINCO"):
-            matches = page.query_selector_all(f"a:text('{label}')")
-            assert len(matches) == 0, (
-                f"Placeholder '{label}' is rendered as an anchor — must remain non-interactive"
-            )
-        # Roadmap and $FINCO must carry aria-disabled
-        placeholders = page.query_selector_all('[aria-disabled="true"]')
-        placeholder_texts = " ".join(p.inner_text() for p in placeholders)
-        assert "Roadmap" in placeholder_texts, "Roadmap must be aria-disabled"
-        assert "$FINCO" in placeholder_texts, "$FINCO must be aria-disabled"
-        page.close()
+        try:
+            page.goto(f"{live_url}/api")
+            nav = page.locator(".proto-nav")
+            docs = nav.get_by_role("link", name="Docs", exact=True)
+            assert docs.is_visible() and docs.get_attribute("href") == "/docs"
+            more = nav.get_by_test_id("proto-nav-secondary")
+            for label in ("Roadmap", "$FINCO"):
+                assert not nav.get_by_role("link", name=label, exact=True).is_visible()
+            more.locator("summary").click()
+            roadmap = more.get_by_role("link", name="Roadmap", exact=True)
+            finco = more.get_by_role("link", name="$FINCO", exact=True)
+            assert roadmap.is_visible() and roadmap.get_attribute("href") == "/roadmap"
+            assert finco.is_visible() and finco.get_attribute("href") == "/protocol/finco"
+            roadmap.click()
+            page.wait_for_url(f"{live_url}/roadmap")
+            assert nav.locator('a[aria-current="page"]').inner_text() == "Roadmap"
+        finally:
+            page.close()
 
     def test_api_b05_model_endpoint_table_visible(self, live_url, browser):
         """API-B05: Model API endpoint table is present and lists references endpoint."""

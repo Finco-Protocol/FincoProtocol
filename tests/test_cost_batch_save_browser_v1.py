@@ -196,6 +196,7 @@ def test_failure_in_one_row_rolls_back_all_rows_keeps_typed_values_and_never_ret
     resp = s.ctx.request.post(f"{s.base}/v2/capex/line/update", form={
         "project": s.rec.project_code, "sub_line_id": ids[1], "label": row.locator('input[name="label"]').input_value(),
         "amount_keur": "999", "row_version": row.locator('input[name="row_version"]').input_value(),
+        "csrf_token": row.locator('input[name="csrf_token"]').input_value(),
         "workbook_version": tokens[1], "content_hash": tokens[0]}, headers={"HX-Request": "true"})
     assert resp.status == 200
     mid = s.db_amounts("capex", ids)
