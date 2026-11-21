@@ -551,6 +551,19 @@ def test_full_workflow_structure():
                 assert step["with"]["persist-credentials"] is False and step["with"]["ref"] == "${{ github.sha }}"
 
 
+def test_full_browser_runtime_precedes_collection_in_every_pytest_job():
+    import yaml
+
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci_v4_full.yml").read_text())["jobs"]
+    for job, phase in (("plan", "plan"), ("recollect", "recollect"), ("shards", "shard")):
+        commands = "\n".join(step.get("run", "") for step in jobs[job]["steps"])
+        assert commands.count("python -m pip install playwright==1.63.0") == 1
+        install = commands.index("python -m playwright install chromium --with-deps")
+        assert commands.index("python -m pip install playwright==1.63.0") < install
+        assert commands.index("PLAYWRIGHT_BROWSERS_PATH=") < install
+        assert install < commands.index(f"python -m tools.ci_full_parallel {phase} ")
+
+
 def test_shard_profile_keeps_only_ancestor_conftests():
     only_top = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py"], CONFTESTS)
     both = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py", "tests/sub/test_c.py"], CONFTESTS)

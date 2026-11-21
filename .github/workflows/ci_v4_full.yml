@@ -39,6 +39,11 @@ jobs:
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip install playwright==1.63.0
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
+          printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+          python -m playwright install chromium --with-deps
+          python -m pip check
       # Plan and outputs live OUTSIDE the checkout: an untracked path in the tested tree would (correctly) fail the exact-source cohorts.
       - name: One exact collection of the whole suite; sealed adaptive plan (union == inventory, disjoint)
         id: plan
@@ -73,6 +78,11 @@ jobs:
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip install playwright==1.63.0
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
+          printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+          python -m playwright install chromium --with-deps
+          python -m pip check
       - name: Independent re-collection in a separate job (compared to the plan by the record)
         run: python -m tools.ci_full_parallel recollect --expected '${{ github.sha }}' --output "$RUNNER_TEMP/full/recollect" --workdir "$RUNNER_TEMP/full/work"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -103,12 +113,17 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
-      # Same runtime as the CI V3 workers and CI V4 PR shards (no Playwright/Chromium): browser modules skip at collection and are listed SKIPPED,
-      # never PASS; only reviewed baseline skips are admitted. Browser acceptance runs in the F01 job.
-      - name: Install (Python deps + frontend node_modules)
+      # Match both collection jobs so browser nodes participate in the sealed FULL
+      # inventory. The separate F01 acceptance job is still mandatory.
+      - name: Install (Python deps, Chromium and frontend node_modules)
         run: |
           pip install -r requirements.txt -c constraints.txt
           pip install -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip install playwright==1.63.0
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"
+          printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+          python -m playwright install chromium --with-deps
+          python -m pip check
           (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:

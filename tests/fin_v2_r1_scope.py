@@ -112,6 +112,15 @@ def _other_cohort_allows(path, root, ref):
 
 
 def valid(repo=None, ref=None):
+    from tests.fin_v2_cohorts import call_scope
+
+    # Reuse the existing read-only scope for this traversal. A subsequent
+    # invocation still reads current source and sees any intervening mutation.
+    with call_scope():
+        return _valid(repo, ref)
+
+
+def _valid(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):
         return False

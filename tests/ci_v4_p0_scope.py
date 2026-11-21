@@ -93,6 +93,7 @@ HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
                             'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
 HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_3_scope.py', 'tests/fin_v2_r1_scope.py', 'tests/fin_v2_pr394_corr_scope.py', 'tests/fin_v2_ci_scope.py', 'tests/fin_v2_wsv2_scope.py'))
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -5283,6 +5284,22 @@ HANDOFFS['tests/test_ci_v4_full_recovery_scope.py'] += [
         "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
     ),
 ]
+
+HANDOFFS['tests/fin_v2_3_scope.py'] = [('def valid(repo=None,ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_r1_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_ci_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_wsv2_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+
+
+HANDOFFS['tests/u1_scope.py'].append(("    'tests/test_wsv2_core_scope.py',\n))\n\n\ndef _p0_runtime_pin", "    'tests/test_wsv2_core_scope.py',\n    'tests/fin_v2_3_scope.py',\n    'tests/fin_v2_r1_scope.py',\n    'tests/fin_v2_wsv2_scope.py',\n))\n\n\ndef _p0_runtime_pin"))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('def exact_blobs_ok(repo=None, ref=None):\n', 'def _matches_pin(path, value, historical, root, ref):\n    if value == historical:\n        return True\n    if path != \'tests/fin_v2_ci_scope.py\':\n        return False\n    from tests import ci_v4_p0_scope as P0\n    return (\n        P0.supersedes(path, value, root, ref)\n        and P0.manifest(root, ref)["base_blobs"].get(path) == historical\n    )\n\n\ndef exact_blobs_ok(repo=None, ref=None):\n'))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('_blob(_read(root, p, ref)) != expected', 'not _matches_pin(p, _blob(_read(root, p, ref)), expected, root, ref)'))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('    return _blob(raw) == pins[path]\n', "    if path == 'tests/fin_v2_ci_scope.py':\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            return raw == _read(root, path, ref)\n        except (OSError, subprocess.CalledProcessError):\n            return False\n    return _blob(raw) == pins[path]\n"))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('def exact_blobs_ok(repo=None, ref=None):\n', 'def _matches_pin(path, value, historical, root, ref):\n    if value == historical:\n        return True\n    if path != \'tests/fin_v2_pr394_corr_scope.py\':\n        return False\n    from tests import ci_v4_p0_scope as P0\n    return (\n        P0.supersedes(path, value, root, ref)\n        and P0.manifest(root, ref)["base_blobs"].get(path) == historical\n    )\n\n\ndef exact_blobs_ok(repo=None, ref=None):\n'))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('_blob(_read(root, p, ref)) == expected', '_matches_pin(p, _blob(_read(root, p, ref)), expected, root, ref)'))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('    return _blob(raw) == pins[path]\n', "    if path == 'tests/fin_v2_pr394_corr_scope.py':\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            return raw == _read(root, path, ref)\n        except (OSError, subprocess.CalledProcessError):\n            return False\n    return _blob(raw) == pins[path]\n"))
+
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""

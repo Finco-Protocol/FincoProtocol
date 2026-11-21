@@ -70,8 +70,28 @@
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
       "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
     },
+    "tests/test_rcm_governance.py::test_layer_is_exactly_six_additive_paths_and_the_current_sources_are_admitted": {
+      "proof": "Checks the six real RC-M paths and their exact delegation, plus a supplied one-byte drift in memory. Neither tracked source, refs, fixtures nor Git environment change.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
     "tests/test_rcux_governance.py::test_layer_is_a_subset_of_the_reviewed_surfaces_and_every_current_source_is_exactly_pinned": {
       "proof": "Read-only: reads module-level constants (LAYER, SOURCES: bytes read at import) and calls the pure successor predicates (WF04/WF03/WF06B/R1/U1/UX1/PR3 matches, S.violations, S.current_mutation_successor_valid) on the unchanged checkout; no monkeypatch, no write, no env/cwd change. Evidence: plain == scoped in fresh processes; a mutation between two separate calls is detected.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_rcux_governance.py::test_the_workspace_router_changes_only_by_the_one_rcux_include_and_reviewed_wording": {
+      "proof": "Reads the workspace router and checks the accepted include and wording. No mutable fixture, edits or ref changes.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_trust_readiness_registry.py::test_d029_trust_successor_exact_baseline_and_exact_new_content": {
+      "proof": "Checks committed predecessor blobs and the live registry. Constructs expected text in memory, then validates immutable checkpoint ancestry and exact source. No writes or monkeypatch.",
+      "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
+      "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
+    },
+    "tests/test_wf06b_scope.py::test_base_is_the_integrated_409_main_and_history_is_recorded_not_rewritten": {
+      "proof": "Reads the manifest, immutable BASE, and current diff. Enumerates later cohort exactness without writes or mutable fixtures.",
       "source": "docs/ci_v4/p2_full/NODE_SCOPE_EVIDENCE.json",
       "verdict": "READ_ONLY_PER_NODE_SCOPE_SAFE"
     },
