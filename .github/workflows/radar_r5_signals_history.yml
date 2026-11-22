@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - "finco_radar/**"
-      - "financial_engine/**"
-      - "finco_core/**"
       - "tests/test_radar_r*.py"
       - "tests/test_radar_ci_scope_gate.py"
       - "tools/radar_ci_scope_gate.py"
