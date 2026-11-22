@@ -71,10 +71,11 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                           'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST,
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'}
+                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
+                          *T.M1A_RADAR_WORKFLOWS, T.M1A_RADAR_TEST}
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', *T.M1A_RADAR_WORKFLOWS}
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
@@ -463,3 +464,58 @@ def test_runtime_budget_controls_reject_committed_policy_tampering(subject, cont
         assert T.exact_blobs_ok(subject, "HEAD")
         assert rejected(subject, path, transform)
         assert T.exact_blobs_ok(subject, "HEAD")
+
+
+# ── M1-a (owner-authorized 2026-11-22): finite admission for Radar R5/R6 trigger boundary + AST guard ─────────────────────────────────
+def test_m1a_radar_workflows_equal_exact_two_line_removal_from_base():
+    for path in T.M1A_RADAR_WORKFLOWS:
+        assert (ROOT / path).read_bytes() == T.expected_m1a_radar_workflow(ROOT, path), path
+    with pytest.raises(ValueError):
+        T.expected_m1a_radar_workflow(ROOT, ".github/workflows/ci_v4_pr.yml")
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["add_path_r5", "add_step_r6", "forged_pin_with_tampered_r5", "forged_base_pin", "mode_r5", "delete_test", "extra_workflow"],
+)
+def test_m1a_tamper_variants_fail_closed(subject, case):
+    r5, r6 = T.M1A_RADAR_WORKFLOWS
+    if case == "add_path_r5":
+        assert rejected(subject, r5, lambda b: b.replace(b'      - "finco_radar/**"\n', b'      - "finco_radar/**"\n      - "domain/**"\n', 1))
+    elif case == "add_step_r6":
+        assert rejected(subject, r6, lambda b: b + b"      - run: echo tampered\n")
+    elif case == "forged_pin_with_tampered_r5":
+        tampered = (subject / r5).read_bytes().replace(b'      - "finco_radar/**"\n', b'      - "finco_radar/**"\n      - "domain/**"\n', 1)
+        forged_blob = T._blob(tampered)
+
+        def forge_manifest(raw):
+            d = json.loads(raw)
+            d["source_blobs"][r5] = forged_blob
+            return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
+
+        ref, restore = variant(subject, {r5: lambda _: tampered, T.MANIFEST: forge_manifest})
+        try:
+            with C.call_scope():
+                assert not T.signature_ok(subject, ref) and not T.exact_blobs_ok(subject, ref) and not C.valid(subject, ref)
+        finally:
+            restore()
+    elif case == "forged_base_pin":
+        def forge_base(raw):
+            d = json.loads(raw)
+            d["base_blobs"][T.M1A_RADAR_TEST] = "0" * 40
+            return (json.dumps(d, indent=2, sort_keys=True) + "\n").encode()
+
+        assert rejected(subject, T.MANIFEST, forge_base)
+    elif case == "mode_r5":
+        assert rejected(subject, r5, mode=True)
+    elif case == "delete_test":
+        assert rejected(subject, T.M1A_RADAR_TEST, remove=True)
+    elif case == "extra_workflow":
+        ref, restore = variant(subject, {".github/workflows/radar_r7_extra.yml": b"name: forged\n"})
+        try:
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject, ref) and not C.valid(subject, ref)
+        finally:
+            restore()
+    with C.call_scope():
+        assert T.exact_blobs_ok(subject, "HEAD") and C.valid(subject, "HEAD")
