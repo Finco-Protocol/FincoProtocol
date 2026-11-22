@@ -173,7 +173,7 @@ def test_internal_auth_introspect_fail_closed_private_boundary_and_canonical_dec
     assert "yield.basic" in body["entitlement_decisions"]
     assert user_tok not in ok_user.text
 
-    # 8. Valid demo session cookie -> authenticated=True, canonical decisions, no token echo
+    # 8. Valid demo session cookie -> authenticated=True, canonical decisions, no token echo, no Set-Cookie leak
     demo_tok = create_demo_session_token("demo-u1")
     ok_demo = client.post(
         "/internal/v1/auth/introspect",
@@ -184,3 +184,79 @@ def test_internal_auth_introspect_fail_closed_private_boundary_and_canonical_dec
     assert ok_demo.json()["authenticated"] is True
     assert ok_demo.json()["session_kind"] == "demo"
     assert demo_tok not in ok_demo.text
+    assert ok_demo.headers.get("cache-control") == "no-store"
+    assert "set-cookie" not in {k.lower() for k in ok_demo.headers}
+
+    # 9. Forwarded and X-Real-IP headers are also rejected (403)
+    for hdr_name, hdr_val in (("Forwarded", "for=203.0.113.10"), ("X-Real-IP", "203.0.113.10")):
+        assert (
+            client.post(
+                "/internal/v1/auth/introspect",
+                headers={"X-Finco-Internal-Token": secret_token, hdr_name: hdr_val},
+                json={"audience": "radar"},
+            ).status_code
+            == 403
+        )
+
+    # 10. Production/staging rejects testclient peer and ignores public IPs / wildcards in allowlist
+    monkeypatch.setenv("FINCO_ENV", "production")
+    monkeypatch.setenv("FINCO_INTERNAL_AUTH_ALLOWED_CLIENTS", "*,8.8.8.8,testclient,10.20.30.40")
+    from app.internal_auth_introspect import _allowed_clients
+    allowed_prod = _allowed_clients()
+    assert "testclient" not in allowed_prod
+    assert "*" not in allowed_prod
+    assert "8.8.8.8" not in allowed_prod
+    assert "10.20.30.40" in allowed_prod
+    assert "127.0.0.1" in allowed_prod
+    prod_resp = client.post(
+        "/internal/v1/auth/introspect",
+        headers={"X-Finco-Internal-Token": secret_token},
+        json={"audience": "radar"},
+    )
+    assert prod_resp.status_code == 403
+    assert prod_resp.json()["detail"] == "INTERNAL_AUTH_NON_LOOPBACK_PEER_DENIED"
+
+
+def test_main_web_and_main_api_have_no_duplicate_routes_and_preserve_model_signing_and_trust() -> None:
+    env = os.environ.copy()
+    env["FINCO_MOUNT_RADAR"] = "0"
+    env["FINCO_RLIVE_WARMING_ENABLED"] = "0"
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    code = (
+        "import json, main_web, main_api\n"
+        "from fastapi.testclient import TestClient\n"
+        "def _collect(app):\n"
+        "    seen, dups = set(), []\n"
+        "    def walk(obj, prefix=''):\n"
+        "        for r in getattr(obj, 'routes', []):\n"
+        "            if type(r).__name__ == '_IncludedRouter':\n"
+        "                walk(r.original_router, prefix + (getattr(r.include_context, 'prefix', '') or ''))\n"
+        "                continue\n"
+        "            p = getattr(r, 'path', None)\n"
+        "            if not p: continue\n"
+        "            for m in sorted(getattr(r, 'methods', None) or []):\n"
+        "                key = (m, prefix + p)\n"
+        "                if key in seen: dups.append(key)\n"
+        "                seen.add(key)\n"
+        "    walk(app)\n"
+        "    return sorted(seen), dups\n"
+        "web_routes, web_dups = _collect(main_web.app)\n"
+        "api_routes, api_dups = _collect(main_api.app)\n"
+        "cw = TestClient(main_web.app)\n"
+        "ca = TestClient(main_api.app)\n"
+        "print(json.dumps({\n"
+        "  'web_dups': web_dups, 'api_dups': api_dups,\n"
+        "  'well_known_keys': cw.get('/.well-known/finco/keys.json').status_code,\n"
+        "  'trust': cw.get('/trust').status_code,\n"
+        "  'api_signing_keys': ca.get('/api/v1.1/protocol/signing-keys').status_code,\n"
+        "  'api_projects': ca.get('/api/v1.1/projects').status_code,\n"
+        "}))\n"
+    )
+    out = subprocess.check_output([sys.executable, "-c", code], cwd=str(REPO_ROOT), env=env, text=True)
+    res = json.loads(out.strip().splitlines()[-1])
+    assert res["api_dups"] == []
+    assert res["well_known_keys"] == 200
+    assert res["trust"] == 200
+    assert res["api_signing_keys"] == 200
+    assert res["api_projects"] in (200, 401, 403)
+

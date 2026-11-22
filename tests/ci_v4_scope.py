@@ -91,7 +91,7 @@ def _pr2c_supersedes(path, value, root, ref):
     """Bounded UX-PR2c hook (PR #429 Correction G, Owner-authorized static-timeout change): a different current blob is accepted for path only while
     the exact UX-PR2c cohort supersedes the path at exactly this value (its literal SUPERSEDED membership, its own manifest pin, its own exactness).
     The mutation-security gate tool itself stays ci_v4-owned and un-delegated; a missing, forged or altered cohort admits nothing."""
-    if path in ('tests/fin_v2_integration_409_scope.py', 'tests/post413_r1_scope.py'):
+    if path in ('tests/fin_v2_integration_409_scope.py', 'tests/post413_r1_scope.py', 'tests/post413_r17_scope.py', 'tests/post413_r18_scope.py'):
         from tests import ci_v4_p0_scope as P0
         if P0.supersedes(path, value, root, ref):
             return True
@@ -144,6 +144,9 @@ def _v5_ci_paths(root, ref):
     if 'tests.ci_v4_p0_scope' in COHORT_MODULES:      # P1 (post-#457): the P0 terminal admits ITS literal guard paths (workflow + tool) only; no wildcard
         from tests import ci_v4_p0_scope as P0
         out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())
+    if 'tests.m2b_radar_boundary_scope' in COHORT_MODULES:
+        from tests import m2b_radar_boundary_scope as M2B
+        out = out | (M2B.BOUNDARY_PROTECTED_PATHS if M2B.exact_blobs_ok(root, ref) else frozenset())
     return out
 
 

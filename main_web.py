@@ -373,7 +373,8 @@ async def _start_r_live_snapshot_warmer():
     with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
     collector owns warming) or FINCO_MOUNT_RADAR=0. The web read path never calls this module.
     """
-    if not FINCO_MOUNT_RADAR:
+    import os as _os
+    if _os.environ.get("FINCO_MOUNT_RADAR", "1").strip().lower() in ("0", "false", "no", "off"):
         return
     from app.background_lifecycle import LifecycleErrors, ShutdownIncomplete
     try:
@@ -398,7 +399,8 @@ async def _start_r_live_snapshot_warmer():
 
 
 async def _stop_r_live_snapshot_warmer():
-    if not FINCO_MOUNT_RADAR:
+    import os as _os
+    if _os.environ.get("FINCO_MOUNT_RADAR", "1").strip().lower() in ("0", "false", "no", "off"):
         return
     import asyncio
     from app.radar_rwa.r_live_warming import stop_background_warmer

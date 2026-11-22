@@ -19,10 +19,11 @@ Security properties:
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import os
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import decode_demo_session_token, decode_session_token
@@ -36,7 +37,8 @@ SCHEMA_VERSION = "finco.internal.auth.introspect.v1"
 ALLOWED_AUDIENCES = frozenset({"radar", "finco-radar-v1"})
 INTERNAL_TOKEN_ENV = "FINCO_INTERNAL_AUTH_INTROSPECT_TOKEN"
 ALLOWED_CLIENTS_ENV = "FINCO_INTERNAL_AUTH_ALLOWED_CLIENTS"
-DEFAULT_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+PRODUCTION_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1"})
+NON_PROD_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
 router = APIRouter(prefix="/internal/v1/auth", tags=["internal-auth"], include_in_schema=False)
 
@@ -69,22 +71,45 @@ class IntrospectResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+def _is_production_like() -> bool:
+    return (os.environ.get("FINCO_ENV") or "").strip().lower() in ("prod", "production", "staging")
+
+
 def _configured_internal_token() -> str:
     return (os.environ.get(INTERNAL_TOKEN_ENV) or "").strip()
 
 
+def _parse_validated_private_peers(raw: str) -> frozenset[str]:
+    """Accept ONLY explicit private/loopback IP literals; reject wildcards, hostnames, and public IPs."""
+    validated: set[str] = set()
+    for item in raw.split(","):
+        host = item.strip()
+        if not host:
+            continue
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            continue
+        if ip.is_loopback or ip.is_private:
+            validated.add(str(ip))
+    return frozenset(validated)
+
+
 def _allowed_clients() -> frozenset[str]:
+    base = PRODUCTION_LOOPBACK_CLIENTS if _is_production_like() else NON_PROD_LOOPBACK_CLIENTS
     extra = (os.environ.get(ALLOWED_CLIENTS_ENV) or "").strip()
     if not extra:
-        return DEFAULT_LOOPBACK_CLIENTS
-    return DEFAULT_LOOPBACK_CLIENTS | frozenset(h.strip() for h in extra.split(",") if h.strip())
+        return base
+    return base | _parse_validated_private_peers(extra)
 
 
 def _enforce_private_network_boundary(request: Request) -> None:
     # Reject any request that traversed a public reverse proxy
-    if request.headers.get("x-forwarded-for") or request.headers.get("forwarded"):
+    if request.headers.get("x-forwarded-for") or request.headers.get("forwarded") or request.headers.get("x-real-ip"):
         raise HTTPException(status_code=403, detail="INTERNAL_AUTH_PROXIED_REQUEST_DENIED")
     peer_host = request.client.host if request.client else ""
+    if _is_production_like() and peer_host == "testclient":
+        raise HTTPException(status_code=403, detail="INTERNAL_AUTH_NON_LOOPBACK_PEER_DENIED")
     if peer_host not in _allowed_clients():
         raise HTTPException(status_code=403, detail="INTERNAL_AUTH_NON_LOOPBACK_PEER_DENIED")
 
@@ -110,9 +135,11 @@ async def _canonical_entitlement_decisions(session_obj: Any) -> tuple[dict[str, 
 @router.post("/introspect", response_model=IntrospectResponse, response_model_by_alias=True, include_in_schema=False)
 async def introspect_session(
     request: Request,
+    response: Response,
     body: IntrospectRequest,
     x_finco_internal_token: Optional[str] = Header(default=None, alias="X-Finco-Internal-Token"),
 ) -> IntrospectResponse:
+    response.headers["Cache-Control"] = "no-store"
     _enforce_private_network_boundary(request)
     expected = _configured_internal_token()
     if not expected or len(expected) < 16:

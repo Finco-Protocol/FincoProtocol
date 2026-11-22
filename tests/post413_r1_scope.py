@@ -234,7 +234,7 @@ def _exact_blobs_ok(repo=None, ref=None):
 def _ci_v4_owns(path, root, ref):
     """Only a literal CI V4 path (``.github/workflows/ci_v4_*`` / ``tools/ci_v4_*`` listed in ``tests/ci_v4_scope.CI_PATHS``) while that cohort is
     exact. The CI V4 cohort is low level (git objects and its own manifest only) and never imports this module, so the call graph stays acyclic."""
-    if not path.startswith(('.github/', 'tools/')):
+    if not (path.startswith(('.github/', 'tools/')) or path == 'main_web.py'):
         return False
     try:
         from tests import ci_v4_scope

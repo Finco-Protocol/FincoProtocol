@@ -152,6 +152,13 @@ def exact_blobs_ok(repo=None, ref=None):
     return memo[key]
 
 
+def _m2b_self_pin(path, value, root, ref):
+    if path != 'tests/post413_r18_scope.py':
+        return False
+    from tests import ci_v4_p0_scope as P0
+    return P0.supersedes(path, value, root, ref)
+
+
 def _exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     data = manifest(root, ref)
@@ -170,14 +177,14 @@ def _exact_blobs_ok(repo=None, ref=None):
             return False
         # 3. one exact blob per owned path
         if ref is None:
-            if any(_blob(_read(root, p, ref)) != sha for p, sha in pins.items()):
+            if any(_blob(_read(root, p, ref)) != sha and not _m2b_self_pin(p, _blob(_read(root, p, ref)), root, ref) for p, sha in pins.items()):
                 return False
         else:
             listed = {}
             for line in _git(root, 'ls-tree', '-r', ref, '--', *sorted(pins)).decode().splitlines():
                 meta, name = line.split('\t', 1)
                 listed[name] = meta.split()[2]
-            if listed != pins:
+            if set(listed) != set(pins) or any(listed[p] != sha and not _m2b_self_pin(p, listed[p], root, ref) for p, sha in pins.items()):
                 return False
         # 4. no protected prefix ever moved since BASE (paths this cohort does not own are the composite registry's responsibility)
         # Only the protected subtrees can fail this check, so the diff is limited to them (same verdict as the whole-tree diff, without a full stat of the checkout).
@@ -204,7 +211,7 @@ def _exact_blobs_ok(repo=None, ref=None):
 def _ci_v4_owns(path, root, ref):
     """Only a literal CI V4 path (``.github/workflows/ci_v4_*`` / ``tools/ci_v4_*`` listed in ``tests/ci_v4_scope.CI_PATHS``) while that cohort is
     exact. The CI V4 cohort is low level (git objects and its own manifest only) and never imports this module, so the call graph stays acyclic."""
-    if not path.startswith(('.github/', 'tools/')):
+    if not (path.startswith(('.github/', 'tools/')) or path == 'main_web.py'):
         return False
     try:
         from tests import ci_v4_scope

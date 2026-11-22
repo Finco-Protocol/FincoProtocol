@@ -5216,11 +5216,15 @@ def reviewed_edits_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     try:
         pins = manifest(root, ref).get("source_blobs", {})
+        N = _next()
+        nxt = N is not None and N.signature_ok(root, ref)
         for path in HANDOFFS:
+            if nxt and path in N.HANDOFFS:
+                continue
             actual = _read(root, path, ref)
             if actual != expected_handoff(root, path) or pins.get(path) != _blob(actual):
                 return False
-        return True
+        return N.reviewed_edits_ok(root, ref) if nxt else True
     except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.CalledProcessError):
         return False
 
@@ -5235,16 +5239,24 @@ def scoped():
         return
     _SCOPE.append({})
     try:
-        yield
+        N = _next()
+        if N is None:
+            yield
+        else:
+            with N.scoped():
+                yield
     finally:
         _SCOPE.pop()
 
 
 def _compute(root, ref, mode):
     """mode False: signature; True: signature + map bytes; "exact": the full closure incl. the changed/untracked checks."""
-    if mode == "exact":
-        return _signature_ok(root, ref, True) and _diff_ok(root, ref)
-    return _signature_ok(root, ref, mode)
+    from contextlib import nullcontext
+    N = _next()
+    with (N.scoped() if N is not None else nullcontext()):
+        if mode == "exact":
+            return _signature_ok(root, ref, True) and _diff_ok(root, ref)
+        return _signature_ok(root, ref, mode)
 
 
 def _verdict(root, ref, closure):
@@ -5262,8 +5274,35 @@ def signature_ok(repo=None, ref=None):
     return _verdict(Path(repo) if repo is not None else ROOT, ref, False)
 
 
+SUCCESSOR = 'tests.m2b_radar_boundary_scope'
+
+
+def _next():
+    from tests.fin_v2_cohorts import COHORT_MODULES
+    if SUCCESSOR not in COHORT_MODULES:
+        return None
+    from tests import m2b_radar_boundary_scope
+    return m2b_radar_boundary_scope
+
+
+def _next_pins(root, ref):
+    N = _next()
+    return dict(N.effective_pins(root, ref)) if N is not None and N.signature_ok(root, ref) else {}
+
+
+def later_handoffs(root, ref):
+    N = _next()
+    if N is None or not N.signature_ok(root, ref):
+        return frozenset()
+    return frozenset(N.HANDOFFS) | (N.later_handoffs(root, ref) if hasattr(N, 'later_handoffs') else frozenset())
+
+
 def map_keys(repo=None, ref=None):
-    return MAP_PIN_KEYS
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        N = _next()
+        more = tuple(k for k in N.map_keys(root, ref) if k not in MAP_PIN_KEYS) if N is not None and N.signature_ok(root, ref) else ()
+        return tuple(MAP_PIN_KEYS) + more
 
 
 @lru_cache(maxsize=512)
@@ -5336,11 +5375,12 @@ def _signature_ok(root, ref, closure=False):
     """Pure comparison of one batched snapshot against immutable BASE-derived expectations: nothing cached from mutable state."""
     try:
         from tests.fin_v2_cohorts import COHORT_MODULES
-        if COHORT_MODULES != BASE_COHORTS + (__name__,):
+        if COHORT_MODULES not in (BASE_COHORTS + (__name__,), BASE_COHORTS + (__name__, SUCCESSOR)):
             return False
         d = manifest(root, ref)
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
-        if pins.get("tests/ci_v4_p0_scope.py") != _MODULE_BLOB:
+        nx = _next_pins(root, ref)
+        if nx.get("tests/ci_v4_p0_scope.py", pins.get("tests/ci_v4_p0_scope.py")) != _MODULE_BLOB:
             return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
@@ -5360,8 +5400,9 @@ def _signature_ok(root, ref, closure=False):
         if any(_base_mode(key, p) != d["base_modes"][p] for p in SUPERSEDED):
             return False
         judged = {p for p in pins if closure or p not in CURRENT_MAPS}
+        cur = {p: nx.get(p, b) for p, b in pins.items()}
         current, modes = _snapshot(root, ref, judged | {MANIFEST} | set(FROZEN))
-        if {p: current.get(p) for p in judged} != {p: pins[p] for p in judged}:
+        if {p: current.get(p) for p in judged} != {p: cur[p] for p in judged}:
             return False
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
@@ -5379,7 +5420,7 @@ def _signature_ok(root, ref, closure=False):
                 return False
         if closure:
             for p in CURRENT_MAPS:
-                if current[p] != _expected_map_blob(key, p, moved):
+                if current[p] != nx.get(p, _expected_map_blob(key, p, moved)):
                     return False
         if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
@@ -5409,7 +5450,7 @@ def _c06_product_paths(root, ref):
 
 def _diff_ok(root, ref):
     try:
-        allowed = OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
+        allowed = closure_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
         if not changed <= allowed:
             return False
@@ -5424,20 +5465,24 @@ def _diff_ok(root, ref):
 
 
 def effective_pins(repo=None, ref=None, *, signature=False):
-    return {**manifest(repo, ref).get("source_blobs", {}), **C06_REVIEWED_PRODUCT_BLOBS}
+    root = Path(repo) if repo is not None else ROOT
+    with scoped():
+        pins = {**manifest(root, ref).get("source_blobs", {}), **C06_REVIEWED_PRODUCT_BLOBS}
+        pins.update(_next_pins(root, ref))
+        return pins
 
 
 def closure_paths(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
-    if not signature_ok(root, ref):
-        return frozenset()
-    return OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
+    with scoped():
+        if not signature_ok(root, ref):
+            return frozenset()
+        N = _next()
+        return OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref) | (N.closure_paths(root, ref) if N is not None else frozenset())
 
 
 def allowed_path(path, repo=None, ref=None):
-    if path in C06_REVIEWED_PRODUCT_BLOBS:
-        return path in closure_paths(repo, ref)
-    return path in OWNED_PATHS | {MANIFEST} and signature_ok(repo, ref)
+    return path in closure_paths(repo, ref)
 
 
 def ci_owns(path, repo=None, ref=None):
@@ -5446,11 +5491,13 @@ def ci_owns(path, repo=None, ref=None):
 
 
 def supersedes(path, value, repo=None, ref=None):
-    if path not in SUPERSEDED:
-        return False
-    # The signature decides a supersession; the composite separately requires every cohort's FULL exactness (map bytes, changed set, untracked
-    # files), so a signature-only verdict never makes the tree valid.
-    return signature_ok(repo, ref) and manifest(repo, ref).get("source_blobs", {}).get(path) == value
+    with scoped():
+        N = _next()
+        if N is not None and N.signature_ok(repo, ref) and N.supersedes(path, value, repo, ref):
+            return True
+        if path not in SUPERSEDED:
+            return False
+        return signature_ok(repo, ref) and effective_pins(repo, ref).get(path) == value
 
 
 def ux_pr2a_artifact_test_pin(path, value, repo=None, ref=None):
@@ -5479,6 +5526,9 @@ def o1_historical_test_pin(sibling, path, value, repo=None, ref=None):
 def nontrust_scope_authorized(changed, repo=None):
     root = Path(repo) if repo is not None else ROOT
     try:
+        N = _next()
+        if N is not None and N.signature_ok(root) and N.nontrust_scope_authorized(changed, root):
+            return True
         if _git(root, "merge-base", "origin/main", "HEAD").decode().strip() != BASE:
             return False
         actual = set(_git(root, "diff", "--name-only", BASE).decode().splitlines())
