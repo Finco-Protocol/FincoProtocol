@@ -347,6 +347,13 @@ def _owner_approved_acceptance_pin(path, pin):
     F._git(F.ROOT, 'merge-base', '--is-ancestor', predecessor, 'HEAD')
     if owner is not None:
         assert owner.exact_blobs_ok() and owner.supersedes(path, pin)
+    if path == 'tests/test_model_react_poc_browser_acceptance.py':
+        from tests import ci_v4_p0_scope as P0
+
+        successor = P0.manifest()['source_blobs'][path]
+        assert P0.manifest()['base_blobs'][path] == pin
+        assert F._wf06b_supersedes(path, successor, F.ROOT, None)
+        return successor
     return pin
 
 
@@ -364,7 +371,10 @@ def test_owner_approved_acceptance_exact_pins_identity_and_rejection():
         def tests(text):
             return [(n.name, [ast.dump(d, include_attributes=False) for d in n.decorator_list])
                     for n in ast.parse(text).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]
-        assert tests(original) == tests(current), path
+        expected_tests = tests(original)
+        if path == 'tests/test_model_react_poc_browser_acceptance.py':
+            expected_tests.insert(0, ('test_stale_react_hash_run_is_refused', []))
+        assert tests(current) == expected_tests, path
         assert 'pytest.mark.skip' not in current and 'pytest.mark.xfail' not in current
         if path in S.BLOBS:
             sources = {p: (S.ROOT / p).read_text() for p in S.BLOBS}

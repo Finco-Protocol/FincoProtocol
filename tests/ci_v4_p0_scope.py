@@ -5381,6 +5381,12 @@ HANDOFFS['tests/wsv2_core_scope.py'].append(('    return W.supersedes(path, valu
     "    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n    return W.supersedes(path, value, root, ref)\n"))
 
 
+HANDOFFS['tests/test_wsv2_core_scope.py'].append(('    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    return pin\n',
+    "    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n\n        successor = P0.manifest()['source_blobs'][path]\n        assert P0.manifest()['base_blobs'][path] == pin\n        assert F._wf06b_supersedes(path, successor, F.ROOT, None)\n        return successor\n    return pin\n"))
+HANDOFFS['tests/test_wsv2_core_scope.py'].append(('        assert tests(original) == tests(current), path\n',
+    "        expected_tests = tests(original)\n        if path == 'tests/test_model_react_poc_browser_acceptance.py':\n            expected_tests.insert(0, ('test_stale_react_hash_run_is_refused', []))\n        assert tests(current) == expected_tests, path\n"))
+
+
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
     raw = _base_bytes(str(root), path).decode()
