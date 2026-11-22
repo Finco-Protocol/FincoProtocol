@@ -114,39 +114,39 @@ def test_internal_auth_introspect_fail_closed_and_valid_sessions(monkeypatch) ->
         == 422
     )
 
-    # 5. Missing / tampered session token -> authenticated=False
+    # 5. Missing / tampered session cookie -> authenticated=False
     anon = client.post(
         "/internal/v1/auth/introspect",
         headers={"X-Finco-Internal-Token": secret_token},
-        json={"audience": "finco-radar-v1", "session_token": "tampered.invalid.token"},
+        json={"audience": "radar", "session_cookie": "tampered.invalid.token"},
     )
     assert anon.status_code == 200
     assert anon.json()["authenticated"] is False
     assert anon.json()["session_kind"] == "anonymous"
-    assert anon.json()["schema_version"] == SCHEMA_VERSION
+    assert anon.json()["schema"] == SCHEMA_VERSION
 
-    # 6. Valid admin session token -> authenticated=True, minimum claims, no token echo
+    # 6. Valid user session cookie -> authenticated=True, minimum claims, no token echo
     admin_tok = create_session_token(user_id="42", username="owner")
     ok_admin = client.post(
         "/internal/v1/auth/introspect",
         headers={"X-Finco-Internal-Token": secret_token},
-        json={"audience": "finco-radar-v1", "session_token": admin_tok},
+        json={"audience": "radar", "session_cookie": admin_tok},
     )
     assert ok_admin.status_code == 200
     body = ok_admin.json()
     assert body["authenticated"] is True
-    assert body["session_kind"] == "admin"
+    assert body["session_kind"] == "user"
     assert body["user_id"] == "42"
     assert body["tenant_id"] == "42"
     assert "radar:read" in body["entitlements"]
     assert admin_tok not in ok_admin.text
 
-    # 7. Valid demo session token -> authenticated=True, scoped demo entitlement
+    # 7. Valid demo session cookie -> authenticated=True, scoped demo entitlement
     demo_tok = create_demo_session_token("demo-u1")
     ok_demo = client.post(
         "/internal/v1/auth/introspect",
         headers={"X-Finco-Internal-Token": secret_token},
-        json={"audience": "finco-radar-v1", "demo_session_token": demo_tok},
+        json={"audience": "radar", "demo_cookie": demo_tok},
     )
     assert ok_demo.status_code == 200
     dbody = ok_demo.json()
@@ -154,3 +154,4 @@ def test_internal_auth_introspect_fail_closed_and_valid_sessions(monkeypatch) ->
     assert dbody["session_kind"] == "demo"
     assert dbody["entitlements"] == ["radar:read:public"]
     assert demo_tok not in ok_demo.text
+
