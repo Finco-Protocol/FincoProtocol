@@ -77,6 +77,7 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         'app/v2/capex_router.py', 'app/v2/opex_router.py',
         'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
         'tests/test_cost_batch_save_browser_v1.py', 'tests/test_cost_editing_ux_v2_browser.py',
+        'tests/test_rcux2_progress_scope_browser.py',
         'tests/test_cost_grid_editing_browser_v1.py', 'tests/test_jev_panel_browser.py',
         'tests/test_m3_two_driver_sensitivity_browser.py', 'tests/test_model_trust_pack_browser.py',
         'tests/test_p3_browser_acceptance.py', 'tests/test_radar_r3_liquidity.py', 'tests/test_ui_protocol_shell.py',

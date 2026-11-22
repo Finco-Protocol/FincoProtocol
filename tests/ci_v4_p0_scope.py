@@ -44,6 +44,7 @@ R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
 # Correction E admits the exact changes audited from d605fac5. The separate
 # reviewed digests also reject a paired source and manifest edit.
 BROWSER_REPAIR_BLOBS = {
+    'tests/test_rcux2_progress_scope_browser.py': 'c0e28cc306fc4f4746ab5e7d5c5ece1f07d6c2d5',
     'static/js/model_view_refresh.js': 'e5172283ec88eca4e5d35a7f6aedd43cb4263bdc',
     'static/js/cost_staging.js': 'c3edddadbd46aa3d4ffc913a0cf22da244ead3d8',
     'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
@@ -5520,7 +5521,7 @@ def _signature_ok(root, ref, closure=False):
             return False
         if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
             return False
-        if pins.get('tests/test_ci_v4_p0_scope.py') != 'bada3af62387a1c382b438b6a5993d97097a0174':
+        if pins.get('tests/test_ci_v4_p0_scope.py') != '82e3ab130cc2b5010351edf44fcfa942a432b4f4':
             return False
         if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
             return False
