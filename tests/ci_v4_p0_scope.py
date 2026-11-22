@@ -49,7 +49,7 @@ BROWSER_REPAIR_BLOBS = {
     'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
     'app/v2/opex_router.py': '5f346c0ca97a1c4cafab30bd3f6ea4391e0b0861',
     'tests/test_cost_batch_save_browser_v1.py': '47eb26d4a8afe4c8e6dc88aa22b0abaaf0c22de7',
-    'tests/test_cost_editing_ux_v2_browser.py': '6715d3820a9a755fb066916d03159993a1569ec7',
+    'tests/test_cost_editing_ux_v2_browser.py': 'f6dac1bdb95eaf7446031b4b3de3d337b6b287cc',
     'tests/test_cost_grid_editing_browser_v1.py': 'd6dc005e9e0c6d95c7c35cddf6b5dd6fbd103913',
     'tests/test_jev_panel_browser.py': '8c7e3f3c3a726a00a8d5de88c6ea5ad3b0bce1e5',
     'tests/test_m3_two_driver_sensitivity_browser.py': 'ad206e41a530a7d2e351db6b66305e1e2c0f8945',

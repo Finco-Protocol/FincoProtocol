@@ -58,7 +58,10 @@ class UxSession(Session):
 
     def switch(self, kind):
         self.page.evaluate(f"document.getElementById('tab-{kind}').click()")
-        self.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
+        # The batch Save can invalidate the destination sheet. Open groups on the refreshed DOM.
+        self.page.wait_for_selector(
+            f'#v2-sheet-{kind}[data-model-view-state="loaded"] form[data-cost-row]', state="attached"
+        )
         self.open_groups(kind)
         self.kind = kind
 
