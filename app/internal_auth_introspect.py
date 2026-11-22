@@ -1,28 +1,32 @@
-"""Versioned fail-closed internal auth/entitlement introspection contract (M2-B/B3).
+"""Versioned fail-closed internal auth & entitlement introspection contract (M2-B/Correction A).
 
 Allows the standalone Finco-Protocol/Radar service to verify opaque session cookies
-(`finco_session` and `finco_demo`, matching app/auth.py) against the authoritative
-FincoProtocol Model host over a private service-to-service channel WITHOUT copying
-FINCO_SECRET_KEY or directly reading Model databases.
+(`finco_session` and `finco_demo`, matching app/auth.py) AND obtain canonical server-side
+per-resource entitlement decisions from `app.protocol.entitlement_evaluator` over a private
+service-to-service channel WITHOUT copying FINCO_SECRET_KEY or directly reading Model DBs.
 
 Security properties:
 - Disabled (HTTP 503) unless FINCO_INTERNAL_AUTH_INTROSPECT_TOKEN is configured (>= 16 chars).
 - Requires exact X-Finco-Internal-Token match (constant-time hmac.compare_digest).
 - Strictly validates audience against ALLOWED_AUDIENCES (fail-closed HTTP 403).
-- Returns minimum typed claims only (schema, audience, authenticated, session_kind,
-  user_id, tenant_id, entitlements, wallet_verified, wallet_address).
-- Never echoes raw cookies, signing keys, wallet secrets, or client financial data.
+- Evaluates canonical per-resource decisions via `app.protocol.entitlement_evaluator` so Radar
+  never synthesizes INACTIVE/ALLOW from local fallback flags.
+- Returns minimum typed claims only; never echoes raw cookies, signing keys, or client data.
 """
 from __future__ import annotations
 
 import hmac
 import os
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.auth import COOKIE_NAME, DEMO_COOKIE_NAME, decode_demo_session_token, decode_session_token
+from app.auth import decode_demo_session_token, decode_session_token
+from app.protocol.entitlement_evaluator import (
+    evaluate_all_resources,
+    wallet_context_for_session,
+)
 
 
 SCHEMA_VERSION = "finco.internal.auth.introspect.v1"
@@ -40,6 +44,11 @@ class IntrospectRequest(BaseModel):
     demo_cookie: Optional[str] = Field(default=None, max_length=4096)
 
 
+class EntitlementDecisionOut(BaseModel):
+    decision: Literal["PUBLIC", "ALLOW", "INACTIVE", "DENY"]
+    reason: str
+
+
 class IntrospectResponse(BaseModel):
     schema_: Literal["finco.internal.auth.introspect.v1"] = Field(default=SCHEMA_VERSION, alias="schema")
     authenticated: bool
@@ -48,6 +57,7 @@ class IntrospectResponse(BaseModel):
     user_id: Optional[str] = None
     tenant_id: Optional[str] = None
     entitlements: list[str] = Field(default_factory=list)
+    entitlement_decisions: dict[str, EntitlementDecisionOut] = Field(default_factory=dict)
     wallet_verified: bool = False
     wallet_address: Optional[str] = None
 
@@ -58,8 +68,23 @@ def _configured_internal_token() -> str:
     return (os.environ.get(INTERNAL_TOKEN_ENV) or "").strip()
 
 
+async def _canonical_entitlement_decisions(session_obj: Any) -> tuple[dict[str, EntitlementDecisionOut], bool, Optional[str]]:
+    wallet_ctx = wallet_context_for_session(session_obj)
+    raw_decisions = await evaluate_all_resources(wallet_ctx)
+    out: dict[str, EntitlementDecisionOut] = {}
+    for res_key, dec in raw_decisions.items():
+        dec_str = dec.decision.value if hasattr(dec.decision, "value") else str(dec.decision)
+        out[res_key] = EntitlementDecisionOut(
+            decision=dec_str,
+            reason=str(getattr(dec, "reason_code", "") or ""),
+        )
+    w_addr = getattr(wallet_ctx, "wallet_address", None)
+    w_ver = bool(getattr(wallet_ctx, "verified", False) and w_addr)
+    return out, w_ver, w_addr
+
+
 @router.post("/introspect", response_model=IntrospectResponse, response_model_by_alias=True)
-def introspect_session(
+async def introspect_session(
     body: IntrospectRequest,
     x_finco_internal_token: Optional[str] = Header(default=None, alias="X-Finco-Internal-Token"),
 ) -> IntrospectResponse:
@@ -74,6 +99,7 @@ def introspect_session(
     if body.session_cookie:
         sess = decode_session_token(body.session_cookie)
         if sess is not None:
+            decisions, w_ver, w_addr = await _canonical_entitlement_decisions(sess)
             return IntrospectResponse(
                 authenticated=True,
                 audience=body.audience,
@@ -81,13 +107,15 @@ def introspect_session(
                 user_id=str(sess.user_id),
                 tenant_id=str(sess.user_id),
                 entitlements=["radar:read", "crypto:read", "yield:read"],
-                wallet_verified=False,
-                wallet_address=None,
+                entitlement_decisions=decisions,
+                wallet_verified=w_ver,
+                wallet_address=w_addr,
             )
 
     if body.demo_cookie:
         demo = decode_demo_session_token(body.demo_cookie)
         if demo is not None:
+            decisions, w_ver, w_addr = await _canonical_entitlement_decisions(demo)
             return IntrospectResponse(
                 authenticated=True,
                 audience=body.audience,
@@ -95,10 +123,12 @@ def introspect_session(
                 user_id=str(demo.user_id),
                 tenant_id=str(demo.user_id),
                 entitlements=["radar:read:public"],
-                wallet_verified=False,
-                wallet_address=None,
+                entitlement_decisions=decisions,
+                wallet_verified=w_ver,
+                wallet_address=w_addr,
             )
 
+    decisions, _, _ = await _canonical_entitlement_decisions(None)
     return IntrospectResponse(
         authenticated=False,
         audience=body.audience,
@@ -106,6 +136,7 @@ def introspect_session(
         user_id=None,
         tenant_id=None,
         entitlements=[],
+        entitlement_decisions=decisions,
         wallet_verified=False,
         wallet_address=None,
     )
