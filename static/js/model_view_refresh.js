@@ -25,11 +25,14 @@
     return ticket.generation === now.generation && ticket.project === now.project && ticket.hash === now.hash;
   }
   function visible(view) { var panel=document.getElementById(view.panel); return panel && !panel.hidden; }
-  function syncSetupControls(view, node) {
-    if(view.name!=='project_setup')return;
+  function syncRefreshControls(view, node) {
+    var controls=node;
+    if(view.name==='capex' || view.name==='opex')controls=node.querySelector('form.v2-contingency-form');
+    else if(view.name!=='project_setup')return;
+    if(!controls)return;
     var locked=node.dataset.modelViewState!=='loaded';
-    // Never accept an edit into the old scalar form while its authorized replacement is pending.
-    node.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
+    // Keep scalar editors locked until the authorized replacement arrives. Cost-grid drafts have their own lifecycle.
+    controls.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
       if(locked && !control.disabled){
         control.dataset.modelViewDisabled='true';control.disabled=true;
       }else if(!locked && control.dataset.modelViewDisabled==='true'){
@@ -55,7 +58,7 @@
       var node=document.getElementById(view.id);if(!node)return;
       if(view.name==='run_history' && !node.querySelector('[data-testid="run-history-table"], [data-testid="run-history-empty"]'))return;
       view.active=null;view.node=node;node.dataset.modelViewState='pending';
-      syncSetupControls(view,node);
+      syncRefreshControls(view,node);
       warning(view,node,view.dirty ? 'This sheet changed while it had unsaved edits. Your draft is kept; reload before saving.' :
         'This view needs refreshing. Previous results are not current.');
     });
@@ -86,7 +89,7 @@
       view.node=node;view.dirty=false;view.otherDirty=false;
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
-    syncSetupControls(view,node);
+    syncRefreshControls(view,node);
     if(!visible(view) || view.dirty || view.active || writes || pendingWrites.size ||
        node.dataset.modelViewState!=='pending')return;
     var ticket=capture();view.active=ticket;node.setAttribute('aria-busy','true');
@@ -100,11 +103,11 @@
       fresh.removeAttribute('aria-busy');
       if(ok && current(ticket)){
         view.node=fresh;view.dirty=false;fresh.dataset.modelViewState='loaded';
-        syncSetupControls(view,fresh);
+        syncRefreshControls(view,fresh);
         document.dispatchEvent(new CustomEvent('model:view-loaded',{detail:{sheet:view.name}}));
       }else if(current(ticket)){
         fresh.dataset.modelViewState='error';warning(view,fresh,'This view could not refresh. Try again before editing or using results.');
-        syncSetupControls(view,fresh);
+        syncRefreshControls(view,fresh);
       }
     });
   }
@@ -166,18 +169,19 @@
       // not the whole sheet. Keep their remaining drafts and keyboard focus.
       // A rejected contract submission leaves the server identity unchanged and the editor's draft in place.
       // Keep that editor loaded so the scheduled presentation read cannot overwrite the draft or block a correction.
-      var refusedContracts=path==='/v2/workbook/revenue/contracts' && detail.xhr.status===422 && current(writeTicket);
+      var refusedContracts=sourceView && sourceView.name==='revenue' && writeTicket.hash &&
+        path==='/v2/workbook/revenue/contracts' && detail.xhr.status===422 && current(writeTicket);
       if(sourceView && sourceView.editable && (detail.xhr.status===200 || refusedContracts) && generation===writeTicket.generation){
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
-          if(refusedContracts && sourceView.name==='revenue'){
-            sourceView.dirty=!!node.querySelector('form[data-revenue-editor][data-dirty="true"]');
+          if(refusedContracts){
+            sourceView.dirty=sourceView.dirty || !!node.querySelector('form[data-revenue-editor][data-dirty="true"]');
           }
           // The Investor agreement is one form saved as a whole: after a successful save its edits are persisted, not an unsaved draft that
           // would keep the sheet permanently pending after the next Run. Row writers (cost grids) keep their remaining drafts untouched.
           if(sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
           node.dataset.modelViewState='loaded';
-          syncSetupControls(sourceView,node);
+          syncRefreshControls(sourceView,node);
           var notice=node.querySelector('[data-model-view-notice]');if(notice)notice.remove();
         }
       }

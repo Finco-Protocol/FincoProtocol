@@ -44,7 +44,7 @@ R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
 # Correction E admits the exact changes audited from d605fac5. The separate
 # reviewed digests also reject a paired source and manifest edit.
 BROWSER_REPAIR_BLOBS = {
-    'static/js/model_view_refresh.js': 'ab7605bfc4bc165990fff70ff11bfecf22d79d9d',
+    'static/js/model_view_refresh.js': 'e5172283ec88eca4e5d35a7f6aedd43cb4263bdc',
     'static/js/cost_staging.js': 'c3edddadbd46aa3d4ffc913a0cf22da244ead3d8',
     'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
     'app/v2/opex_router.py': '5f346c0ca97a1c4cafab30bd3f6ea4391e0b0861',
