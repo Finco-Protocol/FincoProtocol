@@ -174,6 +174,10 @@ def exact_blobs_ok(repo=None, ref=None):
 
 
 def _browser_registration_follows(path, value, root, ref):
+    if path == 'tests/test_rcux_governance.py':
+        from tests import ci_v4_p0_scope as P0
+        return (P0.supersedes(path, value, root, ref)
+                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))
     if path == 'tests/model_mutation_security_successor.py':
         from tests import ci_v4_p0_scope as P0
         return P0.mutation_inventory_handoff(value, manifest(root, ref)['source_blobs'].get(path), root, ref)
@@ -263,6 +267,8 @@ def supersedes(path, value, repo=None, ref=None):
     if path == 'tests/model_mutation_security_successor.py' and pin != value:
         from tests import ci_v4_p0_scope as P0
         return P0.mutation_inventory_handoff(value, pin, repo, ref) and exact_blobs_ok(repo, ref)
+    if path == 'tests/test_rcux_governance.py' and pin != value:
+        return _browser_registration_follows(path, value, repo, ref) and exact_blobs_ok(repo, ref)
     return pin is not None and pin == value and exact_blobs_ok(repo, ref)
 
 

@@ -143,6 +143,7 @@ REPLACED |= BROWSER_REPAIR_BLOBS.keys() | {PR_CHROMIUM_WORKFLOW}
 REPLACED |= CORRECTION_F_BLOBS.keys()
 CI_PATHS |= {PR_CHROMIUM_WORKFLOW}
 HANDOFF_PATHS |= {'tests/test_ux_pr2c_scope.py'}
+HANDOFF_PATHS |= {'tests/test_rcux_governance.py'}
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
@@ -5383,8 +5384,24 @@ HANDOFFS['tests/wsv2_core_scope.py'].append(('    return W.supersedes(path, valu
 
 HANDOFFS['tests/test_wsv2_core_scope.py'].append(('    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    return pin\n',
     "    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n\n        successor = P0.manifest()['source_blobs'][path]\n        assert P0.manifest()['base_blobs'][path] == pin\n        assert F._wf06b_supersedes(path, successor, F.ROOT, None)\n        return successor\n    return pin\n"))
+HANDOFFS['tests/test_rcux_governance.py'] = [('    golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]\n    assert golden == [], golden\n',
+    '    from tests import ci_v4_p0_scope as P0\n\n    golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]\n    # P0 pins the reviewed browser harness for Golden Flow A.\n    golden = [\n        p for p in golden\n        if p != "tests/test_model_golden_flows_browser.py"\n        or not P0.matches(p, (S.ROOT / p).read_bytes())\n    ]\n    assert golden == [], golden\n')]
+
+
+HANDOFFS['tests/post413_o1_scope.py'].append(("    if path in ('app/v2/capex_router.py', 'app/v2/opex_router.py'):\n",
+    "    if path in ('app/v2/capex_router.py', 'app/v2/opex_router.py', 'tests/test_rcux_governance.py'):\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('def _browser_registration_follows(path, value, root, ref):\n',
+    "def _browser_registration_follows(path, value, root, ref):\n    if path == 'tests/test_rcux_governance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n"))
+
+
 HANDOFFS['tests/test_wsv2_core_scope.py'].append(('        assert tests(original) == tests(current), path\n',
     "        expected_tests = tests(original)\n        if path == 'tests/test_model_react_poc_browser_acceptance.py':\n            expected_tests.insert(0, ('test_stale_react_hash_run_is_refused', []))\n        assert tests(current) == expected_tests, path\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    "    if path == 'tests/test_rcux_governance.py' and pin != value:\n        return _browser_registration_follows(path, value, repo, ref) and exact_blobs_ok(repo, ref)\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
 
 
 def expected_handoff(root, path):
@@ -5678,8 +5695,12 @@ def r1_security_test_handoff(path, value, repo=None, ref=None):
 
 
 def o1_historical_test_pin(sibling, path, value, repo=None, ref=None):
-    """Keep the reviewed O1 audit blob in its historical manifest after the literal source handoff."""
-    if (sibling, path) != ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'):
+    """Keep reviewed audit blobs in their historical manifests after a literal source handoff."""
+    if (sibling, path) not in (
+        ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'),
+        ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_rcux_governance.py'),
+        ('docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json', 'tests/test_rcux_governance.py'),
+    ):
         return False
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):

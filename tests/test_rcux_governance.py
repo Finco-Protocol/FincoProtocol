@@ -301,7 +301,15 @@ def test_the_rcux_changes_touch_no_protected_financial_security_or_ci_path():
     assert not O1.matches("app/v2/router.py", b"x = 1\n")                                                                 # an owned path at foreign bytes
     for stranger in (".github/workflows/public_safety_and_smoke.yml", ".github/workflows/ci_v4_unlisted.yml", "tools/ci_v3_production.py"):
         assert not U1._later_ci_owns(stranger, S.ROOT, None), stranger
+    from tests import ci_v4_p0_scope as P0
+
     golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]
+    # P0 pins the reviewed browser harness for Golden Flow A.
+    golden = [
+        p for p in golden
+        if p != "tests/test_model_golden_flows_browser.py"
+        or not P0.matches(p, (S.ROOT / p).read_bytes())
+    ]
     assert golden == [], golden
 
 
