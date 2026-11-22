@@ -87,7 +87,7 @@ def profile(config):
 
 # ── pytest plugin ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-_STATE = {"session": None, "collected": None, "kept": None, "nodes": {}, "profile": None, "assign": None}
+_STATE = {"session": None, "collected": None, "kept": None, "nodes": {}, "profile": None, "assign": None, "module_skipped": {}}
 
 
 def _per_module(nodeids):
@@ -99,10 +99,45 @@ def _per_module(nodeids):
 
 def pytest_sessionstart(session):
     _STATE["session"] = session
+    _STATE["module_skipped"] = {}
 
 
 def _active():
     return any(os.environ.get(k) for k in (ENV_COLLECT, ENV_ASSIGN, ENV_EVIDENCE))
+
+
+def pytest_collectreport(report):
+    """Record genuine pytest module-level collection skips (e.g. pytest.importorskip('playwright')).
+
+    Matches tools/ci_v4_aggregate.py::_collection_skip_module: only a skipped (never failed) top-level
+    module report with a 3-tuple (abs_path, lineno>=1, 'Skipped: <non-empty>') whose path ends with
+    '/' + module is accepted. Split modules, empty 0-test modules, and collection errors are never
+    admitted; the gate aggregator separately enforces no_skip_modules and records every such module
+    as SKIPPED (never PASS).
+    """
+    if not _active():
+        return
+    if not getattr(report, "skipped", False) or getattr(report, "failed", False):
+        return
+    nodeid = getattr(report, "nodeid", "") or ""
+    if "::" in nodeid or not nodeid.endswith(".py"):
+        return
+    lr = getattr(report, "longrepr", None)
+    if (
+        not isinstance(lr, tuple)
+        or len(lr) != 3
+        or not isinstance(lr[0], str)
+        or type(lr[1]) is not int
+        or lr[1] < 1
+        or not isinstance(lr[2], str)
+        or not lr[2].startswith("Skipped: ")
+        or not lr[2][len("Skipped: "):].strip()
+    ):
+        return
+    src = lr[0].replace("\\", "/")
+    if not src.startswith("/") or ".." in src.split("/") or not src.endswith("/" + nodeid):
+        return
+    _STATE["module_skipped"][nodeid] = lr[2][len("Skipped: "):].strip()
 
 
 def pytest_collection_modifyitems(session, config, items):
@@ -138,7 +173,7 @@ def pytest_collection_modifyitems(session, config, items):
             raise pytest.UsageError("CI V4 node assignment: assigned nodes not collected: %s" % missing[:5])
         keep_ids |= set(keep)
     for module in whole:
-        if not collected.get(module):
+        if not collected.get(module) and module not in _STATE["module_skipped"]:
             raise pytest.UsageError("CI V4 node assignment: whole module %s collected no node" % module)
     kept = [it for it in items if module_of(it.nodeid) in whole or it.nodeid in keep_ids]
     dropped = [it for it in items if not (module_of(it.nodeid) in whole or it.nodeid in keep_ids)]
@@ -185,6 +220,7 @@ def pytest_unconfigure(config):
             "binding": {k: assign.get(k) for k in ("tested_sha", "tested_tree", "plan_digest", "shard")},
             "profile_digest": prof_digest, "profile": prof,
             "collected": {m: {"count": v["count"], "digest": v["digest"]} for m, v in inventory.items()},
+            "collection_skipped": dict(sorted(_STATE["module_skipped"].items())),
             "kept": _STATE["kept"], "nodes": nodes}, indent=1, sort_keys=True))
 
 

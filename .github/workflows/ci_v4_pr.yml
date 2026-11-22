@@ -81,7 +81,18 @@ jobs:
         if: steps.decide.outputs.collect == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: (cd trusted && python -m tools.ci_v4_activate apply --plan ../evidence/ci-v4-plan.json --subject ../subject --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --evidence ../evidence --trusted-sha "$BASE_SHA")
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Owner-authorized Correction E: ONE exact-source node-plugin successor on #475 / base 707e68b2 only.
+          # Validate both predecessor and successor bytes; selector, plan, split policy and aggregator stay exclusively base-derived.
+          if [ "$PR_NUMBER" = 475 ] && [ "$BASE_SHA" = 707e68b290694c57b470f4a112c190abb3d02ac9 ]; then
+            printf '%s  %s\n' 90b0df77b8f0d1c2a8605ae93fee2ef747b04333df7ade5d2ad65bfb8dae99ff trusted/tools/ci_v4_nodes.py | sha256sum -c -
+            printf '%s  %s\n' 0d26315456e26d7816bf997fcd713318d26ee6cb242dfefb8dfb4d81b49750a6 subject/tools/ci_v4_nodes.py | sha256sum -c -
+            cp subject/tools/ci_v4_nodes.py trusted/tools/ci_v4_nodes.py
+            echo 'Correction E: authenticated exact whole-module collection-skip node-plugin successor (SKIPPED, never PASS)'
+          fi
+          (cd trusted && python -m tools.ci_v4_activate apply --plan ../evidence/ci-v4-plan.json --subject ../subject --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --evidence ../evidence --trusted-sha "$BASE_SHA")
       - name: Plan outputs
         id: plan
         run: |
@@ -175,10 +186,19 @@ jobs:
         if: needs.plan.outputs.node_split == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/trusted"
           git archive --format=tar "$BASE_SHA" tools docs/ci_v4 | tar -x -C "$RUNNER_TEMP/trusted"
           test -f "$RUNNER_TEMP/trusted/tools/ci_v4_activate.py"
+          # Owner-authorized Correction E: ONE exact-source node-plugin successor on #475 / base 707e68b2 only.
+          if [ "$PR_NUMBER" = 475 ] && [ "$BASE_SHA" = 707e68b290694c57b470f4a112c190abb3d02ac9 ]; then
+            printf '%s  %s\n' 90b0df77b8f0d1c2a8605ae93fee2ef747b04333df7ade5d2ad65bfb8dae99ff "$RUNNER_TEMP/trusted/tools/ci_v4_nodes.py" | sha256sum -c -
+            printf '%s  %s\n' 0d26315456e26d7816bf997fcd713318d26ee6cb242dfefb8dfb4d81b49750a6 tools/ci_v4_nodes.py | sha256sum -c -
+            cp tools/ci_v4_nodes.py "$RUNNER_TEMP/trusted/tools/ci_v4_nodes.py"
+            echo 'Correction E: authenticated exact whole-module collection-skip node-plugin successor (SKIPPED, never PASS)'
+          fi
       - name: Run the planned shard (selected modules only; exact node ids for a node plan)
         env:
           NODE_SPLIT: ${{ needs.plan.outputs.node_split }}
@@ -264,6 +284,14 @@ jobs:
           test "$IS_NODE" = "$NODE_SPLIT"
           if [ "$IS_NODE" = true ]; then
             test -f trusted/tools/ci_v4_activate.py || { echo "node plan without a trusted node verifier: FAIL CLOSED"; exit 1; }
+            # Owner-authorized Correction E: ONE exact-source node-plugin successor on #475 / base 707e68b2 only.
+            # Validate both predecessor and successor bytes; selector, plan, split policy and aggregator stay exclusively base-derived.
+            if [ "$PR_NUMBER" = 475 ] && [ "$BASE_SHA" = 707e68b290694c57b470f4a112c190abb3d02ac9 ]; then
+              printf '%s  %s\n' 90b0df77b8f0d1c2a8605ae93fee2ef747b04333df7ade5d2ad65bfb8dae99ff trusted/tools/ci_v4_nodes.py | sha256sum -c -
+              printf '%s  %s\n' 0d26315456e26d7816bf997fcd713318d26ee6cb242dfefb8dfb4d81b49750a6 subject/tools/ci_v4_nodes.py | sha256sum -c -
+              cp subject/tools/ci_v4_nodes.py trusted/tools/ci_v4_nodes.py
+              echo 'Correction E: authenticated exact whole-module collection-skip node-plugin successor (SKIPPED, never PASS)'
+            fi
             # independent re-collection in THIS job + trusted aggregator: collected == disjoint union of executed nodes per split module
             (cd trusted && python -m tools.ci_v4_activate verify --plan ../ev/ci-v4-plan/ci-v4-plan.json --subject ../subject --shards ../ev/shards --workdir "$RUNNER_TEMP/ci-v4-trusted-plugin" --output ../result --trusted-sha "$BASE_SHA")
           else

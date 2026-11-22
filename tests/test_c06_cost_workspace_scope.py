@@ -43,7 +43,11 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     for path in F.SUPERSEDED:assert data['base_blobs'][path]==git(ROOT,'rev-parse',F.BASE+':'+path)
     N=F._next();N2=N._next() if N is not None and N.signature_ok() else None;N3=N2._next() if N2 is not None and N2.signature_ok() else None;N4=N3._next() if N3 is not None and N3.signature_ok() else None;N5=N4._next() if N4 is not None and N4.signature_ok() else None;N6=N5._next() if N5 is not None and N5.signature_ok() else None;N7=N6._next() if N6 is not None and N6.signature_ok() else None
     for path in F.HANDOFFS:
-        from tests import ci_v4_p0_scope as P0
+        from tests import ci_v4_p0_scope as P0, m2b_radar_boundary_scope as M2B
+        if M2B.signature_ok() and path in M2B.HANDOFFS:
+            assert (ROOT / path).read_bytes() == M2B.expected_handoff(ROOT, path)
+            assert F._blob((ROOT / path).read_bytes()) == F.effective_pins()[path]
+            continue
         if P0.signature_ok() and path in P0.HANDOFFS:
             assert (ROOT / path).read_bytes() == P0.expected_handoff(ROOT, path)
             assert F._blob((ROOT / path).read_bytes()) == F.effective_pins()[path]
@@ -54,6 +58,11 @@ def test_literal_closed_paths_and_immutable_predecessor_blobs():
     from tests import ci_v5_gate_scope as GT
     from tests import ci_v4_p0_scope as _P0
     for path in F.FROZEN:
+        from tests import m2b_radar_boundary_scope as _M2B
+        if path == 'tests/ci_v4_scope.py' and _M2B.signature_ok() and path in _M2B.HANDOFFS:
+            assert (ROOT / path).read_bytes() == _M2B.expected_handoff(ROOT, path)
+            assert F._blob((ROOT / path).read_bytes()) == _M2B.manifest()['source_blobs'][path]
+            continue
         if path == 'tests/ci_v4_scope.py' and _P0.signature_ok() and path in _P0.HANDOFFS:      # P1: the P0 terminal further substitutes exactly this CI module (literal, pin-exact)
             assert (ROOT / path).read_bytes() == _P0.expected_handoff(ROOT, path)
             assert F._blob((ROOT / path).read_bytes()) == _P0.manifest()['source_blobs'][path]
@@ -77,8 +86,9 @@ def test_current_maps_change_only_their_existing_registry_and_js_keys():
             from tests import ci_v4_p0_scope as P0
             keys = P0.MAP_EXTRA_KEYS.get(path, ())
             if keys:
-                approved = P0.expected_map(ROOT, path)
-                assert P0.exact_blobs_ok() and (ROOT / path).read_bytes() == approved
+                from tests import m2b_radar_boundary_scope as M2B
+                approved = M2B.expected_map(ROOT, path) if M2B.signature_ok() else P0.expected_map(ROOT, path)
+                assert (M2B.exact_blobs_ok() if M2B.signature_ok() else P0.exact_blobs_ok()) and (ROOT / path).read_bytes() == approved
                 approved_pins = json.loads(approved)['source_blobs']
                 for key in keys:
                     assert key in expected['source_blobs']

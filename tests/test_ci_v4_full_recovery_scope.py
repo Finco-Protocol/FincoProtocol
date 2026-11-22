@@ -124,7 +124,7 @@ def test_no_v5_authority_no_epoch_promotion_and_every_v4_control_file_stays_byte
     assert SHADOW not in T.OWNED_PATHS and SHADOW not in T.FROZEN      # the shadow workflow is unchanged by this PR
     assert not (T.OWNED_PATHS | {T.MANIFEST}) & set(T.FROZEN)
     for path in T.FROZEN:
-        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(
+        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py') and T._p0_pins_frozen_edit(
                 path, T._blob((ROOT / path).read_bytes()), ROOT, None):      # P1: exactly these two control blobs, only at the exact P0 pin
             continue
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path
@@ -154,9 +154,9 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_the_v5_3_gate():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__, 'tests.ci_v4_p0_scope') and C.COHORT_MODULES.count(T.__name__) == 1
-    assert len(C.COHORT_MODULES) == len(T.BASE_COHORTS) + 2                       # exactly ONE module gained; no hardcoded total
-    assert C.COHORT_MODULES[-3:] == ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope")
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__, 'tests.ci_v4_p0_scope'), T.BASE_COHORTS + (T.__name__, 'tests.ci_v4_p0_scope', 'tests.m2b_radar_boundary_scope')) and C.COHORT_MODULES.count(T.__name__) == 1
+    assert len(C.COHORT_MODULES) in (len(T.BASE_COHORTS) + 2, len(T.BASE_COHORTS) + 3)                       # exactly ONE module gained; no hardcoded total
+    assert C.COHORT_MODULES[-4:] == ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope", "tests.m2b_radar_boundary_scope")
     assert H5.SUCCESSOR == T.__name__ and H5._next() is T and H4.SUCCESSOR == H5.__name__ and H4._next() is H5 and V5.SUCCESSOR == H4.__name__ and V5._next() is H4 and B3.SUCCESSOR == V5.__name__ and B3._next() is V5
     assert B2.SUCCESSOR == B3.__name__ and B2._next() is B3 and B1.SUCCESSOR == B2.__name__ and B1._next() is B2 and K.SUCCESSOR == B1.__name__ and K._next() is B1
 
@@ -185,13 +185,14 @@ def test_current_maps_move_only_their_registry_and_u1_keys():
         if changed - legacy_keys:
             from tests import ci_v4_p0_scope as P0
             assert changed - legacy_keys <= set(P0.MAP_EXTRA_KEYS.get(p, ()))
-            assert P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p)
+            from tests import m2b_radar_boundary_scope as M2B
+            assert (M2B.exact_blobs_ok() and (ROOT / p).read_bytes() == M2B.expected_map(ROOT, p)) or (P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p))
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] == ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v4_full_recovery_scope") == 1
+    assert U.RECONCILED_SUCCESSORS[-3:] == ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope", "tests.m2b_radar_boundary_scope") and U.RECONCILED_SUCCESSORS.count("tests.ci_v4_full_recovery_scope") == 1
 
 
 # -------------------------------------------------------------------------------------------------------------- tamper (committed refs)
@@ -221,7 +222,7 @@ def test_every_ci_v4_control_file_must_stay_byte_identical_to_the_accepted_base(
 
 
 def test_registry_mutations_are_rejected(clone):
-    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')"
+    tail = b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope', 'tests.m2b_radar_boundary_scope')"
     for name, fn in (
         ("duplicate_fr", lambda b: b.replace(tail, b"'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')")),
         ("fake_extra", lambda b: b.replace(tail, tail[:-1] + b", 'tests.fake_scope')")),

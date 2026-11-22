@@ -316,6 +316,10 @@ def _pr3b1_pin(path, blob, repo=None, ref=None):
         from tests import f03_financing_scope as F
         if F.supersedes(path, blob, repo, ref):
             return True
+    if path == '.github/workflows/ci_v4_pr.yml':
+        from tests import ci_v4_p0_scope as P0
+        if P0.supersedes(path, blob, repo, ref):
+            return True
     S = _pr3b1()
     return S is not None and S.supersedes(path, blob, repo, ref)
 

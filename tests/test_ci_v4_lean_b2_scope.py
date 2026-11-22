@@ -99,7 +99,7 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
     assert not any(p.startswith((".github/", "tools/", "app/", "financial_engine/", "finco_core/", "domain/", "frontend/", "static/", "research/"))
                    for p in T.OWNED_PATHS | {T.MANIFEST})
     for path in T.FROZEN:
-        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(
+        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py') and T._p0_pins_frozen_edit(
                 path, T._blob((ROOT / path).read_bytes()), ROOT, None):      # P1: exactly these two control blobs, only at the exact P0 pin
             continue
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path
@@ -142,11 +142,11 @@ def test_signature_exactness_and_reviewed_substitutions_hold(clone):
 
 def test_registered_exactly_once_as_the_terminal_cohort_after_b1():
     assert C.COHORT_MODULES.count(T.__name__) == 1
-    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ('tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'))
+    assert C.COHORT_MODULES[-3:] in (("tests.c06_cost_workspace_scope", "tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ('tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope'), ('tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope', 'tests.m2b_radar_boundary_scope'))
     assert B.SUCCESSOR == T.__name__ and K.SUCCESSOR == B.__name__ and K._next() is B
     from tests import ci_v4_lean_b3_scope as T3
     if T.SUCCESSOR in C.COHORT_MODULES:
-        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", 'tests.ci_v4_p0_scope') and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"
+        assert C.COHORT_MODULES[-1] in (T.SUCCESSOR, "tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope", 'tests.ci_v4_p0_scope', 'tests.m2b_radar_boundary_scope') and T3.PREDECESSOR == "tests/ci_v4_lean_b2_scope.py"
 
 
 def test_b1_c06_and_every_older_cohort_still_follow_the_chain():
@@ -169,13 +169,14 @@ def test_current_maps_move_only_their_registry_u1_and_u1_test_keys():
         if changed - legacy_keys:
             from tests import ci_v4_p0_scope as P0
             assert changed - legacy_keys <= set(P0.MAP_EXTRA_KEYS.get(p, ()))
-            assert P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p)
+            from tests import m2b_radar_boundary_scope as M2B
+            assert (M2B.exact_blobs_ok() and (ROOT / p).read_bytes() == M2B.expected_map(ROOT, p)) or (P0.exact_blobs_ok() and (ROOT / p).read_bytes() == P0.expected_map(ROOT, p))
         assert all(cur["source_blobs"][k] == pins[k] for k in changed)
 
 
 def test_the_u1_discovery_list_names_this_successor_exactly_once_and_last():
     from tests import u1_scope as U
-    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope"))
+    assert U.RECONCILED_SUCCESSORS[-2:] in (("tests.ci_v4_lean_b1_scope", "tests.ci_v4_lean_b2_scope"), ("tests.ci_v4_lean_b2_scope", "tests.ci_v4_lean_b3_scope"), ("tests.ci_v4_lean_b3_scope", "tests.ci_v5_bootstrap_scope"), ("tests.ci_v5_bootstrap_scope", "tests.ci_v5_hardening_scope"), ("tests.ci_v5_hardening_scope", "tests.ci_v5_gate_scope"), ("tests.ci_v5_gate_scope", "tests.ci_v4_full_recovery_scope"), ("tests.ci_v4_full_recovery_scope", "tests.ci_v4_p0_scope"), ("tests.ci_v4_p0_scope", "tests.m2b_radar_boundary_scope"))
     assert U.RECONCILED_SUCCESSORS.count("tests.ci_v4_lean_b2_scope") == 1
 
 

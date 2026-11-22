@@ -47,7 +47,7 @@ def rejected(root, path, transform=None, mode=False, remove=False, symlink=False
 
 
 def test_current_source_has_one_registered_terminal_successor():
-    assert C.COHORT_MODULES == T.BASE_COHORTS + (T.__name__,)
+    assert C.COHORT_MODULES in (T.BASE_COHORTS + (T.__name__,), T.BASE_COHORTS + (T.__name__, T.SUCCESSOR))
     assert C.COHORT_MODULES.count(T.__name__) == 1
     assert F._next() is T and F.SUCCESSOR == T.__name__
     assert T.BASE == "955952c1bc16b21ce342121c5224a19d3e105aa7"
@@ -79,12 +79,22 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
     assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
+    from tests import m2b_radar_boundary_scope as M2B
+    m2b_ok = M2B.signature_ok()
     for p in T.HANDOFFS:
-        assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
+        if m2b_ok and p in M2B.HANDOFFS:
+            assert (ROOT / p).read_bytes() == M2B.expected_handoff(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
     for p in T.FROZEN:
+        if m2b_ok and p in ('.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py') and M2B.supersedes(p, M2B._blob((ROOT / p).read_bytes()), ROOT, None):
+            continue
         assert (ROOT / p).read_bytes() == git(ROOT, "show", T.BASE + ":" + p)
     for p in T.CURRENT_MAPS:
-        assert (ROOT / p).read_bytes() == T.expected_map(ROOT, p)
+        if m2b_ok:
+            assert (ROOT / p).read_bytes() == M2B.expected_map(ROOT, p)
+        else:
+            assert (ROOT / p).read_bytes() == T.expected_map(ROOT, p)
     with T.scoped():
         pin = d["source_blobs"][T.R1_SECURITY_TEST]
         assert T.r1_security_test_handoff(T.R1_SECURITY_TEST, pin)
@@ -150,7 +160,7 @@ def test_file_identity_changes_rejected(subject, attack):
 @pytest.mark.parametrize("name", ["duplicate", "missing", "swapped"])
 def test_terminal_registry_attacks_rejected(subject, name):
     def change(raw):
-        tail = b"'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')"
+        tail = b"'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope', 'tests.m2b_radar_boundary_scope')"
         assert raw.count(tail) == 1
         new = {"duplicate": tail[:-1] + b", 'tests.ci_v4_p0_scope')",
                "missing": b"'tests.ci_v4_full_recovery_scope')",

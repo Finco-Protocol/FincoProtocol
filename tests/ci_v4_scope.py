@@ -102,12 +102,12 @@ def _pr2c_supersedes(path, value, root, ref):
     if S.supersedes(path, value, root, ref):
         return True
     # P1 (post-#457): exactly four CI V4 control/test paths, only at the exact pin of the registered P0 terminal (its signature and manifest); never a prefix.
-    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):
+    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py'):
         from tests.fin_v2_cohorts import COHORT_MODULES
         if 'tests.ci_v4_p0_scope' not in COHORT_MODULES:
             return False
         from tests import ci_v4_p0_scope as P0
-        return path in P0.REPLACED and P0.supersedes(path, value, root, ref)
+        return (path in P0.REPLACED or path in ('.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py')) and P0.supersedes(path, value, root, ref)
     # Exact F03-reviewed successors of two CI V4 source paths only (the module and the internal F01 job); never a prefix.
     if path not in ('tests/ci_v4_scope.py', '.github/workflows/ci_v4_f01_job.yml'):
         return False
@@ -146,7 +146,7 @@ def _v5_ci_paths(root, ref):
         out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())
     if 'tests.m2b_radar_boundary_scope' in COHORT_MODULES:
         from tests import m2b_radar_boundary_scope as M2B
-        out = out | (M2B.BOUNDARY_PROTECTED_PATHS if M2B.exact_blobs_ok(root, ref) else frozenset())
+        out = out | ((M2B.BOUNDARY_PROTECTED_PATHS | M2B.CI_PATHS) if M2B.exact_blobs_ok(root, ref) else frozenset())
     return out
 
 

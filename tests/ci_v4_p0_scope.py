@@ -5422,7 +5422,7 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, moved)):
                     return False
-        if any(current.get(p) != _blob(_base_bytes(key, p)) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
+        if any((current.get(p) != _blob(_base_bytes(key, p)) and not (p in ('.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_nodes.py') and nx.get(p) == current.get(p))) or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
