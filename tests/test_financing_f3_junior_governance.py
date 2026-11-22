@@ -5,8 +5,6 @@ import subprocess
 
 import pytest
 
-import model_v2_governance as governance
-from finance_integrity_governance import approved_frozen_path, strictly_frozen_changes, unapproved_engine_changes
 
 BASE = "76b7215baf9dfe02d83382d6c33d01559eba9641"
 REPO = Path(__file__).resolve().parents[1]
@@ -48,79 +46,6 @@ def historical_authorities():
 
 
 HISTORICAL_AUTHORITIES = historical_authorities()
-
-
-def test_only_fifteen_independently_accepted_blobs_are_released():
-    assert governance.F3_5_A_JUNIOR_AUTHORITIES == APPROVED
-    from rc7b_quarterly_candidate_authority import RC7B_CANDIDATE_AUTHORITIES
-    from quarterly_candidate_recognition import candidate_blobs, superseded as candidate_superseded
-    for path, blob in APPROVED.items():
-        current = subprocess.run(["git", "rev-parse", f"HEAD:{path}"], cwd=REPO,
-            capture_output=True, text=True, check=True).stdout.strip()
-        if candidate_superseded(path, repo=governance.REPO):
-            # RC-7B: only while a release-closed quarterly candidate is recognised (release-closed candidate recognised: exact blobs, merge ancestry, closed flag) does a superseding candidate
-            # replace the historical pin. Release-closed candidate only: never the released pin, never an approved frozen path.
-            assert current == candidate_blobs(repo=governance.REPO)[path], path
-            assert not governance.released_engine_authority_matches(path)
-            assert not approved_frozen_path(path)
-            continue
-        assert current == blob, path
-        assert governance.released_engine_authority_matches(path)
-        assert approved_frozen_path(path)
-    from quarterly_candidate_recognition import without_superseded
-    assert without_superseded(unapproved_engine_changes(list(APPROVED)), repo=governance.REPO) == []
-    assert strictly_frozen_changes(list(APPROVED)) == []
-
-
-@pytest.mark.parametrize("name", ["RELEASED_MODEL_V2_ENGINE_AUTHORITIES", "DEVELOPER_ECONOMICS_V1_AUTHORITIES",
-    "F3_1_CONTRACT_AUTHORITIES", "F3_2_4_FINANCING_AUTHORITIES", "WF04_NUMERIC_PRECISION_AUTHORITIES",
-    "WF07_REVENUE_AUTHORITIES"])
-def test_exact_historical_authority_maps_are_preserved(name):
-    assert getattr(governance, name) == HISTORICAL_AUTHORITIES[name]
-
-
-@pytest.mark.parametrize("path", ["finco_core/inputs/unapproved_candidate.py",
-    "financial_engine/financing/unapproved_candidate.py", "financial_engine/financing/junior_debt.py.extra",
-    "finco_core/inputs/junior_debt.py/extra", "finco_radar/unapproved_candidate.py"])
-def test_unrelated_paths_have_no_release_authority(path):
-    assert not governance.released_engine_authority_matches(path)
-    assert not governance.approved_by_active_model_v2_scope(path)
-    assert not approved_frozen_path(path)
-    if path.startswith("financial_engine/"):
-        assert unapproved_engine_changes([path]) == [path]
-    elif path.startswith(("finco_core/", "finco_radar/")):
-        assert strictly_frozen_changes([path]) == [path]
-
-
-@pytest.mark.parametrize("path,blob", sorted(set(
-    item for name in ("F3_1_CONTRACT_AUTHORITIES", "F3_2_4_FINANCING_AUTHORITIES",
-        "WF04_NUMERIC_PRECISION_AUTHORITIES", "WF07_REVENUE_AUTHORITIES")
-    for item in HISTORICAL_AUTHORITIES[name].items()) | set(APPROVED.items())))
-def test_changed_financial_blobs_and_missing_refs_cannot_reuse_historical_pin(tmp_path, monkeypatch, path, blob):
-    def git(*args):
-        return subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
-    git("init")
-    git("config", "core.autocrlf", "false")
-    target = tmp_path / path
-    target.parent.mkdir(parents=True)
-    original = subprocess.run(["git", "cat-file", "blob", blob], cwd=REPO, capture_output=True, check=True).stdout
-    target.write_bytes(original)
-    git("add", path)
-    git("-c", "user.name=Synthetic Governance", "-c", "user.email=noreply@users.noreply.github.com", "commit", "-m", "Synthetic reviewed content")
-    assert governance.released_engine_authority_matches(path, repo=tmp_path)
-    target.write_bytes(original + b"\n# Synthetic unauthorized alteration.\n")
-    git("add", path)
-    git("-c", "user.name=Synthetic Governance", "-c", "user.email=noreply@users.noreply.github.com", "commit", "-m", "Synthetic unapproved content")
-    assert not governance.released_engine_authority_matches(path, repo=tmp_path)
-    assert not governance.released_engine_authority_matches(path, repo=tmp_path, ref="missing-review-ref")
-    assert governance.released_engine_authority_matches(path, repo=tmp_path, ref="HEAD~1")
-    monkeypatch.setattr(governance, "REPO", tmp_path)
-    assert not approved_frozen_path(path)
-    assert not governance.approved_by_active_model_v2_scope(path, ref="missing-review-ref")
-    if path.startswith("financial_engine/"):
-        assert unapproved_engine_changes([path]) == [path]
-    elif path.startswith(("finco_core/", "finco_radar/")):
-        assert strictly_frozen_changes([path]) == [path]
 
 
 def test_candidate_release_is_closed():

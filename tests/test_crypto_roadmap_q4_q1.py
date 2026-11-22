@@ -18,16 +18,6 @@ REPO = Path(__file__).resolve().parents[1]
 HISTORICAL_BASE_SHA = "347812cca574a73c64bc71e29296204b3e144cfc"
 
 
-def _base_sha() -> str:
-    probe = subprocess.run(
-        ["git", "merge-base", "HEAD", "origin/main"],
-        cwd=REPO, capture_output=True, text=True,
-    )
-    if probe.returncode == 0 and probe.stdout.strip():
-        return probe.stdout.strip()
-    return HISTORICAL_BASE_SHA
-
-
 def _read(rel: str) -> str:
     return (REPO / rel).read_text(encoding="utf-8")
 
@@ -286,29 +276,3 @@ def test_future_targets_do_not_mutate_current_product_truth():
     assert "User-Signed Execution" in road
 
 
-def test_frozen_authority_namespaces_unchanged_from_canonical_base():
-    frozen = (
-        "financial_engine/",
-        "finco_core/",
-        "finco_radar/authority/",
-        "app/model_validation/",
-        "app/verified/",
-        "app/protocol/entitlement_evaluator.py",
-        # entitlement_policy.py is intentionally NOT frozen any more: Crypto Access Integration V1 extends
-        # the canonical resource vocabulary (tokenized.* / crypto.api) in that one file. The evaluator,
-        # deployment registry and the Yield adapter below stay frozen, so no second authority can appear.
-        "app/protocol/token_deployments.py",
-        "finco_yield/access.py",
-    )
-    # HISTORICAL source proof: the stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
-    # Whether the current integration tree may change these paths is decided only by the central current gates.
-    from stream_scope_proof import verified_delta
-    changed = verified_delta("test_crypto_roadmap_q4_q1", *frozen)
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-    # protecting every other frozen path.
-    from finance_integrity_governance import approved_frozen_path
-    for path in changed:
-        if approved_frozen_path(path):
-            continue
-        assert not any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in frozen), path

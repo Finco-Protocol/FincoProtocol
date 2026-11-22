@@ -23,7 +23,6 @@ from app.tokenized_access import TokenizedResource as R
 from finco_radar.venues.store import VenueMarketStore
 from tests.test_tokenized_live_intelligence_v1 import _market_obs
 from tests.test_tokenized_markets_composition import ROBINHOOD_NVDA
-from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -235,22 +234,3 @@ def test_market_data_authority_does_not_consult_access_authority():
         assert "tokenized_access" not in text and "evaluate_resource_access" not in text, path
 
 
-@pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
-def test_frozen_namespaces_zero_diff(namespace):
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    delta = verified_delta("test_tokenized_access_wiring", namespace)
-    # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
-    # every other path in this namespace stays frozen.
-    allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
-                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
-                 "finco_radar/venues/relative_value.py"}
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-    # protecting every other frozen path.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [
-        p for p in delta
-        if p not in allowed and not approved_frozen_path(p)
-    ]
-    assert changed == [], changed

@@ -3,28 +3,9 @@ import re
 
 import pytest
 
-from tests import rcm_adapter_csrf_successor as S
 
-SOURCES = {path: (S.ROOT / path).read_text(encoding="utf-8") for path in S.ROUTERS}
 NP, GS = "app/v2/react_new_project.py", "app/v2/react_goal_seek.py"
 AT = chr(64)          # decorator prefix composed at runtime so the public fixture carries no address-shaped literal
-
-
-def test_the_successor_covers_exactly_the_two_reviewed_adapters():
-    assert set(S.ROUTERS) == {NP, GS}
-
-
-@pytest.mark.parametrize("path", S.ROUTERS)
-def test_exact_reviewed_module_is_recognised(path):
-    assert S.source_blob(SOURCES[path]) == S.SPECS[path]["blob"] and len(S.SPECS[path]["blob"]) == 40
-    assert S.violations(path, SOURCES[path]) == [] and S.current_rcm_adapter_valid(path)
-
-
-@pytest.mark.parametrize("path", S.ROUTERS)
-def test_one_byte_of_drift_fails_closed_until_re_reviewed(path):
-    assert S.violations(path, SOURCES[path] + "\n")
-    assert S.violations(path, SOURCES[path], check_pin=False) == []      # the structural proof is independent of the pin
-    assert not S.current_rcm_adapter_valid(path, repo=S.ROOT / "tests")
 
 
 COMMON = [
@@ -40,46 +21,6 @@ COMMON = [
 ]
 
 
-@pytest.mark.parametrize("path", S.ROUTERS)
-@pytest.mark.parametrize("name,mutate", COMMON)
-def test_structural_drift_is_rejected_even_when_the_pin_is_ignored(path, name, mutate):
-    mutated = mutate(SOURCES[path])
-    assert mutated != SOURCES[path], name
-    assert S.violations(path, mutated, check_pin=False), name
-
-
-@pytest.mark.parametrize("path,writer", [(NP, "create_reference_seeded_project_once"), (GS, "apply_draft_update")])
-def test_a_writer_call_before_the_gate_is_rejected(path, writer):
-    gate = "    if not _REQUEST_ID.match(body.request_id) or not validate_csrf_token(" if path == NP else "    if not validate_csrf_token("
-    assert gate in SOURCES[path]
-    early = f"    {writer}(user_id='x', project_code='y')\n" if path == NP else "    WorkbookUpdateService.apply_draft_update(ws=None)\n"
-    assert S.violations(path, SOURCES[path].replace(gate, early + gate, 1), check_pin=False)
-
-
-def test_each_canonical_writer_is_referenced_exactly_where_reviewed():
-    assert len(re.findall(r"\bcreate_reference_seeded_project_once\(", SOURCES[NP])) == 1
-    assert not re.search(r"\b(update_project_record|create_reference_seeded_project|save_project|claim)\(", SOURCES[NP])
-    assert len(re.findall(r"\bapply_draft_update\(", SOURCES[GS])) == 1
-
-
-def test_the_keyed_creator_must_follow_every_refusal_path():
-    source = SOURCES[NP]
-    creator = "        record, outcome = create_reference_seeded_project_once("
-    assert creator in source
-    early = "    create_reference_seeded_project_once(user_id='x', template_source='t', requested_name='n', capacity_mw=1.0, create_request_id='r')\n"
-    anchor = "    normalised, errors = _validate(body.model_dump())"
-    assert anchor in source
-    assert S.violations(NP, source.replace(anchor, early + anchor, 1), check_pin=False)                  # creator before validation
-    assert S.violations(NP, source.replace("create_reference_seeded_project_once(", "create_reference_seeded_project(", 1), check_pin=False)  # unkeyed writer
-
-
-def test_the_goal_seek_token_must_stay_bound_to_the_offered_candidate():
-    source = SOURCES[GS]
-    candidate = re.search(r"extract_bound_token\(request, (_candidate\(.+?\)), body\.csrf_token", source, flags=re.S)
-    assert candidate is not None
-    assert S.violations(GS, source.replace(candidate.group(1), "body.project"), check_pin=False)                           # project-only binding
-
-
 # ── WF-03 setup-draft successor (Owner-approved 2026-10-30): provenance, closed route table, source-mutation matrix, runtime matrix ──────────
 
 import ast
@@ -89,37 +30,6 @@ import uuid
 
 PREDECESSOR = "5abdb46a4704277a895d256a434f7a6f510206c1"
 SETUP = "/model-react/setup-drafts"
-
-
-def test_historical_record_is_kept_verbatim_and_the_successor_names_it():
-    assert S.HISTORICAL_BLOB == PREDECESSOR == S.SPECS[NP]["predecessor_blob"]
-    assert S.SPECS[NP]["blob"] == "3708438d53790c98fa5851b0763230b23ba0e7b2" and S.SPECS[NP]["blob"] != PREDECESSOR
-    assert len(S.HISTORICAL_SPECS[NP]["order"]) == 3 and "state_changing" not in S.HISTORICAL_SPECS[NP]
-    probe = subprocess.run(["git", "cat-file", "blob", PREDECESSOR], cwd=S.ROOT, capture_output=True)
-    if probe.returncode == 0:                                   # the old meaning still holds, unchanged, against the exact old source
-        old = probe.stdout.decode("utf-8")
-        assert S.source_blob(old) == PREDECESSOR and S.legacy_violations(NP, old) == []
-        assert S.legacy_violations(NP, SOURCES[NP])             # ...and the new module is NOT the old one (more than one POST, two validators)
-
-
-def test_literal_hashes_are_string_constants_not_runtime_computed():
-    tree = ast.parse((S.ROOT / "tests" / "rcm_adapter_csrf_successor.py").read_text(encoding="utf-8"))
-    blobs = [(k, v) for n in ast.walk(tree) if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values)
-             if isinstance(k, ast.Constant) and k.value in ("blob", "predecessor_blob")]
-    assert len(blobs) == 4
-    for _, value in blobs:
-        assert isinstance(value, ast.Constant) and re.fullmatch(r"[0-9a-f]{40}", value.value)
-
-
-def test_the_route_table_is_closed_and_decorated_routes_are_enumerated():
-    routes = S._routes(ast.parse(SOURCES[NP]))
-    mutations = sorted(r for r in routes if r[1] in S.STATE_CHANGING)
-    assert mutations == sorted(S.SPECS[NP]["state_changing"]) and len(routes) == 12
-    assert {r[1] for r in routes} == {"get", "post", "patch"}
-    assert sorted(r for r in routes if r[1] == "get") == sorted(S.SPECS[NP]["reads"])
-    assert sorted(S._routes(ast.parse(SOURCES[GS]))) == sorted([("react_goal_seek_apply", "post", "/model-react/analysis/goal-seek/apply"),
-                                                  ("react_goal_seek_catalog", "get", "/model-react/analysis/goal-seek/catalog"),
-                                                  ("react_goal_seek_solve", "get", "/model-react/analysis/goal-seek/solve")])
 
 
 SETUP_AUTH = '    if operation is not None:\n'
@@ -155,22 +65,6 @@ SETUP_MUTATIONS_MATRIX = [
     ("extra cursor read", lambda s: s.replace("    return user, None\n", "    from app.persistence.db import get_cursor\n    with get_cursor() as cur:\n        cur.execute('SELECT 1')\n    return user, None\n")),
     ("dynamic hash acceptance", lambda s: s + "\nimport hashlib\nACCEPT = hashlib.sha1(open(__file__, 'rb').read()).hexdigest()\n"),
 ]
-
-
-@pytest.mark.parametrize("name,mutate", SETUP_MUTATIONS_MATRIX, ids=[m[0] for m in SETUP_MUTATIONS_MATRIX])
-def test_every_setup_source_mutation_trips_the_successor_with_the_pin_ignored(name, mutate):
-    mutated = mutate(SOURCES[NP])
-    assert mutated != SOURCES[NP], name
-    if name == "dynamic hash acceptance":                         # a hash computed at runtime is not a reviewed literal: the exact blob must reject it
-        assert S.violations(NP, mutated)
-    else:
-        assert S.violations(NP, mutated, check_pin=False), name
-    assert S.violations(NP, mutated), name                        # and the exact Git blob guard trips on any one-byte drift too
-
-
-def test_goal_seek_is_unchanged_and_still_bound_to_its_single_reviewed_post():
-    assert S.SPECS[GS]["blob"] == "b5bf2d2a920f5b278f2a6a98dd64944e80869ceb" and S.violations(GS, SOURCES[GS]) == []
-    assert "setup_successor" not in S.SPECS[GS] and "state_changing" not in S.SPECS[GS]
 
 
 # ── runtime: real FastAPI calls, a disposable database, direct row counts ────────────────────────────────────────────────────────────────

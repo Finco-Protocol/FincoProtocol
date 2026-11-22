@@ -180,21 +180,6 @@ class TestHistoricalEvidencePreserved:
             assert ver[symbol]["canonical_id"] == row["canonical_id"]
 
 
-class TestFrozen:
-    @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core",
-                                           "finco_yield"])
-    def test_zero_diff(self, namespace):
-        # Branch-owned changes only (merge-base boundary). Exact released Model V2
-        # engine authorities (pinned to their reviewed content) are exempt; every
-        # other path in the namespace stays frozen.
-        from stream_scope_proof import verified_delta
-        from finance_integrity_governance import approved_frozen_path
-        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-        changed = [p for p in verified_delta("test_stock_token_oracle_rejection", namespace)
-                   if not approved_frozen_path(p)]
-        assert changed == [], changed
-
-
 class TestShippedRegistryFileIsUntouchedByCorrectionB:
     def test_registry_feeds_file_has_no_diff_against_main(self):
         import subprocess

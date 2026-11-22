@@ -18,6 +18,7 @@ os.environ.setdefault("FINCO_MODEL_EXECUTION_MODE", "thread")
 # fails the session with its identity.  A leaked worker process otherwise lets pytest print
 # its summary and then block interpreter exit in concurrent.futures' exit handlers.
 import multiprocessing
+import re
 import sys
 import threading
 import time
@@ -137,3 +138,70 @@ def _suite_acquisition_service_lifecycle():
             if router is not None and any(router._service_instance is service for service, _ in owned):
                 router.set_service(None)
             patch.undo()
+
+
+# ── Model CI: a missing dependency is a failure, never a silent skip ────────────────────────────────────────────────────
+# With FINCO_CI_STRICT_SKIPS=1 (set by .github/workflows/model_ci.yml) a test or module skipped because a package,
+# browser or tool is absent fails instead. Ordinary, intentional skips (documented reasons) are unaffected and are
+# still reported as SKIPPED, never as passed.
+_MISSING_DEPENDENCY = re.compile(
+    r"could not import|no module named|not installed|playwright|chromium|executable doesn't exist|requires? (?:the )?(?:openssl|docker|node)",
+    re.IGNORECASE,
+)
+
+
+def _strict_skips() -> bool:
+    return os.environ.get("FINCO_CI_STRICT_SKIPS") == "1"
+
+
+def _skip_reason(report) -> str:
+    longrepr = getattr(report, "longrepr", None)
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        return str(longrepr[2])
+    return str(longrepr or "")
+
+
+def _fail_missing_dependency(report) -> None:
+    reason = _skip_reason(report)
+    if _MISSING_DEPENDENCY.search(reason):
+        report.outcome = "failed"
+        report.longrepr = "MISSING_DEPENDENCY (strict CI skips): %s" % reason
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if _strict_skips() and report.skipped and not hasattr(report, "wasxfail"):
+        _fail_missing_dependency(report)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(collector):
+    outcome = yield
+    report = outcome.get_result()
+    if _strict_skips() and report.skipped:
+        _fail_missing_dependency(report)
+
+
+# ── Model CI: per-group collection accounting (FINCO_CI_COUNTS=<path>) ─────────────────────────────────────────────────
+# The aggregate job checks that every group saw the same full collection and that the groups' selections add up to it
+# (minus the explicitly listed known defects), so no test can silently fall between groups.
+_CI_COUNTS = {}
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(session, config, items):
+    if os.environ.get("FINCO_CI_COUNTS"):
+        import hashlib
+        ids = sorted(item.nodeid for item in items)
+        _CI_COUNTS.update(collected=len(ids), collected_digest=hashlib.sha256("\n".join(ids).encode()).hexdigest())
+
+
+def pytest_collection_finish(session):
+    path = os.environ.get("FINCO_CI_COUNTS")
+    if path:
+        import json
+        _CI_COUNTS["selected"] = sorted(item.nodeid for item in session.items)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(_CI_COUNTS, handle)

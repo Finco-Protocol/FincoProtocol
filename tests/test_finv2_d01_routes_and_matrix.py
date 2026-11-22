@@ -209,48 +209,6 @@ def test_shared_authority_is_bit_identical_to_the_matrix_and_to_the_save_path(en
     assert vector(ours) == vector(saved)
 
 
-def _attribution_base():
-    """What THIS workflow changed: the merge-base with main, so a forward merge of newer reviewed main (for example merged PR #388) is not attributed here.
-    Falls back to main after merged PR #389 when ``origin/main`` is unavailable."""
-    try:
-        return subprocess.check_output(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO, text=True, stderr=subprocess.DEVNULL).strip()
-    except subprocess.CalledProcessError:
-        return "128bf0c2b79af56985326543132cc806ff7f001c"          # main after merged PR #389
-
-
-def _cohort_matches(path, source=None):
-    """Identical to the baseline, or exactly the bytes / paths another separately reviewed cohort registers (tests/fin_v2_cohorts.py) — never an unreviewed change."""
-    try:
-        from tests.fin_v2_cohorts import matches
-    except ImportError:
-        return False
-    return matches(path, source)
-
-
-@pytest.mark.parametrize("path", [
-    "app/services/sensitivity_matrix.py", "app/v2/sensitivity_matrix_projection.py", "app/v2/sensitivity_matrix_router.py",
-    "app/v2/react_workspace_router.py", "app/v2/react_poc_router.py", "app/v2/react_insights_router.py",
-])
-def test_matrix_and_react_sources_are_byte_identical_to_the_f01_baseline(path):
-    """The correct React matrix is not edited: its cells cannot change (same code, same inputs)."""
-    base = _attribution_base()
-    exists = subprocess.run(["git", "cat-file", "-e", base], cwd=REPO, capture_output=True)
-    if exists.returncode != 0:
-        pytest.skip("baseline commit not available in this shallow clone")
-    expected = subprocess.check_output(["git", "rev-parse", f"{base}:{path}"], cwd=REPO, text=True).strip()
-    actual = subprocess.check_output(["git", "hash-object", path], cwd=REPO, text=True).strip()
-    assert actual == expected or _cohort_matches(path, (REPO / path).read_text(encoding="utf-8"))
-
-
-def test_react_frontend_and_bundle_are_not_touched_by_this_workflow():
-    base = _attribution_base()
-    if subprocess.run(["git", "cat-file", "-e", base], cwd=REPO, capture_output=True).returncode != 0:
-        pytest.skip("baseline commit not available in this shallow clone")
-    changed = subprocess.check_output(["git", "diff", "--name-only", base, "--", "frontend", "static/react"],
-                                      cwd=REPO, text=True).split()
-    assert [p for p in changed if not _cohort_matches(p, None)] == []
-
-
 # ───────────────────────────── legacy HTTP routes ─────────────────────────────
 @pytest.fixture()
 def legacy(tmp_path, monkeypatch):

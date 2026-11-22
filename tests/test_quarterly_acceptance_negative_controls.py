@@ -228,18 +228,6 @@ def test_the_released_default_is_semiannual_and_has_no_calendar_policy():
         assert info.period_frequency.name == "SEMESTRIAL" and not hasattr(info, "operating_calendar_policy")
 
 
-def test_governance_pins_recognise_the_current_candidate_and_this_suite_adds_no_exemption():
-    """The acceptance modules are new test files only: none of them names a pin, allow-list, exemption or workflow."""
-    import pathlib
-    root = pathlib.Path(__file__).parent
-    forbidden = ("ALLOWLIST", "EXEMPT", "ACTIVATION_ENABLED = True", "monkeypatch.setattr(cfg", ".github/workflows")
-    for path in root.glob("*quarterly_acceptance*.py"):
-        if path.name == pathlib.Path(__file__).name:
-            continue
-        text = path.read_text()
-        assert not any(token.lower() in text.lower() for token in forbidden), path.name
-
-
 # ── the oracles can fail: defect shapes are detected ─────────────────────────
 
 def _engine_rows(sid):

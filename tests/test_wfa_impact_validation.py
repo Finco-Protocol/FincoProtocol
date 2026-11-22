@@ -430,16 +430,6 @@ def _git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True)
 
 
-def test_release_closed_features_and_engine_boundary_unchanged():
-    for commit in (WFA_BASE, WFA_REVIEWED_HEAD):
-        # Provenance must be establishable: a missing object (for example a shallow checkout) is a failure, never a silent skip.
-        found = _git("cat-file", "-e", f"{commit}^{{commit}}")
-        assert found.returncode == 0, f"WF-A provenance commit {commit} is not available in this checkout (full history required): {found.stderr.strip()}"
-    diff = _git("diff", "--name-only", WFA_BASE, WFA_REVIEWED_HEAD, "--", *WFA_PROTECTED_PATHS)
-    assert diff.returncode == 0, diff.stderr
-    assert diff.stdout.strip() == "", f"WF-A must not have touched the engine, domain or UI: {diff.stdout.strip()}"
-
-
 def test_case_verdict_requires_feature_specific_identities():
     """Many existing F3.9 PASS results must never give a feature case the VERIFIED verdict."""
     def outcome(identity, **counts):

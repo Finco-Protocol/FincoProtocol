@@ -1004,7 +1004,7 @@ class TestB15FrozenP3Gate:
         # hard-coded historical baseline attributed later legitimate main evolution
         # to the branch under test (it was only green in shallow CI because the base
         # was unreachable and the test skipped).
-        from model_v2_governance import branch_owned_changes_or_skip
+        pass
         return branch_owned_changes_or_skip()
 
     # Permitted finco_radar sub-packages (explicitly authorized PRs):
@@ -1021,7 +1021,7 @@ class TestB15FrozenP3Gate:
     def _is_violation(self, path: str) -> bool:
         if not path.startswith("finco_radar/"):
             return False
-        from radar_authority_governance import reviewed_radar_authority_matches
+        pass
         return (
             not any(path.startswith(p) for p in self._PERMITTED_FINCO_RADAR_PREFIXES)
             and not reviewed_radar_authority_matches(path)

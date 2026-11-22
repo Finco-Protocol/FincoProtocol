@@ -259,7 +259,7 @@ def test_obviously_invalid_input_is_stopped_before_any_request_and_the_server_st
 
 
 def test_a_changed_working_copy_is_refused_and_nothing_is_overwritten(live_server, fin_session):
-    from tests.on_bess01_reviewed_successors import bankability_refusal_valid
+    from tests.bankability_refusal import bankability_refusal_valid
     context, page, record, errors = fin_session("rcm-fin-stale")
     open_tab(page, live_server, record.project_code, "bankability")
     page.select_option("[data-bank='day_count']", "act_365")

@@ -1,16 +1,27 @@
-# Default public-repository ownership
-* @FincoProtocol
+# Default ownership: either account may approve ordinary changes (nobody can approve their own PR).
+*                             @xofisamba @FincoProtocol
 
-# Critical financial authority
-/financial_engine/ @FincoProtocol
-/finco_core/ @FincoProtocol
-
-# FINCO Radar authority and evidence
-/finco_radar/ @FincoProtocol
-
-# CI, repository safety, and governance
-/.github/ @FincoProtocol
-/tools/public_safety_scan.py @FincoProtocol
-/MIGRATION_CONTROL.md @FincoProtocol
-/SECURITY.md @FincoProtocol
-/docs/VERIFICATION.md @FincoProtocol
+# Changes to CI, test policy and the financial/security core need an approving review from the owner.
+# Enforced by branch protection on main ("Require review from Code Owners"). An AI agent's comment is not a review.
+/.github/                     @xofisamba
+/scripts/ci/                  @xofisamba
+/tests/                       @xofisamba
+/.test_durations              @xofisamba
+/pytest.ini                   @xofisamba
+/requirements*.txt            @xofisamba
+/constraints.txt              @xofisamba
+/financial_engine/            @xofisamba
+/finco_core/                  @xofisamba
+/domain/                      @xofisamba
+/app/auth*                    @xofisamba
+/app/internal_auth_introspect.py @xofisamba
+/app/protocol/                @xofisamba
+/app/persistence/             @xofisamba
+/deploy/                      @xofisamba
+/archive/                     @xofisamba
+/finco_radar/                 @xofisamba
+/tools/public_safety_scan.py  @xofisamba
+/MIGRATION_CONTROL.md         @xofisamba
+/SECURITY.md                  @xofisamba
+/docs/VERIFICATION.md         @xofisamba
+/docs/ci/                     @xofisamba
