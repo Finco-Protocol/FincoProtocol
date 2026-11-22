@@ -241,7 +241,7 @@
     "tests/test_ci_v4_lean_b3_scope.py": "bc107921e41dcd0f728008b8d8b56554275a814a",
     "tests/test_ci_v4_lean_tamper_matrix.py": "70ab9f38ccb151f8144543f1b0d2bd122532d86d",
     "tests/test_ci_v4_nodes.py": "609e85de5609f93dcdd0ccadeeec630ebeef182a",
-    "tests/test_ci_v4_p0_scope.py": "bc6756f791a5c14d0eb2ee00f70ea0ccd21cc00e",
+    "tests/test_ci_v4_p0_scope.py": "eaf48fab7b0e66020cec6aaf854b808983ce3010",
     "tests/test_ci_v4_perf_scope.py": "64b005777966e1f83a1f67abed04f17185a3e674",
     "tests/test_ci_v4_release_gate.py": "64d7f449f7c84251ef7bf9ef29ce698d5c469591",
     "tests/test_ci_v5_bootstrap_scope.py": "833f9bc49d778655507db8739357e7864cc7a056",
