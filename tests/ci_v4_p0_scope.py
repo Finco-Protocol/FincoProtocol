@@ -37,6 +37,17 @@ NEW = frozenset(('docs/ci_v4/p0_40min/00_EXECUTIVE_VERDICT_HR.md', 'docs/ci_v4/p
                  'tests/v11_stage3_release_successor.py', 'tests/test_v11_stage3_release_successor.py',
                  'tests/mutation_security_browser_lineage.py', 'tests/test_mutation_security_browser_lineage.py'))
 R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
+# M1-a (owner-authorized 2026-11-22): decouple Radar R5/R6 PR triggers from Model core
+# (financial_engine/**, finco_core/**) and enforce the AST Model-core import boundary in tests/test_radar_ci_scope_gate.py.
+M1A_RADAR_WORKFLOWS = (
+    '.github/workflows/radar_r5_signals_history.yml',
+    '.github/workflows/radar_r6_terminal.yml',
+)
+M1A_RADAR_TEST = 'tests/test_radar_ci_scope_gate.py'
+M1A_REMOVED_PATH_LINES = (
+    b'      - "financial_engine/**"\n'
+    b'      - "finco_core/**"\n'
+)
 
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
@@ -54,12 +65,14 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       'tests/test_model_mutation_security_successor.py',
                       R04_ISOLATION_TEST,
                       'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                      'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'))
+                      'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
+                      *M1A_RADAR_WORKFLOWS, M1A_RADAR_TEST))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
                       '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py',
-                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'))
+                      'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
+                      *M1A_RADAR_WORKFLOWS))
 # Shared governance paths whose bytes move by one reviewed literal substitution (HANDOFFS).
 HANDOFF_PATHS = frozenset(('tests/c06_cost_workspace_scope.py', 'tests/ci_v4_scope.py', 'tests/ci_v4_full_recovery_scope.py', 'tests/ci_v4_lean_b1_scope.py', 'tests/ci_v4_lean_b2_scope.py', 'tests/ci_v4_lean_b3_scope.py', 'tests/ci_v5_bootstrap_scope.py', 'tests/ci_v5_gate_scope.py', 'tests/ci_v5_hardening_scope.py', 'tests/fin_v2_cohorts.py', 'tests/test_bess02_scope.py', 'tests/test_c06_cost_workspace_scope.py', 'tests/test_ci_v4_full_recovery_scope.py', 'tests/test_ci_v4_lean_b1_scope.py', 'tests/test_ci_v4_lean_b2_scope.py', 'tests/test_ci_v4_lean_b3_scope.py', 'tests/test_ci_v4_lean_tamper_matrix.py', 'tests/test_ci_v4_perf_scope.py', 'tests/test_ci_v5_bootstrap_scope.py', 'tests/test_ci_v5_gate_scope.py', 'tests/test_ci_v5_hardening_scope.py', 'tests/test_f03_financing_scope.py', 'tests/test_f04_financing_scope.py', 'tests/test_r02_ppa_ux_scope.py', 'tests/test_r03_ppa_scope.py', 'tests/test_r04_ppa_scope.py', 'tests/test_t01e_remediation_scope.py', 'tests/u1_scope.py', 'tests/ux_pr3b1_scope.py'))
 CURRENT_MAPS = frozenset((
@@ -5287,6 +5300,16 @@ def _expected_map_blob(root, path, moved):
     return _blob(expected_map(Path(root), path, dict(zip(MAP_PIN_KEYS, moved))))
 
 
+def expected_m1a_radar_workflow(root, path):
+    """Exact M1-a workflow bytes: immutable BASE bytes with ONLY the two literal Model-core path lines removed."""
+    if path not in M1A_RADAR_WORKFLOWS:
+        raise ValueError("not an admitted M1-a Radar workflow")
+    raw = _base_bytes(str(root), path)
+    if raw.count(M1A_REMOVED_PATH_LINES) != 1:
+        raise ValueError("M1-a Radar trigger removal block is missing or ambiguous")
+    return raw.replace(M1A_REMOVED_PATH_LINES, b"", 1)
+
+
 def _snapshot(root, ref, paths):
     """One read of the evaluated state: {path: blob} and {path: mode}. A committed ref is read with ONE ls-tree; the WORKING TREE is read from
     disk and hashed here (Git blob framing over the current bytes), so a modified, replaced or deleted file is judged by what is really on disk, never by
@@ -5344,6 +5367,8 @@ def _signature_ok(root, ref, closure=False):
         if any(modes.get(p) != "100644" for p in owned):
             return False
         if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
+            return False
+        if any(pins[p] != _blob(expected_m1a_radar_workflow(key, p)) for p in M1A_RADAR_WORKFLOWS):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
             return False
