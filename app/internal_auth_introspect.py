@@ -1,17 +1,20 @@
-"""Versioned fail-closed internal auth & entitlement introspection contract (M2-B/Correction A).
+"""Versioned fail-closed internal auth & entitlement introspection contract (M2-B/Correction B).
 
 Allows the standalone Finco-Protocol/Radar service to verify opaque session cookies
 (`finco_session` and `finco_demo`, matching app/auth.py) AND obtain canonical server-side
 per-resource entitlement decisions from `app.protocol.entitlement_evaluator` over a private
-service-to-service channel WITHOUT copying FINCO_SECRET_KEY or directly reading Model DBs.
+loopback/service channel WITHOUT copying FINCO_SECRET_KEY or directly reading Model DBs.
 
 Security properties:
+- Hidden from public OpenAPI schema (`include_in_schema=False`).
+- Rejects proxied/public-gateway requests (`X-Forwarded-For` / `Forwarded` headers -> HTTP 403).
+- Enforces loopback/private peer attestation (`request.client.host` must be in loopback or
+  explicit `FINCO_INTERNAL_AUTH_ALLOWED_CLIENTS` allowlist -> HTTP 403).
 - Disabled (HTTP 503) unless FINCO_INTERNAL_AUTH_INTROSPECT_TOKEN is configured (>= 16 chars).
-- Requires exact X-Finco-Internal-Token match (constant-time hmac.compare_digest).
+- Requires exact X-Finco-Internal-Token match (constant-time hmac.compare_digest -> HTTP 401).
 - Strictly validates audience against ALLOWED_AUDIENCES (fail-closed HTTP 403).
-- Evaluates canonical per-resource decisions via `app.protocol.entitlement_evaluator` so Radar
-  never synthesizes INACTIVE/ALLOW from local fallback flags.
-- Returns minimum typed claims only; never echoes raw cookies, signing keys, or client data.
+- Returns canonical per-resource `entitlement_decisions` from `app.protocol.entitlement_evaluator`
+  without hardcoded excess entitlements; never echoes raw cookies, signing keys, or client data.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import hmac
 import os
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import decode_demo_session_token, decode_session_token
@@ -32,8 +35,10 @@ from app.protocol.entitlement_evaluator import (
 SCHEMA_VERSION = "finco.internal.auth.introspect.v1"
 ALLOWED_AUDIENCES = frozenset({"radar", "finco-radar-v1"})
 INTERNAL_TOKEN_ENV = "FINCO_INTERNAL_AUTH_INTROSPECT_TOKEN"
+ALLOWED_CLIENTS_ENV = "FINCO_INTERNAL_AUTH_ALLOWED_CLIENTS"
+DEFAULT_LOOPBACK_CLIENTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
-router = APIRouter(prefix="/internal/v1/auth", tags=["internal-auth"])
+router = APIRouter(prefix="/internal/v1/auth", tags=["internal-auth"], include_in_schema=False)
 
 
 class IntrospectRequest(BaseModel):
@@ -68,26 +73,47 @@ def _configured_internal_token() -> str:
     return (os.environ.get(INTERNAL_TOKEN_ENV) or "").strip()
 
 
-async def _canonical_entitlement_decisions(session_obj: Any) -> tuple[dict[str, EntitlementDecisionOut], bool, Optional[str]]:
+def _allowed_clients() -> frozenset[str]:
+    extra = (os.environ.get(ALLOWED_CLIENTS_ENV) or "").strip()
+    if not extra:
+        return DEFAULT_LOOPBACK_CLIENTS
+    return DEFAULT_LOOPBACK_CLIENTS | frozenset(h.strip() for h in extra.split(",") if h.strip())
+
+
+def _enforce_private_network_boundary(request: Request) -> None:
+    # Reject any request that traversed a public reverse proxy
+    if request.headers.get("x-forwarded-for") or request.headers.get("forwarded"):
+        raise HTTPException(status_code=403, detail="INTERNAL_AUTH_PROXIED_REQUEST_DENIED")
+    peer_host = request.client.host if request.client else ""
+    if peer_host not in _allowed_clients():
+        raise HTTPException(status_code=403, detail="INTERNAL_AUTH_NON_LOOPBACK_PEER_DENIED")
+
+
+async def _canonical_entitlement_decisions(session_obj: Any) -> tuple[dict[str, EntitlementDecisionOut], list[str], bool, Optional[str]]:
     wallet_ctx = wallet_context_for_session(session_obj)
     raw_decisions = await evaluate_all_resources(wallet_ctx)
     out: dict[str, EntitlementDecisionOut] = {}
+    allowed_resources: list[str] = []
     for res_key, dec in raw_decisions.items():
         dec_str = dec.decision.value if hasattr(dec.decision, "value") else str(dec.decision)
         out[res_key] = EntitlementDecisionOut(
             decision=dec_str,
             reason=str(getattr(dec, "reason_code", "") or ""),
         )
+        if dec_str == "ALLOW":
+            allowed_resources.append(res_key)
     w_addr = getattr(wallet_ctx, "wallet_address", None)
     w_ver = bool(getattr(wallet_ctx, "verified", False) and w_addr)
-    return out, w_ver, w_addr
+    return out, sorted(allowed_resources), w_ver, w_addr
 
 
-@router.post("/introspect", response_model=IntrospectResponse, response_model_by_alias=True)
+@router.post("/introspect", response_model=IntrospectResponse, response_model_by_alias=True, include_in_schema=False)
 async def introspect_session(
+    request: Request,
     body: IntrospectRequest,
     x_finco_internal_token: Optional[str] = Header(default=None, alias="X-Finco-Internal-Token"),
 ) -> IntrospectResponse:
+    _enforce_private_network_boundary(request)
     expected = _configured_internal_token()
     if not expected or len(expected) < 16:
         raise HTTPException(status_code=503, detail="INTERNAL_AUTH_INTROSPECT_DISABLED")
@@ -99,14 +125,14 @@ async def introspect_session(
     if body.session_cookie:
         sess = decode_session_token(body.session_cookie)
         if sess is not None:
-            decisions, w_ver, w_addr = await _canonical_entitlement_decisions(sess)
+            decisions, allowed, w_ver, w_addr = await _canonical_entitlement_decisions(sess)
             return IntrospectResponse(
                 authenticated=True,
                 audience=body.audience,
                 session_kind="user",
                 user_id=str(sess.user_id),
                 tenant_id=str(sess.user_id),
-                entitlements=["radar:read", "crypto:read", "yield:read"],
+                entitlements=allowed,
                 entitlement_decisions=decisions,
                 wallet_verified=w_ver,
                 wallet_address=w_addr,
@@ -115,27 +141,27 @@ async def introspect_session(
     if body.demo_cookie:
         demo = decode_demo_session_token(body.demo_cookie)
         if demo is not None:
-            decisions, w_ver, w_addr = await _canonical_entitlement_decisions(demo)
+            decisions, allowed, w_ver, w_addr = await _canonical_entitlement_decisions(demo)
             return IntrospectResponse(
                 authenticated=True,
                 audience=body.audience,
                 session_kind="demo",
                 user_id=str(demo.user_id),
                 tenant_id=str(demo.user_id),
-                entitlements=["radar:read:public"],
+                entitlements=allowed,
                 entitlement_decisions=decisions,
                 wallet_verified=w_ver,
                 wallet_address=w_addr,
             )
 
-    decisions, _, _ = await _canonical_entitlement_decisions(None)
+    decisions, allowed, _, _ = await _canonical_entitlement_decisions(None)
     return IntrospectResponse(
         authenticated=False,
         audience=body.audience,
         session_kind="anonymous",
         user_id=None,
         tenant_id=None,
-        entitlements=[],
+        entitlements=allowed,
         entitlement_decisions=decisions,
         wallet_verified=False,
         wallet_address=None,
