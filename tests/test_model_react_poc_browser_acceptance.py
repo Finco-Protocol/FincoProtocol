@@ -59,20 +59,73 @@ def make_session(browser, live_server, uid):
     return context, page, record, errors
 
 
+def _canonical_run_csrf_token(context, live_server, project_code) -> str:
+    """The run CSRF token lives on the legacy workbook's canonical run form.
+
+    Fetching that page also performs the workspace's one-time draft
+    normalization, which changes the composite identity.  Tests therefore
+    acquire the token FIRST and capture the authoritative React workspace
+    snapshot AFTER, so the posted hash is the identity the run route's
+    pre-engine CAS assembles for the same session/scenario state.
+    """
+    token_page = context.request.get(f"{live_server}/v2/workbook?project={project_code}")
+    assert token_page.ok, token_page.text()
+    from bs4 import BeautifulSoup
+    run_form = BeautifulSoup(token_page.text(), "html.parser").select_one("#v2-canonical-run-form")
+    assert run_form is not None, "legacy workbook must expose the canonical run form"
+    token_el = run_form.select_one('[name="run_csrf_token"]')
+    assert token_el is not None, "canonical run form must carry the run-scoped CSRF token"
+    return token_el["value"]
+
+
 def run_via_canonical_path(context, live_server, project_code):
     """Run the engine through the EXISTING canonical route (what the legacy Run
     button does), so the React views can be checked against a real persisted Run."""
-    boot = context.request.get(f"{live_server}/v2/model-react/workspace?project={project_code}")
-    assert boot.ok, boot.text()
-    payload = boot.json()
-    response = post_valid_csrf(context.request,
+    run_csrf_token = _canonical_run_csrf_token(context, live_server, project_code)
+    payload = context.request.get(f"{live_server}/v2/model-react/workspace?project={project_code}")
+    assert payload.ok, payload.text()
+    data = payload.json()
+    response = context.request.post(
         f"{live_server}/v2/workbook/run",
-        form={"project": project_code, "content_hash": payload["workbook"]["composite_hash"],
-              "workbook_version": payload["workbook"]["version"]})
+        form={"project": project_code, "content_hash": data["workbook"]["composite_hash"],
+              "workbook_version": data["workbook"]["version"],
+              "run_csrf_token": run_csrf_token})
     assert response.ok, response.text()
     final_url = str(response.url)
     assert "v2_err" not in final_url, f"canonical Run failed: {final_url} :: {response.text()[:400]}"
     assert "/login" not in final_url, "the Run request lost its session cookie"
+
+
+def test_stale_react_hash_run_is_refused(browser, react_enabled):
+    """Negative CAS control: a composite hash captured BEFORE the legacy
+    workbook's draft normalization must NOT run — the pre-engine CAS refuses it
+    and refreshes the page values instead of running against a stale draft."""
+    context, page, record, errors = make_session(browser, react_enabled, "ux02-stale-run-user")
+    try:
+        first = context.request.get(
+            f"{react_enabled}/v2/model-react/workspace?project={record.project_code}")
+        assert first.ok, first.text()
+        stale_version = first.json()["workbook"]["version"]
+        stale_hash = first.json()["workbook"]["composite_hash"]
+        run_csrf_token = _canonical_run_csrf_token(context, react_enabled, record.project_code)
+        response = context.request.post(
+            f"{react_enabled}/v2/workbook/run",
+            form={"project": record.project_code, "content_hash": stale_hash,
+                  "workbook_version": stale_version,
+                  "run_csrf_token": run_csrf_token})
+        final_url = str(response.url)
+        assert response.ok, response.text()
+        assert "v2_err" in final_url, (
+            f"a stale composite hash must be refused by the pre-engine CAS, got {final_url}")
+        from urllib.parse import unquote_plus
+        assert "Draft changed since page loaded" in unquote_plus(final_url), final_url
+        # the refusal ran nothing: the workspace has no committed runtime
+        ws = context.request.get(
+            f"{react_enabled}/v2/model-react/workspace?project={record.project_code}")
+        assert ws.ok, ws.text()
+        assert ws.json()["freshness"]["state"] == "NOT_RUN"
+    finally:
+        context.close()
 
 
 def test_flag_off_shows_explicit_fallback_and_legacy_workbook_stays_default(browser, react_enabled):

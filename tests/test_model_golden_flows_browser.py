@@ -20,6 +20,8 @@ pytest.importorskip("uvicorn")
 
 from playwright.sync_api import sync_playwright
 
+from tests.model_workspace_navigation import activate_destination
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -98,9 +100,42 @@ def _page(browser, golden_app, *, user_id: str):
     return page
 
 
+_LAZY_SHEET_ROOTS = {
+    "panel-project-setup": "v2-sheet-project-setup",
+    "panel-inputs": "v2-sheet-inputs",
+    "panel-revenue": "v2-sheet-revenue",
+    "panel-capex": "v2-sheet-capex",
+    "panel-opex": "v2-sheet-opex",
+    "panel-debt": "v2-sheet-debt",
+    "panel-investor": "v2-sheet-investor",
+    "panel-tax": "v2-sheet-tax",
+    "panel-returns": "v2-sheet-returns",
+    "panel-fs": "v2-sheet-financial-statements",
+    "panel-outputs": "v2-sheet-outputs",
+    "panel-run-history": "v2-sheet-run-history",
+}
+
+
 def _click_tab(page, tab_id: str, panel_id: str) -> None:
-    page.locator(f"#{tab_id}").click()
+    """Activate a workbook destination through the governed public navigation.
+
+    The bare #tab-* buttons are hidden compatibility aliases under the Option C
+    navigation; the visible affordance is the governed destination control
+    (tests/model_workspace_navigation.py::activate_destination).  Sheets under
+    the lazy-view refresh swap in their presentation render after activation:
+    interacting before the view reports 'loaded' races the view gate (a submit
+    during 'pending' is consumed, and a dirty view then refuses to reload), so
+    wait for the sheet root to report loaded before driving its controls.
+    """
+    activate_destination(page, tab_id)
     page.locator(f"#{panel_id}").wait_for(state="visible")
+    sheet_root = _LAZY_SHEET_ROOTS.get(panel_id)
+    if sheet_root:
+        page.wait_for_function(
+            "sheetId => { const el = document.getElementById(sheetId);"
+            " return !el || el.dataset.modelViewState === 'loaded'; }",
+            arg=sheet_root, timeout=30_000,
+        )
 
 
 def _metric_text(page, testid: str) -> str:
@@ -128,9 +163,28 @@ def _save_p50_hours(page, value: float) -> None:
         '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
     )
     row.locator('input[name="value"]').fill(str(value))
+    hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
     row.get_by_role("button", name="Save").click()
     page.locator('[data-testid="overview-status-stale"], .v2-runtime-dirty').first.wait_for(
         state="attached"
+    )
+    _wait_run_hash_refreshed(page, hash_before)
+
+
+def _wait_run_hash_refreshed(page, old_hash: str, timeout_ms: int = 15_000) -> None:
+    """Wait until the canonical run form carries a content_hash different from
+    ``old_hash``.
+
+    A Working Copy save responds with the HX-Trigger workbook-field-saved event
+    that updates every run-form hash input; a Run clicked before that update
+    lands carries the pre-save hash and is refused by the pre-engine CAS.
+    HX-Trigger fires after the response settles, so this also guarantees the
+    OOB-refreshed run controls are wired before Run is clicked.
+    """
+    page.wait_for_function(
+        "old => { const el = document.querySelector('#v2-canonical-run-form input[name=content_hash]');"
+        " return !!el && !!el.value && el.value !== old; }",
+        arg=old_hash, timeout=timeout_ms,
     )
 
 
@@ -172,10 +226,15 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         for tab, panel, marker in (
             ("tab-overview", "panel-overview", '[data-testid="kpi-project-irr"]'),
             ("tab-debt", "panel-debt", "#v2-sheet-senior-debt"),
-            ("tab-fs", "panel-fs", "#v2-sheet-financial-statements"),
+            # tab-fs is the governed compatibility alias of tab-outputs: the
+            # Financial Statements sheet is superseded by the persisted
+            # "Statements & Debt" output workspace, whose canonical state badge
+            # is the successor marker of the legacy statements sheet root.
+            ("tab-fs", "panel-outputs", '[data-testid="outputs-state"]'),
             ("tab-returns", "panel-returns", '[data-testid="returns-authority-bar"]'),
         ):
             _click_tab(page, tab, panel)
+            page.locator(marker).first.wait_for(state="attached", timeout=30_000)
             assert page.locator(marker).count() == 1
 
         _click_tab(page, "tab-scenarios", "panel-scenarios")
@@ -189,7 +248,12 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
             page.locator(".v2-toolbar-scenario-link", has_text=scenario_name).wait_for()
         row = page.locator(".v2-scenario-row", has_text=scenario_name)
         row.get_by_role("button", name="Edit").click()
-        page.locator("#ov-p50_hours").fill(str(initial_p50 * 1.35))
+        # The canonical scenario override authority is the PPA tariff only
+        # (data-testid="override-authority-hint"); P50-hours is a reference-only
+        # control (disabled, data-unbound) and the Working Copy grid owns it.
+        # The solar reference base tariff is 60 EUR/MWh; +35% is a real causal
+        # revenue change the Run must reflect.
+        page.locator("#ov-tariff_eur_mwh").fill("81")
         page.locator("#v2-scenario-override-form").get_by_role(
             "button", name="Save overrides"
         ).click()
@@ -200,11 +264,16 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         assert page.locator('[data-testid="returns-last-run-scenario"]').inner_text() == scenario_name
 
         calls_before_compare = len(golden_app["calls"])
-        _click_tab(page, "tab-compare", "panel-compare")
-        # GF-F03: fresh-on-open — Compare must reflect current scenario state
-        # WITHOUT a page reload.  The tab HTMX GET fires on click; wait for it.
-        page.wait_for_load_state("networkidle", timeout=15_000)
-        page.locator(".v2-compare-chip").first.wait_for(state="visible", timeout=10_000)
+        # GF-F03: opening Compare fetches and renders the current scenarios
+        # without a page reload. The initial markup already contains Base.
+        with page.expect_response(
+            lambda response: response.request.method == "GET"
+            and response.url.split("?", 1)[0].endswith("/v2/workbook/scenarios/compare")
+        ) as refreshed_compare:
+            _click_tab(page, "tab-compare", "panel-compare")
+        assert refreshed_compare.value.ok
+        scenario_chip_fresh = page.locator(".v2-compare-chip", has_text=scenario_name)
+        scenario_chip_fresh.wait_for(state="visible", timeout=10_000)
         chips = page.locator(".v2-compare-chip")
         assert chips.count() >= 2, (
             "Compare tab must show ≥2 chips after fresh-on-open GET; "
@@ -213,7 +282,6 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         # Base case chip carries the v2-scenario-base-badge marker
         base_chip = page.locator(".v2-compare-chip .v2-scenario-base-badge")
         assert base_chip.count() >= 1, "Base Case chip must be present (v2-scenario-base-badge)"
-        scenario_chip_fresh = page.locator(".v2-compare-chip", has_text=scenario_name)
         assert scenario_chip_fresh.count() >= 1, (
             f"Scenario '{scenario_name}' chip must appear after tab click (GF-F03)"
         )
@@ -228,7 +296,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         page.locator("#v2-compare-submit-btn:not([disabled])").wait_for(state="visible", timeout=10_000)
         page.locator("#v2-compare-submit-btn").click()
         page.locator(".v2-compare-table").wait_for()
-        assert page.locator('[data-testid="cmp-project_irr-delta"]').inner_text().strip() != "—"
+        assert page.locator('[data-testid="cmp-project_irr-delta-s2"]').inner_text().strip() != "—"
 
         calls_before_export = len(golden_app["calls"])
         with page.expect_download(timeout=120_000) as download_info:
@@ -240,7 +308,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         assert len(golden_app["calls"]) == calls_before_export
         assert scenario_run[2] != changed[2]
 
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
         library_row = page.locator("tr", has_text=name)
         assert library_row.get_by_text("Working copy").count() == 1
@@ -345,6 +413,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         p50_row = page.locator(
             '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
         )
+        hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
         p50_row.get_by_role("button", name="Save").click()
         # After save, OOB banner swaps in — wait for any banner to confirm save completed
         page.locator(
@@ -352,6 +421,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         ).first.wait_for(state="attached", timeout=15_000)
 
         # ── 8. Run exactly once ───────────────────────────────────────────────
+        _wait_run_hash_refreshed(page, hash_before)
         calls_before_run = len(calls)
         page.locator('[data-testid="v2-run-btn"]').click()
         page.locator('[data-testid="overview-status-current"]').wait_for(
@@ -397,7 +467,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         )
 
         # ── 11. Navigate away via toolbar back ───────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
 
         # ── 12. Reopen working copy ───────────────────────────────────────────
@@ -496,7 +566,9 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
         new_p50 = p50_before * 1.10
 
         p50_row.locator('input[name="value"]').fill(str(new_p50))
+        hash_before = page.locator('#v2-canonical-run-form input[name="content_hash"]').input_value()
         p50_row.get_by_role("button", name="Save").click()
+        _wait_run_hash_refreshed(page, hash_before)
         # Wait for stale state to appear after save (DO NOT click Run)
         page.locator('[data-testid="overview-status-stale"], .v2-runtime-dirty').first.wait_for(
             state="attached", timeout=15_000
@@ -555,7 +627,7 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
             )
 
         # ── 6. Navigate away and reopen ──────────────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator(".v2-toolbar-back[aria-label=\"Back to project library\"]").click()
         page.wait_for_url("**/library**")
 
         calls_before_reopen = len(calls)

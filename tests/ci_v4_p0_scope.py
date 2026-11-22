@@ -41,6 +41,48 @@ R04_ISOLATION_TEST = 'tests/r04_ppa_global_cap/test_r04_allocation.py'
 # The files rewritten by this PR (REPLACED: accepted BASE blob + exact new blob; ``.github/`` and ``tools/`` stay literal).
 # Correction E: one read-only import-time scope (call_scope + content-addressed Git object reads) at the two historical-subject sites.
 # tests/conftest.py is NOT owned: the historical U1/U2/WF-06B guards keep it a protected, unowned path.
+# Correction E admits the exact changes audited from d605fac5. The separate
+# reviewed digests also reject a paired source and manifest edit.
+BROWSER_REPAIR_BLOBS = {
+    'tests/test_rcux2_progress_scope_browser.py': 'c0e28cc306fc4f4746ab5e7d5c5ece1f07d6c2d5',
+    'static/js/model_view_refresh.js': 'aa105ed45e6cad19bad65784d6d6d1dcb211e20d',
+    'static/js/cost_staging.js': 'c3edddadbd46aa3d4ffc913a0cf22da244ead3d8',
+    'app/v2/capex_router.py': '73a665c1fd81f17136f8acd543b4d17ae2147bb2',
+    'app/v2/opex_router.py': '5f346c0ca97a1c4cafab30bd3f6ea4391e0b0861',
+    'tests/test_cost_batch_save_browser_v1.py': '47eb26d4a8afe4c8e6dc88aa22b0abaaf0c22de7',
+    'tests/test_cost_editing_ux_v2_browser.py': 'f6dac1bdb95eaf7446031b4b3de3d337b6b287cc',
+    'tests/test_cost_grid_editing_browser_v1.py': 'd6dc005e9e0c6d95c7c35cddf6b5dd6fbd103913',
+    'tests/test_jev_panel_browser.py': '8c7e3f3c3a726a00a8d5de88c6ea5ad3b0bce1e5',
+    'tests/test_m3_two_driver_sensitivity_browser.py': 'ad206e41a530a7d2e351db6b66305e1e2c0f8945',
+    'tests/test_model_trust_pack_browser.py': '121c375f77c60bef55713d1c170894947e6989b1',
+    'tests/test_p3_browser_acceptance.py': 'b472153960561fe5041df195bcdbee8a2a2eb77e',
+    'tests/test_radar_r3_liquidity.py': 'cdb689add60f91ab8371e0794aca0c97db12b77f',
+    'tests/test_ui_protocol_shell.py': 'ffde62258729e1d4bff05fd26b56d3630bc47602',
+}
+COST_PRESENTATION_PATHS = frozenset(('app/v2/capex_router.py', 'app/v2/opex_router.py',
+                                     'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
+                                     'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+                                     'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css'))
+# Correction F admits the exact browser-runtime and test-successor changes audited
+# from 047d51d6: the governed-navigation test successors, the swap-teardown blur
+# guard, the BESS loader placement, the diagnostics containment and the
+# fail-closed Chromium derivation in the PR workflow. The separate reviewed
+# digests also reject a paired source and manifest edit.
+CORRECTION_F_BLOBS = {
+    'app/templates/v2/partials/sheet_project_setup.html': '45ced98aa22394ee2167f7cc2ff55ba8d43cab70',
+    'app/templates/v2/workbook.html': '94b9f61f0eeed25dcb0568dc745537f409fce256',
+    'static/js/workbook_v2.js': 'ed76fa5ec332c0ddc6c74f1c980c71ce54ecf49c',
+    'static/css/model_diagnostics_v2.css': '08f068dd14086a43133c8888f718706fd10689f1',
+    'tests/test_data_center_browser_acceptance.py': '4813332b601cd188656ff939ede34574dacb779f',
+    'tests/test_model_golden_flows_browser.py': 'd679ce2651ccb725344269617e571aaf3cde2931',
+    'tests/test_model_react_poc_browser_acceptance.py': '815f255a9d10e613683961a79e527e50668a02cb',
+    'tests/test_model_v7_diagnostics_browser.py': '37cb5d247ef256d6c3bb60f65bd4e4e4d73a9452',
+    'tests/test_radar_n04_browser.py': '4d68e71b1798d490fd93d59d44555c0e98250672',
+    'tests/test_sc34_workflow_journeys_browser.py': '14f77711ffa34c731ca4bdc60ff654f6b16f7739',
+    # The mutation-inventory module itself moves once: its Correction F successor admits the
+    # exact project-setup template through the P0 handoff, preserving historical R1 pins.
+    'tests/model_mutation_security_successor.py': 'd18ea69a588b0e93fce4b09e2d102f1e2c179610',
+}
 REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2a_odr_successor.py',
                       # P1: U1 node split (SPLIT_SAFE_FLOOR_LIMITED, isolation-proven) and its re-measured U1 node weights
                       'docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json',
@@ -54,7 +96,10 @@ REPLACED = frozenset(('tests/test_rc7c_candidate_successor.py', 'tests/test_v9p2
                       'tests/test_model_mutation_security_successor.py',
                       R04_ISOLATION_TEST,
                       'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                      'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'))
+                      'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
+                      # post-#471 (owner decision 2026-11-20): the reviewed FULL skip baseline gains exactly ONE named, count-one, SKIPPED_NOT_PASSED deferral
+                      # (the private T01-B/C 34/634 reconciliation); accepted BASE blob + exact new blob, never a wildcard
+                      'docs/ci_v4/full_skip_baseline.json'))
 # The ONLY ``.github/`` and ``tools/`` paths this cohort owns: exactly the literal paths the bootstrap cohort already admitted. Never a prefix, never a pattern.
 CI_PATHS = frozenset(('.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',
                       # P2: the parallel exact-inventory FULL controller (new tool) and the FULL workflow that runs it (REPLACED below)
@@ -90,15 +135,24 @@ HANDOFF_PATHS |= frozenset(('tests/fin_v2_integration_409_scope.py', 'tests/fin_
                             'tests/ux_pr1_scope.py', 'tests/ux_pr2a_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py',
                             'tests/test_ux_pr2a_scope.py', 'tests/test_finval_f01_scope.py', 'tests/wsv2_core_scope.py'))
 HANDOFF_PATHS |= {'tests/test_v11_stage3_successor.py'}
+HANDOFF_PATHS |= frozenset(('tests/fin_v2_3_scope.py', 'tests/fin_v2_r1_scope.py', 'tests/fin_v2_pr394_corr_scope.py', 'tests/fin_v2_ci_scope.py', 'tests/fin_v2_wsv2_scope.py'))
+FULL_VISUAL_WORKFLOW_BLOB = '6f9adcb481a3375d5ab2fd67a85cbb0341e2dc60'
+PR_CHROMIUM_WORKFLOW = '.github/workflows/ci_v4_pr.yml'
+PR_CHROMIUM_WORKFLOW_BLOB = '35e05ad6c3a82f3845bfabc573a13b0f1d8a8164'
+REPLACED |= BROWSER_REPAIR_BLOBS.keys() | {PR_CHROMIUM_WORKFLOW}
+REPLACED |= CORRECTION_F_BLOBS.keys()
+CI_PATHS |= {PR_CHROMIUM_WORKFLOW}
+HANDOFF_PATHS |= {'tests/test_ux_pr2c_scope.py'}
+HANDOFF_PATHS |= {'tests/test_rcux_governance.py'}
 SUPERSEDED = HANDOFF_PATHS | REPLACED | CURRENT_MAPS
 OWNED_PATHS = NEW | SUPERSEDED
 FORBIDDEN = ("financial_engine/", "finco_core/", "domain/", "migrations/", "app/", "research/", "frontend/", "static/", "main_web.py")
 NEW_ONLY_PREFIXES = (".github/", "tools/")
 # Accepted CI V4 control sources that this successor must leave byte-identical to BASE.
 FROZEN = (
-    ".github/workflows/ci_v4_f01_job.yml", ".github/workflows/ci_v4_pr.yml",
+    ".github/workflows/ci_v4_f01_job.yml",
     ".github/workflows/ci_v4_release_gate.yml", ".github/workflows/ci_v4_shadow_split.yml",
-    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/full_skip_baseline.json", "docs/ci_v4/module_weights.json",
+    "docs/ci_v4/ci-v4-policy.json", "docs/ci_v4/module_weights.json",
     "pytest.ini",
     "tools/ci_v4_activate.py", "tools/ci_v4_aggregate.py", "tools/ci_v4_full_record.py", "tools/ci_v4_governance_gate.py",
     "tools/ci_v4_nodes.py", "tools/ci_v4_schedule.py", "tools/ci_v4_select.py", "tools/ci_v4_shard.py",
@@ -5188,6 +5242,167 @@ HANDOFFS['tests/test_f04_financing_scope.py'].append((
     "        if path in ('tests/ci_v4_scope.py', 'tests/ux_pr2b_scope.py', 'tests/ux_pr2c_scope.py') and _P0.signature_ok() and path in _P0.HANDOFFS:\n",
 ))
 
+# post-#471 (owner decision 2026-11-20): the one-key, count-one private-dataset skip deferral. The reviewed FULL skip baseline is one more exact-P0-pin control blob
+# (never a wildcard): every historical byte-equality guard accepts it only at the exact blob this cohort's manifest pins.
+HANDOFFS['tests/ci_v4_lean_b1_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v4_lean_b2_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v4_lean_b3_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v5_bootstrap_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v5_hardening_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v5_gate_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v4_full_recovery_scope.py'] += [
+    (
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')",
+        "and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')",
+    ),
+]
+HANDOFFS['tests/ci_v4_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json'):",
+    ),
+]
+HANDOFFS['tests/test_ci_v4_lean_b1_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v4_lean_b2_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v4_lean_b3_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v5_bootstrap_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v5_hardening_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v5_gate_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+HANDOFFS['tests/test_ci_v4_full_recovery_scope.py'] += [
+    (
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(",
+        "if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(",
+    ),
+]
+
+HANDOFFS['tests/fin_v2_3_scope.py'] = [('def valid(repo=None,ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_r1_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_ci_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+HANDOFFS['tests/fin_v2_wsv2_scope.py'] = [('def valid(repo=None, ref=None):\n', 'def valid(repo=None, ref=None):\n    from tests.fin_v2_cohorts import call_scope\n\n    # Reuse the existing read-only scope for this traversal. A subsequent\n    # invocation still reads current source and sees any intervening mutation.\n    with call_scope():\n        return _valid(repo, ref)\n\n\ndef _valid(repo=None, ref=None):\n')]
+
+
+HANDOFFS['tests/u1_scope.py'].append(("    'tests/test_wsv2_core_scope.py',\n))\n\n\ndef _p0_runtime_pin", "    'tests/test_wsv2_core_scope.py',\n    'tests/fin_v2_3_scope.py',\n    'tests/fin_v2_r1_scope.py',\n    'tests/fin_v2_wsv2_scope.py',\n))\n\n\ndef _p0_runtime_pin"))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('def exact_blobs_ok(repo=None, ref=None):\n', 'def _matches_pin(path, value, historical, root, ref):\n    if value == historical:\n        return True\n    if path != \'tests/fin_v2_ci_scope.py\':\n        return False\n    from tests import ci_v4_p0_scope as P0\n    return (\n        P0.supersedes(path, value, root, ref)\n        and P0.manifest(root, ref)["base_blobs"].get(path) == historical\n    )\n\n\ndef exact_blobs_ok(repo=None, ref=None):\n'))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('_blob(_read(root, p, ref)) != expected', 'not _matches_pin(p, _blob(_read(root, p, ref)), expected, root, ref)'))
+HANDOFFS['tests/fin_v2_ci_scope.py'].append(('    return _blob(raw) == pins[path]\n', "    if path == 'tests/fin_v2_ci_scope.py':\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            return raw == _read(root, path, ref)\n        except (OSError, subprocess.CalledProcessError):\n            return False\n    return _blob(raw) == pins[path]\n"))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('def exact_blobs_ok(repo=None, ref=None):\n', 'def _matches_pin(path, value, historical, root, ref):\n    if value == historical:\n        return True\n    if path != \'tests/fin_v2_pr394_corr_scope.py\':\n        return False\n    from tests import ci_v4_p0_scope as P0\n    return (\n        P0.supersedes(path, value, root, ref)\n        and P0.manifest(root, ref)["base_blobs"].get(path) == historical\n    )\n\n\ndef exact_blobs_ok(repo=None, ref=None):\n'))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('_blob(_read(root, p, ref)) == expected', '_matches_pin(p, _blob(_read(root, p, ref)), expected, root, ref)'))
+HANDOFFS['tests/fin_v2_pr394_corr_scope.py'].append(('    return _blob(raw) == pins[path]\n', "    if path == 'tests/fin_v2_pr394_corr_scope.py':\n        root = Path(repo) if repo is not None else ROOT\n        try:\n            return raw == _read(root, path, ref)\n        except (OSError, subprocess.CalledProcessError):\n            return False\n    return _blob(raw) == pins[path]\n"))
+
+
+# Preserve the historical O1 router pins and accept only their exact P0 successors.
+HANDOFFS['tests/post413_o1_scope.py'].append((
+    "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+    "    if path in ('app/v2/capex_router.py', 'app/v2/opex_router.py'):\n"
+    "        from tests import ci_v4_p0_scope as P0\n"
+    "        return P0.supersedes(path, actual, root, ref) and P0.manifest(root, ref)['base_blobs'].get(path) == expected\n"
+    "    if path not in ('tests/post413_o1_scope.py', 'tests/test_post413_o1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+))
+
+# Literal handoffs for the pinned PR workflow. Historical manifests stay intact.
+HANDOFFS['tests/ci_v4_scope.py'] = HANDOFFS.get('tests/ci_v4_scope.py', []) + [("    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json'):",
+    "    if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', 'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json'):")]
+HANDOFFS['tests/ux_pr2c_scope.py'] = HANDOFFS.get('tests/ux_pr2c_scope.py', []) + [('def _pr3b1_pin(path, blob, repo=None, ref=None):\n',
+    "def _pr3b1_pin(path, blob, repo=None, ref=None):\n    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n        from tests import ci_v4_p0_scope as P0\n        return P0.supersedes(path, blob, repo, ref)\n")]
+HANDOFFS['tests/test_ux_pr2c_scope.py'] = HANDOFFS.get('tests/test_ux_pr2c_scope.py', []) + [('    text = (ROOT / ".github/workflows/ci_v4_pr.yml").read_text(encoding="utf-8")\n',
+    '    from tests import ci_v4_p0_scope as P0\n    path = ".github/workflows/ci_v4_pr.yml"\n    text = subprocess.check_output(["git", "show", f"{P0.BASE}:{path}"], cwd=ROOT).decode("utf-8")\n    assert P0.supersedes(path, P0._blob((ROOT / path).read_bytes()))\n')]
+
+
+# The reviewed mutation inventory has a source successor, while both historical maps keep their pins.
+HANDOFFS['tests/post413_r1_scope.py'].append(("    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n",
+    "    if path == 'tests/model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(value, manifest(root, ref)['source_blobs'].get(path), root, ref)\n    if path not in ('tests/test_wsv2_core_scope.py', 'tests/post413_r1_scope.py', 'tests/test_post413_r1_scope.py'):\n"))
+HANDOFFS['tests/ux_pr2c_scope.py'].append(("    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n",
+    "    if path == 'tests/model_mutation_security_successor.py':\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(blob, manifest(repo, ref)['source_blobs'].get(path), repo, ref)\n    if path in ('.github/workflows/ci_v4_pr.yml', 'tests/test_ux_pr2c_scope.py'):\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    "    if path == 'tests/model_mutation_security_successor.py' and pin != value:\n        from tests import ci_v4_p0_scope as P0\n        return P0.mutation_inventory_handoff(value, pin, repo, ref) and exact_blobs_ok(repo, ref)\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
+HANDOFFS['tests/wsv2_core_scope.py'].append(('    return W.supersedes(path, value, root, ref)\n',
+    "    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n    return W.supersedes(path, value, root, ref)\n"))
+
+
+HANDOFFS['tests/test_wsv2_core_scope.py'].append(('    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    return pin\n',
+    "    if owner is not None:\n        assert owner.exact_blobs_ok() and owner.supersedes(path, pin)\n    if path == 'tests/test_model_react_poc_browser_acceptance.py':\n        from tests import ci_v4_p0_scope as P0\n\n        successor = P0.manifest()['source_blobs'][path]\n        assert P0.manifest()['base_blobs'][path] == pin\n        assert F._wf06b_supersedes(path, successor, F.ROOT, None)\n        return successor\n    return pin\n"))
+HANDOFFS['tests/test_rcux_governance.py'] = [('    golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]\n    assert golden == [], golden\n',
+    '    from tests import ci_v4_p0_scope as P0\n\n    golden = [p for p in changed if re.search(r"golden|baseline_snapshot|expected_outputs", p)]\n    # P0 pins the reviewed browser harness for Golden Flow A.\n    golden = [\n        p for p in golden\n        if p != "tests/test_model_golden_flows_browser.py"\n        or not P0.matches(p, (S.ROOT / p).read_bytes())\n    ]\n    assert golden == [], golden\n')]
+
+
+HANDOFFS['tests/post413_o1_scope.py'].append(("    if path in ('app/v2/capex_router.py', 'app/v2/opex_router.py'):\n",
+    "    if path in ('app/v2/capex_router.py', 'app/v2/opex_router.py', 'tests/test_rcux_governance.py'):\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('def _browser_registration_follows(path, value, root, ref):\n',
+    "def _browser_registration_follows(path, value, root, ref):\n    if path == 'tests/test_rcux_governance.py':\n        from tests import ci_v4_p0_scope as P0\n        return (P0.supersedes(path, value, root, ref)\n                and P0.manifest(root, ref)['base_blobs'].get(path) == manifest(root, ref)['source_blobs'].get(path))\n"))
+
+
+HANDOFFS['tests/test_wsv2_core_scope.py'].append(('        assert tests(original) == tests(current), path\n',
+    "        expected_tests = tests(original)\n        if path == 'tests/test_model_react_poc_browser_acceptance.py':\n            expected_tests.insert(0, ('test_stale_react_hash_run_is_refused', []))\n        assert tests(current) == expected_tests, path\n"))
+
+
+HANDOFFS['tests/post413_r1_scope.py'].append(('    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n',
+    "    if path == 'tests/test_rcux_governance.py' and pin != value:\n        return _browser_registration_follows(path, value, repo, ref) and exact_blobs_ok(repo, ref)\n    return pin is not None and pin == value and exact_blobs_ok(repo, ref)\n"))
+
 
 def expected_handoff(root, path):
     """The exact bytes of ``path`` after the reviewed substitutions over its immutable BASE blob."""
@@ -5319,11 +5534,26 @@ def _signature_ok(root, ref, closure=False):
         pins, base = d.get("source_blobs", {}), d.get("base_blobs", {})
         if pins.get("tests/ci_v4_p0_scope.py") != _MODULE_BLOB:
             return False
+        # Bind the independently reviewed count-one exception, even if a candidate
+        # changes both the baseline bytes and the pin in its own manifest.
+        if pins.get("docs/ci_v4/full_skip_baseline.json") != "d5e91b8a07d63dd5a2ef7b483e7e0893c7fedf0e":
+            return False
+        if pins.get('.github/workflows/ci_v4_full.yml') != FULL_VISUAL_WORKFLOW_BLOB:
+            return False
+        if pins.get(PR_CHROMIUM_WORKFLOW) != PR_CHROMIUM_WORKFLOW_BLOB:
+            return False
+        if any(pins.get(path) != blob for path, blob in BROWSER_REPAIR_BLOBS.items()):
+            return False
+        if pins.get('tests/test_ci_v4_p0_scope.py') != '82e3ab130cc2b5010351edf44fcfa942a432b4f4':
+            return False
+        if any(pins.get(path) != blob for path, blob in CORRECTION_F_BLOBS.items()):
+            return False
         if set(pins) != OWNED_PATHS or set(base) != SUPERSEDED:
             return False
         if d.get("source_modes") != {p: "100644" for p in OWNED_PATHS} or d.get("base_modes") != {p: "100644" for p in SUPERSEDED}:
             return False
-        if not NEW.isdisjoint(base) or any(p.startswith(FORBIDDEN) or p.startswith("/") or ".." in p.split("/") or "*" in p
+        if not NEW.isdisjoint(base) or any((p.startswith(FORBIDDEN) and p not in COST_PRESENTATION_PATHS)
+                                           or p.startswith("/") or ".." in p.split("/") or "*" in p
                                            for p in OWNED_PATHS | {MANIFEST}):
             return False
         if not CI_PATHS <= (NEW | REPLACED) or any(p.startswith(NEW_ONLY_PREFIXES) and p not in CI_PATHS for p in OWNED_PATHS | {MANIFEST}):       # .github/ and tools/ only as the literal CI_PATHS
@@ -5343,6 +5573,18 @@ def _signature_ok(root, ref, closure=False):
         owned = (OWNED_PATHS - (set() if closure else CURRENT_MAPS)) | {MANIFEST}
         if any(modes.get(p) != "100644" for p in owned):
             return False
+        if closure and ref is None:
+            paths = owned | set(FROZEN)
+            rows = _git(root, "ls-files", "--stage", "-z", "--", *sorted(paths)).decode().split("\0")
+            staged = {}
+            for row in filter(None, rows):
+                meta, path = row.split("\t", 1)
+                mode, blob, stage = meta.split()
+                if stage != "0" or path in staged:
+                    return False
+                staged[path] = (mode, blob)
+            if staged != {path: (modes[path], current[path]) for path in paths}:
+                return False
         if any(pins[p] != _expected_blob(key, p) for p in HANDOFFS):
             return False
         if set(HANDOFFS) != HANDOFF_PATHS:
@@ -5386,6 +5628,9 @@ def _diff_ok(root, ref):
     try:
         allowed = OWNED_PATHS | {MANIFEST} | _c06_product_paths(root, ref)
         changed = set(_git(root, "diff", "--name-only", "--no-renames", BASE, *([ref] if ref else []), "--").decode().splitlines())
+        if ref is None:
+            staged = _git(root, "diff", "--cached", "--name-only", "--no-renames", "-z", BASE, "--")
+            changed.update(filter(None, staged.decode().split("\0")))
         if not changed <= allowed:
             return False
         if ref is None:
@@ -5433,6 +5678,15 @@ def ux_pr2a_artifact_test_pin(path, value, repo=None, ref=None):
     return path == 'tests/test_ux_pr2a_scope.py' and supersedes(path, value, repo, ref)
 
 
+def mutation_inventory_handoff(value, predecessor, repo=None, ref=None):
+    """Bind the Correction F inventory to its exact historical R1 source."""
+    path = 'tests/model_mutation_security_successor.py'
+    root = Path(repo) if repo is not None else ROOT
+    return (predecessor == _blob(_base_bytes(str(root), path))
+            and value == CORRECTION_F_BLOBS[path]
+            and exact_blobs_ok(root, ref))
+
+
 def r1_security_test_handoff(path, value, repo=None, ref=None):
     if path != R1_SECURITY_TEST or not exact_blobs_ok(repo, ref):
         return False
@@ -5441,8 +5695,12 @@ def r1_security_test_handoff(path, value, repo=None, ref=None):
 
 
 def o1_historical_test_pin(sibling, path, value, repo=None, ref=None):
-    """Keep the reviewed O1 audit blob in its historical manifest after the literal source handoff."""
-    if (sibling, path) != ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'):
+    """Keep reviewed audit blobs in their historical manifests after a literal source handoff."""
+    if (sibling, path) not in (
+        ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_post413_o1_scope.py'),
+        ('docs/react_migration/post413_o1/SOURCE_SUCCESSOR.json', 'tests/test_rcux_governance.py'),
+        ('docs/react_migration/post413_r1/SOURCE_SUCCESSOR.json', 'tests/test_rcux_governance.py'),
+    ):
         return False
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):

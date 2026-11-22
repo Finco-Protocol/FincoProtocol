@@ -25,11 +25,14 @@
     return ticket.generation === now.generation && ticket.project === now.project && ticket.hash === now.hash;
   }
   function visible(view) { var panel=document.getElementById(view.panel); return panel && !panel.hidden; }
-  function syncSetupControls(view, node) {
-    if(view.name!=='project_setup')return;
+  function syncRefreshControls(view, node) {
+    var controls=node;
+    if(view.name==='capex' || view.name==='opex')controls=node.querySelector('form.v2-contingency-form');
+    else if(view.name!=='project_setup')return;
+    if(!controls)return;
     var locked=node.dataset.modelViewState!=='loaded';
-    // Never accept an edit into the old scalar form while its authorized replacement is pending.
-    node.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
+    // Keep scalar editors locked until the authorized replacement arrives. Cost-grid drafts have their own lifecycle.
+    controls.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
       if(locked && !control.disabled){
         control.dataset.modelViewDisabled='true';control.disabled=true;
       }else if(!locked && control.dataset.modelViewDisabled==='true'){
@@ -55,7 +58,7 @@
       var node=document.getElementById(view.id);if(!node)return;
       if(view.name==='run_history' && !node.querySelector('[data-testid="run-history-table"], [data-testid="run-history-empty"]'))return;
       view.active=null;view.node=node;node.dataset.modelViewState='pending';
-      syncSetupControls(view,node);
+      syncRefreshControls(view,node);
       warning(view,node,view.dirty ? 'This sheet changed while it had unsaved edits. Your draft is kept; reload before saving.' :
         'This view needs refreshing. Previous results are not current.');
     });
@@ -82,11 +85,11 @@
   }
   function ensure(view) {
     var node=document.getElementById(view.id);if(!node)return;
-    if(node!==view.node){
+    if(node!==view.node && !view.active){
       view.node=node;view.dirty=false;view.otherDirty=false;
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
-    syncSetupControls(view,node);
+    syncRefreshControls(view,node);
     if(!visible(view) || view.dirty || view.active || writes || pendingWrites.size ||
        node.dataset.modelViewState!=='pending')return;
     var ticket=capture();view.active=ticket;node.setAttribute('aria-busy','true');
@@ -100,11 +103,11 @@
       fresh.removeAttribute('aria-busy');
       if(ok && current(ticket)){
         view.node=fresh;view.dirty=false;fresh.dataset.modelViewState='loaded';
-        syncSetupControls(view,fresh);
+        syncRefreshControls(view,fresh);
         document.dispatchEvent(new CustomEvent('model:view-loaded',{detail:{sheet:view.name}}));
       }else if(current(ticket)){
         fresh.dataset.modelViewState='error';warning(view,fresh,'This view could not refresh. Try again before editing or using results.');
-        syncSetupControls(view,fresh);
+        syncRefreshControls(view,fresh);
       }
     });
   }
@@ -114,6 +117,9 @@
     var view=viewOf(event.target);if(!view || !view.editable)return;
     var node=document.getElementById(view.id);
     if(node.dataset.modelViewState==='loaded')return;
+    if(event.type==='click' && window.v2CostGrid){
+      window.v2CostGrid.deferDeactivate(event.target, node, capture());
+    }
     event.preventDefault();event.stopImmediatePropagation();schedule();
   }
   // An edit made outside the Construction timing component can never be covered by that component's own Save.
@@ -149,25 +155,33 @@
     var detail=event.detail||{},cfg=detail.requestConfig||{};
     if(String(cfg.verb).toLowerCase()!=='post' || !/^\/v2\/(workbook|capex|opex)\//.test(String(cfg.path||'')))return;
     var sourceView=viewOf(detail.elt||event.target);
-    var isRun=String(cfg.path||'').split('?')[0]==='/v2/workbook/run';
+    var path=String(cfg.path||'').split('?')[0];
+    var isRun=path==='/v2/workbook/run';
     var previousHealth=document.getElementById('v2-model-health');
     pendingWrites.add(detail.xhr);invalidate();
-    var writeGeneration=generation;
+    var writeTicket=capture();
     detail.xhr.addEventListener('loadend',function(){
       pendingWrites.delete(detail.xhr);
       var health=document.getElementById('v2-model-health');
-      if(isRun && detail.xhr.status===200 && generation===writeGeneration &&
+      if(isRun && detail.xhr.status===200 && generation===writeTicket.generation &&
          health && health!==previousHealth && health.dataset.state==='CURRENT')sharedReadyGeneration=generation;
       // Existing cost writers update one row plus authorized OOB identities,
       // not the whole sheet. Keep their remaining drafts and keyboard focus.
-      if(sourceView && sourceView.editable && detail.xhr.status===200 && generation===writeGeneration){
+      // A rejected contract submission leaves the server identity unchanged and the editor's draft in place.
+      // Keep that editor loaded so the scheduled presentation read cannot overwrite the draft or block a correction.
+      var refusedContracts=sourceView && sourceView.name==='revenue' && writeTicket.hash &&
+        path==='/v2/workbook/revenue/contracts' && detail.xhr.status===422 && current(writeTicket);
+      if(sourceView && sourceView.editable && (detail.xhr.status===200 || refusedContracts) && generation===writeTicket.generation){
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
+          if(refusedContracts){
+            sourceView.dirty=sourceView.dirty || !!node.querySelector('form[data-revenue-editor][data-dirty="true"]');
+          }
           // The Investor agreement is one form saved as a whole: after a successful save its edits are persisted, not an unsaved draft that
           // would keep the sheet permanently pending after the next Run. Row writers (cost grids) keep their remaining drafts untouched.
           if(sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
           node.dataset.modelViewState='loaded';
-          syncSetupControls(sourceView,node);
+          syncRefreshControls(sourceView,node);
           var notice=node.querySelector('[data-model-view-notice]');if(notice)notice.remove();
         }
       }

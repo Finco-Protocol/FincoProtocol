@@ -55,7 +55,8 @@ def _skip_junit(tmp_path, skipped):
 
 def test_reviewed_baseline_skips_are_listed_and_allowed_but_new_or_extra_skips_block(tmp_path):
     baseline = json.loads((ROOT / POLICY["release_gate"]["skip_baseline"]).read_text())["skipped_nodes"]
-    assert sum(baseline.values()) == 603
+    tax = "tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation"
+    assert baseline[tax] == 1 and sum(v for k, v in baseline.items() if k != tax) == 603      # 603 reviewed natural skips + the ONE owner-authorized deferral
     node = sorted(baseline)[0]
     j = _skip_junit(tmp_path, [node])
     rec = _record(j, counts={"passed": N - 1, "failed": 0, "error": 0, "skipped": 1}, skipped_ids=[node])
@@ -67,6 +68,39 @@ def test_reviewed_baseline_skips_are_listed_and_allowed_but_new_or_extra_skips_b
     rec2 = _record(j2, counts={"passed": N - len(over), "failed": 0, "error": 0, "skipped": len(over)}, skipped_ids=over)
     with pytest.raises(G.GateError, match="baseline"):
         G.gate(rec2, _run(), [j2], SHA, TREE, SLUG, POLICY, baseline, jobs=full_jobs_fixture(_run()))
+
+
+TAX_KEY = "tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation"
+
+
+def _gate_with_skips(tmp_path, skipped, baseline):
+    j = _skip_junit(tmp_path, skipped)
+    rec = _record(j, counts={"passed": N - len(skipped), "failed": 0, "error": 0, "skipped": len(skipped)}, skipped_ids=list(skipped))
+    return G.gate(rec, _run(), [j], SHA, TREE, SLUG, POLICY, baseline, jobs=full_jobs_fixture(_run()))
+
+
+def test_private_tax_deferral_is_allowed_exactly_once_and_stays_a_reported_skip_never_a_pass(tmp_path):
+    baseline = json.loads((ROOT / POLICY["release_gate"]["skip_baseline"]).read_text())["skipped_nodes"]
+    out = _gate_with_skips(tmp_path, [TAX_KEY], baseline)
+    assert out["verdict"] == "RELEASE_ALLOWED" and out["skipped_ids"] == [TAX_KEY]            # listed as a skip, so it is visible and counted SKIPPED_NOT_PASSED
+    with pytest.raises(G.GateError, match="baseline"):                                          # a second occurrence of the very same key blocks
+        _gate_with_skips(tmp_path, [TAX_KEY, TAX_KEY], baseline)
+    without = {k: v for k, v in baseline.items() if k != TAX_KEY}
+    with pytest.raises(G.GateError, match="baseline"):                                          # without the reviewed entry it blocks
+        _gate_with_skips(tmp_path, [TAX_KEY], without)
+
+
+@pytest.mark.parametrize("other", [
+    "tests.tax_reference_registry.test_private_dataset::test_private_second_node",
+    "tests.tax_reference_registry.test_loader_errors::test_new_synthetic",
+    "::tests.test_new_browser_v2",
+    "tests.test_investor_new_browser_v1::test_new",
+    "tests.test_finval_new_acceptance::test_new",
+])
+def test_any_other_skip_still_blocks_the_release_even_beside_the_tax_deferral(tmp_path, other):
+    baseline = json.loads((ROOT / POLICY["release_gate"]["skip_baseline"]).read_text())["skipped_nodes"]
+    with pytest.raises(G.GateError, match="baseline"):
+        _gate_with_skips(tmp_path, [TAX_KEY, other], baseline)
 
 
 @pytest.mark.parametrize("over,msg", [

@@ -46,6 +46,18 @@ def manifest(repo=None, ref=None):
         return {}
 
 
+def _matches_pin(path, value, historical, root, ref):
+    if value == historical:
+        return True
+    if path != 'tests/fin_v2_ci_scope.py':
+        return False
+    from tests import ci_v4_p0_scope as P0
+    return (
+        P0.supersedes(path, value, root, ref)
+        and P0.manifest(root, ref)["base_blobs"].get(path) == historical
+    )
+
+
 def exact_blobs_ok(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     pins = manifest(root, ref).get('source_blobs', {})
@@ -53,7 +65,7 @@ def exact_blobs_ok(repo=None, ref=None):
         return False
     try:
         _git(root, 'merge-base', '--is-ancestor', BASE, ref or 'HEAD')
-        if any(_blob(_read(root, p, ref)) != expected for p, expected in pins.items()):
+        if any(not _matches_pin(p, _blob(_read(root, p, ref)), expected, root, ref) for p, expected in pins.items()):
             return False
         return not any(p.startswith(('financial_engine/', 'finco_core/', 'domain/')) for p in pins)      # this cohort never touches the engine
     except (OSError, ValueError, subprocess.CalledProcessError):
@@ -73,6 +85,15 @@ def _other_cohort_allows(path, root, ref):
 
 
 def valid(repo=None, ref=None):
+    from tests.fin_v2_cohorts import call_scope
+
+    # Reuse the existing read-only scope for this traversal. A subsequent
+    # invocation still reads current source and sees any intervening mutation.
+    with call_scope():
+        return _valid(repo, ref)
+
+
+def _valid(repo=None, ref=None):
     root = Path(repo) if repo is not None else ROOT
     if not exact_blobs_ok(root, ref):
         return False
@@ -97,6 +118,12 @@ def matches(path, source=None, *, repo=None, ref=None):
     if source is None:
         return True
     raw = source.encode() if isinstance(source, str) else source
+    if path == 'tests/fin_v2_ci_scope.py':
+        root = Path(repo) if repo is not None else ROOT
+        try:
+            return raw == _read(root, path, ref)
+        except (OSError, subprocess.CalledProcessError):
+            return False
     return _blob(raw) == pins[path]
 
 

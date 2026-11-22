@@ -23,7 +23,8 @@ def test_an_unrelated_lazy_fetch_does_not_make_other_commands_show_progress_text
     for _ in range(50):
         if "route" in held:
             break
-        time.sleep(0.1)
+        # Let Playwright dispatch the intercepted request while waiting.
+        t.page.wait_for_timeout(100)
     assert "route" in held
     t.page.wait_for_selector("#v2-sheet-goal-seek.htmx-request", state="attached")                  # the ancestor panel is busy loading
     assert _display(t.page, "#v2-sheet-goal-seek .v2-run-loading") == "none"                        # Goal Seek's own button does not claim to be solving

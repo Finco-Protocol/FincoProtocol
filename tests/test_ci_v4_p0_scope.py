@@ -71,13 +71,37 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
                           'tests/test_finv2_d01_governance.py', 'tests/test_v11_stage3_release_authority.py', 'tests/test_ux_pr1_scope.py',
                           'tests/test_model_mutation_security_successor.py', T.R04_ISOLATION_TEST,
                           'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md'}
+                          'tests/test_ci_v4_release_gate.py', 'tests/test_ci_v5_gate.py', 'docs/ci_v5/OWNER_POSTMERGE_ACTIVATION_CHECKLIST.md',
+                          # post-#471 (owner decision 2026-11-20): the reviewed skip baseline, one count-one SKIPPED_NOT_PASSED deferral; nothing else of the V4 policy moved
+                          'docs/ci_v4/full_skip_baseline.json', '.github/workflows/ci_v4_pr.yml'} | {
+        'app/v2/capex_router.py', 'app/v2/opex_router.py',
+        'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
+        'tests/test_cost_batch_save_browser_v1.py', 'tests/test_cost_editing_ux_v2_browser.py',
+        'tests/test_rcux2_progress_scope_browser.py',
+        'tests/test_cost_grid_editing_browser_v1.py', 'tests/test_jev_panel_browser.py',
+        'tests/test_m3_two_driver_sensitivity_browser.py', 'tests/test_model_trust_pack_browser.py',
+        'tests/test_p3_browser_acceptance.py', 'tests/test_radar_r3_liquidity.py', 'tests/test_ui_protocol_shell.py',
+        'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+        'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css',
+        'tests/test_data_center_browser_acceptance.py', 'tests/test_model_golden_flows_browser.py',
+        'tests/test_model_react_poc_browser_acceptance.py', 'tests/test_model_v7_diagnostics_browser.py',
+        'tests/test_radar_n04_browser.py', 'tests/test_sc34_workflow_journeys_browser.py',
+        'tests/model_mutation_security_successor.py',
+    }
+    assert 'docs/ci_v4/full_skip_baseline.json' not in T.FROZEN and 'docs/ci_v4/full_skip_baseline.json' not in T.CI_PATHS
+    assert {'docs/ci_v4/ci-v4-policy.json', 'docs/ci_v4/module_weights.json'} <= set(T.FROZEN)      # every other V4 policy control blob stays byte-equal to BASE
     assert T.CI_PATHS == {'.github/workflows/ci_perf_guard.yml', 'tools/ci_perf_guard.py',      # literal, never a pattern
                           '.github/workflows/ci_v4_full.yml', 'tools/ci_full_parallel.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml',
-                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py'}
+                          'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v4_pr.yml'}
     assert '.github/workflows/ci_v4_full.yml' not in T.FROZEN and set(T.FROZEN) & T.OWNED_PATHS == set()
     assert 'tests/conftest.py' not in T.OWNED_PATHS      # a protected, unowned path of the historical U1/U2/WF-06B guards
-    assert not any(p.startswith(T.FORBIDDEN) or "*" in p for p in T.OWNED_PATHS)
+    assert {p for p in T.OWNED_PATHS if p.startswith(T.FORBIDDEN)} == {
+        'app/v2/capex_router.py', 'app/v2/opex_router.py',
+        'static/js/cost_staging.js', 'static/js/model_view_refresh.js',
+        'app/templates/v2/partials/sheet_project_setup.html', 'app/templates/v2/workbook.html',
+        'static/js/workbook_v2.js', 'static/css/model_diagnostics_v2.css',
+    }
+    assert all("*" not in p for p in T.OWNED_PATHS)
     for p in T.HANDOFFS:
         assert (ROOT / p).read_bytes() == T.expected_handoff(ROOT, p)
     for p in T.FROZEN:
@@ -97,6 +121,47 @@ def test_literal_file_set_modes_handoffs_and_frozen_control_sources():
         assert actual["base_blobs"] == original["base_blobs"]
     assert not T.allowed_path("docs/ci_v5/epoch.json")
     assert not T.allowed_path("tools/ci_v4_extra.py")
+
+
+def test_mutation_inventory_successor_requires_exact_history_and_index(subject):
+    from tests import post413_r1_scope as R1
+
+    path = 'tests/model_mutation_security_successor.py'
+    pin = T.manifest(subject)['source_blobs'][path]
+    historical = R1.manifest(subject)['source_blobs'][path]
+    assert historical == git(subject, 'rev-parse', T.BASE + ':' + path).decode().strip()
+    with C.call_scope():
+        assert R1.supersedes(path, pin, subject)
+        assert not T.mutation_inventory_handoff(pin, '0' * 40, subject)
+    source = subject / path
+    raw = source.read_bytes()
+    try:
+        source.write_bytes(raw + b'\n')
+        git(subject, 'add', '--', path)
+        source.write_bytes(raw)
+        with C.call_scope():
+            assert T.signature_ok(subject)
+            assert not T.exact_blobs_ok(subject)
+            assert not R1.supersedes(path, pin, subject)
+    finally:
+        git(subject, 'restore', '--staged', '--', path)
+        source.write_bytes(raw)
+    foreign_path = 'README.md'
+    assert foreign_path not in T.OWNED_PATHS and foreign_path not in T.FROZEN
+    foreign = subject / foreign_path
+    original = foreign.read_bytes()
+    try:
+        foreign.write_bytes(original + b'\n')
+        git(subject, 'add', '--', foreign_path)
+        foreign.write_bytes(original)
+        with C.call_scope():
+            assert not T.exact_blobs_ok(subject)
+    finally:
+        git(subject, 'restore', '--staged', '--', foreign_path)
+        foreign.write_bytes(original)
+    with C.call_scope():
+        assert T.exact_blobs_ok(subject)
+        assert R1.supersedes(path, pin, subject)
 
 
 def test_o1_historical_test_pin_requires_exact_sibling_and_source(subject):
@@ -125,6 +190,36 @@ def test_o1_historical_test_pin_requires_exact_sibling_and_source(subject):
 @pytest.mark.parametrize("path", sorted(T.OWNED_PATHS | {T.MANIFEST}))
 def test_one_byte_in_each_owned_file_fails_closed(subject, path):
     assert rejected(subject, path, lambda b: b + b"\n"), path
+
+
+def test_tax_skip_budget_expansion_fails_even_with_a_matching_manifest_pin(subject):
+    baseline_path = "docs/ci_v4/full_skip_baseline.json"
+    key = "tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation"
+    head = git(subject, "rev-parse", "HEAD").decode().strip()
+    baseline = json.loads((subject / baseline_path).read_bytes())
+    assert baseline["skipped_nodes"][key] == 1
+    baseline["skipped_nodes"][key] = 2
+    baseline["total"] += 1
+    raw = (json.dumps(baseline, indent=1, sort_keys=True) + "\n").encode()
+    manifest = T.manifest(subject)
+    manifest["source_blobs"][baseline_path] = T._blob(raw)
+    try:
+        (subject / baseline_path).write_bytes(raw)
+        (subject / T.MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        with C.call_scope():
+            assert not T.signature_ok(subject)
+            assert not T.exact_blobs_ok(subject)
+            assert not C.valid(subject)
+            assert T.exact_blobs_ok(subject, head)
+        git(subject, "add", "--", baseline_path, T.MANIFEST)
+        git(subject, "commit", "--quiet", "-m", "Increase the private tax skip limit")
+        with C.call_scope():
+            assert not T.signature_ok(subject, "HEAD")
+            assert not T.exact_blobs_ok(subject, "HEAD")
+            assert not C.valid(subject, "HEAD")
+    finally:
+        git(subject, "reset", "--hard", "--quiet", head)
+    assert T.exact_blobs_ok(subject)
 
 
 @pytest.mark.parametrize("attack", ["base", "tree", "pin", "mode", "extra", "authorization"])
@@ -221,20 +316,86 @@ def test_p1_hooks_are_literal_in_every_historical_cohort():
         path = "tests/%s.py" % name.split(".")[1]
         src = (ROOT / path).read_text()
         assert src.count("def _p0_pins_frozen_edit(") == 1 and src.count("_p0_pins_frozen_edit(p, current.get(p), root, ref)") == 1, path
-        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')" in src, path
+        assert "p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')" in src, path
     v4 = (ROOT / "tests/ci_v4_scope.py").read_text()
     assert "out = out | (P0.CI_PATHS if P0.exact_blobs_ok(root, ref) else frozenset())" in v4
     assert ("if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', 'tests/test_ci_v4_activate.py', "
-            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
+            "'tests/test_ci_v4_nodes.py', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'tests/test_ci_v4_release_gate.py', "
+            "'docs/ci_v4/full_skip_baseline.json'):") in v4 and "return path in P0.REPLACED and P0.supersedes(path, value, root, ref)" in v4
     gate = (ROOT / "tests/ci_v5_gate_scope.py").read_text()
     assert "if nxt and path == 'tests/ci_v4_scope.py' and _p0_owns_handoff(path, root, ref):" in gate
     assert T.P1_FROZEN_EDITS == ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json')
     assert T.P2_FROZEN_EDITS == ('.github/workflows/ci_v4_full.yml',)
     assert T.CI_PATHS - T.REPLACED <= T.NEW and T.CI_PATHS & T.REPLACED == set(T.P2_FROZEN_EDITS) | {
-        'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
+        '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'tools/ci_v5_shadow.py', '.github/workflows/ci_v5_gate.yml', '.github/workflows/ci_v5_shadow.yml'}
 
 
-@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml"])
+def test_correction_e_rejects_physical_and_committed_paired_repins(subject):
+    for path in (".github/workflows/ci_v4_pr.yml", *sorted(T.COST_PRESENTATION_PATHS)):
+        source = (subject / path).read_bytes()
+        altered = source + b"\n"
+        with C.call_scope():
+            assert T.supersedes(path, T._blob(source), subject, "HEAD")
+            assert T.exact_blobs_ok(subject)
+        manifest = subject / T.MANIFEST
+        original_manifest = manifest.read_bytes()
+        forged = json.loads(original_manifest)
+        forged["source_blobs"][path] = T._blob(altered)
+        forged_manifest = (json.dumps(forged, indent=2, sort_keys=True) + "\n").encode()
+        try:
+            (subject / path).write_bytes(altered)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+            manifest.write_bytes(forged_manifest)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+                assert not T.supersedes(path, T._blob(altered), subject)
+        finally:
+            (subject / path).write_bytes(source)
+            manifest.write_bytes(original_manifest)
+        ref, restore = variant(subject, {path: altered, T.MANIFEST: forged_manifest})
+        try:
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject, ref)
+                assert not C.valid(subject, ref)
+        finally:
+            restore()
+
+
+def test_correction_f_rejects_physical_and_committed_paired_repins(subject):
+    for path in sorted(T.CORRECTION_F_BLOBS):
+        source = (subject / path).read_bytes()
+        altered = source + b"\n"
+        with C.call_scope():
+            assert T.supersedes(path, T._blob(source), subject, "HEAD")
+            assert T.exact_blobs_ok(subject)
+        manifest = subject / T.MANIFEST
+        original_manifest = manifest.read_bytes()
+        forged = json.loads(original_manifest)
+        forged["source_blobs"][path] = T._blob(altered)
+        forged_manifest = (json.dumps(forged, indent=2, sort_keys=True) + "\n").encode()
+        try:
+            (subject / path).write_bytes(altered)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+            manifest.write_bytes(forged_manifest)
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject)
+                assert not T.supersedes(path, T._blob(altered), subject)
+        finally:
+            (subject / path).write_bytes(source)
+            manifest.write_bytes(original_manifest)
+        ref, restore = variant(subject, {path: altered, T.MANIFEST: forged_manifest})
+        try:
+            with C.call_scope():
+                assert not T.exact_blobs_ok(subject, ref)
+                assert not C.valid(subject, ref)
+        finally:
+            restore()
+
+
+@pytest.mark.parametrize("path", ["docs/ci_v4/node_weights.json", "docs/ci_v4/node_split_policy.json", ".github/workflows/ci_v4_full.yml",
+                                  "docs/ci_v4/full_skip_baseline.json"])        # any baseline bytes other than the single reviewed one-key blob are refused by every cohort
 def test_a_foreign_control_blob_is_rejected_by_every_hooked_historical_cohort(subject, path):
     ref, restore = variant(subject, {path: lambda b: b.replace(b'"', b'"', 1) + b"\n"})
     try:

@@ -102,7 +102,7 @@ def _check_methodology_page(page: Page, base_url: str, width: int):
 def test_methodology_page_desktop_1280(app_server):
     """TRUST_PACK_BROWSER_METHODOLOGY_1280 — methodology page renders at 1280px."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         try:
             _check_methodology_page(page, app_server, 1280)
@@ -113,7 +113,7 @@ def test_methodology_page_desktop_1280(app_server):
 def test_methodology_page_mobile_390(app_server):
     """TRUST_PACK_BROWSER_METHODOLOGY_390 — methodology page renders at 390px."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         try:
             _check_methodology_page(page, app_server, 390)
@@ -124,7 +124,7 @@ def test_methodology_page_mobile_390(app_server):
 def test_methodology_page_has_nav_links(app_server):
     """TRUST_PACK_BROWSER_NAV_LINKS — methodology page must have internal anchor links."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         page.set_viewport_size({"width": 1280, "height": 900})
         try:
@@ -140,7 +140,7 @@ def test_methodology_page_has_nav_links(app_server):
 def test_methodology_page_no_500_error(app_server):
     """TRUST_PACK_BROWSER_NO_500 — /model/methodology must not return a 500 error."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         try:
             response = page.goto(
@@ -157,7 +157,7 @@ def test_methodology_page_no_500_error(app_server):
 def test_methodology_page_no_horizontal_overflow_390(app_server):
     """TRUST_PACK_BROWSER_390 — no horizontal scroll at 390px mobile width."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         page.set_viewport_size({"width": 390, "height": 900})
         try:
@@ -174,7 +174,7 @@ def test_methodology_page_no_horizontal_overflow_390(app_server):
 def test_docs_links_to_methodology(app_server):
     """TRUST_PACK_DOCS_DISCOVERABILITY — /docs page must link to /model/methodology."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        browser = pw.chromium.launch()
         page = browser.new_page()
         page.set_viewport_size({"width": 1280, "height": 900})
         try:

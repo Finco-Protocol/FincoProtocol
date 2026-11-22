@@ -206,6 +206,15 @@
 
     <div class="v2-sheet-panel" role="tabpanel" id="panel-project-setup" aria-labelledby="tab-project-setup" hidden>
       <div class="v2-sheet-body">
+        {# Native BESS financial form loader.  It must stay OUTSIDE
+           #v2-sheet-project-setup: the lazy-view gate in model_view_refresh.js
+           cancels any HTMX request whose element belongs to a view that is not
+           yet marked loaded, and htmx's `load` trigger is one-shot — inside the
+           sheet root the request is consumed before the view gate opens and the
+           native BESS form never renders. #}
+        {% if is_bess|default(false) %}
+        <div hx-get="/v2/workbook/bess/inputs?project={{ project_code|urlencode }}" hx-trigger="load" hx-swap="innerHTML" data-testid="bess-inputs-loader"></div>
+        {% endif %}
         {% include "partials/sheet_project_setup.html" %}
       </div>
     </div>

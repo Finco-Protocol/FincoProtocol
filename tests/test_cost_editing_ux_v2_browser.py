@@ -58,7 +58,10 @@ class UxSession(Session):
 
     def switch(self, kind):
         self.page.evaluate(f"document.getElementById('tab-{kind}').click()")
-        self.page.wait_for_selector(f"#v2-sheet-{kind} form[data-cost-row]", state="attached")
+        # The batch Save can invalidate the destination sheet. Open groups on the refreshed DOM.
+        self.page.wait_for_selector(
+            f'#v2-sheet-{kind}[data-model-view-state="loaded"] form[data-cost-row]', state="attached"
+        )
         self.open_groups(kind)
         self.kind = kind
 
@@ -255,6 +258,7 @@ def _concurrent_row_edit(s, row_index, amount):
         "project": s.rec.project_code, "sub_line_id": row.get_attribute("data-sub-line-id"),
         "label": row.locator('input[name="label"]').input_value(), "amount_keur": amount,
         "row_version": row.locator('input[name="row_version"]').input_value(),
+        "csrf_token": row.locator('input[name="csrf_token"]').input_value(),
         "workbook_version": tokens[1], "content_hash": tokens[0]}, headers={"HX-Request": "true"})
     assert resp.status == 200
 
@@ -290,7 +294,12 @@ def test_stale_row_version_is_rejected_and_rolls_everything_back(make):
 
 
 def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
-    from app.auth import generate_csrf_token
+    import json
+
+    from starlette.requests import Request
+
+    from app.auth import COOKIE_NAME
+    from app.workbook.mutation_csrf import mutation_token
 
     a, b = make("u-ux-owner-a"), make("u-ux-owner-b")
     a.open("capex")
@@ -300,29 +309,38 @@ def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
     tokens = a.page.evaluate("(() => { const sh = document.getElementById('v2-workbook-shell');"
                              " return [sh.dataset.contentHash, sh.dataset.workbookVersion]; })()")
     line = [{"kind": "capex", "sub_line_id": foreign, "row_version": "x", "label": "stolen", "amount_keur": "1"}]
-    import json
+    cookie = next(c["value"] for c in a.ctx.cookies(a.base) if c["name"] == COOKIE_NAME)
+    request = Request({"type": "http", "headers": [(b"cookie", f"{COOKIE_NAME}={cookie}".encode())]})
 
-    def post(project):
+    def post(project, csrf):
         return a.ctx.request.post(f"{a.base}/v2/workbook/grid/cost-lines/save", form={
-            "project": project, "csrf_token": generate_csrf_token(), "workbook_version": tokens[1],
+            "project": project, "csrf_token": csrf, "workbook_version": tokens[1],
             "content_hash": tokens[0], "sheet": "capex", "payload": json.dumps(line)})
 
-    assert post("no-such-project-xyz").status == 404, "an unknown or unowned project is not addressable"
+    own_token = a.page.locator("#v2-sheet-capex").get_attribute("data-cost-csrf")
+    unknown = "no-such-project-xyz"
+    denied = post(unknown, own_token)
+    assert denied.status == 403 and denied.json()["code"] == "CSRF_INVALID"
+    # In the disposable fixture, issue a token for an absent project to reach
+    # project resolution independently of validation of the submitted token.
+    missing = post(unknown, mutation_token(request, unknown, "grid-cost-lines-save"))
+    assert missing.status == 404 and missing.json()["code"] == "PROJECT_NOT_FOUND"
     # both synthetic projects share the code "batch": it resolves to MY project, where B's line does not exist
-    assert post(a.rec.project_code).status in (409, 422), "a foreign line id inside my own project is refused"
+    foreign_line = post(a.rec.project_code, own_token)
+    assert foreign_line.status in (409, 422), "a foreign line id inside my own project is refused"
     assert b.db_amounts("capex", [foreign]) == b_before
-    from app.persistence.projects_repository import resolve_accessible_project
-
-    if resolve_accessible_project("u-ux-owner-a", "generic_solar_reference-reference")[0] is None:
-        pytest.skip("reference project not seeded in this fixture")
-    assert post("generic_solar_reference-reference").status == 403, "protected reference is read-only"
+    reference = "generic_solar_reference-reference"
+    protected = post(reference, mutation_token(request, reference, "grid-cost-lines-save"))
+    assert protected.status == 403 and protected.json()["code"] == "PROTECTED_REFERENCE"
 
 
 # ── nothing is lost to a scenario switch or a Run ───────────────────────────────────────────
 
 def _make_scenario(s):
+    s.page.locator("#tab-scenarios").evaluate("(tab) => tab.click()")
+    token = s.page.locator('.v2-scenario-create-form input[name="csrf_token"]').input_value()
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                            form={"project": s.rec.project_code, "scenario_name": "UX Case"},
+                            form={"project": s.rec.project_code, "scenario_name": "UX Case", "csrf_token": token},
                             headers={"HX-Request": "true"})
     assert r.status == 200
     s.open("capex")

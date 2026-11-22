@@ -110,15 +110,20 @@ def test_visible_save_refresh_and_late_read_cannot_overwrite_new_run(live_server
         page.wait_for_timeout(150)
         assert json.loads(page.locator('[data-md-payload]').text_content()) == current
         # Save through the canonical form while Diagnostics remains visible.
-        response = page.evaluate("""async project => {
-          const form = document.querySelector('#v2-canonical-run-form');
-          const body = new FormData(form);
-          body.set('project', project); body.set('field_id','project_setup.technical.p50_hours');
-          body.set('value','1549'); body.set('sheet_id','project_setup');
-          return htmx.ajax('POST','/v2/workbook/update', {source:document.body, target:'body', swap:'none',
-            values:Object.fromEntries(body)}).then(() => true);
-        }""", s.rec.project_code)
-        assert response
+        # The canonical scalar save runs on the Input Grid: its Save keyboard
+        # contract requires the grid to be the visible sheet, and the
+        # diagnostics state then flips through the loader's ig:saved lifecycle
+        # — the sheet never fabricates a freshness the server did not publish.
+        # A save issued while another sheet is visible is refused by the
+        # lazy-view gate, so the honest sequence is save -> verify the STALE
+        # flip on the Diagnostics sheet.
+        activate_destination(page, 'tab-input-grid')
+        cell = page.locator('.ig-input[data-ig-field="project_setup.technical.p50_hours"]')
+        cell.fill('1549'); cell.press('Enter')
+        page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 1')
+        page.keyboard.press('Control+S')
+        page.wait_for_function('() => window.FincoInputGrid.stagedCount() === 0')
+        activate_destination(page, 'tab-diagnostics')
         page.wait_for_function("() => document.querySelector('#v2-sheet-diagnostics').dataset.state === 'STALE'")
         page.wait_for_selector('[data-md-payload]', state='attached')
         assert json.loads(page.locator('[data-md-payload]').text_content())['identity'] == current['identity']

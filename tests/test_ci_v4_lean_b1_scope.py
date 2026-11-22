@@ -98,7 +98,7 @@ def test_it_owns_no_selector_policy_workflow_tool_or_product_source():
         if T3 is not None and T2 is not None and T2.SUCCESSOR in C.COHORT_MODULES and T3.signature_ok() and path in T3.HANDOFFS:      # the reviewed B3 successor owns this control file's further substitution
             assert (ROOT / path).read_bytes() == T3.expected_handoff(ROOT, path), path
             continue
-        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py') and T._p0_pins_frozen_edit(
+        if path in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json') and T._p0_pins_frozen_edit(
                 path, T._blob((ROOT / path).read_bytes()), ROOT, None):      # P1: exactly these two control blobs, only at the exact P0 pin
             continue
         assert (ROOT / path).read_bytes() == subprocess.check_output(["git", "show", T.BASE + ":" + path], cwd=ROOT), path

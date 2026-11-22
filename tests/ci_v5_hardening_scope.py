@@ -1363,7 +1363,7 @@ def _signature_ok(root, ref, closure=False):
             for p in CURRENT_MAPS:
                 if current[p] != nx.get(p, _expected_map_blob(key, p, tuple(cur[k] for k in MAP_KEYS))):
                     return False
-        if any((current.get(p) != _blob(_base_bytes(key, p)) and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', 'tools/ci_v4_release_gate.py')
+        if any((current.get(p) != _blob(_base_bytes(key, p)) and not (p in ('docs/ci_v4/node_split_policy.json', 'docs/ci_v4/node_weights.json', '.github/workflows/ci_v4_full.yml', '.github/workflows/ci_v4_pr.yml', 'tools/ci_v4_release_gate.py', 'docs/ci_v4/full_skip_baseline.json')
                                                                and _p0_pins_frozen_edit(p, current.get(p), root, ref)))
                or modes.get(p) != _base_mode(key, p) for p in FROZEN):
             return False

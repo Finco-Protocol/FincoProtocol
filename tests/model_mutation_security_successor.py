@@ -343,6 +343,9 @@ def _browser_layers():
 
 # F01 complete rate contract; historical layers above are immutable.
 FINVAL_F01_COMPLETE_SUCCESSORS={'app/v2/router.py': '2ec6b05a7d730e1034348da632d37efc6bfa9c3b', 'app/v2/grid_router.py': '0d1ab6c05b7d4f53f9d4a341818e107969bcccc0', 'tests/test_u2_2_returns_surface.py': 'afb64327e1032071ebf254dfe19b1e094e0b6fd0'}
+# Correction F (PR #473, audited from 047d51d6): the governed-navigation test successors and the
+# BESS loader placement re-render exactly one pinned template; every original pin above stays admitted.
+CORRECTION_F_SUCCESSORS={'app/templates/v2/partials/sheet_project_setup.html':'45ced98aa22394ee2167f7cc2ff55ba8d43cab70'}
 
 # FIN-V2-D01 sensitivity truth: the one-driver interest sensitivity route applies the shared rate-shock authority.
 # Additive; every earlier layer stays admitted and no gate/binding of the route set is changed.
@@ -388,6 +391,7 @@ def _violations(sources,*,check_pin=True):
         if path in WSV2_PREVIOUS_STATES:admitted=admitted|{WSV2_PREVIOUS_STATES[path]}
         if path in WSV2_SAVE_ALL_SUCCESSORS:admitted=admitted|{WSV2_SAVE_ALL_SUCCESSORS[path]}
         if path in WSV2_EDITING_SUCCESSORS:admitted=admitted|{WSV2_EDITING_SUCCESSORS[path]}
+        if path in CORRECTION_F_SUCCESSORS:admitted=admitted|{CORRECTION_F_SUCCESSORS[path]}
         if check_pin and git_blob(text) not in admitted:
             # FIN-V2-3: admit ONLY the exact independently pinned financial
             # source under the full merged #388/#390 ancestor contract.

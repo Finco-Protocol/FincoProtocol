@@ -88,6 +88,11 @@ CURRENT_RUNTIME_PINS = {
     'tests/fin_v2_cohorts.py': '5c5cf444551aa9d853771005bba954b6bf5edb13',
     'tests/u1_scope.py': 'a4b7f3e728dae845ac9c51cdfa90408a4b8e1608',
 }
+REACT_BUNDLE = 'static/react/finco-react.js'
+REACT_BUNDLE_REBUILD = 'df8095c2f89e69b453d63c001b70a406f0595994'
+REACT_BUNDLE_ACCEPTED = '473586412e5ae642feaf29f2fa7c45936ad2928b'  # #472
+PR473_U1_HEAD = '97ffc47298a0688d2d1cbc0ddfe46bdca658b778'
+PR473_U1_PIN = 'dd6966768033e7f8349fc8b1ef2aac36802de730'
 
 
 def _later_ux_pr1_pins(root):
@@ -124,6 +129,11 @@ def _runtime_handoff_pin(root, path, historical):
         assert approved['source_blobs'][path] == accepted and approved['source_modes'][path] == '100644'
     latest_ref, reviewed = lineage[-1]
     current = CURRENT_RUNTIME_PINS.get(path, reviewed)
+    if path == 'tests/u1_scope.py':
+        lineage.extend(((REACT_BUNDLE_ACCEPTED, current), (PR473_U1_HEAD, PR473_U1_PIN)))
+        admitted = json.loads(git(root, 'show', PR473_U1_HEAD + ':' + P0.MANIFEST))
+        assert admitted['source_blobs'][path] == PR473_U1_PIN and admitted['source_modes'][path] == '100644'
+        current = PR473_U1_PIN
     lineage.append(('HEAD', current))
     for (predecessor, _), (successor, _) in zip(lineage, lineage[1:]):
         git(root, 'merge-base', '--is-ancestor', predecessor, successor)
@@ -132,6 +142,30 @@ def _runtime_handoff_pin(root, path, historical):
     successor = json.loads(git(root, 'show', latest_ref + ':' + P0.MANIFEST))
     assert successor['source_blobs'][path] == reviewed and successor['source_modes'][path] == '100644'
     assert path in P0.HANDOFFS and P0.exact_blobs_ok(root) and P0.supersedes(path, current, root)
+    return current
+
+
+def _react_bundle_handoff_pin(root, historical, ref=None):
+    from tests import ci_v4_p0_scope as P0
+
+    path = REACT_BUNDLE
+    current = P0.C06_REVIEWED_PRODUCT_BLOBS[path]
+    for predecessor, successor in (
+        (RECONCILIATION_HEAD, REACT_BUNDLE_REBUILD),
+        (REACT_BUNDLE_REBUILD, REACT_BUNDLE_ACCEPTED),
+        (REACT_BUNDLE_ACCEPTED, ref or 'HEAD'),
+    ):
+        git(root, 'merge-base', '--is-ancestor', predecessor, successor)
+    for checkpoint, blob in (
+        (RECONCILIATION_HEAD, historical),
+        (REACT_BUNDLE_REBUILD + '^', historical),
+        (REACT_BUNDLE_REBUILD, current),
+        (REACT_BUNDLE_ACCEPTED, current),
+        (ref or 'HEAD', current),
+    ):
+        assert git(root, 'ls-tree', checkpoint, '--', path).strip() == f'100644 blob {blob}\t{path}'
+    # P0 admits the literal rebuild only as part of the reviewed C06 pair.
+    assert P0.allowed_path(path, root, ref)
     return current
 
 
@@ -158,6 +192,8 @@ def test_exact_registered_and_historical_maps_immutable():
                 assert git(U.ROOT, 'rev-parse', PR3B2_MERGE + ':' + p).strip() == eff
                 assert not U.supersedes(p,'0'*40)
             current_pin = _runtime_handoff_pin(U.ROOT, p, later_pins.get(p, eff))
+            if p == REACT_BUNDLE:
+                current_pin = _react_bundle_handoff_pin(U.ROOT, current_pin)
             assert git(U.ROOT, 'hash-object', '--no-filters', p).strip() == current_pin
         for p in U.INTEGRATION_MANIFESTS:
             old=json.loads(git(U.ROOT,'show',U.BASE+':'+p));now=json.loads((U.ROOT/p).read_text())
@@ -170,7 +206,7 @@ def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
     path = 'tests/u1_scope.py'
     historical = RUNTIME_HANDOFF_PINS[path][0]
     with C.call_scope():
-        assert _runtime_handoff_pin(wt, path, historical) == CURRENT_RUNTIME_PINS[path]
+        assert _runtime_handoff_pin(wt, path, historical) == PR473_U1_PIN
     source = wt / path
     source.write_bytes(source.read_bytes() + b'\n')
     with C.call_scope(), pytest.raises(AssertionError):
@@ -182,6 +218,25 @@ def test_runtime_handoff_rejects_physical_and_committed_changes(wt):
             '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Alter the live runtime handoff')
         with C.call_scope(), pytest.raises(AssertionError):
             _runtime_handoff_pin(wt, path, historical)
+    finally:
+        git(wt, 'reset', '--hard', '-q', original_head)
+
+
+def test_react_bundle_handoff_rejects_physical_and_committed_changes(wt):
+    historical = _later_ux_pr1_pins(wt)[REACT_BUNDLE]
+    with C.call_scope():
+        _react_bundle_handoff_pin(wt, historical)
+    bundle = wt / REACT_BUNDLE
+    bundle.write_bytes(bundle.read_bytes() + b'\n')
+    with C.call_scope(), pytest.raises(AssertionError):
+        _react_bundle_handoff_pin(wt, historical)
+    original_head = git(wt, 'rev-parse', 'HEAD').strip()
+    try:
+        git(wt, 'add', '--', REACT_BUNDLE)
+        git(wt, '-c', 'user.name=UX scope test', '-c', 'user.email=noreply@users.noreply.github.com',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Alter the live React bundle')
+        with C.call_scope(), pytest.raises(AssertionError):
+            _react_bundle_handoff_pin(wt, historical, ref='HEAD')
     finally:
         git(wt, 'reset', '--hard', '-q', original_head)
 

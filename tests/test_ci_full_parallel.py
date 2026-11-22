@@ -40,11 +40,12 @@ def policy(**over):
     return F.validate_policy(p)
 
 
-def inventory(skip_modules=("tests/test_ui_browser.py",)):
+def inventory(skip_modules=("tests/test_ui_browser.py",), extra=None):
     mods = {"tests/test_a.py": ["tests/test_a.py::test_%d" % i for i in range(3)],
             "tests/test_b.py": ["tests/test_b.py::test_x", "tests/test_b.py::test_skip"],
             "tests/test_big.py": ["tests/test_big.py::test_%d" % i for i in range(6)],
             "tests/sub/test_c.py": ["tests/sub/test_c.py::TestK::test_p[1]", "tests/sub/test_c.py::TestK::test_p[2]"]}
+    mods.update(extra or {})          # optional extra synthetic modules (the one-key tax deferral tests below); default behaviour is unchanged
     inv = {"schema": F.INVENTORY_SCHEMA, "tested_sha": SHA, "tested_tree": TREE, "plugin_sha256": "f" * 64, "profile": PROFILE_BODY, "profile_digest": PROFILE,
            "modules": {m: {"node_ids": ids, "count": len(ids), "digest": ids_digest(ids)} for m, ids in mods.items()},
            "collection_skips": {m: "Skipped: playwright not installed in this workflow" for m in skip_modules},
@@ -80,8 +81,9 @@ def coll_skip(module):
 SKIPPED_NODES = {"tests/test_b.py::test_skip"}
 
 
-def artifacts(plan, inv, status=None):
+def artifacts(plan, inv, status=None, skipped=None):
     status = status or {}
+    skipped = SKIPPED_NODES if skipped is None else skipped
     contents = {"plan": {"plan.json": json.dumps(plan).encode(), "inventory.json": json.dumps(inv).encode()},
                 "recollect": {"inventory.json": json.dumps(inv).encode()},
                 "f01": {"financial-browser.xml": junit([case("tests/finval_f01_browser_acceptance.py::test_v%d" % i) for i in range(4)]
@@ -90,7 +92,7 @@ def artifacts(plan, inv, status=None):
     for a in plan["assignments"]:
         i = a["shard"]
         want = [n for m in sorted(a["modules"]) for n in a["modules"][m]["keep"]]
-        st = {n: status.get(n, "skipped" if n in SKIPPED_NODES else "passed") for n in want}
+        st = {n: status.get(n, "skipped" if n in skipped else "passed") for n in want}
         ev = {"schema": "FINCO_CI_V4_NODE_EVIDENCE_V1", "complete": True, "exitstatus": 0,
               "binding": {"tested_sha": SHA, "tested_tree": TREE, "plan_digest": plan["digest"], "shard": i},
               "profile": F.expected_shard_profile(PROFILE_BODY, a["order"], CONFTESTS),
@@ -549,6 +551,19 @@ def test_full_workflow_structure():
                 assert step["with"]["persist-credentials"] is False and step["with"]["ref"] == "${{ github.sha }}"
 
 
+def test_full_browser_runtime_precedes_collection_in_every_pytest_job():
+    import yaml
+
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci_v4_full.yml").read_text())["jobs"]
+    for job, phase in (("plan", "plan"), ("recollect", "recollect"), ("shards", "shard")):
+        commands = "\n".join(step.get("run", "") for step in jobs[job]["steps"])
+        assert commands.count("python -m pip install playwright==1.63.0") == 1
+        install = commands.index("python -m playwright install chromium --with-deps")
+        assert commands.index("python -m pip install playwright==1.63.0") < install
+        assert commands.index("PLAYWRIGHT_BROWSERS_PATH=") < install
+        assert install < commands.index(f"python -m tools.ci_full_parallel {phase} ")
+
+
 def test_shard_profile_keeps_only_ancestor_conftests():
     only_top = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py"], CONFTESTS)
     both = F.expected_shard_profile(PROFILE_BODY, ["tests/test_a.py", "tests/sub/test_c.py"], CONFTESTS)
@@ -615,3 +630,181 @@ def test_real_policy_scopes_only_nodes_with_scoped_equals_plain_evidence():
         assert r["plain"]["outcome"] == r["scoped"]["outcome"] == "passed" and r["plain"]["rc"] == r["scoped"]["rc"] == 0
         assert r["scoped"]["scoped_node_calls"] == [n] and r["plain"]["scoped_node_calls"] == []
         assert r["mutation_between_calls_detected"] is True and r["sibling_modules_not_scoped"] is True
+
+
+# ── owner-authorized ONE-KEY deferral of the private T01-B/C 34/634 reconciliation (decision 2026-11-20) ────────────────────────────────
+# The test is deferred, never passed: it is reported SKIPPED_NOT_PASSED, stays in the inventory, and the single baseline entry cannot be widened.
+TAX_MODULE = "tests/tax_reference_registry/test_private_dataset.py"
+TAX_NODE = TAX_MODULE + "::test_private_34_634_reconciliation"
+TAX_KEY = "tests.tax_reference_registry.test_private_dataset::test_private_34_634_reconciliation"
+ACCEPTED_BASELINE_BLOB = "b682456e7e66744a540c4940fdbcb04d595d21d0"       # the reviewed 603-skip baseline as accepted on main
+TAX_TEST_BLOB = "bc92f175862e9e24178347b9f5094bc7bc313583"                  # tests/tax_reference_registry/test_private_dataset.py, unchanged
+BASELINE_FILE = ROOT / "docs/ci_v4/full_skip_baseline.json"
+
+
+def _real_skips():
+    return json.loads(BASELINE_FILE.read_text())
+
+
+def _deferral_baseline():
+    """The synthetic world's natural skips plus the ONE reviewed entry exactly as the real baseline file records it."""
+    return {**BASELINE, TAX_KEY: _real_skips()["skipped_nodes"][TAX_KEY]}
+
+
+def _git_blob(blob):
+    return subprocess.check_output(["git", "cat-file", "blob", blob], cwd=ROOT)
+
+
+def _git_blob_id(raw):
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+
+
+def _tax_world(extra_nodes=(), skipped=(TAX_NODE,), status=None, skip_modules=("tests/test_ui_browser.py",)):
+    mods = {TAX_MODULE: [TAX_NODE]}
+    for n in extra_nodes:
+        mods.setdefault(n.split("::")[0], []).append(n)
+    inv = inventory(skip_modules=skip_modules, extra=mods)
+    plan = make_plan(inv=inv)
+    return inv, plan, artifacts(plan, inv, status=status, skipped=SKIPPED_NODES | set(skipped))
+
+
+def _shard_of(plan, node):
+    return next(a["shard"] for a in plan["assignments"] for e in a["modules"].values() if node in e["keep"])
+
+
+def test_real_baseline_is_exactly_the_reviewed_603_plus_one_named_count_one_deferral():
+    real = _real_skips()
+    skips = real["skipped_nodes"]
+    accepted = json.loads(_git_blob(ACCEPTED_BASELINE_BLOB))
+    assert skips[TAX_KEY] == 1                                                    # at most one, exactly this key
+    assert {k: v for k, v in skips.items() if k != TAX_KEY} == accepted["skipped_nodes"]   # the 603 reviewed natural skips (incl. every "::" collection-skip module) are untouched
+    assert sum(accepted["skipped_nodes"].values()) == 603 and real["total"] == 604 == sum(skips.values())
+    assert [k for k in skips if "tax_reference_registry" in k] == [TAX_KEY]       # no other tax entry, no wildcard, no whole module
+    assert real["source"].startswith(accepted["source"]) and "SKIPPED_NOT_PASSED" in real["source"] and "PRIVATE_T01_BC_DATASET_DEFERRED_POST_V5" in real["source"]
+    assert set(real) == set(accepted)                                             # no schema field was added
+
+
+def test_the_key_is_what_the_authentic_junit_reports_and_the_tax_test_is_unchanged():
+    assert F.skip_key(TAX_NODE) == TAX_KEY == "%s::%s" % junit_address(TAX_NODE)
+    assert _git_blob_id((ROOT / TAX_MODULE).read_bytes()) == TAX_TEST_BLOB        # neither the test nor its skipif was edited to manufacture a skip
+
+
+def test_deferral_is_accepted_once_and_counted_skipped_never_passed():
+    inv, plan, contents = _tax_world()
+    rec, problems = record(contents, plan, baseline=_deferral_baseline())
+    assert problems == [] and rec["conclusion"] == "pass"
+    assert rec["skipped_ids"].count(TAX_KEY) == 1
+    assert rec["counts"] == {"passed": inv["node_count"] - 2, "failed": 0, "error": 0, "skipped": 3}      # test_skip + the tax node + the collection skip: never a pass
+    assert rec["executed_nodes"] == rec["collected_nodes"] == inv["node_count"] + 1
+
+
+def test_without_the_reviewed_entry_the_same_skip_still_blocks():
+    inv, plan, contents = _tax_world()
+    rec, problems = record(contents, plan, baseline=BASELINE)
+    assert rec["conclusion"] == "fail" and any("outside the reviewed baseline" in p for p in problems)
+
+
+@pytest.mark.parametrize("other", [
+    TAX_MODULE + "::test_private_second_node",                                    # same module, a different node
+    "tests/tax_reference_registry/test_loader_errors.py::test_new_synthetic",     # another tax module
+    "tests/test_investor_new_browser_v1.py::test_new",                           # a browser node
+    "tests/test_finval_new_acceptance.py::test_new",                             # a financial node
+    "tests/test_security_new.py::test_new_security"])                            # a security node
+def test_any_other_skip_stays_rejected_even_with_the_deferral_present(other):
+    inv, plan, contents = _tax_world(extra_nodes=(other,), skipped=(TAX_NODE, other))
+    rec, problems = record(contents, plan, baseline=_deferral_baseline())
+    assert rec["conclusion"] == "fail" and any("outside the reviewed baseline" in p for p in problems), other
+    inv, plan, contents = _tax_world(extra_nodes=(other,), skipped=(TAX_NODE,))        # sanity: the same inventory without that extra skip is accepted
+    assert record(contents, plan, baseline=_deferral_baseline())[1] == []
+
+
+def test_a_new_collection_skipped_module_is_still_rejected_and_the_collection_skips_are_still_required():
+    inv, plan, contents = _tax_world(skip_modules=("tests/test_ui_browser.py", "tests/test_new_browser_v2.py"))
+    rec, problems = record(contents, plan, baseline=_deferral_baseline())
+    assert rec["conclusion"] == "fail" and any("outside the reviewed baseline" in p for p in problems)
+    inv, plan, contents = _tax_world()
+    sh = contents["shard-0"]
+    for a in plan["assignments"]:                                                  # drop the (only) collection-skip report from its shard
+        if a["collection_skips"]:
+            k = "junit-%d.xml" % a["shard"]
+            contents["shard-%d" % a["shard"]][k] = contents["shard-%d" % a["shard"]][k].replace(coll_skip(a["collection_skips"][0]).encode(), b"")
+    assert record(contents, plan, baseline=_deferral_baseline())[0]["conclusion"] == "fail"
+
+
+def test_the_tax_node_listed_twice_is_rejected():
+    inv, plan, contents = _tax_world()
+    i = _shard_of(plan, TAX_NODE)
+    other = (i + 1) % plan["workers"]
+    ev = json.loads(contents["shard-%d" % other]["nodes-%d.json" % other])
+    ev["nodes"][TAX_NODE] = {"outcome": "skipped", "phases": {}, "duration": 1}
+    ev["kept"].append(TAX_NODE)
+    contents["shard-%d" % other]["nodes-%d.json" % other] = json.dumps(ev).encode()
+    rec, problems = record(contents, plan, baseline=_deferral_baseline())
+    assert rec["conclusion"] == "fail" and problems
+
+
+@pytest.mark.parametrize("attack", ["node_failed", "node_missing", "evidence_incomplete", "forged_pass_over_skip_phases", "removed_from_inventory"])
+def test_missing_failed_or_incompletely_executed_tax_node_still_fails_full(attack):
+    inv, plan, contents = _tax_world(status={TAX_NODE: "failed"} if attack == "node_failed" else None)
+    i = _shard_of(plan, TAX_NODE)
+    sh = contents["shard-%d" % i]
+    if attack == "node_missing":
+        sh["junit-%d.xml" % i] = sh["junit-%d.xml" % i].replace(case(TAX_NODE, "skipped").encode(), b"")
+        assert case(TAX_NODE, "skipped").encode() not in sh["junit-%d.xml" % i]
+    elif attack == "evidence_incomplete":
+        ev = json.loads(sh["nodes-%d.json" % i]); ev["complete"] = False; sh["nodes-%d.json" % i] = json.dumps(ev).encode()
+    elif attack == "forged_pass_over_skip_phases":                                 # JUnit says passed while the recorder saw the node skip
+        sh["junit-%d.xml" % i] = sh["junit-%d.xml" % i].replace(case(TAX_NODE, "skipped").encode(), case(TAX_NODE, "passed").encode())
+    elif attack == "removed_from_inventory":                                       # the node is deselected from the recollected inventory
+        inv2 = inventory(extra=None)
+        contents["recollect"]["inventory.json"] = json.dumps(inv2).encode()
+    rec, problems = record(contents, plan, baseline=_deferral_baseline())
+    assert rec["conclusion"] == "fail" and problems, attack
+
+
+# ── a supplied dataset makes the unmodified test EXECUTE and VALIDATE (it never silently skips) ──────────────────────────────────────────
+
+def _run_tax_test(tmp_path, dataset=None, extra_env=None):
+    import sys
+    out = tmp_path / "tax.xml"
+    env = {"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(tmp_path), "PYTHONDONTWRITEBYTECODE": "1"}
+    if dataset is not None:
+        env["TAX_REF_PRIVATE_DATASET"] = str(dataset)
+    env.update(extra_env or {})
+    subprocess.run([sys.executable, "-m", "pytest", TAX_MODULE, "-p", "no:cacheprovider", "-q", "--junit-xml", str(out)],
+                   cwd=ROOT, env=env, capture_output=True, timeout=180)
+    import xml.etree.ElementTree as ET
+    cases = list(ET.parse(out).getroot().iter("testcase"))
+    assert len(cases) == 1 and (cases[0].get("classname"), cases[0].get("name")) == junit_address(TAX_NODE)
+    c = cases[0]
+    return ("skipped" if c.find("skipped") is not None else "failed" if (c.find("failure") is not None or c.find("error") is not None) else "passed"), c
+
+
+def _synthetic_csv(path, rows, countries):
+    """A FICTIONAL pseudo-jurisdiction corpus generated for this test only; it is not, and must never be presented as, the private T01-B/C dataset."""
+    import importlib.util, string
+    spec = importlib.util.spec_from_file_location("_tax_synth_fixtures", ROOT / "tests/tax_reference_registry/conftest.py")
+    fx = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fx)
+    codes = [a + b for a in "ZQ" for b in string.ascii_uppercase][:countries]
+    per = [rows // countries] * countries
+    for i in range(rows - sum(per)):
+        per[i] += 1
+    out = [fx.base_row(rule_id="%s-CIT-%03d" % (c, r), jurisdiction_code=c, subrule="synthetic rate %d" % r, value=str(10 + r)) for c, p in zip(codes, per) for r in range(p)]
+    Path(path).write_text(fx.rows_to_csv(out), encoding="utf-8")
+    return Path(path)
+
+
+def test_without_the_dataset_the_test_skips_with_the_exact_reported_reason(tmp_path):
+    status, case_ = _run_tax_test(tmp_path)
+    sk = case_.find("skipped")
+    assert status == "skipped" and sk.get("message") == "private 34/634 dataset not mounted (TAX_REF_PRIVATE_DATASET unset)"
+
+
+def test_a_supplied_dataset_executes_and_validates_instead_of_skipping(tmp_path):
+    wrong = _synthetic_csv(tmp_path / "small.csv", rows=5, countries=2)
+    status, case_ = _run_tax_test(tmp_path, wrong)
+    assert status == "failed" and "expected 34 countries" in ((case_.find("failure").get("message") if case_.find("failure") is not None else "") + (case_.find("failure").text or ""))
+    good = _synthetic_csv(tmp_path / "synthetic_34_634.csv", rows=634, countries=34)
+    status, _ = _run_tax_test(tmp_path, good)
+    assert status == "passed"                                                       # executed against a synthetic corpus of the right shape; says nothing about the private rows
