@@ -371,8 +371,10 @@ async def _start_r_live_snapshot_warmer():
     acquisition. Exactly one loop per host actually collects: a cross-process
     SQLite lease admits a single holder across all Uvicorn workers. Disabled
     with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
-    collector owns warming). The web read path never calls this module.
+    collector owns warming) or FINCO_MOUNT_RADAR=0. The web read path never calls this module.
     """
+    if not FINCO_MOUNT_RADAR:
+        return
     from app.background_lifecycle import LifecycleErrors, ShutdownIncomplete
     try:
         from app.radar_rwa.r_live_warming import start_background_warmer
@@ -396,6 +398,8 @@ async def _start_r_live_snapshot_warmer():
 
 
 async def _stop_r_live_snapshot_warmer():
+    if not FINCO_MOUNT_RADAR:
+        return
     import asyncio
     from app.radar_rwa.r_live_warming import stop_background_warmer
     owner = getattr(app.state, "snapshot_warmer_owner", None)
@@ -482,12 +486,16 @@ async def _model_import_content_length_gate(request: Request, call_next):
     return await call_next(request)
 
 
+# -- FINCO Radar coexistence flag (M2-B, default ON) ---------------------------
+FINCO_MOUNT_RADAR = os.environ.get("FINCO_MOUNT_RADAR", "1").strip().lower() not in ("0", "false", "no", "off")
+
+from app.internal_auth_introspect import router as _internal_auth_router
+app.include_router(_internal_auth_router)
+
 # -- FINCO Radar v1 (Post-R12 P2) — narrow read-only Radar surface ------------
-# Read-only product UI over the frozen R0-R12 authority and the canonical
-# P1 acquisition runtime. One refresh -> one immutable snapshot_id; all
-# panels and the Evidence Inspector reference that exact snapshot.
-from app.radar_ui.router import router as _radar_router
-app.include_router(_radar_router)
+if FINCO_MOUNT_RADAR:
+    from app.radar_ui.router import router as _radar_router
+    app.include_router(_radar_router)
 
 # -- FINCO Protocol Shell (Unified home + Verify surface) ----------------------
 from app.protocol_ui.router import router as _protocol_router
@@ -500,8 +508,9 @@ from app.protocol.router import router as _finco_utility_router
 app.include_router(_finco_utility_router)
 
 # -- FINCO Crypto surface (wallet / access / watchlist / alerts boundary) ------
-from app.crypto_ui import router as _crypto_ui_router
-app.include_router(_crypto_ui_router)
+if FINCO_MOUNT_RADAR:
+    from app.crypto_ui import router as _crypto_ui_router
+    app.include_router(_crypto_ui_router)
 
 # -- FINCO Verify — Run Certificate (contextual, no primary nav entry) ---------
 from app.verify.router import router as _verify_router
@@ -512,40 +521,27 @@ from app.verify.public_reference_router import router as _public_ref_router
 app.include_router(_public_ref_router)
 
 # -- FINCO Verified Assets V1 --------------------------------------------------
-# GET /verified → 302 /verify is owned by the merged PR #162 contract
-# (app.protocol_ui.router, mounted above, wins first-match ahead of this
-# router). No duplicate registration here. app/verified/** authority stays
-# untouched; production verified-asset count remains 0.
 from app.verified.router import router as _verified_router
 app.include_router(_verified_router)
 
 # -- FINCO Public Model & Radar API v1 -----------------------------------------
-# Mount ONLY the canonical public v1 router so that:
-#   - /api/v1/model/references/** and /api/v1/radar/** are reachable
-#   - legacy bare routes (/api/v1/run, /api/v1/validate, /api/v1/project-types,
-#     /api/v1/scenarios) are NOT exposed through the public web app
-# app.api.v1.router already includes the model router (model_router.router).
-# main_api.py mounts these same routers for the standalone API process.
-from app.api.v1.router import router as _api_v1_router
 import app.api.v1.run_limiter as _run_limiter  # noqa: F401 — initialises semaphore
-app.include_router(_api_v1_router, prefix="/api/v1")
+if FINCO_MOUNT_RADAR:
+    from app.api.v1.router import router as _api_v1_router
+    app.include_router(_api_v1_router, prefix="/api/v1")
+else:
+    from app.api.v1.model_router import router as _api_v1_model_router
+    app.include_router(_api_v1_model_router, prefix="/api/v1")
 
-# -- FINCO Public R-LIVE API v1.1 (narrow, unauthenticated reference surface) --
-# Only three endpoints: /radar/r-live/assets, /radar/r-live/{uid},
-# /radar/r-live/{uid}/history.  No project list, exports, XLSX, validation,
-# run-certificate, or any other institutional project APIs are exposed here.
-from app.api.v1_1.r_live_public_router import router as _rlive_public_router
-app.include_router(_rlive_public_router, prefix="/api/v1.1")
+# -- FINCO Public R-LIVE & RWA Basis API v1.1 (Radar-owned) --------------------
+if FINCO_MOUNT_RADAR:
+    from app.api.v1_1.r_live_public_router import router as _rlive_public_router
+    app.include_router(_rlive_public_router, prefix="/api/v1.1")
 
-# -- FINCO Public RWA Basis API v1.1 (read-only derived market evidence) -------
-# Separate router: the R-LIVE public route-family contract remains frozen.
-from app.api.v1_1.rwa_basis_public_router import router as _rwa_basis_public_router
-app.include_router(_rwa_basis_public_router, prefix="/api/v1.1")
+    from app.api.v1_1.rwa_basis_public_router import router as _rwa_basis_public_router
+    app.include_router(_rwa_basis_public_router, prefix="/api/v1.1")
 
-# ── M-2 Signed Run public trust ──────────────────────────────────────────────
-# Public key discovery (unauthenticated, read-only, deterministic) and the
-# public certificate verification surface.  Public trust material only —
-# no private key, seed, env value or credential metadata is ever exposed.
+# ── M-2 Signed Run public trust (Model-owned, always mounted) ────────────────
 from app.api.v1_1.run_certificate_public_router import router as _run_cert_public_router
 app.include_router(_run_cert_public_router, prefix="/api/v1.1")
 
@@ -559,9 +555,10 @@ def finco_signing_keys_well_known():
     from app.protocol.signing_keys import public_keys_document
     return public_keys_document()
 
-# -- Experimental JEV Radar Intelligence (read-only; default OFF, zero calls unless enabled) --
-from app.api.v1_1.r_live_intelligence_router import router as _rlive_intelligence_router
-app.include_router(_rlive_intelligence_router, prefix="/api/v1.1")
+# -- Experimental JEV Radar Intelligence (Radar-owned) -------------------------
+if FINCO_MOUNT_RADAR:
+    from app.api.v1_1.r_live_intelligence_router import router as _rlive_intelligence_router
+    app.include_router(_rlive_intelligence_router, prefix="/api/v1.1")
 
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
