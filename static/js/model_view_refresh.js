@@ -85,7 +85,7 @@
   }
   function ensure(view) {
     var node=document.getElementById(view.id);if(!node)return;
-    if(node!==view.node){
+    if(node!==view.node && !view.active){
       view.node=node;view.dirty=false;view.otherDirty=false;
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
