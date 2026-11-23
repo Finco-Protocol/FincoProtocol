@@ -142,7 +142,10 @@ class AdvancedRevenueBook:
     def plan_at(self, when):
         return self.energy.plan_at(when)
 
-    def validate_axis(self, periods):
+    def validate_axis(self, periods, *, project_cod=None, date_aware=False):
+        # v3 product books keep the legacy boundary-aligned axis; the dated grid admits only the v2 R04 book.
+        if date_aware:
+            raise ValueError("REVENUE_V3_DATED_GRID_UNSUPPORTED: version-3 product books are not admitted on the dated grid")
         require_release()
         periods = tuple(periods)
         self.energy.validate_axis(periods)
