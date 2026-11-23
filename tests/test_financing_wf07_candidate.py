@@ -795,7 +795,7 @@ PINS = {
     "financial_engine/financing/dsrf.py": "f4b6f2905e90c71659a0d369036a7199b3959278",
     "financial_engine/financing/multisenior.py": "7fbe0a7b6d0bcd351f019c6a1e85988238a28d3c",
     "financial_engine/financing/junior_debt.py": "2205cfbcca33889975c964a5748797c82af5792f",
-    "financial_engine/shareholder_waterfall/model.py": "19cda2aaa36d1275dbd69307b5959322e682411a",  # Batch 2 E2E-03 S2a
+    "financial_engine/shareholder_waterfall/model.py": "49e282ebe3799884a02f4d0a716e6f0f4f0ba007",  # Batch 3 E2E-03 S2b (OD-SHL-01)
     "finco_core/construction/allocator.py": "6430b9ffbd44690a0f9a4accb68173a72d1cf1d3",
     "finco_core/inputs/financing_instruments.py": "e1d06441763d2316af45d14ddab1716abbe4f3ca",
     "app/model_v2/financing_f31_multitranche_candidate/reconciliation.py": "28891daf84982d9b4380255ac7daaf99c111744a",
