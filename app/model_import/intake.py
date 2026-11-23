@@ -55,8 +55,11 @@ def _safe_filename(filename: str) -> str:
     return base
 
 
+SUPPORTED_CSV_ENCODINGS: tuple[str, ...] = ("utf-8-sig", "utf-8", "cp1250", "cp1252")
+
+
 def _csv_rows(data: bytes, *, encoding: str, start: float):
-    if encoding not in ("utf-8", "utf-8-sig", "cp1250", "cp1252"):
+    if encoding not in SUPPORTED_CSV_ENCODINGS:
         raise IntakeError("IMPORT_ENCODING_UNSUPPORTED")
     try:
         text = data.decode(encoding, errors="strict")
