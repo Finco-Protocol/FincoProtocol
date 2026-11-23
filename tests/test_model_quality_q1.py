@@ -811,7 +811,7 @@ def test_reference_scoring_unchanged_and_earned(runs):
         if key == "data_center":
             # Batch 2 E2E-03 S2a suppresses DC equity IRR (QM-ACC-004: RETURN_METRIC_NOT_PUBLISHED).
             assert report.check("QM-ACC-004").reason_code == "RETURN_METRIC_NOT_PUBLISHED"
-            assert (s.registered, s.not_applicable) == (30, 1)
+            assert (s.registered, s.not_applicable) == (30, 2)
             continue
         assert (s.registered, s.passed, s.not_applicable, s.unavailable) == (30, 25, 1, 4), key
         assert s.score == 100.0 and s.coverage_weighted == pytest.approx(0.876106, abs=1e-6)

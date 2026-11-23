@@ -74,9 +74,8 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
         q = dict(p)
         q["current_value"] = pis.get(p["field_id"]) if p["field_id"] else None
         if q.get("field_id") in line_owned_map:
-            q["status"] = "unsupported_for_apply"
-            q["reason"] = "COST_CATEGORY_LINE_OWNED"
-        elif q["status"] == "ready" and q["normalized_value"] is not None:
+            q["line_owned_warning"] = line_owned_map[q["field_id"]]
+        if q["status"] == "ready" and q["normalized_value"] is not None:
             check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
             if check.is_valid and check.typed_value == q["current_value"]:
                 q["status"] = "unchanged"
@@ -301,7 +300,6 @@ async def model_input_import_apply(
             workbook_version=signed["workbook_version"],
             expected_scenario_id=signed["scenario_id"],
             project_record=record, actor_user_id=user.user_id,
-            reject_line_owned=True,
         )
         fresh = get_workspace_state(owner, record.project_id)
         if fresh is None:

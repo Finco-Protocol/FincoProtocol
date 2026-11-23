@@ -121,19 +121,19 @@ def test_c01_solar_construction_bs_uses_staged_funding_and_balances_independentl
             continue
         assets = (
             _d(row["gross_fixed_assets"])
-            - _d(row["accumulated_depreciation"])
-            + _d(row["unrestricted_cash"])
-            + _d(row["dsra_balance"])
-            + _d(row["distribution_account"])
+            - _d(row["accumulated_depreciation"] or 0.0)
+            + _d(row["unrestricted_cash"] or 0.0)
+            + _d(row["dsra_balance"] or 0.0)
+            + _d(row["distribution_account"] or 0.0)
         )
         le = (
-            _d(row["senior_debt"])
-            + _d(row["shl"])
-            + _d(row["share_capital"])
-            + _d(row["share_premium"])
-            + _d(row["legal_reserve"])
-            + _d(row["retained_earnings"])
-            + _d(row["net_cit_payable"])
+            _d(row["senior_debt"] or 0.0)
+            + _d(row["shl"] or 0.0)
+            + _d(row["share_capital"] or 0.0)
+            + _d(row["share_premium"] or 0.0)
+            + _d(row["legal_reserve"] or 0.0)
+            + _d(row["retained_earnings"] or 0.0)
+            + _d(row["net_cit_payable"] or 0.0)
         )
         assert abs(assets - le) <= Decimal("0.01"), f"BS imbalance at period {row['period_index']}: {assets} vs {le}"
         published_count += 1

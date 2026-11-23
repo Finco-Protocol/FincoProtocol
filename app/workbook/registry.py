@@ -193,7 +193,7 @@ _ps_technical = _section("technical", "Technical Parameters", _PS, order=1, fiel
        unit="h/yr", min_value=1, decimals=0,
        description="Explicit saved P90-10y operating hours (must be <= P50). When not explicitly set, 0.9 x P50 fallback applies visibly.",
        excel_generic_wind_reference=None, excel_generic_solar_reference=None,
-       export_mapping="P90-10y Hours", order=1),
+       export_mapping="P90-10y Hours", order=99),
 
     _f(f"{_PS}.technical.capacity_factor", "Capacity Factor (P50)", "capacity_factor", FieldType.FLOAT, _PS, "technical",
        kind=FieldKind.DERIVED_DISPLAY, persisted=True,

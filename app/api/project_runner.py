@@ -313,7 +313,20 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         lower = msgs.lower()
         prefix = ""
         if "tenor" in lower and "horizon" in lower:
-            prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
+            _info = getattr(project_inputs_override, "info", None)
+            _fin = getattr(project_inputs_override, "financing", None)
+            if (
+                _info is not None
+                and _fin is not None
+                and getattr(_info, "horizon_years", None) is not None
+                and getattr(_fin, "senior_tenor_years", None) is not None
+            ):
+                prefix = (
+                    f"DEBT_TENOR_EXCEEDS_HORIZON: project horizon ({int(_info.horizon_years)} years) "
+                    f"is not longer than the senior debt tenor ({int(_fin.senior_tenor_years)} years). "
+                )
+            else:
+                prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
         elif "capex" in lower:
             prefix = "INVALID_CAPEX_INPUT: "
         raise CleanProductionRunUnavailable(

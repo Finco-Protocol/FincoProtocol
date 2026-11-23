@@ -212,7 +212,7 @@ def test_a_typed_solve_writes_nothing_and_its_candidate_is_applied_only_through_
     assert env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["freshness"]["state"] == "CURRENT"
     response = env.client.post(f"{BASE}/apply", json=apply_body(record, binding))
     assert response.status_code == 200 and response.json()["applied"] is True and response.json()["run_state"] == "STALE"
-    tampered = typed(env, record, "min_dscr", "1.31").json()["apply"]
+    tampered = typed(env, record, "min_dscr", "1.27").json()["apply"]
     assert env.client.post(f"{BASE}/apply", json=apply_body(record, tampered, value="999")).status_code == 403     # the token binds the exact candidate
 
 

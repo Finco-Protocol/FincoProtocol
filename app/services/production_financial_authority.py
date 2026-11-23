@@ -508,7 +508,10 @@ def run_clean_production(
             and getattr(fin, "senior_tenor_years", None) is not None
             and float(info.horizon_years) <= float(fin.senior_tenor_years)
         ):
-            prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
+            prefix = (
+                f"DEBT_TENOR_EXCEEDS_HORIZON: project horizon ({int(info.horizon_years)} years) "
+                f"is not longer than the senior debt tenor ({int(fin.senior_tenor_years)} years). "
+            )
         raise CleanProductionRunUnavailable(
             reason_code="PR8_CLEAN_ENGINE_FAIL_CLOSED",
             detail=f"{prefix}{raw_detail}",

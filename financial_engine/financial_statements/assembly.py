@@ -1019,6 +1019,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         # I.2/I.5: CIT timing balance for this period.
         _net_cit = _cit_close_by_idx.get(_bidx)
         _bsp_gfa_out = _bsp_orig.gross_fixed_assets_keur
+        if _bidx in _staged_construction_bs_indices and _net_cit is not None and abs(_net_cit) > 1e-9:
+            # Construction column carries non-zero pre-COD CIT accrual without
+            # a complete pre-COD equity/cash roll-forward: mark unavailable
+            # rather than publishing an unbalanced construction column.
+            _bsp_gfa_out = None
         # I.11: real BS identity.
         # Assets = NFA + UC + DSRA + DA (CIT receivable handled via signed net_cit).
         # L+E = Senior + SHL + SC + SP + LR + RE.

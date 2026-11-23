@@ -68,6 +68,8 @@ def _tax_provenance_evidence(clean_run):
     # tax.annual_results when available (without modifying native_v10-pinned
     # orchestrator.py or any tax computation). Synthetic unit tests without
     # annual_results pass raw schedule vectors through unchanged.
+    model_ref = getattr(getattr(clean_run.g2c_result, "financing_result", None),
+                        "project_model_result", None)
     annual_results = getattr(tax, "annual_results", ()) or ()
     projected_loss: dict[str, tuple[float, ...]] = {}
     if (
@@ -76,15 +78,29 @@ def _tax_provenance_evidence(clean_run):
         and len(getattr(tax, "tax_loss_closing_audit_keur", ())) == period_count
         and len(getattr(tax, "tax_loss_used_audit_keur", ())) == period_count
     ):
+        annual_by_year = {getattr(ar, "tax_year", None): ar for ar in annual_results if getattr(ar, "tax_year", None) is not None}
+        period_end_year = {
+            p.period_index: p.period_end.year
+            for p in (getattr(model_ref, "periods", ()) or ())
+            if getattr(p, "period_end", None) is not None
+        }
         idx_to_ar = {}
         last_idx_by_year = {}
+        # Prefer primary tax year (period_end.year) when available; fall back to first annual_result membership.
+        fallback_idx_to_ar = {}
         for ar in annual_results:
-            ty = getattr(ar, "tax_year", None)
-            p_idxs = getattr(ar, "period_indices", ()) or ()
-            for p_idx in p_idxs:
-                idx_to_ar[p_idx] = ar
-                if ty is not None:
-                    last_idx_by_year[ty] = p_idx
+            for p_idx in (getattr(ar, "period_indices", ()) or ()):
+                fallback_idx_to_ar.setdefault(p_idx, ar)
+        for idx in tax.period_indices:
+            ty = period_end_year.get(idx)
+            ar = annual_by_year.get(ty) if ty is not None else None
+            if ar is None:
+                ar = fallback_idx_to_ar.get(idx)
+            if ar is not None:
+                idx_to_ar[idx] = ar
+                ar_ty = getattr(ar, "tax_year", None)
+                if ar_ty is not None:
+                    last_idx_by_year[ar_ty] = idx
         p_open, p_used, p_close = [], [], []
         for idx in tax.period_indices:
             ar = idx_to_ar.get(idx)
@@ -93,8 +109,8 @@ def _tax_provenance_evidence(clean_run):
                 p_used.append(0.0)
                 p_close.append(0.0)
             else:
-                ty = getattr(ar, "tax_year", None)
-                if idx == last_idx_by_year.get(ty):
+                ar_ty = getattr(ar, "tax_year", None)
+                if idx == last_idx_by_year.get(ar_ty):
                     p_open.append(float(ar.loss_opening_keur))
                     p_used.append(float(ar.loss_used_keur))
                     p_close.append(float(ar.loss_closing_keur))
