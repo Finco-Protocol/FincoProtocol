@@ -739,6 +739,12 @@ def _assemble_tax_cfads_schedules(
     corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
     cfads = tuple(cr.cfads_keur for cr in cfads_results)
 
+    last_primary_idx_by_year: dict[int, int] = {}
+    for pr in period_results:
+        ty = period_to_annual_tax_year.get(pr.period_index, -999999)
+        if ty in annual_map:
+            last_primary_idx_by_year[ty] = pr.period_index
+
     tax_loss_opening: list[float] = []
     tax_loss_closing: list[float] = []
     tax_loss_used: list[float] = []
@@ -750,14 +756,18 @@ def _assemble_tax_cfads_schedules(
             tax_loss_closing.append(0.0)
             tax_loss_used.append(0.0)
         else:
-            first_idx = ar.period_indices[0] if ar.period_indices else -1
-            if pr.period_index == first_idx:
+            last_idx = last_primary_idx_by_year.get(tax_year, -1)
+            if pr.period_index == last_idx:
+                # Annual tax assessment settles at the final primary period of the tax year:
+                # opening carries from prior period(s), loss_used is applied once,
+                # and closing carries forward to the next tax year's opening.
                 tax_loss_opening.append(ar.loss_opening_keur)
                 tax_loss_closing.append(ar.loss_closing_keur)
                 tax_loss_used.append(ar.loss_used_keur)
             else:
-                tax_loss_opening.append(0.0)
-                tax_loss_closing.append(0.0)
+                # Intra-year balance carries unchanged until annual year-end settlement.
+                tax_loss_opening.append(ar.loss_opening_keur)
+                tax_loss_closing.append(ar.loss_opening_keur)
                 tax_loss_used.append(0.0)
 
     taxable_profit = tuple(pr.taxable_income_before_lcf_share_keur for pr in period_results)

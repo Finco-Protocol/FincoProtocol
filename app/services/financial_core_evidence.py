@@ -84,10 +84,16 @@ def _tax_provenance_evidence(clean_run):
     # a continuous loss schedule carries closing -> next opening unchanged.
     opening = getattr(tax, "tax_loss_opening_audit_keur", ())
     closing = getattr(tax, "tax_loss_closing_audit_keur", ())
-    continuous = all(
-        i == 0 or opening[i] == closing[i - 1]
-        for i in range(min(len(opening), len(closing)))
-    ) if len(opening) == len(closing) else None
+    first_disc_period = None
+    if len(opening) == len(closing):
+        continuous = True
+        for i in range(1, len(opening)):
+            if opening[i] != closing[i - 1]:
+                continuous = False
+                if first_disc_period is None and i < len(tax.period_indices):
+                    first_disc_period = tax.period_indices[i]
+    else:
+        continuous = None
     # Joint-correction review (2026-11-19): a partial trace is classified as
     # PARTIAL, never presented as complete; the missing field list names the
     # audit gap explicitly.
@@ -104,6 +110,7 @@ def _tax_provenance_evidence(clean_run):
             "cit_accrual_total_keur": math_fsum(getattr(tax, "cit_accrual_audit_keur", ())),
             "cash_tax_current_period_total_keur": math_fsum(getattr(tax, "cash_tax_current_period_audit_keur", ())),
             "loss_schedule_closing_equals_next_opening": continuous,
+            "first_discontinuity_period_index": first_disc_period,
         },
     }
 

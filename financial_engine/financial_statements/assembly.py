@@ -392,6 +392,10 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     fa_periods: list[FixedAssetRollForwardPeriod] = []
     re_periods: list[RetainedEarningsPeriod] = []
     bs_periods: list[BalanceSheetPeriod] = []
+    _staged_construction_bs_indices: set[int] = set()
+    _cf_periods_all = tuple(
+        getattr(getattr(g2c_result.financing_result, "construction_funding", None), "periods", ()) or ()
+    )
 
     # I.12: initial equity includes construction funding equity draws so the
     # BS is not missing pre-COD share capital/premium from period 1 onward.
@@ -834,39 +838,96 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         )
         # H.7: UC is the canonical typed field; None when wp absent (not zero).
         _uc_val = _wp_uc_close
-        bs_periods.append((JuniorBalanceSheetPeriod if junior_active else BalanceSheetPeriod)(
-            **({"junior_debt_balance_keur": j["junior_closing_keur"]} if junior_active else {}),
-            period_index=int(idx),
-            period_end=getattr(mp, "period_end", None),
-            # Ending the contractual schedule does not extinguish a liability.
-            # Carry its actual closing balance, without inventing service/interest.
-            senior_debt_balance_keur=(
-                _at(senior.senior_debt_closing_keur, si) if si is not None else
-                senior.senior_debt_closing_keur[-1]
-                if senior.period_indices and idx > senior.period_indices[-1] else 0.0
-            ),
-            shl_balance_keur=(
-                float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
-                if _wp_is_real else None
-            ),
-            shl_unpaid_principal_keur=(
-                float(getattr(wp, "unpaid_shl_principal_keur", 0.0) or 0.0)
-                if _wp_is_real else None
-            ),
-            distribution_account_balance_keur=(
-                float(getattr(wp, "distribution_account_closing_keur", 0.0) or 0.0)
-                if _wp_is_real else None
-            ),
-            dsra_balance_keur=dsra_close,
-            unrestricted_cash_keur=_wp_uc_close,
-            gross_fixed_assets_keur=gfa_keur,
-            accumulated_book_depreciation_keur=cumulative_book_dep,
-            share_capital_keur=cumulative_share_capital,
-            share_premium_keur=cumulative_share_premium,
-            additional_equity_keur=cumulative_additional_equity,
-            retained_earnings_keur=None,   # filled post-loop
-            balance_check_keur=None,        # filled post-loop
-        ))
+        if is_construction_period:
+            # OD-CONSTR-01 (E2E-05): build construction BS from actual staged
+            # construction_funding cumulative draws/uses when dated evidence
+            # exists and reconciles cleanly; otherwise mark unavailable (never
+            # display full completed gross fixed assets with zero debt).
+            _mp_end = getattr(mp, "period_end", None)
+            _cf_match = None
+            if _mp_end is not None:
+                for _cfp in _cf_periods_all:
+                    _cfp_end = getattr(_cfp, "period_end", None)
+                    if _cfp_end is not None and _cfp_end <= _mp_end:
+                        _cf_match = _cfp
+            if (
+                _cf_match is not None
+                and abs(float(getattr(_cf_match, "cumulative_sources_uses_difference_keur", 1.0) or 0.0)) <= 0.01
+            ):
+                _staged_construction_bs_indices.add(int(idx))
+                _c_gfa = float(_cf_match.cumulative_project_cash_uses_keur)
+                _c_sen = float(_cf_match.cumulative_senior_draw_keur)
+                _c_shl = float(_cf_match.cumulative_shl_cash_draw_keur)
+                _c_sc = float(_cf_match.cumulative_share_capital_draw_keur)
+                _c_sp = float(_cf_match.cumulative_share_premium_draw_keur)
+                _c_ae = float(_cf_match.cumulative_additional_equity_draw_keur)
+                _c_jun = float(getattr(_cf_match, "cumulative_junior_or_other_main_funding_draw_keur", 0.0) or 0.0)
+                _c_uc = 0.0
+                _c_dsra = 0.0
+                _c_da = 0.0
+            else:
+                _c_gfa = None
+                _c_sen = None
+                _c_shl = None
+                _c_sc = None
+                _c_sp = None
+                _c_ae = None
+                _c_jun = None
+                _c_uc = None
+                _c_dsra = None
+                _c_da = None
+            bs_periods.append((JuniorBalanceSheetPeriod if junior_active else BalanceSheetPeriod)(
+                **({"junior_debt_balance_keur": _c_jun} if junior_active else {}),
+                period_index=int(idx),
+                period_end=_mp_end,
+                senior_debt_balance_keur=_c_sen,
+                shl_balance_keur=_c_shl,
+                shl_unpaid_principal_keur=0.0 if _cf_match is not None else None,
+                distribution_account_balance_keur=_c_da,
+                dsra_balance_keur=_c_dsra,
+                unrestricted_cash_keur=_c_uc,
+                gross_fixed_assets_keur=_c_gfa,
+                accumulated_book_depreciation_keur=0.0 if _cf_match is not None else None,
+                share_capital_keur=_c_sc,
+                share_premium_keur=_c_sp,
+                additional_equity_keur=_c_ae,
+                retained_earnings_keur=None,   # filled post-loop
+                balance_check_keur=None,        # filled post-loop
+            ))
+        else:
+            bs_periods.append((JuniorBalanceSheetPeriod if junior_active else BalanceSheetPeriod)(
+                **({"junior_debt_balance_keur": j["junior_closing_keur"]} if junior_active else {}),
+                period_index=int(idx),
+                period_end=getattr(mp, "period_end", None),
+                # Ending the contractual schedule does not extinguish a liability.
+                # Carry its actual closing balance, without inventing service/interest.
+                senior_debt_balance_keur=(
+                    _at(senior.senior_debt_closing_keur, si) if si is not None else
+                    senior.senior_debt_closing_keur[-1]
+                    if senior.period_indices and idx > senior.period_indices[-1] else 0.0
+                ),
+                shl_balance_keur=(
+                    float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
+                    if _wp_is_real else None
+                ),
+                shl_unpaid_principal_keur=(
+                    float(getattr(wp, "unpaid_shl_principal_keur", 0.0) or 0.0)
+                    if _wp_is_real else None
+                ),
+                distribution_account_balance_keur=(
+                    float(getattr(wp, "distribution_account_closing_keur", 0.0) or 0.0)
+                    if _wp_is_real else None
+                ),
+                dsra_balance_keur=dsra_close,
+                unrestricted_cash_keur=_wp_uc_close,
+                gross_fixed_assets_keur=gfa_keur,
+                accumulated_book_depreciation_keur=cumulative_book_dep,
+                share_capital_keur=cumulative_share_capital,
+                share_premium_keur=cumulative_share_premium,
+                additional_equity_keur=cumulative_additional_equity,
+                retained_earnings_keur=None,   # filled post-loop
+                balance_check_keur=None,        # filled post-loop
+            ))
 
     # H.8/I.8: canonical LR comes from CovenantGatedWaterfallPeriod (U2 upstream output).
     # C3 must NOT recompute LR. No roll_forward_equity_state call.
@@ -956,14 +1017,25 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         _lr_close_bsp = float(_lr_closing_by_idx[_bidx]) if _bidx in _lr_closing_by_idx else None
         # I.2/I.5: CIT timing balance for this period.
         _net_cit = _cit_close_by_idx.get(_bidx)
+        _bsp_gfa_out = _bsp_orig.gross_fixed_assets_keur
+        if _bidx in _staged_construction_bs_indices and _re_close_val is None and _lr_close_bsp is None:
+            if _net_cit is None or abs(_net_cit) <= 1e-9:
+                _re_close_val = 0.0
+                _lr_close_bsp = 0.0
+                _net_cit = 0.0
+            else:
+                # Construction column carries non-zero pre-COD CIT accrual without
+                # a complete pre-COD equity/cash roll-forward: mark unavailable
+                # rather than publishing an unbalanced construction column.
+                _bsp_gfa_out = None
         # I.11: real BS identity.
         # Assets = NFA + UC + DSRA + DA (CIT receivable handled via signed net_cit).
         # L+E = Senior + SHL + SC + SP + LR + RE.
         # balance_check = Assets - L+E_excl_cit - net_cit_payable (should be 0).
         # Positive net_cit = liability (on L+E side); negative = receivable (asset side).
         _nfa_v = (
-            (_bsp_orig.gross_fixed_assets_keur - _bsp_orig.accumulated_book_depreciation_keur)
-            if _bsp_orig.gross_fixed_assets_keur is not None else None
+            (_bsp_gfa_out - _bsp_orig.accumulated_book_depreciation_keur)
+            if _bsp_gfa_out is not None and _bsp_orig.accumulated_book_depreciation_keur is not None else None
         )
         _balance_check: float | None = None
         if (
@@ -1008,7 +1080,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             distribution_account_balance_keur=_bsp_orig.distribution_account_balance_keur,
             dsra_balance_keur=_bsp_orig.dsra_balance_keur,
             unrestricted_cash_keur=_bsp_orig.unrestricted_cash_keur,
-            gross_fixed_assets_keur=_bsp_orig.gross_fixed_assets_keur,
+            gross_fixed_assets_keur=_bsp_gfa_out,
             accumulated_book_depreciation_keur=_bsp_orig.accumulated_book_depreciation_keur,
             share_capital_keur=_bsp_orig.share_capital_keur,
             share_premium_keur=_bsp_orig.share_premium_keur,
