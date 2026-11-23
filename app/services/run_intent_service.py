@@ -217,13 +217,10 @@ def _safe_failure_reason(code: str, exc: BaseException | None) -> str:
         return _CODE_REASONS[code]
     try:
         from app.v2.router import _ENGINE_FAIL_CLOSED_GENERIC, _ENGINE_FAIL_CLOSED_MESSAGES
-        evidence = " ".join(str(part) for part in (
-            getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), getattr(exc, "message", ""), exc) if part)
-        for token, message in _ENGINE_FAIL_CLOSED_MESSAGES:
-            if token in evidence:
-                return message
-        if "FAIL_CLOSED" in evidence:
-            return _ENGINE_FAIL_CLOSED_GENERIC
+        from app.v2.router import _engine_failure_message
+        msg = _engine_failure_message(exc)
+        if msg and msg != "Engine run failed — please try again or contact support.":
+            return msg
     except Exception:  # noqa: BLE001 - the reason is a convenience; never break the failure path
         pass
     return "The model stopped this Run and no result was produced. Nothing was saved; the previous Last Run is unchanged."

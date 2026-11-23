@@ -2875,6 +2875,15 @@ def _engine_failure_message(exc: BaseException) -> str:
             getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), exc,
         ) if part
     )
+    if "MERCHANT_PRICE_COVERAGE_MISSING" in evidence:
+        import re as _re
+        m = _re.search(r"calendar year\(s\)\s*(\[[0-9,\s]+\])", evidence)
+        years_part = f" {m.group(1)}" if m else ""
+        return (
+            f"Merchant price coverage is missing for calendar year(s){years_part} where "
+            "positive merchant volume exists. Supply explicit prices (0 is valid for zero price) "
+            "and run again. No Run was saved. (Reference: MERCHANT_PRICE_COVERAGE_MISSING)"
+        )
     for token, message in _ENGINE_FAIL_CLOSED_MESSAGES:
         if token in evidence:
             return message

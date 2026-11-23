@@ -211,6 +211,7 @@ def revenue_decomposition_schedule(
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
 
+    missing_merchant_years: set[int] = set()
     for period in engine.periods():
         generation_mwh = generation_schedule[period.index]
         if not period.is_operation:
@@ -262,6 +263,14 @@ def revenue_decomposition_schedule(
                 ppa_share=inputs.revenue.ppa_production_share,
             )
         )
+        if (
+            multistream is None
+            and merchant_generation_mwh > 0.0
+            and inputs.revenue.market_prices_by_calendar_year_eur_mwh
+            and inputs.revenue.market_price_calendar_start_year is not None
+            and period_end_year < inputs.revenue.market_price_calendar_start_year
+        ):
+            missing_merchant_years.add(period_end_year)
         energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
         stream_evidence = None
         settlement_keur = 0.0
@@ -390,6 +399,15 @@ def revenue_decomposition_schedule(
             "balancing_cost_eur_mwh": balancing_eur_mwh,
             "revenue_keur": revenue_keur,
         }
+
+    if missing_merchant_years:
+        years_str = ", ".join(str(y) for y in sorted(missing_merchant_years))
+        raise ValueError(
+            f"MERCHANT_PRICE_COVERAGE_MISSING: positive merchant volume exists in calendar year(s) "
+            f"[{years_str}] before merchant price curve start year "
+            f"{inputs.revenue.market_price_calendar_start_year}. "
+            "Supply explicit prices for those years (0.0 is valid for an explicit zero price)."
+        )
 
     return decompositions
 

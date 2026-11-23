@@ -397,7 +397,16 @@ def _set_revenue_merchant_balancing_pct(proj: "ProjectInputs", value: float) -> 
 
 
 def _set_revenue_balancing_eur_per_mwh(proj: "ProjectInputs", value: float) -> "ProjectInputs":
-    return dc_replace(proj, revenue=dc_replace(proj.revenue, balancing_cost_eur_per_mwh=value))
+    # F2-NEW-01 / OD-REV-01: an explicit user EUR/MWh balancing cost (including 0.0)
+    # overrides the factory wind default rather than falling back to it.
+    return dc_replace(
+        proj,
+        revenue=dc_replace(
+            proj.revenue,
+            balancing_cost_eur_per_mwh=value,
+            balancing_cost_wind_eur_mwh=0.0,
+        ),
+    )
 
 
 def _set_revenue_co2_enabled(proj: "ProjectInputs", value: bool) -> "ProjectInputs":

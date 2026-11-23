@@ -126,7 +126,7 @@ def test_pricing_basis_preserves_explicit_zero_tariff_and_escalation(revenue_cas
     assert basis["PPA escalation"] == pis.to_projectinputs().revenue.ppa_index == 0.0
 
 
-@pytest.mark.parametrize("raw, entered, effective", [(None, None, 8.0), ("", None, 8.0), ("0", 0.0, 8.0), ("5.5", 5.5, 5.5)])
+@pytest.mark.parametrize("raw, entered, effective", [(None, None, 8.0), ("", None, 8.0), ("0", 0.0, 0.0), ("5.5", 5.5, 5.5)])
 def test_pricing_basis_shows_effective_balancing_without_changing_entered_value(revenue_case, raw, entered, effective):
     from app.v2.router import _build_revenue_ctx
     from app.workbook.input_set import ProjectInputSet
@@ -145,8 +145,8 @@ def test_pricing_basis_shows_effective_balancing_without_changing_entered_value(
     assert field["value"] == entered
     if raw == "0":
         assert "explicitly 0 EUR/MWh" in balancing["detail"]
-        assert "template deduction applies at 8 EUR/MWh" in balancing["detail"]
-        assert "no explicit value" not in balancing["detail"]
+        assert "overrides the template default" in balancing["detail"]
+        assert balancing["source"] == "No deduction"
     elif raw in (None, ""):
         assert "No Balancing Cost" in balancing["detail"]
     assert pis.to_snapshot() == before

@@ -98,6 +98,8 @@ def _scalars(rec):
             _assert_batch_field_applicable(field_id, project_type=rec.project_type or "", template_source=rec.template_source or "")
         except BatchApplyError:
             continue
+        if field_id == "project_setup.technical.p50_hours" and (rec.template_source or "") == "generic_wind_reference":
+            value = "2811"  # OD-P90-01: Wind saved P90 is 2700 h; P50 must be >= P90
         keep.append((field_id, value))
     return keep
 
