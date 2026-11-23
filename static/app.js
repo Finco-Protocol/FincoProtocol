@@ -544,7 +544,13 @@ document.addEventListener('DOMContentLoaded', function() {
         body: payload.toString(),
         credentials: 'same-origin'
       })
-        .then(function(resp) { return resp.ok ? resp.json() : null; })
+        .then(function(resp) {
+          if (resp.ok) return resp.json();
+          // FABLE-SEC-01 (D07c): a CSRF denial (403) must not look like a silent
+          // no-op — nothing was discarded and the stale token needs a reload.
+          if (resp.status === 403) alert('Your session token expired. Reload the page and try again.');
+          return null;
+        })
         .then(function(data) {
           if (!data) return;
           if (data.snapshot && window.applyScenarioSnapshot) {

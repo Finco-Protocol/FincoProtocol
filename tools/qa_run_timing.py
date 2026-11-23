@@ -90,6 +90,9 @@ def run_scenario(client, collector: StageCollector, label: str, tech_key: str,
     response = client.post(
         "/projects/create",
         data={
+            # FABLE-SEC-01: the legacy create route enforces the bound CSRF
+            # token rendered into the create form (same as a browser).
+            "csrf_token": _csrf(client, "/projects/new"),
             "project_name": project_name,
             "project_type": display,
             "template_source": template_source,
