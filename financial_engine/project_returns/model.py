@@ -157,7 +157,8 @@ def _unlevered_cash_tax_by_period(
         raise ValueError("C1_PROJECT_RETURN_FINANCING_INTEREST_LEAK")
     model = financing.project_model_result
     operating_input = from_project_inputs(project_inputs)
-    period_metadata = _build_period_engine(operating_input).periods()
+    _axis_engine = _build_period_engine(operating_input)
+    period_metadata = _axis_engine.periods()
     if tuple(period.index for period in period_metadata) != tuple(
         period.period_index for period in model.periods
     ):
@@ -167,7 +168,7 @@ def _unlevered_cash_tax_by_period(
     ):
         raise ValueError("C1_UNLEVERED_TAX_PERIOD_DATE_MISMATCH")
     _, tax_depreciation = _compute_depreciation(
-        operating_input, list(period_metadata)
+        operating_input, list(period_metadata), _axis_engine
     )
     unlevered_periods = tuple(
         replace(

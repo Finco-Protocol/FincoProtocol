@@ -40,5 +40,7 @@ def apply_config(inputs, raw, *, project_type):
     else:
         config.validate_axis(engine.periods())
     if getattr(config, "has_absolute_annual_quantity", False):
+        from finco_core.engine.date_authority import assert_grid_conserves_operating_life
+        assert_grid_conserves_operating_life(candidate, engine)
         config.validate_global_p50_cap(candidate)
     return candidate

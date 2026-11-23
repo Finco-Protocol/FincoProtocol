@@ -115,6 +115,12 @@ def full_generation_schedule(
     schedule = {}
     hours = _selected_operating_hours(inputs.technical, yield_scenario)
 
+    # OD-TIME-01 versioned date authority (R04 projects only): actual-day, COD-anniversary-degradation generation from the SAME
+    # dated generator the P50 cap uses; the selected case changes hours only.  Legacy projects fall through unchanged.
+    from finco_core.engine.date_authority import date_authority_active, dated_generation_schedule
+    if date_authority_active(inputs):
+        return dated_generation_schedule(inputs, engine, hours)
+
     for period in engine.periods():
         if not period.is_operation:
             schedule[period.index] = 0.0
