@@ -156,3 +156,5 @@ class DecisionCompleteReturnSummary:
     total_sponsor: ReturnMetricSummary
     terminal: TerminalFinancialState
     deductible_shl_covenant_feedback_status: str | None
+    shl_schedule_reconciliation: dict[str, object] | None = None
+

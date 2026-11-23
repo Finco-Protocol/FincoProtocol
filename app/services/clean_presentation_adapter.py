@@ -251,6 +251,7 @@ def _return_summary_payload(g2c) -> dict:
         "deductible_shl_covenant_feedback_status": (
             summary.deductible_shl_covenant_feedback_status
         ),
+        "shl_schedule_reconciliation": summary.shl_schedule_reconciliation,
     }
 
 

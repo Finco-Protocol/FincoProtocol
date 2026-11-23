@@ -277,3 +277,43 @@ class CovenantGatedWaterfallResult:
     return_summary: DecisionCompleteReturnSummary
     # Phase C2 downstream-only Project NPV and lender-coverage authority.
     valuation_summary: DecisionCompleteValuationSummary
+    # S2a: direct period-by-period reconciliation between G2A/tax SHL schedule
+    # and covenant-gated waterfall/statement SHL schedule.
+    shl_schedule_reconciliation: ShlScheduleReconciliation | None = None
+
+
+@dataclass(frozen=True)
+class ShlScheduleReconciliation:
+    """Direct period-by-period reconciliation between G2A/tax and waterfall SHL schedules."""
+
+    status: str  # NOT_APPLICABLE | RECONCILED | DIVERGED | MISSING_EVIDENCE | INVALID_EVIDENCE
+    reason_code: str | None
+    tolerance_keur: float
+    max_abs_diff_keur: float | None
+    first_divergent_period_index: int | None
+    first_divergent_field: str | None
+    max_divergent_period_index: int | None
+    max_divergent_field: str | None
+    cumulative_gross_interest_diff_keur: float | None
+    periods_divergent_count: int
+    schedule_a_source: str
+    schedule_b_source: str
+    shl_interest_deductible: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "reason_code": self.reason_code,
+            "tolerance_keur": self.tolerance_keur,
+            "max_abs_diff_keur": self.max_abs_diff_keur,
+            "first_divergent_period_index": self.first_divergent_period_index,
+            "first_divergent_field": self.first_divergent_field,
+            "max_divergent_period_index": self.max_divergent_period_index,
+            "max_divergent_field": self.max_divergent_field,
+            "cumulative_gross_interest_diff_keur": self.cumulative_gross_interest_diff_keur,
+            "periods_divergent_count": self.periods_divergent_count,
+            "schedule_a_source": self.schedule_a_source,
+            "schedule_b_source": self.schedule_b_source,
+            "shl_interest_deductible": self.shl_interest_deductible,
+        }
+

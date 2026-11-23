@@ -11,6 +11,7 @@ output-fitting constants are embedded in this module."""
 from __future__ import annotations
 
 import dataclasses
+import math
 from datetime import date
 
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs, SponsorFundingMode
@@ -45,6 +46,7 @@ from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallResult,
     DistributionGateStatus,
     ReserveSupportGateStatus,
+    ShlScheduleReconciliation,
 )
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_metrics
@@ -63,6 +65,206 @@ _G2C_RESERVE_GATE_STATUS = (
     "J_DSRA_AND_DSRF_DRAW_NOT_IMPLEMENTED"
 )
 _FLOAT_TOLERANCE = 1e-9
+SHL_RECONCILIATION_TOLERANCE_KEUR: float = 0.01
+_SHL_SCHEDULE_A_SOURCE = "model_result.shareholder_loan (G2A/tax)"
+_SHL_SCHEDULE_B_SOURCE = "shareholder_waterfall.gated_shl_schedule (waterfall/statements/BS)"
+_SHL_COMPARE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("opening", "shl_opening_keur"),
+    ("gross_interest", "shl_gross_interest_keur"),
+    ("cash_interest", "shl_cash_interest_keur"),
+    ("pik_interest", "shl_pik_interest_keur"),
+    ("principal", "shl_principal_keur"),
+    ("closing", "shl_closing_keur"),
+)
+
+
+def reconcile_shl_schedules(
+    g2a_schedule,
+    gated_schedule,
+    *,
+    has_shl: bool,
+    shl_interest_deductible: bool,
+    tolerance_keur: float = SHL_RECONCILIATION_TOLERANCE_KEUR,
+) -> ShlScheduleReconciliation:
+    """Compare G2A/tax SHL schedule against waterfall/BS SHL schedule by period_index.
+
+    Fails closed when SHL is active and either schedule is missing, axes do not
+    match, any value is non-finite, or any component diverges beyond tolerance_keur.
+    """
+    if not has_shl:
+        return ShlScheduleReconciliation(
+            status="NOT_APPLICABLE",
+            reason_code=None,
+            tolerance_keur=tolerance_keur,
+            max_abs_diff_keur=0.0,
+            first_divergent_period_index=None,
+            first_divergent_field=None,
+            max_divergent_period_index=None,
+            max_divergent_field=None,
+            cumulative_gross_interest_diff_keur=0.0,
+            periods_divergent_count=0,
+            schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+            schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+            shl_interest_deductible=shl_interest_deductible,
+        )
+
+    if g2a_schedule is None or gated_schedule is None:
+        return ShlScheduleReconciliation(
+            status="MISSING_EVIDENCE",
+            reason_code="SHL_SCHEDULE_EVIDENCE_MISSING",
+            tolerance_keur=tolerance_keur,
+            max_abs_diff_keur=None,
+            first_divergent_period_index=None,
+            first_divergent_field=None,
+            max_divergent_period_index=None,
+            max_divergent_field=None,
+            cumulative_gross_interest_diff_keur=None,
+            periods_divergent_count=0,
+            schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+            schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+            shl_interest_deductible=shl_interest_deductible,
+        )
+
+    idx_a = tuple(getattr(g2a_schedule, "period_indices", ()) or ())
+    idx_b = tuple(getattr(gated_schedule, "period_indices", ()) or ())
+    if not idx_a or not idx_b or len(idx_a) != len(set(idx_a)) or len(idx_b) != len(set(idx_b)) or set(idx_a) != set(idx_b):
+        return ShlScheduleReconciliation(
+            status="INVALID_EVIDENCE",
+            reason_code="SHL_SCHEDULE_AXIS_MISMATCH",
+            tolerance_keur=tolerance_keur,
+            max_abs_diff_keur=None,
+            first_divergent_period_index=None,
+            first_divergent_field=None,
+            max_divergent_period_index=None,
+            max_divergent_field=None,
+            cumulative_gross_interest_diff_keur=None,
+            periods_divergent_count=0,
+            schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+            schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+            shl_interest_deductible=shl_interest_deductible,
+        )
+
+    maps_a: dict[str, dict[int, float]] = {}
+    maps_b: dict[str, dict[int, float]] = {}
+    for label, attr in _SHL_COMPARE_FIELDS:
+        vec_a = getattr(g2a_schedule, attr, None)
+        vec_b = getattr(gated_schedule, attr, None)
+        if vec_a is None or vec_b is None or len(vec_a) != len(idx_a) or len(vec_b) != len(idx_b):
+            return ShlScheduleReconciliation(
+                status="INVALID_EVIDENCE",
+                reason_code="SHL_SCHEDULE_AXIS_MISMATCH",
+                tolerance_keur=tolerance_keur,
+                max_abs_diff_keur=None,
+                first_divergent_period_index=None,
+                first_divergent_field=label,
+                max_divergent_period_index=None,
+                max_divergent_field=label,
+                cumulative_gross_interest_diff_keur=None,
+                periods_divergent_count=0,
+                schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+                schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+                shl_interest_deductible=shl_interest_deductible,
+            )
+        ma: dict[int, float] = {}
+        mb: dict[int, float] = {}
+        for pidx, val in zip(idx_a, vec_a):
+            if not isinstance(val, (int, float)) or isinstance(val, bool) or not math.isfinite(val):
+                return ShlScheduleReconciliation(
+                    status="INVALID_EVIDENCE",
+                    reason_code="SHL_SCHEDULE_NONFINITE",
+                    tolerance_keur=tolerance_keur,
+                    max_abs_diff_keur=None,
+                    first_divergent_period_index=int(pidx),
+                    first_divergent_field=label,
+                    max_divergent_period_index=int(pidx),
+                    max_divergent_field=label,
+                    cumulative_gross_interest_diff_keur=None,
+                    periods_divergent_count=0,
+                    schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+                    schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+                    shl_interest_deductible=shl_interest_deductible,
+                )
+            ma[int(pidx)] = float(val)
+        for pidx, val in zip(idx_b, vec_b):
+            if not isinstance(val, (int, float)) or isinstance(val, bool) or not math.isfinite(val):
+                return ShlScheduleReconciliation(
+                    status="INVALID_EVIDENCE",
+                    reason_code="SHL_SCHEDULE_NONFINITE",
+                    tolerance_keur=tolerance_keur,
+                    max_abs_diff_keur=None,
+                    first_divergent_period_index=int(pidx),
+                    first_divergent_field=label,
+                    max_divergent_period_index=int(pidx),
+                    max_divergent_field=label,
+                    cumulative_gross_interest_diff_keur=None,
+                    periods_divergent_count=0,
+                    schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+                    schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+                    shl_interest_deductible=shl_interest_deductible,
+                )
+            mb[int(pidx)] = float(val)
+        maps_a[label] = ma
+        maps_b[label] = mb
+
+    sorted_indices = sorted(int(i) for i in idx_a)
+    max_abs_diff = 0.0
+    first_div_idx: int | None = None
+    first_div_field: str | None = None
+    max_div_idx: int | None = None
+    max_div_field: str | None = None
+    divergent_periods: set[int] = set()
+
+    for pidx in sorted_indices:
+        for label, _ in _SHL_COMPARE_FIELDS:
+            diff = abs(maps_a[label][pidx] - maps_b[label][pidx])
+            if diff > max_abs_diff:
+                max_abs_diff = diff
+                max_div_idx = pidx
+                max_div_field = label
+            if diff > tolerance_keur:
+                divergent_periods.add(pidx)
+                if first_div_idx is None:
+                    first_div_idx = pidx
+                    first_div_field = label
+
+    cum_gross_diff = math.fsum(
+        maps_a["gross_interest"][pidx] - maps_b["gross_interest"][pidx]
+        for pidx in sorted_indices
+    )
+
+    if divergent_periods:
+        return ShlScheduleReconciliation(
+            status="DIVERGED",
+            reason_code="SHL_SCHEDULE_DIVERGENCE",
+            tolerance_keur=tolerance_keur,
+            max_abs_diff_keur=max_abs_diff,
+            first_divergent_period_index=first_div_idx,
+            first_divergent_field=first_div_field,
+            max_divergent_period_index=max_div_idx,
+            max_divergent_field=max_div_field,
+            cumulative_gross_interest_diff_keur=cum_gross_diff,
+            periods_divergent_count=len(divergent_periods),
+            schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+            schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+            shl_interest_deductible=shl_interest_deductible,
+        )
+
+    return ShlScheduleReconciliation(
+        status="RECONCILED",
+        reason_code=None,
+        tolerance_keur=tolerance_keur,
+        max_abs_diff_keur=max_abs_diff,
+        first_divergent_period_index=None,
+        first_divergent_field=None,
+        max_divergent_period_index=None,
+        max_divergent_field=None,
+        cumulative_gross_interest_diff_keur=cum_gross_diff,
+        periods_divergent_count=0,
+        schedule_a_source=_SHL_SCHEDULE_A_SOURCE,
+        schedule_b_source=_SHL_SCHEDULE_B_SOURCE,
+        shl_interest_deductible=shl_interest_deductible,
+    )
+
 # O.9: Greenfield axiom — all construction funding is allocated to project Uses
 # (senior debt, SHL, equity) plus reserves at financial close. No uncommitted
 # cash enters the operating company on day one. Causal chain:
@@ -743,6 +945,7 @@ def run_project_shareholder_waterfall_model(
         has_shl = financing.derived_shl_cash_principal_keur > 0.0
         shl_maturity_idx: int | None = None
         shl_repayment_mode: ShlRepaymentMode | None = None
+        gated_shl_schedule = None
         if has_shl:
             dynamic_limitation = getattr(
                 project_inputs.tax, "interest_limitation_policy", None
@@ -803,22 +1006,24 @@ def run_project_shareholder_waterfall_model(
                         expected_indices=expected_shl_axis,
                     ))
 
-        # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
+        # ── Phase 3: Direct SHL schedule reconciliation (S2a) ────────────────────
         shl_deductible = (
             getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
             != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
         )
-        gate_locks_any = any(
-            info[0] in (
-                DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP,
-                DistributionGateStatus.LOCKED_COVENANT_GATE,
-            )
-            for info in gate_info_by_idx.values()
+        shl_schedule_reconciliation = reconcile_shl_schedules(
+            model_result.shareholder_loan,
+            gated_shl_schedule,
+            has_shl=has_shl,
+            shl_interest_deductible=shl_deductible,
         )
-        shl_pik_differs_from_g2a = has_shl and gate_locks_any and any(
-            shl_pik_by_idx.get(idx, 0.0) > 0.0 for idx in gate_info_by_idx
+        # Fail closed on missing/invalid/non-finite evidence or divergence > 0.01 kEUR
+        # regardless of whether a covenant lock-up gate triggered.
+        deductible_feedback_active = shl_schedule_reconciliation.status in (
+            "DIVERGED",
+            "MISSING_EVIDENCE",
+            "INVALID_EVIDENCE",
         )
-        deductible_feedback_active = shl_deductible and shl_pik_differs_from_g2a
 
         # ── Phase 4: Assemble per-period records ──────────────────────────────────
         waterfall_periods: list[CovenantGatedWaterfallPeriod] = []
@@ -1406,6 +1611,7 @@ def run_project_shareholder_waterfall_model(
             shl_repayment_mode.value if shl_repayment_mode is not None else None
         ),
         shl_maturity_period_index=shl_maturity_idx,
+        shl_schedule_reconciliation=shl_schedule_reconciliation.to_dict(),
     )
     valuation_summary = build_decision_complete_valuation_summary(
         project_inputs=project_inputs,
@@ -1450,4 +1656,5 @@ def run_project_shareholder_waterfall_model(
         deductible_shl_covenant_feedback_status=deductible_feedback_status,
         return_summary=return_summary,
         valuation_summary=valuation_summary,
+        shl_schedule_reconciliation=shl_schedule_reconciliation,
     )
