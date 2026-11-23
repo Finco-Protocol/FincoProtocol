@@ -25,6 +25,9 @@ Required checks observed on recent PRs (verify the exact list on the settings pa
 
 ## Owner steps (copy-ready)
 
+0. **Owner team.** Organization Finco-Protocol → Teams → New team `owners`; add your personal account; give the team
+   *Admin* (or *Maintain*) on `FincoProtocol`. CODEOWNERS names `@Finco-Protocol/owners` (personal logins stay out of
+   this public repository; the safety scan forbids them).
 1. **Freeze.** No other merges to `main` and no deploys until step 6 is done.
 2. **Backup.** Settings → Branches → `main` rule (or Settings → Rules → Rulesets) → screenshot or export the full
    configuration, and save it with the evidence package. Commit `707e68b2` preserves the code side.
@@ -37,14 +40,14 @@ Required checks observed on recent PRs (verify the exact list on the settings pa
    - keep *Require branches to be up to date* if it was on,
    - leave admin enforcement and force-push/deletion protection as they were.
    Under *Require a pull request before merging*, keep *Require review from Code Owners* on.
-5. **Review and merge #476.** Approve #476 as `@xofisamba` (an authentic review; an agent comment is not a review). If the
+5. **Review and merge #476.** Approve #476 as a member of `@Finco-Protocol/owners` (an authentic review; an agent comment is not a review). If the
    code-owner requirement still blocks because main's CODEOWNERS names only `@FincoProtocol`, use a single
    documented *bypass* for this PR only (record actor, time, reason "CI normalization bootstrap, #476", proof = green
    `required`), merge with **Create a merge commit**, then confirm bypass is not left enabled for anyone else.
 6. **Post-merge verification.** On `main`: the push run of *Model CI* is green; open a trivial docs PR and check that
    only `required` is requested and that it goes green; check that no old status is still expected.
 7. **Environment for releases.** Settings → Environments → New environment `production` → *Required reviewers*:
-   `xofisamba`. `release_gate.yml` waits on it.
+   the `owners` team. `release_gate.yml` waits on it.
 8. **Radar** (separate repository): see `docs/ci/normalization_2026_11/OPEN_DEFECTS_AND_NEXT.md` (billing blocker).
 
 ## Rollback

@@ -7,7 +7,7 @@ One workflow, one required check, ordinary tools.
 | Required status check | **`Model CI / required`** (job `required` in `.github/workflows/model_ci.yml`) |
 | Workflows | `model_ci.yml` (PR, push to main, merge queue, nightly, manual, reusable), `model_known_defects.yml` (advisory), `release_gate.yml` (manual release gate) |
 | Test runner | plain `pytest` + `pytest-split` (16 fixed duration-balanced groups), Playwright 1.63.0 / Chromium, axe-core 4.10.2 |
-| Protected paths | `.github/CODEOWNERS` — CI, tests, finance/security core need `@xofisamba` approval |
+| Protected paths | `.github/CODEOWNERS` — CI, tests, finance/security core need a member of `@Finco-Protocol/owners` approval |
 
 ## What every PR runs
 

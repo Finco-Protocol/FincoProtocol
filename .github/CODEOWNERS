@@ -1,26 +1,28 @@
 # Default ownership: either account may approve ordinary changes (nobody can approve their own PR).
-*                             @xofisamba @FincoProtocol
+*                             @Finco-Protocol/owners @FincoProtocol
 
-# Changes to CI, test policy and the financial/security core need an approving review from the owner.
+# Changes to CI, test policy and the financial/security core need an approving review from a code owner.
+# @Finco-Protocol/owners is the owner team (create it and add the owner's personal account; see docs/ci/normalization_2026_11/CI_CUTOVER_AND_ROLLBACK.md).
+# @FincoProtocol stays listed so ownership remains valid before the team exists; it cannot approve its own PRs.
 # Enforced by branch protection on main ("Require review from Code Owners"). An AI agent's comment is not a review.
-/.github/                     @xofisamba
-/scripts/ci/                  @xofisamba
-/tests/                       @xofisamba
-/pytest.ini                   @xofisamba
-/requirements*.txt            @xofisamba
-/constraints.txt              @xofisamba
-/financial_engine/            @xofisamba
-/finco_core/                  @xofisamba
-/domain/                      @xofisamba
-/app/auth*                    @xofisamba
-/app/internal_auth_introspect.py @xofisamba
-/app/protocol/                @xofisamba
-/app/persistence/             @xofisamba
-/deploy/                      @xofisamba
-/archive/                     @xofisamba
-/finco_radar/                 @xofisamba
-/tools/public_safety_scan.py  @xofisamba
-/MIGRATION_CONTROL.md         @xofisamba
-/SECURITY.md                  @xofisamba
-/docs/VERIFICATION.md         @xofisamba
-/docs/ci/                     @xofisamba
+/.github/                     @Finco-Protocol/owners @FincoProtocol
+/scripts/ci/                  @Finco-Protocol/owners @FincoProtocol
+/tests/                       @Finco-Protocol/owners @FincoProtocol
+/pytest.ini                   @Finco-Protocol/owners @FincoProtocol
+/requirements*.txt            @Finco-Protocol/owners @FincoProtocol
+/constraints.txt              @Finco-Protocol/owners @FincoProtocol
+/financial_engine/            @Finco-Protocol/owners @FincoProtocol
+/finco_core/                  @Finco-Protocol/owners @FincoProtocol
+/domain/                      @Finco-Protocol/owners @FincoProtocol
+/app/auth*                    @Finco-Protocol/owners @FincoProtocol
+/app/internal_auth_introspect.py @Finco-Protocol/owners @FincoProtocol
+/app/protocol/                @Finco-Protocol/owners @FincoProtocol
+/app/persistence/             @Finco-Protocol/owners @FincoProtocol
+/deploy/                      @Finco-Protocol/owners @FincoProtocol
+/archive/                     @Finco-Protocol/owners @FincoProtocol
+/finco_radar/                 @Finco-Protocol/owners @FincoProtocol
+/tools/public_safety_scan.py  @Finco-Protocol/owners @FincoProtocol
+/MIGRATION_CONTROL.md         @Finco-Protocol/owners @FincoProtocol
+/SECURITY.md                  @Finco-Protocol/owners @FincoProtocol
+/docs/VERIFICATION.md         @Finco-Protocol/owners @FincoProtocol
+/docs/ci/                     @Finco-Protocol/owners @FincoProtocol
