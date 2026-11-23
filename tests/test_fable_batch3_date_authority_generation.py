@@ -148,3 +148,92 @@ def test_dated_axis_covers_the_contractual_life_exactly(technology, cod, horizon
         if lp.is_operation and lp.index == legacy_rows + 1 - 1 and stub_rows == 0:
             continue
     assert [p.end_date for p in legacy_eng.periods()][:-1] == [p.end_date for p in eng.periods()][:len(legacy_eng.periods()) - 1]
+
+
+# ── dated R04 revenue: contract start/end inside a reporting row, independent per-day oracle ─────
+def _book(technology, cod, life_end, *, a, b, pm=55.0):
+    """a/b = (start, end_exclusive, GWh/yr, EUR/MWh).  Merchant = physical residual over the whole life."""
+    def ppa(sid, start, end, gwh, price):
+        return {"id": sid, "type": "ppa", "start_date": start.isoformat(), "end_date": end.isoformat(), "volume_share": None,
+                "annual_quantity": {"mode": "ABSOLUTE_ANNUAL", "amount": str(gwh), "unit": "GWh"},
+                "price_eur_mwh": price, "indexation_rate": 0.0, "settlement": "SAME_PERIOD", "source_ref": "ORACLE_" + sid}
+    return json.dumps({"version": 2, "technology": technology, "indexation_basis": "OPERATING_YEAR", "streams": [
+        ppa("ppa_a", *a[:2], a[2], a[3]), ppa("ppa_b", *b[:2], b[2], b[3]),
+        {"id": "merchant", "type": "merchant", "start_date": cod.isoformat(), "end_date": life_end.isoformat(), "volume_share": None,
+         "price_eur_mwh": pm, "indexation_rate": 0.0, "settlement": "SAME_PERIOD", "source_ref": "ORACLE_M", "capture_rate": 1.0}]},
+        separators=(",", ":"))
+
+
+def _oracle_row(cod, horizon, start_incl, end_excl, t, contracts, pm):
+    """Per-day physical allocation and cash for one row: contracts deliver Q/ydays per active day, merchant takes the residual."""
+    end_life = _add_years(cod, horizon)
+    annual = Decimal(repr(t.capacity_mw)) * Decimal(repr(t.operating_hours_p50)) * Decimal(repr(t.combined_availability))
+    out = {c[0]: [Decimal(0), Decimal(0)] for c in contracts}   # id -> [mwh, keur]
+    merch = [Decimal(0), Decimal(0)]
+    day, stop = max(start_incl, cod), min(end_excl, end_life)
+    while day < stop:
+        k = 0
+        while _add_years(cod, k + 1) <= day:
+            k += 1
+        ydays = Decimal(366 if calendar.isleap(day.year) else 365)
+        gen = annual * (Decimal(1) - Decimal(repr(t.pv_degradation))) ** k / ydays
+        used = Decimal(0)
+        for cid, c_start, c_end, gwh, price in contracts:
+            if c_start <= day < c_end:
+                q = Decimal(gwh) * 1000 / ydays
+                out[cid][0] += q
+                out[cid][1] += q * Decimal(repr(price)) / 1000
+                used += q
+        assert used <= gen, "oracle scenario must be physically feasible"
+        res = gen - used
+        merch[0] += res
+        merch[1] += res * Decimal(repr(pm)) / 1000
+        day += timedelta(days=1)
+    return out, merch
+
+
+@pytest.mark.parametrize("technology", ["solar", "wind"])
+@pytest.mark.parametrize("cod", [date(2031, 3, 1), date(2031, 5, 15)])
+def test_dated_revenue_with_contract_dates_inside_rows_matches_daily_oracle(technology, cod):
+    from finco_core.revenue.generation import revenue_decomposition_schedule
+
+    pi = _project(technology, cod)
+    life_end = _add_years(cod, 20)
+    a = (date(2031, 9, 10), date(2041, 2, 20), "25", 72.0)      # starts and ends inside reporting rows
+    b = (cod, date(2036, 5, 15), "15", 68.0)                      # independent price, different term
+    pm = 55.0
+    book = _book(technology, cod, life_end, a=a, b=b, pm=pm)
+    pi = apply_config(pi, book, project_type=technology)
+    eng = _build_period_engine(from_project_inputs(pi))
+    dec = revenue_decomposition_schedule(pi, eng)
+    contracts = [("ppa_a", a[0], a[1], a[2], a[3]), ("ppa_b", b[0], b[1], b[2], b[3])]
+    prev_end, total_rev, tot_oracle = None, 0.0, Decimal(0)
+    for p in eng.periods():
+        if not p.is_operation:
+            continue
+        start_incl = cod if prev_end is None else prev_end + timedelta(days=1)
+        per, merch = _oracle_row(cod, 20, start_incl, p.end_date + timedelta(days=1), pi.technical, contracts, pm)
+        row = dec[p.index]
+        exp_ppa_mwh = per["ppa_a"][0] + per["ppa_b"][0]
+        exp_ppa_keur = per["ppa_a"][1] + per["ppa_b"][1]
+        assert float(exp_ppa_mwh) == pytest.approx(row["ppa_generation_mwh"], rel=1e-9, abs=1e-6), (technology, cod, p.index)
+        assert float(exp_ppa_keur) == pytest.approx(row["ppa_revenue_keur"], rel=1e-9, abs=1e-6), (technology, cod, p.index)
+        assert float(merch[0]) == pytest.approx(row["merchant_generation_mwh"], rel=1e-9, abs=1e-6), (technology, cod, p.index)
+        assert float(merch[1]) == pytest.approx(row["gross_merchant_revenue_keur"], rel=1e-9, abs=1e-6), (technology, cod, p.index)
+        # conservation: contracts + merchant == generation of the row
+        assert row["generation_mwh"] == pytest.approx(row["ppa_generation_mwh"] + row["merchant_generation_mwh"], rel=1e-9)
+        tot_oracle += exp_ppa_keur + merch[1]
+        prev_end = p.end_date
+    assert float(tot_oracle) > 0
+
+
+def test_missing_merchant_price_and_ambiguous_merchants_fail_closed():
+    pi = _project("solar", date(2031, 3, 1))
+    life_end = _add_years(date(2031, 3, 1), 20)
+    book = json.loads(_book("solar", date(2031, 3, 1), life_end, a=(date(2031, 3, 1), date(2036, 3, 1), "10", 72.0),
+                            b=(date(2031, 3, 1), date(2036, 3, 1), "10", 68.0)))
+    book["streams"][2]["volume_share"] = 0.5
+    with pytest.raises(ValueError):
+        pi2 = apply_config(pi, json.dumps(book), project_type="solar")
+        from finco_core.revenue.generation import revenue_decomposition_schedule
+        revenue_decomposition_schedule(pi2, _build_period_engine(from_project_inputs(pi2)))

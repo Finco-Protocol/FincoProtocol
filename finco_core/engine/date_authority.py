@@ -132,3 +132,14 @@ def dated_depreciation_schedule(capex_items, engine, *, cod: date, senior_tenor_
     out = {p.index: 0.0 for p in engine.periods()}
     out.update(summary.period_depreciation_keur)
     return out
+
+
+def dated_generation_for_interval(inputs, interval: ContractualInterval, selected_hours: float) -> float:
+    """Dated generation (MWh) over any sub-interval; identical generator to ``dated_generation_schedule`` (sums exactly across a partition)."""
+    cod = inputs.info.cod_date
+    tech = inputs.technical
+    mwh, _ = contractual_generation_for_interval(
+        interval, cod=cod, capacity_mw=float(tech.capacity_mw), annual_hours=float(selected_hours),
+        combined_availability=float(tech.combined_availability), annual_degradation=float(tech.pv_degradation),
+        horizon_end_exclusive=operating_horizon_interval(cod, int(inputs.info.horizon_years)).end_exclusive)
+    return mwh

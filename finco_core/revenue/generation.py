@@ -205,15 +205,20 @@ def revenue_decomposition_schedule(
     decompositions: dict[int, dict[str, float | bool]] = {}
     generation_schedule = full_generation_schedule(inputs, engine)
     multistream = None
+    _dated = getattr(engine, "dated_life_end_exclusive", None) is not None
+    if _dated:
+        from finco_core.engine.date_authority import legacy_operating_intervals, dated_generation_for_interval
+        _intervals = legacy_operating_intervals(engine, inputs.info.cod_date)
+        _hours = _selected_operating_hours(inputs.technical)
     if getattr(inputs.revenue, "multistream_config_json", ""):
         from domain.revenue.multistream_runtime import parse_config
         multistream = parse_config(inputs.revenue.multistream_config_json)
         if getattr(multistream, "has_contractual_indexation", False):
             if engine.cod != inputs.info.cod_date:
                 raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
-            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date)
+            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date, date_aware=_dated)
         else:
-            multistream.validate_axis(engine.periods())
+            multistream.validate_axis(engine.periods(), date_aware=_dated)
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
         if getattr(multistream, "has_absolute_annual_quantity", False):
@@ -285,7 +290,12 @@ def revenue_decomposition_schedule(
         product_revenue_keur = 0.0
         if multistream is not None:
             from domain.revenue.plan import RevenueStreamType
-            result = multistream.evaluate(period, generation_mwh)
+            if _dated:
+                result = multistream.evaluate_dated(
+                    period, _intervals[period.index], cod=inputs.info.cod_date,
+                    generation_for=lambda iv: dated_generation_for_interval(inputs, iv, _hours))
+            else:
+                result = multistream.evaluate(period, generation_mwh)
             ppa_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.PPA]
             merchant_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.MERCHANT]
             ppa_revenue_keur = sum(r.stream_revenue_keur for r in ppa_rows)

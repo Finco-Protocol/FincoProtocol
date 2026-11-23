@@ -373,19 +373,23 @@ class MultiStreamRevenue:
                 raise ValueError("REVENUE_V2_CFD_COVERAGE: settlement volume exceeds merchant volume")
         return plan
 
-    def validate_axis(self, periods, *, project_cod=None):
+    def validate_axis(self, periods, *, project_cod=None, date_aware=False):
+        """``dated=True`` (OD-TIME-01 versioned grid): contract dates are canonical half-open dates and may fall INSIDE a reporting row;
+        ``evaluate_dated`` splits the row at every contract/review date, so the boundary-only and partial-period refusals do not apply."""
         operating = tuple(p for p in periods if p.is_operation)
         boundaries = {p.start_date for p in operating} | {p.end_date for p in operating}
         if not operating:
             raise ValueError("REVENUE_V2_AXIS: operating periods required")
         for dated in self.streams:
-            if dated.start_date not in boundaries or dated.end_date not in boundaries:
+            if date_aware and dated.price_curve:
+                raise ValueError("REVENUE_V2_DATED_CURVE_UNSUPPORTED: explicit per-row price curves are not supported on the dated grid; use dated indexation terms")
+            if not date_aware and (dated.start_date not in boundaries or dated.end_date not in boundaries):
                 raise ValueError("REVENUE_V2_AXIS: contract dates must match canonical operating boundaries")
             if dated.indexation_timing:
                 terms = dated.indexation_timing
                 if terms.start_rule == "COD" and (type(project_cod) is not date or terms.resolved_start_date != project_cod):
                     raise ValueError("REVENUE_V2_TIMING_COD: resolved COD must match the canonical project COD; review the contract dates")
-                for review in terms.review_dates(dated.end_date):
+                for review in () if date_aware else terms.review_dates(dated.end_date):
                     if any(dated.active(p.start_date) and p.start_date < review < p.end_date for p in operating):
                         raise ValueError(f"REVENUE_V2_REVIEW_PERIOD_ALIGNMENT: review {review.isoformat()} falls inside an operating period; within-period price resets are unsupported. Keep the contractual date and revise the supported terms; no date is moved.")
             if dated.price_curve:
@@ -403,10 +407,37 @@ class MultiStreamRevenue:
                 if missing:
                     raise ValueError("REVENUE_V2_INDEX_COVERAGE: no index level for operating year(s) "
                                      f"{', '.join(map(str, missing))}; the series is never extrapolated or replaced by an annual rate")
-            for p in operating:
+            for p in () if date_aware else operating:
                 if dated.start_date < p.end_date and dated.end_date > p.start_date:
                     if not (dated.start_date <= p.start_date and p.end_date <= dated.end_date):
                         raise ValueError("REVENUE_V2_AXIS: partial-period contracts are unsupported")
+
+    def evaluate_dated(self, period, interval, *, cod, generation_for):
+        """OD-TIME-01: evaluate one reporting row on the dated grid.
+
+        The row's half-open ``interval`` is split at every contract start/end, indexation review date and Jan-1 / COD-anniversary
+        boundary; each sub-interval is evaluated with its own active contracts, price, operating year and exact generation
+        (``generation_for(sub)``), then merged losslessly (MWh and kEUR add; price is the MWh-weighted average).
+        """
+        from types import SimpleNamespace
+        from finco_core.engine.contractual_calendar import add_calendar_years, operating_year_index, split_at_dates
+
+        cuts = {c for s in self.streams for c in (s.start_date, s.end_date)}
+        for s in self.streams:
+            if s.indexation_timing:
+                cuts.update(s.indexation_timing.review_dates(s.end_date))
+        cuts.update(date(y, 1, 1) for y in range(interval.start.year + 1, interval.end_exclusive.year + 1))
+        k = 1
+        while add_calendar_years(cod, k) < interval.end_exclusive:
+            cuts.add(add_calendar_years(cod, k))
+            k += 1
+        results = []
+        for sub in split_at_dates(interval, cuts):
+            sub_period = SimpleNamespace(
+                start_date=sub.start, end_date=sub.end_exclusive, days_in_period=sub.days,
+                year_index=operating_year_index(cod, sub.start), index=period.index, is_operation=True)
+            results.append(self.evaluate(sub_period, generation_for(sub)))
+        return _merge_period_results(results)
 
     def evaluate(self, period, generation_mwh):
         result = evaluate_revenue_plan(self.plan_at(period.start_date, period.year_index), period.year_index,
@@ -477,22 +508,32 @@ class MultiStreamRevenue:
             r.stream_id for r in rows
             if r.stream_type is RevenueStreamType.MERCHANT and r.status is StreamPeriodStatus.ACTIVE
         ]
+        # OD-R04-02: with absolute physical contracts the merchant stream is the unique physical RESIDUAL.  An explicit merchant
+        # share (of what base?) or several merchant streams cannot be allocated uniquely, so they fail closed (no invented priority).
+        if len(active_merchant_ids) > 1:
+            raise ValueError("R04_MERCHANT_ALLOCATION_AMBIGUOUS: several active merchant streams cannot share the physical residual of "
+                             "ABSOLUTE_ANNUAL contracts uniquely")
+        if any(states[mid].stream.volume_share is not None for mid in active_merchant_ids):
+            raise ValueError("R04_MERCHANT_EXPLICIT_SHARE_UNSUPPORTED: with ABSOLUTE_ANNUAL contracts the merchant stream is the physical "
+                             "residual; an explicit merchant volume_share is not supported")
         updated_rows = []
         total_rev = 0.0
         allocated_total = 0.0
         for r in rows:
             if r.stream_type is RevenueStreamType.PPA and r.status is StreamPeriodStatus.ACTIVE:
                 qty = allocated_by_id.get(r.stream_id, 0.0)
-                price = float(r.price_eur_mwh or 0.0)
+                if r.price_eur_mwh is None:
+                    raise ValueError("REVENUE_V2_UNAVAILABLE: PPA stream has no authoritative price (missing is never zero)")
+                price = float(r.price_eur_mwh)
                 rev = qty * price / 1000.0
                 updated_rows.append(replace(r, allocated_generation_mwh=qty, stream_revenue_keur=rev))
                 total_rev += rev
                 allocated_total += qty
             elif r.stream_type is RevenueStreamType.MERCHANT and r.status is StreamPeriodStatus.ACTIVE:
-                qty = residual_merchant_mwh if (len(active_merchant_ids) == 1) else (
-                    residual_merchant_mwh * float(states[r.stream_id].stream.volume_share or 0.0)
-                )
-                price = float(r.price_eur_mwh or 0.0)
+                qty = residual_merchant_mwh
+                if r.price_eur_mwh is None:
+                    raise ValueError("REVENUE_V2_UNAVAILABLE: merchant stream has no authoritative price (missing is never zero)")
+                price = float(r.price_eur_mwh)
                 capture = states[r.stream_id].stream.merchant.capture_rate_for_tech(self.technology)
                 rev = qty * price * capture / 1000.0
                 updated_rows.append(replace(r, allocated_generation_mwh=qty, stream_revenue_keur=rev))
@@ -515,6 +556,40 @@ class MultiStreamRevenue:
         return {s.stream_id: s.ppa.price_details_at_year(year_index)
                 for s in self.plan_at(when, year_index).streams
                 if s.enabled and s.stream_type is RevenueStreamType.PPA}
+
+
+def _merge_period_results(results):
+    """Lossless merge of sub-interval plan results into one reporting-row result (MWh and kEUR add; price MWh-weighted)."""
+    first = results[0]
+    if len(results) == 1:
+        return first
+    merged = []
+    for idx, row in enumerate(first.stream_results):
+        parts = [r.stream_results[idx] for r in results]
+        mwh = sum(p.allocated_generation_mwh for p in parts)
+
+        def total(attr):
+            vals = [getattr(p, attr) for p in parts]
+            return None if any(v is None for v in vals) else sum(vals)
+
+        priced = [(p.allocated_generation_mwh, p.price_eur_mwh) for p in parts if p.price_eur_mwh is not None]
+        if priced and mwh > 0:
+            price = sum(m * pr for m, pr in priced) / sum(m for m, _ in priced) if sum(m for m, _ in priced) > 0 else priced[-1][1]
+        else:
+            price = priced[-1][1] if priced else None
+        active = [p for p in parts if p.status is StreamPeriodStatus.ACTIVE]
+        merged.append(replace(
+            row, allocated_generation_mwh=mwh, eligible_generation_mwh=sum(p.eligible_generation_mwh for p in parts),
+            price_eur_mwh=price, underlying_market_revenue_keur=total("underlying_market_revenue_keur"),
+            support_or_settlement_keur=total("support_or_settlement_keur"), stream_revenue_keur=total("stream_revenue_keur"),
+            status=(active[0].status if active else parts[-1].status)))
+    totals = [r.total_revenue_keur for r in results]
+    return replace(
+        first, stream_results=tuple(merged),
+        total_eligible_generation_mwh=sum(r.total_eligible_generation_mwh for r in results),
+        total_revenue_keur=None if any(t is None for t in totals) else sum(totals),
+        available_revenue_subtotal_keur=sum(r.available_revenue_subtotal_keur for r in results),
+        unallocated_generation_mwh=sum(r.unallocated_generation_mwh for r in results))
 
 
 INDEX_BASES = frozenset({"OBSERVED", "FORECAST"})
