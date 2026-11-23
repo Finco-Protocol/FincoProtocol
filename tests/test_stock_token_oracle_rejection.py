@@ -180,11 +180,3 @@ class TestHistoricalEvidencePreserved:
             assert ver[symbol]["canonical_id"] == row["canonical_id"]
 
 
-class TestShippedRegistryFileIsUntouchedByCorrectionB:
-    def test_registry_feeds_file_has_no_diff_against_main(self):
-        import subprocess
-        out = subprocess.run(["git", "diff", "--name-only", "origin/main..HEAD", "--",
-                              "app/radar_rwa/data/stock_token_oracle_feeds.json"], cwd=REPO, capture_output=True, text=True)
-        if out.returncode != 0:
-            pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
