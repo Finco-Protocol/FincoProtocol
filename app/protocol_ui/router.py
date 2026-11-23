@@ -224,5 +224,7 @@ async def protocol_roadmap(request: Request):
 
 # Explicit Yield integration boundary. The package initializer remains minimal
 # so ``app.protocol_ui.router`` continues to resolve to this Python module.
-from app.yield_ui_integration import router as _yield_integration_router
-router.include_router(_yield_integration_router)
+import os as _os
+if _os.environ.get("FINCO_MOUNT_RADAR", "1").strip().lower() not in ("0", "false", "no", "off"):
+    from app.yield_ui_integration import router as _yield_integration_router
+    router.include_router(_yield_integration_router)
