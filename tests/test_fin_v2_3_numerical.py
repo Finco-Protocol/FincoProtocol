@@ -27,11 +27,6 @@ def test_existing_full_float_baseline_is_bit_identical(reference):
     kind, _, run = reference
     expected = json.loads((Path(__file__).parent/'fixtures/fin_v2_3_baseline.json').read_text())[kind]
     leaves = float_leaves(run.g2c_result)
-    if kind == 'data_center' and run.g2c_result.shl_schedule_reconciliation and run.g2c_result.shl_schedule_reconciliation.status == 'DIVERGED':
-        # Batch 2 E2E-03 S2a suppresses the 8 unclosed shareholder/sponsor return floats on DC
-        # where G2A/tax SHL diverges from waterfall/BS SHL by ~1,848 kEUR.
-        assert len(leaves) == expected['float_paths'] - 8
-        return
     digest = hashlib.sha256(json.dumps(leaves, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     assert len(leaves) == expected['float_paths']
     assert digest == expected['float_hex_sha256']

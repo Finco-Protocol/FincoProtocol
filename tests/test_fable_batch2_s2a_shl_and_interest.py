@@ -175,24 +175,78 @@ def test_reconcile_shl_tolerance_boundary():
 # ── S2a: Canonical End-to-End Verification (C13 DC vs C01 Solar / C02 Wind) ──
 
 
-def test_c13_data_center_diverged_shl_suppresses_returns_preserves_project_metrics(tmp_path):
+def test_c13_data_center_s2b_reconciles_shl_and_publishes_returns(tmp_path):
+    """Under Batch 3 S2b (OD-SHL-01), C13 Data Center converges to one authoritative SHL
+    schedule (tax == P&L == BS == waterfall), so shareholder returns are published as OK."""
     _, h = _run_v2_reference(tmp_path, "data_center")
     rs = h["runtime_summary"]
     ev = h["integrity_evidence"]
 
-    # Shareholder returns MUST be suppressed (None, never 0.0) with explicit status
-    assert rs["equity_irr"] is None
-    assert rs["total_sponsor_xirr"] is None
-    assert rs["share_capital_irr_status"] == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
-    assert rs["total_sponsor_xirr_status"] == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
-    assert ev["sponsor"]["reported"]["pure_equity_xirr"] is None
-    assert ev["sponsor"]["reported"]["total_sponsor_xirr"] is None
-    assert ev["sponsor"]["reported"]["pure_equity_xirr_status"] == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
-    assert ev["sponsor"]["reported"]["total_sponsor_xirr_status"] == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
+    assert rs["equity_irr"] is not None
+    assert rs["total_sponsor_xirr"] is not None
+    assert rs["share_capital_irr_status"] == "OK"
+    assert rs["total_sponsor_xirr_status"] == "OK"
+    assert ev["sponsor"]["reported"]["pure_equity_xirr"] is not None
+    assert ev["sponsor"]["reported"]["total_sponsor_xirr"] is not None
+    assert ev["sponsor"]["reported"]["pure_equity_xirr_status"] == "OK"
+    assert ev["sponsor"]["reported"]["total_sponsor_xirr_status"] == "OK"
 
     # Project metrics unaffected and preserved
     assert rs["min_dscr"] == pytest.approx(1.3, abs=1e-4)
     assert rs["project_irr"] is not None
+
+
+def test_s2a_guard_still_suppresses_returns_on_unclosed_divergence(monkeypatch):
+    """Independent S2a invariant: if SHL schedule reconciliation ever reports DIVERGED
+    (> 0.01 kEUR), shareholder/sponsor returns remain suppressed with explicit status."""
+    from app import project_factories as pf
+    from app.services.production_financial_authority import run_clean_production
+    from financial_engine.shareholder_waterfall import model as wf_mod
+    from financial_engine.shareholder_waterfall.model import ShlScheduleReconciliation
+
+    real_reconcile = wf_mod.reconcile_shl_schedules
+    calls = {"n": 0}
+
+    def force_diverged(sched_a, sched_b, *, has_shl, shl_interest_deductible, tolerance_keur=0.01):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_reconcile(
+                sched_a, sched_b,
+                has_shl=has_shl,
+                shl_interest_deductible=shl_interest_deductible,
+                tolerance_keur=tolerance_keur,
+            )
+        return ShlScheduleReconciliation(
+            status="DIVERGED",
+            reason_code="SHL_SCHEDULE_DIVERGENCE",
+            tolerance_keur=tolerance_keur,
+            max_abs_diff_keur=12.34,
+            first_divergent_period_index=1,
+            first_divergent_field="gross_interest",
+            max_divergent_period_index=1,
+            max_divergent_field="gross_interest",
+            cumulative_gross_interest_diff_keur=12.34,
+            periods_divergent_count=1,
+            schedule_a_source="g2a_tax_shl",
+            schedule_b_source="g2c_waterfall_shl",
+            shl_interest_deductible=shl_interest_deductible,
+        )
+
+    from app.services import production_financial_authority as authority
+    monkeypatch.setattr(wf_mod, "reconcile_shl_schedules", force_diverged)
+    authority._POLICY_RUN_CACHE.clear()
+    try:
+        run = run_clean_production(pf.create_generic_solar_reference())
+    finally:
+        authority._POLICY_RUN_CACHE.clear()
+    g = run.g2c_result
+    assert g.shl_schedule_reconciliation.status == "DIVERGED"
+    assert g.pure_equity_xirr is None
+    assert g.total_sponsor_xirr is None
+    assert g.pure_equity_xirr_status.value == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
+    assert g.total_sponsor_xirr_status.value == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
+    assert g.return_summary.project.project_xirr is not None
+
 
 
 def test_c01_solar_and_c02_wind_reconciled_shl_keeps_returns_ok(tmp_path):
