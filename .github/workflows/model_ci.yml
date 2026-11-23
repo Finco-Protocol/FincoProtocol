@@ -10,7 +10,13 @@
 #     groups fail; the aggregate checks that the groups' selections add up to the full collection;
 #   * the only deselected tests are the listed known baseline defects (tests/known_defects.txt), which run visibly
 #     red in model_known_defects.yml until fixed;
-#   * this workflow, tests/ and the finance/security code are CODEOWNERS-protected (.github/CODEOWNERS).
+#   * this workflow, tests/ and the finance/security code are CODEOWNERS-protected (.github/CODEOWNERS);
+#   * modes (FINCO 34 owner policy): the exact node(s) in tests/full_regression_nodes.txt are DEFERRED_TO_FULL — never
+#     skipped, xfailed or known defects. STANDARD (ordinary PRs, main pushes) runs every other node in the 16 groups;
+#     FULL additionally runs the deferred node(s) unchanged in the `full-regression` job on the same SHA. FULL runs on the
+#     nightly schedule, on every release gate (full_regression: true), on manual dispatch with full_regression: true,
+#     and on every PR / merge group whose diff touches scripts/ci/full_regression_paths.txt (unreadable diff = FULL).
+#     `required` stays the single required check and fails on a FULL-mode full-regression that is not success.
 name: Model CI
 on:
   pull_request:
@@ -20,7 +26,17 @@ on:
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
+    inputs:
+      full_regression:
+        description: 'FULL mode: also run the deferred long node(s) (tests/full_regression_nodes.txt) on this exact ref'
+        type: boolean
+        default: false
   workflow_call:
+    inputs:
+      full_regression:
+        description: 'FULL mode (the release gate passes true)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -33,6 +49,28 @@ env:
   AXE_CORE_SHA256: 9ea2d2d6917da998122bdacfd3b473e31ead53f4b87146c716a12edf89158100
   GROUPS: '16'
 jobs:
+  mode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.decide.outputs.full }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide STANDARD or FULL (fail closed to FULL on an unreadable PR diff)
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL_INPUT: ${{ inputs.full_regression }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -o pipefail
+          python3 scripts/ci/ci_mode.py --event "$EVENT" --full-input "$FULL_INPUT" --base "$BASE" --head "$HEAD" | tee -a "$GITHUB_OUTPUT"
+          { echo "### Model CI mode"; cat "$GITHUB_OUTPUT"; echo; echo "Deferred to FULL:"; grep -v '^#' tests/full_regression_nodes.txt | cut -d'#' -f1; } >> "$GITHUB_STEP_SUMMARY"
+
   static:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -133,9 +171,30 @@ jobs:
         run: |
           python -m pytest tests/finval_f01_browser_acceptance.py -q -rs -p no:cacheprovider --junitxml=evidence/f01-browser.xml
           python scripts/ci/junit_check.py evidence/f01-browser.xml --exact 4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
+      - name: Build the approved native image (unchanged Dockerfile; BuildKit layer cache is an optimization, not proof)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: docs/ci_v3/phase4/runtime/Dockerfile
+          tags: finval-f01-native
+          load: true
+          push: false
+          provenance: false
+          # GitHub Actions cache is ref-scoped: PR runs restore the default branch's layers and write only to their own PR
+          # scope, so no PR can poison the trusted main cache. Layer keys are content-addressed (pinned base digest,
+          # Dockerfile instructions, COPYed requirements/constraints/python.lock/frontend lock bytes).
+          cache-from: type=gha,scope=finval-f01-native
+          cache-to: type=gha,scope=finval-f01-native,mode=max
+      - name: Native image identity (image content matches this checkout's approved inputs; cache hit is not proof)
+        run: |
+          set -o pipefail
+          mkdir -p evidence/native-image
+          docker image inspect finval-f01-native --format '{{.Id}}' | tee evidence/native-image/image-id.txt
+          docker run --rm --network none finval-f01-native sh -c 'cat /opt/ci-v3/os-release.txt /opt/ci-v3/python-version.txt /opt/ci-v3/tool-versions.txt; grep -E "^(gcc-13|python3.12|nodejs|npm)=" /opt/ci-v3/resolved-system.txt; cat /opt/ci-v3/frontend/identity.json' | tee evidence/native-image/identity.txt
+          docker run --rm --network none -v "$PWD:/subject:ro" -w /subject finval-f01-native python /subject/scripts/ci/native_image_identity.py --image-root /opt/ci-v3 --checkout /subject
       - name: F01 twenty native V10/V11 cases in the approved isolated image (no network)
         run: |
-          docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .
           mkdir -p evidence/native
           docker run --rm --network none --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/subject -w /subject \
             -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native \
@@ -192,7 +251,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           # per-node durations (node ids + seconds only) are committed gzipped: the public safety scanner hashes every byte window
           gunzip -c scripts/ci/test_durations.json.gz > .test_durations
-          mapfile -t DESELECT < <(python scripts/ci/known_defects.py --deselect)
+          mapfile -t DESELECT < <(python scripts/ci/known_defects.py --deselect; python scripts/ci/known_defects.py --deselect --file tests/full_regression_nodes.txt)
           # One visible rerun ONLY for hosted-runner browser flake signatures; reruns are listed (R) in the log and JUnit.
           python -m pytest -q -rfEsR -p no:cacheprovider --durations=25 \
             --reruns 1 --only-rerun "TimeoutError: Timeout [0-9]+ms exceeded" --only-rerun "assert 303 == 200" \
@@ -242,35 +301,83 @@ jobs:
           path: evidence/
           if-no-files-found: error
 
+  full-regression:
+    # FULL mode only (see `mode`): the exact deferred node(s), unchanged, on this same SHA. Its own timeout: the deferred
+    # NPV goal-seek parity node measured 1093-1737 s hosted (up to ~29 min on slow runners) plus ~2-9 min install.
+    needs: mode
+    if: needs.mode.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install (Python, frontend node_modules, Chromium, axe-core)
+        run: |
+          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip check
+          (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
+          playwright install chromium --with-deps
+          mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
+          npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
+          echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -
+          tar xzf "axe-core-$AXE_CORE_VERSION.tgz"
+      - name: Run the deferred FULL node(s) (exact ids; strict skips; must pass, never skip)
+        env:
+          FINCO_CI_STRICT_SKIPS: '1'
+          FINCO_CI_COUNTS: ${{ runner.temp }}/out/counts-full.json
+          FINCO_AXE_CORE_PATH: ${{ runner.temp }}/axe/package/axe.min.js
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          mapfile -t NODES < <(python scripts/ci/known_defects.py --file tests/full_regression_nodes.txt)
+          python -m pytest -q -rfEs -p no:cacheprovider --durations=10 "${NODES[@]}" --junitxml="$RUNNER_TEMP/out/junit-full.xml"
+          python scripts/ci/junit_check.py "$RUNNER_TEMP/out/junit-full.xml" --exact "${#NODES[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: full-regression
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+
   required:
     name: required
     if: always()
-    needs: [static, boot-smoke, finance, tests, acceptance]
+    needs: [mode, static, boot-smoke, finance, tests, acceptance, full-regression]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Every required job concluded success (skipped, cancelled or missing is a failure)
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os, sys
-          needs = json.loads(os.environ["RESULTS"])
-          bad = {k: v["result"] for k, v in needs.items() if v["result"] != "success"}
-          expected = {"static", "boot-smoke", "finance", "tests", "acceptance"}
-          if set(needs) != expected or bad:
-              print("REQUIRED FAILED:", bad or sorted(expected ^ set(needs))); sys.exit(1)
-          print("all required jobs: success")
-          PY
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           sparse-checkout: |
             tests/known_defects.txt
+            tests/full_regression_nodes.txt
             scripts/ci
+      - name: Every required job concluded success (full-regression may be skipped ONLY in STANDARD mode)
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/required_jobs.py
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: tests-*
           path: groups
-      - name: Groups add up to the full collection (no node lost, none run twice, only listed known defects deselected)
-        run: python3 scripts/ci/check_groups.py groups --groups 16 --known-defects tests/known_defects.txt
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: needs.mode.outputs.full == 'true'
+        with:
+          name: full-regression
+          path: groups/full-regression
+      - name: Groups add up to the full collection (executed + DEFERRED_TO_FULL + known defects; FULL reconciles the deferred node)
+        env:
+          FULL: ${{ needs.mode.outputs.full }}
+        run: |
+          set -o pipefail
+          python3 scripts/ci/check_groups.py groups --groups 16 --known-defects tests/known_defects.txt \
+            --deferred tests/full_regression_nodes.txt $([ "$FULL" = "true" ] && echo --full) | tee -a "$GITHUB_STEP_SUMMARY"

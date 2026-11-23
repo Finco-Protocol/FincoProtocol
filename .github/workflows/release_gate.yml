@@ -1,6 +1,8 @@
-# Release gate: a shipping SHA must pass the full Model CI on that exact commit, then wait for the protected
-# "production" environment approval (configure required reviewers in Settings > Environments). No deploy step lives
-# here; the deployment procedure itself stays manual and separately approved.
+# Release gate: a shipping SHA must pass the full Model CI on that exact commit — in FULL mode, i.e. including the long
+# node(s) deferred from the standard groups (tests/full_regression_nodes.txt) — then wait for the protected "production"
+# environment approval (configure required reviewers in Settings > Environments). Any failure, cancellation, timeout,
+# skip or missing evidence of the FULL node fails `model-ci` (its `required` job), so `approve` never starts.
+# No deploy step lives here; the deployment procedure itself stays manual and separately approved.
 name: Release gate
 on:
   workflow_dispatch:
@@ -9,6 +11,8 @@ permissions:
 jobs:
   model-ci:
     uses: ./.github/workflows/model_ci.yml
+    with:
+      full_regression: true
   approve:
     needs: model-ci
     runs-on: ubuntu-24.04

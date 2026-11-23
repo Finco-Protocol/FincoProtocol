@@ -197,6 +197,17 @@ def pytest_collection_modifyitems(session, config, items):
         import hashlib
         ids = sorted(item.nodeid for item in items)
         _CI_COUNTS.update(collected=len(ids), collected_digest=hashlib.sha256("\n".join(ids).encode()).hexdigest())
+        # Membership evidence: which nodes listed as known defects or DEFERRED_TO_FULL really are in this collection
+        # (scripts/ci/check_groups.py fails if a listed node is absent, instead of trusting arithmetic alone).
+        listed = set()
+        for name in ("known_defects.txt", "full_regression_nodes.txt"):
+            listing = os.path.join(str(config.rootpath), "tests", name)
+            if os.path.exists(listing):
+                for line in open(listing, encoding="utf-8"):
+                    node = line.split("#", 1)[0].strip()
+                    if node:
+                        listed.add(node)
+        _CI_COUNTS["listed_present"] = sorted(listed.intersection(ids))
 
 
 def pytest_collection_finish(session):

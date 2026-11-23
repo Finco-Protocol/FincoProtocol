@@ -15,10 +15,28 @@ One workflow, one required check, ordinary tools.
 |---|---|
 | `static` | `compileall`, public safety scan, `pip check`, strict `pip-audit`, React typecheck + build + served bundle identical to `static/react` |
 | `boot-smoke` | production command fails closed without config / insecure mode, boots, `/public-health` 200, terminates cleanly (`scripts/ci/production_boot_smoke.sh`) |
-| `finance` | F01: 4-vertical real-browser rate round-trip (exactly 4 passing cases), 20 native V10/V11 cases in the approved no-network image (exactly 20), independent FIN-V2.3 oracle workbook |
-| `tests (1..16/16)` | the **whole** active pytest suite (≈20.7k nodes, finance, security, persistence, API, React contracts, Radar/Yield, browser) with real Chromium in every group |
+| `mode` | STANDARD or FULL for this run (`scripts/ci/ci_mode.py`, see *Modes* below) |
+| `finance` | F01: 4-vertical real-browser rate round-trip (exactly 4 passing cases), 20 native V10/V11 cases in the approved no-network image (exactly 20), independent FIN-V2.3 oracle workbook. The image is built from the unchanged `docs/ci_v3/phase4/runtime/Dockerfile` through a BuildKit GitHub-Actions layer cache and then **verified** (`scripts/ci/native_image_identity.py`: frontend lock, pinned gcc-13, Ubuntu 24.04, Python 3.12, every `python.lock` pin); a cache hit is never proof |
+| `tests (1..16/16)` | the **whole** active pytest suite except the node(s) DEFERRED_TO_FULL (≈20.7k nodes, finance, security, persistence, API, React contracts, Radar/Yield, browser) with real Chromium in every group |
 | `acceptance` | outputs workspace and statements-tree Chromium acceptance programs |
-| `required` | all of the above concluded `success` (skipped/cancelled/missing = failure) and the groups add up to the full collection |
+| `full-regression` | FULL mode only: the deferred node(s) in `tests/full_regression_nodes.txt`, unchanged, on the same SHA (must pass; skip = failure) |
+| `required` | all of the above concluded `success` (skipped/cancelled/missing = failure; `full-regression` may be skipped **only** in STANDARD mode, `scripts/ci/required_jobs.py`) and `executed + DEFERRED_TO_FULL + known defects == collected` |
+
+## Modes (FINCO 34 owner policy)
+
+| Run | Mode | The deferred node |
+|---|---|---|
+| ordinary PR / merge group not touching `scripts/ci/full_regression_paths.txt` | STANDARD | DEFERRED_TO_FULL (reported, not run, not PASS) |
+| PR / merge group touching a listed path (goal-seek, valuation/NPV, engine/core, their adapters, the deferred test, this mechanism) or with an unreadable diff | FULL | runs on the exact PR head |
+| push to `main` | STANDARD | covered by the nightly FULL run on `main` |
+| nightly `schedule` (02:17 UTC, `main`) | FULL | must pass; a red nightly is triaged by the owner and **holds releases** until resolved |
+| `release_gate.yml` (`workflow_call` with `full_regression: true`) | FULL | must pass on the exact candidate SHA before the `production` approval job can start |
+| manual `workflow_dispatch` with `full_regression: true` on any ref | FULL | runs on that exact ref |
+
+Owner-review rule: a PR that changes production goal-seek / valuation / NPV or underlying financial calculation
+behaviour must show a green FULL run on its exact final head before merge; for paths not yet in the list, dispatch Model
+CI with `full_regression: true` on the PR head and link the run. The deferred node is never skipped, xfailed or listed
+as a known defect, and only the exact node id(s) in `tests/full_regression_nodes.txt` may be deferred.
 
 ## Rules the gate enforces
 
@@ -56,4 +74,5 @@ must be green. No manifest, pin or successor is needed for ordinary code changes
   occasionally from a green run's JUnit (or `pytest --store-durations --durations-path .test_durations` on a full run,
   then gzip). A stale file only affects balance, never coverage. Groups are contiguous slices of the normal collection
   order (`duration_based_chunks`), so modules keep their usual neighbours and order.
-* Hard job timeouts: tests 40 min, finance 45 min, static 20 min. Target: PR wall time ≤ 25 min.
+* Hard job timeouts: tests 40 min, finance 45 min, static 20 min, full-regression 60 min (the deferred NPV goal-seek
+  parity node measured 1093-1737 s hosted plus install). Target: PR wall time ≤ 25 min.
