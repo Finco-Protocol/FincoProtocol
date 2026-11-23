@@ -66,3 +66,5 @@ tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[mob
 tests/test_p5_browser_acceptance.py::test_verified_asset_json_endpoint  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
 tests/test_p5_browser_acceptance.py::test_verified_asset_json_unauthenticated_returns_401  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
 tests/test_ux_pr1_browser_role.py::test_dense_responsive_comments_and_default_off  # hosted ubuntu-24.04 font metrics only (first row 238px vs density bound); passes locally on main and branch
+tests/test_model_run_workspace_v3_browser.py::test_selector_reference_tracks_three_slots_when_changed_or_cleared  # FLAKY on main 707e68b2: 2/6 local runs fail (303 redirect), same rate on the branch
+tests/test_workflow_c_browser_v1.py::test_integrated_statements_kpis_trace_navigation_and_freshness  # FLAKY on main 707e68b2: 1/6 local runs, cost-grid save never leaves busy() within 30 s

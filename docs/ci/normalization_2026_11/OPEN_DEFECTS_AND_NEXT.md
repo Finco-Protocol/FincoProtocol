@@ -10,7 +10,7 @@
 
 ## Known baseline defects (deselected from required groups, red in `model_known_defects.yml`)
 
-`tests/known_defects.txt`: **63 nodes**, none of which ever ran in hosted CI before (V4 shards had no browser; the
+`tests/known_defects.txt`: **65 nodes** (63 deterministic + 2 measured flaky on main), none of which ever ran in hosted CI before (V4 shards had no browser; the
 roles ran only in the parked V5 candidate). Each was reproduced failing **identically on accepted main `707e68b2`**
 (run alone, Playwright 1.63.0 / Chromium 157) except where noted:
 
