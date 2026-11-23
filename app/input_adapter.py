@@ -19,6 +19,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import replace as dc_replace
 from datetime import date
+import math
 from typing import TYPE_CHECKING, Optional
 
 from app.input_schema import ProjectInputsSchema
@@ -756,7 +757,19 @@ def _resolve_user_inputs(
     if capacity_mw is not None or p50_hours is not None or operating_hours_p90_10y is not None or operating_hours_p99_1y is not None:
         new_cap = capacity_mw if capacity_mw is not None else proj.technical.capacity_mw
         new_p50 = p50_hours if p50_hours is not None else proj.technical.operating_hours_p50
-        new_p90_10y = operating_hours_p90_10y if operating_hours_p90_10y is not None else (new_p50 * 0.9)
+        if operating_hours_p90_10y is not None:
+            if not math.isfinite(operating_hours_p90_10y) or operating_hours_p90_10y <= 0:
+                raise ValueError(
+                    f"P90_INVALID: operating_hours_p90_10y must be positive and finite (got {operating_hours_p90_10y!r})."
+                )
+            if operating_hours_p90_10y > new_p50:
+                raise ValueError(
+                    f"P90_EXCEEDS_P50: operating_hours_p90_10y ({operating_hours_p90_10y}) "
+                    f"cannot exceed operating_hours_p50 ({new_p50})."
+                )
+            new_p90_10y = operating_hours_p90_10y
+        else:
+            new_p90_10y = new_p50 * 0.9
         new_p99_1y = operating_hours_p99_1y if operating_hours_p99_1y is not None else (new_p50 * 0.8)
         proj = dc_replace(
             proj,
@@ -1118,7 +1131,11 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "p50_hours": None if _native_storage else _snapshot_float(
             snapshot, "p50_hours", positive=True
         ),
-        "operating_hours_p90_10y": None,
+        "operating_hours_p90_10y": (
+            None
+            if _native_storage or not str(snapshot.get("operating_hours_p90_10y", "") or "").strip()
+            else _snapshot_float(snapshot, "operating_hours_p90_10y", positive=True)
+        ),
         "operating_hours_p99_1y": None,
         "opex_y1_keur": _snapshot_float(
             snapshot, "opex_y1_keur", non_negative=True

@@ -527,6 +527,23 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
+        # --- OD-P90-01: enforce P90 <= P50 against proposed state at Save ---
+        if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
+            snap = dict(ws.draft_snapshot or {})
+            raw_p50 = validation.typed_value if field_id == "project_setup.technical.p50_hours" else snap.get("p50_hours")
+            raw_p90 = validation.typed_value if field_id == "project_setup.technical.p90_10y_hours" else snap.get("operating_hours_p90_10y")
+            if raw_p90 not in (None, "") and raw_p50 not in (None, ""):
+                try:
+                    p50_f = float(raw_p50)
+                    p90_f = float(raw_p90)
+                except (TypeError, ValueError):
+                    p50_f = p90_f = None
+                if p50_f is not None and p90_f is not None and p90_f > p50_f:
+                    raise FieldValidationError(
+                        f"P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
+                        FieldErrorClass.INVALID,
+                    )
+
         # --- R-1: early finite derived-amount refusal (advisory) ----------
         # A capacity edit rescales the reference-seeded PER_MW lines.  A rolled-back dry run gives the user an
         # early, specific refusal for the expected overflow case.  It is NOT the safeguard: the authoritative
@@ -648,6 +665,24 @@ class WorkbookUpdateService:
                 if path in seen_paths:
                     raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", path)
                 seen_paths.add(path)
+
+        # OD-P90-01: check P90 <= P50 against complete proposed state atomically
+        if "project_setup.technical.p90_10y_hours" in seen_ids or "project_setup.technical.p50_hours" in seen_ids:
+            snap = dict(ws.draft_snapshot or {})
+            upd_map = dict(updates)
+            raw_p50 = upd_map.get("project_setup.technical.p50_hours", snap.get("p50_hours"))
+            raw_p90 = upd_map.get("project_setup.technical.p90_10y_hours", snap.get("operating_hours_p90_10y"))
+            if raw_p90 not in (None, "") and raw_p50 not in (None, ""):
+                try:
+                    p50_f = float(raw_p50)
+                    p90_f = float(raw_p90)
+                except (TypeError, ValueError):
+                    p50_f = p90_f = None
+                if p50_f is not None and p90_f is not None and p90_f > p50_f:
+                    raise FieldValidationError(
+                        f"P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
+                        FieldErrorClass.INVALID,
+                    )
 
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,
