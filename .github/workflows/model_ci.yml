@@ -43,6 +43,10 @@ concurrency:
   group: model-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
+  # Bounded network resilience for every pip install in this workflow (hosted runs failed on PyPI read timeouts with
+  # pip's defaults of 15 s / 5 retries). Pins, constraints, hashes and `pip check` are unchanged.
+  PIP_DEFAULT_TIMEOUT: '60'
+  PIP_RETRIES: '10'
   PYTHON_VERSION: '3.12.16'
   PLAYWRIGHT_VERSION: '1.63.0'
   AXE_CORE_VERSION: '4.10.2'

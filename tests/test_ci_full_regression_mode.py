@@ -236,6 +236,11 @@ def test_model_ci_modes_and_jobs_are_wired():
     assert "ci_mode.py" in mode_run and "set -o pipefail" in mode_run
 
 
+def test_pip_network_resilience_is_bounded_and_global():
+    env = _wf("model_ci.yml")["env"]
+    assert env["PIP_DEFAULT_TIMEOUT"] == "60" and env["PIP_RETRIES"] == "10"
+
+
 def test_no_continue_on_error_and_unchanged_timeouts():
     wf = _wf("model_ci.yml")
     text = (ROOT / ".github/workflows/model_ci.yml").read_text(encoding="utf-8")
