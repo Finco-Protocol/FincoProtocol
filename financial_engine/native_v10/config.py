@@ -64,8 +64,21 @@ _CONFIG: ContextVar[NativeConfig] = ContextVar("finco_native_v10_config", defaul
 _STATS: ContextVar[NativeRunStats | None] = ContextVar("finco_native_v10_stats", default=None)
 
 
+# OD-TIME-01 dated-grid scope: native evaluation is not proven bit-identical on the dated axis (final stub row), so a Run whose
+# run scope carries this key is served by canonical Python only (typed decline DATE_AUTHORITY_NATIVE_UNSUPPORTED). The key lives in
+# the Run's own scope, so concurrent legacy Runs keep their native configuration.
+DATE_AUTHORITY_SCOPE_KEY = "date_authority_native_decline_v1"
+
+
 def current_config() -> NativeConfig:
-    return _CONFIG.get()
+    cfg = _CONFIG.get()
+    if cfg.mode != "off":
+        from financial_engine.run_scope import current_run_scope
+
+        scope = current_run_scope()
+        if scope is not None and scope.get(DATE_AUTHORITY_SCOPE_KEY):
+            return OFF
+    return cfg
 
 
 def current_stats() -> NativeRunStats | None:
