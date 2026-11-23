@@ -530,6 +530,11 @@ class WorkbookUpdateService:
         # --- C1F-A-1 / P1-OPEX-02: refuse scalar edits on line-owned active CAPEX/OPEX categories ---
         if field_id.startswith(("capex.", "opex.")):
             line_owned = find_line_owned_cost_fields(ws.project_id, [field_id])
+            if field_id in line_owned and _is_diagnosed_legacy_repair(ws, field_id):
+                # Legacy recovery: the stored value of THIS field is itself diagnosed invalid
+                # (draft cannot be materialised). The replacement has already passed field
+                # validation; repairing corrupt state is not editing active cost authority.
+                line_owned = {}
             if field_id in line_owned:
                 raise FieldValidationError(
                     f"COST_CATEGORY_LINE_OWNED: {line_owned[field_id]}",
@@ -873,6 +878,19 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             f"Proposed project timeline is incompatible with the saved PPA contract book: {exc}",
             FieldErrorClass.INVALID,
         ) from exc
+
+
+def _is_diagnosed_legacy_repair(ws, field_id: str) -> bool:
+    """True only when the current stored draft is diagnosed unrepairable-by-load and ``field_id`` is one of its issues."""
+    try:
+        from app.workbook.draft_recovery import diagnose_draft
+
+        recovery = diagnose_draft(dict(ws.draft_snapshot or {}))
+    except Exception:  # noqa: BLE001 - fail closed: no bypass
+        return False
+    if recovery is None:
+        return False
+    return any(getattr(i, "field_id", None) == field_id for i in recovery.issues)
 
 
 def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, str]:
