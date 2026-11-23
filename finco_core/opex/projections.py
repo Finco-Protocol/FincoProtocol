@@ -232,6 +232,38 @@ def opex_growth_rate(
     return (opex_end / opex_start) ** (1 / years) - 1
 
 
+def contractual_opex_schedule_period(
+    inputs: ProjectInputs,
+    *,
+    frequency_months: int = 6,
+    clock: str = "COD_ANNIVERSARY",
+) -> dict[int, float]:
+    """Compute OD-TIME-01 contractual OPEX schedule on the half-open reporting axis."""
+    from finco_core.engine.contractual_calendar import (
+        OpexInflationClock,
+        build_contractual_reporting_axis,
+        contractual_opex_for_interval,
+        operating_horizon_interval,
+    )
+
+    cod = inputs.info.cod_date
+    horizon_iv = operating_horizon_interval(cod, int(inputs.info.horizon_years))
+    periods = build_contractual_reporting_axis(
+        cod, int(inputs.info.horizon_years), frequency_months=frequency_months
+    )
+    clock_enum = OpexInflationClock(clock)
+    return {
+        p.index: contractual_opex_for_interval(
+            p.interval,
+            cod=cod,
+            items=inputs.opex,
+            clock=clock_enum,
+            horizon_end_exclusive=horizon_iv.end_exclusive,
+        )
+        for p in periods
+    }
+
+
 __all__ = [
     "opex_item_amount_at_year",
     "opex_year",
@@ -242,4 +274,5 @@ __all__ = [
     "opex_breakdown_year",
     "total_opex_over_horizon",
     "opex_growth_rate",
+    "contractual_opex_schedule_period",
 ]

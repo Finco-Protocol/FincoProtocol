@@ -72,3 +72,29 @@ def depreciation_per_period(
             annual_dep = annual_schedule.get(p.year_index, 0.0)
             result[p.index] = annual_dep * p.day_fraction
     return result
+
+
+def contractual_depreciation_per_period(
+    capex_items: tuple[CapexItem, ...],
+    *,
+    cod,
+    horizon_years: int,
+    senior_tenor_years: int = 14,
+    frequency_months: int = 6,
+):
+    """Compute OD-TIME-01 straight-line accounting depreciation over actual asset in-service life."""
+    from finco_core.engine.contractual_calendar import (
+        build_contractual_reporting_axis,
+        contractual_depreciation_schedule,
+    )
+
+    periods = build_contractual_reporting_axis(
+        cod, int(horizon_years), frequency_months=frequency_months
+    )
+    return contractual_depreciation_schedule(
+        capex_items,
+        cod=cod,
+        reporting_periods=periods,
+        senior_tenor_years=senior_tenor_years,
+    )
+

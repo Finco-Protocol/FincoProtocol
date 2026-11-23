@@ -423,6 +423,49 @@ def full_revenue_schedule(
     }
 
 
+def contractual_generation_schedule(
+    inputs: ProjectInputs,
+    *,
+    frequency_months: int = 6,
+    yield_scenario: str | None = None,
+) -> tuple[dict[int, float], tuple]:
+    """Compute OD-TIME-01 contractual generation (MWh) on the half-open reporting axis.
+
+    Uses actual calendar days (365/366 per calendar year), COD day included,
+    exact ``COD + horizon_years`` operating end (with Feb 29 clamp), and
+    annual physical degradation stepping at exact COD anniversaries.
+    """
+    from finco_core.engine.contractual_calendar import (
+        build_contractual_reporting_axis,
+        contractual_generation_for_interval,
+        operating_horizon_interval,
+    )
+
+    cod = inputs.info.cod_date
+    horizon_iv = operating_horizon_interval(cod, int(inputs.info.horizon_years))
+    periods = build_contractual_reporting_axis(
+        cod, int(inputs.info.horizon_years), frequency_months=frequency_months
+    )
+    hours = _selected_operating_hours(inputs.technical, yield_scenario)
+    avail = inputs.technical.combined_availability
+    deg = inputs.technical.pv_degradation
+    cap = inputs.technical.capacity_mw
+
+    schedule: dict[int, float] = {}
+    for p in periods:
+        mwh, _ = contractual_generation_for_interval(
+            p.interval,
+            cod=cod,
+            capacity_mw=cap,
+            annual_hours=hours,
+            combined_availability=avail,
+            annual_degradation=deg,
+            horizon_end_exclusive=horizon_iv.end_exclusive,
+        )
+        schedule[p.index] = mwh
+    return schedule, periods
+
+
 __all__ = [
     "period_generation",
     "annual_generation_mwh",
@@ -430,4 +473,5 @@ __all__ = [
     "full_generation_schedule",
     "full_revenue_schedule",
     "revenue_decomposition_schedule",
+    "contractual_generation_schedule",
 ]
