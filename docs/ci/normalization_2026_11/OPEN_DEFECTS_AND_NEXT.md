@@ -46,11 +46,21 @@ visible SKIPPED (LibreOffice is not installed on the runners); install it in a l
 * `test_ci_v4_p0_scope::test_forged_source_manifest_is_rejected[pin]` (FINCO33 potential weakness): the manifest
   admission it guarded no longer exists; no replacement needed beyond CODEOWNERS + required `Model CI / required`.
 
+## Performance hotspot
+
+`tests/test_model_react_rcux_goal_seek_targets_v1.py::test_npv_with_a_saved_valuation_policy_is_solved_in_keur_and_equals_the_legacy_route`
+takes **≈1,385 s** on a hosted runner (single node; it was also the CI V4 long pole). It sets the PR critical path
+(≈26 min). Its recorded duration is capped at the per-group target so the other groups stay balanced (≈14 min).
+Speeding up the NPV goal-seek (fewer full model runs per bracket step) is a product/perf task, not a CI change.
+
 ## Test-harness defects fixed in this PR
 
 * `tests/test_f08_opex_mobile_ux.py` set `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` process-wide (an agent sandbox
   path), breaking every later Chromium launch in the same pytest process; `tests/test_model_trust_pack_browser.py`
   hard-coded that executable. Both now use the Playwright-managed browser unless the local path exists.
+* `tests/r04_ppa_global_cap/test_r04_production_acceptance.py` set `FINCO_MODEL_REACT_V1=1` process-wide; it changed
+  the home navigation for later modules (found by bisection). Now scoped to the one request.
+* `tests/test_p5_browser_acceptance.py` assumed an external server on :8000; it now starts the real app.
 * `tests/test_project_lifecycle_browser.py` (fixture-only) is collected normally (0 nodes, no error) — the FINCO33
   shard-1 abort cannot recur.
 

@@ -146,7 +146,7 @@ def _suite_acquisition_service_lifecycle():
 # visible SKIPPED). Ordinary, intentional skips (documented reasons) are unaffected and are
 # still reported as SKIPPED, never as passed.
 _MISSING_DEPENDENCY = re.compile(
-    r"could not import|no module named|playwright|chromium|browser|executable doesn't exist|axe",
+    r"could not import|no module named|playwright|chromium|executable doesn't exist|axe-core|FINCO_AXE_CORE_PATH",
     re.IGNORECASE,
 )
 
