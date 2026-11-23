@@ -65,10 +65,16 @@ def _context(request, user, project, ws, *, stage, proposals=None, error=None,
     identity = assemble_consistent_for_get(ws.user_id, project.project_id, WORKBOOK.version)
     rows = []
     from collections import Counter
-    from app.workbook.update_service import WorkbookUpdateService
+    from app.workbook.update_service import WorkbookUpdateService, find_line_owned_cost_fields
+    line_owned_map = find_line_owned_cost_fields(
+        project.project_id,
+        [p.get("field_id") for p in (proposals or []) if p.get("field_id")],
+    )
     for p in proposals or []:
         q = dict(p)
         q["current_value"] = pis.get(p["field_id"]) if p["field_id"] else None
+        if q.get("field_id") in line_owned_map:
+            q["line_owned_warning"] = line_owned_map[q["field_id"]]
         if q["status"] == "ready" and q["normalized_value"] is not None:
             check = WorkbookUpdateService.validate_field_update(q["field_id"], q["normalized_value"])
             if check.is_valid and check.typed_value == q["current_value"]:

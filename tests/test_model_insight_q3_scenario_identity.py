@@ -168,16 +168,23 @@ def test_A_base_case_current_names_base_case_never_unavailable(env):
 
 
 def test_B_base_case_stale_keeps_the_prior_run_identity_and_unbinds_thresholds(env):
+    from app.persistence.workspace_repository import get_workspace_state
     user, rec = "q3id-b", project("q3id-b", name="Stale Project")
     run(env, user, rec)
     before = page(env, user, rec)
     snap = snapshot_in(before)
     h, v = tokens(before)
-    r = post_valid_mutation(env.client, "/v2/workbook/update", data={"field_id": "project_setup.technical.p50_hours", "value": "1240",
+    r = post_valid_mutation(env.client, "/v2/workbook/update", data={"field_id": "project_setup.technical.p50_hours", "value": "1440",
                         "project": rec.project_code, "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert r.status_code == 200
+    assert r.status_code == 200 and '"workbook-field-saved"' in r.headers.get("HX-Trigger", "")
+    ws_after = get_workspace_state(user, rec.project_id)
+    assert float(ws_after.draft_snapshot["p50_hours"]) == 1440.0
+    assert float(ws_after.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
     after = page(env, user, rec)
+    assert "workbook-recovery-back" not in after
+    h_after, _ = tokens(after)
+    assert h_after != h
     assert re.search(r'data-q3-state="STALE"', after)
     assert scenario_line(after) == "Base Case (Stale Project)" and snapshot_in(after) == snap, "prior Run identity unchanged"
     assert "RUN_THRESHOLD_NOT_BOUND" in after and "PRIOR" in context(after) + after

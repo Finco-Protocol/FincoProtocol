@@ -92,7 +92,7 @@ def _fast(context):
         ws_fresh=context.workspace, rr=context.runtime_result, context=context)
 
 
-def _edit(pr, hours=2300):
+def _edit(pr, hours=2800):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.update_service import WorkbookUpdateService
     context = _capture(pr)

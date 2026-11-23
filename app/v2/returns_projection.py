@@ -115,14 +115,19 @@ def build_returns_projection(
         distribution_periods if isinstance(distribution_periods, list) else []
     )
 
+    _shl_unclosed = (
+        sponsor_summary.get("total_sponsor_xirr_status") == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
+        or runtime.get("total_sponsor_xirr_status") == "UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED"
+    )
+    _unclosed_note = "shareholder loan schedule reconciliation requires review"
     metrics = (
         _metric("project_irr", "Project IRR", runtime.get("project_irr"), "percent",
                 "RuntimeResult.runtime_summary.project_irr"),
         _metric("equity_irr", "Pure Equity IRR", runtime.get("equity_irr"), "percent",
-                "RuntimeResult.runtime_summary.equity_irr (clean G2C pure-equity authority)"),
+                _unclosed_note if (_shl_unclosed and runtime.get("equity_irr") is None) else "RuntimeResult.runtime_summary.equity_irr (clean G2C pure-equity authority)"),
         _metric("total_sponsor_irr", "Total Sponsor IRR",
                 sponsor_summary.get("total_sponsor_xirr"), "percent",
-                "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr"),
+                _unclosed_note if (_shl_unclosed and sponsor_summary.get("total_sponsor_xirr") is None) else "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr"),
         _metric("total_equity_invested", "Total Equity Invested",
                 sponsor_summary.get("total_legal_equity_contributed_keur"), "keur",
                 "RuntimeResult.sponsor_schedule.summary.total_legal_equity_contributed_keur"),
@@ -136,7 +141,7 @@ def build_returns_projection(
                 "Not persisted by the canonical clean sponsor schedule"),
         _metric("sponsor_moic", "Sponsor MOIC",
                 sponsor_summary.get("total_sponsor_moic"), "multiple",
-                "RuntimeResult.sponsor_schedule.summary.total_sponsor_moic"),
+                _unclosed_note if (_shl_unclosed and sponsor_summary.get("total_sponsor_moic") is None) else "RuntimeResult.sponsor_schedule.summary.total_sponsor_moic"),
     )
 
     return ReturnsProjection(

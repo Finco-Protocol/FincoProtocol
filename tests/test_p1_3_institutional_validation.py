@@ -418,8 +418,10 @@ def test_p1_3_data_center_xlsx_reconciliation():
     assert checks.get("Returns sheet Project IRR vs runtime") == "PASS", (
         f"DC Returns Project IRR: {checks.get('Returns sheet Project IRR vs runtime')!r}"
     )
-    assert checks.get("Returns sheet Share-capital IRR vs runtime") == "PASS", (
-        f"DC Returns Share-capital IRR must reconcile as PASS; "
+    # Batch 2 E2E-03 S2a suppresses DC Share-capital IRR when G2A/tax SHL diverges from
+    # waterfall/BS SHL (~1,848 kEUR), so XLSX reconciliation honestly reports NOT_AVAILABLE.
+    assert checks.get("Returns sheet Share-capital IRR vs runtime") in ("PASS", "NOT_AVAILABLE"), (
+        f"DC Returns Share-capital IRR must reconcile as PASS or NOT_AVAILABLE (S2a); "
         f"got {checks.get('Returns sheet Share-capital IRR vs runtime')!r}."
     )
     assert checks.get("Total Sources vs Total Uses (kEUR)") == "PASS"

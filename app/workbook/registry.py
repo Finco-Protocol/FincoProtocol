@@ -185,6 +185,16 @@ _ps_technical = _section("technical", "Technical Parameters", _PS, order=1, fiel
        excel_generic_wind_reference=None, excel_generic_solar_reference=None,
        export_mapping="P50 Hours", order=1),
 
+    _f(f"{_PS}.technical.p90_10y_hours", "P90-10y Operating Hours", "operating_hours_p90_10y", FieldType.MWH, _PS, "technical",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="technical.operating_hours_p90_10y",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       required=False, editable=True,
+       unit="h/yr", min_value=1, decimals=0,
+       description="Explicit saved P90-10y operating hours (must be <= P50). When not explicitly set, 0.9 x P50 fallback applies visibly.",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None,
+       export_mapping="P90-10y Hours", order=99),
+
     _f(f"{_PS}.technical.capacity_factor", "Capacity Factor (P50)", "capacity_factor", FieldType.FLOAT, _PS, "technical",
        kind=FieldKind.DERIVED_DISPLAY, persisted=True,
        source_of_truth=SourceOfTruth.DERIVED_UI, engine_path=None,

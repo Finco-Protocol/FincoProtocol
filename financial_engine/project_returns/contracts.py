@@ -156,3 +156,8 @@ class DecisionCompleteReturnSummary:
     total_sponsor: ReturnMetricSummary
     terminal: TerminalFinancialState
     deductible_shl_covenant_feedback_status: str | None
+
+    @property
+    def shl_schedule_reconciliation(self) -> dict[str, object] | None:
+        return getattr(self, "_shl_schedule_reconciliation", None)
+

@@ -134,6 +134,10 @@ def pre_financing_inputs(basis: Basis, shocks: list[tuple[DriverSpec, float]]) -
             raise CellBuildError("BASE_VALUE_NOT_NUMERIC", spec.key) from None
         shocked = _shocked_field_value(spec, original_f, level)
         pis = pis.with_value(field_id, str(shocked))
+        if spec.key == "generation":
+            _p90_raw = pis.get("project_setup.technical.p90_10y_hours")
+            if _p90_raw is not None and float(_p90_raw) > shocked:
+                pis = pis.with_value("project_setup.technical.p90_10y_hours", str(shocked))
         info[spec.key] = {"field_id": field_id, "original": original_f, "shocked": shocked}
 
     pi = WorkbookService.to_projectinputs(pis)

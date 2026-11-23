@@ -121,7 +121,7 @@ def _first_operating_bs(ev):
     ("DSCR_EQUALS_CFADS_OVER_DEBT_SERVICE", "DSCR_MISMATCH",
      lambda e: e["senior_debt"]["periods"][2].update(reported_dscr=9.99)),
     ("NO_UNFUNDED_CASH_DEFICIT", "NEGATIVE_CASH_WITHOUT_FUNDING_SOURCE",
-     lambda e: e["cash"][10].update(cash_after_senior_before_reserves=-5.0)),
+     lambda e: _first_operating_bs(e).update(distribution_account=-1.90)),
     ("NO_UNFUNDED_CASH_DEFICIT", "NEGATIVE_CASH_WITHOUT_FUNDING_SOURCE",
      lambda e: _first_operating_bs(e).update(unrestricted_cash=-1.0)),
     ("DSCR_SCULPTING_FEASIBLE", "DSCR_SCULPTING_NOT_AUTHORITATIVE",

@@ -78,7 +78,13 @@ def test_legacy_data_center_minus_100_bps_applies_and_improves_equity_return():
     base = _base("data_center")
     assert row["error"] is None and row["evidence"]["before_pct"] == pytest.approx(6.0)
     assert row["evidence"]["after_pct"] == pytest.approx(5.0)
-    assert row["kpis"]["project_irr"] == base["project_irr"] and row["kpis"]["equity_irr"] > base["equity_irr"]
+    assert row["kpis"]["project_irr"] == base["project_irr"]
+    assert row["kpis"]["total_senior_ds_keur"] != base["total_senior_ds_keur"]
+    # Batch 2 E2E-03 S2a suppresses base DC equity_irr when G2A vs waterfall SHL diverge;
+    # at -100 bps the schedule reconciles and produces a finite equity_irr.
+    assert row["kpis"]["equity_irr"] is not None
+    if base["equity_irr"] is not None:
+        assert row["kpis"]["equity_irr"] > base["equity_irr"]
 
 
 def test_legacy_data_center_plus_100_bps_is_a_typed_engine_failure_never_a_flat_row():

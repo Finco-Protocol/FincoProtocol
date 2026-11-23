@@ -109,7 +109,7 @@ async def react_import_context(request: Request, project: str = ""):
     user, record, ws, owner, refused = _scope(request, project, header=False)
     if refused is not None:
         return refused
-    from app.model_import.intake import MAX_UPLOAD_BYTES
+    from app.model_import.intake import MAX_UPLOAD_BYTES, SUPPORTED_CSV_ENCODINGS
     from app.v2.import_router import _context, _field_options
 
     ctx = _context(request, user, record, ws, stage="upload")
@@ -119,7 +119,7 @@ async def react_import_context(request: Request, project: str = ""):
         "csrf_token": ctx["csrf_token"], "content_hash": ctx["content_hash"], "workbook_version": ctx["workbook_version"],
         "scenario_id": ctx["active_scenario_id"] or "",
         "limits": {"max_upload_bytes": MAX_UPLOAD_BYTES, "formats": ["csv", "xlsx"], "max_proposals": 150, "max_approved": 50,
-                   "encodings": ["utf-8-sig", "utf-8", "cp1252", "latin-1"]},
+                   "encodings": list(SUPPORTED_CSV_ENCODINGS)},
         "fields": [{"id": f["id"], "label": f["label"], "unit": f["unit"]} for f in _field_options(record)],
         "steps": ["upload", "review", "confirm", "result"],
         "semantics": {"reads_file_in_memory_only": True, "file_is_stored": False, "apply_runs_the_model": False,

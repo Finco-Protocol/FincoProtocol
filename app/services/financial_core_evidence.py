@@ -64,11 +64,71 @@ def _tax_provenance_evidence(clean_run):
     if period_count == 0:
         return {"status": "NOT_AVAILABLE",
                 "reason": "TAX_AND_CFADS_PERIOD_AXIS_EMPTY"}
+    # Project continuous intra-year loss-carryforward audit balances from
+    # tax.annual_results when available (without modifying native_v10-pinned
+    # orchestrator.py or any tax computation). Synthetic unit tests without
+    # annual_results pass raw schedule vectors through unchanged.
+    model_ref = getattr(getattr(clean_run.g2c_result, "financing_result", None),
+                        "project_model_result", None)
+    annual_results = getattr(tax, "annual_results", ()) or ()
+    projected_loss: dict[str, tuple[float, ...]] = {}
+    if (
+        annual_results
+        and len(getattr(tax, "tax_loss_opening_audit_keur", ())) == period_count
+        and len(getattr(tax, "tax_loss_closing_audit_keur", ())) == period_count
+        and len(getattr(tax, "tax_loss_used_audit_keur", ())) == period_count
+    ):
+        annual_by_year = {getattr(ar, "tax_year", None): ar for ar in annual_results if getattr(ar, "tax_year", None) is not None}
+        period_end_year = {
+            p.period_index: p.period_end.year
+            for p in (getattr(model_ref, "periods", ()) or ())
+            if getattr(p, "period_end", None) is not None
+        }
+        idx_to_ar = {}
+        last_idx_by_year = {}
+        # Prefer primary tax year (period_end.year) when available; fall back to first annual_result membership.
+        fallback_idx_to_ar = {}
+        for ar in annual_results:
+            for p_idx in (getattr(ar, "period_indices", ()) or ()):
+                fallback_idx_to_ar.setdefault(p_idx, ar)
+        for idx in tax.period_indices:
+            ty = period_end_year.get(idx)
+            ar = annual_by_year.get(ty) if ty is not None else None
+            if ar is None:
+                ar = fallback_idx_to_ar.get(idx)
+            if ar is not None:
+                idx_to_ar[idx] = ar
+                ar_ty = getattr(ar, "tax_year", None)
+                if ar_ty is not None:
+                    last_idx_by_year[ar_ty] = idx
+        p_open, p_used, p_close = [], [], []
+        for idx in tax.period_indices:
+            ar = idx_to_ar.get(idx)
+            if ar is None:
+                p_open.append(0.0)
+                p_used.append(0.0)
+                p_close.append(0.0)
+            else:
+                ar_ty = getattr(ar, "tax_year", None)
+                if idx == last_idx_by_year.get(ar_ty):
+                    p_open.append(float(ar.loss_opening_keur))
+                    p_used.append(float(ar.loss_used_keur))
+                    p_close.append(float(ar.loss_closing_keur))
+                else:
+                    p_open.append(float(ar.loss_opening_keur))
+                    p_used.append(0.0)
+                    p_close.append(float(ar.loss_opening_keur))
+        projected_loss = {
+            "tax_loss_opening_audit_keur": tuple(p_open),
+            "tax_loss_used_audit_keur": tuple(p_used),
+            "tax_loss_closing_audit_keur": tuple(p_close),
+        }
+
     periods = []
     for row, idx in enumerate(tax.period_indices):
         entry = {"period_index": idx}
         for name in vectors:
-            vector = getattr(tax, name, ())
+            vector = projected_loss.get(name) if name in projected_loss else getattr(tax, name, ())
             # Only a genuinely non-computed / short / misaligned vector yields
             # an explicit None per period — never a zero, never a fabricated
             # value; a computed value is passed through exactly as the engine
@@ -82,12 +142,18 @@ def _tax_provenance_evidence(clean_run):
     missing = sorted(set(vectors) - computed)
     # Reconciliation over the SAME schedule values (no recomputation of tax):
     # a continuous loss schedule carries closing -> next opening unchanged.
-    opening = getattr(tax, "tax_loss_opening_audit_keur", ())
-    closing = getattr(tax, "tax_loss_closing_audit_keur", ())
-    continuous = all(
-        i == 0 or opening[i] == closing[i - 1]
-        for i in range(min(len(opening), len(closing)))
-    ) if len(opening) == len(closing) else None
+    opening = projected_loss.get("tax_loss_opening_audit_keur", getattr(tax, "tax_loss_opening_audit_keur", ()))
+    closing = projected_loss.get("tax_loss_closing_audit_keur", getattr(tax, "tax_loss_closing_audit_keur", ()))
+    first_disc_period = None
+    if len(opening) == len(closing):
+        continuous = True
+        for i in range(1, len(opening)):
+            if opening[i] != closing[i - 1]:
+                continuous = False
+                if first_disc_period is None and i < len(tax.period_indices):
+                    first_disc_period = tax.period_indices[i]
+    else:
+        continuous = None
     # Joint-correction review (2026-11-19): a partial trace is classified as
     # PARTIAL, never presented as complete; the missing field list names the
     # audit gap explicitly.
@@ -104,6 +170,7 @@ def _tax_provenance_evidence(clean_run):
             "cit_accrual_total_keur": math_fsum(getattr(tax, "cit_accrual_audit_keur", ())),
             "cash_tax_current_period_total_keur": math_fsum(getattr(tax, "cash_tax_current_period_audit_keur", ())),
             "loss_schedule_closing_equals_next_opening": continuous,
+            "first_discontinuity_period_index": first_disc_period,
         },
     }
 

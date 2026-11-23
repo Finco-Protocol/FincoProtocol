@@ -484,18 +484,23 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
         return proj
 
     elif shock_type == "yield":
+        _new_p50 = proj.technical.operating_hours_p50 * factor
+        _p90 = proj.technical.operating_hours_p90_10y
+        if resolve_vertical(vertical) == "ev_charging":
+            # The EV adapter pins the P90-10y lender hours to the stabilised EFLH, so they move together.
+            _new_p90 = _p90 * factor if _p90 is not None else None
+        else:
+            # Keep renewable P90 unchanged on positive shocks; clamp only if negative P50 shock drops below P90.
+            _new_p90 = min(_p90, _new_p50) if _p90 is not None else None
         shocked = replace(
             proj,
             technical=replace(
                 proj.technical,
-                operating_hours_p50=proj.technical.operating_hours_p50 * factor,
+                operating_hours_p50=_new_p50,
+                operating_hours_p90_10y=_new_p90,
             ),
         )
         if resolve_vertical(vertical) == "ev_charging":
-            # The EV adapter pins the P90-10y lender hours to the stabilised EFLH, so they move together.
-            shocked = replace(shocked, technical=replace(
-                shocked.technical,
-                operating_hours_p90_10y=shocked.technical.operating_hours_p90_10y * factor))
             shocked = _scale_ev_energy_dependent_opex(shocked, factor)
         return shocked
 

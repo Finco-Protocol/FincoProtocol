@@ -552,9 +552,10 @@ def build_decision_complete_return_summary(
     deductible_shl_covenant_feedback_status: str | None,
     shl_repayment_mode: str | None,
     shl_maturity_period_index: int | None,
+    shl_schedule_reconciliation: dict[str, object] | None = None,
 ) -> DecisionCompleteReturnSummary:
     """Build one immutable downstream summary from already-authoritative values."""
-    return DecisionCompleteReturnSummary(
+    _summary = DecisionCompleteReturnSummary(
         project=_project_return(project_inputs, financing),
         legal_equity=ReturnMetricSummary(
             xirr=pure_equity_xirr,
@@ -587,3 +588,6 @@ def build_decision_complete_return_summary(
             deductible_shl_covenant_feedback_status
         ),
     )
+    object.__setattr__(_summary, "_shl_schedule_reconciliation", shl_schedule_reconciliation)
+    return _summary
+

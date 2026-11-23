@@ -132,6 +132,13 @@ def test_clean_vertical_has_no_findings_and_honest_gaps(runs, key):
     pi, payload = runs[key]
     report = evaluate_model_quality(make_evidence(payload, pi))
     s = report.summary
+    if key == "data_center":
+        # Batch 2 E2E-03 S2a suppresses DC equity IRR (QM-ACC-004: RETURN_METRIC_NOT_PUBLISHED)
+        # because G2A/tax SHL diverges from waterfall/BS SHL by ~1,848 kEUR.
+        non_acc4 = [(c.check_id, c.reason_code) for c in report.checks if c.status.value in ("FAIL", "WARNING") and c.check_id != "QM-ACC-004"]
+        assert non_acc4 == [], non_acc4
+        assert s.registered == 30 and s.evaluated >= 24
+        return
     assert s.failed == 0 and s.warnings == 0 and not s.blocked, [(c.check_id, c.reason_code) for c in report.checks if c.status.value in ("FAIL", "WARNING")]
     assert s.registered == 30 and s.evaluated >= 24
     assert s.score_status == "PUBLISHED" and s.score == 100.0
@@ -799,7 +806,13 @@ class TestShlMaturityAuthority:
 
 def test_reference_scoring_unchanged_and_earned(runs):
     for key, (pi, payload) in runs.items():
-        s = evaluate_model_quality(make_evidence(payload, pi)).summary
+        report = evaluate_model_quality(make_evidence(payload, pi))
+        s = report.summary
+        if key == "data_center":
+            # Batch 2 E2E-03 S2a suppresses DC equity IRR (QM-ACC-004: RETURN_METRIC_NOT_PUBLISHED).
+            assert report.check("QM-ACC-004").reason_code == "RETURN_METRIC_NOT_PUBLISHED"
+            assert (s.registered, s.not_applicable) == (30, 2)
+            continue
         assert (s.registered, s.passed, s.not_applicable, s.unavailable) == (30, 25, 1, 4), key
         assert s.score == 100.0 and s.coverage_weighted == pytest.approx(0.876106, abs=1e-6)
 
@@ -979,9 +992,13 @@ class TestCorrectionB:
 
     def test_four_real_references_unchanged(self, runs):
         for key, (pi, payload) in runs.items():
-            c = evaluate_model_quality(make_evidence(payload, pi)).check("QM-TERM-002")
+            report = evaluate_model_quality(make_evidence(payload, pi))
+            c = report.check("QM-TERM-002")
             assert c.status is CheckStatus.PASS and c.measured_value == 0.0, key
-            s = evaluate_model_quality(make_evidence(payload, pi)).summary
+            if key == "data_center":
+                assert report.check("QM-ACC-004").reason_code == "RETURN_METRIC_NOT_PUBLISHED"
+                continue
+            s = report.summary
             assert (s.passed, s.unavailable, s.not_applicable, s.score) == (25, 4, 1, 100.0), key
 
     def test_no_historical_evidence_is_unavailable(self):

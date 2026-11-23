@@ -203,10 +203,12 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         )
         from app.services.production_waterfall_seam import classify_or_fail
 
+        _override_validation_errors = []
         if project_inputs_override is not None:
             from domain.validation import validate_project_inputs
             issues = list(validate_project_inputs(project_inputs_override))
-            if not [i for i in issues if i.severity == "error"]:
+            _override_validation_errors = [i for i in issues if i.severity == "error"]
+            if not _override_validation_errors:
                 _pr8_inputs = project_inputs_override
         elif project_type in (
             "Generic Wind Reference", "Generic Solar Reference",
@@ -303,6 +305,33 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             ),
             runtime_authority="clean_not_ready",
             calculation_count=0,
+        )
+    elif _override_validation_errors:
+        from app.services.production_financial_authority import CleanProductionRunUnavailable
+
+        msgs = "; ".join(f"{getattr(i, 'field', '')}: {getattr(i, 'message', str(i))}" for i in _override_validation_errors)
+        lower = msgs.lower()
+        prefix = ""
+        if "tenor" in lower and "horizon" in lower:
+            _info = getattr(project_inputs_override, "info", None)
+            _fin = getattr(project_inputs_override, "financing", None)
+            if (
+                _info is not None
+                and _fin is not None
+                and getattr(_info, "horizon_years", None) is not None
+                and getattr(_fin, "senior_tenor_years", None) is not None
+            ):
+                prefix = (
+                    f"DEBT_TENOR_EXCEEDS_HORIZON: project horizon ({int(_info.horizon_years)} years) "
+                    f"is not longer than the senior debt tenor ({int(_fin.senior_tenor_years)} years). "
+                )
+            else:
+                prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
+        elif "capex" in lower:
+            prefix = "INVALID_CAPEX_INPUT: "
+        raise CleanProductionRunUnavailable(
+            reason_code="PR8_INPUT_VALIDATION_FAIL_CLOSED",
+            detail=f"{prefix}{msgs}",
         )
     else:
         # Unclassified type (Portfolio / unknown project_type / override with
@@ -675,7 +704,10 @@ def _serialize_financial_statements(fs) -> dict:
     bs_periods = []
     for p in fs.balance_sheet_periods:
         fa = fa_by_idx.get(p.period_index)
-        net_fixed = _f(fa.net_fixed_assets_keur if fa else None)
+        if p.gross_fixed_assets_keur is not None and p.accumulated_book_depreciation_keur is not None:
+            net_fixed = _f(float(p.gross_fixed_assets_keur) - float(p.accumulated_book_depreciation_keur))
+        else:
+            net_fixed = _f(fa.net_fixed_assets_keur if fa else None)
         bs_periods.append({
             "period_index": p.period_index,
             "date": _fmt_date(p.period_end),

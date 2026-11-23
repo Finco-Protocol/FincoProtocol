@@ -64,7 +64,7 @@ def corrupt(payload, mutate, reseal=True):
     ("QM-SD-001", lambda e: e["senior_debt"]["periods"][2].update(closing=123456.0)),
     ("QM-SD-002", lambda e: e["senior_debt"]["periods"][2].update(interest=123456.0)),
     ("QM-SD-003", lambda e: e["senior_debt"]["periods"][2].update(reported_dscr=123456.0)),
-    ("QM-CASH-001", lambda e: e["cash"][2].update(cash_after_senior_before_reserves=-123.0)),
+    ("QM-CASH-001", lambda e: e["balance_sheet"][2].update(distribution_account=-123.0)),
     ("QM-SD-004", lambda e: e["senior_debt"]["diagnostics"].update(is_authoritative=False)),
 ])
 def test_real_failure_has_proven_period_or_explicit_boundary(runs, check, mutate):

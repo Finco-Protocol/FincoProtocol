@@ -527,6 +527,23 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
+        # --- OD-P90-01: enforce bidirectional P90 <= P50 against complete proposed state at Save ---
+        if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
+            snap = dict(ws.draft_snapshot or {})
+            snap[validation.spec.snapshot_key] = str(validation.typed_value)
+            validate_proposed_p90_p50_snapshot(snap)
+
+        # --- C1-Q-02: validate proposed horizon/COD against existing PPA book atomically ---
+        if field_id in ("project_setup.technical.horizon_years", "project_setup.technical.cod_date"):
+            snap = dict(ws.draft_snapshot or {})
+            if (snap.get("rev_multistream_config_json") or "").strip():
+                snap[validation.spec.snapshot_key] = (
+                    validation.typed_value.isoformat()
+                    if hasattr(validation.typed_value, "isoformat")
+                    else str(validation.typed_value)
+                )
+                _validate_ppa_book_against_proposed_snapshot(snap)
+
         # --- R-1: early finite derived-amount refusal (advisory) ----------
         # A capacity edit rescales the reference-seeded PER_MW lines.  A rolled-back dry run gives the user an
         # early, specific refusal for the expected overflow case.  It is NOT the safeguard: the authoritative
@@ -600,6 +617,7 @@ class WorkbookUpdateService:
         expected_scenario_id: Optional[str],
         project_record,
         actor_user_id: str,
+        reject_line_owned: bool = False,
     ) -> ProjectInputSet:
         """Atomic canonical update of a bounded *approved* set of fields.
 
@@ -649,6 +667,35 @@ class WorkbookUpdateService:
                     raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", path)
                 seen_paths.add(path)
 
+        # OD-P90-01: check bidirectional P90 <= P50 against complete proposed state atomically
+        if "project_setup.technical.p90_10y_hours" in seen_ids or "project_setup.technical.p50_hours" in seen_ids:
+            snap = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap[spec_i.snapshot_key] = raw_v
+            validate_proposed_p90_p50_snapshot(snap)
+
+        if reject_line_owned:
+            line_owned = find_line_owned_cost_fields(ws.project_id, seen_ids)
+            if line_owned:
+                first_fid, first_reason = next(iter(line_owned.items()))
+                raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
+
+        # C1-Q-02: validate proposed horizon/COD against existing PPA book atomically
+        if (
+            "project_setup.technical.horizon_years" in seen_ids
+            or "project_setup.technical.cod_date" in seen_ids
+            or "revenue.multistream.contracts" in seen_ids
+        ):
+            snap = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap[spec_i.snapshot_key] = raw_v
+            if (snap.get("rev_multistream_config_json") or "").strip():
+                _validate_ppa_book_against_proposed_snapshot(snap)
+
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,
             project_id=ws.project_id,
@@ -659,3 +706,158 @@ class WorkbookUpdateService:
             updates=updates,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+def validate_proposed_p90_p50_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:
+    """OD-P90-01: enforce canonical P90 <= P50 and finite/positive invariants on proposed snapshot state.
+
+    Absent/blank operating_hours_p90_10y is permitted (legacy 0.9 * P50 fallback applies only in
+    effective inputs without mutating saved state). When explicit operating_hours_p90_10y is present,
+    both P50 and P90 must be finite, > 0, and P90 <= P50.
+    """
+    import math as _math
+
+    raw_p90 = proposed_snapshot.get("operating_hours_p90_10y")
+    if raw_p90 is None or (isinstance(raw_p90, str) and not raw_p90.strip()):
+        return
+    if isinstance(raw_p90, bool):
+        raise FieldValidationError(
+            "P90-10y operating hours must be a positive finite number.",
+            FieldErrorClass.INVALID,
+        )
+    try:
+        p90_f = float(raw_p90)
+    except (TypeError, ValueError) as exc:
+        raise FieldValidationError(
+            f"P90-10y operating hours must be numeric (got {raw_p90!r}).",
+            FieldErrorClass.INVALID,
+        ) from exc
+    if not _math.isfinite(p90_f) or p90_f <= 0:
+        raise FieldValidationError(
+            f"P90-10y operating hours must be positive and finite (got {raw_p90!r}).",
+            FieldErrorClass.OUT_OF_RANGE if _math.isfinite(p90_f) else FieldErrorClass.NON_FINITE,
+        )
+
+    raw_p50 = proposed_snapshot.get("p50_hours")
+    if raw_p50 is None or (isinstance(raw_p50, str) and not raw_p50.strip()):
+        return
+    if isinstance(raw_p50, bool):
+        raise FieldValidationError(
+            "P50 operating hours must be a positive finite number.",
+            FieldErrorClass.INVALID,
+        )
+    try:
+        p50_f = float(raw_p50)
+    except (TypeError, ValueError) as exc:
+        raise FieldValidationError(
+            f"P50 operating hours must be numeric (got {raw_p50!r}).",
+            FieldErrorClass.INVALID,
+        ) from exc
+    if not _math.isfinite(p50_f) or p50_f <= 0:
+        raise FieldValidationError(
+            f"P50 operating hours must be positive and finite (got {raw_p50!r}).",
+            FieldErrorClass.OUT_OF_RANGE if _math.isfinite(p50_f) else FieldErrorClass.NON_FINITE,
+        )
+
+    if p90_f > p50_f:
+        raise FieldValidationError(
+            f"P90_EXCEEDS_P50: P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
+            FieldErrorClass.INVALID,
+        )
+
+
+def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> None:
+    """C1-Q-02: enforce canonical PPA contract book invariants against proposed timeline."""
+    ms_json = (proposed_snapshot.get("rev_multistream_config_json") or "").strip()
+    if not ms_json:
+        return
+    try:
+        from app.input_adapter import build_projectinputs_from_snapshot
+        from domain.revenue.multistream_runtime import parse_config
+        from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
+
+        proposed_pi = build_projectinputs_from_snapshot(proposed_snapshot)
+        info = proposed_pi.info
+        freq_val = getattr(info.period_frequency, "value", str(info.period_frequency)).upper()
+        freq = PeriodFrequency.ANNUAL if freq_val == "ANNUAL" else PeriodFrequency.SEMESTRIAL
+        engine = PeriodEngine(
+            financial_close=info.financial_close,
+            construction_months=info.construction_months,
+            horizon_years=info.horizon_years,
+            ppa_years=proposed_pi.revenue.ppa_term_years,
+            frequency=freq,
+            cod_date=info.cod_date,
+            period_axis_convention=getattr(info.period_axis_convention, "value", info.period_axis_convention),
+        )
+        multistream = parse_config(ms_json)
+        if getattr(multistream, "has_contractual_indexation", False):
+            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date)
+        else:
+            multistream.validate_axis(engine.periods())
+    except FieldValidationError:
+        raise
+    except Exception as exc:
+        raise FieldValidationError(
+            f"Proposed project timeline is incompatible with the saved PPA contract book: {exc}",
+            FieldErrorClass.INVALID,
+        ) from exc
+
+
+def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, str]:
+    """C1F-A-1: identify CAPEX/OPEX scalar fields whose category is owned by active cost lines.
+
+    Active cost lines take precedence at canonical Run (apply_user_sub_lines_replacing_base /
+    opex_fold_provenance). Writing a category scalar cannot change Run numbers, so callers
+    must refuse or mark the field not-applicable rather than confirming Applied/STALE.
+    """
+    if not project_id:
+        return {}
+    fids = [f for f in field_ids if isinstance(f, str) and (f.startswith("capex.") or f.startswith("opex."))]
+    if not fids:
+        return {}
+
+    blocked: dict[str, str] = {}
+    capex_fids = [f for f in fids if f.startswith("capex.")]
+    if capex_fids:
+        from app.persistence.capex_sub_lines import (
+            CAPEX_CATEGORY_TO_FIELD,
+            get_active_sub_lines_for_project as get_active_capex_lines,
+        )
+        active_capex = get_active_capex_lines(project_id)
+        if active_capex:
+            owned_capex_attrs = {
+                CAPEX_CATEGORY_TO_FIELD.get(row.parent_category_code)
+                for row in active_capex
+                if row.parent_category_code in CAPEX_CATEGORY_TO_FIELD
+            }
+            for fid in capex_fids:
+                try:
+                    spec = WORKBOOK.field(fid)
+                except KeyError:
+                    continue
+                ep = spec.engine_path or ""
+                if fid == "capex.total_capex_keur" or ep == "capex.total_capex":
+                    blocked[fid] = "Active CAPEX cost lines own total CAPEX and take precedence at Run; edit cost lines instead."
+                elif ep.startswith("capex."):
+                    attr = ep.split(".")[1]
+                    if attr in owned_capex_attrs:
+                        blocked[fid] = (
+                            f"Active CAPEX cost lines own category {attr!r} and take precedence at Run; "
+                            "edit the individual cost lines instead."
+                        )
+
+    opex_fids = [f for f in fids if f.startswith("opex.")]
+    if opex_fids:
+        from app.services.opex_sub_lines_integration import _load_all_sub_lines, opex_fold_provenance
+        all_opex = _load_all_sub_lines(project_id)
+        if all_opex:
+            prov = opex_fold_provenance(all_opex)
+            if prov.get("replaces_aggregate"):
+                for fid in opex_fids:
+                    if fid.startswith("opex.lines.") or fid == "opex.summary.y1_total_keur":
+                        blocked[fid] = (
+                            "Active OPEX cost lines replace base OPEX scalars at Run; "
+                            "edit the individual OPEX cost lines instead."
+                        )
+    return blocked
+

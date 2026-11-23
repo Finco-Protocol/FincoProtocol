@@ -99,7 +99,7 @@ def test_current_stale_current_lifecycle_across_contract_save_run_and_grid_save(
     run_evidence = _evidence(record)
 
     # Grid Save of an unrelated field: ONE atomic write, no Run, contracts untouched, Last Run immutable
-    res = _grid_save(gclient, record, [("project_setup.technical.p50_hours", "1555")])
+    res = _grid_save(gclient, record, [("project_setup.technical.p50_hours", "2855")])
     assert res.status_code == 200, res.text
     assert res.json()["run_state"] == "STALE" and res.json()["model_executed"] is False
     after = _evidence(record)

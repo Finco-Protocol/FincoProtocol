@@ -63,17 +63,15 @@ def build_effective_revenue_inputs(pis: Any, *, contracts_active: bool = False) 
                          "The Balancing Cost (EUR/MWh) field is set and replaces the template value. " + meaning,
                          "Editable in 2. Merchant Adjustments (Balancing Cost)."))
     elif template != 0.0:
-        if entered_balancing == 0.0:
-            detail = ("The saved Balancing Cost is explicitly 0 EUR/MWh. Under the existing model's zero-value fallback, "
-                      f"the template deduction applies at {template:g} EUR/MWh. ")
-        else:
-            detail = "No Balancing Cost (EUR/MWh) has been saved, so the template deduction applies. "
+        detail = "No Balancing Cost (EUR/MWh) has been saved, so the template deduction applies. "
         rows.append(_row("balancing", "Balancing deduction", template, "EUR/MWh", "Project template default (not an entered value)",
-                         detail +
-                         "Enter a non-zero value there to replace it; 0 does not switch the template value off. " + meaning,
+                         detail + "Enter a value (including 0) there to replace it. " + meaning,
                          "Editable in 2. Merchant Adjustments (Balancing Cost)."))
     else:
-        detail = "The saved Balancing Cost is explicitly 0 EUR/MWh. " if entered_balancing == 0.0 else ""
+        detail = (
+            "The saved Balancing Cost is explicitly 0 EUR/MWh and overrides the template default. "
+            if entered_balancing == 0.0 else ""
+        )
         rows.append(_row("balancing", "Balancing deduction", 0.0, "EUR/MWh", "No deduction",
                          detail + "No flat per-MWh balancing deduction applies to this project.", "Editable in 2. Merchant Adjustments (Balancing Cost)."))
 

@@ -168,7 +168,7 @@ def test_preview_solves_a_feasible_target_without_mutating_anything(with_sensiti
 def test_preview_reports_an_unreachable_target_as_a_typed_status_without_an_apply(with_sensitivity):
     env = with_sensitivity
     record = env.create()
-    body = call(env.client, "solve", project=record.project_code, target_metric="project_irr", target_value="95").json()
+    body = call(env.client, "solve", project=record.project_code, target_metric="project_irr", target_value="5000").json()
     assert body["ok"] and body["result"]["solved"] is False and body["result"]["status"] != "SOLVED"
     assert body["apply"] is None and body["result"]["message"]
 

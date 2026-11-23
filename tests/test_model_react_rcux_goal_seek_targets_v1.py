@@ -141,15 +141,15 @@ def test_irr_typed_equals_the_pinned_percent_endpoint_for_the_same_target(with_s
 
 def test_minimum_dscr_target_is_solved_as_a_multiple_and_equals_the_legacy_route(env):
     record = env.create()
-    soup = legacy(env, record, "min_dscr", "1.30")
+    soup = legacy(env, record, "min_dscr", "1.26")
     legacy_tariff = legacy_number(soup, "gs-solved-value")
-    body = typed(env, record, "min_dscr", "1.30").json()
+    body = typed(env, record, "min_dscr", "1.26").json()
     result = body["result"]
     assert body["ok"] and result["solved"] and result["status"] == "SOLVED", result
     assert round(result["solved_input_value"], 2) == legacy_tariff                     # the same deterministic solve, NOT a /100 target
-    assert result["target_value"] == 1.30 and result["target_display"] == "1.30x" and result["target_unit"] == "multiple"
-    assert abs(result["achieved_metric_value"] - 1.30) <= 1e-4 and result["achieved_display"].endswith("x") and result["error_display"].endswith("x")
-    assert 1.299 < result["achieved_metric_value"] < 1.301 and result["model_evaluations"] <= 40
+    assert result["target_value"] == 1.26 and result["target_display"] == "1.26x" and result["target_unit"] == "multiple"
+    assert abs(result["achieved_metric_value"] - 1.26) <= 1e-4 and result["achieved_display"].endswith("x") and result["error_display"].endswith("x")
+    assert 1.259 < result["achieved_metric_value"] < 1.261 and result["model_evaluations"] <= 40
 
 
 def test_a_percent_scaled_dscr_would_have_been_a_different_and_wrong_target(env):
@@ -206,14 +206,25 @@ def test_a_typed_solve_writes_nothing_and_its_candidate_is_applied_only_through_
     record = env.create()
     run_canonical(env, record.project_code)
     before = state(record)
-    body = typed(env, record, "min_dscr", "1.30").json()
-    assert body["result"]["solved"] and state(record) == before                         # preview: no draft, no Run, no Last Run change
+    body = typed(env, record, "min_dscr", "1.26").json()
+    assert body["ok"] and body["result"]["solved"] and state(record) == before          # preview: no draft, no Run, no Last Run change
     binding = body["apply"]
+    assert binding is not None, body
     assert env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["freshness"]["state"] == "CURRENT"
     response = env.client.post(f"{BASE}/apply", json=apply_body(record, binding))
     assert response.status_code == 200 and response.json()["applied"] is True and response.json()["run_state"] == "STALE"
-    tampered = typed(env, record, "min_dscr", "1.31").json()["apply"]
-    assert env.client.post(f"{BASE}/apply", json=apply_body(record, tampered, value="999")).status_code == 403     # the token binds the exact candidate
+    after_first_apply = state(record)
+    second_body = typed(env, record, "project_irr", "10.0").json()
+    assert second_body["ok"] and second_body["result"]["solved"] is True, second_body
+    tampered = second_body["apply"]
+    assert tampered is not None, second_body
+    tampered_resp = env.client.post(f"{BASE}/apply", json=apply_body(record, tampered, value="999"))
+    assert tampered_resp.status_code == 403                                             # the token binds the exact candidate
+    assert state(record) == after_first_apply                                           # tampered apply mutates nothing
+    # Genuine unsolved target has no apply binding and cannot mutate
+    unsolved_body = typed(env, record, "min_dscr", "1.50").json()
+    assert unsolved_body["ok"] and unsolved_body["result"]["solved"] is False and unsolved_body["apply"] is None
+    assert state(record) == after_first_apply
 
 
 def test_a_busy_executor_is_a_429_and_nothing_is_reported_as_solved(env, monkeypatch):

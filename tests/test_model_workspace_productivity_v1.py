@@ -327,6 +327,11 @@ _CONTRACT_ADDITIONS = {
     "debt|protected|debt.contract.contractual_dscr": "070996f25840fa4fbce032efad1fd829c219ebc40b99bba5dade882c4c61cc28",
     "debt|protected|debt.contract.min_dscr_eod": "2da8c4be8d39f72a3fcec301ca6790afdfa84f969060352302c42e13930f6721",
 }
+# Batch 2 OD-P90-01: canonical independent P90-10y operating hours field
+_P90_ADDITIONS = {
+    "project_setup|editable|project_setup.technical.p90_10y_hours": "39de9585a25d4ea8820068c0db1bc1e7ad65dcbebf63456ca090b4f493048ea0",
+    "project_setup|protected|project_setup.technical.p90_10y_hours": "0c3f68aae0dce682140d60f80f0f9ce785c91b4377343c8ee850c4993f4dee5a",
+}
 
 
 def _golden() -> dict:
@@ -354,10 +359,10 @@ def _macro_identity_problems(actual: dict[str, str], golden: dict) -> list[str]:
     """Pure judge of the legacy macro DOM identity. Every historical golden hash must be equal; each reviewed addition must equal ITS OWN locked
     hash; no other key may exist and none may be missing. Returns the list of violations (empty = identity holds)."""
     problems: list[str] = []
-    expected = set(golden["hashes"]) | _FINANCING_ADDITIONS | set(_VALUATION_ADDITIONS) | set(_CONTRACT_ADDITIONS)
+    expected = set(golden["hashes"]) | _FINANCING_ADDITIONS | set(_VALUATION_ADDITIONS) | set(_CONTRACT_ADDITIONS) | set(_P90_ADDITIONS)
     problems += [f"unexpected key {k}" for k in sorted(set(actual) - expected)]
     problems += [f"missing key {k}" for k in sorted(expected - set(actual))]
-    for locked in (golden["hashes"], _VALUATION_ADDITIONS, _CONTRACT_ADDITIONS):
+    for locked in (golden["hashes"], _VALUATION_ADDITIONS, _CONTRACT_ADDITIONS, _P90_ADDITIONS):
         problems += [f"hash drift {k}" for k, v in locked.items() if k in actual and actual[k] != v]
     return problems
 

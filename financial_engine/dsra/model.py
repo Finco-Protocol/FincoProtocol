@@ -109,6 +109,14 @@ def run_cash_dsra_model(
         # CASH_DSRA: roll-forward for operating periods, neutral for construction.
         prev_closing = 0.0
         first_op_seen = False
+        # OD-DSRA-01 (E2E-04): for fixed cash DSRA (balance_schedule is None),
+        # release the remaining reserve once senior debt service is fully settled
+        # at final contractual maturity — matching automatic-peak release timing.
+        senior_ds_all = post_senior_cash.senior_debt_service_keur
+        last_senior_ds_pos = max(
+            (i for i, ds in enumerate(senior_ds_all) if ds > _FLOAT_TOLERANCE),
+            default=-1,
+        )
 
         for period_pos, (idx, cash_before) in enumerate(zip(period_indices, cash_before_all)):
             is_constr = is_constr_by_idx.get(idx, False)
@@ -133,8 +141,17 @@ def run_cash_dsra_model(
                 continue
 
             # Operating period
-            # Per-period target: dynamic schedule if provided, else static scalar.
-            target = balance_schedule[period_pos] if balance_schedule is not None else req
+            # Per-period target: dynamic schedule if provided, else fixed scalar
+            # released at final contractual senior maturity (once no shortfall remains).
+            if balance_schedule is not None:
+                target = balance_schedule[period_pos]
+            elif last_senior_ds_pos >= 0 and (
+                period_pos > last_senior_ds_pos
+                or (period_pos == last_senior_ds_pos and cash_before >= -_FLOAT_TOLERANCE)
+            ):
+                target = 0.0
+            else:
+                target = req
 
             if not first_op_seen:
                 # COD funding handshake: opening is actual reserve cash funded as
