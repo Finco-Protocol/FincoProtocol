@@ -1,10 +1,8 @@
 # Known baseline defects (tests/known_defects.txt): runs ONLY those tests, on real Chromium. Advisory, NOT a required
-# check, and expected to stay red until each defect is fixed (then its line is removed in the fixing PR and the test
+# check, never runs on pull requests (nightly + manual only), and expected to stay red until each defect is fixed (then its line is removed in the fixing PR and the test
 # returns to the required Model CI groups). Never counts as a pass of anything.
 name: Model known defects
 on:
-  pull_request:
-    paths: ['tests/known_defects.txt']
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:
