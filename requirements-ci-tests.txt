@@ -4,3 +4,5 @@ PyYAML==6.0.2
 pytest-split==0.11.0
 # real-browser tests run in every test group (no browser test may skip for a missing dependency)
 playwright==1.63.0
+# ONE visible rerun, only for hosted-runner browser flake signatures (Playwright timeout / htmx-not-ready 303); see docs/ci/README.md
+pytest-rerunfailures==16.7
