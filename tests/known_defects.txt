@@ -1,0 +1,70 @@
+# Known baseline defects: tests that fail identically on accepted main 707e68b2 (reproduced 2026-11-22 with
+# playwright 1.63.0 / Chromium 157). They are NOT passing tests. They are deselected from the required Model CI
+# groups and run on their own in .github/workflows/model_known_defects.yml, which stays visibly red until they are
+# fixed. Adding a line here is a protected change (CODEOWNERS). Remove a line in the same PR that fixes the test.
+# format: <pytest node id>  # <diagnosis>
+tests/test_cost_batch_save_browser_v1.py::test_failure_in_one_row_rolls_back_all_rows_keeps_typed_values_and_never_retries  # legacy workbook OPEX stage toggle no longer clickable (harness vs UI drift)
+tests/test_cost_batch_save_browser_v1.py::test_cross_sheet_batch_then_single_row_edit_has_no_false_409  # same stage-toggle drift
+tests/test_cost_grid_editing_browser_v1.py::test_first_save_after_a_scenario_switch_has_no_false_409  # scenario create POST without CSRF token -> 403
+tests/test_cost_grid_editing_browser_v1.py::test_uncommitted_edit_is_saved_before_a_deactivate_runs  # deactivate request not issued after pending update (needs product check)
+tests/test_data_center_browser_acceptance.py::test_DC_BROWSER_VERTICAL_INTEGRITY_1280  # debt KPI testid not rendered in legacy panel
+tests/test_data_center_browser_acceptance.py::test_DC_HTMX_WORKING_COPY_WORKFLOW  # revenue sheet navigation never happens
+tests/test_model_golden_flows_browser.py::test_golden_flow_a_new_project_scenario_compare_and_export  # legacy #tab-inputs hidden behind tab groups
+tests/test_model_golden_flows_browser.py::test_golden_flow_b_reference_to_working_copy_causal_run_reopen  # legacy #tab-overview not clickable
+tests/test_model_golden_flows_browser.py::test_golden_flow_c_run_a_stale_working_edit_reopen_run_b  # legacy #tab-overview not clickable
+tests/test_radar_n04_browser.py::test_n04_mobile_and_desktop_containment  # Radar refresh button missing (Radar moves to Finco-Protocol/Radar)
+tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_a02_totals_agree_with_the_server[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_a02_totals_agree_with_the_server[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_a14_opex_base_plus_line[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_a14_opex_base_plus_line[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_routes_aliases_back_forward_protected  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u1_browser_role.py::test_u1_moved_studio_tools_reachable  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
+tests/test_wf06b_browser_role.py::test_wf06b_compact_inputs_overview_two_column[solar]  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
+tests/test_wf06b_browser_role.py::test_wf06b_compact_inputs_overview_two_column[wind]  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
+tests/test_wf06b_browser_role.py::test_wf06b_search_and_cost_filters  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
+tests/test_wf06b_browser_role.py::test_wf06b_per_mw_unavailable_when_capacity_is_zero  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
+tests/test_jev_panel_browser.py::test_available_panel_is_labelled_experimental_and_canonical_data_remains[desktop-1280-800]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_available_panel_is_labelled_experimental_and_canonical_data_remains[mobile-390-844]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[provider_unavailable-error0-temporarily unavailable-desktop-1280-800]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[provider_unavailable-error0-temporarily unavailable-mobile-390-844]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[timeout-error1-temporarily unavailable-desktop-1280-800]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[timeout-error1-temporarily unavailable-mobile-390-844]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[invalid_response-None-Interpretation unavailable.-desktop-1280-800]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_provider_failure_states_are_calm_typed_and_do_not_break_canonical_radar[invalid_response-None-Interpretation unavailable.-mobile-390-844]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_intelligence_endpoint_http_failure_keeps_page_usable[desktop-1280-800]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_jev_panel_browser.py::test_intelligence_endpoint_http_failure_keeps_page_usable[mobile-390-844]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_jev_panel_browser
+tests/test_m3_two_driver_sensitivity_browser.py::test_form_selection_run_results_threshold_and_scenario  # fails identically on main 707e68b2 (never ran in hosted CI before); test_m3_two_driver_sensitivity_browser
+tests/test_m7_bess_workflow_browser.py::test_integrated_save_run_and_stale_reopen[light-1440]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_m7_bess_workflow_browser
+tests/test_m7_bess_workflow_browser.py::test_integrated_save_run_and_stale_reopen[dark-390]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_m7_bess_workflow_browser
+tests/test_sc34_workflow_journeys_browser.py::test_shortened_horizon_journey_notice_navigation_refusal_and_recovery  # fails identically on main 707e68b2 (never ran in hosted CI before); test_sc34_workflow_journeys_browser
+tests/test_ui_protocol_shell.py::TestApiBetaBrowser::test_api_b04_placeholders_not_links  # fails identically on main 707e68b2 (never ran in hosted CI before); test_ui_protocol_shell
+tests/test_cost_editing_ux_v2_browser.py::test_staged_opex_save_then_staged_capex_save_is_not_a_false_409  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_cost_editing_ux_v2_browser.py::test_stale_composite_hash_is_rejected_when_a_different_row_changed  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_cost_editing_ux_v2_browser.py::test_stale_row_version_is_rejected_and_rolls_everything_back  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_cost_editing_ux_v2_browser.py::test_cross_project_foreign_line_and_protected_reference_are_denied  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_cost_editing_ux_v2_browser.py::test_scenario_switch_with_staged_edits_offers_save_discard_or_stay  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_cost_editing_ux_v2_browser.py::test_scroll_and_focus_survive_a_keyboard_save  # fails identically on main 707e68b2 (never ran in hosted CI before); test_cost_editing_ux_v2_browser
+tests/test_model_react_poc_browser_acceptance.py::test_statements_results_stale_and_unknown_outcomes  # fails identically on main 707e68b2 (never ran in hosted CI before); test_model_react_poc_browser_acceptance
+tests/test_model_react_poc_browser_acceptance.py::test_results_distinguish_current_from_stale  # fails identically on main 707e68b2 (never ran in hosted CI before); test_model_react_poc_browser_acceptance
+tests/test_model_v7_diagnostics_browser.py::test_lazy_payload_hidden_save_deep_link_and_history[generic_solar_reference-1440-light]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_model_v7_diagnostics_browser
+tests/test_model_v7_diagnostics_browser.py::test_lazy_payload_hidden_save_deep_link_and_history[generic_wind_reference-1366-dark]  # fails identically on main 707e68b2 (never ran in hosted CI before); test_model_v7_diagnostics_browser
+tests/test_model_v7_diagnostics_browser.py::test_visible_save_refresh_and_late_read_cannot_overwrite_new_run  # fails identically on main 707e68b2 (never ran in hosted CI before); test_model_v7_diagnostics_browser
+tests/test_p5_browser_acceptance.py::test_verified_index_loads[desktop]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_loads[mobile]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_shows_pipeline_banner[desktop]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_shows_pipeline_banner[mobile]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_nav_link_active[desktop]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_nav_link_active[mobile]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[desktop]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[mobile]  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_asset_json_endpoint  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_p5_browser_acceptance.py::test_verified_asset_json_unauthenticated_returns_401  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
+tests/test_ux_pr1_browser_role.py::test_dense_responsive_comments_and_default_off  # hosted ubuntu-24.04 font metrics only (first row 238px vs density bound); passes locally on main and branch
+tests/test_model_run_workspace_v3_browser.py::test_selector_reference_tracks_three_slots_when_changed_or_cleared  # FLAKY on main 707e68b2: 2/6 local runs fail (303 redirect), same rate on the branch
+tests/test_workflow_c_browser_v1.py::test_integrated_statements_kpis_trace_navigation_and_freshness  # FLAKY on main 707e68b2: 1/6 local runs, cost-grid save never leaves busy() within 30 s

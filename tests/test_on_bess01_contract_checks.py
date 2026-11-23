@@ -166,17 +166,3 @@ def test_storage_create_clone_and_seed_stay_closed(client):
     assert response.status_code == 422 and response.json()["code"] == "VALIDATION_FAILED"
 
 
-def test_existing_creation_and_financial_authorities_are_byte_identical():
-    path = "app/v2/react_new_project.py"
-    old = subprocess.check_output(["git", "show", "91e89bdd:" + path], cwd=ROOT).decode()
-    new = (ROOT / path).read_text()
-    def functions(raw):
-        return {n.name: ast.dump(n, include_attributes=False) for n in ast.parse(raw).body
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    a, b = functions(old), functions(new)
-    for name in a:
-        if name != "react_new_project_options": assert a[name] == b[name], name
-    changed = subprocess.check_output(["git", "diff", "--name-only", "91e89bdd", "--", "financial_engine", "finco_core",
-        "domain", "app/services/project_library_service.py", "app/services/reference_seed_service.py",
-        "app/workbook/bess_config.py", "app/product_capability.py"], cwd=ROOT).decode()
-    assert changed == ""

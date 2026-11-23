@@ -1,3 +1,8 @@
-# CI-only test-helper dependencies (NOT production requirements; never installed by deploy scripts).
-# Used by the structured workflow-contract tests (tests/test_ci_acceptance.py) that parse .github/workflows/*.yml.
+# CI-only test dependencies (NOT production requirements; never installed by deploy scripts).
 PyYAML==6.0.2
+# fixed, duration-balanced test groups for .github/workflows/model_ci.yml (each node runs in exactly one group)
+pytest-split==0.11.0
+# real-browser tests run in every test group (no browser test may skip for a missing dependency)
+playwright==1.63.0
+# ONE visible rerun, only for hosted-runner browser flake signatures (Playwright timeout / htmx-not-ready 303); see docs/ci/README.md
+pytest-rerunfailures==16.7

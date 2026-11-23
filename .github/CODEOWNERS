@@ -1,16 +1,28 @@
-# Default public-repository ownership
-* @FincoProtocol
+# Default ownership: either account may approve ordinary changes (nobody can approve their own PR).
+*                             @Finco-Protocol/owners @FincoProtocol
 
-# Critical financial authority
-/financial_engine/ @FincoProtocol
-/finco_core/ @FincoProtocol
-
-# FINCO Radar authority and evidence
-/finco_radar/ @FincoProtocol
-
-# CI, repository safety, and governance
-/.github/ @FincoProtocol
-/tools/public_safety_scan.py @FincoProtocol
-/MIGRATION_CONTROL.md @FincoProtocol
-/SECURITY.md @FincoProtocol
-/docs/VERIFICATION.md @FincoProtocol
+# Changes to CI, test policy and the financial/security core need an approving review from a code owner.
+# @Finco-Protocol/owners is the owner team (create it and add the owner's personal account; see docs/ci/normalization_2026_11/CI_CUTOVER_AND_ROLLBACK.md).
+# @FincoProtocol stays listed so ownership remains valid before the team exists; it cannot approve its own PRs.
+# Enforced by branch protection on main ("Require review from Code Owners"). An AI agent's comment is not a review.
+/.github/                     @Finco-Protocol/owners @FincoProtocol
+/scripts/ci/                  @Finco-Protocol/owners @FincoProtocol
+/tests/                       @Finco-Protocol/owners @FincoProtocol
+/pytest.ini                   @Finco-Protocol/owners @FincoProtocol
+/requirements*.txt            @Finco-Protocol/owners @FincoProtocol
+/constraints.txt              @Finco-Protocol/owners @FincoProtocol
+/financial_engine/            @Finco-Protocol/owners @FincoProtocol
+/finco_core/                  @Finco-Protocol/owners @FincoProtocol
+/domain/                      @Finco-Protocol/owners @FincoProtocol
+/app/auth*                    @Finco-Protocol/owners @FincoProtocol
+/app/internal_auth_introspect.py @Finco-Protocol/owners @FincoProtocol
+/app/protocol/                @Finco-Protocol/owners @FincoProtocol
+/app/persistence/             @Finco-Protocol/owners @FincoProtocol
+/deploy/                      @Finco-Protocol/owners @FincoProtocol
+/archive/                     @Finco-Protocol/owners @FincoProtocol
+/finco_radar/                 @Finco-Protocol/owners @FincoProtocol
+/tools/public_safety_scan.py  @Finco-Protocol/owners @FincoProtocol
+/MIGRATION_CONTROL.md         @Finco-Protocol/owners @FincoProtocol
+/SECURITY.md                  @Finco-Protocol/owners @FincoProtocol
+/docs/VERIFICATION.md         @Finco-Protocol/owners @FincoProtocol
+/docs/ci/                     @Finco-Protocol/owners @FincoProtocol

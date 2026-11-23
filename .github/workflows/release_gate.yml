@@ -1,0 +1,19 @@
+# Release gate: a shipping SHA must pass the full Model CI on that exact commit, then wait for the protected
+# "production" environment approval (configure required reviewers in Settings > Environments). No deploy step lives
+# here; the deployment procedure itself stays manual and separately approved.
+name: Release gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  model-ci:
+    uses: ./.github/workflows/model_ci.yml
+  approve:
+    needs: model-ci
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Record the approved release candidate
+        run: |
+          echo "release candidate ${GITHUB_SHA} passed Model CI (run ${GITHUB_RUN_ID}) and was approved for production" >> "$GITHUB_STEP_SUMMARY"

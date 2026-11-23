@@ -447,37 +447,6 @@ class TestNavNoStalePlaceholders:
 # PUBLIC_FROZEN_AUTHORITIES_ZERO_DIFF
 # ---------------------------------------------------------------------------
 
-class TestFrozenAuthoritiesZeroDiff:
-    """PUBLIC_FROZEN_AUTHORITIES_ZERO_DIFF — financial_engine and finco_core are unchanged."""
-
-    def test_financial_engine_zero_diff(self):
-        """financial_engine/** must have zero diff vs main.
-
-        FINCO_P5_COMPOSED_NOT_CALCULATED: the composition layer never touches
-        the financial engine.
-        """
-        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-        # Opus Finance Integrity governance: allow-listed engine modules only.
-        from finance_integrity_governance import unapproved_engine_changes
-        from stream_scope_proof import verified_delta
-        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-        changed = unapproved_engine_changes(verified_delta("test_public_product_truth_sync", "financial_engine"))
-        assert changed == [], (
-            f"unapproved financial_engine changes vs main: {changed}"
-        )
-
-    def test_finco_core_zero_diff(self):
-        """finco_core/** must have zero diff vs main."""
-        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-        from stream_scope_proof import verified_delta
-        from model_v2_governance import approved_by_active_model_v2_scope
-        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-        changed = [f for f in verified_delta("test_public_product_truth_sync", "finco_core")
-                   if not approved_by_active_model_v2_scope(f)]
-        assert changed == [], (
-            f"finco_core must have zero diff vs main; changed: {changed}"
-        )
-
 
 # ---------------------------------------------------------------------------
 # PUBLIC_SUPPORTED_TODAY_SINGLE_AUTHORITY

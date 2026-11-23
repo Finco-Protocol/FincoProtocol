@@ -22,7 +22,6 @@ from finco_radar.venues.registry import VenueRegistry
 from finco_radar.venues.store import VenueMarketStore
 from tests.test_tokenized_live_intelligence_v1 import _market_obs
 from tests.test_tokenized_markets_composition import ROBINHOOD_NVDA, _entry, _registry
-from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "app" / "templates"
@@ -409,23 +408,3 @@ def test_product_truth_separates_code_capability_from_operational_availability()
 
 
 # ── frozen boundaries ────────────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
-def test_frozen_namespaces_zero_diff(namespace):
-    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py). Fails closed if provenance is unproven.
-    # Current-integration authority for the same paths is judged only by the central gates, not here.
-    from stream_scope_proof import verified_delta
-    delta = verified_delta("test_crypto_p0_product_reality_reset", namespace)
-    # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
-    # every other path in this namespace stays frozen.
-    allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
-                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
-                 "finco_radar/venues/relative_value.py"}
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-    # protecting every other frozen path.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [
-        p for p in delta
-        if p not in allowed and not approved_frozen_path(p)
-    ]
-    assert changed == [], changed

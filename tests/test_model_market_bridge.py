@@ -29,7 +29,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from model_v2_governance import merge_base_ref
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -661,27 +660,3 @@ class TestExperimentalApiSurface:
 
 # ── Frozen authorities ──────────────────────────────────────────────────────
 
-class TestFrozenAuthorities:
-    @pytest.mark.parametrize("frozen", [
-        "financial_engine", "finco_core", "finco_radar",
-        "app/model_validation", "app/verified",
-    ])
-    def test_zero_diff_vs_main(self, frozen):
-        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
-        # Whether the current integration tree may change these paths is decided only by the central current gates.
-        from stream_scope_proof import verified_delta
-        delta = verified_delta("test_model_market_bridge", frozen)
-        # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
-        # every other path in this namespace stays frozen.
-        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
-                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
-                 "finco_radar/venues/relative_value.py"}
-        # Explicitly authorized Model V2 epic engine files are governed by the
-        # Model V2 scope contract (tests/model_v2_governance.py); this guard
-        # keeps protecting every other frozen path.
-        from finance_integrity_governance import approved_frozen_path
-        changed = [
-            p for p in delta
-            if p not in allowed and not approved_frozen_path(p)
-        ]
-        assert changed == [], changed

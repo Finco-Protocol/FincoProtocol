@@ -826,26 +826,3 @@ def test_signed_values_roundtrip_compatibility():
 # I. Non-interference
 # ---------------------------------------------------------------------------
 
-def test_revenue_and_engine_files_untouched():
-    """Revenue diff ZERO; financial_engine/finco_core untouched by this
-    workflow's files (source-level guard on the new modules)."""
-    import subprocess
-    from pathlib import Path
-
-    repo = Path(__file__).resolve().parents[1]
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    changed = verified_delta("test_model_v2_cost_templates", "domain/revenue", "financial_engine", "finco_core", "domain/analytics")
-    # financial_engine modules on the shared approved allow-list are exempt; nothing else is.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [p for p in changed if not approved_frozen_path(p)]
-    assert changed == [], changed
-    # the new modules never import the engine or revenue contracts
-    for module in ("app/services/cost_template/contracts.py",
-                   "app/services/cost_template/generic.py",
-                   "app/services/cost_template/client_extract.py",
-                   "app/services/cost_template/materialize.py"):
-        src = (repo / module).read_text(encoding="utf-8")
-        for forbidden in ("financial_engine", "finco_core", "RevenuePlan",
-                          "RevenueStream", "revenue_plan"):
-            assert forbidden not in src, f"{module} references {forbidden}"

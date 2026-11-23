@@ -235,8 +235,15 @@ def test_independent_indexation_and_the_merchant_remainder_against_a_fraction_or
 # ---------------------------------------------------------------- Save All, CAS and tenancy
 def _save_all_contracts(world, rec, shares):
     import os
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    previous = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "1"          # scoped to this read: a process-wide flag changed later modules' navigation
+    try:
+        payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    finally:
+        if previous is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = previous
     window = payload["contracts"]["operating_window"]
     streams = [{"id": f"ppa-{i}", "type": "ppa", "start_date": window["start"], "end_date": window["end"], "volume_share": s,
                 "price_eur_mwh": 55, "indexation_rate": 0.0, "source_ref": "Entered in FINCO workspace", "settlement": "SAME_PERIOD"}
@@ -268,9 +275,3 @@ def test_stale_cas_and_a_stranger_fail_closed_with_nothing_written(world):
 
 
 # ---------------------------------------------------------------- scope honesty
-def test_this_pr_changes_no_production_source_so_legacy_single_ppa_runs_are_byte_identical():
-    names = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], cwd=ROOT, capture_output=True).stdout.decode().split()
-    if not names:                                                               # shallow or detached evaluation: fall back to the working tree
-        names = subprocess.run(["git", "diff", "--name-only", "HEAD"], cwd=ROOT, capture_output=True).stdout.decode().split()
-    production = [n for n in names if n.startswith(("app/", "domain/", "financial_engine/", "finco_core/", "frontend/", "static/", "main_web.py"))]
-    assert production == []

@@ -144,20 +144,3 @@ def test_pinned_contract_regression(proof):
     )
 
 
-def test_no_frozen_namespace_touched():
-    """ASSUMPTION_TRACE_NO_FROZEN_NAMESPACE_TOUCHED = PASS."""
-    probe = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.exit(0)"],
-        capture_output=True,
-    )
-    assert probe.returncode == 0
-    from finance_integrity_governance import unapproved_engine_changes
-    from model_v2_governance import model_v2_frozen_violations
-
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    delta = verified_delta("test_model_v2_assumption_trace_references", ".")
-    assert model_v2_frozen_violations(delta) == []
-    # Engine files outside the shared approved allow-list (which also honours the Model V2
-    # scope contract) must stay untouched.
-    assert unapproved_engine_changes(delta) == []

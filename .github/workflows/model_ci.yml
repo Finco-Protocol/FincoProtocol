@@ -1,0 +1,276 @@
+# Model CI: the single required gate for Finco-Protocol/FincoProtocol (replaces CI V3/V4/V5 and the per-feature workflows).
+#
+# Required status check (branch protection): "Model CI / required".
+# Policy (docs/ci/README.md):
+#   * every PR runs the WHOLE active pytest suite (fixed duration-balanced groups, each node in exactly one group),
+#     real Chromium in every group, compile/safety/dependency/frontend checks, the F01 financial acceptance
+#     (4-vertical browser rate round-trip, 20 native V10/V11 cases, independent oracle workbook) and the
+#     production boot smoke;
+#   * a skip caused by a missing dependency is a failure (FINCO_CI_STRICT_SKIPS=1); collection errors and empty
+#     groups fail; the aggregate checks that the groups' selections add up to the full collection;
+#   * the only deselected tests are the listed known baseline defects (tests/known_defects.txt), which run visibly
+#     red in model_known_defects.yml until fixed;
+#   * this workflow, tests/ and the finance/security code are CODEOWNERS-protected (.github/CODEOWNERS).
+name: Model CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: model-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  PYTHON_VERSION: '3.12.16'
+  PLAYWRIGHT_VERSION: '1.63.0'
+  AXE_CORE_VERSION: '4.10.2'
+  AXE_CORE_SHA256: 9ea2d2d6917da998122bdacfd3b473e31ead53f4b87146c716a12edf89158100
+  GROUPS: '16'
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install and check dependency consistency
+        run: |
+          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip check
+      - name: Compile all Python sources
+        run: python -m compileall -q -x '(^|/)(node_modules|\.git)/' .
+      - name: Public repository safety (secret) scan
+        run: python tools/public_safety_scan.py
+      - name: Dependency vulnerability audit (pip-audit, strict)
+        run: |
+          mkdir -p artifacts
+          python -m pip install pip-audit==2.10.1
+          python -m pip freeze --exclude pip-audit > artifacts/resolved-requirements.txt
+          pip-audit --requirement artifacts/resolved-requirements.txt --no-deps --strict --progress-spinner off
+      - name: React typecheck, build and served bundle identity
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm run build
+          cp dist/finco-react.js dist/finco-react.css ../static/react/
+          git diff --exit-code -- ../static/react
+          if npm run | grep -q 'check:nonmodel'; then npm run check:nonmodel; fi
+
+  boot-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # Synthetic CI-only values. No deployment secrets are used.
+      FINCO_SECRET_KEY: ci_h6_non_placeholder_secret_key_0123456789abcdef0123456789abcdef
+      FINCO_ADMIN_USER: ci-admin
+      FINCO_ADMIN_PASSWORD: ci-h6-fixture-9c4e7a1b2d0f
+      FINCO_APP_MODE: pilot
+      FINCO_COOKIE_SECURE: 'true'
+      FINCO_DB_PATH: /tmp/finco-h6.db
+      FINCO_WEB_HOST: 127.0.0.1
+      FINCO_WEB_PORT: '8765'
+      FINCO_WEB_WORKERS: '1'
+      FINCO_WEB_GRACEFUL_SHUTDOWN_SECONDS: '15'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+      - name: Production-equivalent virtual environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt -c constraints.txt
+          .venv/bin/python -m pip check
+      - name: Production boot smoke (fail-closed config, secure mode, live HTTP 200, clean termination)
+        run: bash scripts/ci/production_boot_smoke.sh
+
+  finance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install (Python, Playwright browser)
+        run: |
+          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip check
+          playwright install chromium --with-deps
+      - name: F01 four-vertical real-browser rate round-trip (exactly 4 cases, none skipped)
+        env:
+          FINVAL_BROWSER_EVIDENCE_DIR: evidence/browser
+          FINVAL_EVIDENCE_DIR: evidence/financial
+        run: |
+          python -m pytest tests/finval_f01_browser_acceptance.py -q -rs -p no:cacheprovider --junitxml=evidence/f01-browser.xml
+          python scripts/ci/junit_check.py evidence/f01-browser.xml --exact 4
+      - name: F01 twenty native V10/V11 cases in the approved isolated image (no network)
+        run: |
+          docker build -f docs/ci_v3/phase4/runtime/Dockerfile -t finval-f01-native .
+          mkdir -p evidence/native
+          docker run --rm --network none --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/subject -w /subject \
+            -e PYTHONPYCACHEPREFIX=/tmp/f01-pycache -e FINVAL_EVIDENCE_DIR=/subject/evidence/native finval-f01-native \
+            python -m pytest tests/test_finval_f01_native_identity.py -q -rs -p no:cacheprovider --junitxml=evidence/native.xml
+          python scripts/ci/junit_check.py evidence/native.xml --exact 20
+      - name: Independent FIN-V2.3 oracle workbook (committed inputs, independent implementation)
+        run: |
+          python -m pip install XlsxWriter==3.2.9
+          python tools/fin_v2_3_oracle_workbook.py --inputs docs/financial_validation/fin_v2_3/ORACLE_COMMITTED_INPUTS.json.gz --output-dir evidence/oracle
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: finance-evidence
+          path: evidence/
+          if-no-files-found: error
+
+  tests:
+    name: tests (${{ matrix.group }}/16)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install (Python, frontend node_modules, Chromium, axe-core)
+        run: |
+          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
+          python -m pip check
+          (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
+          playwright install chromium --with-deps
+          mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
+          npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
+          echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -
+          tar xzf "axe-core-$AXE_CORE_VERSION.tgz"
+      - name: Run group ${{ matrix.group }} of ${{ env.GROUPS }}
+        env:
+          FINCO_CI_STRICT_SKIPS: '1'
+          FINCO_CI_COUNTS: ${{ runner.temp }}/out/counts-${{ matrix.group }}.json
+          FINCO_AXE_CORE_PATH: ${{ runner.temp }}/axe/package/axe.min.js
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          # per-node durations (node ids + seconds only) are committed gzipped: the public safety scanner hashes every byte window
+          gunzip -c scripts/ci/test_durations.json.gz > .test_durations
+          mapfile -t DESELECT < <(python scripts/ci/known_defects.py --deselect)
+          # One visible rerun ONLY for hosted-runner browser flake signatures; reruns are listed (R) in the log and JUnit.
+          python -m pytest -q -rfEsR -p no:cacheprovider --durations=25 \
+            --reruns 1 --only-rerun "TimeoutError: Timeout [0-9]+ms exceeded" --only-rerun "assert 303 == 200" \
+            --splits "$GROUPS" --group ${{ matrix.group }} --durations-path .test_durations --splitting-algorithm duration_based_chunks \
+            "${DESELECT[@]}" --junitxml="$RUNNER_TEMP/out/junit-${{ matrix.group }}.xml"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: tests-${{ matrix.group }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci-tests.txt
+            constraints.txt
+      - name: Install (Python, frontend node_modules, Chromium, axe-core)
+        run: |
+          python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
+          (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
+          playwright install chromium --with-deps
+          mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
+          npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
+          echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -
+          tar xzf "axe-core-$AXE_CORE_VERSION.tgz"
+      - name: Outputs workspace and statements tree Chromium acceptance scripts
+        env:
+          FINCO_CI_STRICT_SKIPS: '1'
+          FINCO_AXE_CORE_PATH: ${{ runner.temp }}/axe/package/axe.min.js
+          FINCO_MODEL_EXECUTION_MODE: thread
+        run: bash scripts/ci/acceptance.sh evidence/acceptance
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: acceptance-evidence
+          path: evidence/
+          if-no-files-found: error
+
+  required:
+    name: required
+    if: always()
+    needs: [static, boot-smoke, finance, tests, acceptance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Every required job concluded success (skipped, cancelled or missing is a failure)
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          bad = {k: v["result"] for k, v in needs.items() if v["result"] != "success"}
+          expected = {"static", "boot-smoke", "finance", "tests", "acceptance"}
+          if set(needs) != expected or bad:
+              print("REQUIRED FAILED:", bad or sorted(expected ^ set(needs))); sys.exit(1)
+          print("all required jobs: success")
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tests/known_defects.txt
+            scripts/ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: tests-*
+          path: groups
+      - name: Groups add up to the full collection (no node lost, none run twice, only listed known defects deselected)
+        run: python3 scripts/ci/check_groups.py groups --groups 16 --known-defects tests/known_defects.txt

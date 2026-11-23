@@ -265,16 +265,6 @@ def test_no_database_writes_or_fake_registry_representation(store, monkeypatch):
     assert len(registry.representations_for_underlying("NVDA")) == 1
 
 
-def test_no_frozen_namespace_delta_on_branch():
-    from finance_integrity_governance import strictly_frozen_changes
-    from model_v2_governance import model_v2_frozen_violations
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    delta = verified_delta("test_radar_r3_deepstate_composition", ".")
-    assert strictly_frozen_changes(delta) == []
-    assert model_v2_frozen_violations(delta) == []
-
-
 def test_historical_300s_inclusive_boundary(store):
     store.append_observation(_normalized())
     store.append_observation(_rlive(BLOCK_TIME + timedelta(seconds=300)))

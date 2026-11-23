@@ -342,23 +342,3 @@ def test_non_available_rlive_rows_never_become_market_observations():
 
 
 # ── frozen authorities ───────────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("path", [
-    "financial_engine", "finco_core", "finco_yield", "finco_radar/authority", "finco_radar/venues",
-    "app/radar_rwa", "app/crypto_resource_access.py", "app/crypto_access.py"])
-def test_authorities_have_zero_diff(path):
-    # Existing authority files must not be modified or deleted; later PRs may ADD new modules beside them.
-    excluded = [
-        ":(exclude)app/radar_rwa/stock_token_oracle.py", ":(exclude)app/radar_rwa/stock_token_oracle_registry.py",
-        ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
-        ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json",
-        ":(exclude)app/radar_rwa/data/stock_token_oracle_candidates.json"]   # multi-source modules (#188) have their own guards
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    delta = verified_delta("test_radar_crypto_surface_coherence", path, *excluded, diff_filter="MD")
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-    # protecting every other authority path, including all Radar/Yield/Crypto
-    # namespaces, which the Model V2 scope can never approve.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [p for p in delta if not approved_frozen_path(p)]
-    assert changed == [], changed

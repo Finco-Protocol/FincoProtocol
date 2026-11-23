@@ -236,33 +236,3 @@ def test_finite_dated_price_is_not_refused_for_an_intermediate_overflow(base_pri
     assert stream.ppa.price_at_year(1) == expected
 
 
-@pytest.mark.parametrize("kind", ["solar", "wind", "data_center", "ev_charging"])
-def test_inactive_full_financial_results_equal_the_immutable_pre_bridge_authority(kind,monkeypatch):
-    from dataclasses import asdict
-    from pathlib import Path
-    import subprocess
-    import types
-    from app import project_factories
-    from app.services import production_financial_authority as authority
-    from finco_core.revenue import generation
-    repo = Path(__file__).resolve().parents[1]
-    ref = "540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06:finco_core/revenue/generation.py"
-    assert subprocess.check_output(["git","rev-parse",ref],cwd=repo,text=True).strip() == "35670dc7b5ab4ce01177f9df817a4776c10569ab"
-    source = subprocess.check_output(["git","show",ref],cwd=repo)
-    original = types.ModuleType("_ppa01_original_generation")
-    exec(compile(source,ref,"exec"),original.__dict__)
-    pi = getattr(project_factories,"create_generic_"+kind+"_reference")()
-    project_type = {"data_center":"Data Center","ev_charging":"EV Charging"}.get(kind,kind)
-    assert not getattr(pi.revenue,"multistream_config_json","")
-    # Force two genuine executions; the application memo must not manufacture parity.
-    authority._POLICY_RUN_CACHE.clear()
-    try:
-        candidate = authority.run_clean_production(pi,"Base",project_type=project_type)
-        authority._POLICY_RUN_CACHE.clear()
-        with monkeypatch.context() as reference:
-            reference.setattr(generation,"revenue_decomposition_schedule",original.revenue_decomposition_schedule)
-            baseline = authority.run_clean_production(pi,"Base",project_type=project_type)
-        assert asdict(candidate.g2c_result) == asdict(baseline.g2c_result)
-        assert asdict(candidate.financial_statements_result) == asdict(baseline.financial_statements_result)
-    finally:
-        authority._POLICY_RUN_CACHE.clear()

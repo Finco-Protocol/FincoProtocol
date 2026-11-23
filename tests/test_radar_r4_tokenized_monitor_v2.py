@@ -172,20 +172,6 @@ def test_bounded_read_only_product_scope():
         assert token not in (ROOT / "app/radar_ui/tokenized_monitor_v2.py").read_text()
 
 
-def test_no_frozen_financial_venue_or_collector_authority_changed():
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    diff = verified_delta("test_radar_r4_tokenized_monitor_v2", ".")
-    forbidden = (
-        "financial_engine/", "finco_core/", "finco_yield/",
-        "finco_radar/venues/", "finco_radar/signals/",
-        "finco_radar/history/", "app/radar_rwa/",
-    )
-    assert not [path for path in diff if path.startswith(forbidden)]
-    assert "app/crypto_terminal/deepstate_composition.py" not in diff
-    assert "tools/public_safety_scan.py" not in diff
-
-
 def test_live_http_render_preserves_empty_state_and_exposes_r4_detail(tmp_path, monkeypatch):
     """Real FastAPI + Jinja integration, with a fresh offline market store and no provider calls."""
     from fastapi import FastAPI

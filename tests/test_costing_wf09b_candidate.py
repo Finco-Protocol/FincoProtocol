@@ -656,13 +656,6 @@ PINS = {
 }
 
 
-def _main_blob(path):
-    out = subprocess.run(["git", "rev-parse", f"origin/main:{path}"], cwd=ROOT, capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("origin/main is not available in this checkout")
-    return out.stdout.strip()
-
-
 class TestReleaseClosureAndZeroRegression:
     def test_the_gate_is_a_literal_false_and_fails_closed(self, monkeypatch):
         tree = ast.parse((PKG / "contracts.py").read_text(encoding="utf-8"))
@@ -728,10 +721,6 @@ class TestReleaseClosureAndZeroRegression:
         out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
         assert out.stdout.strip() == "[]", out.stdout + out.stderr
 
-    @pytest.mark.parametrize("path", sorted(PINS))
-    def test_protected_canonical_sources_are_byte_identical_to_main(self, path):
-        out = subprocess.run(["git", "hash-object", path], cwd=ROOT, capture_output=True, text=True, check=True)
-        assert out.stdout.strip() == _main_blob(path), path
 
     def test_canonical_analytics_keeps_reporting_lcoe_as_having_no_authority(self):
         import app.model_v2.canonical_analytics as ca

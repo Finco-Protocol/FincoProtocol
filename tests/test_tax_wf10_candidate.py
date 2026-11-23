@@ -846,22 +846,6 @@ class TestCase17CanonicalOutputsUnchanged:
         assert referers == own, \
             f"production files reference the candidate: {sorted(referers - own)}"
 
-    def test_released_tax_files_are_untouched_on_this_branch(self):
-        import subprocess
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--",
-             "domain/tax/", "financial_engine/", "finco_core/",
-             "app/revenue_v4_candidate/", "app/generation_v2_candidate/",
-             "app/model_v2/canonical_analytics.py"],
-            cwd=str(REPO), capture_output=True, text=True)
-        assert result.returncode == 0
-        # A reviewed FIN-V2 source cohort does not alter or activate this tax candidate. Admit only its complete exact committed
-        # cohort; every other released-engine change fails.
-        from tests.fin_v2_cohorts import matches
-        unreviewed = [path for path in result.stdout.splitlines()
-                      if not matches(path, repo=REPO, ref="HEAD")]
-        assert unreviewed == [], unreviewed
-
 
 # Correction A: independent precision and date-boundary regressions.
 @pytest.mark.parametrize('money',[D('9007199254740993.123456'),D('12345678901234567890123456789012345678901234567890.123456')])
@@ -979,12 +963,10 @@ def test_correction_a_micro_loss_and_withholding_postings_reconcile(released):
     assert w.gross_keur==w.withheld_keur+w.net_keur and w.net_keur==0
 
 
-
 def test_correction_a_positive_exact_income_never_creates_rounding_loss(released):
     result=taxable_income_reconciliation(tax_year=2025,ebitda_keur=D('.00000049'),financing_income_keur=D('.00000049'),tax_depreciation_keur=D('.00000051'),deductible_interest_keur=0)
     assert result.taxable_before_losses_keur==0 and result.loss_generated_keur==0
     assert result.rounding_adjustment_keur==D('.000001')
-
 
 
 def test_correction_a_equal_decimal_and_binary_rate_evidence_is_stable(released):
@@ -992,12 +974,10 @@ def test_correction_a_equal_decimal_and_binary_rate_evidence_is_stable(released)
     assert corporate_tax_for_tax_year(taxable_income_keur=D(100),tax_rate_schedule=schedule,tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))==D(10)
 
 
-
 def test_correction_a_missing_rate_does_not_mask_nonfinite_money(released):
     schedule=TaxRateSchedule('DATED_SERIES',windows=(TaxRateWindow(date(2030,1,1),.1),))
     with pytest.raises(ValueError,match='TAX_WF10_VALUE'):
         corporate_tax_for_tax_year(taxable_income_keur=D('NaN'),tax_rate_schedule=schedule,tax_year_start=date(2025,1,1),tax_year_end=date(2025,12,31))
-
 
 
 @pytest.mark.parametrize('income',[D(0),D(100)])

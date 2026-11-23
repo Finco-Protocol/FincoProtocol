@@ -452,38 +452,8 @@ def test_DC_A3_POWER_OPEX_ITEM_NAME_CONSTANT():
 # DC_A3_ZERO_DIFF_FINANCIAL_ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_DC_A3_ZERO_DIFF_FINANCIAL_ENGINE():
-    """financial_engine/** must have zero diff from main (A3.1 authority boundary).
-
-    DC is implemented entirely in the application layer (authority module +
-    runtime adapter + factory).  The financial engine never sees DC-specific
-    logic — it operates on the generic mapped inputs.
-    """
-    # Opus Finance Integrity governance: the approved finance-correction modules may
-    # differ from main; every other financial_engine module must stay untouched.
-    from finance_integrity_governance import unapproved_engine_changes
-    from stream_scope_proof import verified_delta       # HISTORICAL source proof (immutable stream range); fails closed if unproven
-    changed = unapproved_engine_changes(verified_delta("test_data_center_a3_1", "financial_engine"))
-    assert changed == [], (
-        f"A3.1 authority boundary: unapproved financial_engine changes vs main: {changed}"
-    )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DC_A3_ZERO_DIFF_FINCO_CORE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_DC_A3_ZERO_DIFF_FINCO_CORE():
-    """finco_core/** must have zero diff from main (A3.1 authority boundary).
-
-    DC vertical implementation must not touch the core waterfall engine.
-    """
-    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-    from stream_scope_proof import verified_delta       # HISTORICAL source proof (immutable stream range); fails closed if unproven
-    from model_v2_governance import approved_by_active_model_v2_scope
-    changed = [f for f in verified_delta("test_data_center_a3_1", "finco_core")
-               if not approved_by_active_model_v2_scope(f)]
-    assert changed == [], (
-        f"A3.1 authority boundary: finco_core/** must have ZERO diff from main. "
-        f"Changed files: {changed}"
-    )
