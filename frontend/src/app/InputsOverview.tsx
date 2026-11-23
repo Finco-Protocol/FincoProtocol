@@ -3,7 +3,7 @@
 //   * result tiles come from the last committed Run exactly as it published them (never a draft, never computed here);
 //   * "saved lines" tiles are the sum of active saved cost lines (not a model result);
 //   * unsaved edits are counted separately and never included in any figure.
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import "../styles/compact-inputs.css";
 import { fetchCostLines, fetchStatements } from "./api";
 import { showKeur } from "./costAmounts";
@@ -53,8 +53,10 @@ function useStatements(project: string, reloadKey: number, snapshot: string | un
   return value;
 }
 
-export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery, railOpen, onRail }: {
+export function InputsOverview({ project, workspace, reloadKey = 0, query, onQuery, railOpen, onRail, tools }: {
   project: string; workspace: WorkspacePayload; reloadKey?: number; query: string; onQuery: (q: string) => void; railOpen: boolean; onRail: () => void;
+  /** The "Input shortcuts and import" disclosure; shown in the same single status row as the Last Run results disclosure. */
+  tools?: ReactNode;
 }) {
   const statements = useStatements(project, reloadKey, workspace.identity?.snapshot_id);
   const { total: staged } = useDirtyTotal();
@@ -81,36 +83,42 @@ export function InputsOverview({ project, workspace, reloadKey = 0, query, onQue
 
   return (
     <section className="ci-overview" aria-label="Inputs overview" data-inputs-overview="true" data-run-state={state}>
-      <details className="ux-result-disclosure" open={Boolean(identity)}><summary>Last Run results{!identity && " · NOT_RUN"}</summary>
-      <div className="ci-kpis" data-ci-kpis="true">
-        {tiles.map((t) => (
-          <div className="ci-kpi" key={t.id}>
-            <span className="ci-kpi-label">{t.label}</span>
-            <strong className="ci-kpi-value" data-ci-metric={t.id}>{t.text}</strong>
-          </div>
-        ))}
-        <div className="ci-kpi" data-ci-senior-debt={senior?.available ? "run" : "none"}>
-          <span className="ci-kpi-label">Senior debt</span>
-          <strong className="ci-kpi-value" data-ci-metric="senior-debt">{seniorText}</strong>
-        </div>
-        <div className="ci-kpi">
-          <span className="ci-kpi-label">{llcr.label}</span>
-          <strong className="ci-kpi-value" data-ci-metric={llcr.id}>{llcr.text}</strong>
+      {/* UX-FINAL-01: one status row. The Run status sentence, the staged-edit count, "Input shortcuts and import" and the Last Run results
+          disclosure share one region instead of four stacked lines; every data attribute and sentence is unchanged. */}
+      <div className="ux-intro" data-ux-intro="true">
+        <p className="ci-source" data-ci-source="true">
+          {!identity
+            ? <span data-ci-norun="true">No Run yet — results appear after you run the model. Saving never runs it.</span>
+            : <>
+              <span className="rx-badge" data-ci-freshness={state}>{state === "STALE" ? "OUTDATED" : state === "CURRENT" ? "UP TO DATE" : "NOT RUN"}</span>
+              {" "}Results from Run <span data-ci-run-id={identity.snapshot_id}><RunIdentityLabel snapshotId={identity.snapshot_id} /></span>
+              {state === "STALE" && <strong className="ci-stale" role="status" data-ci-stale="true"> Inputs changed after this Run — run the model again to update.</strong>}
+            </>}
+          {" "}<span className="ci-sourcenote">The CAPEX and OPEX cards show saved inputs; they are not model results.</span>
+          {" "}<span data-ci-staged={staged}>{staged === 0 ? "No unsaved edits." : `${staged} unsaved edit${staged === 1 ? "" : "s"} — not included in any figure above.`}</span>
+        </p>
+        <div className="ux-intro-tools">
+          {tools}
+          <details className="ux-result-disclosure" open={Boolean(identity)}><summary>Last Run results</summary>
+            <div className="ci-kpis" data-ci-kpis="true">
+              {tiles.map((t) => (
+                <div className="ci-kpi" key={t.id}>
+                  <span className="ci-kpi-label">{t.label}</span>
+                  <strong className="ci-kpi-value" data-ci-metric={t.id}>{t.text}</strong>
+                </div>
+              ))}
+              <div className="ci-kpi" data-ci-senior-debt={senior?.available ? "run" : "none"}>
+                <span className="ci-kpi-label">Senior debt</span>
+                <strong className="ci-kpi-value" data-ci-metric="senior-debt">{seniorText}</strong>
+              </div>
+              <div className="ci-kpi">
+                <span className="ci-kpi-label">{llcr.label}</span>
+                <strong className="ci-kpi-value" data-ci-metric={llcr.id}>{llcr.text}</strong>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
-      </details>
-      <p className="ci-source" data-ci-source="true">
-        {!identity
-          ? <span data-ci-norun="true">No Run yet — results appear after you run the model. Saving never runs it.</span>
-          : <>
-            <span className="rx-badge" data-ci-freshness={state}>{state === "STALE" ? "OUTDATED" : state === "CURRENT" ? "UP TO DATE" : "NOT RUN"}</span>
-            {" "}Results from Run <span data-ci-run-id={identity.snapshot_id}><RunIdentityLabel snapshotId={identity.snapshot_id} /></span>
-            {state === "STALE" && <strong className="ci-stale" role="status" data-ci-stale="true"> Inputs changed after this Run — run the model again to update.</strong>}
-          </>}
-        <br />
-        <span className="ci-sourcenote">The CAPEX and OPEX cards show saved inputs; they are not model results.</span>
-        {" "}<span data-ci-staged={staged}>{staged === 0 ? "No unsaved edits." : `${staged} unsaved edit${staged === 1 ? "" : "s"} — not included in any figure above.`}</span>
-      </p>
       <div className="ci-find" role="search">
         <input type="search" className="fm-input ci-search" data-ci-search="true" value={query} placeholder="Find any input or cost line…"
                aria-label="Find any input or cost line" onChange={(e) => onQuery(e.target.value)} />

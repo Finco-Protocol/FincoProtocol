@@ -46,7 +46,7 @@ interface PeriodTableModel {
 }
 
 const STATE_TEXT: Record<string, string> = {
-  CURRENT: "CURRENT · last Run",
+  CURRENT: "Last Run",          // UX-FINAL-01: freshness is stated once by the workspace status chip above; STALE / NOT RUN / UNAVAILABLE keep their own distinct wording
   STALE: "STALE · prior saved Run",
   NOT_RUN: "NOT RUN",
   UNAVAILABLE: "UNAVAILABLE",

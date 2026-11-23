@@ -135,7 +135,9 @@ test('F03 selected HISTORICAL binds its own persisted Sources & Uses, not Studio
  assert.equal(g.state,'HISTORICAL',g.reason);
  assert.equal(g.showRun,true,g.reason);
  assert.equal(m.sourcesUsesModel(e,g).totals[0].value,100);
- assert.match(m.render(e),/HISTORICAL — selected committed Run/);
+ const html=m.render(e);
+ assert.match(html,/selected committed Run; Working Copy is separate/);
+ assert.ok(!html.includes('HISTORICAL — selected committed Run'));      // UX-FINAL-01: the state is shown once, not repeated in the reason
 });
 test('F03 wrong selected run identifiers, debt rows and missing evidence fail closed',()=>{
  const cases={
