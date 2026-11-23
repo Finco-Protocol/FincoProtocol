@@ -237,3 +237,24 @@ def test_missing_merchant_price_and_ambiguous_merchants_fail_closed():
         pi2 = apply_config(pi, json.dumps(book), project_type="solar")
         from finco_core.revenue.generation import revenue_decomposition_schedule
         revenue_decomposition_schedule(pi2, _build_period_engine(from_project_inputs(pi2)))
+
+
+@pytest.mark.parametrize("technology", ["solar", "wind"])
+def test_p90_shortfall_on_the_dated_grid_refuses_the_run_without_invented_settlement(technology):
+    """Same dated calendar: the P50 cap admits the book, the selected P90 case cannot deliver the fixed quantity -> typed refusal, no haircut."""
+    from finco_core.revenue.generation import revenue_decomposition_schedule
+
+    cod = date(2031, 5, 15)
+    pi = _project(technology, cod)
+    life_end = _add_years(cod, 20)
+    # fixed 30 GWh/yr: below P50 (80 GWh*avail) and above the P90 share only if hours drop enough -> use a tight P90 case
+    tight = replace(pi.technical, operating_hours_p90_10y=300.0)          # 40 MW * 300 h * avail ~ 11 GWh/yr << 30 GWh
+    pi = replace(pi, technical=tight)
+    book = _book(technology, cod, life_end, a=(cod, date(2036, 5, 15), "30", 72.0), b=(cod, date(2036, 5, 15), "0", 68.0))
+    p50 = apply_config(pi, book, project_type=technology)
+    eng = _build_period_engine(from_project_inputs(p50))
+    revenue_decomposition_schedule(p50, eng)                                   # feasible under P50
+    p90 = replace(p50, technical=replace(p50.technical, yield_scenario="P90-10y"))
+    with pytest.raises(Exception) as exc:
+        revenue_decomposition_schedule(p90, eng)
+    assert "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT" in str(exc.value)
