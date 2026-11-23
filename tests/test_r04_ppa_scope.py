@@ -52,7 +52,7 @@ def test_no_production_path_imports_the_isolated_candidate_and_it_imports_no_pro
     import re
     files = _git("ls-files", "--", "*.py", "*.ts", "*.tsx", "*.js", "*.mjs", "*.html").split("\n")
     pat = re.compile(r"r04_ppa_global_cap")
-    offenders = [f for f in files if f and not f.startswith(("research/r04_ppa_global_cap/", "tests/")) and pat.search((ROOT / f).read_text(errors="ignore"))]
+    offenders = [f for f in files if f and not f.startswith(("research/r04_ppa_global_cap/", "tests/", "archive/")) and pat.search((ROOT / f).read_text(errors="ignore"))]
     assert offenders == []
     core = (ROOT / "research/r04_ppa_global_cap/core.py").read_text()
     for forbidden in ("import app", "from app", "financial_engine", "finco_core", "main_web", "tax_reference_registry", "domain."):

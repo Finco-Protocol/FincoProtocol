@@ -6,7 +6,6 @@
 /.github/                     @xofisamba
 /scripts/ci/                  @xofisamba
 /tests/                       @xofisamba
-/.test_durations              @xofisamba
 /pytest.ini                   @xofisamba
 /requirements*.txt            @xofisamba
 /constraints.txt              @xofisamba

@@ -269,12 +269,11 @@ def test_opex_390px_no_document_overflow():
         import pytest
         pytest.skip("playwright not installed")
     import os
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
 
     html = _build_opex_fixture_html()
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            executable_path=_CHROMIUM,
+            **({"executable_path": _CHROMIUM} if os.path.exists(_CHROMIUM) else {}),
             args=_PW_ARGS,
         )
         page = browser.new_page(viewport={"width": 390, "height": 844})
@@ -312,12 +311,11 @@ def test_opex_1280px_desktop_no_overflow_columns_visible():
         import pytest
         pytest.skip("playwright not installed")
     import os
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
 
     html = _build_opex_fixture_html()
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            executable_path=_CHROMIUM,
+            **({"executable_path": _CHROMIUM} if os.path.exists(_CHROMIUM) else {}),
             args=_PW_ARGS,
         )
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -354,12 +352,11 @@ def test_opex_390px_editable_row_reachable():
         import pytest
         pytest.skip("playwright not installed")
     import os
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
 
     html = _build_opex_fixture_html()
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            executable_path=_CHROMIUM,
+            **({"executable_path": _CHROMIUM} if os.path.exists(_CHROMIUM) else {}),
             args=_PW_ARGS,
         )
         page = browser.new_page(viewport={"width": 390, "height": 844})

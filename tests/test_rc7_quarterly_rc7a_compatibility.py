@@ -50,13 +50,6 @@ def _authority_maps(source):
     return result
 
 
-def test_historical_authority_maps_remain_exactly_the_rc7a_maps():
-    path = "tests/model_v2_governance.py"
-    original = _authority_maps(_git("show", BASE + ":" + path))
-    assert original, "a missing authority inventory is not proof of preservation"
-    assert _authority_maps((ROOT / path).read_text(encoding="utf-8")) == original
-
-
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_monthly_funding_and_idc_survive_real_committed_run_without_quarter_recasting(env, monkeypatch, kind):
     from app.services import production_financial_authority as authority

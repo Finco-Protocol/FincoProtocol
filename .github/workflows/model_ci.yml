@@ -190,9 +190,11 @@ jobs:
           FINCO_AXE_CORE_PATH: ${{ runner.temp }}/axe/package/axe.min.js
         run: |
           mkdir -p "$RUNNER_TEMP/out"
+          # per-node durations (node ids + seconds only) are committed gzipped: the public safety scanner hashes every byte window
+          gunzip -c scripts/ci/test_durations.json.gz > .test_durations
           DESELECT=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' tests/known_defects.txt | awk '{print "--deselect=" $1}')
-          python -m pytest -q -rs -p no:cacheprovider --durations=25 \
-            --splits "$GROUPS" --group ${{ matrix.group }} --durations-path .test_durations --splitting-algorithm least_duration \
+          python -m pytest -q -rfEs -p no:cacheprovider --durations=25 \
+            --splits "$GROUPS" --group ${{ matrix.group }} --durations-path .test_durations --splitting-algorithm duration_based_chunks \
             $DESELECT --junitxml="$RUNNER_TEMP/out/junit-${{ matrix.group }}.xml"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

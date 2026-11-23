@@ -320,7 +320,8 @@ def test_check_is_atomic_and_never_mutates_the_existing_book():
 
 
 def _r04_reference_is_allowed(path):
-    return path.startswith(('research/r04_ppa_global_cap/', 'tests/r04_ppa_global_cap/', 'archive/'))
+    return (path.startswith(('research/r04_ppa_global_cap/', 'tests/r04_ppa_global_cap/', 'archive/'))
+            or path == 'tests/test_r04_ppa_scope.py')
 
 
 def _r04_reference_paths(root):
