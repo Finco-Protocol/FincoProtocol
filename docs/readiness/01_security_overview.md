@@ -56,7 +56,7 @@ Evidence: CODE `app/runtime/model_execution.py`; TEST `tests/test_p0a_model_exec
 
 Limit: Automated scans are controls, not guarantees that no secret, vulnerability or confidential item is present.
 
-Evidence: CI `.github/workflows/public_safety_and_smoke.yml`; CI `.github/workflows/dependency_security_audit.yml`
+Evidence: CI `.github/workflows/model_ci.yml`; CI `.github/workflows/model_ci.yml`
 
 ### Encryption at rest
 

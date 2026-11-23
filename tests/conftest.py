@@ -141,11 +141,12 @@ def _suite_acquisition_service_lifecycle():
 
 
 # ── Model CI: a missing dependency is a failure, never a silent skip ────────────────────────────────────────────────────
-# With FINCO_CI_STRICT_SKIPS=1 (set by .github/workflows/model_ci.yml) a test or module skipped because a package,
-# browser or tool is absent fails instead. Ordinary, intentional skips (documented reasons) are unaffected and are
+# With FINCO_CI_STRICT_SKIPS=1 (set by .github/workflows/model_ci.yml) a test or module skipped because a Python
+# package, Playwright/Chromium or axe-core is absent fails instead (optional external tools such as LibreOffice stay
+# visible SKIPPED). Ordinary, intentional skips (documented reasons) are unaffected and are
 # still reported as SKIPPED, never as passed.
 _MISSING_DEPENDENCY = re.compile(
-    r"could not import|no module named|not installed|playwright|chromium|executable doesn't exist|requires? (?:the )?(?:openssl|docker|node)",
+    r"could not import|no module named|playwright|chromium|browser|executable doesn't exist|axe",
     re.IGNORECASE,
 )
 

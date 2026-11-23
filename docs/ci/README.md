@@ -23,7 +23,7 @@ One workflow, one required check, ordinary tools.
 ## Rules the gate enforces
 
 * **No silent skip for a missing dependency.** `FINCO_CI_STRICT_SKIPS=1` turns any test/module skip whose reason names a
-  missing import, browser or tool into a failure (`tests/conftest.py`). Intentional skips stay visible as SKIPPED.
+  missing Python package, Playwright/Chromium or axe-core into a failure (`tests/conftest.py`). Intentional skips and optional external tools (e.g. LibreOffice) stay visible as SKIPPED, never PASS.
 * **Collection errors and empty groups fail** (plain pytest exit codes 2 / 5). Fixture-only modules are fine.
 * **Every node runs in exactly one group.** Each group records its full collection digest and its selection
   (`FINCO_CI_COUNTS`); `scripts/ci/check_groups.py` requires identical collections, disjoint selections, every

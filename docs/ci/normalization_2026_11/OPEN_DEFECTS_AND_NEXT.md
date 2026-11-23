@@ -10,15 +10,28 @@
 
 ## Known baseline defects (deselected from required groups, red in `model_known_defects.yml`)
 
-`tests/known_defects.txt`, 26 nodes, each failing identically on accepted main `707e68b2` with Playwright 1.63.0 / Chromium 157:
+`tests/known_defects.txt`: **63 nodes**, none of which ever ran in hosted CI before (V4 shards had no browser; the
+roles ran only in the parked V5 candidate). Each was reproduced failing **identically on accepted main `707e68b2`**
+(run alone, Playwright 1.63.0 / Chromium 157) except where noted:
 
-* 10 legacy-workbook / Radar browser tests (cost batch/grid stage toggle and CSRF-less scenario POST, data-center HTMX
-  KPIs and navigation, golden flows A/B/C hidden tabs, Radar N04 refresh button).
-* 16 nodes of browser roles that had never run on hosted CI (only in the parked V5 candidate): U1 (10), U2 (2) and
-  WF-06B (4) — 404 assets / superseded layouts after later UX PRs.
+| Module | Nodes | Symptom (first assertion) |
+|---|---|---|
+| cost batch save / cost grid / cost editing UX v2 browser | 4 + 6 | legacy workbook stage toggle not clickable; scenario/stale-hash POSTs → 403 (no CSRF token in the harness); scroll/focus |
+| data center browser acceptance | 2 | debt KPI testid missing; revenue navigation never happens |
+| model golden flows browser | 3 | legacy `#tab-inputs` / `#tab-overview` hidden behind tab groups |
+| radar N04 browser, JEV panel browser | 1 + 10 | Radar refresh button missing; JEV interpretation renders `—` |
+| U1 / U2 / WF-06B browser roles | 10 + 2 + 4 | 404 asset, superseded workbench layouts |
+| model React PoC browser acceptance | 2 | canonical Run refused: "Draft changed since page loaded" |
+| model v7 diagnostics browser | 3 | layout metrics / late-read wait timeout |
+| m3 two-driver sensitivity, M7 BESS workflow, SC34 journeys browser | 1 + 2 + 1 | locator not visible / timeout |
+| protocol shell API beta | 1 | nav item "Roadmap" missing (the old browser role excluded it with `-k`) |
+| P5 verified assets browser | 10 | needed an external server (now has a live-server fixture); `/verified` became "Trust & Verification" |
+| UX-PR1 browser role density | 1 | hosted runner font metrics only; passes locally on main and branch |
 
-Each needs a product decision: either the UI regressed (fix the product, separate PR + review) or the harness is
-stale (update the test against the current, reviewed UI). Removing a line is part of the fixing PR.
+Each needs a product decision: either the UI regressed (fix the product in a separate reviewed PR) or the harness
+is stale (update the test against the current, reviewed UI). Removing a line is part of the fixing PR. The
+LibreOffice interoperability check (`test_rc7_institutional_reporting_v2::test_workbook_opens_in_libreoffice`) is a
+visible SKIPPED (LibreOffice is not installed on the runners); install it in a later PR if that check must gate.
 
 ## Findings from the negative-control matrix (`NEGATIVE_MATRIX.csv`)
 

@@ -35,5 +35,5 @@ jobs:
         env:
           FINCO_CI_STRICT_SKIPS: '1'
         run: |
-          NODES=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' tests/known_defects.txt | awk '{print $1}')
-          python -m pytest -q -rfEs -p no:cacheprovider $NODES
+          mapfile -t NODES < <(python scripts/ci/known_defects.py)
+          python -m pytest -q -rfEs -p no:cacheprovider "${NODES[@]}"

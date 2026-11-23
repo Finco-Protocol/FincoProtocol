@@ -274,3 +274,43 @@ def test_known_gap_sessions_are_stateless_and_not_revocable():
     src = (ROOT / "app" / "auth.py").read_text(encoding="utf-8")
     assert "Server-side session data (no DB, no Redis)" in src
     assert not re.search(r"revoke|revocation|session_store|blocklist", src, re.IGNORECASE)
+
+
+# Current CSRF call-site inventory (replaces the successor-gated inventory retired with CI governance V4/V5).
+# Any added OR removed validate_csrf_token caller fails until this list is updated in a reviewed change (CODEOWNERS on tests/).
+CSRF_CALL_SITES = frozenset({
+    "app/crypto_ui.py", "app/library/router.py", "app/services/project_lifecycle_service.py",
+    "app/v2/acquisition_router.py", "app/v2/bess_candidate_router.py", "app/v2/bess_setup_router.py",
+    "app/v2/bess_workspace_router.py", "app/v2/capex_profile_router.py", "app/v2/developer_decision_router.py",
+    "app/v2/grid_router.py", "app/v2/import_router.py", "app/v2/investor_f4_router.py",
+    "app/v2/quarterly_calendar_router.py", "app/v2/react_goal_seek.py", "app/v2/react_new_project.py",
+    "app/v2/router.py", "app/workbook/mutation_csrf.py", "main_web.py",
+})
+V2_ROUTER_CSRF_HANDLERS = frozenset({"v2_revenue_commercial_stress", "v2_revenue_contracts", "v2_workbook_run", "v2_workbook_update"})
+
+
+def test_known_gap_state_changing_posts_have_no_csrf_token():
+    """Known gap (registry gap.csrf_login_only): CSRF tokens cover only the listed call sites; other state-changing
+    requests rely on SameSite cookies. The exact inventory keeps the gap description honest and makes any removal
+    of an existing CSRF check fail."""
+    import ast
+    users = set()
+    for path in list(ROOT.joinpath("app").rglob("*.py")) + [ROOT / "main_web.py"]:
+        rel = path.relative_to(ROOT).as_posix()
+        if rel.startswith("app/trust_readiness/"):
+            continue
+        if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
+            users.add(rel)
+    assert users == CSRF_CALL_SITES
+    tree = ast.parse((ROOT / "app/v2/router.py").read_text(encoding="utf-8"))
+    protected = {
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                and call.func.id == "validate_csrf_token" for call in ast.walk(node))
+    }
+    assert protected == V2_ROUTER_CSRF_HANDLERS
+    update = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "v2_workbook_update")
+    gate = next(node for node in update.body if isinstance(node, ast.If)
+                and ast.unparse(node.test) == "field_id == 'debt.financing.instruments'")
+    assert any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+               and call.func.id == "validate_csrf_token" for call in ast.walk(gate))

@@ -7,15 +7,15 @@ Grouped by what it takes to close each item.
 
 ### All required CI gates green on the exact head
 
-**Implemented and verified.** Pull requests run the safety scan, compile check, full test suite, dependency audit and the frozen-namespace governance guards.
+**Implemented and verified.** Pull requests run the safety scan, compile check, full test suite, dependency audit, the F01 financial acceptance and the production boot smoke under one required check.
 
-Evidence: CI `.github/workflows/pr_compile_and_safety.yml`
+Evidence: CI `.github/workflows/model_ci.yml`; CI `.github/workflows/model_ci.yml`
 
 ### Public repository contains synthetic data only
 
 **Implemented and verified.** Client data, project-specific workbooks, production databases, credentials and keys must not be committed, and the safety scan checks for them.
 
-Evidence: DOC `docs/PUBLIC_DATA_POLICY.md`; CI `.github/workflows/public_safety_and_smoke.yml`
+Evidence: DOC `docs/PUBLIC_DATA_POLICY.md`; CI `.github/workflows/model_ci.yml`
 
 ### No unverified certification or compliance claims
 
