@@ -92,11 +92,13 @@ def check(root, groups, known_defects, deferred=frozenset(), full=False):
         problems.append("STANDARD mode but a FULL accounting file exists (mode wiring inconsistent)")
     if problems:
         return problems
+    # The FULL job invokes pytest with the exact deferred node id(s), so its own collection is exactly those node(s):
+    # it is reconciled by selection (== deferred, checked above) and the deferred nodes' membership in the groups' full
+    # collection (listed_present, below), not by comparing its collection digest with the groups'.
+    if full_counts is not None and full_counts["collected"] != len(deferred):
+        return ["FULL job collected %d node(s), expected exactly the %d deferred" % (full_counts["collected"], len(deferred))]
     digests = {c["collected_digest"] for c in counts.values()}
     totals = {c["collected"] for c in counts.values()}
-    if full_counts is not None:
-        digests.add(full_counts["collected_digest"])
-        totals.add(full_counts["collected"])
     if len(digests) != 1 or len(totals) != 1:
         return ["groups collected different node sets: %s" % sorted(totals)]
     total = totals.pop()

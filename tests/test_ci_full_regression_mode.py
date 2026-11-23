@@ -163,8 +163,9 @@ def _fixture(tmp_path, groups=(("tests/test_a.py::test_1", "tests/test_a.py::tes
     if full is not None:
         d = root / "full-regression"
         d.mkdir(parents=True)
+        # As in CI: the full job runs pytest on the exact deferred node id(s), so it collects only those.
         (d / "counts-full.json").write_text(json.dumps(dict(
-            collected=len(collected), collected_digest=_digest(collected), selected=list(full), listed_present=list(listed))))
+            collected=len(full), collected_digest=_digest(full), selected=list(full), listed_present=list(listed))))
         _junit(d / "junit-full.xml", full, full_outcome)
     return root
 
@@ -202,6 +203,15 @@ def test_accounting_positive_full(tmp_path, capsys):
 ])
 def test_accounting_negatives(tmp_path, kwargs, full):
     assert _check(_fixture(tmp_path, **kwargs), full=full)
+
+
+def test_accounting_rejects_a_full_job_that_collected_more_than_the_deferred_nodes(tmp_path):
+    root = _fixture(tmp_path, full=[DEF])
+    path = root / "full-regression" / "counts-full.json"
+    data = json.loads(path.read_text())
+    data["collected"] = 5
+    path.write_text(json.dumps(data))
+    assert _check(root, full=True)
 
 
 def test_accounting_rejects_a_node_listed_as_both_known_and_deferred(tmp_path):
