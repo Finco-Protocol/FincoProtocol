@@ -286,8 +286,8 @@ CONTROLS: tuple[ReadinessItem, ...] = (
         "Every pull request runs a public-repository safety scan, a compile check, the full test "
         "suite and a pinned dependency vulnerability audit.",
         (
-            _ci(".github/workflows/public_safety_and_smoke.yml", "python tools/public_safety_scan.py"),
-            _ci(".github/workflows/dependency_security_audit.yml", "pip-audit"),
+            _ci(".github/workflows/model_ci.yml", "python tools/public_safety_scan.py"),
+            _ci(".github/workflows/model_ci.yml", "pip-audit"),
         ),
         "Automated scans are controls, not guarantees that no secret, vulnerability or confidential "
         "item is present.",
@@ -451,9 +451,9 @@ RELEASE_CHECKLIST: tuple[ReadinessItem, ...] = (
     ReadinessItem(
         "release.ci_exact_head", "release", "All required CI gates green on the exact head",
         S.IMPLEMENTED_VERIFIED,
-        "Pull requests run the safety scan, compile check, full test suite, dependency audit and "
-        "the frozen-namespace governance guards.",
-        (_ci(".github/workflows/pr_compile_and_safety.yml", "compileall"),),
+        "Pull requests run the safety scan, compile check, full test suite, dependency audit, the F01 "
+        "financial acceptance and the production boot smoke under one required check.",
+        (_ci(".github/workflows/model_ci.yml", "compileall"), _ci(".github/workflows/model_ci.yml", "name: required")),
     ),
     ReadinessItem(
         "release.synthetic_only_repository", "release", "Public repository contains synthetic data only",
@@ -462,7 +462,7 @@ RELEASE_CHECKLIST: tuple[ReadinessItem, ...] = (
         "not be committed, and the safety scan checks for them.",
         (
             _doc("docs/PUBLIC_DATA_POLICY.md", "generic, synthetic, or explicitly public data"),
-            _ci(".github/workflows/public_safety_and_smoke.yml", "python tools/public_safety_scan.py"),
+            _ci(".github/workflows/model_ci.yml", "python tools/public_safety_scan.py"),
         ),
     ),
     ReadinessItem(

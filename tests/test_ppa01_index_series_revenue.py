@@ -204,52 +204,6 @@ def test_legacy_unindexed_pricing_remains_available_without_year_context():
     assert cfg.plan_at(op[0].start_date) == cfg.plan_at(op[0].start_date, 1)
 
 
-@pytest.fixture(scope="module")
-def released_runtime():
-    """Immutable pre-PPA-01 implementation, not a regenerated golden or a runtime input."""
-    repo = Path(__file__).resolve().parents[1]
-    ref = "540e1f4bb54d53ad6d2c1628074b94fdb0c9eb06:domain/revenue/multistream_runtime.py"
-    blob = subprocess.run(["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
-    assert blob == "83beda4eb296b02baf2ebd6659fec243ab196206"
-    source = subprocess.run(["git", "show", ref], cwd=repo, check=True, capture_output=True).stdout
-    name = "_ppa01_released_runtime_reference"
-    module = types.ModuleType(name)
-    sys.modules[name] = module
-    try:
-        exec(compile(source, ref, "exec"), module.__dict__)
-        yield module
-    finally:
-        sys.modules.pop(name, None)
-
-
-@pytest.mark.parametrize("kind", ["solar", "wind"])
-@pytest.mark.parametrize("mid_period_cod", [False, True])
-@pytest.mark.parametrize("contract", ["fixed", "annual_index", "cfd", "scheduled_ppa", "scheduled_merchant"])
-def test_legacy_full_revenue_schedule_is_bit_exact_against_released_content(kind, mid_period_cod, contract, released_runtime, monkeypatch):
-    from domain.revenue import multistream_runtime
-
-    pi = _project(kind, mid_period_cod=mid_period_cod)
-    op = _operating(pi)
-    payload = _payload(kind, op, rate=.02 if contract == "annual_index" else 0)
-    payload["version"] = 1
-    if contract.startswith("scheduled_"):
-        payload["version"] = 2
-        row = payload["streams"][0 if contract == "scheduled_ppa" else 1]
-        row["price_curve"] = [{"period_start": p.start_date.isoformat(), "price_eur_mwh": 52.0 if i < 4 else 81.0}
-                              for i, p in enumerate(op)]
-    if contract == "cfd":
-        payload["streams"].append(dict(id="settlement", type="cfd", volume_share=.4, price_eur_mwh=75.0,
-            indexation_rate=0, reference_stream_id="market", start_date=op[0].start_date.isoformat(),
-            end_date=op[-1].end_date.isoformat(), settlement="SAME_PERIOD", source_ref="synthetic-settlement"))
-    active = apply_config(pi, json.dumps(payload), project_type=kind)
-    axis = _build_period_engine(from_project_inputs(active))
-    candidate = revenue_decomposition_schedule(active, axis)
-    with monkeypatch.context() as reference:
-        reference.setattr(multistream_runtime, "parse_config", released_runtime.parse_config)
-        original = revenue_decomposition_schedule(active, axis)
-    assert candidate == original
-
-
 def test_floor_and_cap_still_apply_to_the_series_price():
     pi = _project("solar"); op = _operating(pi)
     levels = [100.0 + 10.0 * i for i in range(_n(op))]

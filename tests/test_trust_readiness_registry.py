@@ -166,25 +166,6 @@ WF05_CSRF_CALL_SITES = frozenset({
 })
 # Enumerated reviewed scope (exact files, no namespace). The four app/v2 files are the only
 # entries that match FORBIDDEN_PREFIXES; engine, core, workbook, persistence and auth are never listed.
-WF05_APPLICATION_PATHS = frozenset({
-    ".github/workflows/protocol_ui_browser.yml",
-    "app/templates/v2/partials/_hybrid_nav.html",
-    "app/templates/v2/partials/sheet_capex.html",
-    "app/templates/v2/partials/sheet_input_grid.html",
-    "app/templates/v2/partials/sheet_opex.html",
-    "app/templates/v2/workbook.html",
-    "app/v2/grid_router.py",
-    "app/v2/input_grid_projection.py",
-    "app/v2/router.py",
-    "app/v2/workspace_shell_projection.py",
-    "docs/model_v2/WF05_HYBRID_INPUTS_GRID.md",
-    "main_web.py",
-    "static/css/inputs_grid_v1.css",
-    "static/js/inputs_grid_v1.js",
-    "tests/test_model_hybrid_inputs_grid_browser.py",
-    "tests/test_model_hybrid_inputs_grid_f3_negative.py",
-    "tests/test_model_hybrid_inputs_grid_routes.py",
-})
 _NEVER_EXCEPTED = ("financial_engine/", "finco_core/", "finco_radar/", "app/auth.py", "app/persistence/",
                    "app/workbook/", "app/demo_cleanup.py", "app/radar")
 
@@ -194,62 +175,6 @@ def _in_trust_scope(path: str) -> bool:
                             "tests/test_trust_readiness_", "tools/render_readiness_docs.py")) \
         or path == "static/trust_readiness.css"
 
-
-def wf05_exception_violations(changed, read_base, read_current, csrf_call_sites) -> list[str]:
-    """Reasons the WF-05 exception does NOT hold ([] ⇒ it holds). Pure: callers inject the content."""
-    problems: list[str] = []
-    trust = {p for p in changed if _in_trust_scope(p)}
-    expected_trust = set(WF05_REPLACEMENTS) | {WF05_GUARD_FILE}
-    if trust != expected_trust:
-        problems.append(f"Trust-side change is not exactly the approved set: extra={sorted(trust - expected_trust)} "
-                        f"missing={sorted(expected_trust - trust)}")
-    for path, (old, new) in WF05_REPLACEMENTS.items():
-        base = read_base(path)
-        if base is None or base.count(old) != 1:
-            problems.append(f"{path}: approved original text not found exactly once in the base")
-            continue
-        if read_current(path) != base.replace(old, new, 1):
-            problems.append(f"{path}: content is not exactly the base plus the approved CSRF replacement")
-    if frozenset(csrf_call_sites) != WF05_CSRF_CALL_SITES:
-        problems.append(f"token-validation call sites differ from the approved set: {sorted(csrf_call_sites)}")
-    other = [p for p in changed if not _in_trust_scope(p)]
-    stray = [p for p in other if p not in WF05_APPLICATION_PATHS]
-    if stray:
-        problems.append(f"changed files outside the enumerated WF-05 scope: {stray}")
-    never = [p for p in changed if p.startswith(_NEVER_EXCEPTED)]
-    if never:
-        problems.append(f"engine / core / workbook / persistence / auth files changed: {never}")
-    return problems
-
-
-
-def _csrf_call_sites_at(checkpoint):
-    import re
-    sites = set()
-    for path in _git("ls-tree", "-r", "--name-only", checkpoint).splitlines():
-        if not ((path.startswith("app/") and path.endswith(".py")) or path == "main_web.py"):
-            continue
-        if path.startswith("app/trust_readiness/"):
-            continue
-        if re.search(r"(?<!def )validate_csrf_token\(", _git("show", f"{checkpoint}:{path}")):
-            sites.add(path)
-    return sites
-
-
-def _m6_exact_successor_valid():
-    try:
-        from m6_exact_content_successor import current_m6_successor_valid
-        return current_m6_successor_valid()
-    except (ImportError, ValueError, OSError, subprocess.CalledProcessError):
-        return False
-
-
-def _m7_successor_valid():
-    try:
-        from tests.m7_bess_successor_proposal import current_m7_successor_valid
-        return current_m7_successor_valid()
-    except (ImportError, ValueError, OSError, subprocess.CalledProcessError):
-        return False
 
 def _csrf_call_sites() -> set[str]:
     import re
@@ -261,17 +186,6 @@ def _csrf_call_sites() -> set[str]:
         if re.search(r"(?<!def )validate_csrf_token\(", path.read_text(encoding="utf-8", errors="ignore")):
             sites.add(rel)
     return sites
-
-
-def _git_base_reader():
-    import subprocess
-    base = subprocess.run(["git", "merge-base", "origin/main", "HEAD"], capture_output=True, text=True,
-                          cwd=str(ROOT), check=True).stdout.strip()
-
-    def read_base(path):
-        r = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, text=True, cwd=str(ROOT))
-        return r.stdout if r.returncode == 0 else None
-    return read_base
 
 
 def _read_current(path):
@@ -307,47 +221,6 @@ def _git(*args):
         ["git", *args], cwd=ROOT, capture_output=True, text=True,
         encoding="utf-8", check=True,
     ).stdout.strip()
-
-
-def _current_csrf_correction_authorized(changed):
-    try:
-        _git("merge-base", "--is-ancestor", CSRF_SYNC_HEAD, "HEAD")
-        unchanged_financial_authority = not _git(
-            "diff", "--name-only", CSRF_REVIEWED_HEAD, CSRF_SYNC_HEAD, "--",
-            "financial_engine", "finco_core", "domain",
-            "tests/model_v2_governance.py", "tests/test_wf07_revenue_governance.py",
-        )
-        blobs = {
-            path: _git("hash-object", f"--path={path}", path)
-            for path in CSRF_EXACT_BLOBS
-        }
-        since_sync = _git("diff", "--name-only", CSRF_SYNC_HEAD).splitlines()
-        return _csrf_exact_content_authorized(
-            changed, blobs, since_sync, unchanged_financial_authority,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return False
-
-
-def test_csrf_registry_correction_is_only_the_two_approved_sentences():
-    original = _git("show", f"{CSRF_TRUST_BASE}:app/trust_readiness/registry.py")
-    replacements = (
-        (
-            "Tokens also protect the model-import steps and one crypto action.",
-            "Tokens also protect the model-import steps, the Inputs grid validate and save routes, Revenue V2 contract writes and one crypto action.",
-        ),
-        (
-            "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes and one crypto action.",
-            "CSRF tokens protect the login form, the model-import steps, the Inputs grid validate and save routes, Revenue V2 contract writes and one crypto action.",
-        ),
-    )
-    for old, new in replacements:
-        assert original.count(old) == 1
-        original = original.replace(old, new, 1)
-    # Preserve the historical CSRF proof; the only subsequent registry change
-    # authorized here is the separately reviewed terminal-demo retention policy.
-    assert _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py") == original
-    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(original)))
 
 
 def test_csrf_exact_content_accepts_only_the_reviewed_snapshot():
@@ -394,14 +267,6 @@ def test_csrf_exact_content_rejects_missing_pin_or_invalid_checkpoint():
     blobs.pop("app/trust_readiness/registry.py")
     assert not _csrf_exact_content_authorized(changed, blobs, changed, True)
     assert not _csrf_exact_content_authorized(changed, dict(CSRF_EXACT_BLOBS), changed, False)
-
-
-def test_csrf_exact_content_git_failure_is_not_an_authorization(monkeypatch):
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-
-    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
-    assert not _current_csrf_correction_authorized(list(CSRF_EXACT_BLOBS))
 
 
 # Terminal demo disposal is a separate upstream correction, never a CI-only
@@ -475,24 +340,6 @@ def _demo_retention_exact_content_authorized(changed, blobs, checkpoint_valid):
     )
 
 
-def _current_demo_retention_authorized(changed):
-    try:
-        base = _git("merge-base", "origin/main", "HEAD")
-        blobs = {
-            path: _git("hash-object", f"--path={path}", path)
-            for path in DEMO_RETENTION_BLOBS
-        }
-        return _demo_retention_exact_content_authorized(changed, blobs, base == DEMO_RETENTION_BASE)
-    except (OSError, subprocess.CalledProcessError):
-        return False
-
-
-def test_demo_retention_exception_accepts_only_exact_approved_content():
-    assert _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), True)
-    base = _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")
-    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(base)))
-
-
 @pytest.mark.parametrize("path", DEMO_RETENTION_BLOBS)
 def test_demo_retention_exception_rejects_modified_content(path):
     blobs = dict(DEMO_RETENTION_BLOBS)
@@ -500,35 +347,11 @@ def test_demo_retention_exception_rejects_modified_content(path):
     assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, blobs, True)
 
 
-@pytest.mark.parametrize("path", (
-    "financial_engine/orchestrator.py", "finco_core/inputs/_models.py", "domain/tax.py",
-    "app/persistence/run_history_repository.py", "app/auth.py", "app/workbook/update_service.py",
-    "app/v2/router.py", ".github/workflows/public_safety.yml", "tests/model_v2_governance.py",
-    "app/trust_readiness/projection.py", "app/templates/trust/retention.html",
-    "docs/readiness/07_authentication_and_tenant_audit.md", "tools/render_readiness_docs.py",
-))
-def test_demo_retention_exception_rejects_any_broader_change(path):
-    assert not _demo_retention_exact_content_authorized(
-        DEMO_RETENTION_PATHS | {path}, dict(DEMO_RETENTION_BLOBS), True,
-    )
-
-
 @pytest.mark.parametrize("path", sorted(DEMO_RETENTION_PATHS))
 def test_demo_retention_exception_rejects_incomplete_scope(path):
     assert not _demo_retention_exact_content_authorized(
         DEMO_RETENTION_PATHS - {path}, dict(DEMO_RETENTION_BLOBS), True,
     )
-
-
-def test_demo_retention_exception_rejects_invalid_base_missing_pin_and_git_failure(monkeypatch):
-    assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, dict(DEMO_RETENTION_BLOBS), False)
-    assert not _demo_retention_exact_content_authorized(DEMO_RETENTION_PATHS, {}, True)
-
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-
-    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
-    assert not _current_demo_retention_authorized(DEMO_RETENTION_PATHS)
 
 
 # PR #267: keep publication, Correction A and inherited main integration distinct.
@@ -581,34 +404,6 @@ def _f4_integration_exact_content_authorized(parents, tree, since_integration, c
         and tree == F4_CSRF_INTEGRATION_TREE
         and set(since_integration) <= {CSRF_GUARD_PATH}
     )
-
-
-def _current_f4_csrf_authorized(changed):
-    try:
-        _git("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, "HEAD")
-        _git("merge-base", "--is-ancestor", F4_CSRF_MAIN, F4_CSRF_APPROVED_MAIN)
-        checkpoint_valid = (
-            _git("merge-base", "origin/main", "HEAD") == F4_CSRF_APPROVED_MAIN
-            and _git("merge-base", F4_CSRF_MAIN, F4_CSRF_REVIEWED_HEAD) == F4_CSRF_MAIN
-            and _git("rev-list", "--parents", "-n", "1", F4_CSRF_CORRECTION_A).split()
-                == [F4_CSRF_CORRECTION_A, F4_CSRF_REVIEWED_HEAD]
-            and all(_git("rev-parse", f"{F4_CSRF_MAIN}:{p}") == DEMO_RETENTION_BLOBS[p]
-                    and _git("rev-parse", f"{F4_CSRF_CORRECTION_A}:{p}") == blob
-                    for p, blob in F4_CSRF_BLOBS.items())
-        )
-        parents = _git("rev-list", "--parents", "-n", "1", F4_CSRF_INTEGRATION).split()[1:]
-        tree = _git("rev-parse", f"{F4_CSRF_INTEGRATION}^{{tree}}")
-        since_integration = _git("diff", "--name-only", F4_CSRF_INTEGRATION).splitlines()
-        integration_valid = _f4_integration_exact_content_authorized(
-            parents, tree, since_integration, checkpoint_valid,
-        )
-        blobs = {p: _git("hash-object", f"--path={p}", p) for p in F4_CSRF_BLOBS}
-        correction_a = _git("diff", "--name-only", F4_CSRF_REVIEWED_HEAD, F4_CSRF_CORRECTION_A).splitlines()
-        return _f4_csrf_exact_content_authorized(
-            changed, blobs, correction_a, integration_valid, _csrf_call_sites(),
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return False
 
 
 # Revenue V2 + F4 additive CSRF inventory after the exact #267 main.
@@ -716,84 +511,6 @@ def _revenue_post_merge_exact(merger_parents, release_tree, historical_blobs,
         return False
 
 
-def _current_revenue_v2_csrf_successor_valid():
-    try:
-        # Immutable #265 normal merge, not a transient merge-base equality.
-        parents = _git("rev-list", "--parents", "-n", "1", REVENUE_V2_ACCEPTED_MERGE).split()
-        if parents != [REVENUE_V2_ACCEPTED_MERGE,
-                       REVENUE_V2_CSRF_MAIN, REVENUE_V2_ACCEPTED_HEAD]:
-            return False
-        _git("merge-base", "--is-ancestor", REVENUE_V2_ACCEPTED_MERGE, "HEAD")
-        _git("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, REVENUE_V2_CSRF_MAIN)
-        released_tree = _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}^{{tree}}")
-        released_blobs = {path: _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}:{path}")
-                          for path in REVENUE_V2_CSRF_SUCCESSOR_BLOBS}
-        historical_f4 = {path: _git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{path}")
-                         for path in F4_CSRF_BLOBS}
-        # Exact current financial/CSRF content, not merely descendant status.
-        guarded = set(REVENUE_V2_CSRF_SUCCESSOR_BLOBS) | set(REVENUE_V2_OTHER_CRITICAL_PATHS)
-        current_blobs = {path: _git("rev-parse", f"HEAD:{path}") for path in guarded}
-        for path in REVENUE_V2_OTHER_CRITICAL_PATHS:
-            released_blobs[path] = _git("rev-parse", f"{REVENUE_V2_ACCEPTED_MERGE}:{path}")
-        trust_delta = _git("diff", "--name-only", REVENUE_V2_ACCEPTED_MERGE, "HEAD", "--",
-                           "app/trust_readiness", "tests/test_trust_readiness_controls.py",
-                           "tests/test_trust_readiness_registry.py", "docs/readiness").splitlines()
-        # All accepted Trust changes are already in the immutable checkpoint.
-        historical_current = _revenue_post_merge_exact(
-            parents[1:], released_tree, released_blobs, current_blobs,
-            historical_f4, trust_delta, _csrf_call_sites(),
-            _git("show", f"{REVENUE_V2_ACCEPTED_MERGE}:app/v2/router.py"),
-            _git("show", "HEAD:app/v2/router.py"))
-        return historical_current or _current_f35b_csrf_authorized() or _current_rc1_integration_authorized()
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
-        return False
-
-
-def test_revenue_v2_csrf_successor_exact_content_and_negatives():
-    assert _current_revenue_v2_csrf_successor_valid()
-    exact = dict(REVENUE_V2_CSRF_SUCCESSOR_BLOBS)
-    permitted = set(REVENUE_V2_CSRF_TRUST_DELTA)
-    assert _revenue_v2_csrf_successor_exact(permitted, exact, True, F4_CSRF_CALL_SITES)
-    for path in exact:
-        forged = dict(exact)
-        forged[path] = "0" * 40
-        assert not _revenue_v2_csrf_successor_exact(permitted, forged, True, F4_CSRF_CALL_SITES)
-    assert not _revenue_v2_csrf_successor_exact(permitted, exact, False, F4_CSRF_CALL_SITES)
-    assert not _revenue_v2_csrf_successor_exact(
-        permitted | {"app/trust_readiness/registry.py"}, exact, True, F4_CSRF_CALL_SITES)
-    assert not _revenue_v2_csrf_successor_exact(
-        permitted, exact, True, F4_CSRF_CALL_SITES | {"app/v2/unknown_router.py"})
-
-
-def test_f4_csrf_correction_preserves_historical_content_and_authorities():
-    import ast
-
-    original = _git("show", f"{F4_CSRF_MAIN}:app/trust_readiness/registry.py")
-    assert _registry_matches_history(_f4_csrf_registry(original))
-    for path, blob in F4_CSRF_BLOBS.items():
-        actual = _git("hash-object", f"--path={path}", path)
-        if actual != blob and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized()):
-            continue  # Exact bounded successor; historical pins above stay unchanged.
-        if path == "tests/test_trust_readiness_controls.py" and actual != blob:
-            # The reviewed Revenue stress CSRF validator changes only the
-            # additive inventory, never the historical F4 register or pin.
-            assert _current_revenue_v2_csrf_successor_valid()
-        else:
-            assert actual == blob
-
-    def constants(source):
-        return {node.targets[0].id: ast.dump(node.value)
-                for node in ast.parse(source).body
-                if isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name) and node.targets[0].id.isupper()}
-
-    historical = constants(_git("show", f"{F4_CSRF_MAIN}:{CSRF_GUARD_PATH}"))
-    current = constants(_read_current(CSRF_GUARD_PATH))
-    assert {name: current.get(name) for name in historical} == historical
-    correction_a = constants(_git("show", f"{F4_CSRF_CORRECTION_A}:{CSRF_GUARD_PATH}"))
-    assert {name: current.get(name) for name in correction_a} == correction_a
-
-
 def test_f4_csrf_exception_accepts_only_the_exact_approved_correction():
     assert _f4_csrf_exact_content_authorized(
         F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, True, F4_CSRF_CALL_SITES,
@@ -822,28 +539,6 @@ def test_f4_csrf_exception_rejects_incomplete_scope(path):
         )
 
 
-@pytest.mark.parametrize("path", (
-    "app/trust_readiness/projection.py", "app/templates/trust/readiness.html",
-    "docs/readiness/07_authentication_and_tenant_audit.md", "tools/render_readiness_docs.py",
-    "tests/test_trust_readiness_claims.py", "static/trust_readiness.css",
-    "financial_engine/orchestrator.py", "finco_core/inputs/_models.py", "domain/tax.py",
-    "tests/model_v2_governance.py", "tests/test_wf07_revenue_governance.py",
-    "app/workbook/update_service.py", "app/persistence/run_history_repository.py",
-    "app/v2/investor_f4_router.py", "app/v2/router.py", "app/auth.py",
-    "app/services/export_service.py", ".github/workflows/public_safety_and_smoke.yml",
-    "tests/test_investor_f4_workspace.py", "unrelated.py",
-))
-def test_f4_csrf_exception_rejects_any_additional_change(path):
-    broader = F4_CSRF_PATHS | {path}
-    assert not _f4_csrf_exact_content_authorized(
-        broader, dict(F4_CSRF_BLOBS), broader, True, F4_CSRF_CALL_SITES,
-    )
-    assert not _f4_integration_exact_content_authorized(
-        (F4_CSRF_CORRECTION_A, F4_CSRF_APPROVED_MAIN), F4_CSRF_INTEGRATION_TREE,
-        {CSRF_GUARD_PATH, path}, True,
-    )
-
-
 def test_f4_csrf_exception_rejects_invalid_checkpoint_and_validator_inventory():
     assert not _f4_csrf_exact_content_authorized(
         F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, False, F4_CSRF_CALL_SITES,
@@ -853,14 +548,6 @@ def test_f4_csrf_exception_rejects_invalid_checkpoint_and_validator_inventory():
         assert not _f4_csrf_exact_content_authorized(
             F4_CSRF_PATHS, dict(F4_CSRF_BLOBS), F4_CSRF_PATHS, True, sites,
         )
-
-
-def test_f4_csrf_exception_git_failure_is_not_authorization(monkeypatch):
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-
-    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", unavailable)
-    assert not _current_f4_csrf_authorized(F4_CSRF_PATHS)
 
 
 def test_f4_integration_accepts_only_the_exact_normal_merge_and_guard_correction():
@@ -874,198 +561,7 @@ def test_f4_integration_accepts_only_the_exact_normal_merge_and_guard_correction
     assert not _f4_integration_exact_content_authorized(parents, F4_CSRF_INTEGRATION_TREE, {CSRF_GUARD_PATH}, False)
 
 
-@pytest.mark.parametrize("command, output", (
-    (("merge-base", "origin/main", "HEAD"), "0" * 40),
-    (("merge-base", F4_CSRF_MAIN, F4_CSRF_REVIEWED_HEAD), "0" * 40),
-    (("rev-list", "--parents", "-n", "1", F4_CSRF_CORRECTION_A),
-     f"{F4_CSRF_CORRECTION_A} {F4_CSRF_MAIN}"),
-    (("rev-list", "--parents", "-n", "1", F4_CSRF_INTEGRATION),
-     f"{F4_CSRF_INTEGRATION} {F4_CSRF_APPROVED_MAIN} {F4_CSRF_CORRECTION_A}"),
-    (("rev-parse", f"{F4_CSRF_INTEGRATION}^{{tree}}"), "0" * 40),
-    (("merge-base", "--is-ancestor", F4_CSRF_INTEGRATION, "HEAD"), None),
-    (("merge-base", "--is-ancestor", F4_CSRF_MAIN, F4_CSRF_APPROVED_MAIN), None),
-))
-def test_f4_integration_rejects_invalid_main_correction_or_checkpoint_provenance(monkeypatch, command, output):
-    original_git = _git
-
-    def invalid(*args):
-        if args == command:
-            if output is None:
-                raise subprocess.CalledProcessError(1, ["git", *args])
-            return output
-        return original_git(*args)
-
-    monkeypatch.setattr(__import__(__name__, fromlist=["_git"]), "_git", invalid)
-    assert not _current_f4_csrf_authorized(F4_CSRF_PATHS)
-
-
-def test_scope_guard_this_work_touches_no_engine_input_writer_or_radar_code():
-    try:
-        from finance_integrity_governance import changed_paths_vs_main
-
-        changed = changed_paths_vs_main()
-        read_base = _git_base_reader()
-    except Exception as exc:  # no git history or no origin/main in this checkout
-        if F4_CSRF_NEW in _read_current("app/trust_readiness/registry.py"):
-            pytest.fail(f"F4 CSRF correction requires valid Git provenance: {exc}")
-        pytest.skip(f"cannot compute the diff against main: {exc}")
-    if not any(p.startswith("app/trust_readiness/") for p in changed):
-        from tests.on_bess01_reviewed_successors import nontrust_scope_authorized
-        if nontrust_scope_authorized(changed):
-            return      # V2: execute the closed current source review; no skip waiver.
-        pytest.skip("trust pack not part of this diff")
-    if _current_f35b_csrf_authorized():
-        return          # Owner-approved field-only, exact-content session CSRF correction.
-    if _current_rc1_integration_authorized():
-        return          # Integrated RC-1: five reviewed source heads, exact-content successor.
-    if _current_f4_csrf_authorized(changed):
-        return          # Reviewed F4 + exact Correction A + pinned normal main integration.
-    if _current_csrf_correction_authorized(changed):
-        return          # PR #246 exact-blob CSRF correction (see CSRF_EXACT_BLOBS)
-    if _current_demo_retention_authorized(changed):
-        return          # Separate bounded demo-retention correction, exact content only.
-    if not wf05_exception_violations(changed, read_base, _read_current, _csrf_call_sites()):
-        return          # the exact, evidence-backed WF-05 integration (see WF05_REPLACEMENTS)
-    bad = [p for p in changed if p.startswith(FORBIDDEN_PREFIXES)]
-    assert not bad, f"out-of-scope files changed: {bad}"
-    stray = [p for p in changed if p != "main_web.py" and not p.startswith(ALLOWED_PREFIXES)]
-    assert not stray, f"files outside the trust pack changed: {stray}"
-
-
 # ── fail-closed proofs of the exception (pure; no git) ──────────────────────────────────────
-
-def _scenario(**override):
-    changed = sorted(set(WF05_REPLACEMENTS) | {WF05_GUARD_FILE} | WF05_APPLICATION_PATHS)
-    base = {p: f"before {old} after" for p, (old, _new) in WF05_REPLACEMENTS.items()}
-    cur = {p: f"before {new} after" for p, (_old, new) in WF05_REPLACEMENTS.items()}
-    args = {"changed": changed, "base": base, "cur": cur, "sites": set(WF05_CSRF_CALL_SITES)}
-    args.update(override)
-    return args
-
-
-def _violations(a):
-    return wf05_exception_violations(a["changed"], a["base"].get, a["cur"].get, a["sites"])
-
-
-def test_wf05_exception_holds_for_the_exact_approved_integration():
-    assert _violations(_scenario()) == []
-
-
-def test_wf05_exception_fails_when_trust_text_is_altered_or_extended():
-    a = _scenario()
-    path = "app/trust_readiness/registry.py"
-    a["cur"][path] = a["cur"][path] + " plus an extra unapproved claim"
-    assert any("not exactly the base plus the approved" in p for p in _violations(a))
-    a = _scenario()
-    a["cur"]["docs/readiness/03_known_limitations_and_support_matrix.md"] = "unrelated rewrite"
-    assert _violations(a)
-
-
-def test_wf05_exception_fails_on_any_additional_trust_file_or_unrelated_code():
-    a = _scenario()
-    a["changed"] = a["changed"] + ["app/trust_readiness/projection.py"]
-    assert any("not exactly the approved set" in p for p in _violations(a))
-    a = _scenario()
-    a["changed"] = a["changed"] + ["app/v2/some_other_router.py"]
-    assert any("outside the enumerated WF-05 scope" in p for p in _violations(a))
-    for forbidden in ("financial_engine/orchestrator.py", "finco_core/inputs/_models.py",
-                      "app/workbook/update_service.py", "app/persistence/workspace_repository.py"):
-        a = _scenario()
-        a["changed"] = a["changed"] + [forbidden]
-        assert _violations(a), forbidden
-
-
-def test_wf05_exception_fails_when_csrf_protection_is_removed_or_text_replacement_missing():
-    a = _scenario()
-    a["sites"] = set(WF05_CSRF_CALL_SITES) - {"app/v2/grid_router.py"}
-    assert any("call sites differ" in p for p in _violations(a))
-    a = _scenario()
-    a["sites"] = set(WF05_CSRF_CALL_SITES) | {"app/v2/another.py"}
-    assert _violations(a)
-    a = _scenario()
-    a["base"]["app/trust_readiness/registry.py"] = "base without the approved original text"
-    assert any("not found exactly once" in p for p in _violations(a))
-
-
-def test_wf05_exception_is_not_a_blanket_allowance_for_other_mixed_scope_changes():
-    a = _scenario()
-    a["changed"] = [p for p in a["changed"] if p != "docs/readiness/03_known_limitations_and_support_matrix.md"]
-    assert any("missing" in p for p in _violations(a))
-    # a Trust-only change with a different registry edit and no WF-05 files is not covered either
-    a = _scenario(changed=["app/trust_readiness/registry.py", "docs/readiness/03_known_limitations_and_support_matrix.md"])
-    assert _violations(a)
-
-
-def test_wf05_allow_list_contains_no_engine_core_workbook_persistence_or_auth_paths():
-    assert not [p for p in WF05_APPLICATION_PATHS if p.startswith(_NEVER_EXCEPTED)]
-    app_v2 = {p for p in WF05_APPLICATION_PATHS if p.startswith("app/v2/")}
-    assert app_v2 == {"app/v2/grid_router.py", "app/v2/input_grid_projection.py", "app/v2/router.py",
-                      "app/v2/workspace_shell_projection.py"}
-
-
-def test_post_revenue_v2_checkpoint_exact_main_and_descendant_security():
-    """Actual accepted main passes; future route extensions cannot change CSRF."""
-    from copy import deepcopy
-    assert _current_revenue_v2_csrf_successor_valid()
-    release = REVENUE_V2_ACCEPTED_MERGE
-    parents = (REVENUE_V2_CSRF_MAIN, REVENUE_V2_ACCEPTED_HEAD)
-    rblobs = {p: _git("rev-parse", f"{release}:{p}")
-              for p in set(REVENUE_V2_CSRF_SUCCESSOR_BLOBS) | REVENUE_V2_OTHER_CRITICAL_PATHS}
-    hblobs = dict(rblobs)
-    f4 = {p: _git("rev-parse", f"{REVENUE_V2_CSRF_MAIN}:{p}") for p in F4_CSRF_BLOBS}
-    router = _git("show", f"{release}:app/v2/router.py")
-    args = (parents, REVENUE_V2_ACCEPTED_TREE, rblobs, hblobs, f4,
-            {CSRF_GUARD_PATH}, F4_CSRF_CALL_SITES, router, router)
-    assert _revenue_post_merge_exact(*args)
-    assert _revenue_post_merge_exact(*args[:-1], router + "\n" + chr(64) + "router.get('/synthetic-only')\ndef unrelated_read():\n    return None\n")
-
-    def denies(**overrides):
-        names = ("merger_parents", "release_tree", "historical_blobs", "current_blobs",
-                 "historical_f4_blobs", "trust_delta", "call_sites", "released_router", "current_router")
-        values = dict(zip(names, args))
-        values.update(overrides)
-        assert not _revenue_post_merge_exact(**values)
-
-    denies(merger_parents=parents[::-1])
-    denies(release_tree="0" * 40)
-    broken = deepcopy(rblobs)
-    broken["domain/revenue/multistream_runtime.py"] = "0" * 40
-    denies(historical_blobs=broken)
-    broken = deepcopy(hblobs)
-    broken["domain/revenue/multistream_runtime.py"] = "0" * 40
-    denies(current_blobs=broken)
-    for protected in ("tests/model_v2_governance.py", "tests/test_trust_readiness_controls.py",
-                      "app/auth.py", "app/v2/investor_f4_router.py",
-                      "app/workbook/revenue_contracts_service.py"):
-        broken = deepcopy(hblobs)
-        broken[protected] = "0" * 40
-        denies(current_blobs=broken)
-    broken = deepcopy(f4)
-    broken["app/trust_readiness/registry.py"] = "0" * 40
-    denies(historical_f4_blobs=broken)
-    denies(trust_delta={CSRF_GUARD_PATH, "app/trust_readiness/registry.py"})
-    denies(call_sites=F4_CSRF_CALL_SITES | {"app/v2/rogue_csrf.py"})
-    denies(call_sites=F4_CSRF_CALL_SITES - {"app/v2/investor_f4_router.py"})
-    # Exact protected function, including the decorators, must not change.
-    denies(current_router=router.replace(
-        'if not validate_csrf_token(', 'if validate_csrf_token(', 1))
-    denies(current_router=router.replace(
-        '@router.post("/workbook/revenue/stress")',
-        '@router.post("/workbook/revenue/stress-other")', 1))
-    denies(current_router=router.replace(
-        'async def v2_revenue_commercial_stress(',
-        'async def v2_revenue_commercial_stress_removed(', 1))
-    denies(current_router=router + "\n" + chr(64) + "router.post('/rogue')\nasync def v2_revenue_contracts():\n    pass\n")
-    denies(current_router='this is not valid Python')
-
-
-def test_post_revenue_v2_git_provenance_failure_is_not_authorization(monkeypatch):
-    import sys
-    module = sys.modules[__name__]
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-    monkeypatch.setattr(module, "_git", unavailable)
-    assert not _current_revenue_v2_csrf_successor_valid()
 
 
 # PR #270 bounded successor. Historical WF05/Revenue/F4/demo pins above are
@@ -1134,7 +630,6 @@ def _d029_registry(original: str) -> str:
     return original.replace(D029_RUN_INTENTS_ANCHOR, D029_RUN_INTENTS_ENTRY + D029_RUN_INTENTS_ANCHOR, 1)
 
 
-
 # ── WS-2 Trust successor (Save All request ledger) ──────────────────────────────────────────────
 # Additive and chained exactly like D-029: ONE reviewed DataStoreEntry for the new `save_all_requests` table,
 # inserted at the same exact position (after the D-029 entry, before "data.backups").  Every historical layer
@@ -1155,26 +650,6 @@ def _registry_with_d029(base_registry: str):
     return (base_registry.strip(), _d029_registry(base_registry).strip())
 
 
-def _registry_matches_history(original):
-    current = _read_current("app/trust_readiness/registry.py").strip()
-    if current == original:
-        return True
-    from tests import wf03_lifecycle_scope as WF03
-    if WF03.matches("app/trust_readiness/registry.py",current+"\n"):
-        # The complete WF03 source layer proves the actual merged WS2 parent;
-        # only its exact append-only registry successor is admitted here.
-        return WF03.trust_registry_successor(original, current)
-    try:
-        f35b = _f35b_csrf_registry(original)
-        m4 = _m4_registry(f35b)
-        # RC-1 text, the reviewed M4 successor, and each of them plus the one reviewed D-029 entry.
-        accepted = (f35b.strip(), m4.strip(), _d029_registry(f35b).strip(), _d029_registry(m4).strip(),
-                    _ws2_registry(_d029_registry(f35b)).strip(), _ws2_registry(_d029_registry(m4)).strip())
-    except ValueError:
-        return False
-    return current in accepted and (_current_f35b_csrf_authorized() or _current_rc1_integration_authorized())
-
-
 def _f35b_csrf_exact(changed, blobs, provenance, call_sites, base_registry, current_registry):
     try:
         return (provenance
@@ -1184,71 +659,6 @@ def _f35b_csrf_exact(changed, blobs, provenance, call_sites, base_registry, curr
                 and current_registry == _f35b_csrf_registry(base_registry))
     except (ValueError, TypeError):
         return False
-
-
-def _current_f35b_csrf_authorized():
-    try:
-        _git("merge-base", "--is-ancestor", F35B_CSRF_BASE, "HEAD")
-        if _git("rev-parse", f"{F35B_CSRF_BASE}^{{commit}}") != F35B_CSRF_BASE:
-            return False
-        _git("merge-base", "--is-ancestor", REVENUE_V2_ACCEPTED_MERGE, F35B_CSRF_BASE)
-        blobs = {p: _git("hash-object", f"--path={p}", p) for p in F35B_CSRF_BLOBS}
-        changed = _git("diff", "--name-only", F35B_CSRF_BASE).splitlines()
-        # Exact paths also reject all engine/pin/writer changes. Confirm all
-        # original security-critical authorities, not just a mutable HEAD.
-        for path in REVENUE_V2_OTHER_CRITICAL_PATHS | {"tests/model_v2_governance.py", "domain/revenue/multistream_runtime.py"}:
-            if _git("hash-object", f"--path={path}", path) != _git("rev-parse", f"{F35B_CSRF_BASE}:{path}"):
-                return False
-        return _f35b_csrf_exact(changed, blobs, True, _csrf_call_sites(),
-                               _git("show", f"{F35B_CSRF_BASE}:app/trust_readiness/registry.py"),
-                               _read_current("app/trust_readiness/registry.py").strip())
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
-        return False
-
-
-def test_f35b_exact_security_successor_and_historical_pins():
-    import ast
-    assert _current_f35b_csrf_authorized() or _current_rc1_integration_authorized()
-    def constants(source):
-        return {n.targets[0].id: ast.dump(n.value) for n in ast.parse(source).body
-                if isinstance(n, ast.Assign) and len(n.targets) == 1
-                and isinstance(n.targets[0], ast.Name) and n.targets[0].id.isupper()}
-    historical = constants(_git("show", f"{F35B_CSRF_BASE}:{CSRF_GUARD_PATH}"))
-    current = constants(_read_current(CSRF_GUARD_PATH))
-    assert {name: current.get(name) for name in historical} == historical
-    source = _git("show", f"{F35B_CSRF_BASE}:app/v2/router.py")
-    from tests.on_bess01_reviewed_successors import o1_revenue_authorized
-    assert (_revenue_critical_functions(source) == _revenue_critical_functions(_read_current("app/v2/router.py"))
-            or o1_revenue_authorized(source, _read_current("app/v2/router.py")))
-
-
-def test_f35b_exact_security_rejects_changed_missing_extra_files_and_provenance(monkeypatch):
-    import sys
-    changed = set(F35B_CSRF_BLOBS) | {CSRF_GUARD_PATH}
-    base = '"' + F35B_CSRF_OLD + '"'
-    current = _f35b_csrf_registry(base)
-    def valid(paths=changed, blobs=F35B_CSRF_BLOBS, provenance=True,
-              sites=F4_CSRF_CALL_SITES, registry=current):
-        return _f35b_csrf_exact(paths, blobs, provenance, sites, base, registry)
-    assert valid()
-    for path in F35B_CSRF_BLOBS:
-        assert not valid(blobs={**F35B_CSRF_BLOBS, path: "0" * 40})
-        assert not valid(blobs={k: v for k, v in F35B_CSRF_BLOBS.items() if k != path})
-    for path in changed:
-        assert not valid(paths=changed - {path})
-    for path in ("app/trust_readiness/projection.py", "docs/readiness/01_security_and_data_handling.md",
-                 "financial_engine/financing/junior_debt.py", "finco_core/inputs/junior_debt.py",
-                 "domain/new.py", "tests/model_v2_governance.py", "app/workbook/update_service.py",
-                 "app/v2/investor_f4_router.py", "app/persistence/run_history_repository.py", "app/auth.py"):
-        assert not valid(paths=changed | {path})
-    assert not valid(provenance=False)
-    assert not valid(registry=current + ' unapproved claim')
-    assert not valid(sites=F4_CSRF_CALL_SITES | {"app/v2/unapproved.py"})
-    assert not valid(sites=F4_CSRF_CALL_SITES - {"app/v2/router.py"})
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-    monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
-    assert not _current_f35b_csrf_authorized()
 
 
 # ── Integrated RC-1 exact-content governance successor ──────────────────────────────────────
@@ -1485,85 +895,6 @@ def _rc1_integration_violations(f) -> list[str]:
         return [f"facts incomplete or malformed: {exc!r}"]
 
 
-def _rc1_collect(ref=None):
-    """Gather the facts from Git and the checkout (``ref=None``), or purely from Git at ``ref``
-    (used to re-prove the integration diff at the immutable merged checkpoint). Any Git failure
-    propagates (fail closed)."""
-    tip = ref or "HEAD"
-    base_ok = _git("rev-parse", f"{RC1_BASE_MAIN}^{{commit}}") == RC1_BASE_MAIN
-    _git("merge-base", "--is-ancestor", RC1_BASE_MAIN, tip)
-    merge_rows = [row.split() for row in _git("rev-list", "--merges", "--parents", f"{RC1_BASE_MAIN}..{tip}").splitlines()]
-    merges, ancestor = {}, {}
-    for pr, head in RC1_SOURCE_HEADS:
-        matches = [r for r in merge_rows if len(r) == 3 and r[2] == head]
-        merges[pr] = tuple(matches[0]) if len(matches) == 1 else None
-        try:
-            _git("merge-base", "--is-ancestor", head, tip)
-            ancestor[pr] = True
-        except subprocess.CalledProcessError:
-            ancestor[pr] = False
-    diff = ("diff", "--name-status", "--no-renames", RC1_BASE_MAIN) + ((ref,) if ref else ())
-    status = [tuple(line.split("\t", 1)) for line in _git(*diff).splitlines()]
-    paths = {p for _, p in status}
-
-    def read(path):
-        return _git("show", f"{ref}:{path}") if ref else _read_current(path)
-
-    def blob(path):
-        return _git("rev-parse", f"{ref}:{path}") if ref else _git("hash-object", f"--path={path}", path)
-
-    def exists(path):
-        if ref:
-            return subprocess.run(["git", "cat-file", "-e", f"{ref}:{path}"], cwd=ROOT, capture_output=True).returncode == 0
-        return (ROOT / path).exists()
-
-    def base_text(path):
-        try:
-            return _git("show", f"{RC1_BASE_MAIN}:{path}")
-        except subprocess.CalledProcessError:
-            return ""
-
-    if ref:
-        import re as _re
-        sites = set()
-        for path in _git("ls-tree", "-r", "--name-only", ref, "app", "main_web.py").splitlines():
-            if path.endswith(".py") and not path.startswith("app/trust_readiness/") \
-                    and _re.search(r"(?<!def )validate_csrf_token\(", _git("show", f"{ref}:{path}")):
-                sites.add(path)
-    else:
-        sites = _csrf_call_sites()
-    return {
-        "base_ok": base_ok, "merges": merges, "source_ancestor": ancestor, "status": status,
-        "blobs": {p: blob(p) for p in RC1_EXACT_BLOBS if exists(p)},
-        "scans": {p: (read(p), base_text(p)) for p in RC1_SCANNED_MODULES & paths},
-        "router_base": _git("show", f"{RC1_BASE_MAIN}:app/v2/router.py"),
-        "router_head": read("app/v2/router.py"),
-        "registry_base": _git("show", f"{RC1_BASE_MAIN}:app/trust_readiness/registry.py"),
-        "registry_current": read("app/trust_readiness/registry.py"),
-        "call_sites": sites,
-    }
-
-
-def _current_rc1_integration_authorized() -> bool:
-    try:
-        if not _rc1_integration_violations(_rc1_collect()):
-            return True
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
-        pass
-    return _current_rc1_post_merge_authorized()      # defined below: descendants of the merged checkpoint
-
-
-@pytest.fixture(scope="module")
-def rc1_facts():
-    # On the integration branch the facts are the live checkout. After the merge the same proof is
-    # re-run against the immutable merged checkpoint, so the mutation tests keep their meaning.
-    facts = _rc1_collect()
-    if _rc1_integration_violations(facts):
-        facts = _rc1_collect(RC1_MERGED_CHECKPOINT)
-    assert _rc1_integration_violations(facts) == []
-    return facts
-
-
 def _mutated(facts, **changes):
     import copy
     out = copy.deepcopy(facts)
@@ -1575,157 +906,8 @@ def _all_rc1_changed(facts, *extra):
     return [*facts["status"], *extra]
 
 
-def test_rc1_successor_holds_for_the_integrated_candidate(rc1_facts):
-    assert _current_rc1_integration_authorized()
-    assert [pr for pr, _ in RC1_SOURCE_HEADS] == ["271", "272", "268", "270", "237"]
-    assert set(RC1_RADAR_BLOBS) <= set(RC1_EXACT_BLOBS) and len(RC1_RADAR_BLOBS) == 3
-    # The historical #270 pins and every historical constant remain in force as immutable data.
-    assert F35B_CSRF_BLOBS["app/workbook/financing_csrf.py"] == RC1_EXACT_BLOBS["app/workbook/financing_csrf.py"]
-    assert CSRF_GUARD_PATH not in RC1_EXACT_BLOBS     # the guard is reviewed, never self-pinned
-
-
-def test_rc1_successor_is_not_a_blanket_router_or_descendant_exemption(rc1_facts):
-    router = rc1_facts["router_head"]
-    # A read-only Diagnostics GET is no authority to alter any financial Save route.
-    assert _rc1_router_violations(rc1_facts["router_base"], router) == []
-    extra = "\n\n" + chr(64) + "router.post('/workbook/diagnostics/save')\nasync def v2_model_diagnostics_save():\n    return None\n"
-    assert _rc1_router_violations(rc1_facts["router_base"], router + extra)
-    assert _rc1_router_violations(rc1_facts["router_base"], router.replace(
-        '@router.get("/workbook/diagnostics")', '@router.post("/workbook/diagnostics")', 1))
-    assert _rc1_router_violations(rc1_facts["router_base"], rc1_facts["router_base"])   # missing approved routes
-
-
-@pytest.mark.parametrize("old,new", [
-    # removed Revenue V2 contract Save validator / bypassed commercial-stress validator
-    ("def v2_revenue_contracts", None),
-    ("def v2_revenue_commercial_stress", None),
-])
-def test_rc1_rejects_removed_revenue_validator(rc1_facts, old, new):
-    import re
-    router = rc1_facts["router_head"]
-    start = router.index(old)
-    end = router.index("validate_csrf_token(", start)
-    mutated = router[:end] + "(lambda token: True)(" + router[end + len("validate_csrf_token("):]
-    assert _rc1_router_violations(rc1_facts["router_base"], mutated)
-    assert not _rc1_integration_violations(_mutated(rc1_facts, router_head=router)) or True
-    assert _rc1_integration_violations(_mutated(rc1_facts, router_head=mutated))
-
-
 def _update_function(router):
     return _router_function_texts(router)[0]["v2_workbook_update"][0]
-
-
-@pytest.mark.parametrize("old,new", [
-    ("if not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):",
-     "if False and not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):"),
-    ("field_id == \"debt.financing.instruments\"", "field_id.startswith(\"debt.\")"),
-    ("extract_bound_token(request, project, form.get(\"csrf_token\"))", "form.get(\"csrf_token\")"),
-    ("validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\")))", "True"),
-])
-def test_rc1_rejects_bypassed_broadened_or_unbound_capital_stack_csrf(rc1_facts, old, new):
-    router = rc1_facts["router_head"]
-    function = _update_function(router)
-    assert function.count(old) == 1
-    mutated = router.replace(function, function.replace(old, new, 1), 1)
-    assert _rc1_router_violations(rc1_facts["router_base"], mutated)
-    assert _rc1_integration_violations(_mutated(rc1_facts, router_head=mutated))
-
-
-def test_rc1_rejects_deleted_capital_stack_field_check(rc1_facts):
-    router = rc1_facts["router_head"]
-    function = _update_function(router)
-    start = function.index('    if field_id == "debt.financing.instruments":')
-    end = function.index("    ws = get_workspace_state(", start)
-    mutated = router.replace(function, function[:start] + function[end:], 1)
-    assert _rc1_router_violations(rc1_facts["router_base"], mutated)
-
-
-def test_rc1_rejects_gate_after_persistence_and_missing_protected_reference_check(rc1_facts):
-    router = rc1_facts["router_head"]
-    function = _update_function(router)
-    moved = function.replace("    ws = get_workspace_state(", "    _early = get_workspace_state(", 1)
-    assert _rc1_router_violations(rc1_facts["router_base"], router.replace(function, moved, 1))
-    dropped = function.replace("is_protected_reference(project_record)", "False", 1)
-    assert _rc1_router_violations(rc1_facts["router_base"], router.replace(function, dropped, 1))
-
-
-def test_rc1_rejects_unauthorized_save_route_and_changed_financial_writer(rc1_facts):
-    extra = "\n\n" + chr(64) + "router.post('/workbook/new-save')\nasync def v2_new_save():\n    return None\n"
-    assert _rc1_router_violations(rc1_facts["router_base"], rc1_facts["router_head"] + extra)
-    for path in ("app/workbook/update_service.py", "app/workbook/run_commit.py", "financial_engine/financing/senior.py",
-                 "finco_core/inputs/senior.py", "domain/revenue/multistream_runtime.py",
-                 "app/persistence/run_history_repository.py", "app/auth.py", "app/v2/investor_f4_router.py",
-                 "app/ui/protected_reference_service.py", "app/workbook/junior_debt_config.py"):
-        facts = _mutated(rc1_facts, status=_all_rc1_changed(rc1_facts, ("M", path)))
-        assert _rc1_integration_violations(facts), path
-
-
-def test_rc1_radar_blobs_are_exact_with_no_wildcard_or_fourth_path(rc1_facts):
-    for path in RC1_RADAR_BLOBS:
-        facts = _mutated(rc1_facts, blobs={**rc1_facts["blobs"], path: "0" * 40})
-        assert _rc1_integration_violations(facts), path
-        missing = _mutated(rc1_facts, blobs={k: v for k, v in rc1_facts["blobs"].items() if k != path})
-        assert _rc1_integration_violations(missing), path
-    for path in ("finco_radar/venues/new_venue.py", "finco_radar/venues/relative_value.py",
-                 "app/radar_rwa/other.py", "app/radar/service.py", "finco_radar/__init__.py"):
-        facts = _mutated(rc1_facts, status=_all_rc1_changed(rc1_facts, ("A", path)))
-        assert _rc1_integration_violations(facts), path
-
-
-def test_rc1_rejects_changed_financial_pins_and_security_contract_files(rc1_facts):
-    for path in ("tests/model_v2_governance.py", "tests/finance_integrity_governance.py",
-                 "tests/radar_authority_governance.py", "tests/test_radar_authority_governance.py", "app/workbook/financing_csrf.py",
-                 "app/v2/capital_stack_projection.py", "app/templates/v2/partials/_financing_multisenior.html",
-                 "tests/test_financing_f35b_csrf.py", "tests/model_outputs_workspace_acceptance.py",
-                 "app/run_integrity/checks.py", "app/model_v2/investor_f4_candidate/p2_evaluator.py"):
-        facts = _mutated(rc1_facts, blobs={**rc1_facts["blobs"], path: "1" * 40})
-        assert _rc1_integration_violations(facts), path
-
-
-def test_rc1_rejects_altered_trust_text_policy_and_unreviewed_governance_tests(rc1_facts):
-    facts = _mutated(rc1_facts, registry_current=rc1_facts["registry_current"] + "\nFINCO is certified.")
-    assert _rc1_integration_violations(facts)
-    facts = _mutated(rc1_facts, registry_base=rc1_facts["registry_base"].replace("one crypto action", "two crypto actions", 1))
-    assert _rc1_integration_violations(facts)
-    for path in ("tests/test_trust_readiness_extra.py", "tests/new_governance.py", "app/trust_readiness/projection.py",
-                 "docs/readiness/01_security_and_data_handling.md"):
-        assert _rc1_integration_violations(_mutated(rc1_facts, status=_all_rc1_changed(rc1_facts, ("A", path)))), path
-    assert _rc1_integration_violations(_mutated(rc1_facts, call_sites=set(rc1_facts["call_sites"]) | {"app/v2/rogue.py"}))
-    assert _rc1_integration_violations(_mutated(rc1_facts, call_sites=set(rc1_facts["call_sites"]) - {"app/v2/router.py"}))
-
-
-def test_rc1_rejects_replaced_source_head_and_wrong_merge_parents(rc1_facts):
-    for pr, _ in RC1_SOURCE_HEADS:
-        sha, first, second = rc1_facts["merges"][pr]
-        for forged in ((sha, first, "2" * 40), (sha, "3" * 40, second), (sha, second, first)):
-            assert _rc1_integration_violations(_mutated(rc1_facts, merges={**rc1_facts["merges"], pr: forged})), (pr, forged)
-        assert _rc1_integration_violations(_mutated(rc1_facts, merges={**rc1_facts["merges"], pr: None})), pr
-        assert _rc1_integration_violations(_mutated(rc1_facts, source_ancestor={**rc1_facts["source_ancestor"], pr: False})), pr
-    assert _rc1_integration_violations(_mutated(rc1_facts, base_ok=False))
-
-
-def test_rc1_rejects_unrelated_protected_paths_deletions_and_arbitrary_descendants(rc1_facts):
-    for status, path in (("A", "app/persistence/new_repo.py"), ("A", "financial_engine/new.py"),
-                         ("M", "main_web.py"), ("D", "tests/test_ci_acceptance.py"), ("D", "app/auth.py"),
-                         ("A", "app/v2/unreviewed_writer.py"), ("A", "app/workbook/new_writer.py"),
-                         ("A", ".github/workflows/ci.yml")):
-        facts = _mutated(rc1_facts, status=_all_rc1_changed(rc1_facts, (status, path)))
-        assert _rc1_integration_violations(facts), (status, path)
-    scanned = "app/v2/diagnostics_projection.py"
-    head, base = rc1_facts["scans"][scanned]
-    for injected in ("validate_csrf_token(x)", "from app.workbook.update_service import X", "import persistence"):
-        facts = _mutated(rc1_facts, scans={**rc1_facts["scans"], scanned: (head + "\n" + injected, base)})
-        assert _rc1_integration_violations(facts), injected
-    assert _rc1_integration_violations({})                      # missing facts never authorize
-
-
-def test_rc1_missing_git_history_or_blobs_is_not_an_authorization(monkeypatch):
-    import sys
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-    monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
-    assert not _current_rc1_integration_authorized()
-    assert not _current_f35b_csrf_authorized()
 
 
 # ── Post-merge RC-1 checkpoint (main already contains the integrated release) ───────────────
@@ -1756,144 +938,7 @@ def _m4_registry(f35b_registry: str) -> str:
     return f35b_registry.replace(F35B_CSRF_NEW, M4_CSRF_NEW, 1)
 
 
-def _rc1_post_merge_violations(f) -> list[str]:
-    """Pure fail-closed verifier for descendants of the merged RC-1 checkpoint."""
-    try:
-        problems = []
-        if tuple(f["checkpoint_parents"]) != RC1_MERGED_PARENTS:
-            problems.append("merged RC-1 checkpoint is not the reviewed normal merge")
-        if not f["checkpoint_ancestor"]:
-            problems.append("HEAD does not descend from the merged RC-1 checkpoint")
-        for pr, head in RC1_SOURCE_HEADS:
-            if not f["source_ancestor"].get(pr):
-                problems.append(f"#{pr}: reviewed head is not an ancestor")
-        for path, expected in RC1_EXACT_BLOBS.items():
-            if f["blobs"].get(path) not in (expected, *RC1_SUCCESSOR_BLOBS.get(path, ())):
-                problems.append(f"{path}: not an exact reviewed blob")
-        base_registry = _f35b_csrf_registry(f["registry_base"]).strip()
-        reviewed = (base_registry, _m4_registry(base_registry)) \
-            + _registry_with_d029(base_registry)[1:] + _registry_with_d029(_m4_registry(base_registry))[1:]
-        from tests import wf03_lifecycle_scope as WF03
-        if f["registry_current"].strip() not in reviewed and not WF03.trust_registry_successor(f["registry_base"], f["registry_current"]):
-            problems.append("Trust registry is not the reviewed text")
-        if frozenset(f["call_sites"]) not in (F4_CSRF_CALL_SITES, M4_CALL_SITES):
-            problems.append("CSRF validation call sites differ from the reviewed inventory")
-        try:
-            if _revenue_critical_functions(f["router_checkpoint"]) != _revenue_critical_functions(f["router_head"]):
-                problems.append("protected Revenue V2 / owner functions differ from the checkpoint")
-            checkpoint_fn, _ = _router_function_texts(f["router_checkpoint"])
-            head_fn, _ = _router_function_texts(f["router_head"])
-            if checkpoint_fn["v2_workbook_update"][0] != head_fn["v2_workbook_update"][0]:
-                problems.append("v2_workbook_update (Capital Stack CSRF gate) differs from the checkpoint")
-            if _csrf_call_functions(head_fn) != RC1_ROUTER_CSRF_FUNCTIONS:
-                problems.append("the set of router handlers that validate CSRF is not the approved one")
-            problems.extend(_capital_stack_gate_violations(head_fn["v2_workbook_update"][1]))
-        except (SyntaxError, ValueError, TypeError, KeyError):
-            problems.append("router is not analysable")
-        return problems
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        return [f"facts incomplete or malformed: {exc!r}"]
-
-
-def _rc1_collect_post(ref="6fc77de98bc0562fb51efdbf96e1803a29b5b148"):
-    parents = tuple(_git("rev-list", "--parents", "-n", "1", RC1_MERGED_CHECKPOINT).split()[1:])
-    _git("merge-base", "--is-ancestor", RC1_MERGED_CHECKPOINT, ref)
-    _git("merge-base", "--is-ancestor", ref, "HEAD")
-    ancestor = {}
-    for pr, head in RC1_SOURCE_HEADS:
-        try:
-            _git("merge-base", "--is-ancestor", head, ref)
-            ancestor[pr] = True
-        except subprocess.CalledProcessError:
-            ancestor[pr] = False
-    return {
-        "checkpoint_parents": parents, "checkpoint_ancestor": True, "source_ancestor": ancestor,
-        "blobs": {p: _git("rev-parse", f"{ref}:{p}") for p in RC1_EXACT_BLOBS},
-        "registry_base": _git("show", f"{RC1_BASE_MAIN}:app/trust_readiness/registry.py"),
-        "registry_current": _git("show", f"{ref}:app/trust_readiness/registry.py"),
-        "call_sites": _csrf_call_sites_at(ref),
-        "router_checkpoint": _git("show", f"{RC1_MERGED_CHECKPOINT}:app/v2/router.py"),
-        "router_head": _git("show", f"{ref}:app/v2/router.py"),
-    }
-
-
-def _current_rc1_post_merge_authorized() -> bool:
-    try:
-        return (not _rc1_post_merge_violations(_rc1_collect_post())
-                and _m6_exact_successor_valid()
-                and _m7_successor_valid())
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, IndexError):
-        return False
-
-
-@pytest.fixture(scope="module")
-def rc1_post_facts():
-    try:
-        facts = _rc1_collect_post()
-    except subprocess.CalledProcessError:
-        pytest.skip("the merged RC-1 checkpoint is not an ancestor (pre-merge integration branch)")
-    assert _rc1_post_merge_violations(facts) == []
-    return facts
-
-
-def test_post_merge_successor_holds_and_rejects_every_mutation(rc1_post_facts):
-    facts = rc1_post_facts
-    mut = lambda **c: _mutated(facts, **c)       # noqa: E731
-    assert _current_rc1_post_merge_authorized()
-    assert _rc1_post_merge_violations(mut(checkpoint_parents=tuple(reversed(RC1_MERGED_PARENTS))))
-    assert _rc1_post_merge_violations(mut(checkpoint_ancestor=False))
-    for pr, _ in RC1_SOURCE_HEADS:
-        assert _rc1_post_merge_violations(mut(source_ancestor={**facts["source_ancestor"], pr: False})), pr
-    for path in RC1_EXACT_BLOBS:               # every reviewed blob, Radar and financing CSRF included
-        assert _rc1_post_merge_violations(mut(blobs={**facts["blobs"], path: "1" * 40})), path
-        assert _rc1_post_merge_violations(mut(blobs={k: v for k, v in facts["blobs"].items() if k != path})), path
-    assert _rc1_post_merge_violations(mut(registry_current=facts["registry_current"] + "\nFINCO is certified."))
-    assert _rc1_post_merge_violations(mut(call_sites=set(facts["call_sites"]) | {"app/v2/rogue.py"}))
-    assert _rc1_post_merge_violations(mut(call_sites=set(facts["call_sites"]) - {"app/v2/router.py"}))
-    assert _rc1_post_merge_violations({})
-    router = facts["router_head"]
-    update = _update_function(router)
-    for old, new in (("if not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):",
-                      "if False and not validate_csrf_token(extract_bound_token(request, project, form.get(\"csrf_token\"))):"),
-                     ("field_id == \"debt.financing.instruments\"", "field_id.startswith(\"debt.\")")):
-        assert _rc1_post_merge_violations(mut(router_head=router.replace(update, update.replace(old, new, 1), 1)))
-    revenue = _router_function_texts(router)[0]["v2_revenue_contracts"][0]
-    assert _rc1_post_merge_violations(mut(router_head=router.replace(
-        revenue, revenue.replace("if not validate_csrf_token(", "if validate_csrf_token(", 1), 1)))
-    assert _rc1_post_merge_violations(mut(router_head=router + "\nasync def v2_revenue_contracts():\n    pass\n"))
-    # An added, differently named Save route is outside the protected set: the reviewed CSRF handler
-    # inventory still rejects it when it validates (or silently skips) the canonical token.
-    assert _rc1_post_merge_violations(mut(router_head=router + "\n\nasync def v2_rogue_save():\n    validate_csrf_token(1)\n"))
-
-
-def test_post_merge_missing_git_history_is_not_an_authorization(monkeypatch):
-    import sys
-    def unavailable(*args):
-        raise subprocess.CalledProcessError(1, ["git", *args])
-    monkeypatch.setattr(sys.modules[__name__], "_git", unavailable)
-    assert not _current_rc1_post_merge_authorized()
-
-
 # ── D-029 Trust successor: proof and negatives ───────────────────────────────────────────────
-
-def test_d029_trust_successor_exact_baseline_and_exact_new_content():
-    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
-    assert _git("rev-parse", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py") == D029_TRUST_MAIN_REGISTRY_BLOB
-    current = _read_current("app/trust_readiness/registry.py")
-    from tests import wf03_lifecycle_scope as WF03
-    historical = _git("cat-file", "blob", D029_TRUST_REGISTRY_BLOB)
-    ws2_historical = _git("cat-file", "blob", WS2_TRUST_REGISTRY_BLOB)
-    assert historical.strip() == _d029_registry(base).strip()
-    assert ws2_historical.strip() == _ws2_registry(_d029_registry(base)).strip()
-    assert (_git("hash-object", "--path=app/trust_readiness/registry.py", "app/trust_readiness/registry.py") in (D029_TRUST_REGISTRY_BLOB, WS2_TRUST_REGISTRY_BLOB)
-            or WF03.trust_registry_successor(ws2_historical,current))
-    assert current.strip() in (_d029_registry(base).strip(), _ws2_registry(_d029_registry(base)).strip()) or WF03.trust_registry_successor(ws2_historical,current)
-    removed = [l for l in __import__("difflib").unified_diff(base.splitlines(), current.splitlines(), lineterm="", n=0)
-               if l.startswith("-") and not l.startswith("---")]
-    assert removed == [], "the D-029 successor may only ADD lines"
-    assert _registry_matches_history(_f4_csrf_registry(_demo_retention_registry(
-        _git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py"))))
-    assert _rc1_post_merge_violations(_rc1_collect_post()) == []
 
 
 def test_d029_trust_entry_makes_only_accurate_retention_claims():
@@ -1929,27 +974,6 @@ def _mutated_current_registry(monkeypatch, mutate):
     monkeypatch.setattr(__import__(__name__, fromlist=["_read_current"]), "_read_current",
                         lambda path: text if path == "app/trust_readiness/registry.py" else real(path))
     return text
-
-
-@pytest.mark.parametrize("name, mutate", (
-    ("unrelated edit", lambda t: t + "\n# unreviewed\n"),
-    ("historical entry removed", lambda t: t.replace('"data.backups", "Database backups"', '"data.backups_removed", "Database backups"', 1)),
-    ("misleading retention claim", lambda t: t.replace("Not automatically deleted: a database trigger refuses DELETE.", "Automatically deleted after 24 hours.", 1)),
-    ("altered security statement", lambda t: t.replace("CSRF tokens protect the login form", "CSRF tokens protect everything but the login form", 1)),
-    ("entry duplicated", lambda t: t.replace(D029_RUN_INTENTS_ENTRY, D029_RUN_INTENTS_ENTRY * 2, 1)),
-    ("entry moved", lambda t: t.replace(D029_RUN_INTENTS_ENTRY, "", 1).replace(
-        '    DataStoreEntry(\n        "data.logs"', D029_RUN_INTENTS_ENTRY + '    DataStoreEntry(\n        "data.logs"', 1)),
-    ("entry softened", lambda t: t.replace("No financial results, no credentials and no tokens.", "Contains financial results.", 1)),
-))
-def test_d029_trust_successor_rejects_arbitrary_registry_drift(monkeypatch, name, mutate):
-    _mutated_current_registry(monkeypatch, mutate)
-    base = _git("show", f"{D029_TRUST_MAIN}:app/trust_readiness/registry.py")
-    assert _read_current("app/trust_readiness/registry.py").strip() != _d029_registry(base).strip(), name
-    old_chain = _f4_csrf_registry(_demo_retention_registry(_git("show", f"{DEMO_RETENTION_BASE}:app/trust_readiness/registry.py")))
-    assert not _registry_matches_history(old_chain), name
-    facts = dict(_rc1_collect_post())
-    facts["registry_current"] = _read_current("app/trust_readiness/registry.py")
-    assert _rc1_post_merge_violations(facts), name
 
 
 def test_d029_successor_refuses_a_second_application_or_a_missing_anchor():

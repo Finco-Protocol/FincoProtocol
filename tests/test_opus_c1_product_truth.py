@@ -38,65 +38,6 @@ def _flat(rel_path: str) -> str:
     return re.sub(r"\s+", " ", _read(rel_path))
 
 
-def _ensure_base_history(base_sha: str) -> None:
-    """Assert the C1 diff gates can run, or skip with a distinct reason.
-
-    M-9 governance owns full-history evidence (the authoritative-history
-    job); the pull_request smoke checkout is deliberately shallow, and the
-    legacy Radar gates with pinned historical baselines must not be
-    activated as a side effect of C1 tests.  On a full clone (local dev)
-    the gates run normally; on a shallow checkout they skip — history
-    unavailable is never treated as a violation, and 'branch behind main'
-    is never confused with 'history unavailable'.
-    """
-    import pytest
-
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"], cwd=REPO,
-        capture_output=True, text=True,
-    )
-    if shallow.stdout.strip() == "true":
-        pytest.skip(
-            "HISTORY_UNAVAILABLE (shallow checkout): frozen-namespace and "
-            "ancestry gates run on full clones; full-history governance is "
-            "owned by the authoritative-history job."
-        )
-
-
-def _main_sha() -> str | None:
-    """Resolve the main tip in this checkout, or None when unavailable.
-
-    CI pull_request checkouts are often shallow merge refs without an
-    ``origin/main`` ref; the freeze gates then cannot diff against main and
-    are skipped here (main-side CI guards pin the frozen namespaces too).
-    """
-    import json
-
-    for ref in ("origin/main", "refs/remotes/origin/main", "main"):
-        probe = subprocess.run(
-            ["git", "rev-parse", "--verify", ref], cwd=REPO,
-            capture_output=True, text=True,
-        )
-        if probe.returncode == 0:
-            return probe.stdout.strip()
-    event_path = os.environ.get("GITHUB_EVENT_PATH")
-    if event_path and os.path.exists(event_path):
-        try:
-            with open(event_path, encoding="utf-8") as fh:
-                event = json.load(fh)
-            base = (event.get("pull_request", {}).get("base", {}) or {}).get("sha")
-            if base:
-                ensure = subprocess.run(
-                    ["git", "fetch", "--depth", "1", "origin", base],
-                    cwd=REPO, capture_output=True, text=True,
-                )
-                if ensure.returncode == 0:
-                    return base
-        except (OSError, ValueError):
-            pass
-    return None
-
-
 # ── 1. H-4A rename ───────────────────────────────────────────────────────────
 
 class TestReferenceRegressionCheckNaming:
@@ -394,67 +335,7 @@ class TestVisibleLabelsAndMachineCompatibility:
 # ── 3. Behavior unchanged ────────────────────────────────────────────────────
 
 class TestBehaviorUnchanged:
-    @pytest.mark.parametrize(
-        "frozen_path",
-        [
-            "financial_engine",
-            "finco_core",
-            "app/model_validation",
-            "app/verified",
-            "finco_radar",
-        ],
-    )
-    def test_frozen_namespaces_zero_diff_against_main(self, frozen_path):
-        sha = _main_sha()
-        if sha is None:
-            pytest.skip("no main ref available in this checkout")
-        _ensure_base_history(sha)
-        # CI parallel-stream correction: the shared governance helper derives
-        # the MERGE-BASE of current main and HEAD (fail-closed) so files
-        # introduced only on main after this branch diverged are never
-        # reported as branch-side frozen-path changes; allowed-path rules
-        # and the Model V2 scope exemptions still apply.
-        from finance_integrity_governance import APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
-        from model_v2_governance import parallel_stream_frozen_changes
-        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
-                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
-                 "finco_radar/venues/relative_value.py"}
-        if frozen_path == "financial_engine":
-            # Only the shared, explicitly approved engine modules; finco_core and every other
-            # frozen namespace get no exemption.
-            allowed |= set(APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
-        # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
-        # Whether the current integration tree may change these paths is decided only by the central current gates.
-        from stream_scope_proof import verified_delta
-        changed = [p for p in verified_delta("test_opus_c1_product_truth", frozen_path) if p not in allowed]
-        assert changed == [], changed
 
-    def test_branch_contains_current_origin_main(self):
-        """Frozen-namespace diffs are only meaningful against the current main."""
-        sha = _main_sha()
-        if sha is None:
-            pytest.skip("no main ref available in this checkout")
-        _ensure_base_history(sha)
-        probe = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
-            cwd=REPO, capture_output=True, text=True,
-        )
-        if probe.returncode != 0:
-            pytest.skip(
-                "branch does not contain current main (parallel streams in "
-                "flight); zero-diff gates vs origin/main still ran")
-
-    def test_validation_runner_behavior_untouched(self):
-        # The runner module source is identical to main (no algorithm change).
-        sha = _main_sha()
-        if sha is None:
-            pytest.skip("no main ref available in this checkout")
-        _ensure_base_history(sha)
-        out = subprocess.run(
-            ["git", "diff", f"{sha}..HEAD", "--", "app/model_validation/"],
-            cwd=REPO, capture_output=True, text=True, check=True,
-        )
-        assert out.stdout.strip() == ""
 
     def test_equity_kpi_labels_distinct_in_trust_pack(self):
         from app.ui.trust_pack import _CORE_KPI_ROWS

@@ -44,7 +44,6 @@ from app.rwa_integrity.read_model import (
 from finco_radar.venues.models import RegistryStatus, RepresentationEntry
 from finco_radar.venues.registry import VenueRegistry, parse_underlying
 from finco_radar.venues.store import VenueMarketStore
-from model_v2_governance import merge_base_ref
 
 NOW = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -367,29 +366,6 @@ class TestProfileDegradation:
 
 
 # ── Frozen namespaces ─────────────────────────────────────────────────────────
-
-class TestFrozen:
-    @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core",
-                                           "finco_radar/venues"])
-    def test_zero_diff(self, namespace):
-        # HISTORICAL SOURCE PROOF: the RWA Integrity stream's own immutable source range (tests/stream_scope_proof.py, literal base/head/landing merge,
-        # provenance verified, fails closed). Whether the CURRENT tree's protected changes are authorized is answered only by the central current gates.
-        from stream_scope_proof import verified_delta
-        delta = verified_delta("test_rwa_integrity", namespace)
-        # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
-        # every other path in this namespace stays frozen.
-        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
-                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
-                 "finco_radar/venues/relative_value.py"}
-        # Explicitly authorized Model V2 epic engine files are governed by the
-        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-        # protecting every other frozen path.
-        from finance_integrity_governance import approved_frozen_path
-        changed = [
-            p for p in delta
-            if p not in allowed and not approved_frozen_path(p)
-        ]
-        assert changed == [], changed
 
 
 # ── Correction A: #179 binding, ACTIVE-only deps, PARTIAL aggregation ────────

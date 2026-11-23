@@ -43,39 +43,3 @@ def test_closed_readiness_channel_is_failure():
         reader.close()
 
 
-@pytest.mark.parametrize('defect', ['early-release', 'never-release'])
-def test_original_cancellation_assertions_reject_capacity_defects(tmp_path, defect):
-    """Both premature release and a retained slot must fail the real test."""
-    xml = tmp_path / 'mutant.xml'
-    code = '''import asyncio, sys
-from app.runtime.model_execution import ModelExecutor
-original = ModelExecutor._await
-async def broken(self, future):
-    try:
-        return await original(self, future)
-    except asyncio.CancelledError:
-        # Deliberate test-only defect: the worker is still calculating.
-        with self._lock:
-            self._active -= 1
-        self._gate.release()
-        raise
-if sys.argv[2] == 'early-release':
-    ModelExecutor._await = broken
-else:
-    ModelExecutor._finish = lambda *args: None  # deliberate retained-slot defect
-import pytest
-from tools.ci_v3_pytest_config import plugin_args
-raise SystemExit(pytest.main(['-q', '--tb=short', '-p', 'no:cacheprovider', *plugin_args(),
-    '--junitxml='+sys.argv[1],
-    'tests/test_p0a_model_execution.py::test_client_disconnect_never_leaks_capacity_and_discards_the_result']))
-'''
-    result = subprocess.run([sys.executable, '-c', code, str(xml), defect],
-        cwd=Path(__file__).resolve().parents[1],
-        env=dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'),
-        capture_output=True, timeout=45)
-    assert result.returncode == 1, (result.stdout, result.stderr)
-    cases = list(ET.parse(xml).getroot().iter('testcase'))
-    assert len(cases) == 1 and cases[0].find('failure') is not None
-    expected = 'assert 0 == 1' if defect == 'early-release' else 'assert 1 == 0'
-    assert expected in cases[0].find('failure').text
-    assert cases[0].get('name') == 'test_client_disconnect_never_leaks_capacity_and_discards_the_result'

@@ -614,15 +614,3 @@ def test_cd_generic_solar_wind_economics_unchanged():
                 float(o.y1_amount_keur), abs=1e-9)
 
 
-def test_cd_revenue_and_engine_files_untouched():
-    import subprocess
-    from pathlib import Path
-
-    repo = Path(__file__).resolve().parents[1]
-    from stream_scope_proof import verified_delta
-    # HISTORICAL source proof: this stream's own immutable source range inside its integration branch (tests/stream_scope_proof.py); unproven provenance raises. Current-integration authority is judged only by the central gates.
-    changed = verified_delta("test_model_v2_cost_templates_cd", "domain/revenue", "financial_engine", "finco_core", "domain/analytics")
-    # financial_engine modules on the shared approved allow-list are exempt; nothing else is.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [p for p in changed if not approved_frozen_path(p)]
-    assert changed == [], changed

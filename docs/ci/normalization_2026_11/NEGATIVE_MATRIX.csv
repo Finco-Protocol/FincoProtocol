@@ -1,0 +1,26 @@
+case,mutation,component,expected,observed,exit_code,detail
+N01,financial_engine/inputs.py total_interest_keur omits SHL interest,tests group (finance tests),RED,GREEN,0,94 passed in 138.17s (0:02:18) | FINDING: total_interest_keur is only used by the ATAD tax basis and the targeted finance modules have zero SHL interest in their cases; not detected (coverage gap recorded in OPEN_DEFECTS)
+N01b,financial_engine/senior_debt/interest.py interest x1.01,"tests group (finval rate run, rate contract, fin_v2_3 contracts)",RED,GREEN,0,110 passed: FINDING not detected by these modules (full-suite detection not measured); coverage gap recorded in OPEN_DEFECTS
+N01c,financial_engine/cfads.py canonical CFADS ebitda x1.01,tests group (F01 complete),RED,RED,1,1 failed; 59 passed (stopped at first failure)
+N02,app/auth.py validate_csrf_token always True,tests group (security),RED,RED,1,31 failed; 34 passed in 76.72s (0:01:16)
+N03,projects_repository.get_project_by_code ignores user_id,tests group (tenant isolation),RED,RED,1,14 failed; 44 passed in 55.58s
+N04,app/workbook/bess_config.py ACTIVATION_ENABLED = True,tests group (activation flags),RED,RED,1,1 failed; 3 passed in 1.18s
+N05,Playwright absent in a test group,strict-skip conftest hook,RED,RED,2,1 error in 0.43s
+N05c,"browser module + a normal module, strict mode OFF (control: old silent skip)",plain pytest,GREEN,GREEN,0,4 passed; 1 skipped  <- what V4 shards accepted
+N05b,"same, strict mode OFF, browser module alone (control)",plain pytest,RED,RED,5,exit 5 = no test collected; see N05c for the silent-skip control
+N06,syntax error in a new test module,pytest collection,RED,RED,2,4 tests collected; 1 error in 0.40s
+N07,fixture-only test_project_lifecycle_browser.py selected with a real module,pytest discovery,GREEN,GREEN,0,4 passed in 1.45s
+N08a,untampered 2-group run (control),scripts/ci/check_groups.py,GREEN,GREEN,0,groups ok: 11 collected = 11 executed + 0 known defects; 2 groups
+N08-drop,group accounting tampered: drop,scripts/ci/check_groups.py,RED,RED,1,GROUP CHECK FAILED: groups selected 10 + 0 known defects != 11 collected
+N08-dup,group accounting tampered: dup,scripts/ci/check_groups.py,RED,RED,1,GROUP CHECK FAILED: group 2: 1 selected nodes absent from JUnit; e.g. ['tests/test_financial_activation_flags_closed.py::test_a_deleted_switch_is_rejected']
+N08-foreign,group accounting tampered: foreign,scripts/ci/check_groups.py,RED,RED,1,GROUP CHECK FAILED: groups collected different node sets: [11]
+N08-missing_junit,group accounting tampered: missing_junit,scripts/ci/check_groups.py,RED,RED,1,GROUP CHECK FAILED: group 2: missing JUnit
+N08-known,known-defect entry that ran in a required group,scripts/ci/check_groups.py,RED,RED,1,GROUP CHECK FAILED: groups selected 11 + 1 known defects != 11 collected
+N09-success,required job sees a success dependency,model_ci.yml required job,GREEN,GREEN,0,all required jobs: success
+N09-skipped,required job sees a skipped dependency,model_ci.yml required job,RED,RED,1,REQUIRED FAILED: {'tests': 'skipped'}
+N09-cancelled,required job sees a cancelled dependency,model_ci.yml required job,RED,RED,1,REQUIRED FAILED: {'finance': 'cancelled'}
+N09-missing,required job sees a missing dependency,model_ci.yml required job,RED,RED,1,REQUIRED FAILED: ['acceptance']
+N10,inert docs edit (formerly broke exact-source cohorts),tests group,GREEN,GREEN,0,rerun after R04 allowlist fix: 61 passed (first run exposed a real bug in the simplified R04 allowlist; fixed in round 2)
+N11,app/ imports the R04 research candidate,tests group (R04 isolation),RED,RED,1,1 failed in 0.17s
+N12,"forged ""required"" check from another workflow file",branch protection + CODEOWNERS,RED,NOT AUTOMATED,-,residual risk: a PR adding .github/workflows/x.yml with a job named required could post a same-named check; mitigated by CODEOWNERS review of .github/ (owner must reject) and by the real Model CI required still failing; GitHub org-level required workflows would close it fully
+N13,"Radar installed wheel imports Model code (lazy, inside a function)",Radar tests/test_exact_source_release_gate.py,RED,RED,1,AssertionError: Forbidden import app.auth in installed radar_service/app.py

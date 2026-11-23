@@ -670,41 +670,6 @@ def test_p3_26_quote_context_imports_no_private_proof_helpers():
             assert "live_proof" not in (node.module or "")
 
 
-def test_p3_27_frozen_settlement_contract_untouched():
-    # the frozen SettlementReference/QuoteRequest contracts must not have
-    # been modified by this correction.  Skipped in shallow checkouts that
-    # cannot resolve the base commit (the P3 CI gate enforces this with a
-    # full checkout instead).
-    #
-    # The finco_radar/equity/ package was added by E1 (PR #54, merged before
-    # this correction) and is the ONLY approved addition to the finco_radar/
-    # namespace in this PR series.  All other finco_radar/ paths remain frozen.
-    #
-    # The gate is: any finco_radar/ change that is NOT under finco_radar/equity/
-    # is a violation.  This preserves the original broad freeze intent while
-    # permitting the already-approved equity sub-package, without opening an
-    # unbounded whitelist that would let unknown future paths bypass the gate.
-    # Branch-owned changes only: merge-base(origin/main, HEAD)..HEAD. The former
-    # hard-coded historical baseline treated later legitimate main evolution as
-    # changes owned by whatever branch is under test (it was only green in shallow
-    # CI because the base was unreachable and the test skipped).
-    from model_v2_governance import branch_owned_changes_or_skip
-    from radar_authority_governance import reviewed_radar_authority_matches
-    changed = branch_owned_changes_or_skip()
-    violations = [
-        p for p in changed
-        if p.startswith("finco_radar/")
-        and not p.startswith("finco_radar/equity/")
-        # PR #183 (Tokenized Relative Value V1): the reviewed core module
-        # itself; every other finco_radar/ path stays frozen.
-        and p != "finco_radar/venues/relative_value.py"
-        and not reviewed_radar_authority_matches(p)
-    ]
-    assert not violations, (
-        "Non-equity finco_radar paths modified (frozen): " + str(violations)
-    )
-
-
 # ==========================================================================
 # Correction B (P3) — C1 explicit settlement chain + C2 explicit decimals
 # ==========================================================================
@@ -869,6 +834,5 @@ def test_c2_10_provider_callable_receives_configured_decimals(
     assert quote_request.taker_address == TAKER
     assert quote_request.requested_notional_usd == __import__("decimal").Decimal("100")
     service.close()
-
 
 

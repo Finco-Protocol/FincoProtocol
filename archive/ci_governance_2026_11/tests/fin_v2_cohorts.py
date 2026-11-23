@@ -1,0 +1,172 @@
+"""Registry of the reviewed FIN-V2 exact-source cohorts.
+
+Every governance guard that recognises a cohort asks this module, so adding or composing cohorts never edits the guards again.
+A cohort module offers ``BASE``, ``OWNED_PATHS``, ``manifest``, ``exact_blobs_ok``, ``allowed_path``, ``valid``, ``matches`` and ``protected_blobs``.
+The composite is valid only while EVERY registered cohort has its exact blobs and EVERY changed path since the accepted parent is allowed by
+at least one registered cohort. An unregistered, missing or altered cohort never widens the scope.
+"""
+from pathlib import Path
+import contextlib
+import importlib
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
+COHORT_MODULES = ('tests.fin_v2_3_scope', 'tests.fin_v2_ci_scope', 'tests.fin_v2_d01_scope', 'tests.fin_v2_r1_scope',
+                  'tests.fin_v2_rcux_scope', 'tests.fin_v2_pr394_corr_scope', 'tests.wsv2_core_scope', 'tests.fin_v2_wsv2_scope', 'tests.wf04_scope',
+                  'tests.wf03_lifecycle_scope', 'tests.fin_v2_wf06a_scope', 'tests.fin_v2_integration_409_scope', 'tests.wf06b_scope', 'tests.u1_scope',
+                  'tests.post413_r17_scope', 'tests.post413_r18_scope', 'tests.post413_r1_scope', 'tests.u2_scope', 'tests.ci_v4_scope',
+                  'tests.g10_d8_scope', 'tests.post413_o1_scope', 'tests.ux_pr1_scope', 'tests.ux_pr2a_scope', 'tests.ux_pr2b_scope', 'tests.ux_pr2c_scope', 'tests.ux_pr3b1_scope', 'tests.ux_pr3b2_scope', 'tests.tax_reference_registry_scope', 'tests.on_bess01_scope', 'tests.onaccept01_scope', 'tests.post432_l01_l02_scope', 'tests.r02_ppa_ux_scope', 'tests.bess02_scope', 'tests.ci_v4_perf_scope', 'tests.f03_financing_scope', 'tests.t01e_remediation_scope', 'tests.r03_ppa_scope', 'tests.f04_financing_scope', 'tests.r04_ppa_scope', 'tests.c06_cost_workspace_scope', 'tests.ci_v4_lean_b1_scope', 'tests.ci_v4_lean_b2_scope', 'tests.ci_v4_lean_b3_scope', 'tests.ci_v5_bootstrap_scope', 'tests.ci_v5_hardening_scope', 'tests.ci_v5_gate_scope', 'tests.ci_v4_full_recovery_scope', 'tests.ci_v4_p0_scope')
+# The accepted parent every cohort diff is judged against (main after merged PR #388 and #390).
+PARENT = 'f79e251903621c1a5c88501d51d6971960b612d3'
+
+
+def cohorts():
+    loaded = []
+    for name in COHORT_MODULES:
+        try:
+            loaded.append(importlib.import_module(name))
+        except ModuleNotFoundError as exc:
+            if exc.name != name:
+                raise
+    return loaded
+
+
+def _git(root, *args):
+    return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
+
+
+_CALL = []      # one memo per OUTERMOST call_scope; empty outside every call scope (nothing is ever kept across calls)
+_ENTERING = []      # Correction B2: set ONLY while the outermost call_scope enters the cohorts' scopes (before its memo exists); never holds a verdict
+
+
+@contextlib.contextmanager
+def call_scope():
+    """ONE outer governance call: every registered cohort that offers a call-scope memo is entered once, so each cohort's exact verdict is
+    computed once for the whole call instead of once per changed path or per caller (measured on PR #429: the unscoped per-path loop of the
+    RC-UX cohort ran ~11.6k git processes for the same answer the scoped composite gives in ~280). The composite verdict of ``valid`` is shared
+    the same way inside the block. Everything is dropped when the OUTERMOST block exits (each cohort's ``scoped()`` drops its memo there); nothing
+    is cached across calls, worktrees, refs, monkeypatches, commits or mutations: callers use it only around a read-only enumeration."""
+    if _CALL or _ENTERING:      # a nested block (or a cohort scope entered by THIS call) shares the outermost memo
+        yield
+        return
+    from tests import ci_immutable_git_reads
+
+    with contextlib.ExitStack() as scopes:
+        scopes.enter_context(ci_immutable_git_reads.scope())
+        _ENTERING.append(True)      # Correction B2: a cohort's scoped() entered here never opens a second outer call
+        try:
+            for m in cohorts():
+                if callable(getattr(m, 'scoped', None)):
+                    scopes.enter_context(m.scoped())
+        finally:
+            _ENTERING.pop()
+        _CALL.append({})
+        try:
+            yield
+        finally:
+            _CALL.pop()
+
+
+def exact_blobs_ok(cohort, repo=None, ref=None):
+    """Check a cohort directly and retain its rejection for this read-only call."""
+    root = Path(repo) if repo is not None else ROOT
+    verdict = cohort.exact_blobs_ok(root, ref)
+    if verdict is False and _CALL:
+        _CALL[-1].setdefault(('rejected-cohorts', str(root), ref), set()).add(cohort)
+    return verdict
+
+
+def valid(repo=None, ref=None):
+    key = ('valid', str(repo if repo is not None else ROOT), ref)
+    if _CALL and key in _CALL[-1]:
+        return _CALL[-1][key]
+    verdict = _valid(repo, ref)
+    if _CALL:
+        _CALL[-1][key] = verdict
+    return verdict
+
+
+def _valid(repo=None, ref=None):
+    root = Path(repo) if repo is not None else ROOT
+    mods = cohorts()
+    if not mods:
+        return False
+    if _CALL:
+        rejected = _CALL[-1].get(('rejected-cohorts', str(root), ref), ())
+        if any(m in rejected for m in mods):
+            return False
+    try:
+        from tests import ci_immutable_git_reads
+
+        with contextlib.ExitStack() as scopes:
+            scopes.enter_context(ci_immutable_git_reads.scope())
+            for m in mods:                      # one outer call: each cohort that offers a call-scope memo computes its exact check once
+                if callable(getattr(m, 'scoped', None)):
+                    scopes.enter_context(m.scoped())
+            if not all(m.exact_blobs_ok(root, ref) for m in mods):
+                return False
+            _git(root, 'merge-base', '--is-ancestor', PARENT, ref or 'HEAD')
+            changed = _git(root, 'diff', '--name-only', PARENT, *([ref] if ref else []), '--').decode().splitlines()
+            # Still inside the call scope: a cohort that delegates ``allowed_path`` to another cohort's exact check (PR-U1 via WF-06B) is
+            # evaluated once for this call instead of once per changed path (CI V3: F01 job 25 min cap). Same answers, no cache outlives the call.
+            if any(not any(m.allowed_path(p, root, ref) for m in mods) for p in changed):
+                return False
+        if ref is None:
+            owned = set().union(*(set(m.manifest(root, ref).get('source_blobs', {})) for m in mods))
+            untracked = _git(root, 'ls-files', '--others', '--exclude-standard', '--',
+                             'app/', 'financial_engine/', 'finco_core/', 'domain/', '.github/', 'main_web.py').decode().splitlines()
+            if any(p not in owned for p in untracked):
+                return False
+        return True
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return False
+
+
+def matches(path, source=None, *, repo=None, ref=None):
+    if not valid(repo, ref):
+        return False
+    if source is not None:
+        # A historical pin cannot attest source bytes different from the evaluated tree/ref.
+        root = Path(repo) if repo is not None else ROOT
+        raw = source.encode() if isinstance(source, str) else source
+        try:
+            actual = (root/path).read_bytes() if ref is None else _git(root, 'show', ref+':'+path)
+        except (OSError, subprocess.CalledProcessError):
+            return False
+        if raw != actual:
+            return False
+    return any(_owned_match(m, path, source, repo, ref) for m in cohorts())
+
+
+def _owned_match(module, path, source, repo, ref):
+    pins = module.manifest(repo, ref).get('source_blobs', {})
+    if path not in pins:
+        # A cohort that declares a closed ``PRESENTATION`` pattern (RC-UX) owns those paths at path level only; a byte string must still be a pin.
+        pattern = getattr(module, 'PRESENTATION', None)
+        return source is None and pattern is not None and bool(pattern.match(path))
+    if source is None:
+        return True
+    raw = source.encode() if isinstance(source, str) else source
+    return module._blob(raw) == pins[path]
+
+
+def protected_blobs(repo=None, ref=None):
+    from tests import ci_immutable_git_reads
+
+    root = Path(repo) if repo is not None else ROOT
+    if ref is not None:
+        # Snapshot a symbolic ref on every call. The verdict and each manifest
+        # read must describe the same commit, even if the ref moves afterward.
+        try:
+            ref = _git(root, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return {}
+    with ci_immutable_git_reads.scope(), call_scope():
+        if not valid(root, ref):
+            return {}
+        merged = {}
+        for m in cohorts():
+            for p, b in m.manifest(root, ref).get('source_blobs', {}).items():
+                if p.startswith(('financial_engine/', 'finco_core/', 'domain/')):
+                    merged[p] = b
+        return merged

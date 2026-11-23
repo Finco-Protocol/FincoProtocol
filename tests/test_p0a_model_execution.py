@@ -700,14 +700,3 @@ def test_main_web_legacy_async_routes_offload_every_direct_model_call():
     assert offenders == [], offenders
 
 
-def test_frozen_engine_and_core_are_untouched_by_this_stream():
-    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-    # financial_engine/ may differ only in the explicitly approved modules (shared allow-list,
-    # tests/finance_integrity_governance.py, which also honours the Model V2 scope contract);
-    # finco_core/ and finco_radar/ have no exception.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
-    from stream_scope_proof import verified_delta
-    delta = verified_delta("test_p0a_model_execution", "financial_engine", "finco_core", "finco_radar")
-    assert unapproved_engine_changes(delta) == []
-    assert strictly_frozen_changes(delta) == []

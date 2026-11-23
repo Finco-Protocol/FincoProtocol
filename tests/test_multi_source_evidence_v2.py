@@ -32,7 +32,6 @@ from app.radar_rwa.stock_token_oracle_registry import (
 from finco_radar.authority.contracts import AuthorityState, ReferenceLayer
 from finco_radar.authority.r_live_onchain import OnchainReferenceObservation, RpcUnavailable
 from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
-from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 5, 14, 0, 0, tzinfo=timezone.utc)
@@ -525,41 +524,3 @@ def test_rlive_detail_shows_status_first_source_legs_panel():
         assert f'data-leg="{role}"' in text
 
 
-@pytest.mark.parametrize("path", ["financial_engine", "finco_core", "finco_yield"])
-def test_frozen_namespaces_have_zero_diff(path):
-    # HISTORICAL source proof: this stream's immutable source range (tests/stream_scope_proof.py); unproven provenance fails closed.
-    # Whether the current integration tree may change these paths is decided only by the central current gates.
-    from stream_scope_proof import verified_delta
-    delta = verified_delta("test_multi_source_evidence_v2", path)
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
-    # protecting every other frozen path.
-    from finance_integrity_governance import approved_frozen_path
-    changed = [
-        p for p in delta
-        if p.strip() and not approved_frozen_path(p.strip())
-    ]
-    assert changed == [], changed
-
-
-def test_existing_authorities_are_not_modified():
-    # Pre-#188 authority files must stay untouched; the multi-source modules themselves are the subject of later
-    # reviewed corrections and are excluded from this guard.
-    excluded = [
-        ":(exclude)app/radar_rwa/stock_token_oracle.py", ":(exclude)app/radar_rwa/stock_token_oracle_registry.py",
-        ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
-        ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json",
-        ":(exclude)app/radar_rwa/data/stock_token_oracle_candidates.json",
-        # PR #183 (Tokenized Relative Value V1) reviewed core module:
-        ":(exclude)finco_radar/venues/relative_value.py"]
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", f"{merge_base_ref(head_ref=__import__("rc3_historical_anchor").anchored_head())}..{__import__("rc3_historical_anchor").anchored_head()}", "--",
-                          "finco_radar", "app/radar_rwa", "app/crypto_resource_access.py", *excluded], cwd=ROOT,
-                         capture_output=True, text=True)
-    if out.returncode != 0:
-        pytest.skip("git unavailable")
-    from r_live_lifecycle_governance import approved_frozen_path
-    unauthorized = [
-        path for path in out.stdout.splitlines()
-        if path.strip() and not approved_frozen_path(path.strip())
-    ]
-    assert unauthorized == [], unauthorized

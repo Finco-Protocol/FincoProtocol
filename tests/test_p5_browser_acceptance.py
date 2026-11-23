@@ -16,6 +16,8 @@ Markers:
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 # Browser acceptance tests require the Playwright-capable test infrastructure.
@@ -39,7 +41,37 @@ VIEWPORTS = {
     "mobile": {"width": 390, "height": 844},
 }
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8000"  # replaced by the live server below
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _live_server():
+    """Start the real app for this module (the tests used to assume an externally started server on :8000)."""
+    global BASE_URL
+    import socket
+    import threading
+    import time
+    import uvicorn
+    from main_web import app as web_app
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(web_app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
+    thread.start()
+    deadline = time.time() + 300  # startup seeds the reference runs
+    while not server.started:
+        assert thread.is_alive() and time.time() < deadline, "P5 live server did not start"
+        time.sleep(0.2)
+    previous, BASE_URL = BASE_URL, "http://127.0.0.1:%d" % port
+    try:
+        yield
+    finally:
+        BASE_URL = previous
+        server.should_exit = True
+        thread.join(timeout=10)
+        sock.close()
 
 
 def _authenticated_page(playwright, viewport_key: str):
@@ -47,7 +79,7 @@ def _authenticated_page(playwright, viewport_key: str):
     vp = VIEWPORTS[viewport_key]
     browser = playwright.chromium.launch(
         headless=True,
-        executable_path="/opt/pw-browsers/chromium",
+        **({"executable_path": "/opt/pw-browsers/chromium"} if os.path.exists("/opt/pw-browsers/chromium") else {}),
     )
     context = browser.new_context(viewport=vp)
     page = context.new_page()
@@ -224,7 +256,7 @@ def test_verified_asset_json_unauthenticated_returns_401():
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            executable_path="/opt/pw-browsers/chromium",
+            **({"executable_path": "/opt/pw-browsers/chromium"} if os.path.exists("/opt/pw-browsers/chromium") else {}),
         )
         context = browser.new_context(viewport=VIEWPORTS["desktop"])
         page = context.new_page()

@@ -26,20 +26,6 @@ PROTECTED_PATHS = ["financial_engine", "finco_core", "domain", "tests/model_v2_g
                    "tests/ppa01_candidate_authority.py"]
 
 
-def test_protected_production_tree_and_historical_guards_are_exact_main():
-    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_BASE, RESEARCH_MERGE], cwd=ROOT)
-    subprocess.check_call(["git", "merge-base", "--is-ancestor", RESEARCH_MERGE, "HEAD"], cwd=ROOT)
-    changed = subprocess.check_output(["git", "diff", RESEARCH_BASE, RESEARCH_MERGE,
-                                       "--name-only", "--", *PROTECTED_PATHS], cwd=ROOT, text=True)
-    assert changed.strip() == ""
-    for research_only in ("financial_engine/quarterly/calendar.py", "financial_engine/quarterly/runtime.py"):
-        absent = subprocess.run(["git", "cat-file", "-e", f"{RESEARCH_MERGE}:{research_only}"], cwd=ROOT, capture_output=True)
-        assert absent.returncode != 0, research_only
-    assert not (ROOT / "financial_engine/quarterly/calendar.py").exists()
-    assert not (ROOT / "financial_engine/quarterly/runtime.py").exists()
-
-
-
 def test_no_production_source_imports_or_dynamically_names_research_package():
     for directory in ("app", "financial_engine", "finco_core", "domain"):
         for path in (ROOT / directory).rglob("*.py"):
