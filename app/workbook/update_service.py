@@ -924,12 +924,32 @@ def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, 
         all_opex = _load_all_sub_lines(project_id)
         if all_opex:
             prov = opex_fold_provenance(all_opex)
-            if prov.get("replaces_aggregate"):
-                for fid in opex_fids:
-                    if fid.startswith("opex.lines.") or fid == "opex.summary.y1_total_keur":
-                        blocked[fid] = (
-                            "Active OPEX cost lines replace base OPEX scalars at Run; "
-                            "edit the individual OPEX cost lines instead."
-                        )
+            # Only a group whose canonical key is replaced by reference-seeded lines is shadowed
+            # (same authority as opex_group_authority_notes / the Run fold). Independently
+            # effective categories stay writable.
+            from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUPS
+            from app.v2.opex_assembly import _OPEX_NAME_TO_CODE
+
+            replaced_codes = {
+                _OPEX_NAME_TO_CODE[name]
+                for name in prov.get("replaced_canonical_keys") or ()
+                if name in _OPEX_NAME_TO_CODE
+            }
+            shadowed_fields = {
+                f"opex.lines.{g.field_suffix}"
+                for g in CANONICAL_OPEX_GROUPS
+                if g.field_suffix and g.code in replaced_codes
+            }
+            for fid in opex_fids:
+                if fid in shadowed_fields:
+                    blocked[fid] = (
+                        "Active OPEX cost lines replace this category's base scalar at Run; "
+                        "edit the individual OPEX cost lines instead."
+                    )
+                elif fid == "opex.summary.y1_total_keur" and prov.get("replaces_aggregate"):
+                    blocked[fid] = (
+                        "Active OPEX cost lines replace the aggregate OPEX scalar at Run; "
+                        "edit the individual OPEX cost lines instead."
+                    )
     return blocked
 
