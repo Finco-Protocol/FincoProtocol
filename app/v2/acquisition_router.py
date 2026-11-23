@@ -8,8 +8,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.model_v2.acquisition.economics import (
-    ACTIVATION_ENABLED, STATUS, AcquisitionPolicyError, AcquisitionTerms,
-    TRANSACTION, SHL_POLICY,
+    ACTIVATION_ENABLED, STATUS, AcquisitionInputError, AcquisitionPolicyError,
+    AcquisitionTerms, TRANSACTION, SHL_POLICY,
 )
 from app.model_v2.acquisition.evidence import (
     KEY, AcquisitionEvidenceError, validate as validate_evidence,
@@ -22,12 +22,13 @@ router = APIRouter()
 
 
 def _num(raw, name):
+    # C1F-ERR-01: plain input validation, not a concurrency conflict.
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        raise AcquisitionCaseConflict("CASE_" + name + "_INVALID") from None
+        raise AcquisitionInputError("CASE_" + name + "_INVALID") from None
     if not math.isfinite(value):
-        raise AcquisitionCaseConflict("CASE_" + name + "_NONFINITE")
+        raise AcquisitionInputError("CASE_" + name + "_NONFINITE")
     return value
 
 
@@ -37,7 +38,7 @@ def _terms(form):
         exit_raw = str(form.get("exit_date") or "").strip()
         exit_date = date.fromisoformat(exit_raw) if exit_raw else None
     except ValueError:
-        raise AcquisitionCaseConflict("CASE_DATE_INVALID") from None
+        raise AcquisitionInputError("CASE_DATE_INVALID") from None
     value = str(form.get("exit_proceeds_keur") or "").strip()
     terms = AcquisitionTerms(
         closing_date=close,
@@ -224,7 +225,13 @@ async def acquisition_save(request: Request):
         if evidence is None:
             raise AcquisitionCaseConflict(reason)
         existing_id = str(form.get("case_id") or "") or None
-        expected_revision = int(str(form.get("expected_revision") or "0"))
+        # C1F-ERR-01 (C07): a non-integer expected_revision used to surface the
+        # interpreter text "invalid literal for int() with base 10" inside a 409.
+        raw_expected_revision = str(form.get("expected_revision") or "0").strip()
+        try:
+            expected_revision = int(raw_expected_revision)
+        except ValueError:
+            raise AcquisitionInputError("EXPECTED_REVISION_INVALID") from None
         terms = _terms(form)
         document = make_document(entry, terms, closing_bridge=_bridge(form, terms))
         case_id, revision = save_case(
@@ -235,8 +242,29 @@ async def acquisition_save(request: Request):
         return RedirectResponse("/v2/valuation-acquisition?" + urlencode({
             "project": record.project_code, "case_id": case_id, "saved": "1"}),
             status_code=303)
-    except (AcquisitionCaseConflict, AcquisitionPolicyError, ValueError, TypeError) as exc:
+    except AcquisitionCaseConflict as exc:
+        # True concurrency/source-state conflict: 409 with the stable reason code.
         return JSONResponse({"error": str(exc), "status": STATUS}, status_code=409,
+                            headers={"Cache-Control": "private, no-store"})
+    except AcquisitionPolicyError as exc:
+        # C1F-ERR-01: plain validation/policy refusal, stable code text, 422.
+        return JSONResponse({"error": str(exc), "status": STATUS}, status_code=422,
+                            headers={"Cache-Control": "private, no-store"})
+    except AcquisitionInputError as exc:
+        return JSONResponse({"error": str(exc), "status": STATUS}, status_code=422,
+                            headers={"Cache-Control": "private, no-store"})
+    except (ValueError, TypeError) as exc:
+        # Joint-correction review (2026-11-19): every client-reachable input
+        # path is now typed above, so a residual ValueError/TypeError is an
+        # UNEXPECTED internal fault. It must not be presented as user
+        # validation: controlled 500 with a safe external body and full
+        # server-side exception telemetry. Nothing caller-supplied (project
+        # code, form payload) is embedded in the log line.
+        import logging
+        logging.getLogger(__name__).exception(
+            "ACQUISITION_SAVE_UNEXPECTED_ERROR type=%s", type(exc).__name__)
+        return JSONResponse({"error": "INTERNAL_ERROR", "status": STATUS},
+                            status_code=500,
                             headers={"Cache-Control": "private, no-store"})
 
 
