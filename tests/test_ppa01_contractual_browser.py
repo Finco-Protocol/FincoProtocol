@@ -7,6 +7,7 @@ import pytest
 
 pytest.importorskip('playwright', reason='playwright not installed in this workflow')
 
+from playwright.sync_api import expect  # noqa: E402
 from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server  # noqa: E402,F401
 from tests.model_workspace_navigation import activate_destination  # noqa: E402
 
@@ -65,13 +66,30 @@ def test_four_anchor_controls_save_reload_and_refusal_keep_draft(live_server,bro
     rule.select_option('CUSTOM'); field('custom_start_date').fill('2029-04-15')
     field('first_review_date').fill('2030-04-15')
     assert s.page.locator('[data-calendar-prices]').is_hidden()
+    requests_before_422=len(s.requests)
     with s.page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/v2/workbook/revenue/contracts')) as response:
         s.page.locator('[data-revenue-save]').click()
     assert response.value.status==422
     s.page.locator('[data-revenue-error]').filter(has_text='REVIEW_PERIOD_ALIGNMENT').wait_for()
+    # Wait for loadend + queued model_view_refresh microtask to settle; a 422 must
+    # keep the revenue sheet loaded and must not issue a stale sheet reload over the draft.
+    s.page.wait_for_function("() => document.querySelector('#v2-sheet-revenue')?.dataset.modelViewState === 'loaded'")
+    s.page.evaluate("() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)))")
+    post_422_gets=[u for m,u in s.requests[requests_before_422:] if m=='GET' and '/v2/workbook/grid/sheet' in u and 'sheet=revenue' in u]
+    assert post_422_gets==[], post_422_gets
+    assert s.page.locator('#v2-sheet-revenue [data-model-view-notice]').count()==0
+    expect(s.page.locator('[data-revenue-error]')).to_contain_text('REVIEW_PERIOD_ALIGNMENT')
     assert field('custom_start_date').input_value()=='2029-04-15'
     assert s.saved_book()==expected
-    assert 'unsaved' in s.page.locator('[data-revenue-feedback]').inner_text().lower() or 'not saved' in s.page.locator('[data-revenue-feedback]').inner_text().lower()
+    expect(s.page.locator('[data-revenue-feedback]')).to_have_text(re.compile(r'unsaved|not saved', re.I))
+    # Subsequent valid correction must still be saveable without reloading and settle to Saved Working Copy.
+    field('custom_start_date').fill('2028-12-31')
+    field('first_review_date').fill('2029-12-31')
+    save(s)
+    expect(s.page.locator('[data-revenue-feedback]')).to_have_text(re.compile(r'^Saved Working Copy'))
+    corrected=s.saved_book()
+    assert corrected['streams'][0]['indexation_timing']['start_rule']=='CUSTOM'
+    assert corrected['streams'][0]['indexation_timing']['custom_start_date']=='2028-12-31'
     s.close()
 
 

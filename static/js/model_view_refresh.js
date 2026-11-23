@@ -37,12 +37,17 @@
       }
     });
   }
+  function isViewDirty(view, node) {
+    if (!view) return false;
+    if (view.dirty) return true;
+    return !!(node && node.querySelector && node.querySelector('form[data-revenue-editor][data-dirty="true"]'));
+  }
   function warning(view, node, text) {
     var previous=node.querySelector('[data-model-view-notice]'); if(previous)previous.remove();
     var notice=document.createElement('div');notice.dataset.modelViewNotice='';notice.setAttribute('role','status');
     var p=document.createElement('p');p.textContent=text;notice.appendChild(p);
     var retry=document.createElement('button');retry.type='button';retry.dataset.modelViewRetry=view.name;
-    retry.textContent=view.dirty ? 'Reload sheet and discard these unsaved edits' : 'Refresh view';notice.appendChild(retry);
+    retry.textContent=isViewDirty(view, node) ? 'Reload sheet and discard these unsaved edits' : 'Refresh view';notice.appendChild(retry);
     if(!view.editable){
       var bar=node.querySelector('#fs-runtime-bar');
       node.replaceChildren(notice);if(bar)node.appendChild(bar);
@@ -56,7 +61,7 @@
       if(view.name==='run_history' && !node.querySelector('[data-testid="run-history-table"], [data-testid="run-history-empty"]'))return;
       view.active=null;view.node=node;node.dataset.modelViewState='pending';
       syncSetupControls(view,node);
-      warning(view,node,view.dirty ? 'This sheet changed while it had unsaved edits. Your draft is kept; reload before saving.' :
+      warning(view,node,isViewDirty(view, node) ? 'This sheet changed while it had unsaved edits. Your draft is kept; reload before saving.' :
         'This view needs refreshing. Previous results are not current.');
     });
   }
@@ -67,7 +72,7 @@
     source.addEventListener('htmx:beforeOnLoad',function(event){
       var xhr=event.detail.xhr;
       accepted=current(ticket) && node===document.querySelector(target) && !writes && !pendingWrites.size &&
-        !(view && view.dirty) && xhr.status===200 && xhr.getResponseHeader('X-Finco-View-Hash')===ticket.hash;
+        !(view && isViewDirty(view, node)) && xhr.status===200 && xhr.getResponseHeader('X-Finco-View-Hash')===ticket.hash;
       // A grid-state read belongs to the in-flight grid Save itself.
       if(target==='#v2-input-grid')accepted=current(ticket) && node===document.querySelector(target) &&
         xhr.status===200 && xhr.getResponseHeader('X-Finco-View-Hash')===ticket.hash &&
@@ -87,7 +92,7 @@
       if(!node.dataset.modelViewState)node.dataset.modelViewState='loaded';
     }
     syncSetupControls(view,node);
-    if(!visible(view) || view.dirty || view.active || writes || pendingWrites.size ||
+    if(!visible(view) || isViewDirty(view, node) || view.active || writes || pendingWrites.size ||
        node.dataset.modelViewState!=='pending')return;
     var ticket=capture();view.active=ticket;node.setAttribute('aria-busy','true');
     var query='project='+encodeURIComponent(ticket.project)+'&content_hash='+encodeURIComponent(ticket.hash);
@@ -140,7 +145,7 @@
       if(view){view.dirty=false;view.otherDirty=false;document.getElementById(view.id).dataset.modelViewState='pending';schedule();}
       return;
     }
-    if(event.target.closest('button,input[type="submit"]') && !event.target.closest('[data-nav-tab]'))block(event);
+    if(event.target.closest('button,input[type="submit"]') && !event.target.closest('[data-nav-tab],[data-conflict-reload]'))block(event);
   },true);
   document.addEventListener('htmx:configRequest',function(event){
     if(/^\/v2\/(workbook|capex|opex)\//.test(String(event.detail.path||'')))event.detail.headers['X-Finco-Lazy-Views']='1';
@@ -149,6 +154,9 @@
     var detail=event.detail||{},cfg=detail.requestConfig||{};
     if(String(cfg.verb).toLowerCase()!=='post' || !/^\/v2\/(workbook|capex|opex)\//.test(String(cfg.path||'')))return;
     var sourceView=viewOf(detail.elt||event.target);
+    var sourceNodeBefore=sourceView ? document.getElementById(sourceView.id) : null;
+    var prevState=sourceNodeBefore ? sourceNodeBefore.dataset.modelViewState : null;
+    var beforeHash=capture().hash;
     var isRun=String(cfg.path||'').split('?')[0]==='/v2/workbook/run';
     var previousHealth=document.getElementById('v2-model-health');
     pendingWrites.add(detail.xhr);invalidate();
@@ -160,12 +168,16 @@
          health && health!==previousHealth && health.dataset.state==='CURRENT')sharedReadyGeneration=generation;
       // Existing cost writers update one row plus authorized OOB identities,
       // not the whole sheet. Keep their remaining drafts and keyboard focus.
-      if(sourceView && sourceView.editable && detail.xhr.status===200 && generation===writeGeneration){
+      // A 422 validation refusal leaves server state unchanged; restore the
+      // source editable view to loaded so the rejected draft, error banner and
+      // Save button remain intact without triggering a stale sheet reload.
+      var rejectedValidation=detail.xhr.status===422 && prevState==='loaded' && capture().hash===beforeHash;
+      if(sourceView && sourceView.editable && (detail.xhr.status===200 || rejectedValidation) && generation===writeGeneration){
         var node=document.getElementById(sourceView.id);
         if(node && node===sourceView.node){
           // The Investor agreement is one form saved as a whole: after a successful save its edits are persisted, not an unsaved draft that
           // would keep the sheet permanently pending after the next Run. Row writers (cost grids) keep their remaining drafts untouched.
-          if(sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
+          if(detail.xhr.status===200 && sourceView.name==='investor'){sourceView.dirty=false;sourceView.otherDirty=false;}
           node.dataset.modelViewState='loaded';
           syncSetupControls(sourceView,node);
           var notice=node.querySelector('[data-model-view-notice]');if(notice)notice.remove();
