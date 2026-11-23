@@ -78,7 +78,42 @@ class AgreementTerms:
         return hashlib.sha256(self.to_json().encode("utf-8")).hexdigest()
 
 
+class InvestorAgreementInputError(ValueError):
+    """Interpreter-level input parse failure (C1F-ERR-01): stable generic text.
+
+    The router maps this to HTTP 422 and never echoes the underlying Python
+    interpreter message (json/date) to the client."""
+
+
 def parse_terms(raw) -> AgreementTerms | None:
+    """Parse a persisted/submitted F4 agreement document.
+
+    Every refusal is an ``InvestorAgreementInputError`` (a ``ValueError``
+    subclass, so existing ``except ValueError`` callers are unchanged): the
+    authored domain messages of this module and of the P0 contracts (e.g.
+    "Legal equity ownership must sum to one") are bounded, stable texts that
+    the router returns as a 422. Interpreter-level JSON/date messages were
+    already replaced by generic texts below and are never echoed. Anything
+    that is not a ``ValueError`` (e.g. a ``TypeError``) is NOT converted and
+    stays an unexpected fault for the caller (logged 500 in the router).
+    """
+    try:
+        return _parse_terms(raw)
+    except InvestorAgreementInputError:
+        raise
+    except ValueError as exc:
+        if type(exc) is not ValueError:
+            # A ValueError subclass from a library (e.g. UnicodeError) is not an
+            # authored domain refusal: never echo its text.
+            raise InvestorAgreementInputError("F4 agreement payload is invalid") from exc
+        raise InvestorAgreementInputError(str(exc)) from exc
+    except (OverflowError, RecursionError) as exc:
+        # Arithmetic overflow on absurd amounts (e.g. fsum) or pathological
+        # nesting is invalid input, not an internal fault; never echo it.
+        raise InvestorAgreementInputError("F4 agreement payload is invalid") from exc
+
+
+def _parse_terms(raw) -> AgreementTerms | None:
     if raw in (None, ""):
         return None
 
@@ -86,11 +121,25 @@ def parse_terms(raw) -> AgreementTerms | None:
         result = {}
         for key, value in pairs:
             if key in result:
-                raise ValueError("F4 duplicate JSON keys are not permitted")
+                raise InvestorAgreementInputError("F4 duplicate JSON keys are not permitted")
             result[key] = value
         return result
 
-    obj = json.loads(raw, object_pairs_hook=unique) if isinstance(raw, str) else raw
+    if isinstance(raw, str):
+        # C1F-ERR-01 (B02): malformed JSON used to surface the interpreter text
+        # "Expecting property name enclosed in double quotes..." to the client.
+        try:
+            obj = json.loads(raw, object_pairs_hook=unique)
+        except InvestorAgreementInputError:
+            raise
+        except (ValueError, RecursionError) as exc:
+            # Any decoder failure (JSONDecodeError, the interpreter's integer
+            # digit limit, nesting depth) gets one generic text; the authored
+            # duplicate-key refusal above is raised typed and passes through.
+            raise InvestorAgreementInputError(
+                "F4 agreement payload is not valid JSON") from exc
+    else:
+        obj = raw
     _keys(obj, ("schema_version", "agreement_id", "version", "currency", "unit",
                 "policy", "investors", "contributions"))
     if type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
@@ -120,7 +169,14 @@ def parse_terms(raw) -> AgreementTerms | None:
         _keys(row, ("investor_id", "cash_date", "amount_keur"))
         if not isinstance(row["cash_date"], str):
             raise ValueError("Contribution date must be explicit ISO date")
-        c = Contribution(row["investor_id"], date.fromisoformat(row["cash_date"]), row["amount_keur"])
+        # C1F-ERR-01 (B02): an unparseable ISO date used to surface the
+        # interpreter text ("month must be in 1..12", "Invalid isoformat ...").
+        try:
+            cash_date = date.fromisoformat(row["cash_date"])
+        except ValueError as exc:
+            raise InvestorAgreementInputError(
+                "Contribution date must be explicit ISO date") from exc
+        c = Contribution(row["investor_id"], cash_date, row["amount_keur"])
         if c.investor_id not in by_id:
             raise ValueError("Contribution investor is not in agreement")
         contributions.append(c)

@@ -23,6 +23,13 @@ class AcquisitionPolicyError(ValueError):
     pass
 
 
+class AcquisitionInputError(ValueError):
+    """Plain input validation failure (C1F-ERR-01): stable code text, HTTP 422.
+
+    Distinct from AcquisitionCaseConflict (concurrency/source-state refusal,
+    HTTP 409) so rejected input is never reported as a conflict."""
+
+
 def _finite(value, name, *, nonnegative=True):
     if type(value) not in (int, float) or not math.isfinite(value):
         raise AcquisitionPolicyError(name + "_INVALID")

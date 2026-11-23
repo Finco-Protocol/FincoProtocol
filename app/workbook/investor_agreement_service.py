@@ -1,7 +1,9 @@
 """F4 agreement edits in the existing owner/scenario stores and composite CAS."""
 import json
 
-from app.model_v2.investor_f4 import SNAPSHOT_KEY, parse_terms
+from app.model_v2.investor_f4 import (
+    SNAPSHOT_KEY, InvestorAgreementInputError, parse_terms,
+)
 from app.persistence._helpers import _now_utc, _to_json
 from app.persistence.db import get_connection
 from app.workbook.registry import WORKBOOK
@@ -23,7 +25,7 @@ def effective_raw(snapshot, scenario=None):
 def save_agreement(*, owner, project_id, expected_hash, raw, remove=False):
     terms = None if remove else parse_terms(raw)
     if terms is None and not remove:
-        raise ValueError("An explicit agreement is required")
+        raise InvestorAgreementInputError("An explicit agreement is required")
     conn = get_connection()
     try:
         conn.execute("BEGIN EXCLUSIVE")

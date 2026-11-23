@@ -1,0 +1,25 @@
+# A pull request / merge group whose diff touches any of these paths runs the FULL regression (tests/full_regression_nodes.txt)
+# on its exact head, in addition to the standard groups. Prefixes (directories end with "/"), one per line. Conservative on
+# purpose: the production goal-seek / valuation / NPV path, the engine and core, their React/Legacy adapters, the
+# deferred test and its support, and this deferral mechanism itself. Reviewed with CODEOWNERS like the workflow.
+financial_engine/
+finco_core/
+domain/
+app/model_v2/
+app/services/goal_seek.py
+app/services/financial_goal_seek.py
+app/services/financial_core_evidence.py
+app/services/sensitivity_execution.py
+app/api/project_runner.py
+app/workbook/financial_core_config.py
+app/v2/router.py
+app/v2/react_goal_seek.py
+app/v2/react_goal_seek_targets.py
+app/v2/react_workspace_router.py
+tests/test_model_react_rcux_goal_seek_targets_v1.py
+tests/fin_v2_3_support.py
+tests/conftest.py
+tests/full_regression_nodes.txt
+scripts/ci/
+.github/workflows/model_ci.yml
+.github/workflows/release_gate.yml

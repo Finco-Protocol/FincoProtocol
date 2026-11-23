@@ -1,0 +1,6 @@
+# Exact pytest nodes DEFERRED from the 16 standard Model CI groups to the FULL regression job (owner policy, FINCO 34).
+# They are NOT skipped, NOT known defects and NOT xfail: the FULL job runs them unchanged on the exact SHA under test.
+# FULL runs on: the nightly schedule, every release gate (release_gate.yml passes full_regression: true), a manual
+# dispatch with full_regression: true, and every pull request / merge group whose diff touches a path listed in
+# scripts/ci/full_regression_paths.txt (or whose diff cannot be read). Format: <node id>  # <reason>
+tests/test_model_react_rcux_goal_seek_targets_v1.py::test_npv_with_a_saved_valuation_policy_is_solved_in_keur_and_equals_the_legacy_route  # three full NPV goal-seeks (probe, React typed kEUR, Legacy parity) with the FIN-V2.3 valuation policy: 1093-1737 s hosted, the single Model CI critical-path node

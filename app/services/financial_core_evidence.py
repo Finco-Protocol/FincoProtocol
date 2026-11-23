@@ -32,6 +32,88 @@ def json_value(value):
     return value
 
 
+def _tax_provenance_evidence(clean_run):
+    """F2-NEW-03 (S8): seal the EXISTING Phase-2B tax traces, audit-only.
+
+    Read-only projection of the already-computed ``TaxAndCfadsSchedules``
+    vectors into the sealed evidence. No second tax schedule is computed, no
+    unknown value is substituted with zero: a field the engine does not
+    compute stays explicitly NOT_AVAILABLE. Values are the engine's own
+    floats, passed through unchanged (bit-identical pass-through), and the
+    block is stored inside ``financing_evidence`` by ``attach_financial_core``
+    so the existing atomic CAS commit binds it to the same immutable Run
+    identifier/hash."""
+    tax = getattr(getattr(clean_run.g2c_result, "financing_result", None),
+                  "project_model_result", None)
+    tax = getattr(tax, "tax_and_cfads", None)
+    if tax is None:
+        return {"status": "NOT_AVAILABLE",
+                "reason": "TAX_AND_CFADS_SCHEDULES_NOT_COMPUTED"}
+    vectors = (
+        "taxable_income_before_losses_audit_keur",
+        "taxable_profit_after_losses_audit_keur",
+        "tax_loss_opening_audit_keur",
+        "tax_loss_used_audit_keur",
+        "tax_loss_closing_audit_keur",
+        "tax_depreciation_audit_keur",
+        "cit_accrual_audit_keur",
+        "cash_tax_current_period_audit_keur",
+        "cash_tax_bridge_reconciliation_keur",
+    )
+    period_count = len(getattr(tax, "period_indices", ()) or ())
+    if period_count == 0:
+        return {"status": "NOT_AVAILABLE",
+                "reason": "TAX_AND_CFADS_PERIOD_AXIS_EMPTY"}
+    periods = []
+    for row, idx in enumerate(tax.period_indices):
+        entry = {"period_index": idx}
+        for name in vectors:
+            vector = getattr(tax, name, ())
+            # Only a genuinely non-computed / short / misaligned vector yields
+            # an explicit None per period — never a zero, never a fabricated
+            # value; a computed value is passed through exactly as the engine
+            # wrote it. NOTE: a nonfinite engine value is not converted here;
+            # the run-history store serializes with allow_nan=False, exactly as
+            # it already does for the same vectors in the statements payload.
+            entry[name] = vector[row] if row < len(vector) else None
+        periods.append(entry)
+    computed = {name for name in vectors
+                if len(getattr(tax, name, ())) == period_count}
+    missing = sorted(set(vectors) - computed)
+    # Reconciliation over the SAME schedule values (no recomputation of tax):
+    # a continuous loss schedule carries closing -> next opening unchanged.
+    opening = getattr(tax, "tax_loss_opening_audit_keur", ())
+    closing = getattr(tax, "tax_loss_closing_audit_keur", ())
+    continuous = all(
+        i == 0 or opening[i] == closing[i - 1]
+        for i in range(min(len(opening), len(closing)))
+    ) if len(opening) == len(closing) else None
+    # Joint-correction review (2026-11-19): a partial trace is classified as
+    # PARTIAL, never presented as complete; the missing field list names the
+    # audit gap explicitly.
+    status = ("CALCULATED_FROM_EXISTING_SCHEDULES" if not missing
+              else "PARTIAL_SCHEDULE_COVERAGE")
+    return {
+        "status": status,
+        "authority": "PHASE_2B_TAX_AND_CFADS_SCHEDULES_READ_ONLY",
+        "period_count": len(periods),
+        "periods": periods,
+        "computed_fields": sorted(computed),
+        "not_available_fields": missing,
+        "reconciliation": {
+            "cit_accrual_total_keur": math_fsum(getattr(tax, "cit_accrual_audit_keur", ())),
+            "cash_tax_current_period_total_keur": math_fsum(getattr(tax, "cash_tax_current_period_audit_keur", ())),
+            "loss_schedule_closing_equals_next_opening": continuous,
+        },
+    }
+
+
+def math_fsum(values):
+    """Exact float summation of an audit vector (never re-derives any value)."""
+    import math as _math
+    return _math.fsum(float(v) for v in values if v is not None)
+
+
 def build_financial_core_evidence(clean_run, debt_evidence=None):
     g = clean_run.g2c_result
     pi = clean_run.project_inputs
@@ -104,6 +186,10 @@ def build_financial_core_evidence(clean_run, debt_evidence=None):
             "standalone_g2b": "NON_PRODUCTION_RESEARCH_MODEL",
         },
         "tax_policy_classification": "GENERIC_MVP_POLICY",
+        # F2-NEW-03 (S8): additive sealed tax-provenance block. Evidence-only:
+        # no tax formula, WHT/ATAD jurisdiction, year, cash tax, net income,
+        # cashflow, statement or Run digest is changed by this key.
+        "tax_provenance_v1": _tax_provenance_evidence(clean_run),
         "contractual_assessment": "CONTRACTUAL_ASSESSMENT_NOT_AVAILABLE",
         "lender_acceptance": "NOT_VERIFIED",
     }

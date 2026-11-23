@@ -58,7 +58,8 @@ function sectionFromHash(): Section {
 }
 
 /** Chip text for the shell: whether the saved results match the project as it is saved now. */
-const RUN_CHIP: Record<string, string> = { CURRENT: "RESULTS UP TO DATE", STALE: "RESULTS OUTDATED", NOT_RUN: "NOT RUN YET" };
+// UX-FINAL-01: the chrome chip names the DATA ORIGIN only. Run freshness (UP TO DATE / OUTDATED / NOT RUN) is shown once, in the project bar.
+const ORIGIN_CHIP = "SAVED PROJECT DATA";
 
 function FreshnessBadge({ state }: { state: string }) {
   const cls = state === "CURRENT" ? "rx-badge rx-badge-ok"
@@ -553,7 +554,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   return (
     <div style={{ display: "contents" }} onClickCapture={guardLinkClick} data-leave-guard="true">
     <Shell crumb={workspace.project.name} dataOrigin="canonical-run" mainContentId="rx-main-content" hideBreadcrumb
-      originLabel={RUN_CHIP[workspace.freshness.state] ?? "RUN UNAVAILABLE"}>
+      originLabel={ORIGIN_CHIP}>
       <div className="rx-page wsv2-page" role="main" id="rx-main-content" tabIndex={-1} data-react-workspace-version={workspace.react_workspace.version} data-ux-pr1="true">
         <h1 className="fm-sr-only">{workspaceHeading(workspace)}{workspace.project.protected_reference && " · TEMPLATE · READ ONLY"}</h1>
         <WorkflowBar
@@ -609,9 +610,6 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
               const gridPayload: InputsPayload = ledgerTechnology ? { ...displayedInputs, grid: { ...displayedInputs.grid,
                 sections: displayedInputs.grid.sections.filter((sec) => sec.section_id !== "capex" && sec.section_id !== "opex") } } : displayedInputs;
               return <>
-                {!onBench && <details className="ux-input-tools"><summary>Input shortcuts and import</summary>
-                  <InputsJumpNav onJump={jumpWithinInputs} />
-                </details>}
                 {bench && (
                   <div hidden={!onBench} data-cost-workbench-host={onBench ? "visible" : "hidden"}>
                     <CostWorkbench project={project} sheet={bench.sheet} view={bench.view} protectedReference={protectedReference}
@@ -622,7 +620,8 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
                   <>
                     <div className="ci-layout" data-ci-layout={railOpen ? "rail" : "full"}>
                     <div className="ci-main">
-                    <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)} />
+                    <InputsOverview project={project} workspace={workspace} reloadKey={dataVersion} query={inputQuery} onQuery={setInputQuery} railOpen={railOpen} onRail={() => setRailOpen((v) => !v)}
+                      tools={<details className="ux-input-tools"><summary>Input shortcuts and import</summary><InputsJumpNav onJump={jumpWithinInputs} /></details>} />
                     <InputsCostCards project={project} workspace={workspace} reloadKey={dataVersion} onOpen={(sheet) => navigateTo(`inputs/${sheet}` as WorkspaceDestination)} />
                     <SaveScopeGuide />
                     <div id="wf-inputs-setup" tabIndex={-1}>

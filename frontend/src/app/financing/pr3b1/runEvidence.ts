@@ -52,7 +52,7 @@ export function checkRunEvidence(e: Evidence): Gate {
     return deny('Run selection changed during read.');
   if (before.freshness.state==='NOT_RUN' && s.freshness==='NOT_RUN' && c.freshness==='NOT_RUN'
       && !r && !before.identity && !scope.historyId && !s.selected_run?.available)
-    return {state:'NOT_RUN',showRun:false,reason:'NOT_RUN — no committed selected Run.',assurance:'NOT_PROVEN'};
+    return {state:'NOT_RUN',showRun:false,reason:'No committed Run for this project yet. Run-sourced values show a dash, never zero.',assurance:'NOT_PROVEN'};
   if (!r || c.data?.runs.length!==1 || !r.identity || !r.structure || !r.capacity)
     return deny('Exactly one committed selected Run required.');
   const id=r.identity;

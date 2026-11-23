@@ -13,7 +13,8 @@ def test_standalone_create_persists_four_true_human_rates(client,kind,project_ty
     for human in [.056,.56,5.6,9.]:
         data=main_web._generic_prefill_values('generic_'+kind)
         data.update(project_name=f'F01 standalone {kind} {human}',country_market='HR',interest_rate_pct=str(human))
-        response=client.post('/projects/create',data=data,follow_redirects=False)
+        from tests.fable_pr1_csrf_client import fetch_create_csrf_token
+        response=client.post('/projects/create',data={**data,'csrf_token':fetch_create_csrf_token(client)},follow_redirects=False)
         assert response.status_code in (200,303),response.text[:500]
         with db.get_connection() as c:
             row=c.execute('SELECT * FROM projects WHERE project_name=?',(data['project_name'],)).fetchone()

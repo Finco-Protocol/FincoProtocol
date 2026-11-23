@@ -87,14 +87,16 @@ export function FinancingStudio({ project, scenarioId, reloadKey, onSaved }: {
         description="Unsaved edits in this document will be discarded. Separate scalar drafts are retained. Leaving does not cancel or retry an unresolved Save; reload the workspace to reconcile its outcome."
         confirmLabel="Discard document and continue" cancelLabel="Stay and keep editing" danger
         onCancel={() => setLeaveDocument(null)} onConfirm={() => { const next = leaveDocument; setLeaveDocument(null); adopt(next); }} />}
+      {/* UX-FINAL-01: ONE always-visible Financing navigation (workspace + the seven existing views) in every view, replacing the "Back" paragraph and the collapsed
+          disclosure. Contracts kept: aria-label "Existing Financing functions" lists exactly the seven views via data-financing-tab-button, and the sub-view
+          button still reads "Back to Financing workspace". In the workspace the in-page read links own data-financing-tab-button, so the nav uses data-financing-nav there. */}
+      <nav className="pr3b1-compat ux-fin-nav" aria-label="Existing Financing functions">
+        <button type="button" className="rx-button rx-button-secondary" aria-current={tab === "workspace" ? "page" : undefined} data-financing-workspace-button="true"
+          onClick={() => choose("workspace")}>{tab === "workspace" ? "Financing workspace" : "Back to Financing workspace"}</button>
+        {TABS.map(t => <button key={t.id} type="button" className="rx-button rx-button-secondary" aria-current={tab === t.id ? 'page' : undefined}
+          {...(tab === "workspace" ? { "data-financing-nav": t.id } : { "data-financing-tab-button": t.id })} onClick={() => choose(t.id)}>{t.label}</button>)}
+      </nav>
       {tab === "workspace" ? <FinancingReadLayer scope={{ project, scenarioId, historyId: selectedRunFromUrl() ?? undefined }} reloadKey={reloadKey} onSaved={onSaved} onOpenExisting={view => { if (TABS.some(t => t.id === view)) choose(view as Tab); }} /> : <>
-      <p><button type="button" className="rx-button rx-button-secondary" onClick={() => choose("workspace")}>Back to Financing workspace</button></p>
-      <details open><summary>Existing Financing editors and evidence</summary>
-        <nav className="pr3b1-compat" aria-label="Existing Financing functions">
-          {TABS.map(t => <button key={t.id} type="button" className="rx-button rx-button-secondary" aria-current={tab === t.id ? 'page' : undefined}
-            data-financing-tab-button={t.id} onClick={() => choose(t.id)}>{t.label}</button>)}
-        </nav>
-      </details>
       <div id="rcm-fin-panel">
         {/* Debt terms never waits for the studio read: it is the section's original editor and opens immediately */}
         {tab === "terms" && <SheetFieldsEditor project={project} sheet="debt" title="Debt & Equity financing" reloadKey={reloadKey} onSaved={onSaved} />}
