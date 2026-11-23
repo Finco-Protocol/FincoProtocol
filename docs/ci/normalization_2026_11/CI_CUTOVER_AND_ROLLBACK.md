@@ -50,14 +50,20 @@ Required checks observed on recent PRs (verify the exact list on the settings pa
    the `owners` team. `release_gate.yml` waits on it.
 8. **Radar** (separate repository): see `docs/ci/normalization_2026_11/OPEN_DEFECTS_AND_NEXT.md` (billing blocker).
 
+## Already done
+
+* 2026-11-23: workflow `CI V5 gate (trusted base)` (`pull_request_target`, runs from `main`) was **disabled** via the
+  Actions API so it stops failing on every PR until #476 removes it from `main`. Not a required check.
+
 ## Rollback
 
 If the new gate misbehaves after cutover:
 
 1. Freeze merges and deploys.
 2. Restore the saved branch-protection configuration (step 2 backup) so the old contexts are required again.
-3. Revert the merge commit of #476 with an ordinary `git revert -m 1 <merge-sha>` PR (no reset, no force push). That
+3. Re-enable *CI V5 gate (trusted base)* in Actions if V5 is restored.
+4. Revert the merge commit of #476 with an ordinary `git revert -m 1 <merge-sha>` PR (no reset, no force push). That
    restores the old workflows, tools and tests byte-for-byte from history.
-4. Re-run the old checks on the revert PR and merge it under the restored rules.
+5. Re-run the old checks on the revert PR and merge it under the restored rules.
 
 No step requires deleting history; the archive and commit `707e68b2` keep every original byte.

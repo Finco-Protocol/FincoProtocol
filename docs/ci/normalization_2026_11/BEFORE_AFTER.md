@@ -23,4 +23,5 @@ Hosted runs on #476 (head SHA in each run):
 * 45083207403: first run on the original layout; harness and leftover-governance failures exposed.
 * 45088427832: round 2. `static`, `finance`, `boot-smoke` and `acceptance` green; 8 of 16 groups green.
 * 45094080461: round 3. 13 of 16 groups green; the remaining failures are fixed in round 4.
-* Final run: see `00_EXECUTIVE_VERDICT_HR.md` in the evidence package.
+* 45119015523 (head `0788da5`): **all 20 jobs green, `required` success**; 20,619 collected = 20,554 executed + 65
+  known defects; 0 failures, 0 reruns; wall 22.5 min (critical group 22.1 min, static 4.0, finance 4.9).
