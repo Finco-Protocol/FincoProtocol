@@ -210,6 +210,8 @@ def revenue_decomposition_schedule(
             multistream.validate_axis(engine.periods())
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
+        if getattr(multistream, "has_absolute_annual_quantity", False):
+            multistream.validate_global_p50_cap(inputs)
 
     missing_merchant_years: set[int] = set()
     for period in engine.periods():

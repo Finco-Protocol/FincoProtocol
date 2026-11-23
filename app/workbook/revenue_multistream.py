@@ -39,4 +39,6 @@ def apply_config(inputs, raw, *, project_type):
         config.validate_axis(engine.periods(), project_cod=candidate.info.cod_date)
     else:
         config.validate_axis(engine.periods())
+    if getattr(config, "has_absolute_annual_quantity", False):
+        config.validate_global_p50_cap(candidate)
     return candidate

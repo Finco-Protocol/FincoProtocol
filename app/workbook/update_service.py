@@ -533,15 +533,15 @@ class WorkbookUpdateService:
             snap[validation.spec.snapshot_key] = str(validation.typed_value)
             validate_proposed_p90_p50_snapshot(snap)
 
-        # --- C1-Q-02: validate proposed horizon/COD against existing PPA book atomically ---
-        if field_id in ("project_setup.technical.horizon_years", "project_setup.technical.cod_date"):
+        # --- C1-Q-02 & OD-R04-02: validate proposed PPA book & global P50 cap atomically ---
+        if field_id == "revenue.multistream.contracts" or field_id.startswith("project_setup.technical."):
             snap = dict(ws.draft_snapshot or {})
+            snap[validation.spec.snapshot_key] = (
+                validation.typed_value.isoformat()
+                if hasattr(validation.typed_value, "isoformat")
+                else str(validation.typed_value)
+            )
             if (snap.get("rev_multistream_config_json") or "").strip():
-                snap[validation.spec.snapshot_key] = (
-                    validation.typed_value.isoformat()
-                    if hasattr(validation.typed_value, "isoformat")
-                    else str(validation.typed_value)
-                )
                 _validate_ppa_book_against_proposed_snapshot(snap)
 
         # --- R-1: early finite derived-amount refusal (advisory) ----------
@@ -682,11 +682,10 @@ class WorkbookUpdateService:
                 first_fid, first_reason = next(iter(line_owned.items()))
                 raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
 
-        # C1-Q-02: validate proposed horizon/COD against existing PPA book atomically
+        # C1-Q-02 & OD-R04-02: validate proposed PPA book & global P50 cap atomically
         if (
-            "project_setup.technical.horizon_years" in seen_ids
-            or "project_setup.technical.cod_date" in seen_ids
-            or "revenue.multistream.contracts" in seen_ids
+            "revenue.multistream.contracts" in seen_ids
+            or any(fid.startswith("project_setup.technical.") for fid in seen_ids)
         ):
             snap = dict(ws.draft_snapshot or {})
             for fid, raw_v in updates:
@@ -794,6 +793,8 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date)
         else:
             multistream.validate_axis(engine.periods())
+        if getattr(multistream, "has_absolute_annual_quantity", False):
+            multistream.validate_global_p50_cap(proposed_pi)
     except FieldValidationError:
         raise
     except Exception as exc:

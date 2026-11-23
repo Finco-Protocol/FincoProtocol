@@ -213,6 +213,8 @@ class DatedRevenueStream:
     # indexation): ((operating_year, level, basis), ...). The first point is the base; price = price_eur_mwh x level / base_level.
     index_series: tuple[tuple[int, float, str], ...] = ()
     indexation_timing: PPAIndexationTiming | None = None
+    annual_quantity_mwh: object | None = None  # Fraction MWh/year for OD-R04-02 ABSOLUTE_ANNUAL PPA
+    annual_quantity_unit: str | None = None  # "MWh" or "GWh"
 
     def active(self, when):
         return self.start_date <= when < self.end_date
@@ -229,9 +231,61 @@ class MultiStreamRevenue:
         return any(s.indexation_timing for s in self.streams)
 
     @property
+    def has_absolute_annual_quantity(self):
+        return any(s.annual_quantity_mwh is not None for s in self.streams)
+
+    @property
     def has_price_rounding(self):
         return any(s.stream.ppa and s.stream.ppa.price_rounding and s.stream.ppa.price_rounding.enabled
                    for s in self.streams)
+
+    def validate_global_p50_cap(self, project_inputs):
+        """OD-R04-02: validate the SUM of all physical PPA contracts against ONE canonical P50 envelope."""
+        from fractions import Fraction
+        from domain.revenue.r04_global_p50_cap import (
+            PhysicalContractRequest,
+            R04CapValidationError,
+            validate_global_p50_physical_cap,
+        )
+
+        if any(s.stream.stream_type is RevenueStreamType.CFD for s in self.streams) and self.has_absolute_annual_quantity:
+            raise R04CapValidationError(
+                "R04_AMBIGUOUS_PHYSICAL_ALLOCATION",
+                "CfD settlement overlays combined with ABSOLUTE_ANNUAL physical PPA contracts are not admitted.",
+            )
+
+        requests: list[PhysicalContractRequest] = []
+        for s in self.streams:
+            if s.stream.stream_type is not RevenueStreamType.PPA:
+                continue
+            if s.annual_quantity_mwh is not None:
+                requests.append(
+                    PhysicalContractRequest(
+                        contract_id=s.stream.stream_id,
+                        start_date=s.start_date,
+                        end_date=s.end_date,
+                        mode="ABSOLUTE_ANNUAL",
+                        annual_quantity_mwh=s.annual_quantity_mwh,
+                        original_unit=s.annual_quantity_unit,
+                        pricing_reference=s.source_ref,
+                    )
+                )
+            elif s.stream.volume_share is not None:
+                requests.append(
+                    PhysicalContractRequest(
+                        contract_id=s.stream.stream_id,
+                        start_date=s.start_date,
+                        end_date=s.end_date,
+                        mode="VOLUME_SHARE",
+                        volume_share=Fraction(str(s.stream.volume_share)),
+                        pricing_reference=s.source_ref,
+                    )
+                )
+        return validate_global_p50_physical_cap(
+            project_inputs,
+            requests,
+            technology=self.technology,
+        )
 
     def plan_at(self, when, year_index=None):
         """Resolve a financial plan; active index-series prices require an explicit operating year."""
@@ -366,7 +420,96 @@ class MultiStreamRevenue:
             raise ValueError("REVENUE_V2_UNAVAILABLE: a stream has no authoritative price")
         if not math.isfinite(result.total_revenue_keur):
             raise ValueError("REVENUE_V2_VALUE: period revenue must be finite")
-        return replace(result, stream_results=rows)
+
+        if not self.has_absolute_annual_quantity:
+            return replace(result, stream_results=rows)
+
+        # OD-R04-02: exact physical delivery allocation for ABSOLUTE_ANNUAL contracts
+        # without double counting, negative merchant volume, or silent P90 shortfall haircuts.
+        from datetime import timedelta
+        from fractions import Fraction
+        from finco_core.engine.contractual_calendar import ContractualInterval
+        from domain.revenue.r04_global_p50_cap import (
+            PhysicalContractRequest,
+            allocate_r04_period_deliveries,
+        )
+
+        p_days = max(1, int(getattr(period, "days_in_period", (period.end_date - period.start_date).days)))
+        iv = ContractualInterval(period.start_date, period.start_date + timedelta(days=p_days))
+        ppa_requests: list[PhysicalContractRequest] = []
+        for s in self.streams:
+            if s.stream.stream_type is not RevenueStreamType.PPA:
+                continue
+            if not s.active(period.start_date):
+                continue
+            if s.annual_quantity_mwh is not None:
+                ppa_requests.append(
+                    PhysicalContractRequest(
+                        contract_id=s.stream.stream_id,
+                        start_date=s.start_date,
+                        end_date=s.end_date,
+                        mode="ABSOLUTE_ANNUAL",
+                        annual_quantity_mwh=s.annual_quantity_mwh,
+                        original_unit=s.annual_quantity_unit,
+                        pricing_reference=s.source_ref,
+                    )
+                )
+            elif s.stream.volume_share is not None:
+                ppa_requests.append(
+                    PhysicalContractRequest(
+                        contract_id=s.stream.stream_id,
+                        start_date=s.start_date,
+                        end_date=s.end_date,
+                        mode="VOLUME_SHARE",
+                        volume_share=Fraction(str(s.stream.volume_share)),
+                        pricing_reference=s.source_ref,
+                    )
+                )
+
+        allocated_by_id, residual_merchant_mwh, _ = allocate_r04_period_deliveries(
+            iv,
+            available_generation_mwh=float(generation_mwh),
+            contracts=ppa_requests,
+            allow_shortfall_without_settlement=False,
+        )
+
+        active_merchant_ids = [
+            r.stream_id for r in rows
+            if r.stream_type is RevenueStreamType.MERCHANT and r.status is StreamPeriodStatus.ACTIVE
+        ]
+        updated_rows = []
+        total_rev = 0.0
+        allocated_total = 0.0
+        for r in rows:
+            if r.stream_type is RevenueStreamType.PPA and r.status is StreamPeriodStatus.ACTIVE:
+                qty = allocated_by_id.get(r.stream_id, 0.0)
+                price = float(r.price_eur_mwh or 0.0)
+                rev = qty * price / 1000.0
+                updated_rows.append(replace(r, allocated_generation_mwh=qty, stream_revenue_keur=rev))
+                total_rev += rev
+                allocated_total += qty
+            elif r.stream_type is RevenueStreamType.MERCHANT and r.status is StreamPeriodStatus.ACTIVE:
+                qty = residual_merchant_mwh if (len(active_merchant_ids) == 1) else (
+                    residual_merchant_mwh * float(states[r.stream_id].stream.volume_share or 0.0)
+                )
+                price = float(r.price_eur_mwh or 0.0)
+                capture = states[r.stream_id].stream.merchant.capture_rate_for_tech(self.technology)
+                rev = qty * price * capture / 1000.0
+                updated_rows.append(replace(r, allocated_generation_mwh=qty, stream_revenue_keur=rev))
+                total_rev += rev
+                allocated_total += qty
+            else:
+                updated_rows.append(r)
+                total_rev += float(r.stream_revenue_keur or 0.0)
+                allocated_total += float(r.allocated_generation_mwh or 0.0)
+
+        unalloc = max(0.0, float(generation_mwh) - allocated_total)
+        return replace(
+            result,
+            stream_results=tuple(updated_rows),
+            unallocated_generation_mwh=unalloc,
+            total_revenue_keur=total_rev,
+        )
 
     def price_details(self, when, year_index):
         return {s.stream_id: s.ppa.price_details_at_year(year_index)
@@ -448,7 +591,7 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
     for row in payload["streams"]:
         _object(row, {"id", "type", "start_date", "end_date", "volume_share", "price_eur_mwh",
                       "indexation_rate", "settlement", "source_ref"}, "stream",
-                {"capture_rate", "reference_stream_id", "price_curve", "index_series", "indexation_timing", "price_rounding"})
+                {"capture_rate", "reference_stream_id", "price_curve", "index_series", "indexation_timing", "price_rounding", "annual_quantity"})
         if not isinstance(row["type"], str) or row["type"] not in SUPPORTED_TYPES:
             raise ValueError(f"REVENUE_V2_UNSUPPORTED_STREAM: {row['type']!r}")
         for key in ("id", "source_ref"):
@@ -466,6 +609,27 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         index = _number(row["indexation_rate"], "indexation_rate", 1.0)
         share = None if row["volume_share"] is None else _number(row["volume_share"], "volume_share", 1.0)
         kind = RevenueStreamType(row["type"])
+        annual_quantity_mwh = None
+        annual_quantity_unit = None
+        if "annual_quantity" in row:
+            from domain.revenue.r04_global_p50_cap import (
+                R04CapValidationError,
+                parse_annual_quantity_spec,
+            )
+            if payload["version"] != 2 or kind is not RevenueStreamType.PPA:
+                raise R04CapValidationError(
+                    "R04_ANNUAL_QUANTITY_UNSUPPORTED",
+                    "annual_quantity is admitted only on version-2 physical PPA streams.",
+                )
+            if share is not None:
+                raise R04CapValidationError(
+                    "R04_DUAL_VOLUME_BASIS_FORBIDDEN",
+                    f"Contract {row['id']!r} cannot specify both volume_share and annual_quantity.",
+                )
+            annual_quantity_mwh, annual_quantity_unit = parse_annual_quantity_spec(
+                row["annual_quantity"], contract_id=row["id"]
+            )
+            share = 0.0  # placeholder for RevenuePlan structure; physical MWh governed by OD-R04-02
         curve = ()
         if "price_curve" in row:
             if payload["version"] != 2 or kind not in (RevenueStreamType.PPA, RevenueStreamType.MERCHANT):
@@ -520,7 +684,13 @@ def parse_config(raw: str | None) -> MultiStreamRevenue | None:
         if kind is not RevenueStreamType.CFD and "reference_stream_id" in row:
             raise ValueError("REVENUE_V2_SCHEMA: reference_stream_id belongs only to CfD")
         stream = RevenueStream(stream_id=row["id"], stream_type=kind, volume_share=share, **options)
-        dated_streams.append(DatedRevenueStream(stream, start, end, row["source_ref"], curve, index_series, timing))
+        dated_streams.append(
+            DatedRevenueStream(
+                stream, start, end, row["source_ref"], curve, index_series, timing,
+                annual_quantity_mwh=annual_quantity_mwh,
+                annual_quantity_unit=annual_quantity_unit,
+            )
+        )
     config = MultiStreamRevenue(payload["technology"], tuple(dated_streams),
                                 json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     for when in sorted({s.start_date for s in dated_streams} | {s.end_date for s in dated_streams}):
