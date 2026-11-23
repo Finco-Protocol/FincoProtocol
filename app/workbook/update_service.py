@@ -527,6 +527,25 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
+        # --- C1F-A-1 / P1-OPEX-02: refuse scalar edits on line-owned active CAPEX/OPEX categories ---
+        if field_id.startswith(("capex.", "opex.")):
+            line_owned = find_line_owned_cost_fields(ws.project_id, [field_id])
+            if field_id in line_owned:
+                raise FieldValidationError(
+                    f"COST_CATEGORY_LINE_OWNED: {line_owned[field_id]}",
+                    FieldErrorClass.INVALID,
+                )
+
+        # --- E2E-01 / C1F-A-5: enforce positive senior gearing and horizon > senior tenor on proposed state ---
+        if field_id in (
+            "debt.senior.gearing_pct",
+            "debt.senior.tenor_years",
+            "project_setup.technical.horizon_years",
+        ):
+            snap = dict(ws.draft_snapshot or {})
+            snap[validation.spec.snapshot_key] = str(validation.typed_value)
+            validate_proposed_financing_horizon_snapshot(snap)
+
         # --- OD-P90-01: enforce bidirectional P90 <= P50 against complete proposed state at Save ---
         if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
             snap = dict(ws.draft_snapshot or {})
@@ -695,6 +714,19 @@ class WorkbookUpdateService:
             if (snap.get("rev_multistream_config_json") or "").strip():
                 _validate_ppa_book_against_proposed_snapshot(snap)
 
+        # E2E-01 / C1F-A-5: validate complete proposed gearing and horizon > senior tenor atomically
+        if seen_ids & {
+            "debt.senior.gearing_pct",
+            "debt.senior.tenor_years",
+            "project_setup.technical.horizon_years",
+        }:
+            snap_fh = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap_fh[spec_i.snapshot_key] = raw_v
+            validate_proposed_financing_horizon_snapshot(snap_fh)
+
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,
             project_id=ws.project_id,
@@ -705,6 +737,45 @@ class WorkbookUpdateService:
             updates=updates,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+def validate_proposed_financing_horizon_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:
+    """E2E-01 / C1F-A-5: validate positive senior gearing and horizon > senior tenor on proposed state.
+
+    Evaluates the complete proposed snapshot so paired atomic batch edits (e.g. increasing
+    horizon_years and tenor_years together) succeed in either input order while invalid
+    combinations fail closed before any DB write.
+    """
+    raw_gear = proposed_snapshot.get("gearing_pct")
+    if raw_gear is not None and str(raw_gear).strip() != "":
+        try:
+            gear_f = float(str(raw_gear).strip())
+        except (TypeError, ValueError):
+            gear_f = None
+        if gear_f is not None and gear_f <= 0.0:
+            raise FieldValidationError(
+                "ZERO_SENIOR_GEARING_NOT_SUPPORTED: explicit zero senior gearing (0%) is not supported "
+                "until genuine all-equity no-debt economics are approved.",
+                FieldErrorClass.INVALID,
+            )
+
+    raw_horizon = proposed_snapshot.get("horizon_years")
+    raw_tenor = proposed_snapshot.get("tenor_years")
+    if (
+        raw_horizon is not None and str(raw_horizon).strip() != ""
+        and raw_tenor is not None and str(raw_tenor).strip() != ""
+    ):
+        try:
+            horizon_f = float(str(raw_horizon).strip())
+            tenor_f = float(str(raw_tenor).strip())
+        except (TypeError, ValueError):
+            return
+        if horizon_f <= tenor_f:
+            raise FieldValidationError(
+                f"DEBT_TENOR_EXCEEDS_HORIZON: project horizon ({int(horizon_f)} years) "
+                f"must be strictly longer than senior debt tenor ({int(tenor_f)} years).",
+                FieldErrorClass.INVALID,
+            )
 
 
 def validate_proposed_p90_p50_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:

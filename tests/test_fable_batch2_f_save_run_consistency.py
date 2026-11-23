@@ -96,16 +96,13 @@ def test_c07_zero_gearing_and_c08_and_horizon_tenor_typed_refusals(tmp_path):
         assert st0 == 200 and b0["outcome"] == "COMMITTED"
         assert len(get_run_history(user, rec.project_id)) == 1
 
-        # C07: 0% senior gearing -> typed ZERO_SENIOR_GEARING_NOT_SUPPORTED, prior Run preserved
+        # C07 / E2E-01: 0% senior gearing -> refused at Save with ZERO_SENIOR_GEARING_NOT_SUPPORTED, prior Run preserved
         r = _edit(client, rec.project_code, "debt.senior.gearing_pct", "0")
-        assert r.status_code == 200
-        _, b_c07 = _run(client, rec)
-        assert b_c07["outcome"] == "FAILED"
-        assert "ZERO_SENIOR_GEARING_NOT_SUPPORTED" in b_c07["message"]
-        assert "Traceback" not in b_c07["message"]
+        assert "ZERO_SENIOR_GEARING_NOT_SUPPORTED" in r.text
+        assert "Traceback" not in r.text
         assert len(get_run_history(user, rec.project_id)) == 1
 
-        # C08: 1% senior gearing -> SHL unpaid at maturity refusal (distinct from zero gearing)
+        # C08: 1% senior gearing -> SHL unpaid at maturity refusal at Run (distinct from zero gearing)
         r = _edit(client, rec.project_code, "debt.senior.gearing_pct", "1")
         assert r.status_code == 200
         _, b_c08 = _run(client, rec)
@@ -113,13 +110,11 @@ def test_c07_zero_gearing_and_c08_and_horizon_tenor_typed_refusals(tmp_path):
         assert "shareholder loan unpaid" in b_c08["message"].lower()
         assert len(get_run_history(user, rec.project_id)) == 1
 
-        # C1F-A-5 / C1-Q-05: horizon <= debt tenor (10y horizon vs 12y+ tenor) -> typed DEBT_TENOR_EXCEEDS_HORIZON
+        # C1F-A-5 / C1-Q-05: horizon <= debt tenor (10y horizon vs 12y+ tenor) -> refused at Save with DEBT_TENOR_EXCEEDS_HORIZON
         _edit(client, rec.project_code, "debt.senior.gearing_pct", "75")
-        _edit(client, rec.project_code, "project_setup.technical.horizon_years", "10")
-        _, b_ten = _run(client, rec)
-        assert b_ten["outcome"] == "FAILED"
-        assert "DEBT_TENOR_EXCEEDS_HORIZON" in b_ten["message"]
-        assert "PR8_PROJECT_TYPE_NOT_CLASSIFIED" not in b_ten["message"]
+        r_ten = _edit(client, rec.project_code, "project_setup.technical.horizon_years", "10")
+        assert "DEBT_TENOR_EXCEEDS_HORIZON" in r_ten.text
+        assert "PR8_PROJECT_TYPE_NOT_CLASSIFIED" not in r_ten.text
     finally:
         client.__exit__(None, None, None)
 
