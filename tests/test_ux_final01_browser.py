@@ -60,6 +60,13 @@ def test_financing_no_run_layout_units_and_bar(live_server, fin_session, ux_buil
         if width <= 820:        # the existing touch-target rule (rc-react-mvp.css) applies at tablet and phone widths
             assert box["width"] >= 44 and box["height"] >= 44, (selector, box)
         assert 0 <= box["x"] and box["x"] + box["width"] <= width + 1, (selector, box)
+    # the one-row phone chrome: the origin chip never overlaps the FM mark (it did by ~7px at 320px)
+    mark = page.locator("header.fm-topbar .fm-brand").bounding_box()
+    chip = page.locator("header.fm-topbar [data-origin-chip]").bounding_box()
+    assert mark and chip
+    overlap_x = min(mark["x"] + mark["width"], chip["x"] + chip["width"]) - max(mark["x"], chip["x"])
+    overlap_y = min(mark["y"] + mark["height"], chip["y"] + chip["height"]) - max(mark["y"], chip["y"])
+    assert overlap_x <= 0.5 or overlap_y <= 0.5, (width, mark, chip)
     no_page_overflow(page)
     _shot(page, f"financing-no-run-{width}")
     assert not writes

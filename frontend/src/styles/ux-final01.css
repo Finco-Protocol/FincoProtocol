@@ -39,6 +39,8 @@
   .finco-root header.fm-topbar .fm-top-right { flex: 1 1 auto; min-width: 0; justify-content: flex-end; flex-wrap: nowrap; gap: 6px; }
   .finco-root header.fm-topbar .fm-top-right [data-origin-chip] { font-size: 9px; letter-spacing: 0; padding: 2px 6px; white-space: nowrap; }
   .finco-root header.fm-topbar .fm-top-right select { flex: 0 1 7.5rem; min-width: 0; max-width: 7.5rem; }
+  /* Never let the right-hand group overflow to the LEFT over the mark (it did by ~7px at 320px). */
+  .finco-root header.fm-topbar .fm-top-right { justify-content: safe flex-end; }
 
   /* Project bar: identity and the Saved / Run-state chips share a row; the last-Run provenance (id, time, scenario) is SHOWN on phones (it was hidden). */
   .wf-bar.ci-bar .ci-bar-id { flex-basis: auto; }
@@ -111,4 +113,9 @@
 @media (max-width: 900px) {
   [data-ux-pr1] [data-dense-workbench][data-density] .ws2-grid .ws2-group-row th.ci-col-line,
   [data-ux-pr1] [data-dense-workbench][data-density] .ws2-grid .ws2-group-row td.ci-col-line { position: relative; }
+}
+
+/* Narrowest phones (320px class): the theme select gives up a little width so mark, origin chip, select and currency fit in one row. */
+@media (max-width: 360px) {
+  .finco-root header.fm-topbar .fm-top-right select { flex-basis: 6rem; max-width: 6rem; }
 }
