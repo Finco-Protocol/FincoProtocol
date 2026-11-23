@@ -22,12 +22,12 @@
   "gearing_high": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "fbc692ad20b0ee82928a6a540c855656ad874f050c45f2dec99567ad6b1a0b43"
+    "sha256": "533b0d23ef1854ff0d147386f0a52a98671570acc5494fbf11bf4a99a0231efa"
   },
   "gearing_low": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "bfb1102d0acd84aafa33a321cea7cc035ccdee5192b1f43dd55993699460ac28"
+    "sha256": "2e30382051127696510cd555859fd1df2599dd8ca016f58993fcd4ffae019a41"
   },
   "infeasible_debt": {
     "error_type": "CleanProductionRunUnavailable",
@@ -47,12 +47,12 @@
   "shl_deductible": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "840fcc0d693d186c13b7db3a7e5ef1b2e371aa6d9cb7d06f66c4c46656e2f571"
+    "sha256": "613ab1909216370b8e433060537166ce183c3d6a59eb26a11d33106b631a1a7a"
   },
   "shl_non_deductible": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "d51af5259e73ece1264840553d7a7a2e129515f54269fae6c2b7189581645989"
+    "sha256": "2581e065767b930d6450b8bb1ac35f7c9d96a8c78a39289d998c746341bfc672"
   },
   "solar": {
     "kind": "digest",
@@ -67,21 +67,21 @@
   "solar_ref": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "40176935ab7365a672d0a0545be01bc316529357faecdc542f07c6a1aff54a39"
+    "sha256": "3d0e2e83a7d9f14bdb1349e45661063f6138fa255e692666bc30fc523e5e256c"
   },
   "wind": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "840fcc0d693d186c13b7db3a7e5ef1b2e371aa6d9cb7d06f66c4c46656e2f571"
+    "sha256": "613ab1909216370b8e433060537166ce183c3d6a59eb26a11d33106b631a1a7a"
   },
   "wind_opex_edit": {
     "kind": "digest",
     "lines": 9551,
-    "sha256": "7997950466aef44bfe98eb3e73991c9d3281047a4ec99f404b22a19353f96de4"
+    "sha256": "6881adb5d227abf18eacb7fdc2afee3ea51844a892a85463af5d115a650f40e0"
   },
   "wind_ref": {
     "kind": "digest",
     "lines": 10433,
-    "sha256": "096d4866b12aae9c84cfa7fae09339b01f9cc49ec28758f2513dcb45efcda8a2"
+    "sha256": "9316369fb392af71af0007c3daeb61fa7e234a1bf83f6179e6aaeb69e00ecdab"
   }
 }
