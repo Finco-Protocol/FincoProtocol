@@ -31,6 +31,10 @@ One workflow, one required check, ordinary tools.
 * **Known baseline defects** (`tests/known_defects.txt`) are the only deselected tests. Each failed identically on
   accepted main when listed. They run in `model_known_defects.yml`, which stays red until they are fixed; the fixing
   PR removes the line. They are never reported as passing.
+* **One visible rerun, only for hosted browser flakes.** A test that fails with a Playwright `TimeoutError` or an
+  htmx-not-ready `assert 303 == 200` gets exactly one rerun (pytest-rerunfailures); it is reported as `R`/rerun in the
+  log and JUnit. Any other failure, or a second failure, fails the gate. Tests that also flake locally on main are
+  listed in `tests/known_defects.txt` instead.
 * **Unreleased financial candidates stay inactive** (`tests/test_financial_activation_flags_closed.py`).
 
 ## What is deliberately gone

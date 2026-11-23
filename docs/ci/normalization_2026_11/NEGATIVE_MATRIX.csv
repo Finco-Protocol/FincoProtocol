@@ -24,3 +24,5 @@ N10,inert docs edit (formerly broke exact-source cohorts),tests group,GREEN,GREE
 N11,app/ imports the R04 research candidate,tests group (R04 isolation),RED,RED,1,1 failed in 0.17s
 N12,"forged ""required"" check from another workflow file",branch protection + CODEOWNERS,RED,NOT AUTOMATED,-,residual risk: a PR adding .github/workflows/x.yml with a job named required could post a same-named check; mitigated by CODEOWNERS review of .github/ (owner must reject) and by the real Model CI required still failing; GitHub org-level required workflows would close it fully
 N13,"Radar installed wheel imports Model code (lazy, inside a function)",Radar tests/test_exact_source_release_gate.py,RED,RED,1,AssertionError: Forbidden import app.auth in installed radar_service/app.py
+N14a,ordinary assertion failure under the rerun policy,pytest --reruns 1 --only-rerun (flake signatures),RED,RED,1,"failed immediately, no rerun"
+N14b,persistent htmx-not-ready 303,pytest --reruns 1 --only-rerun,RED,RED,1,"RERUN once (reported), then FAILED"
