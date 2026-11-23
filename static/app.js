@@ -886,3 +886,20 @@ document.addEventListener('htmx:afterSwap', function(evt) {
     _updatePreviewTotals();
   };
 })();
+
+// FABLE-SEC-01 (D07b): a CSRF refusal (403) of either create form must not look like a silent no-op.
+// HTMX does not swap 4xx responses, so show an inline, accessible message; nothing was created.
+document.addEventListener('htmx:responseError', function(evt) {
+  var elt = evt.detail && evt.detail.elt;
+  var form = elt && elt.closest ? elt.closest('#new-project-form, #new-project-minimal-form') : null;
+  if (!form || !evt.detail.xhr || evt.detail.xhr.status !== 403) return;
+  var note = form.querySelector('[data-testid="create-csrf-refused"]');
+  if (!note) {
+    note = document.createElement('div');
+    note.setAttribute('role', 'alert');
+    note.setAttribute('data-testid', 'create-csrf-refused');
+    note.className = 'warn';
+    form.insertBefore(note, form.firstChild);
+  }
+  note.textContent = 'Your session token expired. Nothing was created. Reload the page and try again.';
+});

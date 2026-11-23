@@ -147,11 +147,14 @@ def test_the_legacy_projects_create_route_is_atomic(world, monkeypatch, template
     # FABLE-SEC-01: supply the bound CSRF token so the atomicity semantics of
     # the legacy create route are still exercised (a 403 CSRF denial would
     # otherwise satisfy the assertion without reaching the atomic path).
+    # The token is bound to the session cookie, so it must be fetched and posted by the SAME client.
     from tests.fable_pr1_csrf_client import fetch_create_csrf_token
-    r = _client().post("/projects/create", data={
-        "csrf_token": fetch_create_csrf_token(_client()),
+    client = _client()
+    r = client.post("/projects/create", data={
+        "csrf_token": fetch_create_csrf_token(client),
         "project_name": "R18 legacy", "project_type": template.replace("generic_", "").replace("_reference", ""),
         "template_source": template, "capacity_mw": "20"}, follow_redirects=False)
+    assert r.status_code != 403, "the CSRF gate must pass so the atomic create path is really exercised"
     assert r.status_code >= 400 or not [p for p in _mine() if _state(p) == "COMPLETE"], r.status_code
     for p in _mine():
         assert _state(p) in ("CREATING", None)

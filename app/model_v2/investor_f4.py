@@ -107,6 +107,10 @@ def parse_terms(raw) -> AgreementTerms | None:
             # authored domain refusal: never echo its text.
             raise InvestorAgreementInputError("F4 agreement payload is invalid") from exc
         raise InvestorAgreementInputError(str(exc)) from exc
+    except (OverflowError, RecursionError) as exc:
+        # Arithmetic overflow on absurd amounts (e.g. fsum) or pathological
+        # nesting is invalid input, not an internal fault; never echo it.
+        raise InvestorAgreementInputError("F4 agreement payload is invalid") from exc
 
 
 def _parse_terms(raw) -> AgreementTerms | None:
@@ -117,7 +121,7 @@ def _parse_terms(raw) -> AgreementTerms | None:
         result = {}
         for key, value in pairs:
             if key in result:
-                raise ValueError("F4 duplicate JSON keys are not permitted")
+                raise InvestorAgreementInputError("F4 duplicate JSON keys are not permitted")
             result[key] = value
         return result
 
@@ -126,7 +130,12 @@ def _parse_terms(raw) -> AgreementTerms | None:
         # "Expecting property name enclosed in double quotes..." to the client.
         try:
             obj = json.loads(raw, object_pairs_hook=unique)
-        except json.JSONDecodeError as exc:
+        except InvestorAgreementInputError:
+            raise
+        except (ValueError, RecursionError) as exc:
+            # Any decoder failure (JSONDecodeError, the interpreter's integer
+            # digit limit, nesting depth) gets one generic text; the authored
+            # duplicate-key refusal above is raised typed and passes through.
             raise InvestorAgreementInputError(
                 "F4 agreement payload is not valid JSON") from exc
     else:

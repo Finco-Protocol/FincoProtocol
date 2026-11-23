@@ -129,3 +129,47 @@ def test_a_valid_agreement_still_parses_and_saves(env):
     assert f4.parse_terms("") is None and f4.parse_terms(None) is None
     record = env.create()
     assert save(env, record, document()).status_code == 200
+
+
+@pytest.mark.parametrize("payload_kind", ["int_digit_limit", "deep_nesting", "duplicate_key"])
+def test_decoder_level_failures_are_generic_422_text_never_interpreter_text(payload_kind):
+    """Independent review finding: json.loads raises a PLAIN ValueError for an integer literal over the
+    interpreter's digit limit, and RecursionError for pathological nesting; neither text may reach a client."""
+    from app.model_v2 import investor_f4 as f4
+    raw = {"int_digit_limit": '{"schema_version": 1' + "0" * 5000 + "}",
+           "deep_nesting": "[" * 200000 + "]" * 200000,
+           "duplicate_key": '{"a": 1, "a": 2}'}[payload_kind]
+    with pytest.raises(f4.InvestorAgreementInputError) as exc:
+        f4.parse_terms(raw)
+    text = str(exc.value)
+    expected = ("F4 duplicate JSON keys are not permitted" if payload_kind == "duplicate_key"
+                else "F4 agreement payload is not valid JSON")
+    assert text == expected
+    for leak in ("digits", "set_int_max_str_digits", "recursion", "maximum"):
+        assert leak not in text.lower()
+
+
+def test_digit_limit_payload_over_http_is_a_generic_422(env):
+    record = env.create()
+    before = _state(env, record)
+    r = _post(env, record, '{"schema_version": 1' + "0" * 5000 + "}")
+    assert r.status_code == 422 and r.json() == {"error": "F4 agreement payload is not valid JSON"}
+    assert "digits" not in r.text
+    assert _state(env, record) == before
+
+
+def test_arithmetic_overflow_on_absurd_amounts_is_a_generic_refusal():
+    from app.model_v2 import investor_f4 as f4
+    from tests.test_investor_f4_workspace import document
+    doc = document()
+    for inv in doc["investors"]:
+        inv["commitment_keur"] = 1.7e308
+    for c in doc["contributions"]:
+        c["amount_keur"] = 1.7e308
+    doc["contributions"] = doc["contributions"] * 3
+    try:
+        f4.parse_terms(json.dumps(doc))
+    except f4.InvestorAgreementInputError as exc:
+        assert "overflow" not in str(exc).lower() and "fsum" not in str(exc)
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"non-typed refusal escaped parse_terms: {type(exc).__name__}")

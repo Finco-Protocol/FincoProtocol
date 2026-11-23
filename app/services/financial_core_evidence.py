@@ -72,7 +72,9 @@ def _tax_provenance_evidence(clean_run):
             # Only a genuinely non-computed / short / misaligned vector yields
             # an explicit None per period — never a zero, never a fabricated
             # value; a computed value is passed through exactly as the engine
-            # wrote it (including any nonfinite marker the engine produced).
+            # wrote it. NOTE: a nonfinite engine value is not converted here;
+            # the run-history store serializes with allow_nan=False, exactly as
+            # it already does for the same vectors in the statements payload.
             entry[name] = vector[row] if row < len(vector) else None
         periods.append(entry)
     computed = {name for name in vectors

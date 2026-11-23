@@ -35,7 +35,8 @@ def test_no_production_source_references_the_candidate():
 
 def test_the_component_is_not_in_the_served_bundle():
     bundle = (ROOT / "static/react/finco-react.js").read_text(encoding="utf-8", errors="ignore")
-    for marker in ("R04_P2", "DECLARED_PERIOD_DELIVERY_CAP_ONLY", "No server period review is available"):
+    # Rendered component strings (type-only literals never reach a bundle, so they would prove nothing).
+    for marker in ("No server period review is available", "Declared period review only"):
         assert marker not in bundle, marker
 
 
