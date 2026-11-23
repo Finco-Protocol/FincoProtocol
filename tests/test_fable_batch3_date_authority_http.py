@@ -1,0 +1,98 @@
+"""FINCO 36 Correction D — HTTP Save -> persist -> Run -> sealed History for the dated grid (mid-month COD, final stub, contract dates inside rows).
+
+Independent per-day oracle (imports no calculator under test).  Asserts periods, final stub, per-row revenue and the immutable
+History, not merely HTTP 200 / COMMITTED.
+"""
+from __future__ import annotations
+
+import calendar
+import json
+import re
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal, getcontext
+from types import SimpleNamespace
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.auth import COOKIE_NAME, create_session_token
+from app.persistence import db
+from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.router import router as v2_router
+from app.workbook.financing_csrf import issue_token
+
+getcontext().prec = 50
+COD, HORIZON = date(2031, 3, 1), 25          # seeded Solar default: off-boundary COD, 25-year life -> end exclusive 2056-03-01
+
+
+def _add_years(d, n):
+    y = d.year + n
+    return date(y, 2, 28) if (d.month == 2 and d.day == 29 and not calendar.isleap(y)) else date(y, d.month, d.day)
+
+
+def _book(life_end):
+    def ppa(sid, start, end, gwh, price):
+        return {"id": sid, "type": "ppa", "start_date": start.isoformat(), "end_date": end.isoformat(), "volume_share": None,
+                "annual_quantity": {"mode": "ABSOLUTE_ANNUAL", "amount": str(gwh), "unit": "GWh"},
+                "price_eur_mwh": price, "indexation_rate": 0.0, "settlement": "SAME_PERIOD", "source_ref": "HTTP_" + sid}
+    return json.dumps({"version": 2, "technology": "solar", "indexation_basis": "OPERATING_YEAR", "streams": [
+        ppa("ppa_a", date(2031, 9, 10), date(2041, 2, 20), "4", 72.0),
+        ppa("ppa_b", COD, date(2036, 5, 15), "3", 68.0),
+        {"id": "merchant", "type": "merchant", "start_date": COD.isoformat(), "end_date": life_end.isoformat(), "volume_share": None,
+         "price_eur_mwh": 55.0, "indexation_rate": 0.0, "settlement": "SAME_PERIOD", "source_ref": "HTTP_M", "capture_rate": 1.0}]},
+        separators=(",", ":"))
+
+
+def test_http_save_run_history_dated_grid_final_stub_and_row_revenue(tmp_path):
+    user = "date-authority-user"
+    db.DB_PATH = str(tmp_path / "da.db")
+    db.init_db()
+    app = FastAPI()
+    app.include_router(v2_router, prefix="/v2")
+    life_end = _add_years(COD, HORIZON)
+    with TestClient(app) as client:
+        client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
+        rec = create_reference_seeded_project(user_id=user, requested_name="DA Solar", template_source="generic_solar_reference", capacity_mw=16)
+        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
+        tokens = {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
+        from app.workbook.mutation_csrf import mutation_token
+        req = SimpleNamespace(cookies=client.cookies, state=SimpleNamespace())
+        save = client.post("/v2/workbook/update", headers={"Accept": "application/json"}, data={
+            "project": rec.project_code, "field_id": "revenue.multistream.contracts", "value": _book(life_end), **tokens,
+            "csrf_token": mutation_token(req, rec.project_code, "workbook-update")})
+        assert save.status_code == 200, save.text[:400]
+        # reload: the canonical contract is persisted
+        from app.persistence.workspace_repository import get_workspace_state
+        assert json.loads(get_workspace_state(user, rec.project_id).draft_snapshot["rev_multistream_config_json"])["streams"][0]["id"] == "ppa_a"
+        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
+        tokens = {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
+        run = client.post("/v2/workbook/run", headers={"Accept": "application/json"}, data={
+            "project": rec.project_code, **tokens, "csrf_token": issue_token(req, rec.project_code, purpose="workbook-run-v1"),
+            "run_intent_id": str(uuid.uuid4())}, follow_redirects=False)
+        assert run.status_code == 200 and run.json()["outcome"] == "COMMITTED", run.text[:500]
+
+        from app.persistence.run_history_repository import get_run_history
+        hist = get_run_history(user, rec.project_id)
+        assert len(hist) == 1
+        allp = hist[0].financial_statements["pnl"]["periods"]
+        rows = [p for p in allp if p["date"] >= "2031-06-30"]            # operating rows (the first ends on the first Jun 30 after COD)
+        # final stub: the sealed axis ends exactly at the contractual end (exclusive 2056-03-01 -> last label 2056-02-29), no phantom row
+        assert rows[-1]["date"] == (life_end - timedelta(days=1)).isoformat()
+        assert rows[-2]["date"] == "2055-12-31"
+        assert len(rows) == 2 * HORIZON + 1
+        dates = [p["date"] for p in rows]
+        assert dates == sorted(set(dates))                                  # strictly increasing, no duplicate boundary / terminal event
+        # the final stub (60 days) carries real economics, not zero fill
+        stub, prev = rows[-1], rows[-2]
+        assert stub["revenues_keur"] > 0 and stub["operating_expenses_keur"] > 0 and stub["depreciation_keur"] > 0
+        assert stub["revenues_keur"] / prev["revenues_keur"] == pytest.approx(60 / 184, rel=0.05)
+        assert stub["operating_expenses_keur"] / prev["operating_expenses_keur"] == pytest.approx(60 / 184, rel=0.1)
+        # no scheduled debt service or reserve resurrected on the stub
+        bs_last = hist[0].financial_statements["balance_sheet"]["periods"][-1]
+        assert bs_last["senior_balance_keur"] == 0.0 and bs_last["shl_balance_keur"] == 0.0 and bs_last["dsra_balance_keur"] == 0.0
+        assert stub["senior_interest_expense_keur"] == 0.0 and stub["shl_interest_expense_keur"] == 0.0
+        # the Run did not create a second history entry and the balance sheet balances on the stub
+        bs = hist[0].financial_statements["balance_sheet"]["periods"]
+        assert max(abs(r.get("balance_check_keur") or 0.0) for r in bs) < 0.01

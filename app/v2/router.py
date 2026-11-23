@@ -1339,7 +1339,7 @@ def _build_revenue_contract_editor(pis, ws):
             else:
                 editor_inputs = pis.to_projectinputs()
             project_cod = editor_inputs.info.cod_date.isoformat()
-            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs)).periods() if p.is_operation]
+            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs), contract_config_json=getattr(config, "canonical_json", "") if config else "").periods() if p.is_operation]
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
@@ -1352,7 +1352,8 @@ def _build_revenue_contract_editor(pis, ws):
                 if config:
                     if getattr(config, "has_contractual_indexation", False):
                         try:
-                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date)
+                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date,
+                                                 date_aware=bool(getattr(config, "has_absolute_annual_quantity", False)))
                         except ValueError as exc:
                             calendar_preview_error = str(exc)
                     for dated in config.streams:

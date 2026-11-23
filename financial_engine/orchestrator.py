@@ -67,7 +67,7 @@ _PHASE_2A_UNAVAILABLE = ("tax_and_cfads", "financing", "financial_statements", "
 _PHASE_2B_UNAVAILABLE = ("financing", "financial_statements", "returns")
 
 
-def _build_period_engine(inputs: OperatingModelInput):
+def _build_period_engine(inputs: OperatingModelInput, *, contract_config_json=None):
     """Build a PeriodEngine from the clean input contract."""
     from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency as _PF
     from finco_core.engine.period_engine import PeriodAxisConvention as _PAC
@@ -91,7 +91,7 @@ def _build_period_engine(inputs: OperatingModelInput):
             operating_calendar_policy=policy,
         )
     from finco_core.engine.date_authority import dated_life_end_exclusive
-    dated_end = dated_life_end_exclusive(_cod_date(cal), cal.horizon_years, getattr(inputs.revenue, "multistream_config_json", ""))
+    dated_end = dated_life_end_exclusive(_cod_date(cal), cal.horizon_years, contract_config_json if contract_config_json is not None else getattr(inputs.revenue, "multistream_config_json", ""))
     return PeriodEngine(
         financial_close=cal.financial_close,
         construction_months=cal.construction_months,
