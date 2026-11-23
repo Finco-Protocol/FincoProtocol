@@ -63,6 +63,8 @@ class Timing:
             self.save_button().click()
         assert done.value.status == 200
         self.page.locator("[data-testid=construction-timing-msg]").filter(has_text="Saved").wait_for()
+        # the save then refreshes the field editors (htmx GET carrying the new CAS hash); let it settle before acting
+        self.page.wait_for_load_state("networkidle")
 
     def state(self):
         return self.page.locator("[data-testid=hybrid-run-state]").inner_text().strip()
@@ -70,7 +72,7 @@ class Timing:
     def run(self):
         with self.page.expect_response(lambda r: "/v2/workbook/run" in r.url and r.request.method == "POST", timeout=240000) as ran:
             self.page.locator('[data-testid="header-run-btn"]').click()
-        assert ran.value.status == 200
+        assert ran.value.status == 200, ran.value.headers.get("location")
         self.page.locator("[data-testid=hybrid-run-state]").filter(has_text="CURRENT").wait_for(timeout=240000)
 
     def close(self):
