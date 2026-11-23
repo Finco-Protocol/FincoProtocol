@@ -1,6 +1,7 @@
 """RC-5A / Workstream B browser acceptance (real Chromium, real CSP): truthful Run Compare and the explicit contracted-sensitivity refusal."""
 from __future__ import annotations
 
+# Hosted runners execute real model runs/exports under load; 120 s bounds these waits (assertions unchanged).
 import re
 
 import pytest
@@ -63,7 +64,7 @@ def test_sensitivity_on_a_contracted_project_is_refused_visibly_and_shows_no_fla
     page.locator("[data-revenue-feedback]").filter(has_text=SAVED).wait_for()
     page.evaluate("document.getElementById('tab-sensitivity').click()")
     page.locator("#v2-sens-driver").select_option("tariff")
-    with page.expect_response(lambda r: r.url.endswith("/scenarios/sensitivity/run")) as done:
+    with page.expect_response(lambda r: r.url.endswith("/scenarios/sensitivity/run"), timeout=120_000) as done:
         page.locator("[data-testid=sensitivity-run-btn]").click()
     assert done.value.status == 200 and done.value.headers.get("x-finco-sensitivity-outcome") == "REFUSED"
     refusal = page.locator("[data-testid=sensitivity-refused]")

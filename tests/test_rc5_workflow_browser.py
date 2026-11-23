@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 
+# Hosted runners execute real model runs/exports under load; 120 s bounds these waits (assertions unchanged).
 import pytest
 
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
@@ -99,19 +100,19 @@ def test_wind_contingency_run_and_renamed_scenario_download(live_server, browser
         page.reload()
         activate_destination(page, "tab-project-setup")
         field = page.locator('[data-field-id="project_setup.identity.project_name"] input[name=value]').first
-        with page.expect_response(lambda r: r.url.endswith('/v2/workbook/update')) as renamed:
+        with page.expect_response(lambda r: r.url.endswith('/v2/workbook/update'), timeout=120_000) as renamed:
             field.fill("Wind Export Review"); field.press('Tab')
         assert renamed.value.status == 200
         page.reload()
         activate_destination(page, "tab-scenarios")
         page.locator('input[name=scenario_name]').first.fill("Lender Review")
-        with page.expect_response(lambda r: r.url.endswith('/v2/workbook/scenarios/create')) as created:
+        with page.expect_response(lambda r: r.url.endswith('/v2/workbook/scenarios/create'), timeout=120_000) as created:
             page.get_by_role('button', name=re.compile('Create', re.I)).first.click()
         assert created.value.status == 200
         activate_destination(page, "tab-opex")
         assert page.locator('[data-testid=opex-y1-total]').inner_text().strip() == '550'
         form = page.locator('[data-testid=opex-contingency-form]')
-        with page.expect_response(lambda r: r.url.endswith('/v2/capex/contingency')) as saved:
+        with page.expect_response(lambda r: r.url.endswith('/v2/capex/contingency'), timeout=120_000) as saved:
             form.locator('[name=contingency_pct]').fill('5')
             form.locator('button[type=submit]').click()
         assert saved.value.status in (200, 303)
@@ -130,11 +131,11 @@ def test_wind_contingency_run_and_renamed_scenario_download(live_server, browser
         # A later Working Copy edit must not change the historical inputs exported for this Run.
         activate_destination(page, "tab-opex")
         form = page.locator('[data-testid=opex-contingency-form]')
-        with page.expect_response(lambda r: r.url.endswith('/v2/capex/contingency')):
+        with page.expect_response(lambda r: r.url.endswith('/v2/capex/contingency'), timeout=120_000):
             form.locator('[name=contingency_pct]').fill('6')
             form.locator('button[type=submit]').click()
         page.wait_for_load_state('networkidle')
-        with page.expect_download() as download:
+        with page.expect_download(timeout=120_000) as download:
             page.locator('[data-testid=v2-export-btn]').click()
         dl = download.value
         assert dl.suggested_filename.startswith('finco-Wind-Export-Review-Lender-Review-results-')
