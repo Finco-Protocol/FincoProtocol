@@ -140,27 +140,52 @@ def test_wind_2700_control_and_legacy_absent_p90_fallback(tmp_path):
         client.__exit__(None, None, None)
 
 
-def test_p90_validation_rejects_gt_p50_zero_stale_cas_and_forged_lender_case(tmp_path):
+def test_p90_validation_rejects_gt_p50_zero_reverse_p50_stale_cas_and_forged_lender_case(tmp_path):
     user, client, rec = _setup(tmp_path, "p90_val", "solar")
     try:
         before_ws = get_workspace_state(user, rec.project_id)
+        before_hash = _tokens(client, rec.project_code)["content_hash"]
 
         # 1) P90 > P50 (1600 > 1500) rejected at Save, no DB mutation
         r_gt = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", "1600")
         assert "field-error" in r_gt.text or r_gt.status_code in (400, 422)
-        assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        assert "workbook-field-saved" not in (r_gt.headers.get("HX-Trigger") or "")
+        ws_after_gt = get_workspace_state(user, rec.project_id)
+        assert float(ws_after_gt.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        assert _tokens(client, rec.project_code)["content_hash"] == before_hash
 
-        # 2) P90 = 0 rejected at Save
-        r_zero = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", "0")
-        assert "field-error" in r_zero.text or r_zero.status_code in (400, 422)
-        assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        # 2) P90 = 0 and malformed P90 rejected at Save, no DB mutation
+        for bad_val in ("0", "-100", "abc", "nan"):
+            r_bad = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", bad_val)
+            assert "field-error" in r_bad.text or r_bad.status_code in (400, 422), bad_val
+            assert "workbook-field-saved" not in (r_bad.headers.get("HX-Trigger") or ""), bad_val
+            ws_bad = get_workspace_state(user, rec.project_id)
+            assert float(ws_bad.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+            assert _tokens(client, rec.project_code)["content_hash"] == before_hash
 
-        # 3) Batch update setting P90 > P50 (1350 > 1300) rejected atomically at Save
-        r_p50 = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", "1501")
+        # 3) Single P50-only reduction below saved explicit P90 (1300 < 1400) rejected at Save before CAS/DB mutation
+        r_p50 = _edit(client, rec.project_code, "project_setup.technical.p50_hours", "1300")
         assert "field-error" in r_p50.text or r_p50.status_code in (400, 422)
-        assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        assert "workbook-field-saved" not in (r_p50.headers.get("HX-Trigger") or "")
+        ws_after_p50 = get_workspace_state(user, rec.project_id)
+        assert float(ws_after_p50.draft_snapshot["p50_hours"]) == 1500.0
+        assert float(ws_after_p50.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        assert _tokens(client, rec.project_code)["content_hash"] == before_hash
+        # Worksheet GET remains clean (never stuck in recovery)
+        wb_get = client.get("/v2/workbook", params={"project": rec.project_code})
+        assert wb_get.status_code == 200
+        assert 'data-testid="workbook-recovery-back"' not in wb_get.text
 
-        # 4) Stale CAS rejected
+        # 4) Valid P50-only edit >= saved explicit P90 (1450 >= 1400) succeeds while preserving explicit P90=1400
+        r_p50_ok = _edit(client, rec.project_code, "project_setup.technical.p50_hours", "1450")
+        assert r_p50_ok.status_code == 200 and "field-error" not in r_p50_ok.text[:6000]
+        assert "workbook-field-saved" in (r_p50_ok.headers.get("HX-Trigger") or "")
+        ws_p50_ok = get_workspace_state(user, rec.project_id)
+        assert float(ws_p50_ok.draft_snapshot["p50_hours"]) == 1450.0
+        assert float(ws_p50_ok.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
+        assert _tokens(client, rec.project_code)["content_hash"] != before_hash
+
+        # 5) Stale CAS rejected
         stale = _tokens(client, rec.project_code)
         r_ok = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", "1380", tokens=stale)
         assert r_ok.status_code == 200 and "field-error" not in r_ok.text[:6000]
@@ -168,15 +193,99 @@ def test_p90_validation_rejects_gt_p50_zero_stale_cas_and_forged_lender_case(tmp
         assert r_stale.status_code == 409 or "stale" in r_stale.text.lower() or "changed" in r_stale.text.lower()
         assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1380.0
 
-        # 5) P1B-TECH-02: forged/unknown lender_case rejected fail-closed at canonical Save
+        # 6) P1B-TECH-02: forged/unknown lender_case rejected fail-closed at canonical Save
         forged = json.dumps({"version": 1, "lender_case": "P99_UNKNOWN"})
         r_forged = _edit(client, rec.project_code, "debt.bankability.configuration", forged)
         assert "field-error" in r_forged.text or r_forged.status_code in (400, 422)
 
-        # 6) Direct adapter also fails closed on P90 > P50
+        # 7) Direct adapter fails closed on P90 > P50 and on explicit numeric zero 0 / 0.0
         bad_snap = dict(before_ws.draft_snapshot)
         bad_snap["operating_hours_p90_10y"] = "1600"
         with pytest.raises(ValueError, match="P90_EXCEEDS_P50"):
             build_projectinputs_from_snapshot(bad_snap)
+
+        for zero_val in (0, 0.0, "0", "0.0"):
+            zero_snap = dict(before_ws.draft_snapshot)
+            zero_snap["operating_hours_p90_10y"] = zero_val
+            with pytest.raises(ValueError, match="P90_INVALID|operating_hours_p90_10y"):
+                build_projectinputs_from_snapshot(zero_snap)
     finally:
         client.__exit__(None, None, None)
+
+
+def test_paired_batch_p50_p90_updates_succeed_in_either_order_and_reject_invalid_pairs(tmp_path):
+    from app.workbook.draft_recovery import diagnose_draft
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.update_service import FieldValidationError, WorkbookUpdateService
+
+    user, client, rec = _setup(tmp_path, "p90_batch", "solar")
+    try:
+        # Order A: P50 lowered first (1300 < old P90 1400), paired with P90 lowered to 1200 -> atomic proposed state valid!
+        ws0 = get_workspace_state(user, rec.project_id)
+        toks0 = _tokens(client, rec.project_code)
+        WorkbookUpdateService.apply_batch_draft_update(
+            ws=ws0,
+            updates=[
+                ("project_setup.technical.p50_hours", "1300"),
+                ("project_setup.technical.p90_10y_hours", "1200"),
+            ],
+            content_hash=toks0["content_hash"],
+            workbook_version=WORKBOOK.version,
+            expected_scenario_id=ws0.active_scenario_id,
+            project_record=rec,
+            actor_user_id=user,
+        )
+        ws_a = get_workspace_state(user, rec.project_id)
+        assert float(ws_a.draft_snapshot["p50_hours"]) == 1300.0
+        assert float(ws_a.draft_snapshot["operating_hours_p90_10y"]) == 1200.0
+
+        # Order B: P90 lowered first (1100), then P50 lowered to 1180 -> identical valid atomic commit
+        toks_a = _tokens(client, rec.project_code)
+        WorkbookUpdateService.apply_batch_draft_update(
+            ws=ws_a,
+            updates=[
+                ("project_setup.technical.p90_10y_hours", "1100"),
+                ("project_setup.technical.p50_hours", "1180"),
+            ],
+            content_hash=toks_a["content_hash"],
+            workbook_version=WORKBOOK.version,
+            expected_scenario_id=ws_a.active_scenario_id,
+            project_record=rec,
+            actor_user_id=user,
+        )
+        ws_b = get_workspace_state(user, rec.project_id)
+        assert float(ws_b.draft_snapshot["p50_hours"]) == 1180.0
+        assert float(ws_b.draft_snapshot["operating_hours_p90_10y"]) == 1100.0
+
+        # Invalid paired batch (P50=1150, P90=1170) refused with zero DB mutation
+        toks_b = _tokens(client, rec.project_code)
+        with pytest.raises(FieldValidationError):
+            WorkbookUpdateService.apply_batch_draft_update(
+                ws=ws_b,
+                updates=[
+                    ("project_setup.technical.p50_hours", "1150"),
+                    ("project_setup.technical.p90_10y_hours", "1170"),
+                ],
+                content_hash=toks_b["content_hash"],
+                workbook_version=WORKBOOK.version,
+                expected_scenario_id=ws_b.active_scenario_id,
+                project_record=rec,
+                actor_user_id=user,
+            )
+        ws_b_after = get_workspace_state(user, rec.project_id)
+        assert _tokens(client, rec.project_code)["content_hash"] == toks_b["content_hash"]
+        assert float(ws_b_after.draft_snapshot["p50_hours"]) == 1180.0
+        assert float(ws_b_after.draft_snapshot["operating_hours_p90_10y"]) == 1100.0
+
+        # Persisted invalid legacy draft is diagnosed as repairable on project_setup.technical.p90_10y_hours
+        corrupted = dict(ws_b_after.draft_snapshot)
+        corrupted["operating_hours_p90_10y"] = "1600"
+        diag = diagnose_draft(corrupted)
+        assert diag is not None and len(diag.issues) >= 1
+        issue = diag.issues[0]
+        assert issue.snapshot_key == "operating_hours_p90_10y"
+        assert issue.field_id == "project_setup.technical.p90_10y_hours"
+        assert issue.repairable is True
+    finally:
+        client.__exit__(None, None, None)
+

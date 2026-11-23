@@ -768,12 +768,12 @@ def _resolve_user_inputs(
         new_p50 = p50_hours if p50_hours is not None else proj.technical.operating_hours_p50
         if operating_hours_p90_10y is not None:
             if not math.isfinite(operating_hours_p90_10y) or operating_hours_p90_10y <= 0:
-                raise ValueError(
-                    f"P90_INVALID: operating_hours_p90_10y must be positive and finite (got {operating_hours_p90_10y!r})."
+                raise SnapshotInputError(
+                    f"operating_hours_p90_10y: P90_INVALID: operating_hours_p90_10y must be positive and finite (got {operating_hours_p90_10y!r})."
                 )
             if operating_hours_p90_10y > new_p50:
-                raise ValueError(
-                    f"P90_EXCEEDS_P50: operating_hours_p90_10y ({operating_hours_p90_10y}) "
+                raise SnapshotInputError(
+                    f"operating_hours_p90_10y: P90_EXCEEDS_P50: operating_hours_p90_10y ({operating_hours_p90_10y}) "
                     f"cannot exceed operating_hours_p50 ({new_p50})."
                 )
             new_p90_10y = operating_hours_p90_10y
@@ -1142,7 +1142,7 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         ),
         "operating_hours_p90_10y": (
             None
-            if _native_storage or not str(snapshot.get("operating_hours_p90_10y", "") or "").strip()
+            if _native_storage or snapshot.get("operating_hours_p90_10y") is None or not str(snapshot.get("operating_hours_p90_10y")).strip()
             else _snapshot_float(snapshot, "operating_hours_p90_10y", positive=True)
         ),
         "operating_hours_p99_1y": None,

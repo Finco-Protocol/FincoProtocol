@@ -527,22 +527,11 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
-        # --- OD-P90-01: enforce P90 <= P50 against proposed state when P90 is written ---
-        if field_id == "project_setup.technical.p90_10y_hours":
+        # --- OD-P90-01: enforce bidirectional P90 <= P50 against complete proposed state at Save ---
+        if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
             snap = dict(ws.draft_snapshot or {})
-            raw_p50 = validation.typed_value if field_id == "project_setup.technical.p50_hours" else snap.get("p50_hours")
-            raw_p90 = validation.typed_value if field_id == "project_setup.technical.p90_10y_hours" else snap.get("operating_hours_p90_10y")
-            if raw_p90 not in (None, "") and raw_p50 not in (None, ""):
-                try:
-                    p50_f = float(raw_p50)
-                    p90_f = float(raw_p90)
-                except (TypeError, ValueError):
-                    p50_f = p90_f = None
-                if p50_f is not None and p90_f is not None and p90_f > p50_f:
-                    raise FieldValidationError(
-                        f"P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
-                        FieldErrorClass.INVALID,
-                    )
+            snap[validation.spec.snapshot_key] = str(validation.typed_value)
+            validate_proposed_p90_p50_snapshot(snap)
 
         # --- C1-Q-02: validate proposed horizon/COD against existing PPA book atomically ---
         if field_id in ("project_setup.technical.horizon_years", "project_setup.technical.cod_date"):
@@ -678,23 +667,14 @@ class WorkbookUpdateService:
                     raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", path)
                 seen_paths.add(path)
 
-        # OD-P90-01: check P90 <= P50 against complete proposed state atomically when P90 is written
-        if "project_setup.technical.p90_10y_hours" in seen_ids:
+        # OD-P90-01: check bidirectional P90 <= P50 against complete proposed state atomically
+        if "project_setup.technical.p90_10y_hours" in seen_ids or "project_setup.technical.p50_hours" in seen_ids:
             snap = dict(ws.draft_snapshot or {})
-            upd_map = dict(updates)
-            raw_p50 = upd_map.get("project_setup.technical.p50_hours", snap.get("p50_hours"))
-            raw_p90 = upd_map.get("project_setup.technical.p90_10y_hours", snap.get("operating_hours_p90_10y"))
-            if raw_p90 not in (None, "") and raw_p50 not in (None, ""):
-                try:
-                    p50_f = float(raw_p50)
-                    p90_f = float(raw_p90)
-                except (TypeError, ValueError):
-                    p50_f = p90_f = None
-                if p50_f is not None and p90_f is not None and p90_f > p50_f:
-                    raise FieldValidationError(
-                        f"P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
-                        FieldErrorClass.INVALID,
-                    )
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap[spec_i.snapshot_key] = raw_v
+            validate_proposed_p90_p50_snapshot(snap)
 
         if reject_line_owned:
             line_owned = find_line_owned_cost_fields(ws.project_id, seen_ids)
@@ -726,6 +706,64 @@ class WorkbookUpdateService:
             updates=updates,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+def validate_proposed_p90_p50_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:
+    """OD-P90-01: enforce canonical P90 <= P50 and finite/positive invariants on proposed snapshot state.
+
+    Absent/blank operating_hours_p90_10y is permitted (legacy 0.9 * P50 fallback applies only in
+    effective inputs without mutating saved state). When explicit operating_hours_p90_10y is present,
+    both P50 and P90 must be finite, > 0, and P90 <= P50.
+    """
+    import math as _math
+
+    raw_p90 = proposed_snapshot.get("operating_hours_p90_10y")
+    if raw_p90 is None or (isinstance(raw_p90, str) and not raw_p90.strip()):
+        return
+    if isinstance(raw_p90, bool):
+        raise FieldValidationError(
+            "P90-10y operating hours must be a positive finite number.",
+            FieldErrorClass.INVALID,
+        )
+    try:
+        p90_f = float(raw_p90)
+    except (TypeError, ValueError) as exc:
+        raise FieldValidationError(
+            f"P90-10y operating hours must be numeric (got {raw_p90!r}).",
+            FieldErrorClass.INVALID,
+        ) from exc
+    if not _math.isfinite(p90_f) or p90_f <= 0:
+        raise FieldValidationError(
+            f"P90-10y operating hours must be positive and finite (got {raw_p90!r}).",
+            FieldErrorClass.OUT_OF_RANGE if _math.isfinite(p90_f) else FieldErrorClass.NON_FINITE,
+        )
+
+    raw_p50 = proposed_snapshot.get("p50_hours")
+    if raw_p50 is None or (isinstance(raw_p50, str) and not raw_p50.strip()):
+        return
+    if isinstance(raw_p50, bool):
+        raise FieldValidationError(
+            "P50 operating hours must be a positive finite number.",
+            FieldErrorClass.INVALID,
+        )
+    try:
+        p50_f = float(raw_p50)
+    except (TypeError, ValueError) as exc:
+        raise FieldValidationError(
+            f"P50 operating hours must be numeric (got {raw_p50!r}).",
+            FieldErrorClass.INVALID,
+        ) from exc
+    if not _math.isfinite(p50_f) or p50_f <= 0:
+        raise FieldValidationError(
+            f"P50 operating hours must be positive and finite (got {raw_p50!r}).",
+            FieldErrorClass.OUT_OF_RANGE if _math.isfinite(p50_f) else FieldErrorClass.NON_FINITE,
+        )
+
+    if p90_f > p50_f:
+        raise FieldValidationError(
+            f"P90_EXCEEDS_P50: P90-10y operating hours ({p90_f:g}) cannot exceed P50 operating hours ({p50_f:g}).",
+            FieldErrorClass.INVALID,
+        )
 
 
 def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> None:

@@ -883,6 +883,9 @@ def v2_atomic_draft_update(
         else:
             _assert_f3_effective_candidate(row_snapshot, scope, updated_pis)
         new_snapshot = updated_pis.to_snapshot()
+        if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
+            from app.workbook.update_service import validate_proposed_p90_p50_snapshot
+            validate_proposed_p90_p50_snapshot(new_snapshot)
         if in_transaction_finalizer is not None:
             new_snapshot = in_transaction_finalizer(cur, new_snapshot)
 
@@ -1553,6 +1556,10 @@ def v2_apply_batch_draft_update_in_tx(
                     raise ValueError("Materialized CAPEX or explicit construction pricing owns fees.")
             except ValueError as exc:
                 raise FieldValidationError(str(exc)) from exc
+
+    if "project_setup.technical.p90_10y_hours" in seen_ids or "project_setup.technical.p50_hours" in seen_ids:
+        from app.workbook.update_service import validate_proposed_p90_p50_snapshot
+        validate_proposed_p90_p50_snapshot(candidate.to_snapshot())
 
     # Incomplete models may accept a reviewed subset. If the initial
     # snapshot is adapter-valid, the final candidate MUST remain valid.

@@ -132,15 +132,22 @@ def test_rendering_runs_no_engine_and_writes_nothing(env, runs):
 
 
 def test_unsaved_change_makes_the_run_stale_and_unbinds_thresholds(env, runs):
+    from app.persistence.workspace_repository import get_workspace_state
     user, rec, _ = runs["solar"]
     page = _get(env, user, rec).text
     h, v = _tokens(page)
     r = post_valid_mutation(env.client, "/v2/workbook/update", data={
-        "field_id": "project_setup.technical.p50_hours", "value": "1234", "project": rec.project_code,
+        "field_id": "project_setup.technical.p50_hours", "value": "1434", "project": rec.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
         cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert r.status_code == 200
+    assert r.status_code == 200 and '"workbook-field-saved"' in r.headers.get("HX-Trigger", "")
+    ws_after = get_workspace_state(user, rec.project_id)
+    assert float(ws_after.draft_snapshot["p50_hours"]) == 1434.0
+    assert float(ws_after.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
     html = _get(env, user, rec).text
+    assert "workbook-recovery-back" not in html
+    h_after, _ = _tokens(html)
+    assert h_after != h
     assert _state(html) == "STALE" and "PRIOR" in html
     lock = re.search(r'data-covenant-type="Distribution lock-up DSCR" data-covenant-status="(\w+)"', html).group(1)
     assert lock == "UNAVAILABLE" and "RUN_THRESHOLD_NOT_BOUND" in html
@@ -194,6 +201,7 @@ def _oob_panel(text):
 
 
 def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
+    from app.persistence.workspace_repository import get_workspace_state
     user = "q3-oob"
     rec = _project(env, user, "generic_solar_reference", "Q3 oob")
     h, v = _tokens(_get(env, user, rec).text)
@@ -205,13 +213,46 @@ def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
     assert _checks(oob) == _checks(_get(env, user, rec).text) and len(_checks(oob)) == 30
     h, v = _tokens(_get(env, user, rec).text)
     save = post_valid_mutation(env.client, "/v2/workbook/update", data={
-        "field_id": "project_setup.technical.p50_hours", "value": "1301", "project": rec.project_code,
+        "field_id": "project_setup.technical.p50_hours", "value": "1401", "project": rec.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"}, cookies=ck, headers={"HX-Request": "true"})
+    assert '"workbook-field-saved"' in save.headers.get("HX-Trigger", "")
+    assert float(get_workspace_state(user, rec.project_id).draft_snapshot["p50_hours"]) == 1401.0
     oob = _oob_panel(save.text)
     assert 'data-q3-state="STALE"' in oob and "RUN_THRESHOLD_NOT_BOUND" in oob
-    h, v = _tokens(_get(env, user, rec).text)
+    refreshed_get = _get(env, user, rec).text
+    assert "workbook-recovery-back" not in refreshed_get
+    h_after, v = _tokens(refreshed_get)
+    assert h_after != h
     created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "OOB"},
                               cookies=ck, headers={"HX-Request": "true"})
     if 'id="model-smart-panel"' in created.text:
         oob = _oob_panel(created.text)
         assert "data-q3-state" in oob
+
+
+def test_invalid_p50_below_saved_p90_refuses_save_and_keeps_q3_current(env):
+    from app.persistence.workspace_repository import get_workspace_state
+    user = "q3-inv-p50"
+    rec = _project(env, user, "generic_solar_reference", "Q3 invalid P50")
+    _run(env, user, rec)
+    before_html = _get(env, user, rec).text
+    assert _state(before_html) == "CURRENT"
+    h0, v0 = _tokens(before_html)
+    ws0 = get_workspace_state(user, rec.project_id)
+
+    bad = post_valid_mutation(env.client, "/v2/workbook/update", data={
+        "field_id": "project_setup.technical.p50_hours", "value": "1234", "project": rec.project_code,
+        "workbook_version": v0, "content_hash": h0, "sheet_id": "project_setup"},
+        cookies=env.cookie(user), headers={"HX-Request": "true"})
+    assert bad.status_code == 200
+    assert '"workbook-field-saved"' not in bad.headers.get("HX-Trigger", "")
+    assert "P90_EXCEEDS_P50" in bad.text or "cannot exceed P50" in bad.text
+
+    ws1 = get_workspace_state(user, rec.project_id)
+    assert ws1.draft_snapshot == ws0.draft_snapshot
+    assert ws1.updated_at == ws0.updated_at
+    assert ws1.last_runtime_snapshot_id == ws0.last_runtime_snapshot_id
+    after_html = _get(env, user, rec).text
+    assert "workbook-recovery-back" not in after_html
+    assert _state(after_html) == "CURRENT"
+    assert _tokens(after_html) == (h0, v0)
