@@ -21,6 +21,16 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (reviewed 
 
 # ── acquisition save (M6 harness pattern from test_m6_institutional_acquisition_candidate) ──
 
+# Internally coherent synthetic source evidence: production-shaped periods that extend beyond the closing date
+# (2027-01-01) used by the forms below, so the C1F-C-1 date gate admits them and the injected save_case failure is reached.
+_SYNTHETIC_SOURCE_EVIDENCE = {
+    "currency": "EUR", "unit": "kEUR", "authority": "COVENANT_GATED_G2C_AND_C1_PROJECT_RETURN",
+    "equity_periods": tuple(
+        {"date": f"{year}-12-31", "net_legal_dividend_keur": 100.0, "legal_equity_contribution_keur": 0.0}
+        for year in range(2027, 2032)),
+}
+
+
 @pytest.fixture()
 def acq_env(tmp_path, monkeypatch):
     path = str(tmp_path / "cases.db")
@@ -64,7 +74,7 @@ def acq_env(tmp_path, monkeypatch):
                                                              composite_hash="c" * 64,
                                                              last_runtime_scenario_id=None))
     monkeypatch.setattr(acquisition_router, "_run_evidence",
-                        lambda entry, owner, project_id: ({"equity_periods": ()}, "AVAILABLE_SOURCE_FACTS"))
+                        lambda entry, owner, project_id: (_SYNTHETIC_SOURCE_EVIDENCE, "AVAILABLE_SOURCE_FACTS"))
     import app.ui.protected_reference_service as protected_ref
     monkeypatch.setattr(protected_ref, "is_protected_reference", lambda record: False)
     app = FastAPI()
@@ -236,3 +246,21 @@ def test_investor_save_unexpected_programming_error_is_controlled_500(env, monke
         agreement=json.dumps(document())), headers={"HX-Request": "true"})
     assert r.status_code == 500
     assert r.json()["error"] == "INTERNAL_ERROR"
+
+
+def test_acq_save_closing_outside_source_horizon_is_422_before_persistence(acq_env, monkeypatch):
+    """C1F-C-1 gate: a closing date at/after the last source period is refused with 422 and save_case is never reached."""
+    import app.v2.acquisition_router as router_module
+    calls = []
+    monkeypatch.setattr(router_module, "save_case", lambda *a, **k: calls.append(1))
+    form = {"project": "project-A", "csrf_token": acq_env[1], "history_id": "h-1",
+            "case_id": "", "expected_revision": "0", "closing_date": "2031-12-31",
+            "purchase_price_keur": "10", "transaction_costs_keur": "1",
+            "buyer_discount_rate": "0.1", "target_buyer_irr": "0.12",
+            "bid_lower_bound_keur": "5", "bid_upper_bound_keur": "15",
+            "closing_adjustment_keur": "0"}
+    r = acq_env[0].post("/v2/valuation-acquisition/save", data=form)
+    assert r.status_code == 422
+    assert calls == []
+    from app.persistence.acquisition_repository import list_cases
+    assert list_cases(owner_id="owner-A", project_id="project-A") == []
