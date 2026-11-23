@@ -57,7 +57,15 @@ def env(tmp_path, monkeypatch):
                 user_id=USER, requested_name=name or "FinVal " + kind,
                 template_source="generic_" + kind + "_reference", capacity_mw=capacity)
 
-        yield SimpleNamespace(client=client, create=create, db_path=str(tmp_path / "finval.db"), app=app)
+        def create_line_free(kind="solar", capacity=16, name=None):
+            """Explicit synthetic scalar-owned fixture: a reference project whose seeded CAPEX lines are removed at the
+            persistence boundary so the category scalars are the effective Run authority (no active line owns them)."""
+            record = create(kind, capacity, name)
+            with sqlite3.connect(str(tmp_path / "finval.db")) as conn:
+                conn.execute("DELETE FROM capex_sub_lines WHERE project_id=?", (record.project_id,))
+            return record
+
+        yield SimpleNamespace(client=client, create=create, create_line_free=create_line_free, db_path=str(tmp_path / "finval.db"), app=app)
     reset_model_executor_for_tests()
 
 
@@ -203,14 +211,14 @@ def test_grid_save_refuses_negative_atomically(env, field_id):
 
 def test_zero_and_positive_capex_remain_savable_and_effective_values_match(env):
     # (a) zero stays valid through both routes, on a project whose page renders between the Saves
-    record = env.create(name="FinVal zero")
+    record = env.create_line_free(name="FinVal zero")
     assert _single_save(env, record, "capex.C.epc_contract", "0").status_code == 200
     assert float(_snapshot(record)["capex_epc_contract_keur"]) == 0.0
     r1 = _grid_save(env, record, [{"field_id": "capex.C.insurances", "value": "0"}])
     assert r1.status_code == 200 and float(_snapshot(record)["capex_insurances_keur"]) == 0.0
     assert build_projectinputs_from_snapshot(_snapshot(record)).capex.insurances.amount_keur == 0.0
     # (b) all 14 positive amounts in ONE atomic grid Save (tokens rendered before; the page is not needed afterwards)
-    record = env.create(name="FinVal positive")
+    record = env.create_line_free(name="FinVal positive")
     base_inputs = build_projectinputs_from_snapshot(_snapshot(record))
     values = {f: str(1000 + 10 * i) for i, f in enumerate(CAPEX_FIELDS)}
     response = _grid_save(env, record, [{"field_id": f, "value": v} for f, v in values.items()])
@@ -222,6 +230,16 @@ def test_zero_and_positive_capex_remain_savable_and_effective_values_match(env):
         attr = _SCALAR_CAPEX_MAP[_key(field_id)]
         assert getattr(effective.capex, attr).amount_keur == pytest.approx(float(raw))
     assert effective.revenue.ppa_base_tariff == base_inputs.revenue.ppa_base_tariff     # unrelated inputs unchanged
+
+
+def test_seeded_line_owned_capex_scalar_is_refused_without_mutation(env):
+    """Separate line-owned control: seeded CAPEX lines own the EPC category, so a scalar Save is refused."""
+    record = env.create()
+    tokens = _page_tokens(env, record)       # first render normalises stored types; compare after it
+    before = _snapshot(record)
+    refused = _single_save(env, record, "capex.C.epc_contract", "21000", tokens)
+    assert "COST_CATEGORY_LINE_OWNED" in refused.text
+    assert _snapshot(record) == before
 
 
 def test_resaving_the_current_positive_value_is_an_effective_noop(env):
@@ -284,7 +302,7 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
 
 # ── CAS / CSRF / ownership unchanged ────────────────────────────────────────────────────────────────
 def test_cas_csrf_ownership_and_scenario_guards_unchanged(env):
-    record = env.create()
+    record = env.create_line_free()
     t = _page_tokens(env, record)
     before = _snapshot(record)
     cells = [{"field_id": "capex.C.epc_contract", "value": "21000"}]
@@ -479,7 +497,7 @@ def test_workbook_page_renders_for_large_finite_capacity(env, capacity):
 
 
 def test_large_finite_capex_amount_page_renders_and_run_inputs_unchanged(env):
-    record = env.create()
+    record = env.create_line_free()
     t = _page_tokens(env, record)
     assert _single_save(env, record, "capex.C.epc_contract", "1e21", t).status_code == 200
     assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
