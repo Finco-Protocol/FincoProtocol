@@ -2851,6 +2851,19 @@ _ENGINE_FAIL_CLOSED_MESSAGES = (
     ("F3_MATURITY_NOT_ON_OPERATING_BOUNDARY", "Facility maturity must match a canonical operating period end. No Run was saved. (Reference: F3_MATURITY_NOT_ON_OPERATING_BOUNDARY)"),
     ("F3_DRAW_OUTSIDE_CONSTRUCTION", "Facility draws must fall within construction. No Run was saved. (Reference: F3_DRAW_OUTSIDE_CONSTRUCTION)"),
     ("F3_GRACE_EXCEEDS_MATURITY", "No principal-eligible period remains before maturity. No Run was saved. (Reference: F3_GRACE_EXCEEDS_MATURITY)"),
+    ("ZERO_SENIOR_GEARING_NOT_SUPPORTED",
+     "Zero senior gearing (0%) is not supported under the current senior-debt "
+     "financing contract, so no Run was saved. Set a positive senior gearing or "
+     "review financing terms. Your edits are saved; the previous Last Run is "
+     "unchanged. (Reference: ZERO_SENIOR_GEARING_NOT_SUPPORTED)"),
+    ("INVALID_CAPEX_INPUT",
+     "Total CAPEX must be strictly positive to run the financial model. Review "
+     "CAPEX inputs and run again. No Run was saved; the previous Last Run is "
+     "unchanged. (Reference: INVALID_CAPEX_INPUT)"),
+    ("DEBT_TENOR_EXCEEDS_HORIZON",
+     "Senior debt tenor must be shorter than the project operating horizon. "
+     "Increase project horizon or shorten debt tenor and run again. No Run was "
+     "saved; the previous Last Run is unchanged. (Reference: DEBT_TENOR_EXCEEDS_HORIZON)"),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED",
      "These inputs leave part of the shareholder loan unpaid at its maturity, so "
      "the model did not produce a result. Review OPEX, CAPEX, revenue or "

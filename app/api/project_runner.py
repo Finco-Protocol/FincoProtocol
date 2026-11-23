@@ -203,10 +203,12 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         )
         from app.services.production_waterfall_seam import classify_or_fail
 
+        _override_validation_errors = []
         if project_inputs_override is not None:
             from domain.validation import validate_project_inputs
             issues = list(validate_project_inputs(project_inputs_override))
-            if not [i for i in issues if i.severity == "error"]:
+            _override_validation_errors = [i for i in issues if i.severity == "error"]
+            if not _override_validation_errors:
                 _pr8_inputs = project_inputs_override
         elif project_type in (
             "Generic Wind Reference", "Generic Solar Reference",
@@ -303,6 +305,20 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             ),
             runtime_authority="clean_not_ready",
             calculation_count=0,
+        )
+    elif _override_validation_errors:
+        from app.services.production_financial_authority import CleanProductionRunUnavailable
+
+        msgs = "; ".join(f"{getattr(i, 'field', '')}: {getattr(i, 'message', str(i))}" for i in _override_validation_errors)
+        lower = msgs.lower()
+        prefix = ""
+        if "tenor" in lower and "horizon" in lower:
+            prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
+        elif "capex" in lower:
+            prefix = "INVALID_CAPEX_INPUT: "
+        raise CleanProductionRunUnavailable(
+            reason_code="PR8_INPUT_VALIDATION_FAIL_CLOSED",
+            detail=f"{prefix}{msgs}",
         )
     else:
         # Unclassified type (Portfolio / unknown project_type / override with

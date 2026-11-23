@@ -487,9 +487,31 @@ def run_clean_production(
     except CleanProductionRunUnavailable:
         raise
     except Exception as exc:  # fail closed — never fall back to legacy
+        raw_detail = f"{type(exc).__name__}: {exc}"
+        fin = getattr(effective_inputs, "financing", None)
+        cap = getattr(effective_inputs, "capex", None)
+        info = getattr(effective_inputs, "info", None)
+        prefix = ""
+        if cap is not None and getattr(cap, "total_capex", 1.0) <= 0.0:
+            prefix = "INVALID_CAPEX_INPUT: "
+        elif (
+            fin is not None
+            and getattr(fin, "gearing_ratio", None) is not None
+            and float(fin.gearing_ratio) <= 0.0
+            and "INVALID_INPUT" in raw_detail
+        ):
+            prefix = "ZERO_SENIOR_GEARING_NOT_SUPPORTED: "
+        elif (
+            info is not None
+            and fin is not None
+            and getattr(info, "horizon_years", None) is not None
+            and getattr(fin, "senior_tenor_years", None) is not None
+            and float(info.horizon_years) <= float(fin.senior_tenor_years)
+        ):
+            prefix = "DEBT_TENOR_EXCEEDS_HORIZON: "
         raise CleanProductionRunUnavailable(
             reason_code="PR8_CLEAN_ENGINE_FAIL_CLOSED",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=f"{prefix}{raw_detail}",
         ) from exc
 
     _require_settled_senior_maturity(g2c, effective_inputs)

@@ -544,6 +544,17 @@ class WorkbookUpdateService:
                         FieldErrorClass.INVALID,
                     )
 
+        # --- C1-Q-02: validate proposed horizon/COD against existing PPA book atomically ---
+        if field_id in ("project_setup.technical.horizon_years", "project_setup.technical.cod_date"):
+            snap = dict(ws.draft_snapshot or {})
+            if (snap.get("rev_multistream_config_json") or "").strip():
+                snap[validation.spec.snapshot_key] = (
+                    validation.typed_value.isoformat()
+                    if hasattr(validation.typed_value, "isoformat")
+                    else str(validation.typed_value)
+                )
+                _validate_ppa_book_against_proposed_snapshot(snap)
+
         # --- R-1: early finite derived-amount refusal (advisory) ----------
         # A capacity edit rescales the reference-seeded PER_MW lines.  A rolled-back dry run gives the user an
         # early, specific refusal for the expected overflow case.  It is NOT the safeguard: the authoritative
@@ -684,6 +695,27 @@ class WorkbookUpdateService:
                         FieldErrorClass.INVALID,
                     )
 
+        # C1F-A-1: refuse category-scalar batch updates whose category is owned by active cost lines
+        # (active lines take precedence at Run, so writing the scalar cannot affect canonical Run).
+        line_owned = find_line_owned_cost_fields(ws.project_id, seen_ids)
+        if line_owned:
+            first_fid, first_reason = next(iter(line_owned.items()))
+            raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
+
+        # C1-Q-02: validate proposed horizon/COD against existing PPA book atomically
+        if (
+            "project_setup.technical.horizon_years" in seen_ids
+            or "project_setup.technical.cod_date" in seen_ids
+            or "revenue.multistream.contracts" in seen_ids
+        ):
+            snap = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap[spec_i.snapshot_key] = raw_v
+            if (snap.get("rev_multistream_config_json") or "").strip():
+                _validate_ppa_book_against_proposed_snapshot(snap)
+
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,
             project_id=ws.project_id,
@@ -694,3 +726,89 @@ class WorkbookUpdateService:
             updates=updates,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> None:
+    """C1-Q-02: enforce canonical PPA contract book invariants against proposed timeline."""
+    ms_json = (proposed_snapshot.get("rev_multistream_config_json") or "").strip()
+    if not ms_json:
+        return
+    try:
+        from app.input_adapter import build_projectinputs_from_snapshot
+        from domain.revenue.multistream_runtime import parse_config
+        from finco_core.engine.period_engine import PeriodEngine
+
+        proposed_pi = build_projectinputs_from_snapshot(proposed_snapshot)
+        engine = PeriodEngine(proposed_pi)
+        multistream = parse_config(ms_json)
+        if getattr(multistream, "has_contractual_indexation", False):
+            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date)
+        else:
+            multistream.validate_axis(engine.periods())
+    except FieldValidationError:
+        raise
+    except Exception as exc:
+        raise FieldValidationError(
+            f"Proposed project timeline is incompatible with the saved PPA contract book: {exc}",
+            FieldErrorClass.INVALID,
+        ) from exc
+
+
+def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, str]:
+    """C1F-A-1: identify CAPEX/OPEX scalar fields whose category is owned by active cost lines.
+
+    Active cost lines take precedence at canonical Run (apply_user_sub_lines_replacing_base /
+    opex_fold_provenance). Writing a category scalar cannot change Run numbers, so callers
+    must refuse or mark the field not-applicable rather than confirming Applied/STALE.
+    """
+    if not project_id:
+        return {}
+    fids = [f for f in field_ids if isinstance(f, str) and (f.startswith("capex.") or f.startswith("opex."))]
+    if not fids:
+        return {}
+
+    blocked: dict[str, str] = {}
+    capex_fids = [f for f in fids if f.startswith("capex.")]
+    if capex_fids:
+        from app.persistence.capex_sub_lines import (
+            CAPEX_CATEGORY_TO_FIELD,
+            get_active_sub_lines_for_project as get_active_capex_lines,
+        )
+        active_capex = get_active_capex_lines(project_id)
+        if active_capex:
+            owned_capex_attrs = {
+                CAPEX_CATEGORY_TO_FIELD.get(row.parent_category_code)
+                for row in active_capex
+                if row.parent_category_code in CAPEX_CATEGORY_TO_FIELD
+            }
+            for fid in capex_fids:
+                try:
+                    spec = WORKBOOK.field(fid)
+                except KeyError:
+                    continue
+                ep = spec.engine_path or ""
+                if fid == "capex.total_capex_keur" or ep == "capex.total_capex":
+                    blocked[fid] = "Active CAPEX cost lines own total CAPEX and take precedence at Run; edit cost lines instead."
+                elif ep.startswith("capex."):
+                    attr = ep.split(".")[1]
+                    if attr in owned_capex_attrs:
+                        blocked[fid] = (
+                            f"Active CAPEX cost lines own category {attr!r} and take precedence at Run; "
+                            "edit the individual cost lines instead."
+                        )
+
+    opex_fids = [f for f in fids if f.startswith("opex.")]
+    if opex_fids:
+        from app.services.opex_sub_lines_integration import _load_all_sub_lines, opex_fold_provenance
+        all_opex = _load_all_sub_lines(project_id)
+        if all_opex:
+            prov = opex_fold_provenance(all_opex)
+            if prov.get("replaces_aggregate"):
+                for fid in opex_fids:
+                    if fid.startswith("opex.lines.") or fid == "opex.summary.y1_total_keur":
+                        blocked[fid] = (
+                            "Active OPEX cost lines replace base OPEX scalars at Run; "
+                            "edit the individual OPEX cost lines instead."
+                        )
+    return blocked
+
