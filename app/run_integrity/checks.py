@@ -243,21 +243,65 @@ def check_no_unfunded_deficit(evidence: Mapping[str, Any]) -> IntegrityCheck:
         return _unavailable(cid, title, "CASH_EVIDENCE_MISSING")
     if not all(_complete(c, "cash_after_senior_before_reserves") for c in cash):
         return _unavailable(cid, title, "CASH_EVIDENCE_MISSING")
-    worst, evaluated = 0.0, 0
-    for c in cash:
-        worst = max(worst, -c["cash_after_senior_before_reserves"])
-        evaluated += 1
+
+    # Map post-reserve balance sheet rows by period_index so pre-reserve shortfalls
+    # can be verified against actual post-reserve balances (OD-INTEGRITY-01).
+    bs_by_period: dict[int, Mapping[str, Any]] = {}
+    worst_post, evaluated = 0.0, 0
     for row in bs:
+        pidx = row.get("period_index")
+        if isinstance(pidx, int) and not isinstance(pidx, bool):
+            bs_by_period[pidx] = row
         for key in ("unrestricted_cash", "dsra_balance", "distribution_account"):
             value = row.get(key)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                worst = max(worst, -value)
+                worst_post = max(worst_post, -value)
                 evaluated += 1
-    if worst > TOL_KEUR:
+
+    funded_shortfalls: list[tuple[int | None, float]] = []
+    unverified_pre_deficit = 0.0
+    for c in cash:
+        evaluated += 1
+        pre_val = c["cash_after_senior_before_reserves"]
+        if pre_val < -TOL_KEUR:
+            pidx = c.get("period_index")
+            bs_row = bs_by_period.get(pidx) if isinstance(pidx, int) and not isinstance(pidx, bool) else None
+            # Only treat as reserve-funded when the period's post-reserve BS balances are
+            # actually present and verified non-negative; otherwise fail closed.
+            if (
+                bs_row is not None
+                and _complete(bs_row, "unrestricted_cash", "dsra_balance", "distribution_account")
+                and bs_row["unrestricted_cash"] >= -TOL_KEUR
+                and bs_row["dsra_balance"] >= -TOL_KEUR
+                and bs_row["distribution_account"] >= -TOL_KEUR
+            ):
+                funded_shortfalls.append((pidx, -pre_val))
+            else:
+                unverified_pre_deficit = max(unverified_pre_deficit, -pre_val)
+
+    worst_unfunded = max(worst_post, unverified_pre_deficit)
+    if worst_unfunded > TOL_KEUR:
         return IntegrityCheck(cid, title, CheckStatus.FAIL, "NEGATIVE_CASH_WITHOUT_FUNDING_SOURCE",
-                              evaluated, worst, TOL_KEUR,
-                              "a negative balance would imply an unmodelled source of funds")
-    return IntegrityCheck(cid, title, CheckStatus.PASS, None, evaluated, max(worst, 0.0), TOL_KEUR)
+                              evaluated, worst_unfunded, TOL_KEUR,
+                              "a negative post-reserve balance (or unverified deficit) implies an unmodelled source of funds")
+    if funded_shortfalls:
+        summary = ", ".join(
+            f"P{p}:{amt:.2f} kEUR" if p is not None else f"{amt:.2f} kEUR"
+            for p, amt in funded_shortfalls[:5]
+        )
+        if len(funded_shortfalls) > 5:
+            summary += f" (+{len(funded_shortfalls) - 5} more)"
+        return IntegrityCheck(
+            cid,
+            title,
+            CheckStatus.PASS,
+            "RESERVE_FUNDED_PRE_RESERVE_DEFICIT",
+            evaluated,
+            max(worst_post, 0.0),
+            TOL_KEUR,
+            f"debt service shortfall covered by reserve in {len(funded_shortfalls)} period(s): {summary}; all post-reserve balances >= 0",
+        )
+    return IntegrityCheck(cid, title, CheckStatus.PASS, None, evaluated, max(worst_post, 0.0), TOL_KEUR)
 
 
 # ── 7. DSCR sculpting feasibility ───────────────────────────────────────────
@@ -270,6 +314,20 @@ def check_dscr_feasibility(evidence: Mapping[str, Any]) -> IntegrityCheck:
         return _unavailable(cid, title, "SENIOR_DEBT_EVIDENCE_MISSING")
     if not rows:
         return IntegrityCheck(cid, title, CheckStatus.NOT_APPLICABLE, "NO_SENIOR_DEBT")
+    repayment_method = _section(evidence, "senior_debt", "repayment_method")
+    sizing_mode = _section(evidence, "senior_debt", "debt_sizing_mode")
+    if repayment_method is not None and repayment_method != "dscr_sculpted":
+        return IntegrityCheck(
+            cid,
+            title,
+            CheckStatus.NOT_APPLICABLE,
+            "NOT_SCULPTED_REPAYMENT_METHOD",
+            evaluated=len(rows),
+            detail=(
+                f"repayment_method={repayment_method!r} (debt_sizing_mode={sizing_mode!r}); "
+                "DSCR sculpting feasibility applies only to sculpted repayment schedules"
+            ),
+        )
     if diagnostics.get("termination_reason") != "CONVERGED" or diagnostics.get("is_authoritative") is not True:
         return IntegrityCheck(cid, title, CheckStatus.FAIL, "DSCR_SCULPTING_NOT_AUTHORITATIVE",
                               detail=f"termination_reason={diagnostics.get('termination_reason')!r}")

@@ -127,6 +127,13 @@ def _senior_debt(clean_run, model) -> dict[str, Any]:
             "reported_dscr": _num(senior.base_dscr[position]),
         })
     diagnostics = senior.diagnostics
+    sizing_mode = fin.resolved_debt_sizing_mode()
+    if sizing_mode.value == "gearing_cap":
+        repayment_method = getattr(fin.gearing_cap_repayment_method, "value", str(fin.gearing_cap_repayment_method))
+    elif sizing_mode.value in ("flat_dscr_sculpted", "minimum_dscr_sculpted"):
+        repayment_method = "dscr_sculpted"
+    else:
+        repayment_method = "frozen_schedule"
     return {
         "diagnostics": {
             "termination_reason": diagnostics.get("termination_reason"),
@@ -135,6 +142,8 @@ def _senior_debt(clean_run, model) -> dict[str, Any]:
             "binding_constraint": diagnostics.get("binding_constraint"),
             "final_debt_size_keur": _num(diagnostics.get("final_debt_size_keur")),
         },
+        "debt_sizing_mode": sizing_mode.value,
+        "repayment_method": repayment_method,
         "day_count": convention,
         "permit_terminal_balloon": True,  # the generic product contract permits a terminal balloon
         "periods": periods,
