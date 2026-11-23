@@ -62,12 +62,12 @@ def test_rcux_goal_seek_minimum_dscr_is_typed_in_multiples_solved_and_applied_wi
     page.select_option("[data-gs-metric]", "min_dscr")
     assert page.locator("[data-goal-seek-form] label", has_text="Target (x)").count() == 1
     assert page.locator("[data-gs-target]").get_attribute("data-gs-target-unit") == "multiple"
-    page.fill("[data-gs-target]", "1.30")
+    page.fill("[data-gs-target]", "1.26")
     page.locator("[data-gs-solve]").click()
     page.wait_for_selector("[data-gs-result]", timeout=240000)
     assert page.locator("[data-gs-status]").inner_text().strip().upper() == "SOLVED"
     facts = page.locator(".rcm-facts").inner_text()
-    assert "1.30x" in facts and "Minimum" in facts                                  # a multiple, never "130.00%" or "1.30%"
+    assert "1.26x" in facts and "Minimum" in facts                                  # a multiple, never "126.00%" or "1.26%"
     assert page.locator("[data-gs-achieved]").inner_text().endswith("x")
     assert "%" not in page.locator("[data-gs-achieved]").inner_text()
     _shot(page, "goal-seek-dscr")

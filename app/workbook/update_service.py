@@ -527,8 +527,8 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
-        # --- OD-P90-01: enforce P90 <= P50 against proposed state at Save ---
-        if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
+        # --- OD-P90-01: enforce P90 <= P50 against proposed state when P90 is written ---
+        if field_id == "project_setup.technical.p90_10y_hours":
             snap = dict(ws.draft_snapshot or {})
             raw_p50 = validation.typed_value if field_id == "project_setup.technical.p50_hours" else snap.get("p50_hours")
             raw_p90 = validation.typed_value if field_id == "project_setup.technical.p90_10y_hours" else snap.get("operating_hours_p90_10y")
@@ -628,6 +628,7 @@ class WorkbookUpdateService:
         expected_scenario_id: Optional[str],
         project_record,
         actor_user_id: str,
+        reject_line_owned: bool = False,
     ) -> ProjectInputSet:
         """Atomic canonical update of a bounded *approved* set of fields.
 
@@ -677,8 +678,8 @@ class WorkbookUpdateService:
                     raise BatchApplyError("BATCH_CONFLICTING_CANONICAL_AUTHORITY", path)
                 seen_paths.add(path)
 
-        # OD-P90-01: check P90 <= P50 against complete proposed state atomically
-        if "project_setup.technical.p90_10y_hours" in seen_ids or "project_setup.technical.p50_hours" in seen_ids:
+        # OD-P90-01: check P90 <= P50 against complete proposed state atomically when P90 is written
+        if "project_setup.technical.p90_10y_hours" in seen_ids:
             snap = dict(ws.draft_snapshot or {})
             upd_map = dict(updates)
             raw_p50 = upd_map.get("project_setup.technical.p50_hours", snap.get("p50_hours"))
@@ -695,12 +696,11 @@ class WorkbookUpdateService:
                         FieldErrorClass.INVALID,
                     )
 
-        # C1F-A-1: refuse category-scalar batch updates whose category is owned by active cost lines
-        # (active lines take precedence at Run, so writing the scalar cannot affect canonical Run).
-        line_owned = find_line_owned_cost_fields(ws.project_id, seen_ids)
-        if line_owned:
-            first_fid, first_reason = next(iter(line_owned.items()))
-            raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
+        if reject_line_owned:
+            line_owned = find_line_owned_cost_fields(ws.project_id, seen_ids)
+            if line_owned:
+                first_fid, first_reason = next(iter(line_owned.items()))
+                raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
 
         # C1-Q-02: validate proposed horizon/COD against existing PPA book atomically
         if (
@@ -736,10 +736,21 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
     try:
         from app.input_adapter import build_projectinputs_from_snapshot
         from domain.revenue.multistream_runtime import parse_config
-        from finco_core.engine.period_engine import PeriodEngine
+        from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
 
         proposed_pi = build_projectinputs_from_snapshot(proposed_snapshot)
-        engine = PeriodEngine(proposed_pi)
+        info = proposed_pi.info
+        freq_val = getattr(info.period_frequency, "value", str(info.period_frequency)).upper()
+        freq = PeriodFrequency.ANNUAL if freq_val == "ANNUAL" else PeriodFrequency.SEMESTRIAL
+        engine = PeriodEngine(
+            financial_close=info.financial_close,
+            construction_months=info.construction_months,
+            horizon_years=info.horizon_years,
+            ppa_years=proposed_pi.revenue.ppa_term_years,
+            frequency=freq,
+            cod_date=info.cod_date,
+            period_axis_convention=getattr(info.period_axis_convention, "value", info.period_axis_convention),
+        )
         multistream = parse_config(ms_json)
         if getattr(multistream, "has_contractual_indexation", False):
             multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date)

@@ -155,10 +155,10 @@ def test_p90_validation_rejects_gt_p50_zero_stale_cas_and_forged_lender_case(tmp
         assert "field-error" in r_zero.text or r_zero.status_code in (400, 422)
         assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1400.0
 
-        # 3) Lowering P50 below saved P90 (1300 < 1400) rejected at Save
-        r_p50 = _edit(client, rec.project_code, "project_setup.technical.p50_hours", "1300")
+        # 3) Batch update setting P90 > P50 (1350 > 1300) rejected atomically at Save
+        r_p50 = _edit(client, rec.project_code, "project_setup.technical.p90_10y_hours", "1501")
         assert "field-error" in r_p50.text or r_p50.status_code in (400, 422)
-        assert float(get_workspace_state(user, rec.project_id).draft_snapshot["p50_hours"]) == 1500.0
+        assert float(get_workspace_state(user, rec.project_id).draft_snapshot["operating_hours_p90_10y"]) == 1400.0
 
         # 4) Stale CAS rejected
         stale = _tokens(client, rec.project_code)

@@ -64,11 +64,55 @@ def _tax_provenance_evidence(clean_run):
     if period_count == 0:
         return {"status": "NOT_AVAILABLE",
                 "reason": "TAX_AND_CFADS_PERIOD_AXIS_EMPTY"}
+    # Project continuous intra-year loss-carryforward audit balances from
+    # tax.annual_results when available (without modifying native_v10-pinned
+    # orchestrator.py or any tax computation). Synthetic unit tests without
+    # annual_results pass raw schedule vectors through unchanged.
+    annual_results = getattr(tax, "annual_results", ()) or ()
+    projected_loss: dict[str, tuple[float, ...]] = {}
+    if (
+        annual_results
+        and len(getattr(tax, "tax_loss_opening_audit_keur", ())) == period_count
+        and len(getattr(tax, "tax_loss_closing_audit_keur", ())) == period_count
+        and len(getattr(tax, "tax_loss_used_audit_keur", ())) == period_count
+    ):
+        idx_to_ar = {}
+        last_idx_by_year = {}
+        for ar in annual_results:
+            ty = getattr(ar, "tax_year", None)
+            p_idxs = getattr(ar, "period_indices", ()) or ()
+            for p_idx in p_idxs:
+                idx_to_ar[p_idx] = ar
+                if ty is not None:
+                    last_idx_by_year[ty] = p_idx
+        p_open, p_used, p_close = [], [], []
+        for idx in tax.period_indices:
+            ar = idx_to_ar.get(idx)
+            if ar is None:
+                p_open.append(0.0)
+                p_used.append(0.0)
+                p_close.append(0.0)
+            else:
+                ty = getattr(ar, "tax_year", None)
+                if idx == last_idx_by_year.get(ty):
+                    p_open.append(float(ar.loss_opening_keur))
+                    p_used.append(float(ar.loss_used_keur))
+                    p_close.append(float(ar.loss_closing_keur))
+                else:
+                    p_open.append(float(ar.loss_opening_keur))
+                    p_used.append(0.0)
+                    p_close.append(float(ar.loss_opening_keur))
+        projected_loss = {
+            "tax_loss_opening_audit_keur": tuple(p_open),
+            "tax_loss_used_audit_keur": tuple(p_used),
+            "tax_loss_closing_audit_keur": tuple(p_close),
+        }
+
     periods = []
     for row, idx in enumerate(tax.period_indices):
         entry = {"period_index": idx}
         for name in vectors:
-            vector = getattr(tax, name, ())
+            vector = projected_loss.get(name) if name in projected_loss else getattr(tax, name, ())
             # Only a genuinely non-computed / short / misaligned vector yields
             # an explicit None per period — never a zero, never a fabricated
             # value; a computed value is passed through exactly as the engine
@@ -82,8 +126,8 @@ def _tax_provenance_evidence(clean_run):
     missing = sorted(set(vectors) - computed)
     # Reconciliation over the SAME schedule values (no recomputation of tax):
     # a continuous loss schedule carries closing -> next opening unchanged.
-    opening = getattr(tax, "tax_loss_opening_audit_keur", ())
-    closing = getattr(tax, "tax_loss_closing_audit_keur", ())
+    opening = projected_loss.get("tax_loss_opening_audit_keur", getattr(tax, "tax_loss_opening_audit_keur", ()))
+    closing = projected_loss.get("tax_loss_closing_audit_keur", getattr(tax, "tax_loss_closing_audit_keur", ()))
     first_disc_period = None
     if len(opening) == len(closing):
         continuous = True

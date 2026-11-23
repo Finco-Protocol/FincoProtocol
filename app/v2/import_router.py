@@ -301,6 +301,7 @@ async def model_input_import_apply(
             workbook_version=signed["workbook_version"],
             expected_scenario_id=signed["scenario_id"],
             project_record=record, actor_user_id=user.user_id,
+            reject_line_owned=True,
         )
         fresh = get_workspace_state(owner, record.project_id)
         if fresh is None:

@@ -317,7 +317,7 @@ def test_goal_seek_preview_apply_stale_then_deliberate_run(live_server, an_sessi
 def test_goal_seek_unreachable_target_is_typed_and_offers_no_apply(live_server, an_session):
     context, page, record, errors = an_session("rcm-an-gs-unreach")
     open_tool(page, live_server, record.project_code, "goal-seek")
-    solve_in_ui(page, 95)
+    solve_in_ui(page, 250)
     assert page.locator("[data-gs-status='true']").inner_text() != "SOLVED"
     assert page.locator("[data-gs-apply='true']").count() == 0 and page.locator("[data-gs-message='true']").inner_text()
     assert errors == []

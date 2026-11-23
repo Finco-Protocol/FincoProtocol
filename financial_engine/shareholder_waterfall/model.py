@@ -1620,7 +1620,7 @@ def run_project_shareholder_waterfall_model(
         senior_terminal=return_summary.terminal.senior,
     )
 
-    return CovenantGatedWaterfallResult(
+    _result = CovenantGatedWaterfallResult(
         financing_result=financing,
         distribution_lockup_dscr=distribution_lockup_dscr,
         waterfall_periods=tuple(waterfall_periods),
@@ -1656,5 +1656,6 @@ def run_project_shareholder_waterfall_model(
         deductible_shl_covenant_feedback_status=deductible_feedback_status,
         return_summary=return_summary,
         valuation_summary=valuation_summary,
-        shl_schedule_reconciliation=shl_schedule_reconciliation,
     )
+    object.__setattr__(_result, "_shl_schedule_reconciliation", shl_schedule_reconciliation)
+    return _result

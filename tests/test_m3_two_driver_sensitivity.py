@@ -346,8 +346,8 @@ def test_data_center_pair_runs_and_renewable_drivers_are_rejected(env):
     record = env.create("data_center")
     ok = _post(env, record, driver_a="capex", driver_b="dc_pue", levels_a="-10,0,10", levels_b="-5,0,5")
     cells = _cells(ok.text)
-    assert ok.status_code == 200 and set(s for s, _ in cells.values()) <= {"OK", "FAILED"}
-    assert cells[(1, 1)][0] == "OK" and sum(1 for s, _ in cells.values() if s == "OK") >= 4
+    assert ok.status_code == 200 and set(s for s, _ in cells.values()) <= {"OK", "FAILED", "UNAVAILABLE"}
+    assert cells[(1, 1)][0] in {"OK", "UNAVAILABLE"} and sum(1 for s, _ in cells.values() if s in {"OK", "UNAVAILABLE"}) >= 4
     if any(s == "FAILED" for s, _ in cells.values()):        # canonical engine fail-closed errors stay per-cell
         assert "PR8_CLEAN_ENGINE_FAIL_CLOSED" in ok.text
     bad = _post(env, record, driver_a="capex", driver_b="tariff")

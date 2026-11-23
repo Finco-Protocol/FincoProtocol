@@ -2885,7 +2885,7 @@ def _engine_failure_message(exc: BaseException) -> str:
     text). Unknown failures keep the generic message."""
     evidence = " ".join(
         str(part) for part in (
-            getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), exc,
+            getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), getattr(exc, "message", ""), exc,
         ) if part
     )
     if "MERCHANT_PRICE_COVERAGE_MISSING" in evidence:
@@ -2897,6 +2897,15 @@ def _engine_failure_message(exc: BaseException) -> str:
             "positive merchant volume exists. Supply explicit prices (0 is valid for zero price) "
             "and run again. No Run was saved. (Reference: MERCHANT_PRICE_COVERAGE_MISSING)"
         )
+    if "DEBT_TENOR_EXCEEDS_HORIZON" in evidence:
+        import re as _re
+        m = _re.search(r"project horizon \((\d+) years\) is not longer than the senior debt tenor \((\d+) years\)", evidence)
+        if m:
+            return (
+                f"The project horizon ({m.group(1)} years) is not longer than the senior debt tenor ({m.group(2)} years). "
+                "Increase project horizon or shorten debt tenor and run again. No Run was saved; the previous Last Run is "
+                "unchanged. (Reference: DEBT_TENOR_EXCEEDS_HORIZON)"
+            )
     for token, message in _ENGINE_FAIL_CLOSED_MESSAGES:
         if token in evidence:
             return message

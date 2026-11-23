@@ -277,9 +277,10 @@ class CovenantGatedWaterfallResult:
     return_summary: DecisionCompleteReturnSummary
     # Phase C2 downstream-only Project NPV and lender-coverage authority.
     valuation_summary: DecisionCompleteValuationSummary
-    # S2a: direct period-by-period reconciliation between G2A/tax SHL schedule
-    # and covenant-gated waterfall/statement SHL schedule.
-    shl_schedule_reconciliation: ShlScheduleReconciliation | None = None
+
+    @property
+    def shl_schedule_reconciliation(self) -> ShlScheduleReconciliation | None:
+        return getattr(self, "_shl_schedule_reconciliation", None)
 
 
 @dataclass(frozen=True)

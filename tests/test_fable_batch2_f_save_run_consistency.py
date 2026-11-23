@@ -150,6 +150,7 @@ def test_c1f_a1_line_owned_cost_scalars_refused_in_batch_apply(tmp_path):
                 expected_scenario_id=ws.active_scenario_id,
                 project_record=rec,
                 actor_user_id=user,
+                reject_line_owned=True,
             )
         assert exc_info.value.code == "COST_CATEGORY_LINE_OWNED"
         assert _tokens(client, rec.project_code)["content_hash"] == before_hash
@@ -164,6 +165,7 @@ def test_c1f_a1_line_owned_cost_scalars_refused_in_batch_apply(tmp_path):
                 expected_scenario_id=ws.active_scenario_id,
                 project_record=rec,
                 actor_user_id=user,
+                reject_line_owned=True,
             )
         assert exc_info2.value.code == "COST_CATEGORY_LINE_OWNED"
 

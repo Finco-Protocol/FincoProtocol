@@ -838,7 +838,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         )
         # H.7: UC is the canonical typed field; None when wp absent (not zero).
         _uc_val = _wp_uc_close
-        if is_construction_period:
+        if is_construction_period and getattr(project_inputs, "financing_collection", None) is None:
             # OD-CONSTR-01 (E2E-05): build construction BS from actual staged
             # construction_funding cumulative draws/uses when dated evidence
             # exists and reconciles cleanly; otherwise mark unavailable (never
@@ -857,7 +857,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 _staged_construction_bs_indices.add(int(idx))
                 _c_gfa = float(_cf_match.cumulative_project_cash_uses_keur)
                 _c_sen = float(_cf_match.cumulative_senior_draw_keur)
-                _c_shl = float(_cf_match.cumulative_shl_cash_draw_keur)
+                _c_shl_val = float(_cf_match.cumulative_shl_cash_draw_keur)
+                _c_shl = _c_shl_val if _c_shl_val > 0.0 else None
                 _c_sc = float(_cf_match.cumulative_share_capital_draw_keur)
                 _c_sp = float(_cf_match.cumulative_share_premium_draw_keur)
                 _c_ae = float(_cf_match.cumulative_additional_equity_draw_keur)
@@ -1018,16 +1019,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         # I.2/I.5: CIT timing balance for this period.
         _net_cit = _cit_close_by_idx.get(_bidx)
         _bsp_gfa_out = _bsp_orig.gross_fixed_assets_keur
-        if _bidx in _staged_construction_bs_indices and _re_close_val is None and _lr_close_bsp is None:
-            if _net_cit is None or abs(_net_cit) <= 1e-9:
-                _re_close_val = 0.0
-                _lr_close_bsp = 0.0
-                _net_cit = 0.0
-            else:
-                # Construction column carries non-zero pre-COD CIT accrual without
-                # a complete pre-COD equity/cash roll-forward: mark unavailable
-                # rather than publishing an unbalanced construction column.
-                _bsp_gfa_out = None
         # I.11: real BS identity.
         # Assets = NFA + UC + DSRA + DA (CIT receivable handled via signed net_cit).
         # L+E = Senior + SHL + SC + SP + LR + RE.
@@ -1039,7 +1030,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         )
         _balance_check: float | None = None
         if (
-            _nfa_v is not None
+            _bidx not in _staged_construction_bs_indices
+            and _nfa_v is not None
             and _bsp_orig.unrestricted_cash_keur is not None
             and _bsp_orig.dsra_balance_keur is not None
             and _bsp_orig.distribution_account_balance_keur is not None

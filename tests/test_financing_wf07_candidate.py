@@ -791,11 +791,11 @@ class TestConservationAndOracle:
 
 PINS = {
     "financial_engine/shl/engine.py": "48c3956739fcd972dd7347f167a959f8b65ce53a",
-    "financial_engine/dsra/model.py": "68da8e9b715c71372c006460a3db9396d00e3168",
+    "financial_engine/dsra/model.py": "c24d7fbf0be7f2b9cac1fa01d76df11a0ec38faf",  # Batch 2 E2E-04 (OD-DSRA-01)
     "financial_engine/financing/dsrf.py": "f4b6f2905e90c71659a0d369036a7199b3959278",
     "financial_engine/financing/multisenior.py": "7fbe0a7b6d0bcd351f019c6a1e85988238a28d3c",
     "financial_engine/financing/junior_debt.py": "2205cfbcca33889975c964a5748797c82af5792f",
-    "financial_engine/shareholder_waterfall/model.py": "9520b09b135c7fe39d3d4fac6a0c2462b7c1c4ca",
+    "financial_engine/shareholder_waterfall/model.py": "19cda2aaa36d1275dbd69307b5959322e682411a",  # Batch 2 E2E-03 S2a
     "finco_core/construction/allocator.py": "6430b9ffbd44690a0f9a4accb68173a72d1cf1d3",
     "finco_core/inputs/financing_instruments.py": "e1d06441763d2316af45d14ddab1716abbe4f3ca",
     "app/model_v2/financing_f31_multitranche_candidate/reconciliation.py": "28891daf84982d9b4380255ac7daaf99c111744a",

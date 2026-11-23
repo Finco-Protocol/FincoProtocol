@@ -36,7 +36,11 @@ def _provisional_only_solar():
     fields = {name: dc.replace(getattr(pi.capex, name), amount_keur=getattr(pi.capex, name).amount_keur * .26)
               for name in pi.capex._CAPEX_ITEM_FIELDS if getattr(getattr(pi.capex, name), "amount_keur", 0)}
     pi = dc.replace(pi, capex=dc.replace(pi.capex, **fields))
-    return dc.replace(pi, financing=dc.replace(pi.financing, target_dscr=1.9))
+    return dc.replace(
+        pi,
+        technical=dc.replace(pi.technical, operating_hours_p90_10y=1350.0),
+        financing=dc.replace(pi.financing, target_dscr=1.9),
+    )
 
 
 @pytest.fixture(autouse=True)

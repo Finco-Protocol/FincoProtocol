@@ -691,7 +691,10 @@ def _serialize_financial_statements(fs) -> dict:
     bs_periods = []
     for p in fs.balance_sheet_periods:
         fa = fa_by_idx.get(p.period_index)
-        net_fixed = _f(fa.net_fixed_assets_keur if fa else None)
+        if p.gross_fixed_assets_keur is not None and p.accumulated_book_depreciation_keur is not None:
+            net_fixed = _f(float(p.gross_fixed_assets_keur) - float(p.accumulated_book_depreciation_keur))
+        else:
+            net_fixed = _f(fa.net_fixed_assets_keur if fa else None)
         bs_periods.append({
             "period_index": p.period_index,
             "date": _fmt_date(p.period_end),
