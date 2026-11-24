@@ -14,6 +14,11 @@ from typing import Any, Mapping, Optional
 RECOVERY_CODE = "WORKING_COPY_RECOVERY_REQUIRED"
 _MAX_ISSUES = 25
 _PAGE_HANDLED_PREFIXES = ("QUARTERLY_",)
+BOOK_FIELD_ID = "revenue.multistream.contracts"
+BOOK_SNAPSHOT_KEY = "rev_multistream_config_json"
+# Typed refusals that originate in the stored revenue contract book (R04 cap/quantity/date rules, v2 contract grammar).  The book is a
+# single document with ONE canonical writer (the revenue contracts route); a stored book that no longer validates is repairable there.
+_BOOK_ERROR_PREFIXES = ("R04_", "REVENUE_V2", "REVENUE_V3", "REVENUE_STREAM", "DATE_AUTHORITY_")
 
 
 @dataclass(frozen=True)
@@ -84,6 +89,16 @@ def diagnose_draft(snapshot: Mapping[str, Any]) -> Optional[DraftRecovery]:
                 # refused by the Run; it is not an unreadable draft and must keep its own handling.
                 break
             key = _leading_key(message, known) if isinstance(exc, SnapshotInputError) else None
+            if (key is None and BOOK_SNAPSHOT_KEY not in seen and str(probe.get(BOOK_SNAPSHOT_KEY) or "").strip()
+                    and message.startswith(_BOOK_ERROR_PREFIXES)):
+                # The stored contract book itself is invalid (for example over the global P50 cap): offer the canonical book writer as the
+                # repair path.  Nothing is clipped, reallocated or deleted; the replacement book is validated as a whole by the writer.
+                seen.add(BOOK_SNAPSHOT_KEY)
+                issues.append(RecoveryIssue(
+                    snapshot_key=BOOK_SNAPSHOT_KEY, field_id=BOOK_FIELD_ID, label="Revenue contract book", unit="contract book (JSON)",
+                    stored_value=str(snapshot.get(BOOK_SNAPSHOT_KEY) or ""), reason=message[:300], repairable=True))
+                probe[BOOK_SNAPSHOT_KEY] = ""      # copy only: look for further independent problems
+                continue
             if key is None or key in seen:
                 issues.append(RecoveryIssue(
                     snapshot_key=key or "", field_id=None, label="Model input", unit="",

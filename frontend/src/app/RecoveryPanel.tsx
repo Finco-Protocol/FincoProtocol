@@ -27,6 +27,8 @@ export function RecoveryPanel({ project, payload, onRepaired }: RecoveryPanelPro
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
   const inFlight = useRef(false);
   const save = payload.save;
+  const contractsSave = payload.contracts_save ?? null;
+  const [bookText, setBookText] = useState<Record<string, string>>({});
   const editable = Boolean(save) && !payload.project.protected_reference;
   const locked = outcome.kind === "saving" || outcome.kind === "stale" || outcome.kind === "unknown";
 
@@ -87,6 +89,41 @@ export function RecoveryPanel({ project, payload, onRepaired }: RecoveryPanelPro
     }
   }
 
+  /** Contract-book repair: the whole replacement document goes through the revenue contract writer (composite CAS, CSRF, owner/scenario checks and
+   *  complete proposed-state validation, exactly as the editor's Save).  Nothing is clipped, reallocated or discarded here. */
+  async function submitBook(fieldId: string) {
+    if (!contractsSave || inFlight.current) return;
+    const document = (bookText[fieldId] ?? "").trim();
+    if (!document) {
+      setOutcome({ kind: "rejected", message: "Enter the replacement contract book." });
+      return;
+    }
+    inFlight.current = true;
+    setOutcome({ kind: "saving" });
+    try {
+      let response: Response;
+      try {
+        response = await fetch(contractsSave.url, {
+          method: "POST", credentials: "same-origin", redirect: "manual",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+          body: new URLSearchParams({ project, csrf_token: contractsSave.csrf_token, content_hash: contractsSave.content_hash, contracts: document, action: "save" }).toString(),
+        });
+      } catch {
+        setOutcome({ kind: "unknown", message: "The repair result is UNKNOWN: the connection failed before a definitive response. Reload to reconcile before saving again." });
+        return;
+      }
+      if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) { onRepaired(); return; }
+      let body: Record<string, unknown> = {};
+      try { body = (await response.json()) as Record<string, unknown>; } catch { body = {}; }
+      if (response.status === 409) setOutcome({ kind: "stale", message: String(body.error ?? "The project changed since this page loaded. Reload to continue.") });
+      else if (response.status === 401 || response.status === 403) setOutcome({ kind: "rejected", message: "Your session is not authorized for this repair. Sign in again; nothing was changed." });
+      else if (response.ok) onRepaired();
+      else setOutcome({ kind: "rejected", message: String(body.error ?? "The replacement book was not accepted. Nothing was changed.") });
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
   return (
     <section className="rx-card" aria-labelledby="rx-recovery-heading" data-working-copy-recovery="true"
       data-recovery-code={payload.code}>
@@ -109,7 +146,17 @@ export function RecoveryPanel({ project, payload, onRepaired }: RecoveryPanelPro
             <strong>{issue.label}</strong>{issue.unit ? <small> ({issue.unit})</small> : null}
             <div>Stored value: <code>{issue.stored_value === "" ? "(empty)" : issue.stored_value}</code></div>
             <div>Reason: {issue.reason}</div>
-            {issue.repairable && issue.field_id && editable ? (
+            {issue.repairable && issue.field_id === "revenue.multistream.contracts" && contractsSave && !payload.project.protected_reference ? (
+              <form data-recovery-book-form="true" onSubmit={(e) => { e.preventDefault(); void submitBook(issue.field_id as string); }}>
+                <label>
+                  Replacement contract book (complete JSON; validated as a whole - nothing is clipped, reallocated or deleted)
+                  <textarea rows={12} style={{ width: "100%" }} autoComplete="off" spellCheck={false} disabled={locked}
+                    value={bookText[issue.field_id] ?? issue.stored_value}
+                    onChange={(e) => setBookText((prev) => ({ ...prev, [issue.field_id as string]: e.target.value }))} />
+                </label>{" "}
+                <button type="submit" disabled={locked}>{outcome.kind === "saving" ? "Saving…" : "Replace contract book"}</button>
+              </form>
+            ) : issue.repairable && issue.field_id && editable ? (
               <form onSubmit={(e) => { e.preventDefault(); void submit(issue.field_id as string); }}>
                 <label>
                   Replacement value

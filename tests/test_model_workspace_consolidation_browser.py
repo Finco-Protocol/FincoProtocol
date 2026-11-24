@@ -684,6 +684,21 @@ def test_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_
     check_r1_stale_ppa_document_is_never_replayed_by_a_second_tab(browser, react_enabled)
 
 
+def test_g_r04_editor_cap_review_save_refusal_reload_and_responsive(browser, react_enabled):
+    from tests.model_react_r04_acceptance import check_r04_editor_cap_review_save_refusal_reload_run_and_responsive
+    check_r04_editor_cap_review_save_refusal_reload_run_and_responsive(browser, react_enabled)
+
+
+def test_g_r04_persisted_invalid_book_recovery_in_the_real_react_workspace(browser, react_enabled):
+    from tests.model_react_r04_acceptance import check_r04_persisted_invalid_book_recovery_in_the_real_react_workspace
+    check_r04_persisted_invalid_book_recovery_in_the_real_react_workspace(browser, react_enabled)
+
+
+def test_g_r04_share_only_legacy_flow_is_unchanged(browser, react_enabled):
+    from tests.model_react_r04_acceptance import check_r04_share_only_legacy_flow_is_unchanged
+    check_r04_share_only_legacy_flow_is_unchanged(browser, react_enabled)
+
+
 def test_wf2_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled):
     from tests.model_react_wf2_browser_acceptance import check_stale_cas_cannot_overwrite_and_keeps_the_draft
     check_stale_cas_cannot_overwrite_and_keeps_the_draft(browser, react_enabled)

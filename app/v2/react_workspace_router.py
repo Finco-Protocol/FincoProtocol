@@ -624,6 +624,13 @@ async def react_workspace_inputs(request: Request, project: str):
                 "scenario_id": ws.active_scenario_id,
                 "max_cells": 50,
                 "max_value_chars": 64},
+            # The revenue contract BOOK has exactly one canonical writer; a book-level recovery issue is repaired through it (same CAS, CSRF,
+            # owner/scenario/protected-reference checks and complete proposed-state validation as the editor's Save).
+            "contracts_save": None if _protected else {
+                "url": "/v2/workbook/revenue/contracts",
+                "csrf_token": generate_csrf_token(),
+                "content_hash": _identity.composite_hash,
+                "workbook_version": _WB.version},
         }, 409)
 
     try:

@@ -2148,6 +2148,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     _recovery = _diagnose_draft(pis.to_snapshot())
     if _recovery is not None:
         raw_err = request.query_params.get("v2_err", "")
+        from app.auth import generate_csrf_token
         return _templates.TemplateResponse(
             request=request,
             name="workbook_recovery.html",
@@ -2160,6 +2161,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
                 "workbook_version": pis.workbook_version,
                 "content_hash": pis.content_hash,
                 "update_csrf_token": mutation_token(request, project, "workbook-update"),
+                "contracts_csrf_token": generate_csrf_token(),
                 "flash_error": urllib.parse.unquote_plus(raw_err)[:500] if raw_err else "",
                 "library_url": "/library",
             },
