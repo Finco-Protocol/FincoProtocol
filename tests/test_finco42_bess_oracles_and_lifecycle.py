@@ -455,11 +455,17 @@ def test_bess_date_authority_quarterly_hybrid_and_legacy_refusals(monkeypatch):
     with pytest.raises(ValueError, match="QUARTERLY_TECHNOLOGY_UNSUPPORTED"):
         require_supported_quarterly_project(quarterly_p)
 
-    # Hybrid yield / duplicate revenue authority rejected
-    with pytest.raises(BessInputError, match="BESS_HYBRID_NOT_SUPPORTED"):
-        require_native_separation(replace(p_base, technical=replace(p_base.technical, operating_hours_p50=1500.0)))
-    with pytest.raises(BessInputError, match="BESS_DUPLICATE_REVENUE_AUTHORITY"):
-        require_native_separation(replace(p_base, revenue=replace(p_base.revenue, ppa_base_tariff=50.0)))
+    # Hybrid yield / duplicate revenue authority rejected (evaluated on clean OperatingModelInput)
+    from financial_engine.adapters.project_inputs import from_project_inputs
+
+    with pytest.raises(ValueError, match="BESS_HYBRID_NOT_SUPPORTED"):
+        require_native_separation(
+            from_project_inputs(replace(p_base, technical=replace(p_base.technical, operating_hours_p50=1500.0)))
+        )
+    with pytest.raises(ValueError, match="BESS_DUPLICATE_REVENUE_AUTHORITY"):
+        require_native_separation(
+            from_project_inputs(replace(p_base, revenue=replace(p_base.revenue, ppa_base_tariff=50.0)))
+        )
 
     # Legacy non-native BessParams rejected at clean adapter
     legacy_only = replace(p_base, technical=replace(p_base.technical, bess_native_config_json=""))
