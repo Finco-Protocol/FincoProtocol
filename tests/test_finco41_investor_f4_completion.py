@@ -673,3 +673,284 @@ def test_od_invest_01_five_option_comparative_matrix_preserves_defaults():
             }
         ),
     )
+
+
+def test_historical_investor_identity_isolated_from_later_runs_edits_and_scenarios(tmp_path, monkeypatch):
+    """PR #483 Correction A reproduction: committed Run A vs committed Run B (different scenario, tariff, gearing)
+    plus subsequent unsaved working edit. Viewing Run A must return strictly Run A's snapshot, composite hash,
+    scenario name, investor evidence, funding, sponsor returns, no working inputs, no mutation affordance,
+    and byte-consistent historical XLSX sheets; no-agreement historical Run never claims recorded agreement;
+    unknown/foreign/cross-project history_id fails closed 404."""
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from app.persistence.scenarios_repository import list_scenarios
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from app.v2.investor_f4_router import router as f4_router
+    from app.v2.react_investors import router as react_inv_router
+    from app.v2.react_poc_router import router as poc_router
+    from app.v2.router import router as v2_router
+
+    db_path = tmp_path / "f4_corr_a.db"
+    monkeypatch.setattr(persistence_db, "DB_PATH", str(db_path))
+    monkeypatch.setenv("FINCO_DB_PATH", str(db_path))
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
+    monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
+    persistence_db.init_db()
+
+    uid = "f4-corr-a-owner"
+    other_uid = "f4-corr-a-foreign"
+    rec = create_reference_seeded_project(
+        user_id=uid,
+        template_source="generic_solar_reference",
+        requested_name="CorrA Solar",
+        capacity_mw=20.0,
+    )
+    rec_other_proj = create_reference_seeded_project(
+        user_id=uid,
+        template_source="generic_solar_reference",
+        requested_name="CorrA Own Other",
+        capacity_mw=20.0,
+    )
+    rec_foreign = create_reference_seeded_project(
+        user_id=other_uid,
+        template_source="generic_solar_reference",
+        requested_name="CorrA Foreign",
+        capacity_mw=20.0,
+    )
+
+    executor = ModelExecutor(ModelExecutionConfig(mode="thread"))
+    reset_model_executor_for_tests(executor)
+    app = FastAPI()
+    app.include_router(v2_router, prefix="/v2")
+    app.include_router(f4_router, prefix="/v2")
+    app.include_router(react_inv_router, prefix="/v2")
+    app.include_router(poc_router, prefix="/v2")
+
+    def _run(client, code, pid):
+        ident = assemble_consistent_for_get(user_id=uid, project_id=pid, workbook_version=WORKBOOK.version)
+        r = post_valid_csrf(
+            client,
+            "/v2/workbook/run",
+            headers={"HX-Request": "true"},
+            data={"project": code, "content_hash": ident.composite_hash, "workbook_version": WORKBOOK.version},
+        )
+        assert r.status_code == 200, r.text[:300]
+
+    def _mutate(client, code, pid, field_id, value):
+        ident = assemble_consistent_for_get(user_id=uid, project_id=pid, workbook_version=WORKBOOK.version)
+        r = post_valid_mutation(
+            client,
+            "/v2/workbook/update",
+            headers={"HX-Request": "true"},
+            data={
+                "project": code,
+                "field_id": field_id,
+                "value": str(value),
+                "content_hash": ident.composite_hash,
+                "workbook_version": WORKBOOK.version,
+            },
+        )
+        assert r.status_code == 200, r.text[:300]
+
+    def _parse_xlsx(raw_bytes: bytes) -> dict:
+        wb = load_workbook(BytesIO(raw_bytes), data_only=True)
+        return {
+            name: [[cell for cell in row] for row in wb[name].iter_rows(values_only=True)]
+            for name in wb.sheetnames
+        }
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(COOKIE_NAME, create_session_token(user_id=uid, username="admin"))
+
+            # Run 0: Base scenario WITHOUT F4 agreement (for negative historical-agreement assertion)
+            _run(client, rec.project_code, rec.project_id)
+            h_run0 = get_run_history(uid, rec.project_id, limit=1)[0]
+
+            # Save AGR-A on Base with tariff=45, gearing=60 -> Run A
+            _mutate(client, rec.project_code, rec.project_id, "revenue.ppa.base_tariff", "45.0")
+            _mutate(client, rec.project_code, rec.project_id, "debt.senior.gearing_pct", "60")
+            _run(client, rec.project_code, rec.project_id)
+            base_pre_a = client.get(f"/v2/model-react/investors/agreement?project={rec.project_code}").json()
+            funding_a = base_pre_a["funding"]
+            assert funding_a
+            agr_a_doc = {
+                "schema_version": 1,
+                "agreement_id": "AGR-A",
+                "version": 1,
+                "currency": "EUR",
+                "unit": "kEUR",
+                "policy": "RESIDUAL_ONLY",
+                "investors": [
+                    {"investor_id": "LP-A", "investment_class": "COMMON_EQUITY", "ownership_fraction": 0.7, "commitment_keur": 25000.0},
+                    {"investor_id": "GP-A", "investment_class": "COMMON_EQUITY", "ownership_fraction": 0.3, "commitment_keur": 25000.0},
+                ],
+                "contributions": [
+                    {"investor_id": "LP-A", "cash_date": row["date"], "amount_keur": row["paid_in_keur"] * 0.7}
+                    for row in funding_a
+                ] + [
+                    {"investor_id": "GP-A", "cash_date": row["date"], "amount_keur": row["paid_in_keur"] * 0.3}
+                    for row in funding_a
+                ],
+            }
+            save_a = client.post(
+                "/v2/workbook/investor/agreement",
+                data={
+                    "project": rec.project_code,
+                    "csrf_token": base_pre_a["save"]["csrf_token"],
+                    "content_hash": base_pre_a["identity"]["content_hash"],
+                    "action": "save",
+                    "agreement": json.dumps(agr_a_doc),
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert save_a.status_code == 200, save_a.text[:300]
+            _run(client, rec.project_code, rec.project_id)
+            h_run_a = get_run_history(uid, rec.project_id, limit=1)[0]
+            expected_a_curr = client.get(f"/v2/model-react/investors/agreement?project={rec.project_code}").json()
+            expected_a_returns = {m["label"]: m["value"] for m in expected_a_curr["sponsor"]["returns"]}
+            export_a_before_bytes = client.get(f"/v2/workbook/investor/export?project={rec.project_code}&history_id={h_run_a.history_id}").content
+            export_a_before_sheets = _parse_xlsx(export_a_before_bytes)
+
+            # Create and select second scenario "Upside" with materially higher tariff=72, gearing=75 -> Save AGR-B -> Run B
+            ident_sc = assemble_consistent_for_get(user_id=uid, project_id=rec.project_id, workbook_version=WORKBOOK.version)
+            sc_create = post_valid_mutation(
+                client,
+                "/v2/workbook/scenarios/create",
+                headers={"HX-Request": "true"},
+                data={
+                    "project": rec.project_code,
+                    "scenario_name": "Upside",
+                    "content_hash": ident_sc.composite_hash,
+                    "workbook_version": WORKBOOK.version,
+                },
+            )
+            assert sc_create.status_code == 200, sc_create.text[:300]
+            sc_upside = next(s for s in list_scenarios(uid, rec.project_id) if s.scenario_name == "Upside")
+            ident_sel = assemble_consistent_for_get(user_id=uid, project_id=rec.project_id, workbook_version=WORKBOOK.version)
+            sc_sel = post_valid_mutation(
+                client,
+                "/v2/workbook/scenarios/select",
+                headers={"HX-Request": "true"},
+                data={
+                    "project": rec.project_code,
+                    "scenario_id": sc_upside.scenario_id,
+                    "content_hash": ident_sel.composite_hash,
+                    "workbook_version": WORKBOOK.version,
+                },
+            )
+            assert sc_sel.status_code == 200, sc_sel.text[:300]
+            _mutate(client, rec.project_code, rec.project_id, "revenue.ppa.base_tariff", "72.0")
+            _mutate(client, rec.project_code, rec.project_id, "debt.senior.gearing_pct", "75")
+            _run(client, rec.project_code, rec.project_id)
+            pre_b = client.get(f"/v2/model-react/investors/agreement?project={rec.project_code}").json()
+            funding_b = pre_b["funding"]
+            assert funding_b
+            agr_b_doc = {
+                "schema_version": 1,
+                "agreement_id": "AGR-B",
+                "version": 1,
+                "currency": "EUR",
+                "unit": "kEUR",
+                "policy": "RESIDUAL_ONLY",
+                "investors": [
+                    {"investor_id": "LP-B", "investment_class": "COMMON_EQUITY", "ownership_fraction": 0.55, "commitment_keur": 25000.0},
+                    {"investor_id": "GP-B", "investment_class": "COMMON_EQUITY", "ownership_fraction": 0.45, "commitment_keur": 25000.0},
+                ],
+                "contributions": [
+                    {"investor_id": "LP-B", "cash_date": row["date"], "amount_keur": row["paid_in_keur"] * 0.55}
+                    for row in funding_b
+                ] + [
+                    {"investor_id": "GP-B", "cash_date": row["date"], "amount_keur": row["paid_in_keur"] * 0.45}
+                    for row in funding_b
+                ],
+            }
+            save_b = client.post(
+                "/v2/workbook/investor/agreement",
+                data={
+                    "project": rec.project_code,
+                    "csrf_token": pre_b["save"]["csrf_token"],
+                    "content_hash": pre_b["identity"]["content_hash"],
+                    "action": "save",
+                    "agreement": json.dumps(agr_b_doc),
+                },
+                headers={"HX-Request": "true"},
+            )
+            assert save_b.status_code == 200, save_b.text[:300]
+            _run(client, rec.project_code, rec.project_id)
+            h_run_b = get_run_history(uid, rec.project_id, limit=1)[0]
+
+            # Also apply an unsaved/un-run working edit on top of Upside!
+            _mutate(client, rec.project_code, rec.project_id, "debt.senior.gearing_pct", "50")
+
+            # Read current view (now STALE against Run B, Upside scenario)
+            curr_b = client.get(f"/v2/model-react/investors/agreement?project={rec.project_code}").json()
+            curr_b_returns = {m["label"]: m["value"] for m in curr_b["sponsor"]["returns"]}
+            assert curr_b["editable"] is True
+            assert curr_b["save"] and curr_b["save"]["csrf_token"]
+            assert curr_b["sponsor"]["inputs_available"] is True
+            assert curr_b["identity"]["scope"] == "CURRENT"
+            assert curr_b["identity"]["scenario_name"] == "Upside"
+            # Verify Run B sponsor returns materially differ from Run A
+            for k in expected_a_returns:
+                assert abs((curr_b_returns[k] or 0.0) - (expected_a_returns[k] or 0.0)) > 1e-4, k
+
+            # HISTORICAL query for Run A after Run B + Scenario switch + unsaved edit
+            hist_a = client.get(
+                f"/v2/model-react/investors/agreement?project={rec.project_code}&history_id={h_run_a.history_id}"
+            ).json()
+            assert hist_a["state"] == "HISTORICAL"
+            assert hist_a["editable"] is False
+            assert hist_a["save"] is None
+            assert hist_a["terms"] is None
+            assert hist_a["draft_warning"] is None
+            assert hist_a["workflow"]["state"] == "HISTORICAL"
+            assert "AGR-A v1" in hist_a["workflow"]["text"]
+
+            # Historical identity strictly matches Run A, NOT Upside / current working CAS
+            assert hist_a["identity"]["scope"] == "HISTORICAL"
+            assert hist_a["identity"]["history_id"] == h_run_a.history_id
+            assert hist_a["identity"]["snapshot_id"] == h_run_a.runtime_snapshot_id
+            assert hist_a["identity"]["content_hash"] == h_run_a.composite_hash
+            assert hist_a["identity"]["scenario_name"] == "Base"
+            assert hist_a["identity"]["content_hash"] != curr_b["identity"]["content_hash"]
+            assert hist_a["identity"]["snapshot_id"] != h_run_b.runtime_snapshot_id
+
+            # Historical evidence, funding, and ALL 4 sponsor returns match Run A (never Run B!)
+            assert hist_a["evidence"] == expected_a_curr["evidence"]
+            assert hist_a["funding"] == funding_a
+            hist_a_returns = {m["label"]: m["value"] for m in hist_a["sponsor"]["returns"]}
+            assert hist_a_returns == expected_a_returns
+            assert hist_a["sponsor"]["inputs_available"] is False
+            assert hist_a["sponsor"]["source_scope"] == "HISTORICAL_RUN"
+            for sec in ("equity", "other", "shl"):
+                for item in hist_a["sponsor"][sec]:
+                    assert item["value"] is None
+                    assert "Working" not in item["source"]
+            assert "Last Run" not in json.dumps(hist_a["sponsor"])
+
+            # Run A historical XLSX export remains content-identical after Run B & unsaved edits
+            export_a_after_resp = client.get(hist_a["export_url"])
+            assert export_a_after_resp.status_code == 200
+            assert _parse_xlsx(export_a_after_resp.content) == export_a_before_sheets
+
+            # Historical Run 0 without F4 agreement must NEVER claim an agreement is recorded
+            hist_0 = client.get(
+                f"/v2/model-react/investors/agreement?project={rec.project_code}&history_id={h_run0.history_id}"
+            ).json()
+            assert hist_0["evidence"] is None
+            assert hist_0["workflow"]["state"] == "HISTORICAL"
+            assert "no investor agreement was recorded" in hist_0["workflow"]["text"]
+            assert client.get(hist_0["export_url"]).status_code == 409
+
+            # Fail closed on empty, unknown, cross-project, and foreign history_id
+            foreign_client = TestClient(app)
+            foreign_client.cookies.set(COOKIE_NAME, create_session_token(user_id=other_uid, username="other"))
+            for url_path in ("/v2/model-react/investors/agreement", "/v2/workbook/investor/export"):
+                assert client.get(url_path, params={"project": rec.project_code, "history_id": ""}).status_code == 404
+                assert client.get(url_path, params={"project": rec.project_code, "history_id": "missing-id"}).status_code == 404
+                assert client.get(url_path, params={"project": rec_other_proj.project_code, "history_id": h_run_a.history_id}).status_code == 404
+                assert foreign_client.get(url_path, params={"project": rec_foreign.project_code, "history_id": h_run_a.history_id}).status_code == 404
+    finally:
+        assert executor.shutdown_and_join() == []
+        reset_model_executor_for_tests()

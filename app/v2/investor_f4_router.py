@@ -79,6 +79,7 @@ def _load(request, project, history_id=None):
     return dict(context=context, record=record, owner=owner, terms=terms, evidence=evidence,
         unavailable=unavailable, funding=funding, draft_warning=draft_warning,
         ledger_next_versions=ledger_next_versions,
+        selected=selected,
         history=get_run_history(owner, record.project_id, limit=12),
         history_id=history_id, project_code=record.project_code, snapshot_id=snapshot_id,
         state="HISTORICAL" if selected else context.freshness.state.value,

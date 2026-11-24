@@ -118,35 +118,61 @@ def build_financing_evidence(rr: Any) -> dict:
     }
 
 
-def build_sponsor_view(fin: Any, rr: Any) -> dict:
+def build_sponsor_view(fin: Any, rr: Any, *, historical: bool = False) -> dict:
     runtime = thaw_runtime_payload(getattr(rr, "runtime_summary", None) or {})
     sponsor = thaw_runtime_payload(getattr(rr, "sponsor_schedule", None) or {})
     summary = sponsor.get("summary") or {}
+
+    if historical:
+        fin = None
+        input_source_prefix = "RunHistoryEntry.financing_inputs."
+        missing_input_reason = (
+            "Historical financing input assumptions are not persisted in Run History; "
+            "current working inputs are omitted."
+        )
+        return_prefix = "RunHistoryEntry."
+        missing_return_reason = "Not exposed in this historical Run."
+        source_scope = "HISTORICAL_RUN"
+    else:
+        input_source_prefix = "Working ProjectInputs.financing."
+        missing_input_reason = ""
+        return_prefix = "RuntimeResult."
+        missing_return_reason = ""
+        source_scope = "CURRENT_WORKING_AND_LAST_RUN"
 
     def value(name):
         return getattr(fin, name, None) if fin is not None else None
 
     def amount(title, name):
-        return metric(title, value(name), "kEUR", "Working ProjectInputs.financing." + name)
+        return metric(title, value(name), "kEUR", input_source_prefix + name, missing_input_reason)
 
-    return {
+    out = {
+        "source_scope": source_scope,
+        "inputs_available": (not historical) and (fin is not None),
         "mode": label(value("sponsor_funding_mode")),
-        "equity": (amount("Share capital", "share_capital_keur"), amount("Share premium", "share_premium_keur"), amount("Other equity before SHL", "other_equity_funding_before_shl_keur")),
+        "equity": (
+            amount("Share capital", "share_capital_keur"),
+            amount("Share premium", "share_premium_keur"),
+            amount("Other equity before SHL", "other_equity_funding_before_shl_keur"),
+        ),
         "other": (amount("Junior / other project funding", "junior_or_other_project_funding_keur"),),
         "shl": (
-            metric("SHL interest rate", value("shl_rate"), "%", "Working ProjectInputs.financing.shl_rate"),
+            metric("SHL interest rate", value("shl_rate"), "%", input_source_prefix + "shl_rate", missing_input_reason),
         ),
         "repayment": label(value("clean_shl_repayment_method")),
         "day_count": label(value("shl_day_count_convention")),
         "eligibility": value("shl_principal_eligibility_start_period"),
         "maturity": value("shl_maturity_period_index"),
         "returns": (
-            metric("Pure Equity IRR", runtime.get("equity_irr"), "%", "RuntimeResult.runtime_summary.equity_irr"),
-            metric("Total Sponsor IRR", summary.get("total_sponsor_xirr"), "%", "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr"),
-            metric("Pure Equity MOIC", summary.get("pure_equity_moic"), "x", "RuntimeResult.sponsor_schedule.summary.pure_equity_moic"),
-            metric("Total Sponsor MOIC", summary.get("total_sponsor_moic"), "x", "RuntimeResult.sponsor_schedule.summary.total_sponsor_moic"),
+            metric("Pure Equity IRR", runtime.get("equity_irr"), "%", return_prefix + "runtime_summary.equity_irr", missing_return_reason),
+            metric("Total Sponsor IRR", summary.get("total_sponsor_xirr"), "%", return_prefix + "sponsor_schedule.summary.total_sponsor_xirr", missing_return_reason),
+            metric("Pure Equity MOIC", summary.get("pure_equity_moic"), "x", return_prefix + "sponsor_schedule.summary.pure_equity_moic", missing_return_reason),
+            metric("Total Sponsor MOIC", summary.get("total_sponsor_moic"), "x", return_prefix + "sponsor_schedule.summary.total_sponsor_moic", missing_return_reason),
         ),
     }
+    if historical:
+        out["inputs_unavailable_reason"] = missing_input_reason
+    return out
 
 
 def build_reserve_view(fin: Any) -> dict:

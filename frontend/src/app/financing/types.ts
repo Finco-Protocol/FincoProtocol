@@ -92,7 +92,16 @@ export interface InvestorHistoryEntry {
 export interface InvestorPayload {
   ok: true; project: { code: string }; editable: boolean; state: string;
   selected_history_id?: string | null;
-  identity: { content_hash: string; workbook_version: string; scenario_name: string | null };
+  identity: {
+    scope?: "CURRENT" | "HISTORICAL";
+    history_id?: string;
+    snapshot_id?: string;
+    ran_at?: string;
+    content_hash: string;
+    workbook_version: string;
+    scenario_id?: string | null;
+    scenario_name: string | null;
+  };
   terms: AgreementDocument | null;
   workflow: { state: string; text: string };
   draft_warning?: {
@@ -110,9 +119,14 @@ export interface InvestorPayload {
   unavailable: string;
   funding: Array<{ date: string; paid_in_keur: number }>;
   history?: InvestorHistoryEntry[];
-  sponsor: { mode: string; equity: SponsorMetric[]; other: SponsorMetric[]; shl: SponsorMetric[]; repayment: string; day_count: string;
-             eligibility: number | null; maturity: number | null; returns: SponsorMetric[] };
-  save: { url: string; csrf_token: string; next_version: number; saved_agreement_id: string; ledger_next_versions?: Record<string, number> };
+  sponsor: {
+    source_scope?: string;
+    inputs_available?: boolean;
+    inputs_unavailable_reason?: string;
+    mode: string; equity: SponsorMetric[]; other: SponsorMetric[]; shl: SponsorMetric[]; repayment: string; day_count: string;
+    eligibility: number | null; maturity: number | null; returns: SponsorMetric[];
+  };
+  save: { url: string; csrf_token: string; next_version: number; saved_agreement_id: string; ledger_next_versions?: Record<string, number> } | null;
   export_url: string;
   not_released: string[];
 }
