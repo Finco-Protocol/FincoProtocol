@@ -69,10 +69,24 @@ def _bridge(form, terms):
     if not any(supplied):
         return None
     if not all(supplied):
-        raise AcquisitionCaseConflict("CASE_BRIDGE_PARTIAL_UNAVAILABLE")
+        raise AcquisitionInputError("CASE_BRIDGE_PARTIAL_UNAVAILABLE")
     values = {k: _num(form.get(k), k) for k in _BRIDGE_NUMBERS}
     return {"balance_date": terms.closing_date.isoformat(),
             "basis": "EXPLICIT_USER_UNDERWRITING", **values}
+
+
+def _calendar_authority(entry) -> dict[str, str]:
+    summary = getattr(entry, "runtime_summary", None) or {}
+    version = str(summary.get("date_authority_version") or "").strip() or "LEGACY_CALENDAR/v0"
+    mode = str(summary.get("calendar_mode") or "").strip() or (
+        "DATED_CONTRACTUAL" if version == "OD-TIME-01/v1" else "LEGACY"
+    )
+    contract = str(summary.get("calendar_contract_version") or "").strip()
+    return {
+        "date_authority_version": version,
+        "calendar_mode": mode,
+        "calendar_contract_version": contract,
+    }
 
 
 def _record(request, project):
@@ -183,6 +197,7 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
                 "project_code": record.project_code,
                 "project_name": record.project_name,
                 "history": history, "history_id": history_id, "selected": selected,
+                "source_calendar": _calendar_authority(selected) if selected else None,
                 "cases": cases, "stored": stored, "values": values,
                 "bridge": bridge, "bridge_keys": _BRIDGE_NUMBERS,
                 "comparison": comparison,
@@ -196,7 +211,8 @@ async def acquisition_page(request: Request, project: str = "", history_id: str 
                 "csrf_token": issue_token(request, record.project_code), "saved": saved == "1",
             }, headers={"Cache-Control": "private, no-store"})
     except (AcquisitionCaseConflict, ValueError, TypeError) as exc:
-        return HTMLResponse("UNAVAILABLE: " + str(exc), status_code=409,
+        import html
+        return HTMLResponse("UNAVAILABLE: " + html.escape(str(exc)), status_code=409,
                             headers={"Cache-Control": "private, no-store"})
 
 
@@ -232,6 +248,8 @@ async def acquisition_save(request: Request):
             expected_revision = int(raw_expected_revision)
         except ValueError:
             raise AcquisitionInputError("EXPECTED_REVISION_INVALID") from None
+        if expected_revision < 0:
+            raise AcquisitionInputError("EXPECTED_REVISION_INVALID")
         terms = _terms(form)
         from app.model_v2.acquisition.economics import validate_acquisition_dates_against_source
         validate_acquisition_dates_against_source(evidence, terms)
@@ -285,7 +303,7 @@ async def acquisition_review_candidate(request: Request):
     project = str(form.get("project") or "").strip()
     if not validate_csrf_token(extract_bound_token(request, project, form.get("csrf_token"))):
         return JSONResponse({"error": "M6_REVIEW_CSRF_INVALID"}, status_code=403)
-    record, owner = _record(request, str(form.get("project") or ""))[1:]
+    record, owner = _record(request, project)[1:]
     if record is None:
         return JSONResponse({"error": "PROJECT_NOT_FOUND"}, status_code=404)
     try:
@@ -304,18 +322,32 @@ async def acquisition_review_candidate(request: Request):
         terms = _terms_from_doc(doc)
         candidate = evaluate(source, terms)
         bridge = doc["closing_bridge"]
-        candidate["enterprise_equity_bridge"] = (
-            enterprise_equity_bridge(**{k: v for k, v in bridge.items()
-                                        if k not in ("balance_date", "basis")})
-            if bridge else {"status": "UNAVAILABLE"})
+        if bridge:
+            bridge_out = enterprise_equity_bridge(**{k: v for k, v in bridge.items()
+                                                     if k not in ("balance_date", "basis")})
+            candidate["enterprise_equity_bridge"] = bridge_out
+            candidate["bridge_vs_purchase_price_delta_keur"] = (
+                bridge_out["equity_value_keur"] - terms.purchase_price_keur
+            )
+        else:
+            candidate["enterprise_equity_bridge"] = {"status": "UNAVAILABLE"}
         return JSONResponse({
             "status": STATUS, "scope": "EXPLICIT_ADMIN_DEV_REVIEW_ONLY",
             "source_history_id": entry.history_id,
             "source_snapshot_id": entry.runtime_snapshot_id,
+            "source_calendar": _calendar_authority(entry),
             "case_revision": stored["revision"],
             "candidate": candidate,
         }, headers={"Cache-Control": "private, no-store"})
-    except (AcquisitionCaseConflict, AcquisitionPolicyError, AcquisitionEvidenceError,
-            ValueError, TypeError, OverflowError) as exc:
+    except AcquisitionCaseConflict as exc:
         return JSONResponse({"status": STATUS, "error": str(exc)},
                             status_code=409, headers={"Cache-Control": "private, no-store"})
+    except (AcquisitionPolicyError, AcquisitionInputError, AcquisitionEvidenceError) as exc:
+        return JSONResponse({"status": STATUS, "error": str(exc)},
+                            status_code=422, headers={"Cache-Control": "private, no-store"})
+    except (ValueError, TypeError, OverflowError) as exc:
+        import logging
+        logging.getLogger(__name__).exception(
+            "ACQUISITION_REVIEW_UNEXPECTED_ERROR type=%s", type(exc).__name__)
+        return JSONResponse({"status": STATUS, "error": "INTERNAL_ERROR"},
+                            status_code=500, headers={"Cache-Control": "private, no-store"})
