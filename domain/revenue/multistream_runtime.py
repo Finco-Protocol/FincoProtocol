@@ -239,53 +239,41 @@ class MultiStreamRevenue:
         return any(s.stream.ppa and s.stream.ppa.price_rounding and s.stream.ppa.price_rounding.enabled
                    for s in self.streams)
 
-    def validate_global_p50_cap(self, project_inputs):
-        """OD-R04-02: validate the SUM of all physical PPA contracts against ONE canonical P50 envelope."""
+    def physical_contract_requests(self):
+        """The physical PPA contracts (ABSOLUTE_ANNUAL and VOLUME_SHARE) of this book as exact cap requests."""
         from fractions import Fraction
-        from domain.revenue.r04_global_p50_cap import (
-            PhysicalContractRequest,
-            R04CapValidationError,
-            validate_global_p50_physical_cap,
-        )
+        from domain.revenue.r04_global_p50_cap import PhysicalContractRequest, R04CapValidationError
 
         if any(s.stream.stream_type is RevenueStreamType.CFD for s in self.streams) and self.has_absolute_annual_quantity:
             raise R04CapValidationError(
                 "R04_AMBIGUOUS_PHYSICAL_ALLOCATION",
                 "CfD settlement overlays combined with ABSOLUTE_ANNUAL physical PPA contracts are not admitted.",
             )
-
         requests: list[PhysicalContractRequest] = []
         for s in self.streams:
             if s.stream.stream_type is not RevenueStreamType.PPA:
                 continue
             if s.annual_quantity_mwh is not None:
-                requests.append(
-                    PhysicalContractRequest(
-                        contract_id=s.stream.stream_id,
-                        start_date=s.start_date,
-                        end_date=s.end_date,
-                        mode="ABSOLUTE_ANNUAL",
-                        annual_quantity_mwh=s.annual_quantity_mwh,
-                        original_unit=s.annual_quantity_unit,
-                        pricing_reference=s.source_ref,
-                    )
-                )
+                requests.append(PhysicalContractRequest(
+                    contract_id=s.stream.stream_id, start_date=s.start_date, end_date=s.end_date, mode="ABSOLUTE_ANNUAL",
+                    annual_quantity_mwh=s.annual_quantity_mwh, original_unit=s.annual_quantity_unit, pricing_reference=s.source_ref))
             elif s.stream.volume_share is not None:
-                requests.append(
-                    PhysicalContractRequest(
-                        contract_id=s.stream.stream_id,
-                        start_date=s.start_date,
-                        end_date=s.end_date,
-                        mode="VOLUME_SHARE",
-                        volume_share=Fraction(str(s.stream.volume_share)),
-                        pricing_reference=s.source_ref,
-                    )
-                )
-        return validate_global_p50_physical_cap(
-            project_inputs,
-            requests,
-            technology=self.technology,
-        )
+                requests.append(PhysicalContractRequest(
+                    contract_id=s.stream.stream_id, start_date=s.start_date, end_date=s.end_date, mode="VOLUME_SHARE",
+                    volume_share=Fraction(str(s.stream.volume_share)), pricing_reference=s.source_ref))
+        return requests
+
+    def validate_global_p50_cap(self, project_inputs):
+        """OD-R04-02: validate the SUM of all physical PPA contracts against ONE canonical P50 envelope."""
+        from domain.revenue.r04_global_p50_cap import validate_global_p50_physical_cap
+
+        return validate_global_p50_physical_cap(project_inputs, self.physical_contract_requests(), technology=self.technology)
+
+    def review_global_p50_cap(self, project_inputs):
+        """Non-mutating per-year review of the same envelope (never raises on an excess; see ``review_global_p50_physical_cap``)."""
+        from domain.revenue.r04_global_p50_cap import review_global_p50_physical_cap
+
+        return review_global_p50_physical_cap(project_inputs, self.physical_contract_requests(), technology=self.technology)
 
     def plan_at(self, when, year_index=None):
         """Resolve a financial plan; active index-series prices require an explicit operating year."""

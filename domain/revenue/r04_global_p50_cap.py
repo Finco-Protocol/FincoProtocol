@@ -434,6 +434,89 @@ def validate_global_p50_physical_cap(
     )
 
 
+def review_global_p50_physical_cap(project_inputs, contracts, *, technology: str) -> dict:
+    """Non-mutating proposed-state REVIEW of the global P50 cap (OD-R04-02): the per-calendar-year table plus every exceeding slice.
+
+    Same exact ``Fraction`` slice arithmetic as :func:`validate_global_p50_physical_cap` (same split dates, same canonical generator), but it
+    never raises on an excess: it reports it, so the editor can show year, period, committed, available and remaining quantities.  It is
+    advisory only - the canonical Save/Run validation stays the authority.  ``shortfall`` lists slices where the SELECTED case (e.g. P90-10y)
+    generates less than the fixed physical commitments (the Run would refuse with R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT).
+    """
+    _validate_admitted_inputs(project_inputs, technology=technology)
+    cod = project_inputs.info.cod_date
+    horizon_years = int(project_inputs.info.horizon_years)
+    horizon_iv = operating_horizon_interval(cod, horizon_years)
+    tech = project_inputs.technical
+    cap_mw, hours_p50 = float(tech.capacity_mw), float(tech.operating_hours_p50)
+    avail, deg = float(tech.combined_availability), float(tech.pv_degradation)
+    selected_is_p90 = str(tech.yield_scenario).upper().startswith("P90")
+    hours_p90 = float(tech.operating_hours_p90_10y)
+    hours_sel = hours_p90 if selected_is_p90 else hours_p50
+    seen: set[str] = set()
+    for c in contracts:
+        if c.contract_id in seen:
+            raise R04CapValidationError("R04_DUPLICATE_CONTRACT_ID", f"Duplicate physical contract id {c.contract_id!r}.")
+        seen.add(c.contract_id)
+        if c.start_date < horizon_iv.start or c.end_date > horizon_iv.end_exclusive:
+            raise R04CapValidationError(
+                "R04_CONTRACT_OUTSIDE_HORIZON",
+                f"Contract {c.contract_id!r} [{c.start_date.isoformat()}, {c.end_date.isoformat()}) extends outside operating horizon "
+                f"[{horizon_iv.start.isoformat()}, {horizon_iv.end_exclusive.isoformat()}).")
+    from finco_core.engine.contractual_calendar import add_calendar_years
+
+    cuts = [date(y, 1, 1) for y in range(horizon_iv.start.year + 1, horizon_iv.end_exclusive.year + 1)]
+    cuts += [add_calendar_years(cod, k) for k in range(1, horizon_years)]
+    for c in contracts:
+        cuts += [c.start_date, c.end_date]
+    years: dict[int, dict] = {}
+    exceed: list[dict] = []
+    shortfall: list[dict] = []
+    p90_shortfall: list[dict] = []
+    for sub in split_at_dates(horizon_iv, cuts):
+        yr, frac = sub.start.year, Fraction(sub.days, days_in_calendar_year(sub.start.year))
+        p50 = _exact_p50_mwh_for_subperiod(sub, cod=cod, capacity_mw=cap_mw, hours_p50=hours_p50, combined_availability=avail, annual_degradation=deg)
+        sel = p50 if not selected_is_p90 else _exact_p50_mwh_for_subperiod(
+            sub, cod=cod, capacity_mw=cap_mw, hours_p50=hours_sel, combined_availability=avail, annual_degradation=deg)
+        p90 = _exact_p50_mwh_for_subperiod(
+            sub, cod=cod, capacity_mw=cap_mw, hours_p50=hours_p90, combined_availability=avail, annual_degradation=deg)
+        committed, active, fixed = Fraction(0), [], Fraction(0)
+        for c in contracts:
+            if c.start_date <= sub.start and sub.end_exclusive <= c.end_date:
+                active.append(c.contract_id)
+                req = c.annual_quantity_mwh * frac if c.mode == "ABSOLUTE_ANNUAL" else p50 * c.volume_share
+                committed += req
+                if c.mode == "ABSOLUTE_ANNUAL":
+                    fixed += req
+        row = years.setdefault(yr, {"year": yr, "available_p50_mwh": Fraction(0), "committed_mwh": Fraction(0), "contracts": []})
+        row["available_p50_mwh"] += p50
+        row["committed_mwh"] += committed
+        row["contracts"] = sorted(set(row["contracts"]) | set(active))
+        if committed > p50:
+            exceed.append({"year": yr, "period_start": sub.start.isoformat(), "period_end_exclusive": sub.end_exclusive.isoformat(),
+                           "available_p50_mwh": float(p50), "committed_mwh": float(committed), "excess_mwh": float(committed - p50),
+                           "contracts": active})
+        if fixed > p90:
+            p90_shortfall.append({"year": yr, "period_start": sub.start.isoformat(), "period_end_exclusive": sub.end_exclusive.isoformat(),
+                                  "p90_available_mwh": float(p90), "fixed_commitment_mwh": float(fixed), "shortfall_mwh": float(fixed - p90)})
+        if fixed > sel:
+            shortfall.append({"year": yr, "period_start": sub.start.isoformat(), "period_end_exclusive": sub.end_exclusive.isoformat(),
+                              "selected_available_mwh": float(sel), "fixed_commitment_mwh": float(fixed), "shortfall_mwh": float(fixed - sel)})
+    table = []
+    for yr in sorted(years):
+        r = years[yr]
+        av, cm = r["available_p50_mwh"], r["committed_mwh"]
+        util = (cm / av) if av > 0 else Fraction(0)
+        table.append({"year": yr, "available_p50_mwh": float(av), "committed_mwh": float(cm), "remaining_p50_mwh": float(av - cm),
+                      "utilization_ratio": float(util), "warning": bool(util >= WARNING_UTILIZATION_THRESHOLD and cm > 0),
+                      "exceeded": cm > av, "contracts": r["contracts"]})
+    return {"contract_version": R04_PRODUCTION_CONTRACT_VERSION, "cap_envelope_basis": "P50", "selected_yield_scenario": str(tech.yield_scenario),
+            "selected_case_hours": hours_sel, "p50_hours": hours_p50, "years": table, "exceeded_slices": exceed, "shortfall_slices": shortfall,
+            "p90_hours": hours_p90, "p90_shortfall_slices": p90_shortfall,
+            "horizon_start": horizon_iv.start.isoformat(), "horizon_end_exclusive": horizon_iv.end_exclusive.isoformat(),
+            "blocked": bool(exceed), "warning": any(r["warning"] for r in table),
+            "shortfall_error_code": "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT" if shortfall else None}
+
+
 def allocate_r04_period_deliveries(
     interval: ContractualInterval,
     *,
@@ -532,5 +615,6 @@ __all__ = [
     "R04ShortfallRecord",
     "parse_annual_quantity_spec",
     "validate_global_p50_physical_cap",
+    "review_global_p50_physical_cap",
     "allocate_r04_period_deliveries",
 ]

@@ -965,6 +965,66 @@ async def react_revenue_contracts(request: Request, project: str):
 
 
 
+@router.post("/model-react/revenue/review")
+async def react_revenue_r04_review(request: Request):
+    """OD-R04-02 proposed-state REVIEW of the global P50 cap for the editor's unsaved contract book.
+
+    Strictly read-only (no Save, no Run, no History, no write of any kind) and server-authoritative: the whole proposed book is parsed by the
+    canonical contract parser and evaluated against the SAME canonical technical inputs (effective for the active scenario) with the SAME
+    exact slice arithmetic the Save/Run validation uses.  Bound to the signed-in owner, the project and the current content revision
+    (``stale`` is reported when the project moved on).  It is advisory: only the canonical writer commits, and it re-validates.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    from app.auth import validate_csrf_token
+
+    form = await request.form()
+    if not validate_csrf_token(form.get("csrf_token")):
+        return _json({"ok": False, "code": "REVENUE_REVIEW_CSRF_INVALID"}, 403)
+    project = str(form.get("project") or "").strip()
+    user, record, owner, failure = _resolve_project(request, project)
+    if failure is not None:
+        return failure
+    assert record is not None and owner is not None
+    ws, failure = _workspace_or_404(record, owner)
+    if failure is not None:
+        return failure
+    pis, failure = _pis_or_503(record, owner, ws)
+    if failure is not None:
+        return failure
+    tokens, failure = _identity_tokens(record, owner)
+    if failure is not None:
+        return failure
+    raw = form.get("contracts")
+    if not isinstance(raw, str) or len(raw) > 100_000:
+        return _json({"ok": False, "code": "REVENUE_REVIEW_BOOK_INVALID", "message": "A contract book of at most 100000 characters is required."}, 422)
+    stale = str(form.get("content_hash") or "") != tokens["content_hash"]
+    try:
+        from app.persistence.scenarios_repository import get_scenario, resolve_scenario_snapshot
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.revenue_multistream import SNAPSHOT_KEY
+        from domain.revenue.multistream_runtime import parse_config
+        from domain.revenue.r04_global_p50_cap import R04CapValidationError
+
+        config = parse_config(raw)
+        if config is None or not getattr(config, "has_absolute_annual_quantity", False):
+            return _json({"ok": True, "applicable": False, "stale": stale, "saved_content_hash": tokens["content_hash"]})
+        snapshot = dict(pis.snapshot_origin)
+        scenario = get_scenario(ws.active_scenario_id, ws.user_id) if ws.active_scenario_id else None
+        if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+            snapshot = resolve_scenario_snapshot(snapshot, scenario.overrides)
+        snapshot.pop(SNAPSHOT_KEY, None)                    # technical/timeline facts only; the proposed book is evaluated, not stored
+        proposed = ProjectInputSet.from_snapshot(snapshot).to_projectinputs()
+        review = config.review_global_p50_cap(proposed)
+    except R04CapValidationError as exc:
+        return _json({"ok": False, "code": exc.code, "message": str(exc), "details": exc.details, "stale": stale}, 422)
+    except (ValueError, TypeError) as exc:
+        return _json({"ok": False, "code": "REVENUE_REVIEW_BOOK_INVALID", "message": str(exc)[:600], "stale": stale}, 422)
+    except Exception:  # noqa: BLE001 - fail closed, never a half review
+        return _json({"ok": False, "code": "REVENUE_REVIEW_UNAVAILABLE", "message": "The cap review could not be computed. Reload to refresh."}, 503)
+    return _json({"ok": True, "applicable": True, "stale": stale, "saved_content_hash": tokens["content_hash"], "review": review})
+
+
 def _last_run_export_availability(record, owner) -> tuple[bool, str, str]:
     """Whether the canonical Last Run export would succeed for the ACTIVE scenario: ``(available, reason, code)``.
 

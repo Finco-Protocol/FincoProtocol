@@ -531,6 +531,39 @@ export type RevenueContractsSaveResult =
   | { ok: false; message: string }
   | { kind: "unknown"; message: string };
 
+export interface R04ReviewYear {
+  year: number; available_p50_mwh: number; committed_mwh: number; remaining_p50_mwh: number; utilization_ratio: number;
+  warning: boolean; exceeded: boolean; contracts: string[];
+}
+export interface R04Review {
+  cap_envelope_basis: string; selected_yield_scenario: string; selected_case_hours: number; p50_hours: number;
+  years: R04ReviewYear[]; blocked: boolean; warning: boolean; horizon_start: string; horizon_end_exclusive: string;
+  exceeded_slices: Array<{ year: number; period_start: string; period_end_exclusive: string; available_p50_mwh: number; committed_mwh: number; excess_mwh: number; contracts: string[] }>;
+  shortfall_slices: Array<{ year: number; period_start: string; period_end_exclusive: string; selected_available_mwh: number; fixed_commitment_mwh: number; shortfall_mwh: number }>;
+  shortfall_error_code: string | null;
+  p90_hours: number;
+  p90_shortfall_slices: Array<{ year: number; period_start: string; period_end_exclusive: string; p90_available_mwh: number; fixed_commitment_mwh: number; shortfall_mwh: number }>;
+}
+export type R04ReviewResult =
+  | { kind: "ok"; applicable: boolean; stale: boolean; review: R04Review | null }
+  | { kind: "refused"; code: string; message: string; stale: boolean }
+  | { kind: "unavailable"; message: string };
+
+/** Non-mutating, server-authoritative OD-R04-02 cap review of the UNSAVED contract book (advisory; the canonical writer re-validates on Save). */
+export async function reviewRevenueContracts(args: { project: string; csrfToken: string; contentHash: string; contractsJson: string }): Promise<R04ReviewResult> {
+  const body = new URLSearchParams({ project: args.project, csrf_token: args.csrfToken, content_hash: args.contentHash, contracts: args.contractsJson });
+  const response = await postForm("/v2/model-react/revenue/review", body);
+  if (response === null) return { kind: "unavailable", message: "The cap review could not be reached; the server still validates every Save." };
+  let payload: Record<string, unknown> | null = null;
+  try { payload = (await response.json()) as Record<string, unknown>; } catch { payload = null; }
+  if (!payload) return { kind: "unavailable", message: `The cap review returned an unreadable answer (HTTP ${response.status}).` };
+  if (payload.ok === true) return { kind: "ok", applicable: payload.applicable === true, stale: payload.stale === true, review: (payload.review as R04Review) ?? null };
+  if (response.status === 422 || response.status === 403) {
+    return { kind: "refused", code: String(payload.code ?? "REVIEW_REFUSED"), message: String(payload.message ?? "The proposed contract book was refused."), stale: payload.stale === true };
+  }
+  return { kind: "unavailable", message: String(payload.message ?? `The cap review is unavailable (HTTP ${response.status}).`) };
+}
+
 /** Revenue/PPA contract save through the canonical writer (composite CAS,
  *  bound CSRF, atomic).  Validation errors are the canonical service's own
  *  typed errors — the client displays them verbatim. */
