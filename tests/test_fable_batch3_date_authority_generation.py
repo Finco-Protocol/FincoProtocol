@@ -258,3 +258,82 @@ def test_p90_shortfall_on_the_dated_grid_refuses_the_run_without_invented_settle
     with pytest.raises(Exception) as exc:
         revenue_decomposition_schedule(p90, eng)
     assert "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT" in str(exc.value)
+
+
+# ── STRICT per-period OPEX and accounting-depreciation oracles on the production operating model ─────────
+def _opex_oracle(items, cod, start_incl, end_excl, horizon):
+    end_life = _add_years(cod, horizon)
+    total = Decimal(0)
+    day, stop = max(start_incl, cod), min(end_excl, end_life)
+    while day < stop:
+        k = 0
+        while _add_years(cod, k + 1) <= day:
+            k += 1
+        ydays = Decimal(366 if calendar.isleap(day.year) else 365)
+        fixed = sum((Decimal(repr(i.y1_amount_keur)) * (Decimal(1) + Decimal(repr(i.annual_inflation))) ** k
+                     for i in items if i.percentage_of_opex <= 0), Decimal(0))
+        pct = sum((Decimal(repr(i.percentage_of_opex)) * fixed for i in items if i.percentage_of_opex > 0), Decimal(0))
+        total += (fixed + pct) / ydays
+        day += timedelta(days=1)
+    return total
+
+
+def _dep_oracle(dep, cod, rows):
+    """rows: list of (start_incl, end_excl).  Straight line over each asset's actual in-service life, single final residual."""
+    from finco_core.inputs import AssetClass, ASSET_CLASS_USEFUL_LIFE
+
+    out = [Decimal(0)] * len(rows)
+    for item in dep.book_capex_items_for_depreciation:
+        basis = Decimal(repr(item.amount_keur))
+        if basis <= 0:
+            continue
+        ac = AssetClass(item.asset_class_code)
+        if item.useful_life_override is not None:
+            life = int(item.useful_life_override)
+        elif ac == AssetClass.FINANCIAL_COSTS:
+            life = int(dep.financial_cost_useful_life_years)
+        else:
+            life = int(ASSET_CLASS_USEFUL_LIFE.get(ac, 14))
+        if life <= 0:
+            continue
+        life_end = _add_years(cod, life)
+        d_life = (life_end - cod).days
+        overlaps = []
+        for i, (a, b) in enumerate(rows):
+            lo, hi = max(a, cod), min(b, life_end)
+            if hi > lo:
+                overlaps.append((i, (hi - lo).days))
+        completes = sum(d for _, d in overlaps) == d_life
+        cum = Decimal(0)
+        for pos, (i, d) in enumerate(overlaps):
+            dep_i = basis - cum if (completes and pos == len(overlaps) - 1) else min(basis * d / d_life, basis - cum)
+            out[i] += dep_i
+            cum += dep_i
+    return out
+
+
+@pytest.mark.parametrize("technology", ["solar", "wind"])
+@pytest.mark.parametrize("cod", [date(2031, 1, 1), date(2031, 3, 1), date(2031, 5, 15), date(2031, 7, 1)])
+def test_dated_opex_and_depreciation_match_independent_per_period_oracles(technology, cod):
+    from financial_engine.orchestrator import run_operating_model
+
+    pi = _with_r04(_project(technology, cod), technology)
+    op_in = from_project_inputs(pi)
+    res = run_operating_model(op_in)
+    assert not any(i.step_changes for i in pi.opex)
+    ops = [p for p in res.periods if p.is_operation]
+    rows, prev = [], None
+    for p in ops:
+        rows.append((cod if prev is None else prev + timedelta(days=1), p.period_end + timedelta(days=1)))
+        prev = p.period_end
+    assert rows[-1][1] == _add_years(cod, 20)                                  # final stub ends exactly at COD + 20 years
+    dep_expected = _dep_oracle(op_in.depreciation, cod, rows)
+    tot_opex = tot_dep = Decimal(0)
+    for (a, b), p, d in zip(rows, ops, dep_expected):
+        e_opex = _opex_oracle(pi.opex, cod, a, b, 20)
+        assert abs(float(e_opex) - p.opex_keur) <= 0.01, (technology, cod, p.period_index, float(e_opex), p.opex_keur)
+        assert abs(float(d) - p.book_depreciation_keur) <= 0.01, (technology, cod, p.period_index, float(d), p.book_depreciation_keur)
+        tot_opex += e_opex
+        tot_dep += d
+    assert abs(float(tot_opex) - sum(p.opex_keur for p in ops)) <= 0.01 * len(ops)
+    assert abs(float(tot_dep) - sum(p.book_depreciation_keur for p in ops)) <= 0.01 * len(ops)
