@@ -652,6 +652,25 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         tables=("model_import_receipts",),
     ),
     DataStoreEntry(
+        "data.investor_agreement_version_ledger",
+        "Durable monotonic/tombstone F4 investor agreement version ledger (C1F-B-2)",
+        "SQLite database",
+        "owner_id, project_id, scenario_id",
+        "One row per (owner_id, project_id, scenario_id, agreement_id) storing the highest committed "
+        "agreement version and optional tombstone timestamp when removed or renamed. Prevents "
+        "(agreement_id, version) reuse across deletes/renames. Stores identifiers, integer versions, "
+        "and timestamps only — no investor cash amounts, credentials, or tokens.", False,
+        "Not automatically deleted: rows enforce monotonic agreement version identity across removals "
+        "and renames. Retention/deletion policy is an open owner decision.",
+        "No deletion path exists. Rows are small metadata-only version watermarks and are removed only "
+        "by an approved, explicitly authorized retention procedure.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/investor_agreement_ledger_repository.py", "CREATE TABLE IF NOT EXISTS investor_agreement_version_ledger"),),
+        "Ledger rows of a deleted or disposed project are retained until a retention policy is approved; "
+        "they carry agreement identifiers, version watermarks, and timestamps only.",
+        tables=("investor_agreement_version_ledger",),
+    ),
+    DataStoreEntry(
         "data.save_all_requests", "Save All request ledger (WS-2)", "SQLite database",
         "user_id, project_id",
         "One row per Save All request: the client request id, a one-way SHA-256 digest of the canonical request "

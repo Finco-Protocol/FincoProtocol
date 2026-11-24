@@ -118,6 +118,11 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
       <h3 id="rcm-inv-title" className="rcm-h3">Common-equity investor agreement <span className="rcm-badge" data-investor-state={data.state}>{data.state}</span></h3>
       <p className="rx-note">Residual common equity only. <strong>Ownership %</strong> allocates results between investors and does not change Sources &amp; Uses; <strong>commitments and paid-in capital</strong> describe funding and must reconcile with the equity in the financing plan before Run.</p>
       <p className="rx-status rx-status-conflict" role="status" data-investor-workflow-text="true">{data.workflow.text}</p>
+      {data.draft_warning?.incomplete_draft && (
+        <p className="rx-status rx-status-conflict" role="alert" data-investor-draft-warning={data.draft_warning.code}>
+          {data.draft_warning.message}
+        </p>
+      )}
       {!data.editable && <p className="rx-status rx-status-conflict" data-investors-readonly="true">Read-only: templates cannot be edited. Start a project from this template to define an agreement.</p>}
       {locked && <p className="rx-status rx-status-conflict" role="alert" data-investors-locked="true">A previous save has an unknown outcome. Reload the workspace to reconcile before editing again.</p>}
 

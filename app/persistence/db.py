@@ -466,6 +466,8 @@ def _init_schema(conn):
     _ensure_setup_drafts(conn)
     from app.persistence.import_receipt_repository import ensure_schema as _ensure_import_receipts
     _ensure_import_receipts(conn)
+    from app.persistence.investor_agreement_ledger_repository import ensure_schema as _ensure_investor_ledger
+    _ensure_investor_ledger(conn)
 
 
 def _backfill_reference_roles(conn) -> None:
