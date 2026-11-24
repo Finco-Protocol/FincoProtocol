@@ -12,7 +12,6 @@ import re
 import pytest
 
 from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _assert_untouched, URL  # noqa: F401
-from tests.r04_ppa_global_cap.test_r04_production_acceptance import _save_all_contracts  # noqa: F401
 from tests.test_fable_batch3_r04_review_route import MERCHANT, _ppa, book
 
 
