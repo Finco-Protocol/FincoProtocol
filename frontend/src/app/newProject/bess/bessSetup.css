@@ -12,7 +12,11 @@
 .bess-setup legend { padding:0 6px; font-weight:600; }
 .bess-field-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:14px; }
 .bess-field-grid small { display:block; margin-top:4px; overflow-wrap:anywhere; }
-.bess-validation { border-left:3px solid var(--navy, #183e63); padding:12px; background:var(--surface-blue, #edf3f8); }
+.bess-validation { border-left:3px solid var(--navy, #183e63); padding:12px; background:var(--surface-blue, #edf3f8); min-width:0; overflow-wrap:anywhere; }
+.bess-declared-terms { margin-top:12px; padding-top:10px; border-top:1px solid var(--line, #dce3e9); min-width:0; }
+.bess-table-scroll { overflow-x:auto; max-width:100%; }
+.bess-table-scroll table { width:100%; border-collapse:collapse; font-size:0.875rem; }
+.bess-table-scroll th, .bess-table-scroll td { padding:4px 8px; text-align:left; border-bottom:1px solid var(--line, #dce3e9); white-space:nowrap; }
 .bess-setup summary { cursor:pointer; padding:12px 0; min-height:24px; }
 .bess-setup button { min-height:44px; white-space:normal; max-width:100%; }
 .bess-setup :is(button,input,textarea,summary):focus-visible { outline:2px solid var(--fo-brand-500, #3b6ff6); outline-offset:3px; }
