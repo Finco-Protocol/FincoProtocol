@@ -272,6 +272,7 @@ async def save_opex_annual_exceptions(request: Request):
         effective_raw as opex_ann_effective_raw,
     )
     from app.persistence.scenarios_repository import get_scenario
+    from app.v2.capex_commands import CapexProtectedReferenceError, CapexStaleIdentityError
     from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError
     from app.v2.save_all_commands import SaveAllError, SaveAllInput, SaveAllRequestIdReused, save_all
     from app.workbook.registry import WORKBOOK
@@ -291,9 +292,9 @@ async def save_opex_annual_exceptions(request: Request):
     )
     try:
         res = save_all(project_record=record, user_id=user.user_id, data=data)
-    except OpexProtectedReferenceError as exc:
+    except (CapexProtectedReferenceError, OpexProtectedReferenceError) as exc:
         return _json({"ok": False, "code": "PROTECTED_REFERENCE", "message": str(exc)}, 403)
-    except (StaleContentError, OpexStaleIdentityError, SaveAllRequestIdReused) as exc:
+    except (StaleContentError, CapexStaleIdentityError, OpexStaleIdentityError, SaveAllRequestIdReused) as exc:
         return _json({"ok": False, "code": "STALE_CONTENT", "reload": True, "message": str(exc)}, 409)
     except OpexAnnualExceptionError as exc:
         return _json({"ok": False, "code": exc.code, "message": exc.message}, 422)
