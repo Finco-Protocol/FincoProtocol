@@ -304,6 +304,7 @@ def _independent_construction_schedule_decimal(
     cfee_total_est = Decimal("0")
     hard_total = sum(hard_capex, Decimal("0"))
     rows = []
+    converged = False
     for _ in range(50):
         total_uses_est = hard_total + struct_fee_0 + idc_total_est + cfee_total_est + dsra_fc_use_keur
         shl_total = max(Decimal("0"), total_uses_est - senior_commitment_keur - share_capital)
@@ -346,8 +347,10 @@ def _independent_construction_schedule_decimal(
         new_cfee = sum((r["commit_fee"] for r in rows), Decimal("0"))
         if abs(new_idc - idc_total_est) < Decimal("1e-12") and abs(new_cfee - cfee_total_est) < Decimal("1e-12"):
             idc_total_est, cfee_total_est = new_idc, new_cfee
+            converged = True
             break
         idc_total_est, cfee_total_est = new_idc, new_cfee
+    assert converged, "Independent Decimal(50) construction draw/IDC fixed-point did not converge within 50 iterations"
 
     total_cap_fin = idc_total_est + cfee_total_est + struct_fee_0
     total_uses = hard_total + total_cap_fin + dsra_fc_use_keur
