@@ -44,6 +44,7 @@ class CalendarInput:
     period_axis_convention: PeriodAxisConvention = (
         PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
     )
+    date_authority_version: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

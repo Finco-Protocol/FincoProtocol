@@ -867,14 +867,19 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             cod_date=info.cod_date,
             period_axis_convention=getattr(info.period_axis_convention, "value", info.period_axis_convention),
             dated_life_end_exclusive=(
-                dated_life_end_exclusive(info.cod_date, info.horizon_years, ms_json) if freq is PeriodFrequency.SEMESTRIAL else None),
+                dated_life_end_exclusive(
+                    info.cod_date,
+                    info.horizon_years,
+                    ms_json,
+                    date_authority_version=getattr(info, "date_authority_version", None),
+                )
+                if freq is PeriodFrequency.SEMESTRIAL
+                else None
+            ),
         )
         multistream = parse_config(ms_json)
         _date_aware = engine.dated_life_end_exclusive is not None
-        if getattr(multistream, "has_contractual_indexation", False):
-            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date, date_aware=_date_aware)
-        else:
-            multistream.validate_axis(engine.periods(), date_aware=_date_aware)
+        multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date, date_aware=_date_aware)
         if getattr(multistream, "has_absolute_annual_quantity", False):
             if _date_aware:
                 from finco_core.engine.date_authority import assert_grid_conserves_operating_life

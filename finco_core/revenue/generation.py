@@ -115,10 +115,10 @@ def full_generation_schedule(
     schedule = {}
     hours = _selected_operating_hours(inputs.technical, yield_scenario)
 
-    # OD-TIME-01 versioned date authority (R04 projects only): actual-day, COD-anniversary-degradation generation from the SAME
+    # OD-TIME-01 versioned date authority: actual-day, COD-anniversary-degradation generation from the SAME
     # dated generator the P50 cap uses; the selected case changes hours only.  Legacy projects fall through unchanged.
     from finco_core.engine.date_authority import date_authority_active, dated_generation_schedule
-    if date_authority_active(inputs):
+    if getattr(engine, "dated_life_end_exclusive", None) is not None or date_authority_active(inputs):
         return dated_generation_schedule(inputs, engine, hours)
 
     for period in engine.periods():
@@ -207,7 +207,11 @@ def revenue_decomposition_schedule(
     multistream = None
     _dated = getattr(engine, "dated_life_end_exclusive", None) is not None
     if _dated:
-        from finco_core.engine.date_authority import legacy_operating_intervals, dated_generation_for_interval
+        from finco_core.engine.date_authority import (
+            dated_generation_for_interval,
+            dated_scalar_revenue_for_period,
+            legacy_operating_intervals,
+        )
         _intervals = legacy_operating_intervals(engine, inputs.info.cod_date)
         _hours = _selected_operating_hours(inputs.technical)
     if getattr(inputs.revenue, "multistream_config_json", ""):
@@ -218,7 +222,7 @@ def revenue_decomposition_schedule(
                 raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
             multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date, date_aware=_dated)
         else:
-            multistream.validate_axis(engine.periods(), date_aware=_dated)
+            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date, date_aware=_dated)
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
         if getattr(multistream, "has_absolute_annual_quantity", False):
@@ -253,38 +257,52 @@ def revenue_decomposition_schedule(
             }
             continue
 
-        # Use per-period tariff schedule when available (policy-driven).
-        tariff_pp = inputs.revenue.tariff_at_operating_period(period.operating_period_index)
-        tariff = tariff_pp if tariff_pp is not None else inputs.revenue.tariff_at_year(period.year_index)
-        # Calendar-year price lookup when schedule is present (matches Excel CF row 30);
-        # falls back to operating-year lookup for projects without a CY schedule.
-        period_end_year = period.end_date.year
-        market_price = inputs.revenue.market_price_for_period(
-            period_end_year=period_end_year,
-            operating_year=period.year_index,
-        )
-        ppa_active = period.is_ppa_active
-        first_merchant_idx = inputs.revenue.first_merchant_operating_period_index
-        if first_merchant_idx is not None:
-            ppa_active = period.operating_period_index < first_merchant_idx
-        ppa_revenue_keur, gross_merchant_revenue_keur, ppa_generation_mwh, merchant_generation_mwh = (
-            _period_merchant_revenue_keur(
-                generation_mwh=generation_mwh,
-                ppa_tariff=tariff,
-                market_price=market_price,
-                ppa_active=ppa_active,
-                ppa_share=inputs.revenue.ppa_production_share,
+        if _dated and multistream is None:
+            dated_totals, dated_missing = dated_scalar_revenue_for_period(
+                inputs, _intervals[period.index], _hours
             )
-        )
-        if (
-            multistream is None
-            and merchant_generation_mwh > 0.0
-            and inputs.revenue.market_prices_by_calendar_year_eur_mwh
-            and inputs.revenue.market_price_calendar_start_year is not None
-            and period_end_year < inputs.revenue.market_price_calendar_start_year
-        ):
-            missing_merchant_years.add(period_end_year)
-        energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
+            missing_merchant_years.update(dated_missing)
+            ppa_revenue_keur = dated_totals["ppa_revenue_keur"]
+            gross_merchant_revenue_keur = dated_totals["merchant_revenue_keur"]
+            ppa_generation_mwh = dated_totals["ppa_mwh"]
+            merchant_generation_mwh = dated_totals["merchant_mwh"]
+            energy_revenue_keur = dated_totals["energy_revenue_keur"]
+            tariff = dated_totals["ppa_tariff_eur_mwh"]
+            market_price = dated_totals["market_price_eur_mwh"]
+            ppa_active = bool(dated_totals["is_ppa_active"])
+        else:
+            # Use per-period tariff schedule when available (policy-driven).
+            tariff_pp = inputs.revenue.tariff_at_operating_period(period.operating_period_index)
+            tariff = tariff_pp if tariff_pp is not None else inputs.revenue.tariff_at_year(period.year_index)
+            # Calendar-year price lookup when schedule is present (matches Excel CF row 30);
+            # falls back to operating-year lookup for projects without a CY schedule.
+            period_end_year = period.end_date.year
+            market_price = inputs.revenue.market_price_for_period(
+                period_end_year=period_end_year,
+                operating_year=period.year_index,
+            )
+            ppa_active = period.is_ppa_active
+            first_merchant_idx = inputs.revenue.first_merchant_operating_period_index
+            if first_merchant_idx is not None:
+                ppa_active = period.operating_period_index < first_merchant_idx
+            ppa_revenue_keur, gross_merchant_revenue_keur, ppa_generation_mwh, merchant_generation_mwh = (
+                _period_merchant_revenue_keur(
+                    generation_mwh=generation_mwh,
+                    ppa_tariff=tariff,
+                    market_price=market_price,
+                    ppa_active=ppa_active,
+                    ppa_share=inputs.revenue.ppa_production_share,
+                )
+            )
+            if (
+                multistream is None
+                and merchant_generation_mwh > 0.0
+                and inputs.revenue.market_prices_by_calendar_year_eur_mwh
+                and inputs.revenue.market_price_calendar_start_year is not None
+                and period_end_year < inputs.revenue.market_price_calendar_start_year
+            ):
+                missing_merchant_years.add(period_end_year)
+            energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
         stream_evidence = None
         settlement_keur = 0.0
         product_revenue_keur = 0.0
@@ -338,10 +356,15 @@ def revenue_decomposition_schedule(
         # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
         # Fallback priority (per PR #90 backward-compat requirement):
         #   schedule > co2_certificate_price_eur_per_mwh > co2_price_eur
+        if _dated:
+            from finco_core.engine.contractual_calendar import operating_year_index as _op_yr_idx
+            _sched_op_year = _op_yr_idx(inputs.info.cod_date, _intervals[period.index].start)
+        else:
+            _sched_op_year = period.operating_year_index
         if inputs.revenue.co2_sales_schedule is not None:
             co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
                 operating_period_index=period.operating_period_index,
-                operating_year_index=period.operating_year_index,
+                operating_year_index=_sched_op_year,
                 period_in_year=period.period_in_year,
             )
         elif inputs.revenue.co2_certificate_price_eur_per_mwh != 0.0:
@@ -359,7 +382,7 @@ def revenue_decomposition_schedule(
         if inputs.revenue.balancing_cost_schedule is not None:
             balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
                 operating_period_index=period.operating_period_index,
-                operating_year_index=period.operating_year_index,
+                operating_year_index=_sched_op_year,
                 period_in_year=period.period_in_year,
             )
         elif inputs.revenue.balancing_cost_eur_per_mwh != 0.0:

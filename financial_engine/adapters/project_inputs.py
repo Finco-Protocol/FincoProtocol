@@ -136,6 +136,7 @@ def from_project_inputs(
                 PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS.value,
             )
         ),
+        date_authority_version=getattr(info, "date_authority_version", None),
     )
 
     technical_class = TechnicalInput

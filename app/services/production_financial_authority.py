@@ -586,6 +586,23 @@ def run_clean_production(
         metadata.update(odr_evidence.to_metadata())
     from app.workbook.quarterly_frequency_config import run_evidence as _calendar_evidence
     metadata.update(_calendar_evidence(effective_inputs))  # empty for every 6/6 Run
+    from finco_core.engine.date_authority import (
+        DATE_AUTHORITY_VERSION,
+        LEGACY_DATE_AUTHORITY_VERSION,
+        date_authority_active as _date_authority_active,
+    )
+    from finco_core.engine.contractual_calendar import CALENDAR_CONTRACT_VERSION
+    if _date_authority_active(effective_inputs):
+        metadata.update(
+            date_authority_version=DATE_AUTHORITY_VERSION,
+            calendar_contract_version=CALENDAR_CONTRACT_VERSION,
+            calendar_mode="DATED_CONTRACTUAL",
+        )
+    else:
+        metadata.update(
+            date_authority_version=LEGACY_DATE_AUTHORITY_VERSION,
+            calendar_mode="LEGACY",
+        )
     construction = getattr(g2c.financing_result, "construction_financing", None)
     if construction is not None:
         metadata.update(

@@ -65,15 +65,17 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> int:
 
 def hash_engine_for_cache(engine: "PeriodEngine") -> int:
     """Deterministic hash for PeriodEngine for cache keying."""
-    return hash(
-        (
-            getattr(engine, "fc", getattr(engine, "anchor_date", None)),
-            getattr(engine, "construction_months", None),
-            getattr(engine, "horizon_years", getattr(engine, "num_periods", None)),
-            getattr(engine, "ppa_years", None),
-            getattr(engine, "freq", getattr(engine, "periods_per_year", None)),
-        )
+    dated_end = getattr(engine, "dated_life_end_exclusive", None)
+    base = (
+        getattr(engine, "fc", getattr(engine, "anchor_date", None)),
+        getattr(engine, "construction_months", None),
+        getattr(engine, "horizon_years", getattr(engine, "num_periods", None)),
+        getattr(engine, "ppa_years", None),
+        getattr(engine, "freq", getattr(engine, "periods_per_year", None)),
     )
+    if dated_end is not None:
+        base = base + (("dated_life_end_exclusive", dated_end.isoformat()),)
+    return hash(base)
 
 
 @cache_data(
