@@ -227,6 +227,23 @@ async def react_import_apply(request: Request):
         "ok": True, "stage": "result", "saved": [_pick(row, SAVED_KEYS) for row in ctx["saved"]],
         "applied_count": ctx["applied_count"], "skipped_count": ctx["skipped_count"], "freshness": ctx["freshness_state"],
         "approved_at": ctx.get("approved_at"), "transaction_identity": ctx.get("transaction_identity"),
+        "receipt": ctx.get("receipt"),
         "semantics": {"model_was_run": False,
                       "note": "The values were saved to your project. Nothing was calculated; run the model to see their effect."},
+    })
+
+
+@router.get("/model-react/import/receipts")
+async def react_import_receipts(request: Request, project: str = ""):
+    """Owner-scoped read-only listing of durable minimal import receipts for one project."""
+    user, record, _ws, owner, refused = _scope(request, project, header=False)
+    if refused is not None:
+        return refused
+    from app.persistence.import_receipt_repository import list_receipts_for_project
+
+    receipts = [r.to_safe_dict() for r in list_receipts_for_project(owner, record.project_id)]
+    return _json({
+        "ok": True,
+        "project_code": record.project_code,
+        "receipts": receipts,
     })

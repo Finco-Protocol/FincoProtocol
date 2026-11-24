@@ -464,6 +464,8 @@ def _init_schema(conn):
     _ensure_lifecycle(conn)
     from app.persistence.setup_draft_repository import ensure_schema as _ensure_setup_drafts
     _ensure_setup_drafts(conn)
+    from app.persistence.import_receipt_repository import ensure_schema as _ensure_import_receipts
+    _ensure_import_receipts(conn)
 
 
 def _backfill_reference_roles(conn) -> None:

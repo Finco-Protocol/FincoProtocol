@@ -40,6 +40,7 @@ def seal_preview(
     owner: str, project_id: str, scenario_id: str | None,
     content_hash: str, workbook_version: str, digest: str,
     proposals: list[dict], migration: dict | None = None,
+    source_format: str = "",
 ) -> str:
     if len(proposals) > _MAX_ROWS:
         raise ImportReviewError("IMPORT_PROPOSAL_LIMIT_EXCEEDED")
@@ -68,6 +69,7 @@ def seal_preview(
         "kind": "preview", "owner": owner, "project_id": project_id,
         "scenario_id": scenario_id, "content_hash": content_hash,
         "workbook_version": workbook_version, "digest": digest, "rows": rows,
+        "source_format": str(source_format or "").strip().lower(),
     }
     if migration is not None:
         body["migration"] = migration
@@ -199,15 +201,22 @@ def resolve_review(
 
 
 def seal_approved(preview: dict, approved: list[dict]) -> str:
+    import uuid
+
     if not (1 <= len(approved) <= 50):
         raise ImportReviewError("IMPORT_APPROVED_FIELD_COUNT_INVALID")
+    fmt = str(preview.get("source_format") or "").strip().lower()
+    if not fmt and isinstance(preview.get("migration"), dict):
+        fmt = "xlsx"
     body = {
         "kind": "approved",
         "owner": preview["owner"], "project_id": preview["project_id"],
         "scenario_id": preview["scenario_id"],
         "content_hash": preview["content_hash"],
         "workbook_version": preview["workbook_version"],
-        "digest": preview["digest"], "source_count": len(preview["rows"]), "approved": approved,
+        "digest": preview["digest"], "source_format": fmt,
+        "source_count": len(preview["rows"]), "approved": approved,
+        "approval_event_id": str(uuid.uuid4()),
         "approval_event": "USER_CONFIRMED_REVIEW",
         "migration": preview.get("migration"),
         "approved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
