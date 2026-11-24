@@ -29,7 +29,7 @@ from app.workbook.registry import WORKBOOK
 
 CONTRACT_VERSION = "finco-import-receipt-v1"
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
-_ALLOWED_FORMATS = frozenset({"csv", "xlsx"})
+_ALLOWED_FORMATS = frozenset({"csv", "xlsx", "unknown"})
 
 
 class ImportReceiptError(ValueError):
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS model_import_receipts (
  scenario_id TEXT NOT NULL DEFAULT '',
  replay_key TEXT NOT NULL,
  source_sha256 TEXT NOT NULL,
- source_format TEXT NOT NULL CHECK (source_format IN ('csv', 'xlsx')),
+ source_format TEXT NOT NULL CHECK (source_format IN ('csv', 'xlsx', 'unknown')),
  approval_event_id TEXT NOT NULL,
  approval_event TEXT NOT NULL,
  approved_at TEXT NOT NULL,

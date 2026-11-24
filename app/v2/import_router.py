@@ -319,8 +319,8 @@ async def model_input_import_apply(
                 workbook_version=signed["workbook_version"],
             )
             src_fmt = str(signed.get("source_format") or "").strip().lower()
-            if not src_fmt and isinstance(signed.get("migration"), dict):
-                src_fmt = "xlsx"
+            if not src_fmt:
+                src_fmt = "xlsx" if isinstance(signed.get("migration"), dict) else "unknown"
             rec = insert_receipt_in_tx(
                 cur,
                 owner_id=owner,
