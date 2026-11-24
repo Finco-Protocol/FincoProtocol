@@ -341,11 +341,13 @@ def test_slice_b_atomic_rollback_concurrency_append_only_and_migration_idempoten
     receipts = list_receipts_for_project(OWNER, pid)
     assert len(receipts) == 1
 
-    # 3. Append-only SQLite trigger refuses UPDATE on model_import_receipts
+    # 3. Append-only SQLite triggers refuse both UPDATE and DELETE on model_import_receipts
     conn = db.get_connection()
     try:
         with pytest.raises(sqlite3.IntegrityError, match="IMPORT_RECEIPT_IMMUTABLE"):
             conn.execute("UPDATE model_import_receipts SET changed_count = 99 WHERE receipt_id = ?", (receipts[0].receipt_id,))
+        with pytest.raises(sqlite3.IntegrityError, match="IMPORT_RECEIPT_NO_DELETE"):
+            conn.execute("DELETE FROM model_import_receipts WHERE receipt_id = ?", (receipts[0].receipt_id,))
         # 4. Idempotent migration on existing DB preserves receipts
         ensure_schema(conn)
     finally:

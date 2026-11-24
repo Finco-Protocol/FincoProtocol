@@ -641,7 +641,7 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         "One append-only row per committed Excel/CSV import Apply: opaque receipt_id, source SHA-256 digest, "
         "source format, approval event metadata, before/after composite hashes, allowlisted canonical field IDs "
         "and counts. Never stores uploaded workbook bytes, filenames, cell values, labels, tickets, or secrets.", False,
-        "Not automatically deleted: a database trigger refuses UPDATE. Retention/deletion policy is an open "
+        "Not automatically deleted: database triggers refuse UPDATE and DELETE. Retention/deletion policy is an open "
         "owner decision; rows carry identifiers, digests, and canonical field IDs only.",
         "No deletion path exists. Rows are small metadata-only receipts and are removed only by an approved, "
         "explicitly authorized retention procedure.", False,

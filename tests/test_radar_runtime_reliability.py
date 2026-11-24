@@ -736,23 +736,60 @@ def test_cb_b2_boundary_still_running_at_deadline_elapsed():
 
 def test_cb_b1_coordinator_order_independence_multi_provider():
     """B1.6: three providers with mixed outcomes dispatched together —
-    processing order must not change any outcome (one blocks past the
-    window and times out; two complete on time)."""
+    processing order must not change any outcome (one misses the window
+    and times out; two complete on time before the deadline)."""
+    clock_lock = threading.Lock()
+    clock = {"t": 100.0, "fast_recorded": 0}
+    both_fast_recorded = threading.Event()
+    fast_threads: set[int] = set()
+
+    def monotonic():
+        with clock_lock:
+            tid = threading.get_ident()
+            if tid in fast_threads:
+                fast_threads.discard(tid)
+                clock["fast_recorded"] += 1
+                # Record distinct on-time completion markers strictly < 100.15
+                t_val = 100.0 + 0.05 * clock["fast_recorded"]
+                if clock["fast_recorded"] == 2:
+                    both_fast_recorded.set()
+                return t_val
+            return clock["t"]
+
     def first_slow(request):
-        time.sleep(0.35)  # > the 0.15 s window
+        # Wait (bounded) until both fast providers have recorded their on-time
+        # completion markers, then advance the shared monotonic clock past the
+        # 0.15 s per-provider window so `first` genuinely misses its deadline.
+        assert both_fast_recorded.wait(timeout=5.0), "fast providers did not record completion in time"
+        with clock_lock:
+            clock["t"] = 100.20  # > 100.0 + 0.15 per-provider deadline
         return {"evidence": {"name": "first"}}
+
+    def fast_provider(name):
+        def _call(request):
+            with clock_lock:
+                fast_threads.add(threading.get_ident())
+            return {"evidence": {"name": name}}
+        return _call
 
     providers = {
         "first": first_slow,
-        "second": lambda r: {"evidence": {"name": "second"}},
-        "third": lambda r: {"evidence": {"name": "third"}},
+        "second": fast_provider("second"),
+        "third": fast_provider("third"),
     }
     service = _make_service_multi(providers, per_provider=0.15, total=5.0)
-    snapshot = service.acquire(
-        _request("100", sources=tuple(sorted(providers))))
-    states = {p.provider: p for p in snapshot.providers}
-    assert states["first"].state is ProviderResultState.TIMEOUT
-    assert states["first"].error_class == "PER_PROVIDER_TIMEOUT"
-    assert states["second"].state is ProviderResultState.SUCCESS
-    assert states["third"].state is ProviderResultState.SUCCESS
-    service.close()
+    service._monotonic = monotonic
+    try:
+        snapshot = service.acquire(
+            _request("100", sources=tuple(sorted(providers))))
+        states = {p.provider: p for p in snapshot.providers}
+        assert states["first"].state is ProviderResultState.TIMEOUT
+        assert states["first"].error_class == "PER_PROVIDER_TIMEOUT"
+        assert states["first"].elapsed_ms == 200.0
+        assert states["second"].state is ProviderResultState.SUCCESS
+        assert states["second"].elapsed_ms <= 150.0
+        assert states["third"].state is ProviderResultState.SUCCESS
+        assert states["third"].elapsed_ms <= 150.0
+    finally:
+        both_fast_recorded.set()
+        service.close()

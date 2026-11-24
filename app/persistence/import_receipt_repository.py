@@ -119,6 +119,9 @@ CREATE INDEX IF NOT EXISTS idx_model_import_receipts_owner_project
 CREATE TRIGGER IF NOT EXISTS model_import_receipts_append_only
 BEFORE UPDATE ON model_import_receipts
 BEGIN SELECT RAISE(ABORT, 'IMPORT_RECEIPT_IMMUTABLE'); END;
+CREATE TRIGGER IF NOT EXISTS model_import_receipts_no_delete
+BEFORE DELETE ON model_import_receipts
+BEGIN SELECT RAISE(ABORT, 'IMPORT_RECEIPT_NO_DELETE'); END;
 """
 
 
