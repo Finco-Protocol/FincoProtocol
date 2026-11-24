@@ -300,7 +300,10 @@ def test_five_independent_processes_one_claim_one_history(ledger):
 def test_reconcile_original_history_after_newer_intent(ledger):
     from app.services.run_intent_service import RELEASE_POLICY, reconcile
     old_request = intent()
-    assert not RELEASE_POLICY.enabled
+    assert RELEASE_POLICY.enabled
+    assert RELEASE_POLICY.missing_key_behavior == "RELEASED_NON_IDEMPOTENT"
+    assert RELEASE_POLICY.expired_retry_behavior == "EXPLICIT_FENCED_RECOVERY_ONLY"
+    assert RELEASE_POLICY.retention_behavior == "NO_AUTOMATIC_DELETION_OR_KEY_REUSE"
     assert reconcile(old_request).kind == "NEW"
     first_owner = claim(old_request)
     assert reconcile(old_request).kind == "IN_PROGRESS"

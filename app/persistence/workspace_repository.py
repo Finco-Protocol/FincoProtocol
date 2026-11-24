@@ -1649,12 +1649,17 @@ def v2_atomic_batch_draft_update(
     expected_content_hash: str,
     expected_workbook_version: str,
     updates: list[tuple[str, str]],
+    in_tx_after_apply: Optional[Any] = None,
 ) -> "WorkspaceStateRecord":
     """Exclusive all-or-nothing Workbook V2 batch; no alternative writer.
 
     Uses the canonical single-field validator, immutable ProjectInputSet and
     composite Workbook identity. No engine execution. No historical run or
     certificate row is touched. Capacity post-CAS rescaling is excluded.
+    Optional ``in_tx_after_apply(cur, result)`` runs inside the SAME
+    ``BEGIN EXCLUSIVE`` transaction before ``COMMIT`` so companion metadata
+    (e.g. durable import receipt) commits or rolls back atomically with the
+    canonical draft write.
     """
     from app.persistence.db import get_connection
 
@@ -1667,6 +1672,8 @@ def v2_atomic_batch_draft_update(
             cur, user_id=user_id, project_id=project_id, expected_workspace_id=expected_workspace_id,
             expected_scenario_id=expected_scenario_id, expected_content_hash=expected_content_hash,
             expected_workbook_version=expected_workbook_version, updates=updates)
+        if in_tx_after_apply is not None:
+            in_tx_after_apply(cur, result)
         conn.execute("COMMIT")
         return result
     except Exception:

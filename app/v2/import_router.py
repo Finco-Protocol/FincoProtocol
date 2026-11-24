@@ -172,11 +172,13 @@ async def model_input_import_preview(
             totals=result["totals"], digest=hashlib.sha256(data).hexdigest(),
         )
         from app.model_import.review import seal_preview
+        _ext = (upload.filename or "").rsplit(".", 1)[-1].strip().lower() if "." in (upload.filename or "") else ""
         ctx["preview_ticket"] = seal_preview(
             owner=owner, project_id=record.project_id,
             scenario_id=ws.active_scenario_id,
             content_hash=ctx["content_hash"], workbook_version=WORKBOOK.version,
             digest=ctx["digest"], proposals=result["proposals"],
+            source_format=_ext if _ext in ("csv", "xlsx") else "",
         )
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
@@ -284,22 +286,67 @@ async def model_input_import_apply(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error="IMPORT_CSRF_INVALID"),
             status_code=403)
+    from app.persistence.import_receipt_repository import ImportReceiptError, insert_receipt_in_tx
+    from app.workbook.workbook_identity import assemble_transactional
+    import json as _json
+
     try:
         form = await request.form()
         signed = unseal_approved(approved_ticket, owner=owner, project_id=record.project_id)
         approved = signed["approved"]
+        _src_digest = signed.get("digest")
+        if not isinstance(_src_digest, str) or len(_src_digest) != 64 or any(c not in "0123456789abcdef" for c in _src_digest):
+            raise ImportReviewError("IMPORT_SOURCE_DIGEST_MISSING")
         # Capture the exact pre-CAS values for truthful changed-field reporting.
         # The submitted composite CAS prevents a concurrent different snapshot
         # from being applied against this review's approved set.
         before_pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
         # Server repeats canonical field validation inside the C0 transaction.
         changes = [(item["field_id"], item["value"]) for item in approved]
+        approved_field_ids = [item["field_id"] for item in approved]
+        receipt_holder: list = []
+
+        def _record_receipt_in_tx(cur, committed_ws) -> None:
+            after_pis = ProjectInputSet.from_snapshot(committed_ws.draft_snapshot, workbook=WORKBOOK)
+            changed_ids = [fid for fid in approved_field_ids if before_pis.get(fid) != after_pis.get(fid)]
+            after_identity = assemble_transactional(
+                draft_snapshot_json=_json.dumps(committed_ws.draft_snapshot, sort_keys=True),
+                project_id=committed_ws.project_id,
+                user_id=committed_ws.user_id,
+                active_scenario_id=committed_ws.active_scenario_id,
+                active_scenario_name=committed_ws.active_scenario_name,
+                cursor=cur,
+                workbook_version=signed["workbook_version"],
+            )
+            src_fmt = str(signed.get("source_format") or "").strip().lower()
+            if not src_fmt:
+                src_fmt = "xlsx" if isinstance(signed.get("migration"), dict) else "unknown"
+            rec = insert_receipt_in_tx(
+                cur,
+                owner_id=owner,
+                actor_id=user.user_id,
+                project_id=record.project_id,
+                scenario_id=signed["scenario_id"],
+                source_sha256=signed["digest"],
+                source_format=src_fmt,
+                approval_event_id=str(signed.get("approval_event_id") or ""),
+                approval_event=str(signed.get("approval_event") or "USER_CONFIRMED_REVIEW"),
+                approved_at=str(signed.get("approved_at") or ""),
+                workbook_version=signed["workbook_version"],
+                before_composite_hash=signed["content_hash"],
+                after_composite_hash=after_identity.composite_hash,
+                approved_field_ids=approved_field_ids,
+                changed_field_ids=changed_ids,
+            )
+            receipt_holder.append(rec)
+
         WorkbookUpdateService.apply_batch_draft_update(
             ws=ws, updates=changes,
             content_hash=signed["content_hash"],
             workbook_version=signed["workbook_version"],
             expected_scenario_id=signed["scenario_id"],
             project_record=record, actor_user_id=user.user_id,
+            in_tx_after_apply=_record_receipt_in_tx,
         )
         fresh = get_workspace_state(owner, record.project_id)
         if fresh is None:
@@ -333,28 +380,35 @@ async def model_input_import_apply(
         )
         ctx["skipped_count"] = max(0, int(signed.get("source_count", len(saved))) - len(saved))
         ctx["freshness_state"] = freshness.state.value
-        # Provenance of the transaction: who approved what, when, and the new canonical identity it produced.
-        # Diagnostic only: nothing from the uploaded workbook is persisted by this route.
+        # Durable minimal import receipt (C1F-A-2 / A16): metadata/hash lineage only; never stores uploaded workbook bytes or values.
         ctx["approval_event"] = signed.get("approval_event")
         ctx["approved_at"] = signed.get("approved_at")
-        ctx["transaction_identity"] = identity.composite_hash
+        ctx["transaction_identity"] = receipt_holder[0].after_composite_hash if receipt_holder else identity.composite_hash
+        if receipt_holder:
+            ctx["receipt"] = receipt_holder[0].to_safe_dict()
+            ctx["receipt_id"] = receipt_holder[0].receipt_id
+            ctx["receipt_status"] = "COMMITTED"
         migration = signed.get("migration")
         if isinstance(migration, dict):
             _attach_migration_result(ctx, migration=migration, signed=signed, approved=approved, owner=owner, record=record,
-                                     identity_hash=identity.composite_hash, manifest_token=str(form.get("manifest_token", "") or ""))
+                                     identity_hash=ctx["transaction_identity"], manifest_token=str(form.get("manifest_token", "") or ""))
         return _templates.TemplateResponse(
             request=request, name="import_review.html", context=ctx)
-    except (ImportReviewError, BatchApplyError, FieldValidationError,
+    except (ImportReviewError, ImportReceiptError, BatchApplyError, FieldValidationError,
             StaleContentError, VersionMismatchError, ProtectedReferenceError,
             NonEditableFieldError, UnknownFieldError, ValueError) as exc:
         code = getattr(exc, "code", None)
         if not code:
             # a typed validation refusal (e.g. R04_GLOBAL_P50_CAP_EXCEEDED: ...) is shown with its own text, not just its class name
             code = str(exc)[:300] if isinstance(exc, FieldValidationError) and str(exc) else type(exc).__name__
+        status = 409 if (
+            isinstance(exc, (StaleContentError, VersionMismatchError))
+            or code == "IMPORT_RECEIPT_REPLAY_CONFLICT"
+        ) else 422
         return _templates.TemplateResponse(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error=code),
-            status_code=409 if isinstance(exc, (StaleContentError, VersionMismatchError)) else 422)
+            status_code=status)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -471,7 +525,7 @@ async def model_migration_assess(
             sl["ticket"] = seal_preview(
                 owner=owner, project_id=record.project_id, scenario_id=ws.active_scenario_id,
                 content_hash=identity.composite_hash, workbook_version=WORKBOOK.version, digest=insp.digest,
-                proposals=sl["_proposals"],
+                proposals=sl["_proposals"], source_format="xlsx",
                 migration={"kind": "EXCEL_MIGRATION_V3", "workbook_sha256": insp.digest,
                            "slice": {"key": sl["key"], "label": sl["label"], "kind": sl["kind"], "resolution": sl["resolution"]},
                            "target": plan["target"], "confirmation_required": True,

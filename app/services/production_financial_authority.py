@@ -251,8 +251,17 @@ class CleanProductionRun:
     developer_economics_result: object | None = None
 
 
+import copy
+import threading
+
 _POLICY_RUN_CACHE: "dict[str, tuple]" = {}
 _POLICY_RUN_CACHE_MAX = 16
+_POLICY_RUN_CACHE_LOCK = threading.Lock()
+
+
+def _clone_cached_policy_value(value: tuple) -> tuple:
+    """Defensive deep copy of pure financial engine outputs for cache isolation (C1-Q-09 / C3-E-07)."""
+    return copy.deepcopy(value)
 
 
 def _memoised_policy_run(effective_inputs, policy, compute):
@@ -261,6 +270,12 @@ def _memoised_policy_run(effective_inputs, policy, compute):
     The engine is a pure function of (inputs, policy); the H-1 fixed points make one run
     cost several engine evaluations, so identical repeat runs (same process) reuse the
     result. Keyed by a digest of the full input/policy representation; bounded.
+
+    Ownership & isolation (C1-Q-09 / C3-E-07):
+    - Copy-on-store and copy-on-return (including miss path) ensure nested mutable
+      diagnostics/metadata dicts/lists cannot alias across callers or corrupt cached entries.
+    - Lock guards only dict lookup/eviction/insert; compute() runs outside the lock.
+    - Failed compute() calls raise before caching and are never stored.
     """
     import hashlib
 
@@ -282,22 +297,31 @@ def _memoised_policy_run(effective_inputs, policy, compute):
         )
     )
     material = repr(effective_inputs) + "|" + repr(policy) + "|" + repr(engine_identity)
-    # V10 native candidate (research, default off): a Run-local native configuration is part of the
+    # V10/V11 native candidates (default off): a Run-local native configuration is part of the
     # key, so a canonical (off / shadow-authority) Run can never be served a candidate-computed
-    # result and vice versa. With the configuration off the key is byte-for-byte unchanged.
-    from financial_engine.native_v10.config import current_config as _native_config
+    # result and vice versa. With both configurations off the key is byte-for-byte unchanged.
+    from financial_engine.native_v10.config import current_config as _native_v10_config
+    from financial_engine.native_v11.config import current_config as _native_v11_config
 
-    _native = _native_config()
-    if _native.mode != "off":
-        material += "|native_v10:" + repr(_native)
+    _native_v10 = _native_v10_config()
+    if _native_v10.mode != "off":
+        material += "|native_v10:" + repr(_native_v10)
+    _native_v11 = _native_v11_config()
+    if _native_v11.mode != "off":
+        material += "|native_v11:" + repr(_native_v11)
     key = hashlib.sha256(material.encode("utf-8")).hexdigest()
-    hit = _POLICY_RUN_CACHE.get(key)
+
+    with _POLICY_RUN_CACHE_LOCK:
+        hit = _POLICY_RUN_CACHE.get(key)
     if hit is not None:
-        return hit
+        return _clone_cached_policy_value(hit)
+
     value = compute()
-    if len(_POLICY_RUN_CACHE) >= _POLICY_RUN_CACHE_MAX:
-        _POLICY_RUN_CACHE.pop(next(iter(_POLICY_RUN_CACHE)))
-    _POLICY_RUN_CACHE[key] = value
+    stored = _clone_cached_policy_value(value)
+    with _POLICY_RUN_CACHE_LOCK:
+        if key not in _POLICY_RUN_CACHE and len(_POLICY_RUN_CACHE) >= _POLICY_RUN_CACHE_MAX:
+            _POLICY_RUN_CACHE.pop(next(iter(_POLICY_RUN_CACHE)))
+        _POLICY_RUN_CACHE[key] = stored
     return value
 
 

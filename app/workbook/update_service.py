@@ -642,6 +642,7 @@ class WorkbookUpdateService:
         project_record,
         actor_user_id: str,
         reject_line_owned: bool = False,
+        in_tx_after_apply: Optional[Any] = None,
     ) -> ProjectInputSet:
         """Atomic canonical update of a bounded *approved* set of fields.
 
@@ -740,6 +741,7 @@ class WorkbookUpdateService:
             expected_content_hash=content_hash,
             expected_workbook_version=workbook_version,
             updates=updates,
+            in_tx_after_apply=in_tx_after_apply,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
 

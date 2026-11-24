@@ -636,6 +636,22 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         tables=("model_run_intents",),
     ),
     DataStoreEntry(
+        "data.import_receipts", "Durable minimal import lineage receipts (C1F-A-2 / A16)", "SQLite database",
+        "owner_id, project_id",
+        "One append-only row per committed Excel/CSV import Apply: opaque receipt_id, source SHA-256 digest, "
+        "source format, approval event metadata, before/after composite hashes, allowlisted canonical field IDs "
+        "and counts. Never stores uploaded workbook bytes, filenames, cell values, labels, tickets, or secrets.", False,
+        "Not automatically deleted: a database trigger refuses UPDATE. Retention/deletion policy is an open "
+        "owner decision; rows carry identifiers, digests, and canonical field IDs only.",
+        "No deletion path exists. Rows are small metadata-only receipts and are removed only by an approved, "
+        "explicitly authorized retention procedure.", False,
+        S.REQUIRES_OPERATIONAL_CONTROLS,
+        (_code("app/persistence/import_receipt_repository.py", "CREATE TABLE IF NOT EXISTS model_import_receipts"),),
+        "Receipt rows of a deleted or disposed project are retained until a retention policy is approved; "
+        "they carry metadata and one-way hashes only.",
+        tables=("model_import_receipts",),
+    ),
+    DataStoreEntry(
         "data.save_all_requests", "Save All request ledger (WS-2)", "SQLite database",
         "user_id, project_id",
         "One row per Save All request: the client request id, a one-way SHA-256 digest of the canonical request "

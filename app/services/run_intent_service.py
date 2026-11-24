@@ -35,9 +35,11 @@ EXECUTION_CONTRACT = "v2_workbook_run:finco-run-intent-v1"
 
 @dataclass(frozen=True)
 class RunIntentPolicy:
-    # Enabling is intentionally not an environment variable / rollout shortcut.
-    # Final policy approval and canonical integration acceptance are outstanding.
-    enabled: bool = False
+    # Batch 4 Slice A (C1-Q-11 / C3-E-09): explicit-key idempotency is active on
+    # POST /v2/workbook/run when a caller supplies run_intent_id.  All other open
+    # D-029 owner decisions (missing-key legacy path, expired takeover routing,
+    # retention/cleanup) remain OFF / unchanged below.
+    enabled: bool = True
     missing_key_behavior: str = "RELEASED_NON_IDEMPOTENT"
     in_progress_wait_ms: int = 0
     failed_retry_behavior: str = "NEW_INTENT_REQUIRED"

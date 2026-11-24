@@ -215,7 +215,7 @@
     <p>Canonical batch committed. {{ applied_count }} field{{ 's' if applied_count != 1 else '' }} changed; {{ skipped_count }} source rows were not applied.
        Model runtime state: <strong>{{ freshness_state }}</strong>.
        This is not a successful financial model run.</p>
-    <p class="muted" data-testid="provenance">Approval: {{ approval_event }} at {{ approved_at }} · Transaction identity (new composite hash): <code>{{ transaction_identity }}</code>. Nothing from the uploaded workbook is stored by this step.</p>
+    <p class="muted" data-testid="provenance">Approval: {{ approval_event }} at {{ approved_at }} · Transaction identity (new composite hash): <code>{{ transaction_identity }}</code>{% if receipt_id %} · Durable receipt: <code data-testid="import-receipt-id">{{ receipt_id }}</code> ({{ receipt_status }}){% endif %}. Nothing from the uploaded workbook is stored by this step.</p>
     <div class="table-wrap"><table>
       <thead><tr><th>Source cell &amp; label</th><th>Canonical field</th><th>Original → approved provenance</th><th>Previous</th><th>Approved value</th><th>Actually saved value</th><th>Mapping origin</th></tr></thead>
       <tbody>{% for row in saved %}<tr>

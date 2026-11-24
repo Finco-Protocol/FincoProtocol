@@ -3072,7 +3072,7 @@ async def v2_workbook_run(
     from app.services import run_intent_service as _ri
     _ri_decision = None
     _ri_reservation = None
-    if run_intent_id.strip():
+    if _ri.RELEASE_POLICY.enabled and run_intent_id.strip():
         _ri_decision = _ri.decide(
             actor_id=workspace_owner, project_id=project_record.project_id, run_intent_id=run_intent_id.strip(),
             workbook_version=workbook_version, content_hash=content_hash,
