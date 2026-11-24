@@ -75,9 +75,15 @@
       row.investment_class = 'COMMON_EQUITY';
       if (typeof row.ownership_fraction === 'number') row.ownership_fraction /= 100; // Percent to typed fraction only.
     });
+    var nextVersions = {};
+    try { nextVersions = JSON.parse(form.dataset.ledgerNextVersions || '{}') || {}; } catch (_) {}
+    var aid = form.elements.agreement_id.value;
+    var nextVersion = Object.prototype.hasOwnProperty.call(nextVersions, aid)
+      ? Number(nextVersions[aid])
+      : (aid === form.dataset.agreementId ? Number(form.dataset.version) : 1);
     event.detail.parameters.agreement = JSON.stringify({
-      schema_version: 1, agreement_id: form.elements.agreement_id.value,
-      version: form.elements.agreement_id.value === form.dataset.agreementId ? Number(form.dataset.version) : 1,
+      schema_version: 1, agreement_id: aid,
+      version: nextVersion,
       currency: 'EUR', unit: 'kEUR', policy: 'RESIDUAL_ONLY',
       investors: investors,
       contributions: Array.from(form.querySelectorAll('[data-f4-contribution]')).map(fields)

@@ -27,10 +27,14 @@
     {% if f4.draft_warning is defined and f4.draft_warning and f4.draft_warning.incomplete_draft %}
     <p class="f4-draft-warning" role="alert" data-testid="f4-incomplete-draft-warning" data-draft-warning-code="{{ f4.draft_warning.code }}">{{ f4.draft_warning.message }}</p>
     {% endif %}
+    {% if f4.draft_warning is defined and f4.draft_warning and f4.draft_warning.advisory_message %}
+    <p class="f4-draft-advisory" role="status" data-testid="f4-stale-funding-advisory" data-funding-ref-state="{{ f4.draft_warning.funding_reference_state }}">{{ f4.draft_warning.advisory_message }}</p>
+    {% endif %}
   </div>
   {% if f4.editable %}
   <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"
-        data-version="{{ f4.terms.version + 1 if f4.terms else 1 }}" data-agreement-id="{{ f4.terms.agreement_id if f4.terms else '' }}">
+        data-version="{{ f4.terms.version + 1 if f4.terms else 1 }}" data-agreement-id="{{ f4.terms.agreement_id if f4.terms else '' }}"
+        data-ledger-next-versions='{{ (f4.ledger_next_versions or {}) | tojson }}'>
     <input type="hidden" name="project" value="{{ f4.project_code }}">
     <input type="hidden" name="csrf_token" value="{{ f4.csrf_token }}">
     <input type="hidden" name="content_hash" value="{{ f4.context.identity.composite_hash }}">

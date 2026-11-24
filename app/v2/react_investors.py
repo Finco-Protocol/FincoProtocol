@@ -33,6 +33,8 @@ def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
 
 def _workflow(view: dict[str, Any]) -> dict[str, str]:
     """Where the saved agreement stands relative to the Last Run (mirrors the Legacy S7-07 states; never claims more)."""
+    if view.get("history_id"):
+        return {"state": "HISTORICAL", "text": "Historical committed agreement: the agreement recorded in this immutable Run. It cannot be edited and no later change affects it."}
     terms, evidence = view["terms"], view["evidence"]
     recorded = evidence["agreement"] if evidence else None
     if terms is None:
@@ -49,22 +51,25 @@ def _workflow(view: dict[str, Any]) -> dict[str, str]:
 
 
 @router.get("/model-react/investors/agreement")
-async def react_investor_agreement(request: Request, project: str):
+async def react_investor_agreement(request: Request, project: str, history_id: str | None = None):
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from fastapi.responses import HTMLResponse
+    from urllib.parse import urlencode
 
     from app.auth import generate_csrf_token, resolve_request_session
+    from app.model_v2.investor_f4 import EVIDENCE_KEY
     from app.persistence.run_history_repository import RunHistoryError
     from app.v2.investor_f4_router import _load
     from app.v2.post_run_context import PostRunContextChanged
     from app.v2.react_workspace_router import _jsonable
+    from app.workbook.runtime_projection import thaw_runtime_payload
     from app.workbook.workbook_identity import WorkbookIdentityError
 
     if resolve_request_session(request) is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
     try:
-        view, error = _load(request, project)
+        view, error = _load(request, project, history_id)
     except (ValueError, TypeError, KeyError, PermissionError, RunHistoryError, WorkbookIdentityError, PostRunContextChanged):
         return _json({"ok": False, "code": "INVESTOR_EVIDENCE_UNAVAILABLE",
                       "message": "Investor evidence or the workspace identity changed. Reload to refresh."}, 503)
@@ -83,10 +88,23 @@ async def react_investor_agreement(request: Request, project: str):
         sponsor = build_sponsor_view(fin, context.runtime_result)
         workflow = _workflow(view)
         terms = view["terms"]
+        export_params = {"project": view["project_code"]}
+        if history_id:
+            export_params["history_id"] = history_id
+        history_items = [
+            {
+                "history_id": run.history_id,
+                "ran_at": run.ran_at,
+                "scenario_name": run.active_scenario_name or "Base",
+                "has_investor_evidence": EVIDENCE_KEY in thaw_runtime_payload(getattr(run, "runtime_summary", None) or {}),
+            }
+            for run in (view.get("history") or ())
+        ]
         payload = {
             "ok": True,
             "project": {"code": view["project_code"]},
             "editable": bool(view["editable"]), "state": view["state"],
+            "selected_history_id": history_id,
             "identity": {"content_hash": context.identity.composite_hash, "workbook_version": context.identity.workbook_version,
                          "scenario_name": context.workspace.active_scenario_name},
             "terms": None if terms is None else terms.document(),
@@ -99,9 +117,11 @@ async def react_investor_agreement(request: Request, project: str):
             "unavailable": view["unavailable"],
             "funding": view["funding"],
             "sponsor": sponsor,
+            "history": history_items,
             "save": {"url": "/v2/workbook/investor/agreement", "csrf_token": generate_csrf_token(),
-                     "next_version": (terms.version + 1) if terms else 1, "saved_agreement_id": terms.agreement_id if terms else ""},
-            "export_url": f"/v2/workbook/investor/export?project={view['project_code']}",
+                     "next_version": (terms.version + 1) if terms else 1, "saved_agreement_id": terms.agreement_id if terms else "",
+                     "ledger_next_versions": view.get("ledger_next_versions") or {}},
+            "export_url": f"/v2/workbook/investor/export?{urlencode(export_params)}",
             "not_released": ["Return-of-capital ordering", "Preferences and carry", "NAV / terminal valuation",
                              "Shareholder-loan lender allocation", "Waterfall mechanisms beyond residual common equity"],
         }

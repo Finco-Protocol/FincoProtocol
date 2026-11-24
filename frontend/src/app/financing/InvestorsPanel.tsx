@@ -3,14 +3,16 @@ import { reportAmount, reportEvidence } from "../reportFormatting";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../styles/rcm-financing.css";
 import { StatusNote, useReportDirty, useReportPending, useSingleFlight, useUnresolvedLock, type StatusMessage } from "../workflow/workflowShared";
-import { draftFromTerms, friendlyAgreementError, identityProblems, isSame, serializeAgreement, type AgreementDraft } from "./serializeAgreement";
+import { draftFromTerms, friendlyAgreementError, identityProblems, isSame, resolveNextVersion, serializeAgreement, type AgreementDraft } from "./serializeAgreement";
 import type { InvestorPayload, SponsorMetric } from "./types";
 
 type Read = { ok: true; data: InvestorPayload } | { ok: false; code: string; message?: string };
 
-async function fetchInvestors(project: string): Promise<Read> {
+async function fetchInvestors(project: string, historyId: string | null = null): Promise<Read> {
   try {
-    const response = await fetch(`/v2/model-react/investors/agreement?project=${encodeURIComponent(project)}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const query = new URLSearchParams({ project });
+    if (historyId) query.set("history_id", historyId);
+    const response = await fetch(`/v2/model-react/investors/agreement?${query.toString()}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
     const body = await response.json().catch(() => null) as (InvestorPayload | { code?: string; message?: string }) | null;
     if (response.ok && body && (body as { ok?: boolean }).ok) return { ok: true, data: body as InvestorPayload };
     const failed = (body ?? {}) as { code?: string; message?: string };
@@ -34,6 +36,7 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
   const { precision } = useReportPrecision();
   const money = (value: number | null) => reportAmount(value, precision);
   const [read, setRead] = useState<Read | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AgreementDraft>({ agreementId: "", investors: [], contributions: [] });
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [inFlight, setInFlight] = useState(false);
@@ -42,12 +45,12 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
   const singleFlight = useSingleFlight();
   const shown = useRef("");
 
-  const load = useCallback(async () => {
-    const result = await fetchInvestors(project);
+  const load = useCallback(async (historyId: string | null = selectedHistoryId) => {
+    const result = await fetchInvestors(project, historyId);
     setRead(result);
     return result;
-  }, [project]);
-  useEffect(() => { void load(); }, [load, reloadKey]);
+  }, [project, selectedHistoryId]);
+  useEffect(() => { void load(selectedHistoryId); }, [load, reloadKey, selectedHistoryId]);
 
   const data = read && read.ok ? read.data : null;
   const baseline = useMemo(() => draftFromTerms(data?.terms ?? null), [data]);
@@ -73,9 +76,15 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
     await singleFlight(async () => {
       setInFlight(true); setStatus(null);
       try {
+        const saveMeta = {
+          agreementId: data.save.saved_agreement_id,
+          nextVersion: data.save.next_version,
+          ledgerNextVersions: data.save.ledger_next_versions,
+        };
+        const expectedVersion = resolveNextVersion(draft.agreementId, saveMeta);
         const body = new URLSearchParams({
           project, csrf_token: data.save.csrf_token, content_hash: data.identity.content_hash,
-          agreement: action === "save" ? serializeAgreement(draft, { agreementId: data.save.saved_agreement_id, nextVersion: data.save.next_version }) : "",
+          agreement: action === "save" ? serializeAgreement(draft, saveMeta) : "",
           action,
         });
         let response: Response;
@@ -94,13 +103,12 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
         if (!response.ok) {
           const failure = await response.json().catch(() => null) as { error?: string } | null;
           setStatus({ tone: response.status === 409 ? "conflict" : "error", text: `${friendlyAgreementError(failure?.error)} Nothing was changed.` });
-          if (response.status === 409) void load();
+          if (response.status === 409) void load(null);
           return;
         }
-        const fresh = await load();
-        const expectedVersion = data.save.next_version;
+        const fresh = await load(null);
         const confirmed = fresh.ok && (action === "remove" ? fresh.data.terms === null
-          : fresh.data.terms !== null && fresh.data.terms.agreement_id === draft.agreementId && fresh.data.terms.version === (draft.agreementId === data.save.saved_agreement_id ? expectedVersion : 1));
+          : fresh.data.terms !== null && fresh.data.terms.agreement_id === draft.agreementId && fresh.data.terms.version === expectedVersion);
         if (!confirmed) { setLocked(true); setStatus({ tone: "conflict", text: "Result UNKNOWN — the server accepted the request but the fresh read could not confirm it. Reload to reconcile." }); return; }
         setStatus({ tone: "ok", text: action === "save" ? "Agreement saved and read back. It is NOT in any Run yet — press Run to produce investor evidence." : "Working agreement removed." });
         onSaved();
@@ -123,14 +131,25 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
           {data.draft_warning.message}
         </p>
       )}
-      {!data.editable && <p className="rx-status rx-status-conflict" data-investors-readonly="true">Read-only: templates cannot be edited. Start a project from this template to define an agreement.</p>}
+      {data.draft_warning?.advisory_message && (
+        <p className="rx-status rx-status-conflict" role="status" data-investor-funding-advisory={data.draft_warning.funding_reference_state || data.draft_warning.code}>
+          {data.draft_warning.advisory_message}
+        </p>
+      )}
+      {!data.editable && (
+        <p className="rx-status rx-status-conflict" data-investors-readonly="true">
+          {data.selected_history_id
+            ? "Read-only: viewing an immutable historical Run. Return to Last Run / Working agreement to edit."
+            : "Read-only: templates cannot be edited. Start a project from this template to define an agreement."}
+        </p>
+      )}
       {locked && <p className="rx-status rx-status-conflict" role="alert" data-investors-locked="true">A previous save has an unknown outcome. Reload the workspace to reconcile before editing again.</p>}
 
       <fieldset className="rcm-fieldset" disabled={disabled}>
         <legend>Agreement &amp; holders</legend>
         <label className="rcm-field">Agreement ID
           <input data-inv="agreement_id" maxLength={128} value={draft.agreementId} onChange={(e) => edit({ ...draft, agreementId: e.target.value })} /></label>
-        <p className="rx-note">Saved version {data.terms ? data.terms.version : "— (none)"} · working scenario {data.identity.scenario_name || "Base"} · next Save writes version {draft.agreementId === data.save.saved_agreement_id ? data.save.next_version : 1}.</p>
+        <p className="rx-note">Saved version {data.terms ? data.terms.version : "— (none)"} · working scenario {data.identity.scenario_name || "Base"} · next Save writes version {resolveNextVersion(draft.agreementId, { agreementId: data.save.saved_agreement_id, nextVersion: data.save.next_version, ledgerNextVersions: data.save.ledger_next_versions })}.</p>
         <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Investors (scrolls horizontally)">
           <table className="rcm-table" data-inv-holders="true">
             <thead><tr><th scope="col" className="rcm-left">Investor ID</th><th scope="col">Legal ownership %</th><th scope="col">Commitment kEUR</th><th scope="col"><span className="rx-sr-only">Remove</span></th></tr></thead>
@@ -206,6 +225,29 @@ export function InvestorsPanel({ project, reloadKey, onSaved }: { project: strin
           <p className="rx-note">Realized MOIC = cumulative net cash distributions ÷ actual paid-in capital; no NAV or total-value multiple. Return of capital is zero under residual-only terms.</p>
         </>
       ) : <p className="rx-empty" role="status" data-investor-evidence-unavailable="true">{data.unavailable}</p>}
+
+      {data.history && data.history.length > 0 && (
+        <details className="rcm-details" data-investor-history="true">
+          <summary>Immutable investor Run History ({data.history.length})</summary>
+          <ul>
+            <li>
+              <button type="button" className="rx-button rx-button-secondary" data-inv-history-current="true"
+                disabled={!data.selected_history_id} onClick={() => setSelectedHistoryId(null)}>
+                Last Run / Working agreement
+              </button>
+            </li>
+            {data.history.map((run) => (
+              <li key={run.history_id}>
+                <button type="button" className="rx-button rx-button-secondary" data-inv-history-id={run.history_id}
+                  disabled={data.selected_history_id === run.history_id}
+                  onClick={() => setSelectedHistoryId(run.history_id)}>
+                  {run.ran_at} · {run.scenario_name} · {run.has_investor_evidence ? "Investor evidence" : "No F4 agreement"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <h4 className="rcm-h4">Sponsor funding &amp; shareholder loan <span className="rcm-badge rcm-badge-derived">READ ONLY</span></h4>
       <p className="rx-note" data-shl-readonly="true">No shareholder-loan control is editable under the released authority. These are the typed financing inputs and the last Run; undistributed shareholder-loan proceeds are not share-capital returns.</p>

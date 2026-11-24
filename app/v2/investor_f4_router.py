@@ -55,9 +55,30 @@ def _load(request, project, history_id=None):
             if value:
                 funding.append(dict(date=row["date"], paid_in_keur=value))
     from app.model_v2.investor_f4 import assess_contribution_completeness
-    draft_warning = None if selected else assess_contribution_completeness(terms, funding)
+    from app.persistence.investor_agreement_ledger_repository import list_scope_versions
+    from app.persistence.db import get_connection
+    scenario_key = scenario.scenario_id if (scenario is not None and not scenario.is_base_case) else ""
+    ledger_next_versions: dict[str, int] = {}
+    if not selected:
+        with get_connection() as conn:
+            scope_versions = list_scope_versions(
+                conn, owner_id=owner, project_id=record.project_id, scenario_id=scenario_key
+            )
+        ledger_next_versions = {aid: ver + 1 for aid, ver in scope_versions.items()}
+    if terms is not None:
+        ledger_next_versions[terms.agreement_id] = max(
+            ledger_next_versions.get(terms.agreement_id, 1), terms.version + 1
+        )
+    draft_warning = (
+        None
+        if selected
+        else assess_contribution_completeness(
+            terms, funding, workspace_state=context.freshness.state.value
+        )
+    )
     return dict(context=context, record=record, owner=owner, terms=terms, evidence=evidence,
         unavailable=unavailable, funding=funding, draft_warning=draft_warning,
+        ledger_next_versions=ledger_next_versions,
         history=get_run_history(owner, record.project_id, limit=12),
         history_id=history_id, project_code=record.project_code, snapshot_id=snapshot_id,
         state="HISTORICAL" if selected else context.freshness.state.value,
