@@ -983,10 +983,10 @@ async def react_revenue_r04_review(request: Request):
     """
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
-    from app.auth import validate_csrf_token
+    from app.workbook.mutation_csrf import validate_signed_form_token
 
     form = await request.form()
-    if not validate_csrf_token(form.get("csrf_token")):
+    if not validate_signed_form_token(form.get("csrf_token")):
         return _json({"ok": False, "code": "REVENUE_REVIEW_CSRF_INVALID"}, 403)
     project = str(form.get("project") or "").strip()
     user, record, owner, failure = _resolve_project(request, project)
