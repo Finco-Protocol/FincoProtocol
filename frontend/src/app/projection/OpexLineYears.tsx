@@ -5,19 +5,31 @@ import { showKeur } from "../costAmounts";
 import { useCostUnit } from "../CostUnit";
 import { useReportPrecision } from "../ReportPrecision";
 
-/** PR-U2b — Inputs > OPEX > Years, per saved line. The server passes through the same view model the group projection is built from; the browser
- *  only lays the numbers out. Saved lines, technology-driven rows and the six group base amounts are shown apart; nothing is an all-in OPEX figure. */
+/** FINCO38 / PR-U2b — Inputs > OPEX > Years, per saved line with canonical annual OPEX exceptions.
+ *  Server view model supplies escalated base + saved annual overrides (kEUR nominal); browser never
+ *  invents financial outputs. Explicit 0 is distinct from blank/inherited; clearing restores inheritance.
+ *  Save delegates to the canonical atomic CAS writer without running the model; refused Save preserves dirty edits. */
 export type Series = Array<number | null>;
-export interface LineRow { sub_line_id: string; label: string; y1_keur: number; inflation_pct: number; values: Series; source: "saved_line" }
+export interface LineRow {
+  sub_line_id: string; business_code?: string; label: string; y1_keur: number; inflation_pct: number;
+  values: Series; overridden_years?: number[]; source: "saved_line";
+}
 export interface DriverRow { label: string; values: Series; source: "technology_driver" }
 export interface Group {
   code: string; name: string; derived: boolean; has_data: boolean; values: Series; lines: LineRow[]; drivers: DriverRow[];
   placeholder_rows_not_listed: number; reconciles: boolean | null;
 }
 interface Base { group: string; field_id: string; value: string; editable: boolean; used_by_run: boolean; note: string | null }
+export interface AnnualExceptionEntry { line_key: string; year: number; amount_keur: number }
+export interface AnnualExceptionsMeta {
+  editable: boolean; base_token: string; content_hash: string; workbook_version: string;
+  scenario_id: string | null; csrf_token: string | null; endpoint: string;
+  overrides: AnnualExceptionEntry[];
+}
 export interface Payload {
   ok: true; unit: string; years: number[]; groups: Group[]; contingency: { rate_pct: number; by_year: Series };
   totals: { excluding_contingency: Series; including_contingency: Series }; bases: unknown; basis: string;
+  annual_exceptions?: AnnualExceptionsMeta;
 }
 export type Failure = { code: string; message?: string };
 
@@ -36,24 +48,136 @@ function baseRows(bases: unknown): Base[] {
   return Array.isArray(bases) ? (bases as Base[]) : [];
 }
 
-export function OpexLineYears({ project, reloadKey }: { project: string; reloadKey: number }) {
+function cellKey(lineKey: string, year: number): string {
+  return `${lineKey}::${year}`;
+}
+
+export function OpexLineYears({ project, reloadKey, onMutated }: { project: string; reloadKey: number; onMutated?: () => void }) {
   const [unit] = useCostUnit();
   const { precision } = useReportPrecision();
   const cell = (v: number | null | undefined) => (v === null || v === undefined || Number.isNaN(v) ? "—" : showKeur(v, unit, precision));
   const [data, setData] = useState<Payload | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
+  const [editing, setEditing] = useState(false);
+  // Staged overrides: key -> string value ("" means revert to inherited)
+  const [draftEdits, setDraftEdits] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
   useEffect(() => {
     let live = true;
-    void loadOpexLineYears(project).then((r) => { if (!live) return; if ("years" in r) { setData(r); setFailure(null); } else setFailure(r); });
+    void loadOpexLineYears(project).then((r) => {
+      if (!live) return;
+      if ("years" in r) {
+        setData(r);
+        setFailure(null);
+      } else {
+        setFailure(r);
+      }
+    });
     return () => { live = false; };
   }, [project, reloadKey]);
+
   if (failure) return <FriendlyError code={failure.code} message={failure.message} />;
   if (!data) return <p className="rx-boot-loading" role="status" data-opex-lines="loading">Loading OPEX lines by year…</p>;
   const bases = baseRows(data.bases);
+  const meta = data.annual_exceptions;
+  const canEdit = Boolean(meta?.editable && meta?.csrf_token);
+  const savedMap: Record<string, number> = {};
+  for (const ov of meta?.overrides ?? []) {
+    savedMap[cellKey(ov.line_key, ov.year)] = ov.amount_keur;
+  }
+  const dirtyCount = Object.keys(draftEdits).length;
+
+  async function handleSaveAnnual() {
+    if (!meta || !canEdit || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveNote(null);
+    try {
+      const merged: Record<string, number> = { ...savedMap };
+      for (const [k, raw] of Object.entries(draftEdits)) {
+        const trimmed = raw.trim();
+        if (trimmed === "") {
+          delete merged[k];
+        } else {
+          const num = Number(trimmed);
+          if (!Number.isFinite(num) || num < 0) {
+            setSaveError(`Invalid kEUR amount "${raw}" — enter a finite number >= 0 or clear to inherit.`);
+            setSaving(false);
+            return;
+          }
+          merged[k] = num;
+        }
+      }
+      const overrides: AnnualExceptionEntry[] = Object.entries(merged).map(([k, amount_keur]) => {
+        const [line_key, yrStr] = k.split("::");
+        return { line_key, year: Number(yrStr), amount_keur };
+      });
+      const resp = await fetch(meta.endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          project,
+          csrf_token: meta.csrf_token,
+          workbook_version: meta.workbook_version,
+          content_hash: meta.content_hash,
+          scenario_id: meta.scenario_id,
+          base_token: meta.base_token,
+          overrides,
+        }),
+      });
+      const body = await resp.json().catch(() => null) as { ok?: boolean; message?: string; code?: string } | null;
+      if (!resp.ok || !body?.ok) {
+        // Preserve dirty draftEdits on refusal (never silently discard)
+        setSaveError(body?.message || `Save refused (${body?.code || resp.status}). Your edits are preserved.`);
+        setSaving(false);
+        return;
+      }
+      setDraftEdits({});
+      setSaveNote("Annual OPEX overrides saved (Run not executed; Run model to refresh outputs).");
+      const fresh = await loadOpexLineYears(project);
+      if ("years" in fresh) setData(fresh);
+      onMutated?.();
+    } catch {
+      setSaveError("Network error while saving annual OPEX overrides. Your edits are preserved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="rx-card rcm-analysis" data-opex-lines="ready" aria-label="OPEX lines by year">
-      <h3>OPEX lines by year</h3>
+      <div className="cw-head">
+        <h3>OPEX lines by year</h3>
+        {canEdit && (
+          <div data-opex-annual-controls="true" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" className="fm-btn" data-opex-annual-toggle="true" onClick={() => { setEditing((v) => !v); setSaveError(null); }}>
+              {editing ? "Done editing annual overrides" : "Edit annual overrides (kEUR)"}
+            </button>
+            {editing && dirtyCount > 0 && (
+              <>
+                <button type="button" className="fm-btn fm-btn-primary" data-opex-annual-save="true" disabled={saving} onClick={() => void handleSaveAnnual()}>
+                  {saving ? "Saving…" : `Save annual overrides (${dirtyCount})`}
+                </button>
+                <button type="button" className="fm-btn" data-opex-annual-discard="true" disabled={saving} onClick={() => { setDraftEdits({}); setSaveError(null); }}>
+                  Discard unsaved
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       <p className="rx-note" data-opex-lines-basis="true">{data.basis}</p>
+      {editing && (
+        <p className="rx-note" data-opex-annual-help="true">
+          Enter nominal annual totals in <strong>kEUR</strong> to override a single operating year (explicit <code>0</code> overrides to zero; clear a cell to restore escalated inheritance).
+        </p>
+      )}
+      {saveError && <p className="rx-error" role="alert" data-opex-annual-error="true">{saveError}</p>}
+      {saveNote && <p className="rx-note" role="status" data-opex-annual-saved="true">{saveNote}</p>}
       <div className="rcm-scroll" tabIndex={0} role="region" aria-label="OPEX by saved line and year">
         <table className="fm-table rcux-opex-proj" data-opex-lines-table="true">
           <thead><tr><th scope="col">Line</th><th scope="col" className="fm-num">Escalation</th>{data.years.map((y) => <th key={y} scope="col" className="fm-num">Y{y}</th>)}</tr></thead>
@@ -64,12 +188,43 @@ export function OpexLineYears({ project, reloadKey }: { project: string; reloadK
                 <td />
                 {g.values.map((v, i) => <td key={i} className="fm-num"><strong>{cell(v)}</strong></td>)}
               </tr>,
-              ...g.lines.map((l) => (
-                <tr key={l.sub_line_id} data-opex-line={l.sub_line_id} data-opex-line-source="saved_line">
-                  <th scope="row" className="u2-opex-line">{l.label}</th>
-                  <td className="fm-num">{l.inflation_pct}%</td>
-                  {l.values.map((v, i) => <td key={i} className="fm-num">{cell(v)}</td>)}
-                </tr>)),
+              ...g.lines.map((l) => {
+                const lineKey = l.business_code ?? l.sub_line_id;
+                const ovSet = new Set(l.overridden_years ?? []);
+                return (
+                  <tr key={l.sub_line_id} data-opex-line={l.sub_line_id} data-opex-line-code={lineKey} data-opex-line-source="saved_line">
+                    <th scope="row" className="u2-opex-line">{l.label}</th>
+                    <td className="fm-num">{l.inflation_pct}%</td>
+                    {l.values.map((v, i) => {
+                      const yr = data.years[i];
+                      const k = cellKey(lineKey, yr);
+                      const isOverridden = ovSet.has(yr);
+                      const staged = Object.prototype.hasOwnProperty.call(draftEdits, k) ? draftEdits[k] : undefined;
+                      const effectiveState = staged !== undefined ? (staged.trim() === "" ? "inherited" : "override") : (isOverridden ? "override" : "inherited");
+                      return (
+                        <td key={i} className="fm-num" data-opex-annual-cell={`${lineKey}:${yr}`} data-opex-annual-state={effectiveState}>
+                          {editing && canEdit ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              aria-label={`${l.label} Year ${yr} nominal kEUR`}
+                              data-opex-annual-input={`${lineKey}:${yr}`}
+                              value={staged !== undefined ? staged : (isOverridden ? String(savedMap[k]) : "")}
+                              placeholder={v === null || v === undefined ? "—" : String(Number(v.toFixed(2)))}
+                              onChange={(e) => setDraftEdits((prev) => ({ ...prev, [k]: e.target.value }))}
+                              style={{ width: "5.5rem", textAlign: "right", fontWeight: effectiveState === "override" ? 700 : 400 }}
+                            />
+                          ) : (
+                            <span title={isOverridden ? "Explicit annual override (nominal kEUR)" : "Inherited escalated base"}>
+                              {cell(v)}{isOverridden ? " *" : ""}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              }),
               ...g.drivers.map((d, n) => (
                 <tr key={`${g.code}-d${n}`} data-opex-line-source="technology_driver">
                   <th scope="row" className="u2-opex-line">{d.label} <span className="rx-note">(from technology inputs, read-only)</span></th>

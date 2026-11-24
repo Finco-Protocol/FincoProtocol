@@ -66,7 +66,12 @@ export function OpexRunProjection({ project, reloadKey }: { project: string; rel
     // Defence in depth: never render anything fetched for a different identity.
     return <p className="rx-boot-loading" role="status" data-opex-run="loading">Loading the Last-Run OPEX…</p>;
   }
-  if (stage.phase === "failed") return <FriendlyError code={stage.failure.code} message={stage.failure.message} />;
+  if (stage.phase === "failed") {
+    if (stage.failure.code === "G10_RUN_OPEX_PANEL_DISABLED") {
+      return <p className="rx-note" data-opex-run="disabled">The Last-Run OPEX panel is not enabled for this environment.</p>;
+    }
+    return <FriendlyError code={stage.failure.code} message={stage.failure.message} />;
+  }
   if (stage.phase === "loading") return <p className="rx-boot-loading" role="status" data-opex-run="loading">Loading the Last-Run OPEX…</p>;
   const data = stage.data;
   const stale = data.freshness.state === "STALE";

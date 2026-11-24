@@ -238,6 +238,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
             annual_inflation=item.annual_inflation,
             step_changes=tuple(item.step_changes),
             percentage_of_opex=item.percentage_of_opex,
+            annual_overrides=tuple(getattr(item, "annual_overrides", ()) or ()),
         )
         for item in opex_in.items
     )
@@ -584,7 +585,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     # Step 5: OPEX via finco_core leaf.
     from finco_core.opex.projections import opex_schedule_period
     if engine.dated_life_end_exclusive is not None:
-        if getattr(inputs.opex, "hierarchical_opex_capability", None) is not None:
+        if getattr(inputs.opex, "hierarchical_model", None) is not None:
             raise ValueError(
                 "DATE_AUTHORITY_HIERARCHICAL_OPEX_UNSUPPORTED: hierarchical OPEX is not validated on OD-TIME-01/v1"
             )

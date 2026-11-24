@@ -515,9 +515,15 @@ class OpexItem:
     # percentage_of_opex = X means: amount = X * sum_of_other_fixed_opex_items (excl. self)
     # This is mutually exclusive with step_changes — do not use both on same item.
     percentage_of_opex: float = 0.0
+    # Explicit nominal annual overrides: tuple of (1-based operating_year, nominal_annual_keur).
+    # Overrides that year only (does NOT shift base or re-apply inflation; explicit 0.0 valid).
+    annual_overrides: tuple[tuple[int, float], ...] = ()
 
     def amount_at_year(self, year: int) -> float:
         """Return operating cost for a 1-based operating year."""
+        for ov_year, ov_amount in self.annual_overrides:
+            if year == ov_year:
+                return max(0.0, float(ov_amount))
         for step_year, amount in self.step_changes:
             if year == step_year:
                 return amount

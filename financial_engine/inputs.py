@@ -114,6 +114,7 @@ class OpexLineInput:
     annual_inflation: float
     step_changes: tuple[tuple[int, float], ...]
     percentage_of_opex: float
+    annual_overrides: tuple[tuple[int, float], ...] = ()
 
 
 @dataclass(frozen=True)

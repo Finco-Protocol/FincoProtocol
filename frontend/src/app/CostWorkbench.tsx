@@ -56,7 +56,7 @@ export function CostWorkbench({ project, sheet, view, protectedReference, reload
       {view === "years" && (
         <div data-opex-years="true">
           <OpexProjection project={project} reloadKey={reloadKey} />
-          <OpexLineYears project={project} reloadKey={reloadKey} />
+          <OpexLineYears project={project} reloadKey={reloadKey} onMutated={onMutated} />
           <OpexRunProjection project={project} reloadKey={reloadKey} />
         </div>
       )}

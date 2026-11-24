@@ -216,6 +216,7 @@ def from_project_inputs(
             annual_inflation=item.annual_inflation,
             step_changes=tuple(item.step_changes),
             percentage_of_opex=item.percentage_of_opex,
+            annual_overrides=tuple(getattr(item, "annual_overrides", ()) or ()),
         )
         for item in inputs.opex
     )

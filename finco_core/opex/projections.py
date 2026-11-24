@@ -28,6 +28,12 @@ def opex_item_amount_at_year(item: OpexItem, year_index: int) -> float:
     if year_index <= 0:
         return 0.0
 
+    # FINCO38: explicit nominal annual exception overrides this year only (no inflation re-applied,
+    # does not alter subsequent years' escalated base; absent/deleted year inherits escalated base).
+    for ov_year, ov_amount in getattr(item, "annual_overrides", ()) or ():
+        if ov_year == year_index:
+            return max(0.0, float(ov_amount))
+
     applicable_steps = sorted(
         ((step_year, amount) for step_year, amount in item.step_changes if step_year <= year_index),
         key=lambda pair: pair[0],

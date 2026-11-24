@@ -3365,6 +3365,28 @@ async def v2_workbook_run(
     if folded_opex is not override.opex:
         override = _dc_replace(override, opex=folded_opex)
 
+    from app.opex_annual_exceptions import (
+        OpexAnnualExceptionError,
+        apply_annual_exceptions_to_opex,
+        effective_raw as _opex_annual_effective_raw,
+    )
+    _opex_ann_raw = _opex_annual_effective_raw(
+        pis_draft.snapshot_origin, sc_rec if active_scenario_id else None
+    )
+    if _opex_ann_raw:
+        try:
+            override = _dc_replace(
+                override,
+                opex=apply_annual_exceptions_to_opex(
+                    override.opex,
+                    _opex_ann_raw,
+                    horizon_years=override.info.horizon_years,
+                ),
+            )
+        except OpexAnnualExceptionError as exc:
+            msg = str(exc)
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
     from app.workbook.bankability_config import SNAPSHOT_KEY, assert_materialized_fee_authority
     try:
         assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))

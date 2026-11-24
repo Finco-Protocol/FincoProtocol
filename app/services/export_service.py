@@ -342,6 +342,22 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
                 opex=apply_opex_contingency(project_inputs.opex, authority["opex_pct"]),
             )
 
+    from app.opex_annual_exceptions import SNAPSHOT_KEY as _OPEX_ANN_KEY, apply_annual_exceptions_to_opex
+    _ann_raw = (
+        sc_overrides.get(_OPEX_ANN_KEY)
+        if _OPEX_ANN_KEY in (sc_overrides or {})
+        else (identity_dict.get("scalar") or {}).get(_OPEX_ANN_KEY)
+    )
+    if _ann_raw:
+        project_inputs = _dc.replace(
+            project_inputs,
+            opex=apply_annual_exceptions_to_opex(
+                project_inputs.opex,
+                str(_ann_raw),
+                horizon_years=project_inputs.info.horizon_years,
+            ),
+        )
+
     return project_inputs
 
 
