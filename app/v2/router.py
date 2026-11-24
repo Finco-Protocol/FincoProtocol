@@ -1339,7 +1339,7 @@ def _build_revenue_contract_editor(pis, ws):
             else:
                 editor_inputs = pis.to_projectinputs()
             project_cod = editor_inputs.info.cod_date.isoformat()
-            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs)).periods() if p.is_operation]
+            operating = [p for p in _build_period_engine(from_project_inputs(editor_inputs), contract_config_json=getattr(config, "canonical_json", "") if config else "").periods() if p.is_operation]
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
                 operating_starts = [p.start_date.isoformat() for p in operating]
@@ -1352,7 +1352,8 @@ def _build_revenue_contract_editor(pis, ws):
                 if config:
                     if getattr(config, "has_contractual_indexation", False):
                         try:
-                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date)
+                            config.validate_axis(operating, project_cod=editor_inputs.info.cod_date,
+                                                 date_aware=bool(getattr(config, "has_absolute_annual_quantity", False)))
                         except ValueError as exc:
                             calendar_preview_error = str(exc)
                     for dated in config.streams:
@@ -2147,6 +2148,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     _recovery = _diagnose_draft(pis.to_snapshot())
     if _recovery is not None:
         raw_err = request.query_params.get("v2_err", "")
+        from app.auth import generate_csrf_token
         return _templates.TemplateResponse(
             request=request,
             name="workbook_recovery.html",
@@ -2159,6 +2161,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
                 "workbook_version": pis.workbook_version,
                 "content_hash": pis.content_hash,
                 "update_csrf_token": mutation_token(request, project, "workbook-update"),
+                "contracts_csrf_token": generate_csrf_token(),
                 "flash_error": urllib.parse.unquote_plus(raw_err)[:500] if raw_err else "",
                 "library_url": "/library",
             },

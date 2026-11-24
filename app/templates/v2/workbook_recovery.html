@@ -20,7 +20,17 @@
           <strong>{{ issue.label }}</strong>{% if issue.unit %} <small>({{ issue.unit }})</small>{% endif %}
           <div>Stored value: <code>{{ issue.stored_value if issue.stored_value != '' else '(empty)' }}</code></div>
           <div>Reason: {{ issue.reason }}</div>
-          {% if issue.repairable and project_editable %}
+          {% if issue.repairable and project_editable and issue.field_id == 'revenue.multistream.contracts' %}
+          <form method="post" action="/v2/workbook/revenue/contracts" data-testid="workbook-recovery-book-form">
+            <input type="hidden" name="project" value="{{ project_code }}">
+            <input type="hidden" name="content_hash" value="{{ content_hash }}">
+            <input type="hidden" name="csrf_token" value="{{ contracts_csrf_token }}">
+            <input type="hidden" name="action" value="save">
+            <label for="rb-{{ loop.index }}">Replacement contract book (complete JSON; validated as a whole, nothing is clipped or reallocated)</label>
+            <textarea id="rb-{{ loop.index }}" name="contracts" rows="12" required>{{ issue.stored_value }}</textarea>
+            <button type="submit">Replace contract book</button>
+          </form>
+          {% elif issue.repairable and project_editable %}
           <form method="post" action="/v2/workbook/update" data-testid="workbook-recovery-form">
             <input type="hidden" name="project" value="{{ project_code }}">
             <input type="hidden" name="field_id" value="{{ issue.field_id }}">

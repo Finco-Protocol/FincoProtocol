@@ -115,6 +115,12 @@ def full_generation_schedule(
     schedule = {}
     hours = _selected_operating_hours(inputs.technical, yield_scenario)
 
+    # OD-TIME-01 versioned date authority (R04 projects only): actual-day, COD-anniversary-degradation generation from the SAME
+    # dated generator the P50 cap uses; the selected case changes hours only.  Legacy projects fall through unchanged.
+    from finco_core.engine.date_authority import date_authority_active, dated_generation_schedule
+    if date_authority_active(inputs):
+        return dated_generation_schedule(inputs, engine, hours)
+
     for period in engine.periods():
         if not period.is_operation:
             schedule[period.index] = 0.0
@@ -199,17 +205,24 @@ def revenue_decomposition_schedule(
     decompositions: dict[int, dict[str, float | bool]] = {}
     generation_schedule = full_generation_schedule(inputs, engine)
     multistream = None
+    _dated = getattr(engine, "dated_life_end_exclusive", None) is not None
+    if _dated:
+        from finco_core.engine.date_authority import legacy_operating_intervals, dated_generation_for_interval
+        _intervals = legacy_operating_intervals(engine, inputs.info.cod_date)
+        _hours = _selected_operating_hours(inputs.technical)
     if getattr(inputs.revenue, "multistream_config_json", ""):
         from domain.revenue.multistream_runtime import parse_config
         multistream = parse_config(inputs.revenue.multistream_config_json)
         if getattr(multistream, "has_contractual_indexation", False):
             if engine.cod != inputs.info.cod_date:
                 raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
-            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date)
+            multistream.validate_axis(engine.periods(), project_cod=inputs.info.cod_date, date_aware=_dated)
         else:
-            multistream.validate_axis(engine.periods())
+            multistream.validate_axis(engine.periods(), date_aware=_dated)
         if getattr(multistream, "has_rec", False) and inputs.revenue.co2_enabled:
             raise ValueError("REVENUE_V3_REC_LEGACY_CONFLICT: explicit REC cannot coexist with legacy certificate/CO2 authority")
+        if getattr(multistream, "has_absolute_annual_quantity", False):
+            multistream.validate_global_p50_cap(inputs)
 
     missing_merchant_years: set[int] = set()
     for period in engine.periods():
@@ -277,7 +290,12 @@ def revenue_decomposition_schedule(
         product_revenue_keur = 0.0
         if multistream is not None:
             from domain.revenue.plan import RevenueStreamType
-            result = multistream.evaluate(period, generation_mwh)
+            if _dated:
+                result = multistream.evaluate_dated(
+                    period, _intervals[period.index], cod=inputs.info.cod_date,
+                    generation_for=lambda iv: dated_generation_for_interval(inputs, iv, _hours))
+            else:
+                result = multistream.evaluate(period, generation_mwh)
             ppa_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.PPA]
             merchant_rows = [r for r in result.stream_results if r.stream_type is RevenueStreamType.MERCHANT]
             ppa_revenue_keur = sum(r.stream_revenue_keur for r in ppa_rows)
@@ -423,6 +441,49 @@ def full_revenue_schedule(
     }
 
 
+def contractual_generation_schedule(
+    inputs: ProjectInputs,
+    *,
+    frequency_months: int = 6,
+    yield_scenario: str | None = None,
+) -> tuple[dict[int, float], tuple]:
+    """Compute OD-TIME-01 contractual generation (MWh) on the half-open reporting axis.
+
+    Uses actual calendar days (365/366 per calendar year), COD day included,
+    exact ``COD + horizon_years`` operating end (with Feb 29 clamp), and
+    annual physical degradation stepping at exact COD anniversaries.
+    """
+    from finco_core.engine.contractual_calendar import (
+        build_contractual_reporting_axis,
+        contractual_generation_for_interval,
+        operating_horizon_interval,
+    )
+
+    cod = inputs.info.cod_date
+    horizon_iv = operating_horizon_interval(cod, int(inputs.info.horizon_years))
+    periods = build_contractual_reporting_axis(
+        cod, int(inputs.info.horizon_years), frequency_months=frequency_months
+    )
+    hours = _selected_operating_hours(inputs.technical, yield_scenario)
+    avail = inputs.technical.combined_availability
+    deg = inputs.technical.pv_degradation
+    cap = inputs.technical.capacity_mw
+
+    schedule: dict[int, float] = {}
+    for p in periods:
+        mwh, _ = contractual_generation_for_interval(
+            p.interval,
+            cod=cod,
+            capacity_mw=cap,
+            annual_hours=hours,
+            combined_availability=avail,
+            annual_degradation=deg,
+            horizon_end_exclusive=horizon_iv.end_exclusive,
+        )
+        schedule[p.index] = mwh
+    return schedule, periods
+
+
 __all__ = [
     "period_generation",
     "annual_generation_mwh",
@@ -430,4 +491,5 @@ __all__ = [
     "full_generation_schedule",
     "full_revenue_schedule",
     "revenue_decomposition_schedule",
+    "contractual_generation_schedule",
 ]

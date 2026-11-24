@@ -347,7 +347,10 @@ async def model_input_import_apply(
     except (ImportReviewError, BatchApplyError, FieldValidationError,
             StaleContentError, VersionMismatchError, ProtectedReferenceError,
             NonEditableFieldError, UnknownFieldError, ValueError) as exc:
-        code = getattr(exc, "code", type(exc).__name__)
+        code = getattr(exc, "code", None)
+        if not code:
+            # a typed validation refusal (e.g. R04_GLOBAL_P50_CAP_EXCEEDED: ...) is shown with its own text, not just its class name
+            code = str(exc)[:300] if isinstance(exc, FieldValidationError) and str(exc) else type(exc).__name__
         return _templates.TemplateResponse(
             request=request, name="import_review.html",
             context=_context(request, user, record, ws, stage="upload", error=code),

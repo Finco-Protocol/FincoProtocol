@@ -16,6 +16,7 @@ import { sameSource, type DocumentSource } from "../editing/pendingEdits";
 import { ppaBaselines, ppaStageInputs } from "../editing/ppaStaging";
 import { plain } from "../productLanguage";
 import { calendarFrom, dateGuidance, type DateGuidance } from "./contractDates";
+import { R04CapReview } from "./R04CapReview";
 import {
   applyPpaType, buildContractPayload, contractClass, countContractEdits, duplicatePpa, newPpaStream, parseContractModel,
   ppaTypeState, PPA_TYPE_UNAVAILABLE, streamSummary, validateContractModel, type ContractModel, type PpaTypeValue, type StreamDraft,
@@ -80,6 +81,8 @@ function DateHelp({ guidance, readOnly, onUse }: { guidance: DateGuidance | null
 function withSourceDefaults(model: ContractModel): ContractModel {
   return { ...model, streams: model.streams.map((st) => (st.isNew && st.source_ref.trim() === "" ? { ...st, source_ref: "Entered in FINCO workspace" } : st)) };
 }
+
+const isAnnual = (s: StreamDraft) => s.annual_amount.trim() !== "" || s.annual_unit !== "";
 
 function cloneModel(model: ContractModel): ContractModel {
   return JSON.parse(JSON.stringify(model)) as ContractModel;
@@ -396,16 +399,45 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
               <div className="wf-grid ws2-ppa-basic">
                 <Field id={`${pid}-start`} label="Start date" unit="YYYY-MM-DD" error={err(i, "start_date")}>
                   {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.start_date} disabled={readOnly} onChange={(e) => update(i, { start_date: e.target.value })} />
-                    <DateHelp guidance={dateGuidance("start_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { start_date: d })} /></>}
+                    <DateHelp guidance={isAnnual(s) ? null : dateGuidance("start_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { start_date: d })} /></>}
                 </Field>
                 <Field id={`${pid}-end`} label="End date" unit="YYYY-MM-DD, exclusive" error={err(i, "end_date")}>
                   {(p) => <><input {...p} className="fm-input" inputMode="numeric" placeholder="YYYY-MM-DD" value={s.end_date} disabled={readOnly} onChange={(e) => update(i, { end_date: e.target.value })} />
-                    <DateHelp guidance={dateGuidance("end_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { end_date: d })} /></>}
+                    <DateHelp guidance={isAnnual(s) ? null : dateGuidance("end_date", s.start_date, s.end_date, calendar)} readOnly={readOnly} onUse={(d) => update(i, { end_date: d })} /></>}
                 </Field>
+                {s.type === "ppa" && !s.curve && (technology === "solar" || technology === "wind") && (
+                  <Field id={`${pid}-qmode`} label="Contract volume basis" error={undefined}>
+                    {(p) => (
+                      <select {...p} className="fm-input" value={s.annual_amount.trim() !== "" || s.annual_unit !== "" ? "annual" : "share"} disabled={readOnly} data-ppa-quantity-mode="true"
+                              onChange={(e) => update(i, e.target.value === "annual"
+                                ? { volume_share: "", annual_amount: "", annual_unit: "MWh" }
+                                : { annual_amount: "", annual_unit: "", volume_share: "" })}>
+                        <option value="share">Share of generation (%)</option>
+                        <option value="annual">Fixed annual quantity (MWh / GWh)</option>
+                      </select>
+                    )}
+                  </Field>
+                )}
+                {isAnnual(s) ? (
+                  <>
+                    <Field id={`${pid}-qty`} label="Annual quantity" unit="per contract year, exact decimal" error={err(i, "annual_amount")}>
+                      {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.annual_amount} disabled={readOnly} data-ppa-annual-amount="true"
+                                     onChange={(e) => update(i, { annual_amount: e.target.value })} />}
+                    </Field>
+                    <Field id={`${pid}-unit`} label="Quantity unit" error={err(i, "annual_unit")}>
+                      {(p) => (
+                        <select {...p} className="fm-input" value={s.annual_unit} disabled={readOnly} data-ppa-annual-unit="true" onChange={(e) => update(i, { annual_unit: e.target.value })}>
+                          <option value="MWh">MWh / year</option><option value="GWh">GWh / year</option>
+                        </select>
+                      )}
+                    </Field>
+                  </>
+                ) : (
                 <Field id={`${pid}-share`} label="Contracted volume share" unit="%, 0–100" error={err(i, "volume_share")} hint={s.type === "merchant" ? "Leave blank for the residual share." : undefined}>
                   {(p) => <PercentInput id={p.id} canonical={s.volume_share} allowEmpty={s.type === "merchant"} disabled={readOnly}
                                         describedBy={p["aria-describedby"]} invalid={p["aria-invalid"]} onChange={setPct(i, "volume_share")} />}
                 </Field>
+                )}
                 <Field id={`${pid}-price`} label={s.curve ? "Base tariff (reference)" : "Tariff"} unit="€/MWh" error={err(i, "price_eur_mwh")}>
                   {(p) => <input {...p} className="fm-input" inputMode="decimal" value={s.price_eur_mwh} disabled={readOnly} onChange={(e) => update(i, { price_eur_mwh: e.target.value })} />}
                 </Field>
@@ -437,7 +469,7 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
                 </p>
               )}
               {s.curve && renderCurve(i, s)}
-              {!s.curve && model.version === 2 && s.type === "ppa" && preserved.length === 0 && (
+              {!s.curve && model.version === 2 && s.type === "ppa" && preserved.length === 0 && !model.streams.some(isAnnual) && (
                 <button type="button" className="fm-btn" disabled={readOnly} onClick={() => choose("scheduled")}>
                   Switch to a scheduled price curve
                 </button>
@@ -447,6 +479,10 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
             </Fragment>
           );
         })}
+        {model.streams.some(isAnnual) && !protectedReference && (
+          <R04CapReview project={project} csrfToken={save.csrf_token} contentHash={save.content_hash}
+                        contractsJson={Object.keys(validateContractModel(withSourceDefaults(model))).length === 0 ? buildContractPayload(baseRaw, withSourceDefaults(model)) : null} />
+        )}
         <div className="fm-toolbar wf-toolbar" style={{ flexWrap: "wrap" }}>
           <button type="button" className="fm-btn fm-btn-primary" disabled={readOnly || refreshing || (!isCreate && editCount === 0)}
                   data-ppa-save="true" onClick={() => void submit(model, baseRaw)}>

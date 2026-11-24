@@ -67,7 +67,7 @@ _PHASE_2A_UNAVAILABLE = ("tax_and_cfads", "financing", "financial_statements", "
 _PHASE_2B_UNAVAILABLE = ("financing", "financial_statements", "returns")
 
 
-def _build_period_engine(inputs: OperatingModelInput):
+def _build_period_engine(inputs: OperatingModelInput, *, contract_config_json=None):
     """Build a PeriodEngine from the clean input contract."""
     from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency as _PF
     from finco_core.engine.period_engine import PeriodAxisConvention as _PAC
@@ -90,6 +90,8 @@ def _build_period_engine(inputs: OperatingModelInput):
             period_axis_convention=_PAC(cal.period_axis_convention.value),
             operating_calendar_policy=policy,
         )
+    from finco_core.engine.date_authority import dated_life_end_exclusive
+    dated_end = dated_life_end_exclusive(_cod_date(cal), cal.horizon_years, contract_config_json if contract_config_json is not None else getattr(inputs.revenue, "multistream_config_json", ""))
     return PeriodEngine(
         financial_close=cal.financial_close,
         construction_months=cal.construction_months,
@@ -98,6 +100,7 @@ def _build_period_engine(inputs: OperatingModelInput):
         frequency=_PF.SEMESTRIAL,
         cod_date=cal.cod_date,
         period_axis_convention=_PAC(cal.period_axis_convention.value),
+        dated_life_end_exclusive=dated_end,
     )
 
 
@@ -389,7 +392,7 @@ def _build_ppa_tariff_schedule(
     return tuple(schedule)
 
 
-def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tuple[dict, dict]:
+def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list, engine=None) -> tuple[dict, dict]:
     """Compute per-period book and tax depreciation using build_depreciation_schedule.
 
     Uses the same straight-line, day-fraction-based formula as the legacy engine.
@@ -419,6 +422,9 @@ def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tu
             )
             for item in capex_item_defs
         )
+        if engine is not None and engine.dated_life_end_exclusive is not None:
+            from finco_core.engine.date_authority import dated_depreciation_schedule
+            return dated_depreciation_schedule(items, engine, cod=engine.cod, senior_tenor_years=dep.financial_cost_useful_life_years)
         annual = build_depreciation_schedule(
             capex_items=items,
             horizon_years=inputs.calendar.horizon_years,
@@ -533,6 +539,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         periods_per_year=engine.periods_per_year,
         year_alignment=engine.year_alignment,
         expected_economic_end=engine.economic_end_date,
+        dated_life_end_exclusive=engine.dated_life_end_exclusive,
     )
     canonical_indices = tuple(p.index for p in periods_meta)
 
@@ -570,7 +577,11 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
 
     # Step 5: OPEX via finco_core leaf.
     from finco_core.opex.projections import opex_schedule_period
-    opex_by_idx = opex_schedule_period(proxy, engine)
+    if engine.dated_life_end_exclusive is not None:
+        from finco_core.engine.date_authority import dated_opex_schedule
+        opex_by_idx = dated_opex_schedule(proxy, engine)
+    else:
+        opex_by_idx = opex_schedule_period(proxy, engine)
     if native_bess:
         for idx, row in bess_rows.items():
             opex_by_idx[idx] += sum(float(row[key]) for key in (
@@ -594,7 +605,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     }
 
     # Step 7: Book and tax depreciation via build_depreciation_schedule leaf.
-    book_dep_by_idx, tax_dep_by_idx = _compute_depreciation(inputs, periods_meta)
+    book_dep_by_idx, tax_dep_by_idx = _compute_depreciation(inputs, periods_meta, engine)
     _validate_schedule_axis(canonical_indices, book_dep_by_idx, label="book_depreciation")
     _validate_schedule_axis(canonical_indices, tax_dep_by_idx, label="tax_depreciation")
 

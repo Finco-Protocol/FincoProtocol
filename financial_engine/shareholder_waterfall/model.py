@@ -989,8 +989,433 @@ def run_project_shareholder_waterfall_model(
                         _odr_waterfall_context, financing=financing, shl_input=shl_model_input,
                         cash=gated_cash_all_periods, schedule=gated_shl_schedule,
                     )
+
+                # ── Phase 2b (S2b / OD-SHL-01): Single SHL schedule authority ──
+                # When reserve movements (DSRA draw/top-up/release) or covenant
+                # lock-up gates cause the waterfall SHL schedule to diverge from
+                # the pre-reserve G2A schedule, iterate Base tax -> CFADS ->
+                # post-senior cash -> DSRA -> DA lock-up -> SHL schedule to a
+                # single authoritative fixed point (outside OD-R attempts so
+                # OD-R finalization state-digest binding remains intact).
+                if (
+                    _odr_attempt is None
+                    and not junior_active
+                    and model_result.shareholder_loan is not None
+                    and model_result.senior_debt is not None
+                    and model_result.axis_contract is not None
+                ):
+                    _initial_reconcile = reconcile_shl_schedules(
+                        model_result.shareholder_loan,
+                        gated_shl_schedule,
+                        has_shl=has_shl,
+                        shl_interest_deductible=(
+                            getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
+                            != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
+                        ),
+                    )
+                    if _initial_reconcile.status == "DIVERGED":
+                        from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
+                        from financial_engine.cfads import calculate_canonical_cfads
+                        from financial_engine.dsra.contracts import CashDsraInput
+                        from financial_engine.dsra.model import run_cash_dsra_model
+                        from financial_engine.dsra.target import (
+                            DsraTargetPolicy,
+                            SCHEDULE_TARGET_POLICIES,
+                            build_dsra_required_balance_schedule,
+                        )
+                        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+                        from financial_engine.inputs import CapitalisationGateEquityInput
+                        from financial_engine.orchestrator import (
+                            _assemble_post_senior_cash_schedules,
+                            _assemble_tax_cfads_schedules,
+                            _build_dynamic_interest_limitation_state,
+                            _dynamic_interest_limitation_delta,
+                            _field_converged_local,
+                            _max_vector_delta,
+                            _merge_financing_tax_input,
+                        )
+                        from financial_engine.results import ShareholderLoanDiagnostics
+                        from financial_engine.tax.engine import calculate_tax
+
+                        _s2b_base_tax_in = build_tax_contract_from_project_inputs(
+                            project_inputs,
+                            complete_financing_interest_will_be_injected=True,
+                        )
+                        if _fi_inputs:
+                            _s2b_base_tax_in = dataclasses.replace(
+                                _s2b_base_tax_in,
+                                period_financing_income=_fi_inputs,
+                            )
+                        _s2b_senior_axis = model_result.axis_contract.senior_axis
+                        _s2b_full_axis = model_result.axis_contract.full_axis
+                        _s2b_senior_int_map = dict(
+                            zip(
+                                model_result.senior_debt.period_indices,
+                                model_result.senior_debt.senior_interest_keur,
+                            )
+                        )
+                        _s2b_eq_in = (
+                            CapitalisationGateEquityInput(
+                                share_capital_keur=fin.share_capital_keur,
+                                legal_reserve_cap_fraction=tax.legal_reserve_cap,
+                            )
+                            if getattr(tax, "interest_limitation_policy", None) is not None
+                            else None
+                        )
+                        _s2b_dyn_enabled = bool(
+                            getattr(_s2b_base_tax_in.policy, "interest_limitation_policy", None) is not None
+                            and _s2b_base_tax_in.policy.interest_limitation_policy.enabled
+                        )
+                        _s2b_lim_state = _build_dynamic_interest_limitation_state(
+                            periods=model_result.periods,
+                            tax_policy=_s2b_base_tax_in.policy,
+                            equity_input=_s2b_eq_in,
+                            senior_interest_by_period=_s2b_senior_int_map,
+                            shl_gross_interest_by_period=dict(
+                                zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_gross_interest_keur)
+                            ),
+                            shl_closing_by_period=dict(
+                                zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_closing_keur)
+                            ),
+                            tax_result=None,
+                        )
+                        _raw_dsra_pol = getattr(fin, "dsra_target_policy", None)
+                        if _raw_dsra_pol is None or _raw_dsra_pol == DsraTargetPolicy.FIXED_AMOUNT.value:
+                            _s2b_target_pol = DsraTargetPolicy.FIXED_AMOUNT
+                        elif _raw_dsra_pol == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value:
+                            _s2b_target_pol = DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+                        else:
+                            _s2b_target_pol = DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS
+                        _s2b_dsra_months = getattr(fin, "dsra_months", 6)
+                        if _s2b_dsra_months is None:
+                            _s2b_dsra_months = 6
+                        _s2b_base_dsra_in = CashDsraInput(
+                            mode=fin.dsra_support_mode,
+                            requirement_keur=resolve_cash_dsra_requirement_keur(project_inputs),
+                            target_policy=_s2b_target_pol,
+                            dsra_months=_s2b_dsra_months,
+                        )
+                        _s2b_max_iter = shl_model_input.maximum_iterations
+                        _s2b_abs_tol = shl_model_input.convergence_tolerance_keur
+                        _s2b_rel_tol = shl_model_input.convergence_relative_tolerance
+                        _s2b_prev_sched = gated_shl_schedule
+                        _s2b_last_cl_delta = float("inf")
+                        _s2b_last_in_delta = float("inf")
+                        _s2b_last_ret_delta = float("inf") if _s2b_dyn_enabled else 0.0
+                        _s2b_last_rat_delta = float("inf") if _s2b_dyn_enabled else 0.0
+                        _s2b_last_gate_mm = 0
+
+                        for _s2b_iter in range(1, _s2b_max_iter + 1):
+                            _s2b_shl_int_map = dict(
+                                zip(_s2b_prev_sched.period_indices, _s2b_prev_sched.shl_gross_interest_keur)
+                            )
+                            _s2b_tax_in = _merge_financing_tax_input(
+                                _s2b_base_tax_in,
+                                _s2b_senior_int_map,
+                                _s2b_shl_int_map,
+                                _s2b_lim_state.limitation_by_period,
+                            )
+                            _s2b_tax_res = calculate_tax(model_result.periods, _s2b_tax_in)
+                            _s2b_cfads_res = calculate_canonical_cfads(
+                                model_result.periods, _s2b_tax_res.period_results
+                            )
+                            _s2b_tax_cfads = _assemble_tax_cfads_schedules(
+                                model_result,
+                                _s2b_tax_res,
+                                _s2b_tax_res.period_results,
+                                _s2b_cfads_res,
+                            )
+                            _s2b_post_sen = _assemble_post_senior_cash_schedules(
+                                model_result.periods,
+                                _s2b_tax_cfads,
+                                model_result.senior_debt,
+                                senior_axis=_s2b_senior_axis,
+                            )
+                            _s2b_dsra_in = _s2b_base_dsra_in
+                            if _s2b_dsra_in.target_policy in SCHEDULE_TARGET_POLICIES:
+                                _s2b_dyn_sched = build_dsra_required_balance_schedule(
+                                    period_indices=_s2b_full_axis,
+                                    period_start_dates=tuple(p.period_start for p in model_result.periods),
+                                    period_end_dates=tuple(p.period_end for p in model_result.periods),
+                                    is_construction=tuple(p.is_construction for p in model_result.periods),
+                                    senior_debt_service_keur=_s2b_post_sen.senior_debt_service_keur,
+                                    coverage_months=_s2b_dsra_in.dsra_months,
+                                    periods_per_year=2,
+                                    policy=_s2b_dsra_in.target_policy,
+                                )
+                                _s2b_dsra_in = dataclasses.replace(
+                                    _s2b_dsra_in, required_balance_schedule=_s2b_dyn_sched
+                                )
+                            _s2b_cash_dsra = run_cash_dsra_model(
+                                _s2b_post_sen, _s2b_dsra_in, model_result.periods
+                            )
+
+                            # Rebuild per-period lookup maps for the updated Base CFADS / DSRA
+                            signed_post_senior_by_idx = map_period_vector(
+                                _s2b_post_sen.period_indices,
+                                _s2b_post_sen.cash_after_senior_before_reserves_keur,
+                                label="shareholder_waterfall.post_senior_cash",
+                                expected_indices=expected_full_axis,
+                            )
+                            _s2b_cfads_by_idx = dict(
+                                zip(_s2b_tax_cfads.period_indices, _s2b_tax_cfads.cfads_keur)
+                            )
+                            _s2b_sd = model_result.senior_debt
+                            _s2b_ds_by_idx = dict(
+                                zip(_s2b_sd.period_indices, _s2b_sd.senior_debt_service_keur)
+                            )
+                            _s2b_new_base_dscr = tuple(
+                                (
+                                    _s2b_cfads_by_idx.get(_si, 0.0) / _sds
+                                    if (_sds := _s2b_ds_by_idx.get(_si, 0.0)) > 0.0
+                                    and math.isfinite(_s2b_cfads_by_idx.get(_si, 0.0))
+                                    else None
+                                )
+                                for _si in _s2b_sd.period_indices
+                            )
+                            _s2b_sd_updated = dataclasses.replace(_s2b_sd, base_dscr=_s2b_new_base_dscr)
+                            base_dscr_by_idx = map_period_vector(
+                                _s2b_sd_updated.period_indices,
+                                _s2b_sd_updated.base_dscr,
+                                label="shareholder_waterfall.base_dscr",
+                                expected_indices=_s2b_senior_axis,
+                            )
+
+                            model_result = dataclasses.replace(
+                                model_result,
+                                tax_and_cfads=_s2b_tax_cfads,
+                                post_senior_cash=_s2b_post_sen,
+                                cash_dsra=_s2b_cash_dsra,
+                                senior_debt=_s2b_sd_updated,
+                            )
+                            dsra_periods_by_idx = _validated_dsra_periods_by_index(model_result, dsra_mode)
+                            dsra_opening_by_idx.clear()
+                            dsra_closing_by_idx.clear()
+                            dsra_required_by_idx.clear()
+                            cash_after_dsra_by_idx.clear()
+                            dsra_top_up_by_idx.clear()
+                            dsra_draw_by_idx.clear()
+                            dsra_release_by_idx.clear()
+                            dsra_target_met_by_idx.clear()
+                            if dsra_periods_by_idx:
+                                for pr in dsra_periods_by_idx.values():
+                                    i = pr.period_index
+                                    dsra_opening_by_idx[i] = pr.opening_balance_keur
+                                    dsra_closing_by_idx[i] = pr.closing_balance_keur
+                                    dsra_required_by_idx[i] = pr.required_balance_keur
+                                    cash_after_dsra_by_idx[i] = pr.cash_after_dsra_keur
+                                    dsra_top_up_by_idx[i] = pr.top_up_keur
+                                    dsra_draw_by_idx[i] = pr.draw_to_cover_shortfall_keur
+                                    dsra_release_by_idx[i] = pr.release_keur
+                                    dsra_target_met_by_idx[i] = pr.target_met
+                            else:
+                                for period in model_result.periods:
+                                    if not period.is_operation:
+                                        continue
+                                    i = period.period_index
+                                    dsra_opening_by_idx[i] = 0.0
+                                    dsra_closing_by_idx[i] = 0.0
+                                    dsra_required_by_idx[i] = 0.0
+                                    dsra_top_up_by_idx[i] = 0.0
+                                    dsra_draw_by_idx[i] = 0.0
+                                    dsra_release_by_idx[i] = 0.0
+                                    dsra_target_met_by_idx[i] = True
+
+                            gate_info_by_idx.clear()
+                            da_info_by_idx.clear()
+                            gated_cash_all_periods = []
+                            da_closing_prev = 0.0
+                            for period in model_result.periods:
+                                idx = period.period_index
+                                if period.is_construction:
+                                    gated_cash_all_periods.append(0.0)
+                                    continue
+                                signed_post_senior = signed_post_senior_by_idx[idx]
+                                dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
+                                if idx in cash_after_dsra_by_idx:
+                                    reserve_adjusted_cash = cash_after_dsra_by_idx[idx]
+                                else:
+                                    reserve_adjusted_cash = signed_post_senior
+                                    cash_after_dsra_by_idx[idx] = reserve_adjusted_cash
+                                da_inflow = reserve_adjusted_cash - dsrf_fee
+                                da_available = da_inflow + da_closing_prev
+                                dscr_val = base_dscr_by_idx.get(idx)
+                                has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
+                                comp_a = (
+                                    dscr_val is not None
+                                    and has_senior_ds
+                                    and dscr_val < distribution_lockup_dscr
+                                )
+                                comp_b = False
+                                comp_c = da_available < 0.0
+                                if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+                                    dsra_closing_keur = dsra_closing_by_idx[idx]
+                                    dsra_required_keur = dsra_required_by_idx[idx]
+                                else:
+                                    dsra_closing_keur = dsra_closing_by_idx.get(idx, 0.0)
+                                    dsra_required_keur = dsra_required_by_idx.get(idx, 0.0)
+                                comp_d = dsra_closing_keur < dsra_required_keur - _FLOAT_TOLERANCE
+                                comp_e = j_dsra_closing_keur < j_dsra_target_keur
+                                within_senior_maturity = (
+                                    idx <= senior_last_period_index
+                                    if senior_last_period_index is not None
+                                    else False
+                                )
+                                gate_locked = (
+                                    (comp_a or comp_b or comp_c or comp_d or comp_e)
+                                    and within_senior_maturity
+                                )
+                                if gate_locked:
+                                    da_release = 0.0
+                                    gate_status = (
+                                        DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+                                        if comp_a
+                                        else DistributionGateStatus.LOCKED_COVENANT_GATE
+                                    )
+                                elif dscr_val is None or not has_senior_ds:
+                                    da_release = da_available
+                                    gate_status = DistributionGateStatus.DSCR_UNAVAILABLE_GATE_OPEN
+                                else:
+                                    da_release = da_available
+                                    gate_status = DistributionGateStatus.OPEN
+                                da_closing = da_available - da_release
+                                fcf_for_distribution = da_release
+                                covenant_locked = max(0.0, da_available) if gate_locked else 0.0
+                                cash_shortfall = max(0.0, -(signed_post_senior - dsrf_fee))
+                                gate_info_by_idx[idx] = (
+                                    gate_status,
+                                    fcf_for_distribution,
+                                    covenant_locked,
+                                    dsrf_fee,
+                                    signed_post_senior,
+                                    cash_shortfall,
+                                    reserve_adjusted_cash,
+                                )
+                                da_info_by_idx[idx] = (
+                                    da_closing_prev,
+                                    da_inflow,
+                                    da_available,
+                                    da_release,
+                                    da_closing,
+                                    comp_a,
+                                    comp_b,
+                                    comp_c,
+                                    comp_d,
+                                    comp_e,
+                                    within_senior_maturity,
+                                )
+                                gated_cash_all_periods.append(max(0.0, fcf_for_distribution))
+                                da_closing_prev = da_closing
+
+                            _s2b_prov_diag = ShareholderLoanDiagnostics(
+                                converged=False,
+                                is_authoritative=False,
+                                iteration_count=_s2b_iter,
+                                max_iterations=_s2b_max_iter,
+                                convergence_tolerance_keur=_s2b_abs_tol,
+                                convergence_relative_tolerance=_s2b_rel_tol,
+                                max_closing_delta_keur=_s2b_last_cl_delta,
+                                max_interest_delta_keur=_s2b_last_in_delta,
+                                termination_reason="ITERATING",
+                            )
+                            _s2b_next_sched = compute_shareholder_loan_schedules(
+                                model_result.periods,
+                                shl_model_input,
+                                gated_cash_all_periods,
+                                diagnostics=_s2b_prov_diag,
+                                enforce_maturity_residual=False,
+                            )
+                            _s2b_new_lim_state = _build_dynamic_interest_limitation_state(
+                                periods=model_result.periods,
+                                tax_policy=_s2b_base_tax_in.policy,
+                                equity_input=_s2b_eq_in,
+                                senior_interest_by_period=_s2b_senior_int_map,
+                                shl_gross_interest_by_period=dict(
+                                    zip(
+                                        _s2b_next_sched.period_indices,
+                                        _s2b_next_sched.shl_gross_interest_keur,
+                                    )
+                                ),
+                                shl_closing_by_period=dict(
+                                    zip(
+                                        _s2b_next_sched.period_indices,
+                                        _s2b_next_sched.shl_closing_keur,
+                                    )
+                                ),
+                                tax_result=_s2b_tax_res,
+                            )
+                            _s2b_dyn_delta = _dynamic_interest_limitation_delta(
+                                _s2b_lim_state, _s2b_new_lim_state
+                            )
+                            _s2b_last_ret_delta = _s2b_dyn_delta[0]
+                            _s2b_last_rat_delta = _s2b_dyn_delta[1]
+                            _s2b_last_gate_mm = _s2b_dyn_delta[2]
+                            _s2b_last_cl_delta = _max_vector_delta(
+                                _s2b_prev_sched.shl_closing_keur,
+                                _s2b_next_sched.shl_closing_keur,
+                            )
+                            _s2b_last_in_delta = _max_vector_delta(
+                                _s2b_prev_sched.shl_gross_interest_keur,
+                                _s2b_next_sched.shl_gross_interest_keur,
+                            )
+                            _s2b_prev_sched = _s2b_next_sched
+                            _s2b_lim_state = _s2b_new_lim_state
+                            if (
+                                _field_converged_local(_s2b_last_cl_delta, 0.0, _s2b_abs_tol, _s2b_rel_tol)
+                                and _field_converged_local(_s2b_last_in_delta, 0.0, _s2b_abs_tol, _s2b_rel_tol)
+                                and _field_converged_local(_s2b_last_ret_delta, 0.0, _s2b_abs_tol, _s2b_rel_tol)
+                                and _s2b_last_rat_delta <= _s2b_rel_tol
+                                and _s2b_last_gate_mm == 0
+                            ):
+                                break
+                        else:
+                            raise ValueError(
+                                "S2B_GATED_SHL_TAX_FIXED_POINT_NOT_CONVERGED: "
+                                f"max_closing_delta_keur={_s2b_last_cl_delta:.12f}; "
+                                f"max_interest_delta_keur={_s2b_last_in_delta:.12f}"
+                            )
+
+                        _s2b_final_diag = ShareholderLoanDiagnostics(
+                            converged=True,
+                            is_authoritative=True,
+                            iteration_count=_s2b_iter,
+                            max_iterations=_s2b_max_iter,
+                            convergence_tolerance_keur=_s2b_abs_tol,
+                            convergence_relative_tolerance=_s2b_rel_tol,
+                            max_closing_delta_keur=_s2b_last_cl_delta,
+                            max_interest_delta_keur=_s2b_last_in_delta,
+                            termination_reason="CONVERGED_FINAL_RECOMPUTE",
+                            max_final_shl_interest_handshake_delta_keur=_s2b_last_in_delta,
+                            max_final_shl_closing_handshake_delta_keur=_s2b_last_cl_delta,
+                            max_retained_earnings_delta_keur=_s2b_last_ret_delta,
+                            max_capitalisation_ratio_delta=_s2b_last_rat_delta,
+                            capitalisation_gate_mismatch_count=_s2b_last_gate_mm,
+                        )
+                        gated_shl_schedule = compute_shareholder_loan_schedules(
+                            model_result.periods,
+                            shl_model_input,
+                            gated_cash_all_periods,
+                            diagnostics=_s2b_final_diag,
+                            maturity_context=None,
+                        )
+                        model_result = dataclasses.replace(
+                            model_result,
+                            shareholder_loan=gated_shl_schedule,
+                        )
+                        financing = dataclasses.replace(
+                            financing,
+                            project_model_result=model_result,
+                        )
+                        _last_financing = financing
+
                 # SHL schedule axis must match the full canonical period axis (Rule 4).
                 expected_shl_axis: tuple[int, ...] = expected_full_axis
+                shl_opening_by_idx.clear()
+                shl_gross_by_idx.clear()
+                shl_cash_int_by_idx.clear()
+                shl_pik_by_idx.clear()
+                shl_principal_by_idx.clear()
+                shl_closing_by_idx.clear()
                 for label, values, target in (
                     ("opening", gated_shl_schedule.shl_opening_keur, shl_opening_by_idx),
                     ("gross_interest", gated_shl_schedule.shl_gross_interest_keur, shl_gross_by_idx),
@@ -1006,7 +1431,7 @@ def run_project_shareholder_waterfall_model(
                         expected_indices=expected_shl_axis,
                     ))
 
-        # ── Phase 3: Direct SHL schedule reconciliation (S2a) ────────────────────
+        # ── Phase 3: Direct SHL schedule reconciliation (S2a invariant guard) ────
         shl_deductible = (
             getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
             != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE

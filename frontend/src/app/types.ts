@@ -276,6 +276,8 @@ export interface RecoveryPayload {
   project: { code: string; name: string; protected_reference: boolean };
   recovery: { code: string; message: string; complete: boolean; issues: RecoveryIssuePayload[] };
   save: InputsPayload["save"] | null;
+  /** Canonical revenue-contract-book writer, offered only for a book-level recovery issue (owner, not protected). */
+  contracts_save?: { url: string; csrf_token: string; content_hash: string; workbook_version: string } | null;
 }
 
 export function isRecoveryPayload(value: unknown): value is RecoveryPayload {

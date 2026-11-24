@@ -57,6 +57,34 @@ def check_save_scope_guide_matches_server_capability(browser, base):
         context.close()
 
 
+def _settle_cost_grid_viewport(page, sheet: str, width: int) -> None:
+    """Wait for viewport resize, fonts, React useNarrow() column commit, and layout paint before measuring geometry."""
+    expected_narrow = width <= 900
+    expected_mobile_cols = 2 if sheet.lower() == "capex" else 3
+    page.wait_for_function(
+        """({sheet, width, expectedNarrow, expectedMobileCols}) => {
+            if (window.innerWidth !== width) return false;
+            if (window.matchMedia('(max-width: 900px)').matches !== expectedNarrow) return false;
+            const tbl = document.querySelector(`[data-cost-grid='${sheet}'] table.ws2-grid`);
+            if (!tbl) return false;
+            const cols = tbl.querySelectorAll('thead th').length;
+            const hasColgroup = !!tbl.querySelector('colgroup');
+            if (expectedNarrow) return !hasColgroup && cols === expectedMobileCols;
+            return cols >= 5;
+        }""",
+        arg={
+            "sheet": sheet.lower(),
+            "width": width,
+            "expectedNarrow": expected_narrow,
+            "expectedMobileCols": expected_mobile_cols,
+        },
+    )
+    page.evaluate(
+        "() => (document.fonts ? document.fonts.ready : Promise.resolve())"
+        ".then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))"
+    )
+
+
 def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(browser, base, kind):
     context, page, record, errors = vertical_session(browser, base, f"wf06a-cost-{kind}", kind)
     try:
@@ -98,12 +126,14 @@ def check_cost_lines_show_group_context_without_changing_keyboard_or_layout(brow
                 assert grid.locator("input[data-r='1'][data-c='1']").get_attribute("data-exact") == original
             for width in WIDTHS:
                 page.set_viewport_size({"width": width, "height": 1000})
+                _settle_cost_grid_viewport(page, sheet, width)
                 assert not horizontal_overflow(page), f"{kind} {sheet} page overflows at {width}"
                 scroller = grid.locator("[data-lines-scroll]")
                 # density: label and amount (and OPEX inflation) fit the scroll box without sideways scrolling at every width
                 assert scroller.evaluate("el => el.scrollWidth <= el.clientWidth + 2"), f"{kind} {sheet} grid scrolls sideways at {width}"
                 shot_element(grid, f"{kind}-{sheet.lower()}-{width}")
             page.set_viewport_size({"width": 1440, "height": 1000})
+            _settle_cost_grid_viewport(page, sheet, 1440)
         assert not errors, errors
     finally:
         context.close()

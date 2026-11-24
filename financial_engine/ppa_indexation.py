@@ -184,3 +184,65 @@ def compute_ppa_tariff(
     """
     n = count_ppa_escalation_events(policy, cod, period_end, ppa_indexation_start_date)
     return base_tariff * (1.0 + ppa_index) ** n
+
+
+def compute_weighted_ppa_tariff_for_interval(
+    base_tariff: float,
+    ppa_index: float,
+    policy: PpaIndexationStartPolicy,
+    cod: date,
+    interval_start: date,
+    interval_end_exclusive: date,
+    ppa_indexation_start_date: date | None = None,
+) -> float:
+    """Return the OD-TIME-01 day-weighted PPA tariff (EUR/MWh) over half-open ``[start, end_exclusive)``.
+
+    Splits ``[interval_start, interval_end_exclusive)`` at exact escalation event
+    boundaries (Jan 1 for ``FIRST_FULL_CALENDAR_YEAR_AS_BASE``, COD anniversaries
+    for ``AFTER_FIRST_FULL_OPERATING_YEAR``, and ``ppa_indexation_start_date``
+    anniversaries for ``CONTRACT_ANNIVERSARY``), weighting each subperiod by its
+    exact calendar day count.
+    """
+    from finco_core.engine.contractual_calendar import (
+        ContractualInterval,
+        add_calendar_years,
+        split_at_dates,
+    )
+
+    iv = ContractualInterval(interval_start, interval_end_exclusive)
+    cuts: list[date] = []
+    if policy == PpaIndexationStartPolicy.FIRST_FULL_CALENDAR_YEAR_AS_BASE:
+        cuts.extend(date(y, 1, 1) for y in range(iv.start.year + 1, iv.end_exclusive.year + 1))
+    elif policy == PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR:
+        k = max(1, iv.start.year - cod.year)
+        while True:
+            ann = add_calendar_years(cod, k)
+            if ann >= iv.end_exclusive:
+                break
+            if ann > iv.start:
+                cuts.append(ann)
+            k += 1
+    elif policy == PpaIndexationStartPolicy.CONTRACT_ANNIVERSARY:
+        if ppa_indexation_start_date is None:
+            raise ValueError(
+                "ppa_indexation_start_date is required when policy is CONTRACT_ANNIVERSARY. "
+                "Provide an explicit PPA / indexation start date."
+            )
+        k = max(1, iv.start.year - ppa_indexation_start_date.year)
+        while True:
+            ann = add_calendar_years(ppa_indexation_start_date, k)
+            if ann >= iv.end_exclusive:
+                break
+            if ann > iv.start:
+                cuts.append(ann)
+            k += 1
+    else:
+        raise ValueError(f"Unknown PpaIndexationStartPolicy: {policy!r}")
+
+    subs = split_at_dates(iv, cuts)
+    weighted_sum = 0.0
+    for sub in subs:
+        n = count_ppa_escalation_events(policy, cod, sub.start, ppa_indexation_start_date)
+        weighted_sum += sub.days * (base_tariff * (1.0 + ppa_index) ** n)
+    return weighted_sum / iv.days
+

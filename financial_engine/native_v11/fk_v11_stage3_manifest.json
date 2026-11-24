@@ -1,10 +1,10 @@
 {
  "abi_version": 30001,
- "approved_blobs_sha256": "c11cefae1bf634fe54fac5db9fe124d96dd85a0292b42843dbb957296cb02778",
+ "approved_blobs_sha256": "aad037a027c57dd08dd605cf9e57b2dbe3905a738708d83ee5d03fcfc95a5b5c",
  "artifact": "_fk_v11_stage3.so",
  "artifact_sha256": "eda33517ec07522e3985ccc02228b30289d4c471bbeb5745b51f8e7373817963",
  "build_id": "9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344",
- "built_with_python": "3.12.3",
+ "built_with_python": "3.13.18",
  "command": [
   "gcc",
   "-std=c11",
@@ -25,7 +25,7 @@
   "-Wl,--hash-style=gnu",
   "-DFK_BUILD_ID=\"9b96a8312bd6cec7c66098370164149f0ef5f9f5265db2b9e91abce5773a7344\"",
   "-o",
-  "<native_v11>/_fk_v11_stage3.so",
+  "<out>/_fk_v11_stage3.so",
   "kernel_v11_stage3.c",
   "-lm"
  ],

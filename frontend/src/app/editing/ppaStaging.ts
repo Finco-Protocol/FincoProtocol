@@ -15,6 +15,8 @@ const FIELDS: readonly FieldSpec[] = [
   { field: "start_date", label: "Start date", unit: "date" },
   { field: "end_date", label: "End date", unit: "date" },
   { field: "volume_share", label: "Contracted volume share", unit: "%", percent: true },
+  { field: "annual_amount", label: "Annual quantity", unit: "MWh or GWh per year" },
+  { field: "annual_unit", label: "Quantity unit", unit: "" },
   { field: "price_eur_mwh", label: "Tariff", unit: "€/MWh" },
   { field: "indexation_rate", label: "Annual indexation", unit: "%", percent: true },
   { field: "source_ref", label: "Source reference", unit: "" },

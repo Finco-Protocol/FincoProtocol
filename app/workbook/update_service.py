@@ -527,21 +527,45 @@ class WorkbookUpdateService:
                 # calibrated schedule must not accept a decorative scalar.
                 raise FieldValidationError(str(exc)) from exc
 
+        # --- C1F-A-1 / P1-OPEX-02: refuse scalar edits on line-owned active CAPEX/OPEX categories ---
+        if field_id.startswith(("capex.", "opex.")):
+            line_owned = find_line_owned_cost_fields(ws.project_id, [field_id])
+            if field_id in line_owned and _is_diagnosed_legacy_repair(ws, field_id):
+                # Legacy recovery: the stored value of THIS field is itself diagnosed invalid
+                # (draft cannot be materialised). The replacement has already passed field
+                # validation; repairing corrupt state is not editing active cost authority.
+                line_owned = {}
+            if field_id in line_owned:
+                raise FieldValidationError(
+                    f"COST_CATEGORY_LINE_OWNED: {line_owned[field_id]}",
+                    FieldErrorClass.INVALID,
+                )
+
+        # --- E2E-01 / C1F-A-5: enforce positive senior gearing and horizon > senior tenor on proposed state ---
+        if field_id in (
+            "debt.senior.gearing_pct",
+            "debt.senior.tenor_years",
+            "project_setup.technical.horizon_years",
+        ):
+            snap = dict(ws.draft_snapshot or {})
+            snap[validation.spec.snapshot_key] = str(validation.typed_value)
+            validate_proposed_financing_horizon_snapshot(snap)
+
         # --- OD-P90-01: enforce bidirectional P90 <= P50 against complete proposed state at Save ---
         if field_id in ("project_setup.technical.p90_10y_hours", "project_setup.technical.p50_hours"):
             snap = dict(ws.draft_snapshot or {})
             snap[validation.spec.snapshot_key] = str(validation.typed_value)
             validate_proposed_p90_p50_snapshot(snap)
 
-        # --- C1-Q-02: validate proposed horizon/COD against existing PPA book atomically ---
-        if field_id in ("project_setup.technical.horizon_years", "project_setup.technical.cod_date"):
+        # --- C1-Q-02 & OD-R04-02: validate proposed PPA book & global P50 cap atomically ---
+        if field_id == "revenue.multistream.contracts" or field_id.startswith("project_setup.technical."):
             snap = dict(ws.draft_snapshot or {})
+            snap[validation.spec.snapshot_key] = (
+                validation.typed_value.isoformat()
+                if hasattr(validation.typed_value, "isoformat")
+                else str(validation.typed_value)
+            )
             if (snap.get("rev_multistream_config_json") or "").strip():
-                snap[validation.spec.snapshot_key] = (
-                    validation.typed_value.isoformat()
-                    if hasattr(validation.typed_value, "isoformat")
-                    else str(validation.typed_value)
-                )
                 _validate_ppa_book_against_proposed_snapshot(snap)
 
         # --- R-1: early finite derived-amount refusal (advisory) ----------
@@ -682,11 +706,10 @@ class WorkbookUpdateService:
                 first_fid, first_reason = next(iter(line_owned.items()))
                 raise BatchApplyError("COST_CATEGORY_LINE_OWNED", f"{first_fid}: {first_reason}")
 
-        # C1-Q-02: validate proposed horizon/COD against existing PPA book atomically
+        # C1-Q-02 & OD-R04-02: validate proposed PPA book & global P50 cap atomically
         if (
-            "project_setup.technical.horizon_years" in seen_ids
-            or "project_setup.technical.cod_date" in seen_ids
-            or "revenue.multistream.contracts" in seen_ids
+            "revenue.multistream.contracts" in seen_ids
+            or any(fid.startswith("project_setup.technical.") for fid in seen_ids)
         ):
             snap = dict(ws.draft_snapshot or {})
             for fid, raw_v in updates:
@@ -695,6 +718,19 @@ class WorkbookUpdateService:
                     snap[spec_i.snapshot_key] = raw_v
             if (snap.get("rev_multistream_config_json") or "").strip():
                 _validate_ppa_book_against_proposed_snapshot(snap)
+
+        # E2E-01 / C1F-A-5: validate complete proposed gearing and horizon > senior tenor atomically
+        if seen_ids & {
+            "debt.senior.gearing_pct",
+            "debt.senior.tenor_years",
+            "project_setup.technical.horizon_years",
+        }:
+            snap_fh = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap_fh[spec_i.snapshot_key] = raw_v
+            validate_proposed_financing_horizon_snapshot(snap_fh)
 
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,
@@ -706,6 +742,45 @@ class WorkbookUpdateService:
             updates=updates,
         )
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)
+
+
+def validate_proposed_financing_horizon_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:
+    """E2E-01 / C1F-A-5: validate positive senior gearing and horizon > senior tenor on proposed state.
+
+    Evaluates the complete proposed snapshot so paired atomic batch edits (e.g. increasing
+    horizon_years and tenor_years together) succeed in either input order while invalid
+    combinations fail closed before any DB write.
+    """
+    raw_gear = proposed_snapshot.get("gearing_pct")
+    if raw_gear is not None and str(raw_gear).strip() != "":
+        try:
+            gear_f = float(str(raw_gear).strip())
+        except (TypeError, ValueError):
+            gear_f = None
+        if gear_f is not None and gear_f <= 0.0:
+            raise FieldValidationError(
+                "ZERO_SENIOR_GEARING_NOT_SUPPORTED: explicit zero senior gearing (0%) is not supported "
+                "until genuine all-equity no-debt economics are approved.",
+                FieldErrorClass.INVALID,
+            )
+
+    raw_horizon = proposed_snapshot.get("horizon_years")
+    raw_tenor = proposed_snapshot.get("tenor_years")
+    if (
+        raw_horizon is not None and str(raw_horizon).strip() != ""
+        and raw_tenor is not None and str(raw_tenor).strip() != ""
+    ):
+        try:
+            horizon_f = float(str(raw_horizon).strip())
+            tenor_f = float(str(raw_tenor).strip())
+        except (TypeError, ValueError):
+            return
+        if horizon_f <= tenor_f:
+            raise FieldValidationError(
+                f"DEBT_TENOR_EXCEEDS_HORIZON: project horizon ({int(horizon_f)} years) "
+                f"must be strictly longer than senior debt tenor ({int(tenor_f)} years).",
+                FieldErrorClass.INVALID,
+            )
 
 
 def validate_proposed_p90_p50_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:
@@ -774,6 +849,7 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
     try:
         from app.input_adapter import build_projectinputs_from_snapshot
         from domain.revenue.multistream_runtime import parse_config
+        from finco_core.engine.date_authority import dated_life_end_exclusive
         from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
 
         proposed_pi = build_projectinputs_from_snapshot(proposed_snapshot)
@@ -788,12 +864,20 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             frequency=freq,
             cod_date=info.cod_date,
             period_axis_convention=getattr(info.period_axis_convention, "value", info.period_axis_convention),
+            dated_life_end_exclusive=(
+                dated_life_end_exclusive(info.cod_date, info.horizon_years, ms_json) if freq is PeriodFrequency.SEMESTRIAL else None),
         )
         multistream = parse_config(ms_json)
+        _date_aware = engine.dated_life_end_exclusive is not None
         if getattr(multistream, "has_contractual_indexation", False):
-            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date)
+            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date, date_aware=_date_aware)
         else:
-            multistream.validate_axis(engine.periods())
+            multistream.validate_axis(engine.periods(), date_aware=_date_aware)
+        if getattr(multistream, "has_absolute_annual_quantity", False):
+            if _date_aware:
+                from finco_core.engine.date_authority import assert_grid_conserves_operating_life
+                assert_grid_conserves_operating_life(proposed_pi, engine)
+            multistream.validate_global_p50_cap(proposed_pi)
     except FieldValidationError:
         raise
     except Exception as exc:
@@ -801,6 +885,19 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             f"Proposed project timeline is incompatible with the saved PPA contract book: {exc}",
             FieldErrorClass.INVALID,
         ) from exc
+
+
+def _is_diagnosed_legacy_repair(ws, field_id: str) -> bool:
+    """True only when the current stored draft is diagnosed unrepairable-by-load and ``field_id`` is one of its issues."""
+    try:
+        from app.workbook.draft_recovery import diagnose_draft
+
+        recovery = diagnose_draft(dict(ws.draft_snapshot or {}))
+    except Exception:  # noqa: BLE001 - fail closed: no bypass
+        return False
+    if recovery is None:
+        return False
+    return any(getattr(i, "field_id", None) == field_id for i in recovery.issues)
 
 
 def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, str]:
@@ -852,12 +949,32 @@ def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, 
         all_opex = _load_all_sub_lines(project_id)
         if all_opex:
             prov = opex_fold_provenance(all_opex)
-            if prov.get("replaces_aggregate"):
-                for fid in opex_fids:
-                    if fid.startswith("opex.lines.") or fid == "opex.summary.y1_total_keur":
-                        blocked[fid] = (
-                            "Active OPEX cost lines replace base OPEX scalars at Run; "
-                            "edit the individual OPEX cost lines instead."
-                        )
+            # Only a group whose canonical key is replaced by reference-seeded lines is shadowed
+            # (same authority as opex_group_authority_notes / the Run fold). Independently
+            # effective categories stay writable.
+            from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUPS
+            from app.v2.opex_assembly import _OPEX_NAME_TO_CODE
+
+            replaced_codes = {
+                _OPEX_NAME_TO_CODE[name]
+                for name in prov.get("replaced_canonical_keys") or ()
+                if name in _OPEX_NAME_TO_CODE
+            }
+            shadowed_fields = {
+                f"opex.lines.{g.field_suffix}"
+                for g in CANONICAL_OPEX_GROUPS
+                if g.field_suffix and g.code in replaced_codes
+            }
+            for fid in opex_fids:
+                if fid in shadowed_fields:
+                    blocked[fid] = (
+                        "Active OPEX cost lines replace this category's base scalar at Run; "
+                        "edit the individual OPEX cost lines instead."
+                    )
+                elif fid == "opex.summary.y1_total_keur" and prov.get("replaces_aggregate"):
+                    blocked[fid] = (
+                        "Active OPEX cost lines replace the aggregate OPEX scalar at Run; "
+                        "edit the individual OPEX cost lines instead."
+                    )
     return blocked
 

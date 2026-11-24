@@ -13,7 +13,7 @@ FINCO Model calibration note:
   2030-12-31 with 184 days (2030-06-30 to 2030-12-31).
 """
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import Any, List, Sequence
 from dateutil.relativedelta import relativedelta
@@ -96,6 +96,7 @@ class PeriodEngine:
         ),
         operating_calendar_policy: OperatingCalendarPolicy | None = None,
         economic_end_date: date | None = None,
+        dated_life_end_exclusive: date | None = None,
     ) -> None:
         self.fc = financial_close
         self.construction_months = construction_months
@@ -135,6 +136,14 @@ class PeriodEngine:
             raise ValueError("PERIOD_AXIS_PPA_TERM_INVALID: ppa_years must be >= 0")
         self._economic_end_date = None
         self._explicit_economic_end = economic_end_date
+        # OD-TIME-01 versioned date authority: the released six-month axis only; the final operating row is added/truncated so that the
+        # grid ends exactly at the contractual operating end (exclusive).  None == legacy grid, bit-for-bit.
+        self._dated_life_end_exclusive = dated_life_end_exclusive
+        if dated_life_end_exclusive is not None and (
+                self._operating_calendar_policy is not None
+                or self.period_axis_convention != PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+                or type(dated_life_end_exclusive) is not date):
+            raise ValueError("PERIOD_AXIS_DATED_LIFE_UNSUPPORTED: the dated operating life is defined for the six-month COD-anchor axis only")
         if economic_end_date is not None and not (
                 self._operating_calendar_policy is not None and self._operating_calendar_policy.date_authoritative):
             raise ValueError(
@@ -164,6 +173,8 @@ class PeriodEngine:
             self._operating_period_count = count
         else:
             self._operating_period_count = int(horizon_years) * self._periods_per_year
+            if self._dated_life_end_exclusive is not None:
+                self._operating_period_count += self._dated_final_stub_rows()
         ppa_anchor = (
             self._operating_start
             if self.period_axis_convention
@@ -180,8 +191,14 @@ class PeriodEngine:
             periods_per_year=self._periods_per_year,
             year_alignment=self.year_alignment,
             expected_economic_end=self._economic_end_date,
+            dated_life_end_exclusive=self._dated_life_end_exclusive,
         )
         self._horizon_end = self._periods[-1].end_date
+
+    def _dated_final_stub_rows(self) -> int:
+        """1 when the legacy row count ends before the dated life end (a final stub row is added), else 0."""
+        legacy_end = semiannual_row_ends(self._operating_start, 2 * int(self.horizon_years))[-1]   # inclusive end label of the last legacy row
+        return 1 if legacy_end + timedelta(days=1) < self._dated_life_end_exclusive else 0
 
     def _require_quarterly_policy(self, policy: object) -> OperatingCalendarPolicy:
         """Fail closed unless frequency, policy and project dates admit matched 3/3."""
@@ -209,6 +226,11 @@ class PeriodEngine:
                 f"before {boundary.isoformat()}; stub treatment awaits owner decision D-01"
             )
         return policy
+
+    @property
+    def dated_life_end_exclusive(self) -> date | None:
+        """Exclusive contractual operating end under the OD-TIME-01 dated authority; None on the legacy grid."""
+        return self._dated_life_end_exclusive
 
     @property
     def operating_calendar_policy(self) -> OperatingCalendarPolicy | None:
@@ -476,6 +498,9 @@ class PeriodEngine:
 
         while operating_period_index < self._operating_period_count:
             end = self._next_semiannual_end_after(current_date)
+            if self._dated_life_end_exclusive is not None:
+                # inclusive end label of the contractual life; the final row ends exactly there (final stub / truncation)
+                end = min(end, self._dated_life_end_exclusive - timedelta(days=1))
             days = self._days_between(current_date, end)
             if current_date == self._cod and current_date.day == 1:
                 days += 1
@@ -592,6 +617,7 @@ def validate_canonical_period_axis(
     periods_per_year: int = 2,
     year_alignment: str = "FIXED_ROWS",
     expected_economic_end: "date | None" = None,
+    dated_life_end_exclusive: "date | None" = None,
 ) -> None:
     """Fail closed when a consumer receives a malformed financial axis.
 
@@ -857,8 +883,12 @@ def validate_canonical_period_axis(
 
     # 8. operating sequential indices (already validated above via 6)
 
-    # 9. no terminal one-day stub in operating periods
-    if operating and operating[-1].days_in_period <= 1:
+    # 9. no terminal one-day stub in operating periods (the dated life explicitly ending on that day is the contractual end, not a phantom stub)
+    if dated_life_end_exclusive is not None and operating and operating[-1].end_date + timedelta(days=1) != dated_life_end_exclusive:
+        raise ValueError(
+            f"PERIOD_AXIS_DATED_LIFE_END_MISMATCH: final operating row ends {operating[-1].end_date.isoformat()}, "
+            f"contractual end (exclusive) is {dated_life_end_exclusive.isoformat()}")
+    if operating and operating[-1].days_in_period <= 1 and dated_life_end_exclusive is None:
         raise ValueError(
             f"PERIOD_AXIS_TERMINAL_STUB: final operating period has "
             f"days_in_period={operating[-1].days_in_period}"

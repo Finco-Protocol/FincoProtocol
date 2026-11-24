@@ -154,9 +154,33 @@ def test_eligible_run_with_a_shortened_horizon_commits_with_rederived_indices(en
     assert f.clean_shl_repayment_method.value == "cash_sweep"
 
 
-def test_a_horizon_not_longer_than_the_senior_tenor_is_named_precisely(env):
+def test_a_horizon_not_longer_than_the_senior_tenor_is_refused_at_save_with_no_mutation(env):
+    """(a) The complete-proposed-state Save guard refuses horizon 12 against the seeded 15-year tenor: typed code, nothing persisted."""
     p = P(env, "sc34-rf-3")
-    p.set_horizon(12)
+    p.ident()                                              # first render normalises stored types; baseline is taken after it
+    before = p.snapshot()
+    resp = p.set_horizon(12)                              # HTTP 200 is NOT a successful Save: inspect the body and the stored state
+    assert "DEBT_TENOR_EXCEEDS_HORIZON" in _text(resp.text)
+    assert "saved" not in resp.headers.get("HX-Trigger", "").lower() or "error" in resp.headers.get("HX-Trigger", "").lower()
+    assert p.snapshot() == before and len(p.history()) == 0
+    # valid correction Save persists and the following Run succeeds
+    p.set_horizon(20)
+    assert str(p.snapshot()["horizon_years"]) in ("20", "20.0")
+    ok = p.run()
+    assert ok.status_code == 200 and "X-Finco-Run-Outcome" not in ok.headers and len(p.history()) == 1
+
+
+def test_a_persisted_legacy_horizon_not_longer_than_the_tenor_is_named_precisely_by_the_run(env):
+    """(b) Original Run diagnostic, for a pre-existing invalid stored state (written at the persistence boundary, bypassing only the new Save guard)."""
+    import json
+    from app.persistence import db
+    p = P(env, "sc34-rf-3b")
+    p.ident()                                              # normalise the stored draft through the real read path first
+    snap = p.snapshot()
+    snap["horizon_years"] = "12"
+    with db.get_cursor() as cur:
+        cur.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(snap), p.rec.project_id))
+    assert str(p.snapshot()["horizon_years"]) == "12"
     bad = p.run()
     text = _text(bad.text)
     assert bad.headers["X-Finco-Run-Outcome"] == "FAILED"

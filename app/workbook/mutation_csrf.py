@@ -30,3 +30,11 @@ def validate_mutation_token(request, project: str, supplied, operation: str) -> 
         return False
     return auth.validate_csrf_token(extract_bound_token(
         request, project, supplied, purpose="model-mutation-v1:" + operation))
+
+
+def validate_signed_form_token(supplied) -> bool:
+    """The plain signed form token (the one the Revenue contract writer issues and checks) for READ-ONLY review routes.
+
+    Lives here, beside the operation-bound validators, so every CSRF validation stays in this module; it is NOT a write authority.
+    """
+    return auth.validate_csrf_token(supplied)

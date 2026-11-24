@@ -36,7 +36,11 @@ def apply_config(inputs, raw, *, project_type):
     if getattr(config, "has_contractual_indexation", False):
         if engine.cod != candidate.info.cod_date:
             raise ValueError("REVENUE_V2_TIMELINE_COD: Project Timeline and PeriodEngine COD disagree")
-        config.validate_axis(engine.periods(), project_cod=candidate.info.cod_date)
+        config.validate_axis(engine.periods(), project_cod=candidate.info.cod_date, date_aware=engine.dated_life_end_exclusive is not None)
     else:
-        config.validate_axis(engine.periods())
+        config.validate_axis(engine.periods(), date_aware=engine.dated_life_end_exclusive is not None)
+    if getattr(config, "has_absolute_annual_quantity", False):
+        from finco_core.engine.date_authority import assert_grid_conserves_operating_life
+        assert_grid_conserves_operating_life(candidate, engine)
+        config.validate_global_p50_cap(candidate)
     return candidate

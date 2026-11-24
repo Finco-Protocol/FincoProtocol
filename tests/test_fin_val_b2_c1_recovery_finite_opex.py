@@ -547,6 +547,18 @@ class TestOpexAuthority:
         assert grid.status_code == 422 and grid.json()["cells"][0]["error_class"] == "OUT_OF_BOUNDS"
         assert _snapshot(record) == before
         tokens = _page_tokens(env, record)
+        from app.services.opex_sub_lines_integration import _load_all_sub_lines, opex_fold_provenance
+        from app.v2.opex_assembly import _OPEX_NAME_TO_CODE
+        from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUPS
+        replaced = {_OPEX_NAME_TO_CODE[n] for n in opex_fold_provenance(_load_all_sub_lines(record.project_id))["replaced_canonical_keys"]
+                    if n in _OPEX_NAME_TO_CODE}
+        shadowed = {f"opex.lines.{g.field_suffix}" for g in CANONICAL_OPEX_GROUPS if g.field_suffix and g.code in replaced}
+        if field_id in shadowed:
+            # genuinely shadowed by seeded lines: refused with the typed code, nothing persisted
+            refused = _single_save(env, record, field_id, "0", tokens)
+            assert "COST_CATEGORY_LINE_OWNED" in refused.text
+            assert _snapshot(record) == before
+            return
         assert _single_save(env, record, field_id, "0", tokens).status_code == 200
         assert float(_snapshot(record)[WORKBOOK.field(field_id).snapshot_key]) == 0.0
 

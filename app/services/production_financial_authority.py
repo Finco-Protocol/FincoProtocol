@@ -422,6 +422,29 @@ def _require_settled_senior_maturity(g2c, project_inputs) -> None:
         )
 
 
+def _decline_native_on_dated_grid(inputs) -> None:
+    """OD-TIME-01: the dated operating grid (final stub row) is served by canonical Python only until native parity is proven.
+
+    Marks this Run's own scope (never process state) so the V10/V11 admission layers see mode OFF, and records the typed reason
+    in the Run's native counters so the decline is observable (not a silent fallback).
+    """
+    from finco_core.engine.date_authority import date_authority_active
+
+    if not date_authority_active(inputs):
+        return
+    from financial_engine.run_scope import current_run_scope
+    from financial_engine.native_v10.config import DATE_AUTHORITY_SCOPE_KEY, current_stats as _v10_stats
+    from financial_engine.native_v11.config import current_stats as _v11_stats
+
+    scope = current_run_scope()
+    if scope is None:
+        return
+    scope[DATE_AUTHORITY_SCOPE_KEY] = True
+    for stats in (_v10_stats(), _v11_stats()):
+        if stats is not None:
+            stats.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] += 1
+
+
 def run_clean_production(
     project_inputs,
     scenario: str = "Base",
@@ -473,6 +496,7 @@ def run_clean_production(
         # and structuring fees) and DSRA policy. One production calculation; the
         # policy owns the initial-DSRA fixed point around the single engine entry.
         with engine_run_scope():
+            _decline_native_on_dated_grid(effective_inputs)
             g2c, effective_inputs, policy_evidence = _memoised_policy_run(
                 effective_inputs,
                 policy,

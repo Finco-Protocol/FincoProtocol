@@ -49,6 +49,10 @@ export interface StreamDraft {
   end_date: string;
   /** "" means null (no explicit share: the canonical residual rule applies). */
   volume_share: string;
+  /** OD-R04-02 fixed physical quantity per year ("" = share/residual mode); exact decimal text, never rounded. Mutually exclusive with `volume_share`. */
+  annual_amount: string;
+  /** "MWh" | "GWh" when `annual_amount` is set, otherwise "". */
+  annual_unit: string;
   price_eur_mwh: string;
   indexation_rate: string;
   source_ref: string;
@@ -107,6 +111,8 @@ export function parseContractModel(raw: string): ParseResult {
     streams.push({
       id: text(r.id), type: text(r.type), start_date: text(r.start_date), end_date: text(r.end_date),
       volume_share: text(r.volume_share), price_eur_mwh: text(r.price_eur_mwh),
+      annual_amount: r.annual_quantity && typeof r.annual_quantity === "object" ? text((r.annual_quantity as JsonRecord).amount) : "",
+      annual_unit: r.annual_quantity && typeof r.annual_quantity === "object" ? text((r.annual_quantity as JsonRecord).unit) : "",
       indexation_rate: text(r.indexation_rate), source_ref: text(r.source_ref),
       capture_rate: text(r.capture_rate),
       curve: Array.isArray(r.price_curve)
@@ -156,7 +162,14 @@ export function validateContractModel(model: ContractModel): FieldErrors {
     if (!price.ok) errors[key("price_eur_mwh")] = price.message;
     const index = parseNonNegative(s.indexation_rate, 1);
     if (!index.ok) errors[key("indexation_rate")] = index.message;
-    if (s.volume_share.trim() !== "") {
+    if (s.annual_amount.trim() !== "" || s.annual_unit.trim() !== "") {
+      // OD-R04-02 fixed annual physical quantity: exact decimal text (the server's own grammar), unit MWh/GWh, never combined with a share.
+      if (s.type !== "ppa") errors[key("annual_amount")] = "Only a PPA contract can carry a fixed annual quantity.";
+      if (!/^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(s.annual_amount.trim())) errors[key("annual_amount")] = "Enter a non-negative decimal quantity, for example 12.5 (no signs, separators or exponents).";
+      if (s.annual_unit !== "MWh" && s.annual_unit !== "GWh") errors[key("annual_unit")] = "Choose MWh or GWh.";
+      if (s.volume_share.trim() !== "") errors[key("volume_share")] = "A contract has either a volume share or a fixed annual quantity, never both.";
+      if (s.curve) errors[key("curve")] = "A fixed annual quantity cannot be combined with an explicit price curve.";
+    } else if (s.volume_share.trim() !== "") {
       const share = parseNonNegative(s.volume_share, 1);
       if (!share.ok) errors[key("volume_share")] = share.message;
     } else if (s.type !== "merchant") {
@@ -211,6 +224,8 @@ export function buildContractPayload(originalRaw: string, model: ContractModel):
     base.start_date = s.start_date;
     base.end_date = s.end_date;
     base.volume_share = s.volume_share.trim() === "" ? null : Number(s.volume_share);
+    if (s.annual_amount.trim() !== "") base.annual_quantity = { mode: "ABSOLUTE_ANNUAL", amount: s.annual_amount.trim(), unit: s.annual_unit };
+    else delete base.annual_quantity;
     base.price_eur_mwh = Number(s.price_eur_mwh);
     base.indexation_rate = Number(s.indexation_rate);
     base.source_ref = s.source_ref.trim();
@@ -241,6 +256,8 @@ export function newPpaStream(existing: StreamDraft[], operatingWindow: { start: 
     start_date: operatingWindow?.start ?? "",
     end_date: operatingWindow?.end ?? "",
     volume_share: "",
+    annual_amount: "",
+    annual_unit: "",
     price_eur_mwh: "",
     indexation_rate: "0",
     source_ref: "",
@@ -313,7 +330,8 @@ export function duplicatePpa(existing: StreamDraft[], source: StreamDraft, prese
 
 /** One-line numbers-first summary of a contract; every figure is the user's own typed text. */
 export function streamSummary(stream: StreamDraft, klass: ContractClass): string {
-  const share = stream.volume_share.trim() === "" ? "residual" : `${Math.round(Number(stream.volume_share) * 1e6) / 1e4}%`;
+  const share = stream.annual_amount.trim() !== "" ? `${stream.annual_amount} ${stream.annual_unit}/year`
+    : stream.volume_share.trim() === "" ? "residual" : `${Math.round(Number(stream.volume_share) * 1e6) / 1e4}%`;
   const price = stream.price_eur_mwh.trim() === "" ? "no tariff" : `${stream.price_eur_mwh} €/MWh`;
   return `${klass} · ${share} · ${price} · ${stream.start_date || "?"} → ${stream.end_date || "?"}`;
 }
@@ -321,7 +339,7 @@ export function streamSummary(stream: StreamDraft, klass: ContractClass): string
 /** Number of leaf edits between the persisted model and the draft. */
 export function countContractEdits(saved: ContractModel, draft: ContractModel): number {
   let count = Math.abs(saved.streams.length - draft.streams.length);
-  const fields: Array<keyof StreamDraft> = ["id", "start_date", "end_date", "volume_share", "price_eur_mwh", "indexation_rate", "source_ref", "capture_rate"];
+  const fields: Array<keyof StreamDraft> = ["id", "start_date", "end_date", "volume_share", "annual_amount", "annual_unit", "price_eur_mwh", "indexation_rate", "source_ref", "capture_rate"];
   draft.streams.forEach((s, i) => {
     const before = saved.streams[i];
     if (!before) { count += 1; return; }

@@ -233,6 +233,8 @@ async def acquisition_save(request: Request):
         except ValueError:
             raise AcquisitionInputError("EXPECTED_REVISION_INVALID") from None
         terms = _terms(form)
+        from app.model_v2.acquisition.economics import validate_acquisition_dates_against_source
+        validate_acquisition_dates_against_source(evidence, terms)
         document = make_document(entry, terms, closing_bridge=_bridge(form, terms))
         case_id, revision = save_case(
             owner_id=owner, project_id=record.project_id,

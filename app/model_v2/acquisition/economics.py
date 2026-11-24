@@ -100,7 +100,8 @@ def _validated_rows(evidence):
     return evidence["equity_periods"]
 
 
-def buyer_cashflows(evidence, terms: AcquisitionTerms, *, price_override=None):
+def validate_acquisition_dates_against_source(evidence, terms: AcquisitionTerms) -> list[dict]:
+    """C1F-C-1: enforce canonical closing/exit date rules against source Run horizon."""
     terms.check()
     rows = _validated_rows(evidence)
     if not rows:
@@ -116,6 +117,11 @@ def buyer_cashflows(evidence, terms: AcquisitionTerms, *, price_override=None):
             or abs(row["legal_equity_contribution_keur"]) > _EPS
         ):
             raise AcquisitionPolicyError("CLOSING_DATE_ENTITLEMENT_ORDER_AMBIGUOUS")
+    return rows
+
+
+def buyer_cashflows(evidence, terms: AcquisitionTerms, *, price_override=None):
+    rows = validate_acquisition_dates_against_source(evidence, terms)
     price = terms.purchase_price_keur if price_override is None else _finite(price_override, "bid_price")
     flows = [(terms.closing_date, -(price + terms.transaction_costs_keur
                                      + terms.closing_adjustment_keur),
