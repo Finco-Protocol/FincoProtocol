@@ -149,6 +149,20 @@ def pre_financing_inputs(basis: Basis, shocks: list[tuple[DriverSpec, float]]) -
                                                scenario_overrides=basis.scenario_overrides)
     if folded_opex is not pi.opex:
         pi = replace(pi, opex=folded_opex)
+    from app.opex_annual_exceptions import SNAPSHOT_KEY as _OPEX_ANN_KEY, apply_annual_exceptions_to_opex
+    _sc_ov = basis.scenario_overrides or {}
+    _ann_raw = (
+        _sc_ov.get(_OPEX_ANN_KEY)
+        if _OPEX_ANN_KEY in _sc_ov
+        else (getattr(pis, "snapshot_origin", None) or {}).get(_OPEX_ANN_KEY)
+    )
+    if _ann_raw:
+        pi = replace(
+            pi,
+            opex=apply_annual_exceptions_to_opex(
+                pi.opex, str(_ann_raw), horizon_years=pi.info.horizon_years
+            ),
+        )
 
     if any(spec.key == "tariff" for spec, _ in active) and getattr(pi.revenue, "multistream_config_json", ""):
         raise CellBuildError("REVENUE_V2_CONTRACTS_UNSUPPORTED",

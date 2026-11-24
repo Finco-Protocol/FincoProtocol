@@ -233,7 +233,7 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
 
         if data.cells:
             from app.workbook.update_service import find_line_owned_cost_fields
-            _owned = find_line_owned_cost_fields(project_id, [f for f, _v in data.cells])
+            _owned = find_line_owned_cost_fields(project_id, [f for f, _v in data.cells], cur=cur)
             if _owned:
                 raise SaveAllInvalid(
                     f"Line-owned cost scalar field(s) cannot be edited directly while active sub-lines exist: {', '.join(sorted(_owned))}",
@@ -250,13 +250,41 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
         if parsed_lines:
             apply_cost_lines_in_tx(cur, project_id, parsed_lines)
         if data.opex_annual_exceptions_json is not None:
-            from app.opex_annual_exceptions import SNAPSHOT_KEY as _OPEX_ANN_KEY, validate_and_canonicalize
+            from app.opex_annual_exceptions import (
+                SNAPSHOT_KEY as _OPEX_ANN_KEY,
+                OpexAnnualExceptionError,
+                validate_and_canonicalize,
+            )
             from app.services.opex_sub_lines_integration import opex_fold_provenance
             from app.persistence.opex_sub_lines import OpexSubLine
+            from app.persistence.scenarios_repository import resolve_scenario_snapshot
             _draft_now_row = cur.execute("SELECT draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?",
                                          (user_id, project_id)).fetchone()
             _draft_now = json.loads(_draft_now_row["draft_snapshot_json"] or "{}")
-            _horizon = int(float(_draft_now.get("horizon_years") or 25))
+            _effective_snap = dict(_draft_now)
+            _sc_row_now = None
+            if data.scenario_id:
+                _sc_row_now = cur.execute(
+                    "SELECT is_base_case, overrides_json FROM scenarios WHERE scenario_id=? AND project_id=?",
+                    (data.scenario_id, project_id),
+                ).fetchone()
+                if _sc_row_now and not _sc_row_now["is_base_case"]:
+                    _effective_snap = resolve_scenario_snapshot(
+                        _draft_now, json.loads(_sc_row_now["overrides_json"] or "{}")
+                    )
+            _raw_h = _effective_snap.get("horizon_years")
+            try:
+                _horizon = int(float(_raw_h))
+            except (TypeError, ValueError) as exc:
+                raise OpexAnnualExceptionError(
+                    "OPEX_ANNUAL_HORIZON_UNRESOLVED",
+                    f"Effective project horizon_years is missing or invalid: {_raw_h!r}",
+                ) from exc
+            if _horizon <= 0:
+                raise OpexAnnualExceptionError(
+                    "OPEX_ANNUAL_HORIZON_UNRESOLVED",
+                    f"Effective project horizon_years must be positive, got {_horizon}",
+                )
             _sub_rows = cur.execute(
                 "SELECT * FROM opex_sub_lines WHERE project_id=? AND is_active=1", (project_id,)
             ).fetchall()
@@ -268,18 +296,15 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
                 horizon_years=_horizon,
                 allowed_line_keys=_allowed_keys,
                 replaced_canonical_keys=_prov.get("replaced_canonical_keys") or (),
-                project_type=str(_draft_now.get("project_type") or ""),
+                project_type=str(_effective_snap.get("project_type") or ""),
             )
             _write_to_scenario = False
-            if data.scenario_id:
-                _sc_row = cur.execute("SELECT is_base_case, overrides_json FROM scenarios WHERE scenario_id=? AND project_id=?",
-                                      (data.scenario_id, project_id)).fetchone()
-                if _sc_row and not _sc_row["is_base_case"]:
-                    _write_to_scenario = True
-                    _sc_ov = json.loads(_sc_row["overrides_json"] or "{}")
-                    _sc_ov[_OPEX_ANN_KEY] = _canonical_ann
-                    cur.execute("UPDATE scenarios SET overrides_json=?, updated_at=? WHERE scenario_id=? AND project_id=?",
-                                (json.dumps(_sc_ov, sort_keys=True), _now_utc().isoformat(), data.scenario_id, project_id))
+            if _sc_row_now and not _sc_row_now["is_base_case"]:
+                _write_to_scenario = True
+                _sc_ov = json.loads(_sc_row_now["overrides_json"] or "{}")
+                _sc_ov[_OPEX_ANN_KEY] = _canonical_ann
+                cur.execute("UPDATE scenarios SET overrides_json=?, updated_at=? WHERE scenario_id=? AND project_id=?",
+                            (json.dumps(_sc_ov, sort_keys=True), _now_utc().isoformat(), data.scenario_id, project_id))
             if not _write_to_scenario:
                 if _canonical_ann:
                     _draft_now[_OPEX_ANN_KEY] = _canonical_ann

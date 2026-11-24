@@ -174,7 +174,7 @@ def validate_and_canonicalize(
                 "OPEX_ANNUAL_SHADOWED_SCALAR_UNSUPPORTED",
                 f"Line {line_key!r} is replaced by active OPEX sub-lines; edit the sub-line directly",
             )
-        if allowed and line_key not in allowed:
+        if line_key not in allowed:
             raise OpexAnnualExceptionError(
                 "OPEX_ANNUAL_LINE_UNKNOWN",
                 f"Unknown or inactive canonical OPEX line {line_key!r}",

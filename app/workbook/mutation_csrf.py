@@ -11,7 +11,7 @@ OPERATIONS = frozenset({
     "scenario-update-overrides", "scenario-remove-override", "workbook-update",
     "reference-seed-reset", "workbook-export", "grid-save", "grid-cost-lines-save",
     "capex-add", "capex-update", "capex-deactivate", "capex-reactivate", "capex-reorder", "capex-contingency",
-    "opex-add", "opex-update", "opex-deactivate", "opex-reactivate", "opex-reorder",
+    "opex-add", "opex-update", "opex-deactivate", "opex-reactivate", "opex-reorder", "opex-annual-exceptions",
 })
 
 

@@ -44,6 +44,17 @@ export async function loadOpexLineYears(project: string, signal?: AbortSignal): 
   }
 }
 
+export async function loadOpexAnnualEditor(project: string, signal?: AbortSignal): Promise<AnnualExceptionsMeta | null> {
+  try {
+    const r = await fetch(`/v2/model-react/opex-projection/annual-exceptions/editor?${new URLSearchParams({ project })}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal });
+    const body = await r.json().catch(() => null) as (AnnualExceptionsMeta & { ok?: boolean }) | null;
+    if (r.ok && body && body.ok === true && body.editable) return body;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function baseRows(bases: unknown): Base[] {
   return Array.isArray(bases) ? (bases as Base[]) : [];
 }
@@ -57,6 +68,7 @@ export function OpexLineYears({ project, reloadKey, onMutated }: { project: stri
   const { precision } = useReportPrecision();
   const cell = (v: number | null | undefined) => (v === null || v === undefined || Number.isNaN(v) ? "—" : showKeur(v, unit, precision));
   const [data, setData] = useState<Payload | null>(null);
+  const [editorMeta, setEditorMeta] = useState<AnnualExceptionsMeta | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [editing, setEditing] = useState(false);
   // Staged overrides: key -> string value ("" means revert to inherited)
@@ -64,10 +76,15 @@ export function OpexLineYears({ project, reloadKey, onMutated }: { project: stri
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [boundScope, setBoundScope] = useState<string>("");
 
   useEffect(() => {
     let live = true;
-    void loadOpexLineYears(project).then((r) => {
+    setDraftEdits({});
+    setSaveError(null);
+    setSaveNote(null);
+    setEditing(false);
+    void Promise.all([loadOpexLineYears(project), loadOpexAnnualEditor(project)]).then(([r, ed]) => {
       if (!live) return;
       if ("years" in r) {
         setData(r);
@@ -75,6 +92,15 @@ export function OpexLineYears({ project, reloadKey, onMutated }: { project: stri
       } else {
         setFailure(r);
       }
+      setEditorMeta(ed);
+      const nextScope = `${project}::${ed?.scenario_id ?? ""}`;
+      if (boundScope && boundScope !== nextScope) {
+        setDraftEdits({});
+        setSaveError(null);
+        setSaveNote(null);
+        setEditing(false);
+      }
+      setBoundScope(nextScope);
     });
     return () => { live = false; };
   }, [project, reloadKey]);
@@ -82,7 +108,7 @@ export function OpexLineYears({ project, reloadKey, onMutated }: { project: stri
   if (failure) return <FriendlyError code={failure.code} message={failure.message} />;
   if (!data) return <p className="rx-boot-loading" role="status" data-opex-lines="loading">Loading OPEX lines by year…</p>;
   const bases = baseRows(data.bases);
-  const meta = data.annual_exceptions;
+  const meta = editorMeta;
   const canEdit = Boolean(meta?.editable && meta?.csrf_token);
   const savedMap: Record<string, number> = {};
   for (const ov of meta?.overrides ?? []) {
@@ -138,8 +164,9 @@ export function OpexLineYears({ project, reloadKey, onMutated }: { project: stri
       }
       setDraftEdits({});
       setSaveNote("Annual OPEX overrides saved (Run not executed; Run model to refresh outputs).");
-      const fresh = await loadOpexLineYears(project);
+      const [fresh, freshEd] = await Promise.all([loadOpexLineYears(project), loadOpexAnnualEditor(project)]);
       if ("years" in fresh) setData(fresh);
+      setEditorMeta(freshEd);
       onMutated?.();
     } catch {
       setSaveError("Network error while saving annual OPEX overrides. Your edits are preserved.");

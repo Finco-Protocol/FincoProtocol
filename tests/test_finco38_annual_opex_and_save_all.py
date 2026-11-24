@@ -188,6 +188,14 @@ def test_finco38_validation_rejects_malformed_derived_driver_and_shadowed():
             replaced_canonical_keys=["O&M"],
         )
 
+    # Empty allowed_line_keys (zero active sublines) MUST reject any non-empty override (no orphan keys)
+    with pytest.raises(OpexAnnualExceptionError, match="OPEX_ANNUAL_LINE_UNKNOWN"):
+        validate_and_canonicalize(
+            {"schema_version": SCHEMA_VERSION, "overrides": [{"line_key": "B.01.01", "year": 2, "amount_keur": 10}]},
+            horizon_years=25,
+            allowed_line_keys=[],
+        )
+
 
 # ---------------------------------------------------------------------------
 # 3. Authenticated HTTP Save -> Run -> History -> Last-Run OPEX Panel
@@ -195,7 +203,9 @@ def test_finco38_validation_rejects_malformed_derived_driver_and_shadowed():
 
 def test_finco38_http_annual_opex_cas_run_and_panel_lifecycle(tmp_path, monkeypatch):
     """Full authenticated route test:
-    GET /v2/model-react/opex-projection/lines -> POST annual-exceptions (CSRF, stale 409, valid 200, no hidden Run)
+    GET /v2/model-react/opex-projection/lines (pure read-only, zero provenance)
+    -> GET /v2/model-react/opex-projection/annual-exceptions/editor (owner-gated CAS + mutation_csrf)
+    -> POST annual-exceptions (CSRF, stale 409, valid 200, no hidden Run)
     -> Run -> verify committed OPEX changed in History & Last-Run OPEX panel (FINCO_G10_RUN_OPEX_PANEL=1)
     -> verify original History immutable.
     """
@@ -205,6 +215,7 @@ def test_finco38_http_annual_opex_cas_run_and_panel_lifecycle(tmp_path, monkeypa
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from app.auth import COOKIE_NAME, create_session_token
+    from app.cost_line_ledger.projection import assert_no_source_provenance
     from app.persistence import db
     from app.persistence.run_history_repository import get_run_history
     from app.services.reference_seed_service import create_reference_seeded_project
@@ -230,7 +241,7 @@ def test_finco38_http_annual_opex_cas_run_and_panel_lifecycle(tmp_path, monkeypa
     )
     import uuid
     from types import SimpleNamespace
-    session_token = create_session_token(user_id, "owner@finco38.test")
+    session_token = create_session_token(user_id=user_id, username="owner")
     client = TestClient(app)
     client.cookies.set(COOKIE_NAME, session_token)
     req_stub = SimpleNamespace(cookies={COOKIE_NAME: session_token}, state=SimpleNamespace())
@@ -267,14 +278,33 @@ def test_finco38_http_annual_opex_cas_run_and_panel_lifecycle(tmp_path, monkeypa
         for p in hist_before[0].financial_statements["pnl"]["periods"]
     ]
 
-    # Read OPEX lines projection
+    # Read pure read-only OPEX lines projection (MUST have zero provenance/mutation keys)
     r_lines = client.get("/v2/model-react/opex-projection/lines", params={"project": proj.project_code})
     assert r_lines.status_code == 200
     payload = r_lines.json()
     assert payload["ok"] is True
-    meta = payload["annual_exceptions"]
+    assert "annual_exceptions" not in payload
+    assert_no_source_provenance(payload)
+
+    # Read separate authorized editor context
+    r_ed = client.get(
+        "/v2/model-react/opex-projection/annual-exceptions/editor",
+        params={"project": proj.project_code},
+    )
+    assert r_ed.status_code == 200
+    meta = r_ed.json()
+    assert meta["ok"] is True
     assert meta["editable"] is True
     assert meta["csrf_token"]
+
+    # Non-owner stranger cannot read editor context (404)
+    stranger = TestClient(app)
+    stranger.cookies.set(COOKIE_NAME, create_session_token(user_id="stranger-user", username="stranger"))
+    assert stranger.get(
+        "/v2/model-react/opex-projection/annual-exceptions/editor",
+        params={"project": proj.project_code},
+    ).status_code == 404
+
     first_line = next(ln for g in payload["groups"] for ln in g["lines"])
     line_key = first_line["business_code"]
     orig_y3 = first_line["values"][2]

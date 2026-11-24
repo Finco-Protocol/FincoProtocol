@@ -211,6 +211,22 @@ def _construct(record, owner: str, ws):
     folded_opex = apply_user_sub_lines_to_opex(override.opex, project_id=record.project_id, scenario_overrides=scenario_overrides)
     if folded_opex is not override.opex:
         override = dc_replace(override, opex=folded_opex)
+    from app.opex_annual_exceptions import (
+        OpexAnnualExceptionError,
+        apply_annual_exceptions_to_opex,
+        effective_raw as _opex_ann_raw_fn,
+    )
+    _ann_raw = _opex_ann_raw_fn(pis_draft.snapshot_origin, sc if ws.active_scenario_id else None)
+    if _ann_raw:
+        try:
+            override = dc_replace(
+                override,
+                opex=apply_annual_exceptions_to_opex(
+                    override.opex, _ann_raw, horizon_years=override.info.horizon_years
+                ),
+            )
+        except OpexAnnualExceptionError as exc:
+            return "INVALID_REQUEST", str(exc)
     try:
         assert_materialized_fee_authority(override, pis_draft.snapshot_origin.get(SNAPSHOT_KEY))
         override = apply_state(override, pis_draft.snapshot_origin.get(F3_KEY), scope_for_workspace(ws),

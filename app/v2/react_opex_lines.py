@@ -135,35 +135,14 @@ def build_line_projection(record, ws, owner: str, *, request: Optional[Request] 
         total_excl = _series(vm.total_excl_contingency, years)
         total_incl = _series(vm.total_incl_contingency, years)
 
-    from app.workbook.registry import WORKBOOK
     notes = opex_group_authority_notes(record.project_id, getattr(record, "template_source", "") or "")
     protected = bool(is_protected_reference(record))
     bases = opex_bases(pis.get, notes, protected=protected)
-    ident = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
-    editable = (not protected) and (actor_user_id is None or actor_user_id == owner)
-    csrf_tok = None
-    if request is not None and editable:
-        from app.workbook.financing_csrf import issue_token
-        csrf_tok = issue_token(request, record.project_code, purpose="model-opex-annual-v1")
     return {
         "ok": True, "project": {"code": record.project_code}, "unit": "kEUR", "years": list(range(1, years + 1)), "groups": groups,
         "contingency": {"rate_pct": float(vm.contingency_rate), "by_year": cont_by_year},
         "totals": {"excluding_contingency": total_excl, "including_contingency": total_incl},
         "bases": bases,
-        "annual_exceptions": {
-            "editable": editable,
-            "base_token": opex_ann_token(raw_ann),
-            "content_hash": ident.composite_hash,
-            "workbook_version": WORKBOOK.version,
-            "scenario_id": ws.active_scenario_id,
-            "csrf_token": csrf_tok,
-            "endpoint": "/v2/model-react/opex-projection/annual-exceptions",
-            "overrides": [
-                {"line_key": lk, "year": yr, "amount_keur": amt}
-                for lk, ym in sorted(ann_map.items())
-                for yr, amt in sorted(ym.items())
-            ],
-        },
         "basis": ("Saved working inputs, not a Run result. Rows are the saved OPEX lines (Year 1 amount escalated by each line's own inflation, "
                   "with any explicit nominal annual overrides applied) and technology-driven rows. The six group base amounts are listed separately "
                   "with Year 1 only: the Run adds them, these yearly rows do not."),
@@ -193,6 +172,65 @@ async def react_opex_line_projection(request: Request, project: str = ""):
     return _json(payload)
 
 
+@router.get("/model-react/opex-projection/annual-exceptions/editor")
+async def react_opex_annual_editor_context(request: Request, project: str = ""):
+    """Separate authorized mutation context for annual OPEX exceptions (never exposed on read-only /lines).
+
+    Returns ``editable: false`` with zero tokens/hashes for non-owners or protected references.
+    For an authorized owner, returns consistent CAS tokens bound to the same snapshot.
+    """
+    if not react_poc_enabled():
+        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
+    user = resolve_request_session(request)
+    if user is None:
+        return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
+    from app.opex_annual_exceptions import (
+        document_token as opex_ann_token,
+        effective_raw as opex_ann_effective_raw,
+        parse_exceptions as parse_opex_ann,
+    )
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.scenarios_repository import get_scenario
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.ui.protected_reference_service import is_protected_reference
+    from app.workbook.mutation_csrf import mutation_token
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    record, owner = resolve_accessible_project(user.user_id, (project or "").strip())
+    if record is None:
+        return _json({"ok": False, "code": "PROJECT_NOT_FOUND"}, 404)
+    ws = get_workspace_state(owner, record.project_id)
+    if ws is None:
+        return _json({"ok": False, "code": "PROJECT_NOT_FOUND"}, 404)
+
+    protected = bool(is_protected_reference(record))
+    editable = (not protected) and (user.user_id == owner)
+    if not editable:
+        return _json({"ok": True, "editable": False})
+
+    ident = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
+    ws_consistent = get_workspace_state(owner, record.project_id) or ws
+    active_sc = get_scenario(ws_consistent.active_scenario_id) if ws_consistent.active_scenario_id else None
+    raw_ann = opex_ann_effective_raw(ws_consistent.draft_snapshot, active_sc)
+    ann_map = parse_opex_ann(raw_ann) if raw_ann else {}
+    return _json({
+        "ok": True,
+        "editable": True,
+        "base_token": opex_ann_token(raw_ann),
+        "content_hash": ident.composite_hash,
+        "workbook_version": WORKBOOK.version,
+        "scenario_id": ws_consistent.active_scenario_id,
+        "csrf_token": mutation_token(request, record.project_code, "opex-annual-exceptions"),
+        "endpoint": "/v2/model-react/opex-projection/annual-exceptions",
+        "overrides": [
+            {"line_key": lk, "year": yr, "amount_keur": amt}
+            for lk, ym in sorted(ann_map.items())
+            for yr, amt in sorted(ym.items())
+        ],
+    })
+
+
 @router.post("/model-react/opex-projection/annual-exceptions")
 async def save_opex_annual_exceptions(request: Request):
     """Canonical atomic CAS writer for annual OPEX exceptions (delegates to Save All transaction; never runs the model)."""
@@ -210,9 +248,8 @@ async def save_opex_annual_exceptions(request: Request):
 
     project_code = str(body.get("project") or "").strip()
     csrf_token = str(body.get("csrf_token") or "")
-    from app.auth import validate_csrf_token
-    from app.workbook.financing_csrf import extract_bound_token
-    if not validate_csrf_token(extract_bound_token(request, project_code, csrf_token, purpose="model-opex-annual-v1")):
+    from app.workbook.mutation_csrf import validate_mutation_token
+    if not validate_mutation_token(request, project_code, csrf_token, "opex-annual-exceptions"):
         return _json({"ok": False, "code": "CSRF_INVALID"}, 403)
 
     from app.persistence.projects_repository import resolve_accessible_project
@@ -238,6 +275,7 @@ async def save_opex_annual_exceptions(request: Request):
     from app.v2.opex_commands import OpexProtectedReferenceError, OpexStaleIdentityError
     from app.v2.save_all_commands import SaveAllError, SaveAllInput, SaveAllRequestIdReused, save_all
     from app.workbook.registry import WORKBOOK
+    from app.workbook.runtime_authority import resolve_runtime_freshness
     from app.workbook.update_service import StaleContentError
 
     overrides = body.get("overrides", [])
@@ -265,11 +303,17 @@ async def save_opex_annual_exceptions(request: Request):
     ws_after = get_workspace_state(owner, record.project_id)
     active_sc = get_scenario(ws_after.active_scenario_id) if ws_after and ws_after.active_scenario_id else None
     raw_after = opex_ann_effective_raw(ws_after.draft_snapshot if ws_after else {}, active_sc)
+    fresh = resolve_runtime_freshness(ws_after, current_composite_hash=res.content_hash) if ws_after else None
+    run_state = (
+        str(fresh.state.value)
+        if fresh is not None and hasattr(fresh.state, "value")
+        else (str(fresh.state) if fresh is not None else "NOT_RUN")
+    )
     return _json({
         "ok": True,
         "content_hash": res.content_hash,
         "base_token": opex_ann_token(raw_after),
         "replayed": res.replayed,
         "model_executed": False,
-        "run_state": "STALE",
+        "run_state": run_state,
     })
