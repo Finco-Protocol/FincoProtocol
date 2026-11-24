@@ -867,14 +867,19 @@ def _validate_ppa_book_against_proposed_snapshot(proposed_snapshot: dict) -> Non
             cod_date=info.cod_date,
             period_axis_convention=getattr(info.period_axis_convention, "value", info.period_axis_convention),
             dated_life_end_exclusive=(
-                dated_life_end_exclusive(info.cod_date, info.horizon_years, ms_json) if freq is PeriodFrequency.SEMESTRIAL else None),
+                dated_life_end_exclusive(
+                    info.cod_date,
+                    info.horizon_years,
+                    ms_json,
+                    date_authority_version=getattr(info, "date_authority_version", None),
+                )
+                if freq is PeriodFrequency.SEMESTRIAL
+                else None
+            ),
         )
         multistream = parse_config(ms_json)
         _date_aware = engine.dated_life_end_exclusive is not None
-        if getattr(multistream, "has_contractual_indexation", False):
-            multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date, date_aware=_date_aware)
-        else:
-            multistream.validate_axis(engine.periods(), date_aware=_date_aware)
+        multistream.validate_axis(engine.periods(), project_cod=proposed_pi.info.cod_date, date_aware=_date_aware)
         if getattr(multistream, "has_absolute_annual_quantity", False):
             if _date_aware:
                 from finco_core.engine.date_authority import assert_grid_conserves_operating_life
@@ -902,7 +907,7 @@ def _is_diagnosed_legacy_repair(ws, field_id: str) -> bool:
     return any(getattr(i, "field_id", None) == field_id for i in recovery.issues)
 
 
-def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, str]:
+def find_line_owned_cost_fields(project_id: str | None, field_ids, *, cur=None) -> dict[str, str]:
     """C1F-A-1: identify CAPEX/OPEX scalar fields whose category is owned by active cost lines.
 
     Active cost lines take precedence at canonical Run (apply_user_sub_lines_replacing_base /
@@ -920,9 +925,17 @@ def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, 
     if capex_fids:
         from app.persistence.capex_sub_lines import (
             CAPEX_CATEGORY_TO_FIELD,
+            CapexSubLine,
             get_active_sub_lines_for_project as get_active_capex_lines,
         )
-        active_capex = get_active_capex_lines(project_id)
+        if cur is not None:
+            _crows = cur.execute(
+                "SELECT * FROM capex_sub_lines WHERE project_id = ? AND is_active = 1",
+                (project_id,),
+            ).fetchall()
+            active_capex = tuple(CapexSubLine.from_row(r) for r in _crows)
+        else:
+            active_capex = get_active_capex_lines(project_id)
         if active_capex:
             owned_capex_attrs = {
                 CAPEX_CATEGORY_TO_FIELD.get(row.parent_category_code)
@@ -947,8 +960,16 @@ def find_line_owned_cost_fields(project_id: str | None, field_ids) -> dict[str, 
 
     opex_fids = [f for f in fids if f.startswith("opex.")]
     if opex_fids:
+        from app.persistence.opex_sub_lines import OpexSubLine
         from app.services.opex_sub_lines_integration import _load_all_sub_lines, opex_fold_provenance
-        all_opex = _load_all_sub_lines(project_id)
+        if cur is not None:
+            _orows = cur.execute(
+                "SELECT * FROM opex_sub_lines WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+            all_opex = tuple(OpexSubLine.from_row(r) for r in _orows)
+        else:
+            all_opex = _load_all_sub_lines(project_id)
         if all_opex:
             prov = opex_fold_provenance(all_opex)
             # Only a group whose canonical key is replaced by reference-seeded lines is shadowed

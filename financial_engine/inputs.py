@@ -44,6 +44,7 @@ class CalendarInput:
     period_axis_convention: PeriodAxisConvention = (
         PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
     )
+    date_authority_version: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,6 +114,7 @@ class OpexLineInput:
     annual_inflation: float
     step_changes: tuple[tuple[int, float], ...]
     percentage_of_opex: float
+    annual_overrides: tuple[tuple[int, float], ...] = ()
 
 
 @dataclass(frozen=True)

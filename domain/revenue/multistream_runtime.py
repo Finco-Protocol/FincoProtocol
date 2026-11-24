@@ -387,7 +387,18 @@ class MultiStreamRevenue:
                 if actual != expected:
                     raise ValueError("REVENUE_V2_CURVE_AXIS: exactly one ordered price for every active operating period; no interpolation or extrapolation")
             if dated.index_series:
-                active_years = {p.year_index for p in operating if dated.start_date <= p.start_date < dated.end_date}
+                if date_aware and type(project_cod) is date:
+                    from finco_core.engine.contractual_calendar import operating_year_index
+                    active_years = {
+                        operating_year_index(project_cod, max(project_cod, dated.start_date))
+                    }
+                    for p in operating:
+                        if dated.start_date < p.end_date and dated.end_date > p.start_date:
+                            probe = max(project_cod, p.start_date, dated.start_date)
+                            if probe < dated.end_date:
+                                active_years.add(operating_year_index(project_cod, probe))
+                else:
+                    active_years = {p.year_index for p in operating if dated.start_date <= p.start_date < dated.end_date}
                 years = [year for year, _level, _basis in dated.index_series]
                 if not active_years or years[0] > min(active_years):
                     raise ValueError("REVENUE_V2_INDEX_BASE: the base index must be at or before the first priced operating year")

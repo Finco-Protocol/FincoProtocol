@@ -88,6 +88,14 @@ export interface InvestorPayload {
   identity: { content_hash: string; workbook_version: string; scenario_name: string | null };
   terms: AgreementDocument | null;
   workflow: { state: string; text: string };
+  draft_warning?: {
+    incomplete_draft: boolean;
+    code: string;
+    total_paid_in_keur: number;
+    total_commitment_keur: number;
+    mismatched_dates?: string[];
+    message: string;
+  } | null;
   evidence: { snapshot_id: string; agreement: { agreement_id: string; version: number }; investors: InvestorEvidenceRow[] } | null;
   unavailable: string;
   funding: Array<{ date: string; paid_in_keur: number }>;

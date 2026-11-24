@@ -188,6 +188,74 @@ def _parse_terms(raw) -> AgreementTerms | None:
         tuple(sorted(contributions, key=lambda c: (c.cash_date, c.investor_id, c.amount_keur))))
 
 
+def assess_contribution_completeness(
+    terms: AgreementTerms | None,
+    funding: list[dict] | None = None,
+) -> dict | None:
+    """C1F-B-1: report whether a saved working agreement has incomplete paid-in contributions.
+
+    Saving a draft with empty or partial paid-in contributions is permitted for drafting,
+    while canonical Run remains strictly fail-closed until paid-in capital reconciles by
+    exact date with canonical legal-equity funding.
+    """
+    if terms is None:
+        return None
+    total_paid_in = math.fsum(c.amount_keur for c in terms.contributions)
+    total_commitment = math.fsum(i.commitment_keur for i in terms.investors)
+    funding_rows = list(funding or ())
+    funding_by_date: dict[str, float] = {}
+    for row in funding_rows:
+        d = str(row.get("date") or "")
+        amt = float(row.get("paid_in_keur") or 0.0)
+        if d and amt:
+            funding_by_date[d] = funding_by_date.get(d, 0.0) + amt
+
+    if not terms.contributions:
+        return {
+            "incomplete_draft": True,
+            "code": "INCOMPLETE_CONTRIBUTIONS_EMPTY",
+            "total_paid_in_keur": total_paid_in,
+            "total_commitment_keur": total_commitment,
+            "message": (
+                "Incomplete draft: no actual paid-in capital contributions are recorded yet. "
+                "Saving is permitted for drafting, but Run will fail closed until paid-in "
+                "contributions reconcile by exact date with canonical legal-equity funding."
+            ),
+        }
+
+    if funding_by_date:
+        paid_by_date: dict[str, float] = {}
+        for c in terms.contributions:
+            iso = c.cash_date.isoformat()
+            paid_by_date[iso] = paid_by_date.get(iso, 0.0) + c.amount_keur
+        all_dates = set(funding_by_date) | set(paid_by_date)
+        mismatched = sorted(
+            d for d in all_dates
+            if abs(paid_by_date.get(d, 0.0) - funding_by_date.get(d, 0.0)) > CASH_TOLERANCE_KEUR
+        )
+        if mismatched:
+            return {
+                "incomplete_draft": True,
+                "code": "INCOMPLETE_CONTRIBUTIONS_MISMATCH",
+                "total_paid_in_keur": total_paid_in,
+                "total_commitment_keur": total_commitment,
+                "mismatched_dates": mismatched,
+                "message": (
+                    "Incomplete draft: recorded paid-in contributions do not reconcile to Last Run "
+                    f"canonical legal-equity funding on {', '.join(mismatched[:3])}. "
+                    "Run will fail closed until paid-in capital reconciles by exact date."
+                ),
+            }
+
+    return {
+        "incomplete_draft": False,
+        "code": "COMPLETE",
+        "total_paid_in_keur": total_paid_in,
+        "total_commitment_keur": total_commitment,
+        "message": "",
+    }
+
+
 def extract_equity_receipts(g2c) -> dict:
     """Pass through actual G2C dated net dividend and legal contribution fields.
 

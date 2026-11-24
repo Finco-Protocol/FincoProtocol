@@ -54,8 +54,11 @@ def _load(request, project, history_id=None):
             value = sum(row[k] for k in keys)
             if value:
                 funding.append(dict(date=row["date"], paid_in_keur=value))
+    from app.model_v2.investor_f4 import assess_contribution_completeness
+    draft_warning = None if selected else assess_contribution_completeness(terms, funding)
     return dict(context=context, record=record, owner=owner, terms=terms, evidence=evidence,
-        unavailable=unavailable, funding=funding, history=get_run_history(owner, record.project_id, limit=12),
+        unavailable=unavailable, funding=funding, draft_warning=draft_warning,
+        history=get_run_history(owner, record.project_id, limit=12),
         history_id=history_id, project_code=record.project_code, snapshot_id=snapshot_id,
         state="HISTORICAL" if selected else context.freshness.state.value,
         editable=not is_protected_reference(record) and not selected), None

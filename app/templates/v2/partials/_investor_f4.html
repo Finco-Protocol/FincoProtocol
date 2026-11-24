@@ -24,6 +24,9 @@
     {% if f4.editable %}
     <p class="f4-draft" data-f4-draft data-draft="clean" data-testid="f4-draft-state">No unsaved edits. Saving stores the working agreement only; it never runs the model or changes a committed Run.</p>
     {% endif %}
+    {% if f4.draft_warning is defined and f4.draft_warning and f4.draft_warning.incomplete_draft %}
+    <p class="f4-draft-warning" role="alert" data-testid="f4-incomplete-draft-warning" data-draft-warning-code="{{ f4.draft_warning.code }}">{{ f4.draft_warning.message }}</p>
+    {% endif %}
   </div>
   {% if f4.editable %}
   <form class="f4-agreement-form" hx-post="/v2/workbook/investor/agreement" hx-target="#f4-investor-workspace" hx-swap="outerHTML"

@@ -56,10 +56,61 @@ def save_agreement(*, owner, project_id, expected_hash, raw, remove=False):
             from app.persistence.records import ScenarioRecord
             scenario = ScenarioRecord.from_row(row)
         previous = parse_terms(effective_raw(draft, scenario))
-        if terms is not None:
-            expected_version = previous.version + 1 if previous and previous.agreement_id == terms.agreement_id else 1
+        scenario_key = scenario.scenario_id if (scenario is not None and not scenario.is_base_case) else ""
+        now_iso = _now_utc().isoformat()
+        from app.persistence.investor_agreement_ledger_repository import (
+            get_max_version,
+            record_version,
+            tombstone_agreement,
+        )
+        if terms is None:
+            if previous is not None:
+                tombstone_agreement(
+                    cur,
+                    owner_id=owner,
+                    project_id=project_id,
+                    scenario_id=scenario_key,
+                    agreement_id=previous.agreement_id,
+                    min_version=previous.version,
+                    now_iso=now_iso,
+                )
+        else:
+            if previous is not None and previous.agreement_id != terms.agreement_id:
+                tombstone_agreement(
+                    cur,
+                    owner_id=owner,
+                    project_id=project_id,
+                    scenario_id=scenario_key,
+                    agreement_id=previous.agreement_id,
+                    min_version=previous.version,
+                    now_iso=now_iso,
+                )
+            ledger_max = get_max_version(
+                cur,
+                owner_id=owner,
+                project_id=project_id,
+                scenario_id=scenario_key,
+                agreement_id=terms.agreement_id,
+            )
+            prev_ver = previous.version if (previous is not None and previous.agreement_id == terms.agreement_id) else 0
+            expected_version = max(ledger_max, prev_ver) + 1
             if terms.version != expected_version:
+                if ledger_max >= terms.version:
+                    raise InvestorAgreementConflict(
+                        f"Agreement version {terms.agreement_id} v{terms.version} was already used or retired; "
+                        f"next version must be v{expected_version}"
+                    )
                 raise InvestorAgreementConflict("Agreement version changed; reload")
+            record_version(
+                cur,
+                owner_id=owner,
+                project_id=project_id,
+                scenario_id=scenario_key,
+                agreement_id=terms.agreement_id,
+                version=terms.version,
+                updated_at=now_iso,
+                tombstoned_at=None,
+            )
         value = terms.to_json() if terms else ""
         if scenario is not None and not scenario.is_base_case:
             from app.persistence.scenarios_repository import resolve_scenario_snapshot
@@ -67,7 +118,7 @@ def save_agreement(*, owner, project_id, expected_hash, raw, remove=False):
             overrides[SNAPSHOT_KEY] = value
             effective = resolve_scenario_snapshot(draft, overrides)
             cur.execute("UPDATE scenarios SET overrides_json=?, snapshot_json=?, updated_at=? WHERE scenario_id=? AND user_id=?",
-                        (_to_json(overrides), _to_json(effective), _now_utc().isoformat(), scenario.scenario_id, owner))
+                        (_to_json(overrides), _to_json(effective), now_iso, scenario.scenario_id, owner))
         else:
             if terms is None:
                 draft.pop(SNAPSHOT_KEY, None)
@@ -75,7 +126,7 @@ def save_agreement(*, owner, project_id, expected_hash, raw, remove=False):
                 draft[SNAPSHOT_KEY] = value
         new_identity = assemble_transactional(draft_snapshot_json=_to_json(draft), **args)
         cur.execute("UPDATE workspace_states SET draft_snapshot_json=?, draft_content_hash=?, dirty=1, updated_at=? WHERE workspace_id=? AND user_id=?",
-                    (_to_json(draft), new_identity.composite_hash, _now_utc().isoformat(), ws["workspace_id"], owner))
+                    (_to_json(draft), new_identity.composite_hash, now_iso, ws["workspace_id"], owner))
         conn.commit()
     except Exception:
         conn.rollback()

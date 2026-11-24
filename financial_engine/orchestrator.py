@@ -91,7 +91,12 @@ def _build_period_engine(inputs: OperatingModelInput, *, contract_config_json=No
             operating_calendar_policy=policy,
         )
     from finco_core.engine.date_authority import dated_life_end_exclusive
-    dated_end = dated_life_end_exclusive(_cod_date(cal), cal.horizon_years, contract_config_json if contract_config_json is not None else getattr(inputs.revenue, "multistream_config_json", ""))
+    dated_end = dated_life_end_exclusive(
+        _cod_date(cal),
+        cal.horizon_years,
+        contract_config_json if contract_config_json is not None else getattr(inputs.revenue, "multistream_config_json", ""),
+        date_authority_version=getattr(cal, "date_authority_version", None),
+    )
     return PeriodEngine(
         financial_close=cal.financial_close,
         construction_months=cal.construction_months,
@@ -154,6 +159,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         horizon_years=int(cal.horizon_years),
         period_frequency=_PF.SEMESTRIAL,
         period_axis_convention=_PAC(cal.period_axis_convention.value),
+        date_authority_version=getattr(cal, "date_authority_version", None),
     )
     quarterly_policy = getattr(cal, "operating_calendar_policy", None)
     if quarterly_policy is not None:
@@ -232,6 +238,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
             annual_inflation=item.annual_inflation,
             step_changes=tuple(item.step_changes),
             percentage_of_opex=item.percentage_of_opex,
+            annual_overrides=tuple(getattr(item, "annual_overrides", ()) or ()),
         )
         for item in opex_in.items
     )
@@ -548,7 +555,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         full_generation_schedule,
         full_revenue_schedule,
     )
-    tariff_schedule = _build_ppa_tariff_schedule(inputs, periods_meta)
+    tariff_schedule = () if engine.dated_life_end_exclusive is not None else _build_ppa_tariff_schedule(inputs, periods_meta)
     proxy = _build_project_inputs_proxy(inputs, tariff_schedule)
     native_bess = getattr(inputs.technical, "bess_native_config_json", "")
     production_by_idx = {idx: 0.0 for idx in canonical_indices} if native_bess else full_generation_schedule(proxy, engine)
@@ -578,6 +585,10 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     # Step 5: OPEX via finco_core leaf.
     from finco_core.opex.projections import opex_schedule_period
     if engine.dated_life_end_exclusive is not None:
+        if getattr(inputs.opex, "hierarchical_model", None) is not None:
+            raise ValueError(
+                "DATE_AUTHORITY_HIERARCHICAL_OPEX_UNSUPPORTED: hierarchical OPEX is not validated on OD-TIME-01/v1"
+            )
         from finco_core.engine.date_authority import dated_opex_schedule
         opex_by_idx = dated_opex_schedule(proxy, engine)
     else:

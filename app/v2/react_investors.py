@@ -91,6 +91,7 @@ async def react_investor_agreement(request: Request, project: str):
                          "scenario_name": context.workspace.active_scenario_name},
             "terms": None if terms is None else terms.document(),
             "workflow": workflow,
+            "draft_warning": view.get("draft_warning"),
             "evidence": None if view["evidence"] is None else {
                 "snapshot_id": view["snapshot_id"], "agreement": view["evidence"]["agreement"],
                 "investors": view["evidence"]["investors"], "roc_status": view["evidence"].get("roc_status"),

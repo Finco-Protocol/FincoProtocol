@@ -122,6 +122,9 @@ class PeriodEngine:
                 operating_calendar_policy
             )
             self._operating_start = self._cod
+        elif dated_life_end_exclusive is not None:
+            # OD-TIME-01: COD is always included; never roll COD across a 7-day boundary.
+            self._operating_start = self._cod
         else:
             self._operating_start = self._last_semiannual_end_on_or_after_cod()
         self._periods_per_year = self.freq.value
@@ -489,7 +492,7 @@ class PeriodEngine:
         construction_index = len(periods)
 
         # === Operation periods ===
-        current_date = self._last_semiannual_end_on_or_after_cod()
+        current_date = self._operating_start
         period_index = construction_index
         year_index = 1
         period_in_year = 1
@@ -998,4 +1001,7 @@ def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
         explicit_end = getattr(e, "_explicit_economic_end", None)
         if explicit_end is not None:
             key = key + (("economic_end_date", explicit_end.isoformat()),)
+    dated_end = getattr(e, "dated_life_end_exclusive", None)
+    if dated_end is not None:
+        key = key + (("dated_life_end_exclusive", dated_end.isoformat()),)
     return key

@@ -1570,8 +1570,26 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # Absent/empty is the released 6/6 contract and returns the same object.
     from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as Q_KEY, apply_config as apply_quarterly
     try:
-        return apply_quarterly(result, snapshot.get(Q_KEY), project_type)
+        result = apply_quarterly(result, snapshot.get(Q_KEY), project_type)
     except ValueError as exc:
         raise SnapshotInputError(str(exc)) from exc
+
+    # OD-TIME-01/v1 explicit versioned date authority (Solar/Wind only; fail-closed on unsupported tech/version).
+    raw_da_ver = str(snapshot.get("date_authority_version") or "").strip()
+    if raw_da_ver:
+        from finco_core.engine.date_authority import DATE_AUTHORITY_VERSION, LEGACY_DATE_AUTHORITY_VERSION
+        if raw_da_ver == DATE_AUTHORITY_VERSION:
+            if project_type not in {"Solar", "Wind"}:
+                raise SnapshotInputError(
+                    f"DATE_AUTHORITY_TECHNOLOGY_UNSUPPORTED: {project_type!r} is not admitted to {DATE_AUTHORITY_VERSION}"
+                )
+            import dataclasses as _dc
+            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=DATE_AUTHORITY_VERSION))
+        elif raw_da_ver == LEGACY_DATE_AUTHORITY_VERSION:
+            import dataclasses as _dc
+            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=LEGACY_DATE_AUTHORITY_VERSION))
+        else:
+            raise SnapshotInputError(f"DATE_AUTHORITY_VERSION_UNSUPPORTED: {raw_da_ver!r}")
+    return result
 
 

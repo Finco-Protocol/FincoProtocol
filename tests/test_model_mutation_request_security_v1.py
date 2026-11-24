@@ -111,6 +111,13 @@ def request_spec(env,record,operation):
         sc=child(record,env.owner)
         data.update(scenario_id=sc.scenario_id,scenario_name='Attempt',new_name='Attempt',tariff_eur_mwh='95',field='tariff_eur_mwh')
         return '/v2/workbook/scenarios/'+operation.removeprefix('scenario-'),data,False
+    if operation=='opex-annual-exceptions':
+        editor=env.client.get('/v2/model-react/opex-projection/annual-exceptions/editor',params={'project':p})
+        assert editor.status_code==200,(editor.status_code,editor.text[:200])
+        ebody=editor.json()
+        assert ebody.get('ok') is True and ebody.get('editable') is True and ebody.get('csrf_token'),ebody
+        payload={'project':p,'content_hash':ebody['content_hash'],'workbook_version':ebody['workbook_version'],'scenario_id':ebody['scenario_id'],'base_token':ebody['base_token'],'overrides':[]}
+        return '/v2/model-react/opex-projection/annual-exceptions',payload,True
     if operation.startswith(('capex-','opex-')):
         kind,op=operation.split('-',1)
         data.update(label='Attempt',amount_keur='1',sub_line_id='unknown-row',row_version='unknown-version',parent_category_code='C.01',parent_group_code='B.09',kind='capex',contingency_pct='5')
@@ -145,6 +152,8 @@ def test_each_operation_rejects_missing_invalid_cross_scope_tokens_without_write
                 values['csrf_token']=secured.token(record.project_code,operation)
         before=snapshot();response=secured.client.post(url,**({'json':values} if is_json else {'data':values}),follow_redirects=False)
         assert response.status_code==403,(operation,bad,response.status_code,response.text[:200])
+        if operation=='opex-annual-exceptions':
+            assert response.json().get('code')=='CSRF_INVALID',(bad,response.text[:200])
         assert snapshot()==before,(operation,bad)
 
 
@@ -290,3 +299,82 @@ def test_positive_caller_helper_leaves_released_capital_stack_requests_untouched
     helper.post_valid_mutation(client,'/v2/workbook/update',data=data)
     client.post.assert_called_once_with('/v2/workbook/update',data=data)
     client.build_request.assert_not_called()
+
+
+def test_opex_annual_exceptions_editor_token_positive_save_and_cas_scope_refusals(secured):
+    record=secured.create();p=record.project_code
+    # Seed one real OPEX sub-line so the project has a canonical saved line to override
+    added=secured.client.post('/v2/opex/line/add',data={**identity(record,secured.owner),'parent_group_code':'B.09','label':'Security O&M','amount_keur':'100','csrf_token':secured.token(p,'opex-add')},follow_redirects=False)
+    assert added.status_code==303
+
+    # Read-only projection emits no tokens; owner editor emits operation-bound csrf_token
+    lines_resp=secured.client.get('/v2/model-react/opex-projection/lines',params={'project':p})
+    assert lines_resp.status_code==200
+    lbody=lines_resp.json()
+    assert lbody.get('ok') is True and 'annual_exceptions' not in lbody
+    first_line=next(row for g in lbody['groups'] for row in g['lines'])
+
+    ed=secured.client.get('/v2/model-react/opex-projection/annual-exceptions/editor',params={'project':p})
+    assert ed.status_code==200
+    ebody=ed.json()
+    assert ebody['ok'] is True and ebody['editable'] is True and ebody['csrf_token']
+    req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())
+    assert validate_mutation_token(req,p,ebody['csrf_token'],'opex-annual-exceptions')
+    assert not validate_mutation_token(req,p,ebody['csrf_token'],'grid-save')
+
+    # Positive control: valid editor-issued token mutates draft atomically without invoking engine or Run/History
+    with db.get_connection() as connection:
+        hist_before=connection.execute('SELECT COUNT(*) FROM model_run_history WHERE project_id=?',(record.project_id,)).fetchone()[0]
+    before=snapshot()
+    saved=secured.client.post('/v2/model-react/opex-projection/annual-exceptions',json={
+        'project':p,
+        'csrf_token':ebody['csrf_token'],
+        'content_hash':ebody['content_hash'],
+        'workbook_version':ebody['workbook_version'],
+        'scenario_id':ebody['scenario_id'],
+        'base_token':ebody['base_token'],
+        'overrides':[{'line_key':first_line['business_code'],'year':2,'amount_keur':321.5}],
+    })
+    assert saved.status_code==200,saved.text[:300]
+    sbody=saved.json()
+    assert sbody['ok'] is True and sbody['content_hash']!=ebody['content_hash'] and sbody['base_token']!=ebody['base_token']
+    assert sbody.get('run_state') in ('NOT_RUN','STALE','CURRENT')
+    assert snapshot()!=before
+    with db.get_connection() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM model_run_history WHERE project_id=?',(record.project_id,)).fetchone()[0]==hist_before
+
+    # Stale content_hash, stale base_token, and wrong scenario_id all fail closed with 409 and zero writes
+    after=snapshot()
+    for mutated in (
+        {'content_hash':ebody['content_hash'],'base_token':sbody['base_token'],'scenario_id':ebody['scenario_id']},
+        {'content_hash':sbody['content_hash'],'base_token':ebody['base_token'],'scenario_id':ebody['scenario_id']},
+        {'content_hash':sbody['content_hash'],'base_token':sbody['base_token'],'scenario_id':'nonexistent-scenario-id'},
+    ):
+        resp=secured.client.post('/v2/model-react/opex-projection/annual-exceptions',json={
+            'project':p,'csrf_token':ebody['csrf_token'],'workbook_version':ebody['workbook_version'],
+            'overrides':[],**mutated,
+        })
+        assert resp.status_code==409,(mutated,resp.status_code,resp.text[:200])
+        assert snapshot()==after
+
+    # Protected reference: editor exposes no token and POST fails closed without writes
+    ref=secured.ref('generic_solar_reference')
+    ref_ed=secured.client.get('/v2/model-react/opex-projection/annual-exceptions/editor',params={'project':ref.project_code}).json()
+    assert ref_ed.get('editable') is False and not ref_ed.get('csrf_token')
+    ref_resp=secured.client.post('/v2/model-react/opex-projection/annual-exceptions',json={
+        'project':ref.project_code,'csrf_token':secured.token(ref.project_code,'opex-annual-exceptions'),
+        'content_hash':'','workbook_version':ebody['workbook_version'],'scenario_id':None,'base_token':'','overrides':[],
+    })
+    assert ref_resp.status_code in (403,404,409) and snapshot()==after
+
+    # Foreign tenant: editor exposes no token and POST fails closed without writes
+    foreign_cookie=auth.create_session_token(user_id='foreign-opex-user',username='foreign')
+    secured.client.cookies.set(auth.COOKIE_NAME,foreign_cookie)
+    f_ed=secured.client.get('/v2/model-react/opex-projection/annual-exceptions/editor',params={'project':p})
+    assert f_ed.status_code in (403,404) or (f_ed.json().get('editable') is False and not f_ed.json().get('csrf_token'))
+    f_resp=secured.client.post('/v2/model-react/opex-projection/annual-exceptions',json={
+        'project':p,'csrf_token':secured.token(p,'opex-annual-exceptions',session=foreign_cookie),
+        'content_hash':sbody['content_hash'],'workbook_version':ebody['workbook_version'],'scenario_id':ebody['scenario_id'],'base_token':sbody['base_token'],'overrides':[],
+    })
+    assert f_resp.status_code in (403,404) and snapshot()==after
+

@@ -331,6 +331,8 @@ class SaveAllBody(BaseModel):
     contracts_base_token: Optional[str] = Field(None, max_length=128)
     profile_json: Optional[str] = Field(None, max_length=70_000)
     profile_base_token: Optional[str] = Field(None, max_length=128)
+    opex_annual_exceptions_json: Optional[str] = Field(None, max_length=70_000)
+    opex_annual_exceptions_base_token: Optional[str] = Field(None, max_length=128)
     cost_lines: list[SaveAllCostLine] = Field(default_factory=list, max_length=200)
 
 
@@ -347,6 +349,7 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     if owner != user.user_id:
         return _json({"ok": False, "code": "OWNER_MISMATCH"}, 403)
 
+    from app.opex_annual_exceptions import OpexAnnualExceptionError
     from app.v2.capex_commands import (
         CapexCommandError, CapexProtectedReferenceError, CapexStaleIdentityError, CapexVersionMismatchError)
     from app.v2.cost_batch_commands import CostBatchConflictError, CostBatchInvalidError, CostLineEdit
@@ -361,6 +364,8 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
         scenario_id=body.scenario_id, cells=tuple((c.field_id, c.value) for c in body.cells),
         contracts_json=body.contracts_json, contracts_base_token=body.contracts_base_token,
         profile_json=body.profile_json, profile_base_token=body.profile_base_token,
+        opex_annual_exceptions_json=body.opex_annual_exceptions_json,
+        opex_annual_exceptions_base_token=body.opex_annual_exceptions_base_token,
         cost_lines=tuple(CostLineEdit(kind=l.kind, sub_line_id=l.sub_line_id, label=l.label, amount_keur=l.amount_keur,
                                       row_version=l.row_version, inflation_pct=l.inflation_pct, notes=l.notes)
                          for l in body.cost_lines))
@@ -370,6 +375,8 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
         result = save_all(project_record=record, user_id=user.user_id, data=data)
     except SaveAllRequestIdReused as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc)}, 409)
+    except OpexAnnualExceptionError as exc:
+        return _json({"ok": False, "code": exc.code, "message": exc.message}, 422)
     except SaveAllError as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc), **exc.detail}, 422)
     except ProfileDocumentError as exc:      # D7: typed, reload:true, nothing saved, no other writer's profile in the answer

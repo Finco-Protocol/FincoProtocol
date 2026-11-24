@@ -99,6 +99,9 @@ class SaveAllInput:
     #: fingerprint ONLY when supplied, so every earlier body keeps its fingerprint.
     profile_json: Optional[str] = None
     profile_base_token: Optional[str] = None
+    #: FINCO38: canonical annual OPEX exceptions document and its CAS base token.
+    opex_annual_exceptions_json: Optional[str] = None
+    opex_annual_exceptions_base_token: Optional[str] = None
 
     def canonical_body(self) -> str:
         body = {
@@ -112,6 +115,9 @@ class SaveAllInput:
         if self.profile_json is not None:
             body["profile_json"] = self.profile_json
             body["profile_base_token"] = self.profile_base_token
+        if self.opex_annual_exceptions_json is not None:
+            body["opex_annual_exceptions_json"] = self.opex_annual_exceptions_json
+            body["opex_annual_exceptions_base_token"] = self.opex_annual_exceptions_base_token
         return json.dumps(body, sort_keys=True, separators=(",", ":"))
 
 
@@ -128,9 +134,10 @@ def _validate_shape(data: SaveAllInput) -> list:
     n_cells, n_lines = len(data.cells), len(data.cost_lines)
     n_contracts = 1 if data.contracts_json is not None else 0
     n_profile = 1 if data.profile_json is not None else 0
+    n_opex_ann = 1 if data.opex_annual_exceptions_json is not None else 0
     if n_profile and not profile_enabled():
         raise SaveAllProfileNotEnabled("Saving the CAPEX profile together with other sections is not enabled; save the profile in the CAPEX planner.")
-    total = n_cells + n_lines + n_contracts + n_profile
+    total = n_cells + n_lines + n_contracts + n_profile + n_opex_ann
     if total < 1:
         raise SaveAllInvalid("There is nothing to save.", "SAVE_ALL_EMPTY")
     if total > MAX_ITEMS:
@@ -143,6 +150,8 @@ def _validate_shape(data: SaveAllInput) -> list:
         raise SaveAllInvalid("The contracts document is too large.", "SAVE_ALL_CONTRACTS_TOO_LARGE")
     if data.profile_json is not None and len(data.profile_json.encode("utf-8")) > MAX_PROFILE_BYTES:
         raise SaveAllInvalid("The CAPEX profile document is too large.", "SAVE_ALL_PROFILE_TOO_LARGE")
+    if data.opex_annual_exceptions_json is not None and len(data.opex_annual_exceptions_json.encode("utf-8")) > MAX_PROFILE_BYTES:
+        raise SaveAllInvalid("The annual OPEX exceptions document is too large.", "SAVE_ALL_OPEX_ANNUAL_TOO_LARGE")
     for field_id, _value in data.cells:
         if field_id in EXCLUDED_FIELDS:
             raise SaveAllInvalid(
@@ -168,6 +177,8 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
     counts = {"cells": len(data.cells), "contracts": 1 if data.contracts_json is not None else 0, "cost_lines": len(data.cost_lines)}
     if data.profile_json is not None:
         counts["profile"] = 1
+    if data.opex_annual_exceptions_json is not None:
+        counts["opex_annual_exceptions"] = 1
 
     conn = get_connection()
     conn.execute("BEGIN EXCLUSIVE")
@@ -184,7 +195,7 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
             return SaveAllResult(content_hash=stored["content_hash"], counts=stored["counts"], replayed=True)
 
         ws_row = check_identity_in_tx(cur, user_id, project_id, data.content_hash)      # the ONE composite CAS
-        ws_full = cur.execute("SELECT workspace_id, active_scenario_id FROM workspace_states WHERE user_id=? AND project_id=?",
+        ws_full = cur.execute("SELECT workspace_id, active_scenario_id, draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?",
                               (user_id, project_id)).fetchone()
         if ws_full["active_scenario_id"] != data.scenario_id:
             from app.workbook.update_service import StaleContentError
@@ -203,7 +214,32 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
                 raise ProfileDocumentError("STALE_PROFILE_DOCUMENT" if data.profile_base_token else "PROFILE_DOCUMENT_TOKEN_REQUIRED",
                                            "the saved CAPEX profile changed after this page loaded; reload; nothing was saved")
 
+        if data.opex_annual_exceptions_json is not None:
+            from app.opex_annual_exceptions import SNAPSHOT_KEY as _OPEX_ANN_KEY, document_token as _opex_ann_token
+            import hmac
+            _draft_pre = json.loads(ws_full["draft_snapshot_json"] or "{}")
+            _stored_ann = _draft_pre.get(_OPEX_ANN_KEY) or ""
+            if data.scenario_id:
+                _sc_row = cur.execute("SELECT is_base_case, overrides_json FROM scenarios WHERE scenario_id=? AND project_id=?",
+                                      (data.scenario_id, project_id)).fetchone()
+                if _sc_row and not _sc_row["is_base_case"]:
+                    _sc_ov = json.loads(_sc_row["overrides_json"] or "{}")
+                    if _OPEX_ANN_KEY in _sc_ov:
+                        _stored_ann = _sc_ov.get(_OPEX_ANN_KEY) or ""
+            if not data.opex_annual_exceptions_base_token or not hmac.compare_digest(
+                    str(data.opex_annual_exceptions_base_token), _opex_ann_token(_stored_ann)):
+                from app.workbook.update_service import StaleContentError
+                raise StaleContentError("STALE_OPEX_ANNUAL_EXCEPTIONS")
+
         if data.cells:
+            from app.workbook.update_service import find_line_owned_cost_fields
+            _owned = find_line_owned_cost_fields(project_id, [f for f, _v in data.cells], cur=cur)
+            if _owned:
+                raise SaveAllInvalid(
+                    f"Line-owned cost scalar field(s) cannot be edited directly while active sub-lines exist: {', '.join(sorted(_owned))}",
+                    "LINE_OWNED_COST_SCALAR_REFUSED",
+                    {"fields": sorted(_owned)},
+                )
             v2_apply_batch_draft_update_in_tx(
                 cur, user_id=user_id, project_id=project_id, expected_workspace_id=ws_full["workspace_id"],
                 expected_scenario_id=data.scenario_id, expected_content_hash=data.content_hash,
@@ -213,6 +249,69 @@ def save_all(*, project_record: Any, user_id: str, data: SaveAllInput) -> SaveAl
                                  raw=data.contracts_json, skip_cas=True, check_token=False)
         if parsed_lines:
             apply_cost_lines_in_tx(cur, project_id, parsed_lines)
+        if data.opex_annual_exceptions_json is not None:
+            from app.opex_annual_exceptions import (
+                SNAPSHOT_KEY as _OPEX_ANN_KEY,
+                OpexAnnualExceptionError,
+                validate_and_canonicalize,
+            )
+            from app.services.opex_sub_lines_integration import opex_fold_provenance
+            from app.persistence.opex_sub_lines import OpexSubLine
+            from app.persistence.scenarios_repository import resolve_scenario_snapshot
+            _draft_now_row = cur.execute("SELECT draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?",
+                                         (user_id, project_id)).fetchone()
+            _draft_now = json.loads(_draft_now_row["draft_snapshot_json"] or "{}")
+            _effective_snap = dict(_draft_now)
+            _sc_row_now = None
+            if data.scenario_id:
+                _sc_row_now = cur.execute(
+                    "SELECT is_base_case, overrides_json FROM scenarios WHERE scenario_id=? AND project_id=?",
+                    (data.scenario_id, project_id),
+                ).fetchone()
+                if _sc_row_now and not _sc_row_now["is_base_case"]:
+                    _effective_snap = resolve_scenario_snapshot(
+                        _draft_now, json.loads(_sc_row_now["overrides_json"] or "{}")
+                    )
+            _raw_h = _effective_snap.get("horizon_years")
+            try:
+                _horizon = int(float(_raw_h))
+            except (TypeError, ValueError) as exc:
+                raise OpexAnnualExceptionError(
+                    "OPEX_ANNUAL_HORIZON_UNRESOLVED",
+                    f"Effective project horizon_years is missing or invalid: {_raw_h!r}",
+                ) from exc
+            if _horizon <= 0:
+                raise OpexAnnualExceptionError(
+                    "OPEX_ANNUAL_HORIZON_UNRESOLVED",
+                    f"Effective project horizon_years must be positive, got {_horizon}",
+                )
+            _sub_rows = cur.execute(
+                "SELECT * FROM opex_sub_lines WHERE project_id=? AND is_active=1", (project_id,)
+            ).fetchall()
+            _active_subs = [OpexSubLine.from_row(r) for r in _sub_rows]
+            _prov = opex_fold_provenance(_active_subs)
+            _allowed_keys = [s.business_code for s in _active_subs]
+            _canonical_ann = validate_and_canonicalize(
+                data.opex_annual_exceptions_json,
+                horizon_years=_horizon,
+                allowed_line_keys=_allowed_keys,
+                replaced_canonical_keys=_prov.get("replaced_canonical_keys") or (),
+                project_type=str(_effective_snap.get("project_type") or ""),
+            )
+            _write_to_scenario = False
+            if _sc_row_now and not _sc_row_now["is_base_case"]:
+                _write_to_scenario = True
+                _sc_ov = json.loads(_sc_row_now["overrides_json"] or "{}")
+                _sc_ov[_OPEX_ANN_KEY] = _canonical_ann
+                cur.execute("UPDATE scenarios SET overrides_json=?, updated_at=? WHERE scenario_id=? AND project_id=?",
+                            (json.dumps(_sc_ov, sort_keys=True), _now_utc().isoformat(), data.scenario_id, project_id))
+            if not _write_to_scenario:
+                if _canonical_ann:
+                    _draft_now[_OPEX_ANN_KEY] = _canonical_ann
+                else:
+                    _draft_now.pop(_OPEX_ANN_KEY, None)
+                cur.execute("UPDATE workspace_states SET draft_snapshot_json=?, updated_at=? WHERE user_id=? AND project_id=?",
+                            (json.dumps(_draft_now, sort_keys=True), _now_utc().isoformat(), user_id, project_id))
         if data.profile_json is not None:       # LAST: the candidate profile is proved bindable against the final, uncommitted lines and cells
             from app.capex_profiles.service import save_profiles_in_tx
             save_profiles_in_tx(conn, cur, owner=user_id, project_id=project_id, raw=data.profile_json, base_token=data.profile_base_token)

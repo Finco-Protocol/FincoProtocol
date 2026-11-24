@@ -13,14 +13,30 @@ from financial_engine.run_scope import engine_run_scope
 from tests.test_fable_batch3_date_authority_generation import _project, _with_r04
 
 
-def test_dated_run_declines_native_with_typed_reason_and_legacy_run_does_not():
+def _unproven_dated_annual(base):
+    """A dated run on an unproven frequency (ANNUAL) that must remain declined run-locally."""
+    from dataclasses import replace
+    from finco_core.engine.period_engine import PeriodFrequency
+    dated = _with_r04(base, "solar")
+    return replace(dated, info=replace(dated.info, period_frequency=PeriodFrequency.ANNUAL))
+
+
+def test_dated_run_admits_proved_solar_and_declines_unproven_dated_scope():
     dated_pi = _with_r04(pf.create_generic_solar_reference(), "solar")
     with native_run(NativeConfig(mode="candidate")) as v10, stage3_run(Stage3Config(mode="candidate")) as v11:
         run_clean_production(dated_pi)
+        assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in v10.declines
+        assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in v11.declines
+    # Unproven dated scope (e.g. non-semestrial frequency) still records typed run-local decline
+    from app.services.production_financial_authority import _decline_native_on_dated_grid
+    unproven_pi = _unproven_dated_annual(pf.create_generic_solar_reference())
+    with native_run(NativeConfig(mode="candidate")) as v10, stage3_run(Stage3Config(mode="candidate")) as v11:
+        with engine_run_scope():
+            _decline_native_on_dated_grid(unproven_pi)
+            assert current_config().mode == "off" and v11_current_config().mode == "off"
         assert v10.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1
         assert v11.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1
-        assert v10.native_solves == v10.native_finalisations == v10.native_tax_evaluations == 0
-        assert v11.native_models == 0
+        assert current_config().mode == "candidate" and v11_current_config().mode == "candidate"
     with native_run(NativeConfig(mode="candidate")) as v10:
         run_clean_production(pf.create_generic_solar_reference())            # legacy project: no dated decline recorded
         assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in v10.declines
@@ -36,7 +52,7 @@ def test_scope_flag_is_run_local_no_leaked_process_state():
         assert current_config().mode == "candidate"                           # a later/other Run is unaffected
 
 
-# ── actual native activation on LEGACY Runs vs dated decline; Python/native equality; concurrency; cleanup ─────────
+# ── actual native activation on LEGACY & proved DATED Runs; Python/native equality; concurrency; cleanup ─────────
 # Uses the repository's own ``native_artifacts`` fixture: it builds the approved kernels offline, requires the committed manifest identity
 # (byte-identical artifact) and installs them for the session.  Same catalogue/policy/cache handling as tests/test_native_v10_identity.py.
 from tests.native_v10_support import entries, evidence_of, reset_native_caches  # noqa: E402
@@ -59,7 +75,7 @@ def _case(name="reference-solar"):
     return factory(), vertical, acceptance().policy_for("canonical", base)
 
 
-def test_legacy_run_uses_native_kernel_and_equals_forced_python_while_dated_run_is_python_only():
+def test_legacy_and_proved_dated_runs_use_native_kernel_and_equal_forced_python():
     legacy, vertical, policy = _case()
     py, py_stats = _run(legacy, vertical, policy, NativeConfig(mode="off"))
     nat, stats = _run(legacy, vertical, policy, NativeConfig(mode="candidate"))
@@ -68,10 +84,13 @@ def test_legacy_run_uses_native_kernel_and_equals_forced_python_while_dated_run_
     assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in stats.declines
     assert evidence_of(nat) == evidence_of(py)                                             # identical on the eligible legacy case
     dated = _with_r04(legacy, "solar")
-    dated_run, dstats = _run(dated, vertical, policy, NativeConfig(mode="candidate"))
-    assert dstats.native_solves == dstats.native_tax_evaluations == dstats.native_finalisations == 0
-    assert dstats.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1
-    assert len(dated_run.financial_statements_result.income_statement_periods) == len(nat.financial_statements_result.income_statement_periods) + 1
+    dated_py, dpy_stats = _run(dated, vertical, policy, NativeConfig(mode="off"))
+    dated_nat, dstats = _run(dated, vertical, policy, NativeConfig(mode="candidate"))
+    assert dpy_stats.native_solves == 0
+    assert dstats.native_solves > 0 and dstats.native_tax_evaluations > 0, dstats.as_dict()
+    assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in dstats.declines
+    assert evidence_of(dated_nat) == evidence_of(dated_py)                                 # bit-identical on proved dated Solar
+    assert len(dated_nat.financial_statements_result.income_statement_periods) == len(nat.financial_statements_result.income_statement_periods) + 1
 
 
 def test_concurrent_legacy_and_dated_runs_do_not_leak_native_scope():
@@ -98,12 +117,9 @@ def test_concurrent_legacy_and_dated_runs_do_not_leak_native_scope():
         t.join()
     assert not errors, errors
     for key, stats in results.items():
-        if key.startswith("legacy"):
-            # the policy-run memo may serve an identical concurrent request; a native count of 0 is then a cache hit, never a dated decline
-            assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in stats["declines"], (key, stats)
-        else:
-            assert stats["native_solves"] == 0, (key, stats)
+        assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in stats["declines"], (key, stats)
     assert any(k.startswith("legacy") and v["native_solves"] > 0 for k, v in results.items()), results
+    assert any(k.startswith("dated") and v["native_solves"] > 0 for k, v in results.items()), results
 
 
 def test_failed_dated_run_leaves_no_scope_state_for_the_next_legacy_run():
