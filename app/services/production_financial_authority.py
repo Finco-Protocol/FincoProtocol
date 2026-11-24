@@ -446,8 +446,38 @@ def _require_settled_senior_maturity(g2c, project_inputs) -> None:
         )
 
 
+def _is_dated_native_proved(inputs) -> bool:
+    """True only for dated grids with empirically proved V10/V11 bit-identity vs canonical Python.
+
+    Proved scope (FINCO39 Slice D): admitted Solar/Wind semi-annual dated grids (OD-TIME-01/v1
+    and R04 ABSOLUTE_ANNUAL, with or without annual OPEX overrides). Non-semestrial frequencies
+    and non-Solar/Wind technologies stay declined run-locally with DATE_AUTHORITY_NATIVE_UNSUPPORTED.
+    """
+    info = getattr(inputs, "info", None)
+    freq = getattr(info, "period_frequency", None) if info is not None else None
+    freq_name = (getattr(freq, "name", None) or str(freq or "")).upper()
+    if info is None or freq_name != "SEMESTRIAL":
+        return False
+    tech = getattr(inputs, "technical", None)
+    if tech is not None and (getattr(tech, "bess_enabled", False) or getattr(tech, "bess_native_config_json", "")):
+        return False
+    code = str(getattr(info, "code", "") or "").lower()
+    name = str(getattr(info, "name", "") or "").lower()
+    if any(tok in code or tok in name for tok in ("data center", "data_center", "ev charging", "ev_charging")):
+        return False
+    rev = getattr(inputs, "revenue", None)
+    raw_cfg = getattr(rev, "multistream_config_json", "") or ""
+    if raw_cfg:
+        from domain.revenue.multistream_runtime import parse_config
+        cfg = parse_config(raw_cfg)
+        if cfg is None or getattr(cfg, "technology", None) not in ("solar", "wind"):
+            return False
+    return True
+
+
 def _decline_native_on_dated_grid(inputs) -> None:
-    """OD-TIME-01: the dated operating grid (final stub row) is served by canonical Python only until native parity is proven.
+    """OD-TIME-01 / FINCO39 Slice D: admit proved Solar/Wind semi-annual dated grids to native V10/V11;
+    decline every unproven dated path run-locally with DATE_AUTHORITY_NATIVE_UNSUPPORTED.
 
     Marks this Run's own scope (never process state) so the V10/V11 admission layers see mode OFF, and records the typed reason
     in the Run's native counters so the decline is observable (not a silent fallback).
@@ -455,6 +485,8 @@ def _decline_native_on_dated_grid(inputs) -> None:
     from finco_core.engine.date_authority import date_authority_active
 
     if not date_authority_active(inputs):
+        return
+    if _is_dated_native_proved(inputs):
         return
     from financial_engine.run_scope import current_run_scope
     from financial_engine.native_v10.config import DATE_AUTHORITY_SCOPE_KEY, current_stats as _v10_stats
