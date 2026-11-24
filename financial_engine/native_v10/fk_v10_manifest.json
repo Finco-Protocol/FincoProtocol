@@ -1,10 +1,10 @@
 {
  "abi_version": 10001,
- "approved_blobs_sha256": "226b6eee8c4fbefd151a1b1d36ea2d78951d0ea65bb6bcaf2b7a4d5f5f5dedc1",
+ "approved_blobs_sha256": "531d09f9e8a3189aef50a57c980e94eb8b99da52500f1046855b71679947e8cb",
  "artifact": "_fk_v10.so",
  "artifact_sha256": "da763e0e8895359b81c6197b7252c349be9201c380aeee051dea60e5077e1307",
  "build_id": "ced5b63a77b5467ba312181cda5ea158af14aa894ab6ec67f3f00a5144fa8434",
- "built_with_python": "3.13.18",
+ "built_with_python": "3.12.16",
  "command": [
   "gcc",
   "-std=c11",
