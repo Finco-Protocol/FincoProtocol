@@ -3,10 +3,6 @@
 # groups and run on their own in .github/workflows/model_known_defects.yml, which stays visibly red until they are
 # fixed. Adding a line here is a protected change (CODEOWNERS). Remove a line in the same PR that fixes the test.
 # format: <pytest node id>  # <diagnosis>
-tests/test_cost_batch_save_browser_v1.py::test_failure_in_one_row_rolls_back_all_rows_keeps_typed_values_and_never_retries  # legacy workbook OPEX stage toggle no longer clickable (harness vs UI drift)
-tests/test_cost_batch_save_browser_v1.py::test_cross_sheet_batch_then_single_row_edit_has_no_false_409  # same stage-toggle drift
-tests/test_cost_grid_editing_browser_v1.py::test_first_save_after_a_scenario_switch_has_no_false_409  # scenario create POST without CSRF token -> 403
-tests/test_cost_grid_editing_browser_v1.py::test_uncommitted_edit_is_saved_before_a_deactivate_runs  # deactivate request not issued after pending update (needs product check)
 tests/test_data_center_browser_acceptance.py::test_DC_BROWSER_VERTICAL_INTEGRITY_1280  # debt KPI testid not rendered in legacy panel
 tests/test_data_center_browser_acceptance.py::test_DC_HTMX_WORKING_COPY_WORKFLOW  # revenue sheet navigation never happens
 tests/test_model_golden_flows_browser.py::test_golden_flow_a_new_project_scenario_compare_and_export  # legacy #tab-inputs hidden behind tab groups
