@@ -170,3 +170,29 @@ def test_trigger_is_connection_local_and_raw_connections_are_a_separate_trust_bo
         assert "wf03_workspace_states_freshness" in names
     finally:
         conn.close()
+
+
+# ── offline historical-fixture constructor (tests-only) keeps the application fence intact ─────────────────────────
+def test_offline_fixture_seeds_historical_state_but_identical_sql_is_still_refused_on_app_connection(world):
+    from tests.wf03_offline_fixture import seed_historical_workspace_state
+    stale = "__stale_hash__"
+    seed_historical_workspace_state(db.DB_PATH, world.user_id, world.project_id, last_runtime_composite_hash=stale)
+    assert _row(world)["last_runtime_composite_hash"] == stale            # fixture write happened
+    with pytest.raises(sqlite3.IntegrityError, match=ERR):                # same SQL on an app connection: refused
+        with db.get_cursor() as cur:
+            cur.execute("UPDATE workspace_states SET last_runtime_composite_hash=? WHERE project_id=?",
+                        ("__other__", world.project_id))
+    assert _row(world)["last_runtime_composite_hash"] == stale
+
+
+def test_offline_fixture_refuses_wrong_path_production_path_unknown_columns_and_zero_row_match(world, tmp_path):
+    from tests.wf03_offline_fixture import seed_historical_workspace_state
+    other = tmp_path / "other.sqlite"; other.write_bytes(b"")
+    with pytest.raises(ValueError):
+        seed_historical_workspace_state(str(other), world.user_id, world.project_id, dirty=0)
+    with pytest.raises(ValueError):
+        seed_historical_workspace_state("", world.user_id, world.project_id, dirty=0)
+    with pytest.raises(ValueError):
+        seed_historical_workspace_state(db.DB_PATH, world.user_id, world.project_id, draft_snapshot_json="{}")
+    with pytest.raises(AssertionError):
+        seed_historical_workspace_state(db.DB_PATH, "nobody", world.project_id, dirty=0)

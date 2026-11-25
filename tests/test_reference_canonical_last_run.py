@@ -477,7 +477,7 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
     last_runtime_composite_hash in the DB, then verifies that
     ensure_reference_canonical_last_runs re-seeds all three references.
     """
-    from app.persistence.db import get_cursor
+    from app.persistence import db
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
     from app.services.project_library_service import (
@@ -500,12 +500,13 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
     # The live hash hasn't changed, but stored says "old_model_version" → triggers re-seed.
     for ts in first_seeded:
         rec = get_reference_by_template_source(ts)
-        with get_cursor() as cur:
-            cur.execute(
-                "UPDATE workspace_states SET last_runtime_composite_hash=? "
-                "WHERE user_id=? AND project_id=?",
-                ("__stale_hash_simulating_version_bump__", rec.user_id, rec.project_id),
-            )
+        # Historical/corrupt shape seeded OFFLINE (the WF03 app-connection fence refuses this write by design).
+        from tests.wf03_offline_fixture import seed_historical_workspace_state
+        seed_historical_workspace_state(
+            db.DB_PATH, rec.user_id, rec.project_id,
+            last_runtime_composite_hash="__stale_hash_simulating_version_bump__")
+        assert get_workspace_state(rec.user_id, rec.project_id).last_runtime_composite_hash == \
+            "__stale_hash_simulating_version_bump__"
 
     re_seeded = ensure_reference_canonical_last_runs()
 

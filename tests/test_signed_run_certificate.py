@@ -49,7 +49,7 @@ def _test_signing_key(monkeypatch):
 @pytest.fixture()
 def ev_project(tmp_path, monkeypatch):
     from app.persistence import db as db_mod
-    db_mod.DB_PATH = str(tmp_path / "cert.db")
+    monkeypatch.setattr(db_mod, "DB_PATH", str(tmp_path / "cert.db"))
     from app.services.project_library_service import ensure_reference_models
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
@@ -87,16 +87,12 @@ def ev_project(tmp_path, monkeypatch):
     # Persist run-commit state + identity exactly as v2_atomic_run_commit
     # does (these columns live on workspace_states; save_workspace_state
     # does not carry them).
-    from app.persistence.db import get_connection
-    conn = get_connection()
-    conn.execute(
-        "UPDATE workspace_states SET any_run_committed=1, "
-        "last_runtime_identity_json=?, last_runtime_composite_hash=? "
-        "WHERE workspace_id=? AND user_id=?",
-        (json.dumps(identity), COMPOSITE_HASH, ws.workspace_id, "cert-user"),
-    )
-    conn.commit()
-    conn.close()
+    # The deliberately synthetic committed identity/composite hash is seeded OFFLINE (the WF03 application-connection
+    # fence refuses this binding write by design); certificate issuance/verification run on guarded connections.
+    from tests.wf03_offline_fixture import seed_historical_workspace_state
+    seed_historical_workspace_state(
+        db_mod.DB_PATH, "cert-user", record.project_id, any_run_committed=1,
+        last_runtime_identity_json=json.dumps(identity), last_runtime_composite_hash=COMPOSITE_HASH)
     from app.persistence.workspace_repository import get_workspace_state as _gws
     return {"record": record, "user_id": "cert-user", "ws": _gws("cert-user", record.project_id)}
 
@@ -378,7 +374,7 @@ def test_signed_run_endpoint_returns_signed_certificate(ev_project):
 
 def test_signed_run_user_isolation(ev_project, tmp_path, monkeypatch):
     from app.persistence import db as db_mod
-    db_mod.DB_PATH = str(tmp_path / "iso.db")
+    monkeypatch.setattr(db_mod, "DB_PATH", str(tmp_path / "iso.db"))
     from app.services.project_library_service import ensure_reference_models
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.persistence.workspace_repository import save_workspace_state
@@ -403,16 +399,13 @@ def test_signed_run_user_isolation(ev_project, tmp_path, monkeypatch):
         dirty=False, governance_state=ws_own.governance_state,
         replay_metadata=ws_own.replay_metadata,
     )
-    conn = get_connection()
-    conn.execute(
-        "UPDATE workspace_states SET any_run_committed=1, last_runtime_identity_json=?, "
-        "last_runtime_composite_hash=? "
-        "WHERE workspace_id=? AND user_id=?",
-        (_json.dumps({"engine_version": "t", "workbook_version": "v2.0.0",
-                      "composite_hash": COMPOSITE_HASH}), COMPOSITE_HASH,
-         ws_own.workspace_id, "cert-user"),
-    )
-    conn.commit(); conn.close()
+    from tests.wf03_offline_fixture import seed_historical_workspace_state
+    from app.persistence import db as _db
+    seed_historical_workspace_state(
+        _db.DB_PATH, "cert-user", own.project_id, any_run_committed=1,
+        last_runtime_identity_json=_json.dumps({"engine_version": "t", "workbook_version": "v2.0.0",
+                                                "composite_hash": COMPOSITE_HASH}),
+        last_runtime_composite_hash=COMPOSITE_HASH)
     # another user's EV working copy in the same DB
     other = create_reference_seeded_project(
         user_id="other-user", template_source="generic_ev_charging_reference",
