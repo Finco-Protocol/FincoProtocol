@@ -1,81 +1,110 @@
 #!/bin/bash
-# smoke_test.sh — FINCO Model deployment smoke test
+# smoke_test.sh — FINCO Model deployment smoke test (FINCO45C: aligned with the ACTUAL route contracts of main_web.py)
 #
-# Tests the critical paths of the deployed FINCO Model app.
-# Checks /public-health JSON, / redirect, and /health auth behavior.
+# Route contract checked (unauthenticated client, no cookies sent):
+#   GET /public-health  200 JSON {"status":"ok"}                     public liveness, never sets a cookie
+#   GET /readyz         200 JSON, status != "error"                  readiness (503 when the DB/backup dir is not usable)
+#   GET /health         401 JSON {"status":"unauthenticated"}        PRIVATE health: never 200 without a session
+#   GET /login          200 login page                               public
+#   GET /               200 Protocol home + a demo session cookie    anonymous visitors get a provisioned demo identity
+#                                                                    (demo middleware); never an admin session
+#   security headers    X-Content-Type-Options: nosniff and X-Frame-Options: DENY on every response
 #
-# Usage: ./smoke_test.sh [base_url]
-# Default base_url: http://127.0.0.1:8000
+# Optional authenticated check (never printed, never logged): export FINCO_SMOKE_SESSION_COOKIE to the VALUE of a
+# valid finco_session cookie and /health must then return 200 {"status":"ok"}. Leave it unset otherwise.
+#
+# Usage: ./smoke_test.sh [base_url]          Default base_url: http://127.0.0.1:8000
+# Exit 0 only when every check passed. Response bodies are never echoed in full (no secrets in output).
 
 set -euo pipefail
 
 BASE_URL="${1:-http://127.0.0.1:8000}"
+CURL=(curl -sS --max-time 15)
 FAILED=0
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 pass() { echo "✓ $1"; }
 fail() { echo "✗ $1"; FAILED=1; }
+
+# fetch <path> [extra curl args...]  -> sets CODE, writes $TMP/body and $TMP/headers
+fetch() {
+    local path="$1"; shift
+    : > "$TMP/headers"; : > "$TMP/body"
+    CODE=$("${CURL[@]}" -o "$TMP/body" -D "$TMP/headers" -w "%{http_code}" "$@" "${BASE_URL}${path}" 2>/dev/null || true)
+    CODE="${CODE:-000}"
+}
+header() { grep -i "^$1:" "$TMP/headers" | tr -d '\r' || true; }
 
 echo "=== FINCO Model Smoke Test ==="
 echo "Base URL: $BASE_URL"
 echo ""
 
-# ── 1. /public-health (no auth, returns JSON) ─────────────────────────────
 echo "--- /public-health ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/public-health")
-if [[ "$HTTP_CODE" != "200" ]]; then
-    fail "/public-health returned $HTTP_CODE (expected 200)"
+fetch /public-health
+if [[ "$CODE" == "200" ]] && grep -q '"status":"ok"' "$TMP/body"; then
+    pass "/public-health → 200 {\"status\":\"ok\"}"
 else
-    BODY=$(curl -s "${BASE_URL}/public-health")
-    if echo "$BODY" | grep -q '"status":"ok"'; then
-        pass "/public-health → 200 with {\"status\":\"ok\"}"
-    else
-        fail "/public-health body missing '\"status\":\"ok\"': $BODY"
-    fi
+    fail "/public-health returned $CODE (expected 200 with status ok)"
+fi
+if [[ -n "$(header set-cookie)" ]]; then fail "/public-health set a cookie"; fi
+if header x-content-type-options | grep -qi nosniff && header x-frame-options | grep -qi deny; then
+    pass "security headers present (nosniff, DENY)"
+else
+    fail "security headers missing on /public-health"
 fi
 echo ""
 
-# ── 2. GET / (unauthenticated root → redirect to /login) ───────────────────
-echo "--- / (root, unauthenticated) ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/")
-if [[ "$HTTP_CODE" == "302" ]]; then
-    LOCATION=$(curl -s -I "${BASE_URL}/" | grep -i "^Location:" | tr -d '\r' || true)
-    if echo "$LOCATION" | grep -qi "login"; then
-        pass "/ → 302 redirect to /login"
-    else
-        fail "/redirect location missing 'login': $LOCATION"
-    fi
+echo "--- /readyz ---"
+fetch /readyz
+if [[ "$CODE" == "200" ]] && ! grep -q '"status":"error"' "$TMP/body"; then
+    pass "/readyz → 200 (ready)"
 else
-    fail "/ returned $HTTP_CODE (expected 302)"
+    fail "/readyz returned $CODE (expected 200 and status != error)"
 fi
 echo ""
 
-# ── 3. GET /health (unauthenticated → 302 redirect to /login) ─────────────
 echo "--- /health (unauthenticated) ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/health")
-if [[ "$HTTP_CODE" == "302" ]]; then
-    LOCATION=$(curl -s -I "${BASE_URL}/health" | grep -i "^Location:" | tr -d '\r' || true)
-    if echo "$LOCATION" | grep -qi "login"; then
-        pass "/health → 302 redirect to /login"
-    else
-        fail "/health redirect location missing 'login': $LOCATION"
-    fi
+fetch /health
+if [[ "$CODE" == "401" ]] && grep -q '"status":"unauthenticated"' "$TMP/body"; then
+    pass "/health → 401 unauthenticated (private health is not public)"
 else
-    fail "/health returned $HTTP_CODE (expected 302)"
+    fail "/health returned $CODE (expected 401 unauthenticated)"
+fi
+if [[ -n "$(header set-cookie)" ]]; then fail "/health provisioned a cookie"; fi
+echo ""
+
+if [[ -n "${FINCO_SMOKE_SESSION_COOKIE:-}" ]]; then
+    echo "--- /health (authenticated, cookie from FINCO_SMOKE_SESSION_COOKIE; value not shown) ---"
+    fetch /health -H "Cookie: finco_session=${FINCO_SMOKE_SESSION_COOKIE}"
+    if [[ "$CODE" == "200" ]] && grep -q '"status":"ok"' "$TMP/body"; then
+        pass "/health (authenticated) → 200 ok"
+    else
+        fail "/health (authenticated) returned $CODE (expected 200 ok)"
+    fi
+    echo ""
+fi
+
+echo "--- /login ---"
+fetch /login
+if [[ "$CODE" == "200" ]] && grep -qi "sign in\|login\|password" "$TMP/body"; then
+    pass "/login → 200 with login page content"
+else
+    fail "/login returned $CODE (expected 200 login page)"
 fi
 echo ""
 
-# ── 4. GET /login (public page, no redirect) ───────────────────────────────
-echo "--- /login ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/login")
-if [[ "$HTTP_CODE" == "200" ]]; then
-    BODY=$(curl -s "${BASE_URL}/login")
-    if echo "$BODY" | grep -qi "sign in\|login\|password"; then
-        pass "/login → 200 with login page content"
-    else
-        fail "/login 200 but body doesn't look like login page"
-    fi
+echo "--- / (anonymous) ---"
+fetch /
+COOKIES="$(header set-cookie)"
+if [[ "$CODE" == "200" ]] && echo "$COOKIES" | grep -q "finco_demo="; then
+    pass "/ → 200 with a provisioned demo session"
 else
-    fail "/login returned $HTTP_CODE (expected 200)"
+    fail "/ returned $CODE (expected 200 with a finco_demo cookie)"
+fi
+if echo "$COOKIES" | grep -q "finco_session="; then fail "/ issued an ADMIN session cookie to an anonymous client"; fi
+if echo "$COOKIES" | grep -q "finco_demo=" && ! echo "$COOKIES" | grep -qi "httponly"; then
+    fail "demo cookie is not HttpOnly"
 fi
 echo ""
 

@@ -24,7 +24,7 @@ pytestmark = pytest.mark.usefixtures("stage3_artifacts")
 
 def _production():
     from tools import native_release as rel
-    return dict(line.split("=", 1) for line in rel.activation_text().splitlines() if line and not line.startswith("#"))
+    return dict(line.split("=", 1) for line in rel.activation_text("full").splitlines() if line and not line.startswith("#"))
 
 
 ARMS = {"off": {}, "v11": {na.ENV_V11_RUN: "on"}, "production": None}

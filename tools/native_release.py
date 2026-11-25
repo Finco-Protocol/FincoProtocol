@@ -56,12 +56,16 @@ def _artifacts() -> list[Path]:
     return [directory / _manifest(directory, name)["artifact"] for directory, _module, name in KERNELS]
 
 
-# FINCO43B: reviewed activation PROFILES. ``full`` (default, unchanged) = V10 Stage 1 + experimental Stage 2 + V11 Stage 3;
-# ``stage3`` = V11 Stage 3 only (V10 off), the smallest measured-exact configuration without the experimental Stage 2.
+# FINCO43B: reviewed activation PROFILES. ``full`` = V10 Stage 1 + experimental Stage 2 + V11 Stage 3 (explicit opt-in only:
+# ``--profile full`` or FINCO_NATIVE_RELEASE_PROFILE=full); ``stage3`` = V11 Stage 3 only (V10 off), the smallest
+# measured-exact configuration without the experimental Stage 2.
+# FINCO45C (FINCO44-NEW-07 / C3-E-11): the DEFAULT is ``stage3`` so a bare ``install`` can never select the experimental
+# Stage 2. Precedence: CLI ``--profile`` > FINCO_NATIVE_RELEASE_PROFILE > DEFAULT_PROFILE. The activation TEXT of each
+# profile is unchanged, so an already installed ``full`` activation still verifies as ``full``.
 # Chosen at install time with ``--profile`` or FINCO_NATIVE_RELEASE_PROFILE (passed through release_native.sh); any other
 # value refuses the release. ``verify`` accepts an activation file only when it is exactly one reviewed profile text.
 PROFILES = ("full", "stage3")
-DEFAULT_PROFILE = "full"
+DEFAULT_PROFILE = "stage3"
 ENV_PROFILE = "FINCO_NATIVE_RELEASE_PROFILE"
 
 

@@ -299,7 +299,7 @@ def test_concurrent_threads_keep_their_own_stage3_configuration():
 def test_activation_file_is_the_exact_pinned_production_activation():
     from tools import native_release as rel
 
-    text = rel.activation_text()
+    text = rel.activation_text("full")                 # FINCO45C: `full` is explicit opt-in; default is `stage3`
     values = dict(line.split("=", 1) for line in text.splitlines() if line and not line.startswith("#"))
     assert values == {na.ENV_RUN: "stage1+2", na.ENV_BUILD_ID: S1["build_id"], na.ENV_V11_RUN: "on",
                       na.ENV_V11_BUILD_ID: S3["build_id"]}
@@ -343,13 +343,13 @@ def test_release_installs_verifies_and_activates_atomically_and_idempotently(tmp
     monkeypatch.setattr(rel, "verify", lambda: {"self_test": {"identical": True}})
     monkeypatch.setattr(rel, "unit_loads_activation", lambda: None)
     for _ in range(2):                                                        # idempotent
-        assert rel.install() == 0
-        assert rel.ACTIVATION_FILE.read_text() == rel.activation_text()
+        assert rel.install("full") == 0
+        assert rel.ACTIVATION_FILE.read_text() == rel.activation_text("full")
         assert all(p.exists() for p in rel._artifacts())
         assert not list(tmp_path.rglob(".*.staged"))
     assert oct(rel.ACTIVATION_FILE.stat().st_mode & 0o777) == "0o644"
     assert rel.check() == 0
-    rel.ACTIVATION_FILE.write_text(rel.activation_text().replace("=on", "=off"))
+    rel.ACTIVATION_FILE.write_text(rel.activation_text("full").replace("=on", "=off"))
     assert rel.check() == 1                                                   # an edited activation is not verified
     assert rel.remove() == 0
     assert not rel.ACTIVATION_FILE.exists() and not any(p.exists() for p in rel._artifacts())
@@ -360,7 +360,7 @@ def test_release_refusal_leaves_no_kernel_and_no_activation(tmp_path, monkeypatc
     rel = _release_sandbox(tmp_path, monkeypatch)
     for path in rel._artifacts():
         path.write_bytes(b"previously installed")
-    rel.ACTIVATION_FILE.write_text(rel.activation_text())                     # a previous release
+    rel.ACTIVATION_FILE.write_text(rel.activation_text("full"))               # a previous release
     monkeypatch.setattr(rel, "_build", _faithful_build(rel, "fk_v11_stage3_manifest.json" if failure == "manifest" else None))
 
     def verify():

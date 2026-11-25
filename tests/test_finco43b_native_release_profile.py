@@ -17,12 +17,43 @@ def _env_of(text: str) -> dict:
     return dict(line.split("=", 1) for line in text.splitlines() if line and not line.startswith("#"))
 
 
-def test_default_profile_is_the_unchanged_full_activation(monkeypatch):
+def test_default_profile_is_stage3_and_full_stays_explicit(monkeypatch):
+    """FINCO45C (FINCO44-NEW-07 / C3-E-11): a bare install selects V11 Stage 3 only; `full` (experimental V10 Stage 2)
+    is available only through an explicit --profile / FINCO_NATIVE_RELEASE_PROFILE. Profile texts are unchanged."""
     from tools import native_release as rel
     monkeypatch.delenv(rel.ENV_PROFILE, raising=False)
-    assert rel._profile() == "full" and rel.activation_text() == rel.activation_text("full")
+    assert rel.DEFAULT_PROFILE == "stage3"
+    assert rel._profile() == "stage3" and rel.activation_text() == rel.activation_text("stage3")
     env = _env_of(rel.activation_text())
-    assert na.setting(env)[0] == "stage1+2" and na.v11_setting(env)[0] == "on"
+    assert na.setting(env)[0] == "off" and na.v11_setting(env)[0] == "on"
+    assert "stage1+2" not in rel.activation_text() and "V10_RUN_BUILD_ID" not in rel.activation_text()
+    full = _env_of(rel.activation_text("full"))
+    assert na.setting(full)[0] == "stage1+2" and na.v11_setting(full)[0] == "on"
+    monkeypatch.setenv(rel.ENV_PROFILE, "full")
+    assert rel._profile() == "full"                                    # env opt-in
+    assert rel._profile("stage3") == "stage3"                          # CLI value beats env
+
+
+def test_bare_install_writes_stage3_only(tmp_path, monkeypatch, capsys):
+    rel = _release_sandbox(tmp_path, monkeypatch)
+    monkeypatch.delenv(rel.ENV_PROFILE, raising=False)
+    monkeypatch.setattr(rel, "_build", _faithful_build(rel))
+    monkeypatch.setattr(rel, "verify", lambda: {"self_test": {"identical": True}})
+    monkeypatch.setattr(rel, "unit_loads_activation", lambda: None)
+    assert rel.install() == 0
+    assert rel.installed_profile() == "stage3"
+    assert "profile=stage3" in capsys.readouterr().out
+    assert rel.check("full") == 1 and rel.check("stage3") == 0
+    assert rel.install("full") == 0 and rel.installed_profile() == "full"   # explicit full remains available
+
+
+def test_previously_installed_full_activation_still_verifies_after_default_change(tmp_path, monkeypatch):
+    """Rollback / no reinterpretation: an existing `full` activation file keeps verifying as `full`."""
+    rel = _release_sandbox(tmp_path, monkeypatch)
+    monkeypatch.setattr(rel, "verify", lambda: {"self_test": {"identical": True}})
+    monkeypatch.setattr(rel, "unit_loads_activation", lambda: None)
+    rel.ACTIVATION_FILE.write_text(rel.activation_text("full"))
+    assert rel.installed_profile() == "full" and rel.check() == 0 and rel.check("full") == 0
 
 
 def test_stage3_profile_is_v11_only_and_pinned(tmp_path):
@@ -58,7 +89,7 @@ def test_install_stage3_profile_writes_exactly_that_activation_and_verify_accept
     rel.ACTIVATION_FILE.write_text(rel.activation_text("stage3").replace("V10_RUN=off", "V10_RUN=stage1+2"))
     assert rel.installed_profile() is None and rel.check() == 1          # an edited activation is not verified
     monkeypatch.setenv(rel.ENV_PROFILE, "full")
-    assert rel.install() == 0 and rel.installed_profile() == "full"     # env selection, default text unchanged
+    assert rel.install() == 0 and rel.installed_profile() == "full"     # env selection of the explicit full profile
 
 
 def test_install_with_unknown_env_profile_refuses_and_leaves_nothing(tmp_path, monkeypatch, capsys):
