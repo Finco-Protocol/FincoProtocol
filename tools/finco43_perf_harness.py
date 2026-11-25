@@ -94,7 +94,7 @@ def engine(args) -> int:
                 elif metric == "cold":
                     vals, cpu = [r["cold"][0] for r in sel], [r["cold"][1] for r in sel]
                 else:
-                    vals, cpu = [r["hit"] for r in sel], []
+                    vals, cpu = [r["hit"][0] for r in sel], [r["hit"][1] for r in sel]
                 per[arm] = {"wall": _summ(vals), "cpu": _summ(cpu) if cpu else None,
                             "maxrss_kb_p50": statistics.median(r["maxrss_kb"] for r in sel)}
             per["delta_p50_pct"] = 100.0 * (per["cand"]["wall"]["p50"] / per["base"]["wall"]["p50"] - 1.0)
