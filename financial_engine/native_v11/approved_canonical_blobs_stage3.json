@@ -11,7 +11,7 @@
   "financial_engine/policies/tax.py": "5fe5f01231da8b0d5c1a01008e520f358d8b51f5",
   "financial_engine/run_scope.py": "018242000ea73f95b18284a2987f437401cdb6c6",
   "financial_engine/senior_debt/interest.py": "58b5ba30093dc31d4e42f2e602f157a48710faa3",
-  "financial_engine/senior_debt/solver.py": "9d30525b3fc09b422c1deb38784bf49834cbac35",
+  "financial_engine/senior_debt/solver.py": "e3fb5a3faf4adaf33b4b56e47b936649c7ecfc68",
   "financial_engine/shl/engine.py": "48c3956739fcd972dd7347f167a959f8b65ce53a",
   "financial_engine/shl/production.py": "fb563770bc87a0a8403e21e5f571ebec39840f18",
   "financial_engine/shl/waterfall.py": "11595ce0ce2795738b27a565fc15243e5f1c051c",

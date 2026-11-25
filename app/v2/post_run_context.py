@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass, replace
+from datetime import date, datetime
+from decimal import Decimal
 import hashlib
 import json
 from types import MappingProxyType
@@ -40,7 +42,15 @@ class _FrozenList(list):
     __setitem__ = __delitem__ = append = clear = extend = insert = pop = remove = reverse = sort = __iadd__ = __imul__ = _deny
 
 
+# FINCO43: immutable leaf types (EXACT type match, so subclasses such as str/int enums still take the generic checks
+# below) are returned before the comparatively expensive ``isinstance(value, Mapping)`` ABC test. None of these types
+# is a Mapping, list, tuple or dataclass, so the result is the very same object the generic path returns.
+_FROZEN_LEAF_TYPES = frozenset({str, int, float, bool, type(None), bytes, Decimal, date, datetime})
+
+
 def _freeze(value):
+    if type(value) in _FROZEN_LEAF_TYPES:
+        return value
     # Keep dict/list compatibility for existing JSON/evidence authorities.
     if isinstance(value, Mapping):
         return _FrozenDict({k: _freeze(v) for k, v in value.items()})
