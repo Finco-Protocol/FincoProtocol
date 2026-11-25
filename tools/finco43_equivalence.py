@@ -207,7 +207,9 @@ def record(path: str) -> None:
 
 def diff(a: str, b: str) -> int:
     ra, rb = (json.load(open(p, encoding="utf-8"))["results"] for p in (a, b))
-    bad = [n for n in sorted(set(ra) | set(rb)) if ra.get(n) != rb.get(n)]
+    # a scenario that failed to BUILD proves nothing, even when it failed identically in both trees
+    bad = [n for n in sorted(set(ra) | set(rb))
+           if ra.get(n) != rb.get(n) or (ra.get(n) or {}).get("kind") == "build_failed"]
     for n in sorted(set(ra) | set(rb)):
         print(f"{'DIFF' if n in bad else 'same':4s} {n:40s} {ra.get(n, {}).get('kind')} "
               f"{ra.get(n, {}).get('sha256', ra.get(n, {}).get('error_type', ''))[:16]} leaves={ra.get(n, {}).get('leaves')}")

@@ -75,6 +75,7 @@ class _Spy:
     def __init__(self, monkeypatch, *, force_not_converged=False):
         self.events: list = []
         self.max_abs_calls = 0
+        self.diff_args: list = []
         real_conv = solver_mod._schedules_converged
         real_fin = solver_mod._finalise_authoritative
         real_diff = solver_mod._compute_max_abs_diff
@@ -90,12 +91,26 @@ class _Spy:
 
         def diff(*args):
             self.max_abs_calls += 1
+            self.diff_args.append(args)
             return real_diff(*args)
 
         monkeypatch.setattr(solver_mod, "_schedules_converged", conv)
         monkeypatch.setattr(solver_mod, "_finalise_authoritative", fin)
         monkeypatch.setattr(solver_mod, "_compute_max_abs_diff", diff)
         self.real_diff = real_diff
+
+    def assert_diff_operands_are(self, check_args):
+        """The diagnostic must be computed on EXACTLY the returning check's operands (same objects, same floats),
+        so a wrong / stale operand (e.g. ``D, D`` instead of ``D, new_D``) is caught even when its term is
+        dominated by other fields."""
+        assert len(self.diff_args) == 1
+        got = self.diff_args[0]
+        assert len(got) == len(check_args) == 8
+        for g, c in zip(got, check_args):
+            if isinstance(c, float):
+                assert type(g) is float and g.hex() == c.hex()
+            else:
+                assert g is c
 
     def outer_checks(self):
         """Outer-loop convergence checks: every check recorded before the first finalisation."""
@@ -138,6 +153,7 @@ def test_converged_dscr_reports_returning_iteration_value_bit_identically(monkey
     assert diag.maximum_absolute_difference_keur.hex() == expected.hex()
     assert math.isfinite(expected)
     assert spy.max_abs_calls == 1                         # lazy: only the returning iteration
+    spy.assert_diff_operands_are(checks[-1])
 
 
 def test_exhausted_budget_reports_last_iteration_value(monkeypatch):
@@ -153,6 +169,7 @@ def test_exhausted_budget_reports_last_iteration_value(monkeypatch):
     # a stale (earlier-iteration) value would be a different float for this damped trajectory
     assert expected_last.hex() != spy.real_diff(*checks[-2]).hex()
     assert spy.max_abs_calls == 1
+    spy.assert_diff_operands_are(checks[-1])
 
 
 def test_single_iteration_budget_keeps_infinite_diagnostic(monkeypatch):
@@ -190,6 +207,7 @@ def test_gearing_sculpted_converged_and_exhausted(monkeypatch):
     assert checks, "gearing-sculpted loop ran no convergence check"
     assert diag.maximum_absolute_difference_keur.hex() == spy.real_diff(*checks[-1]).hex()
     assert spy.max_abs_calls == 1
+    spy.assert_diff_operands_are(checks[-1])
 
     monkeypatch.undo()
     spy = _Spy(monkeypatch, force_not_converged=True)
@@ -199,3 +217,4 @@ def test_gearing_sculpted_converged_and_exhausted(monkeypatch):
     assert len(checks) == 4                               # gearing-sculpted checks from iteration 1
     assert diag.maximum_absolute_difference_keur.hex() == spy.real_diff(*checks[-1]).hex()
     assert spy.max_abs_calls == 1
+    spy.assert_diff_operands_are(checks[-1])
