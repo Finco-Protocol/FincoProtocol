@@ -113,9 +113,9 @@ export function InputsCostCards({ project, workspace, reloadKey = 0, onOpen }: {
       <article className="ci-card" data-ci-card="opex" aria-labelledby="ci-card-opex">
         <h3 id="ci-card-opex">OPEX</h3>
         <p className="ci-card-total" data-ci-card-total="opex">
-          {opex.state === "loading" ? "…" : ox && y1Excl !== null ? <>{shown(y1Excl)} <small>{unit} / year 1 · line items</small></> : "Unavailable"}
+          {opex.state === "loading" ? "…" : ox && y1Excl !== null ? <>{shown(y1Excl)} <small>{unit} / full yr 1 · nominal budget</small></> : "Unavailable"}
         </p>
-        <p className="ux-card-basis">Saved year-1 line inputs, excluding group bases. Not a Run total. {runNote}.</p>
+        <p className="ux-card-basis">Nominal full-year Y1 line budget, excluding group bases (not prorated for partial COD). Not a Run total. {runNote}.</p>
         <details className="ux-cost-breakdown"><summary>Breakdown and basis</summary>
         <p className="ci-card-sub">
           Line items, year 1, before contingency{y1Incl !== null && <> · {shown(y1Incl)} {unit} with the applied contingency{ox?.kpis.per_mw_year1_keur != null && <> ({showPerMwKeur(ox.kpis.per_mw_year1_keur, unit, precision)} {unit}/MW/yr)</>}</>}
