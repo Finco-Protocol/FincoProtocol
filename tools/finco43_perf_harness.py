@@ -13,7 +13,7 @@ Two measurements, both on a disposable temporary SQLite database with synthetic 
             bytes. Every measured Run follows a real draft edit (unique inputs -> real recompute, not replay).
 
     python tools/finco43_perf_harness.py engine --baseline /path/base --candidate . --pairs 5 --out engine.json
-    python tools/finco43_perf_harness.py http --runs 6 --out http.json [--mode process|thread]
+    python tools/finco43_perf_harness.py http --tree /path/to/tree --runs 6 --out http.json [--mode process|thread]
 
 Outputs are raw JSON samples plus a printed p50 / max summary (max over n samples; with n < 30 no reliable p95 is
 claimed). No user data, secrets or host paths are written; the temporary database is deleted on exit.
@@ -113,7 +113,9 @@ def engine(args) -> int:
 
 def http(args) -> int:
     os.environ["FINCO_MODEL_EXECUTION_MODE"] = args.mode
-    sys.path.insert(0, str(ROOT))
+    tree = os.path.abspath(args.tree)
+    sys.path.insert(0, tree)          # the measured tree's app/financial_engine, never this file's own tree
+    os.chdir(tree)
     import logging
 
     tmp = tempfile.mkdtemp(prefix="finco43-http-")
@@ -188,7 +190,11 @@ def http(args) -> int:
                              "stages_ms_p50": {k: statistics.median(r["stages_ms"].get(k, 0) for r in sel)
                                                for k in sel[0]["stages_ms"]}}
         print(json.dumps(summary, indent=1))
-        Path(args.out).write_text(json.dumps({"mode": args.mode, "rows": rows, "summary": summary}, indent=1))
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True).stdout.strip()
+        import financial_engine
+        assert os.path.dirname(os.path.dirname(os.path.abspath(financial_engine.__file__))) == tree
+        Path(args.out).write_text(json.dumps({"mode": args.mode, "head": head, "rows": rows, "summary": summary},
+                                             indent=1))
         return 0
     finally:
         try:
@@ -213,6 +219,7 @@ def main(argv=None) -> int:
     h.add_argument("--runs", type=int, default=6)
     h.add_argument("--mode", choices=("process", "thread"), default="process")
     h.add_argument("--out", required=True)
+    h.add_argument("--tree", default=str(ROOT), help="source tree to measure (baseline or candidate checkout)")
     args = ap.parse_args(argv)
     return engine(args) if args.cmd == "engine" else http(args)
 
