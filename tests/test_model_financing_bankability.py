@@ -235,7 +235,7 @@ def test_percent_save_persists_existing_contract_and_rejects_invalid(client, pro
         response = post_valid_mutation(client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
             "project": record.project_code, "sheet_id": "debt", "field_id": "debt.senior.interest_rate_pct",
             "value": raw, "workbook_version": v, "content_hash": h})
-        assert response.status_code == 200, response.text[:400]
+        assert response.status_code == (200 if accepted else 422), response.text[:400]
         assert ('"workbook-field-saved"' in response.headers.get("HX-Trigger", "")) == accepted
         if not accepted:
             assert '"workbook-field-error"' in response.headers["HX-Trigger"]

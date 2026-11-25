@@ -136,7 +136,7 @@ export function OpexProjection({ project, reloadKey }: { project: string; reload
                   <dd>{cell(op.kpis?.total_operating_ebitda_keur)} {unit}</dd>
                 </div>
               </dl>
-              <div className="rcm-scroll" tabIndex={0} role="region" aria-label="Canonical operating preview by calendar year">
+              <div className="rcm-opex-preview-scroll" style={{ overflowX: "auto", maxWidth: "100%" }} tabIndex={0} role="region" aria-label="Canonical operating preview by calendar year">
                 <table className="fm-table rcux-opex-proj" data-opex-operating-preview-table="true">
                   <thead>
                     <tr>

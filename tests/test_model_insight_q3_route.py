@@ -244,7 +244,7 @@ def test_invalid_p50_below_saved_p90_refuses_save_and_keeps_q3_current(env):
         "field_id": "project_setup.technical.p50_hours", "value": "1234", "project": rec.project_code,
         "workbook_version": v0, "content_hash": h0, "sheet_id": "project_setup"},
         cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert bad.status_code == 200
+    assert bad.status_code == 422
     assert '"workbook-field-saved"' not in bad.headers.get("HX-Trigger", "")
     assert "P90_EXCEEDS_P50" in bad.text or "cannot exceed P50" in bad.text
 

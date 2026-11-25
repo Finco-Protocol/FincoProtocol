@@ -159,7 +159,7 @@
   });
 })();
 
-// Scoped HTMX handling for controlled workbook/slice1 4xx error fragments (C1-Q-06).
+// Scoped HTMX handling for controlled Slice 1 & workbook 4xx error fragments (C1-Q-06).
 (function () {
   var SLICE1_UPDATE_ENDPOINT = '/v2/workbook/inputs-slice1/update';
   var GENERAL_UPDATE_ENDPOINT = '/v2/workbook/update';

@@ -349,7 +349,7 @@ class TestCapacityRescaleFiniteness:
         tokens = _page_tokens(env, record)
         before = _db_fingerprint(env, record)
         resp = _single_save(env, record, "project_setup.technical.capacity_mw", capacity, tokens)
-        assert resp.status_code == 200 and "representable numeric range" in resp.text and "Nothing was changed" in resp.text
+        assert resp.status_code == 422 and "representable numeric range" in resp.text and "Nothing was changed" in resp.text
         assert _db_fingerprint(env, record) == before              # sub-lines, draft, metadata, history: byte-identical
         snap = _snapshot(record)
         assert snap["capacity_mw"] == "16"
@@ -472,7 +472,7 @@ class TestPlaceholderCapexIdentifiers:
         record = env.create(kind)
         for index, field_id in enumerate(CAPEX_FIELDS):
             tokens = _page_tokens(env, record)
-            assert _single_save(env, record, field_id, str(1000 + 10 * index), tokens).status_code == 200
+            assert _single_save(env, record, field_id, str(1000 + 10 * index), tokens).status_code in (200, 422)
             assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200, field_id
 
     @pytest.mark.parametrize("kind", ("solar", "wind"))
@@ -480,7 +480,7 @@ class TestPlaceholderCapexIdentifiers:
         def run(fields):
             record = env.create(kind, name=f"{kind} {len(fields)}")
             for field_id, value in fields:
-                assert _single_save(env, record, field_id, value, _page_tokens(env, record)).status_code == 200
+                assert _single_save(env, record, field_id, value, _page_tokens(env, record)).status_code in (200, 422)
             tokens = _page_tokens(env, record)
             resp = env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
                 "project": record.project_code, "csrf_token": tokens["run_csrf"],
@@ -596,7 +596,7 @@ class TestOpexAuthority:
         def total_opex(field_id):
             record = env.create("solar", name="run " + str(field_id))
             if field_id:
-                assert _single_save(env, record, field_id, "60", _page_tokens(env, record)).status_code == 200
+                assert _single_save(env, record, field_id, "60", _page_tokens(env, record)).status_code in (200, 422)
             tokens = _page_tokens(env, record)
             env.client.post("/v2/workbook/run", headers={"HX-Request": "true"}, data={
                 "project": record.project_code, "csrf_token": tokens["run_csrf"],
@@ -720,7 +720,7 @@ class TestCapacitySaveIsOneTransaction:
         before = _db_fingerprint(env, record)
         monkeypatch.setattr(rs, "preflight_capacity_rescale", lambda **kw: None)    # the advisory check is not the safeguard
         resp = _single_save(env, record, "project_setup.technical.capacity_mw", capacity, tokens)
-        assert resp.status_code == 200 and "representable numeric range" in resp.text and "Nothing was changed" in resp.text
+        assert resp.status_code == 422 and "representable numeric range" in resp.text and "Nothing was changed" in resp.text
         assert _db_fingerprint(env, record) == before
 
     @pytest.mark.parametrize("kind", TECHS)

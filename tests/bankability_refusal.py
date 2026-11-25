@@ -14,7 +14,7 @@ def bankability_refusal_valid(*, status, event, tone, warning, before, after, po
         'Draft changed since page loaded, so your edit was not saved. Reload the page to see the current value, then enter it again.',
         'error_class': None, 'conflict': True}
     try:
-        return (status == 200 and event == {'workbook-field-error': expected}
+        return (status == 409 and event == {'workbook-field-error': expected}
                 and tone == 'conflict' and warning in APPROVED_WARNINGS
                 and before == after and posts == [] and local_day_count == 'act_365'
                 and json.loads(after[0]['bankability_config_json']) == {'version': 1, 'day_count': 'act_360'})
