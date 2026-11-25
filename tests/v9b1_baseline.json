@@ -1,0 +1,288 @@
+{
+  "baseline": "5be8c4b149712dd39b38b54c6fabcf3fcf47ef0d",
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "results": {
+    "DC": {
+      "status": "feasible",
+      "digest": "fac4b17a3a8b367a4e22432a1344bb49f9bbea9206c905a856ee5e43adbcfae5",
+      "leaves": 16816
+    },
+    "DC-dscr2.0": {
+      "status": "feasible",
+      "digest": "927fa1c8a3f1845a3f0e12f314b3a1ffc45aa1930ac5d09f06080b03b83f246d",
+      "leaves": 16816
+    },
+    "DC-leap": {
+      "status": "feasible",
+      "digest": "3b17953496e67d5707d2b07efb17dd7709806749ec994c1491a84ee1dcf36a4f",
+      "leaves": 16822
+    },
+    "S16": {
+      "status": "feasible",
+      "digest": "810470c5708152c8537ae3cab098258110a9e5c3052441f77632d20abd121d3c",
+      "leaves": 15045
+    },
+    "S16-capex0.32-infeasible": {
+      "status": "rejected",
+      "digest": "0bd8e285421e90c7f47fbd83cc1b51aca041564d196807909752be12fd6df5bc",
+      "leaves": 3
+    },
+    "S16-codstub9": {
+      "status": "feasible",
+      "digest": "90fb375c05a270ce4d7fd1cbe54e726f853eb65bd1c50376f6fac5e47ce791ca",
+      "leaves": 15088
+    },
+    "S16-dscr1.45": {
+      "status": "feasible",
+      "digest": "bdca7513678faf6bca56a67658e300c56f43967ebc0c806228e4218211409afe",
+      "leaves": 15085
+    },
+    "S16-dscr2.0": {
+      "status": "rejected",
+      "digest": "6489407fee9cc15aedcb9f0a14bc31872042624ef8f0dabe6a71d7aa7b4aafa6",
+      "leaves": 3
+    },
+    "S16-dscr3.0": {
+      "status": "rejected",
+      "digest": "ca03afdaef5299603ba06831ba1c2a47d64d9bc70b129bc08d2903b368ce8712",
+      "leaves": 3
+    },
+    "S16-dsra0": {
+      "status": "feasible",
+      "digest": "d0eaac1b07cac5183742d8afa178e3eb4087becb27f5f25aa785c1c4232fc96f",
+      "leaves": 14991
+    },
+    "S16-dsra12": {
+      "status": "feasible",
+      "digest": "fe19abcffefc4785734dbceac7ec69627f5cb398e212dc9d1f069a6019b83300",
+      "leaves": 15085
+    },
+    "S16-gear0": {
+      "status": "rejected",
+      "digest": "7dcaaa9cc90e7d0171ea409042abc6795b4dba6ff2ff6178f73cd384ebbf9fcc",
+      "leaves": 3
+    },
+    "S16-gear0.001": {
+      "status": "rejected",
+      "digest": "42e5ff388d25119c4390180058cc14c1e9d62ef281a627c73ef25207a7ef2ba7",
+      "leaves": 3
+    },
+    "S16-gear0.50": {
+      "status": "rejected",
+      "digest": "eac3f91368ba7f5c4bd097bafdcfbbebd97e2e6e58c0ff6806a05c9f5ee07e09",
+      "leaves": 3
+    },
+    "S16-gearbound": {
+      "status": "feasible",
+      "digest": "5a29a8972b3ea44c2b9db83af034c67077850be47148699cee011d493ebea6a0",
+      "leaves": 14905
+    },
+    "S16-leap": {
+      "status": "feasible",
+      "digest": "9ab895f3894bafe0f484d21150f9514b3e79761f097261a85f4c4d0f6621f884",
+      "leaves": 15078
+    },
+    "S16-noCF": {
+      "status": "feasible",
+      "digest": "93953886b606d7d6b9c4c78ddd91664e30c97d236570d60959ad822e3a18bbf6",
+      "leaves": 15612
+    },
+    "S16-raw-infeasible": {
+      "status": "rejected",
+      "digest": "9462bb2840ab89fd3997501e15f4530ef12eb676a1e623eb75a308730e4c41a5",
+      "leaves": 3
+    },
+    "S16-shl-small": {
+      "status": "rejected",
+      "digest": "51f6f2d9f362152473a681a4e28b8b9635ed983b5e7690cb9868c66f2b474d47",
+      "leaves": 3
+    },
+    "S16-taxloss": {
+      "status": "rejected",
+      "digest": "551505f40bbeda28f4f9e939bb30d4b5cb45921ceac5ec4b0dc5f0dadbd1c6e8",
+      "leaves": 3
+    },
+    "S16-tenor10": {
+      "status": "rejected",
+      "digest": "859ffcf2441d986a57c73566e0007e3b6f565ecb8281e80ce55adf4224f0eecc",
+      "leaves": 3
+    },
+    "S16r": {
+      "status": "feasible",
+      "digest": "f41040fce160ee61d235b254acb23be128ecedcd12d8e724b2b06b4ce77495ad",
+      "leaves": 14415
+    },
+    "S16r-dscr2.0": {
+      "status": "feasible",
+      "digest": "5bf5ad5b73e76636a241d24e6358a502ff9309e43152ba10959bbbdb085ab3b1",
+      "leaves": 14415
+    },
+    "S16r-dscr3.0": {
+      "status": "feasible",
+      "digest": "ce4d5e9e6288bb214d7fb64f1101541cc32ef4c2eb43cb730c4d0b252885f30c",
+      "leaves": 14415
+    },
+    "S16r-dsra12": {
+      "status": "feasible",
+      "digest": "065bc8fad767b3f089648bce1f5f3914edbebbb73ff58b2dad80ce63bc1bf8fb",
+      "leaves": 14415
+    },
+    "S16r-gear0.001": {
+      "status": "rejected",
+      "digest": "442479ab9b5bd41a41f2fd43a6f69e32cb81a90544c5dcfd4698f505ae5752d4",
+      "leaves": 3
+    },
+    "S16r-gear0.50": {
+      "status": "feasible",
+      "digest": "88dd4bf942ad1171960c6d4102335f5b8a21622d277b2ac39657689c3c89a9a0",
+      "leaves": 14415
+    },
+    "S16r-taxloss": {
+      "status": "feasible",
+      "digest": "52278db8fb8704534ce797352a20ecccd14ecf1720bdf447195bbada7fa5f646",
+      "leaves": 15315
+    },
+    "S16r-tenor10": {
+      "status": "feasible",
+      "digest": "6e699b8881911aadebda2bf4456647378f6d64658aa54b7be8f84805fa360889",
+      "leaves": 14335
+    },
+    "S16r-tenor12": {
+      "status": "feasible",
+      "digest": "38d1aea213accb1df2229cb6a0c85586ba96a3e045c1ca7d5ddb14a2c21495a7",
+      "leaves": 14367
+    },
+    "S50": {
+      "status": "feasible",
+      "digest": "62e2befc77dacb3874f9a71115cd517018af9aec56ec14ff5f0b8c61d8c03e09",
+      "leaves": 14975
+    },
+    "W25": {
+      "status": "feasible",
+      "digest": "73e41614644596c1fcc89ed07c1f0f6ce337fd873a1b97a7afc23deb36ad07de",
+      "leaves": 19175
+    },
+    "W25-codstub15": {
+      "status": "feasible",
+      "digest": "9a80d795e9e45dbfbb1736b392847f2f1efc7305b22940087f780292f299f05b",
+      "leaves": 19016
+    },
+    "W25-dscr1.45": {
+      "status": "feasible",
+      "digest": "5df5eaa65b7ed2a2c6565c9c984c710439aabd692c5f3e37bc5c93e9e0e75927",
+      "leaves": 19175
+    },
+    "W25-dscr2.0": {
+      "status": "rejected",
+      "digest": "c599137c71a37b4bdc9ef9fce0ade60300f6c2c947918be751d3956ed0c40f94",
+      "leaves": 3
+    },
+    "W25-dscr3.0": {
+      "status": "rejected",
+      "digest": "aa2545c56a8e6332853034fe54f31da07441a66f006e6ee4f8749afe1574cac3",
+      "leaves": 3
+    },
+    "W25-dscr9-infeasible": {
+      "status": "rejected",
+      "digest": "fd3e8c4284123b7ee5d68c744e3a5789e3617ed03120b12b68cb9633b622d318",
+      "leaves": 3
+    },
+    "W25-dsra12": {
+      "status": "rejected",
+      "digest": "d2542344feeca65b46b6a515d7774e767dffc6c99bb809a01fa90a2f8a0edbb1",
+      "leaves": 3
+    },
+    "W25-gear0.50": {
+      "status": "rejected",
+      "digest": "7f43b583e49fda21b5e782f71a8a95c85c240db62452811ae2a0ea1ee03612dc",
+      "leaves": 3
+    },
+    "W25-gear0.90": {
+      "status": "feasible",
+      "digest": "05aee03f65cc82cab37cda6b3cf95cd2f20724e3332404401e6c018e57b221b7",
+      "leaves": 19175
+    },
+    "W25-noCF": {
+      "status": "feasible",
+      "digest": "bf1ea67d748f3b38a72178cc4a2d705cf69779e52ca7858a2de1e3b74e70d0bb",
+      "leaves": 20003
+    },
+    "W25-noDSRA": {
+      "status": "feasible",
+      "digest": "7c626133b08273f48300d60ebf2ee12968a349afc0e39e3dad6f9464bf05ef8a",
+      "leaves": 18951
+    },
+    "W25-taxloss": {
+      "status": "rejected",
+      "digest": "4c4b90c4c1100e9c1e3235dc3b0e43cb2072ba0dda2a0ef9e0b5ef1cf8ebeefa",
+      "leaves": 3
+    },
+    "W25-tenor18": {
+      "status": "rejected",
+      "digest": "ea2c16ebdd13fc224f190f11479f4f7c3a0cb46d4f7e468fc12dd5f90ba7eb0e",
+      "leaves": 3
+    },
+    "W25r-dscr2.0": {
+      "status": "feasible",
+      "digest": "307c7abf4575797084a97e57921ca28880e926a677dd83375b4b1ec4b0f86034",
+      "leaves": 18235
+    },
+    "W25r-dscr3.0": {
+      "status": "feasible",
+      "digest": "cdc2aa6430ec3e71a4ece9f4bd70a5278ea4bc35deb68053062888662ebe7070",
+      "leaves": 18295
+    },
+    "W25r-gear0.50": {
+      "status": "feasible",
+      "digest": "09f623f8047fa357782292c5790228da3f7fdba133a7c038d8b86db93d2983d1",
+      "leaves": 18135
+    },
+    "W25r-taxloss": {
+      "status": "feasible",
+      "digest": "e9ad2035e8789e14129b802ad4b766161f02dc885d0f170fb83d2df1667e5658",
+      "leaves": 18365
+    },
+    "W25r-tenor10": {
+      "status": "feasible",
+      "digest": "d1a0586aa721a2c4f227e916bf410a5f845d7fdb5270a9f0364b6e2800e4a987",
+      "leaves": 18035
+    }
+  },
+  "extended_results": {
+    "reference-solar": {
+      "status": "feasible",
+      "digest": "a71f4f5a1448c5a0fc535cf713acddfdd68abe3967614c296875168d30756b2a",
+      "leaves": 17686
+    },
+    "reference-wind": {
+      "status": "feasible",
+      "digest": "9a5aef4f56fc1923447e29df426c15f88a0d258b06d0278ee95605e9bc6cff1e",
+      "leaves": 19210
+    },
+    "reference-data_center": {
+      "status": "feasible",
+      "digest": "697a4253d7404121affbe86a6a13742b08bfeba4bc7924b74177913215af83e5",
+      "leaves": 16816
+    },
+    "reference-ev_charging": {
+      "status": "feasible",
+      "digest": "5b3ef6459d2515391e3a7c9085098833610836ed70d7c86849e88767a2566036",
+      "leaves": 14636
+    },
+    "m6-level": {
+      "status": "feasible",
+      "digest": "66aa18d7afe5eb0797304e207dc1a39ca0e3715546ec7d9e1ef40fe1af008ded",
+      "leaves": 17686
+    },
+    "m6-sculpted": {
+      "status": "rejected",
+      "digest": "c11cb43de3e51b0cacf1d0bbb0a746d8860808dcf3f516a0347ae6d45f84b3f1",
+      "leaves": 3
+    },
+    "m6-infeasible": {
+      "status": "rejected",
+      "digest": "43ca7a30790c6fd15d0ce71b321c94df3fb922651deea04f108ba14af39b612f",
+      "leaves": 3
+    }
+  }
+}
