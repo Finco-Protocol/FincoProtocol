@@ -67,14 +67,20 @@ def assess_snapshot_bank_case_readiness(snapshot, *, scenario_overrides=None):
         pi = ProjectInputSet.from_snapshot(effective).to_projectinputs()
         return config.assess_bank_case_readiness(pi).to_dict()
     except Exception as exc:  # noqa: BLE001 - fail closed with typed diagnostic
+        err_code = getattr(exc, "code", "R04_READINESS_UNAVAILABLE")
+        is_p50_cap = err_code == "R04_GLOBAL_P50_CAP_EXCEEDED"
         return {
             "applicable": True,
             "runnable": False,
-            "status": "INVALID_CONTRACT",
+            "status": "P50_CAP_EXCEEDED" if is_p50_cap else "INVALID_CONTRACT",
             "cap_envelope_basis": "P50",
-            "error_code": getattr(exc, "code", "R04_READINESS_UNAVAILABLE"),
+            "error_code": err_code,
             "message": str(exc),
-            "remediation": "Review revenue contract dates, quantities, and project timeline.",
+            "remediation": (
+                "Reduce declared annual physical PPA quantities or adjust contract dates so total physical commitments fit within the P50 envelope."
+                if is_p50_cap
+                else "Review revenue contract dates, quantities, and project timeline."
+            ),
             "shortfall_periods": [],
-            "details": {},
+            "details": dict(getattr(exc, "details", {}) or {}),
         }

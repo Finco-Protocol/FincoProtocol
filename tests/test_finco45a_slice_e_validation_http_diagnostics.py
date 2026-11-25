@@ -279,3 +279,20 @@ def test_e5_currency_eur_only_guard_and_legacy_preservation(env):  # noqa: F811
     assert r_run.status_code in (409, 422)
     assert "EUR" in r_run.json()["message"]
     assert len(get_run_history(OWNER, rec.project_id)) == 0
+
+    # HTMX /v2/workbook/run returns 422 HTML fragment AND workbook_v2.js allows swapping 422 from /v2/workbook/run
+    r_htmx_run = env.client.post(
+        "/v2/workbook/run",
+        headers={"HX-Request": "true"},
+        data={
+            "project": rec.project_code,
+            "csrf_token": runs_meta["run_contract"]["csrf_token"],
+            "content_hash": ws_shell["workbook"]["composite_hash"],
+            "workbook_version": ws_shell["workbook"]["version"],
+            "run_intent_id": str(uuid.uuid4()),
+        },
+    )
+    assert r_htmx_run.status_code == 422
+    assert "EUR" in r_htmx_run.text
+    wb_js = (Path(__file__).resolve().parents[1] / "static" / "js" / "workbook_v2.js").read_text(encoding="utf-8")
+    assert "'/v2/workbook/run'" in wb_js

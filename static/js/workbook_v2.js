@@ -163,6 +163,7 @@
 (function () {
   var SLICE1_UPDATE_ENDPOINT = '/v2/workbook/inputs-slice1/update';
   var GENERAL_UPDATE_ENDPOINT = '/v2/workbook/update';
+  var WORKBOOK_RUN_ENDPOINT = '/v2/workbook/run';
   var CONTROLLED_SWAP_STATUSES = { 403: true, 409: true, 422: true };
 
   window.v2ShouldSwapSlice1ErrorResponse = function (event) {
@@ -182,7 +183,8 @@
     return !!(
       CONTROLLED_SWAP_STATUSES[status] &&
       (requestPath.indexOf(SLICE1_UPDATE_ENDPOINT) !== -1 ||
-       requestPath.indexOf(GENERAL_UPDATE_ENDPOINT) !== -1)
+       requestPath.indexOf(GENERAL_UPDATE_ENDPOINT) !== -1 ||
+       requestPath.indexOf(WORKBOOK_RUN_ENDPOINT) !== -1)
     );
   };
 

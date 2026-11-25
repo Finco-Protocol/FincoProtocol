@@ -430,3 +430,43 @@ def test_r04_http_save_review_run_failure_and_valid_run_lifecycle(env, monkeypat
     )
     assert r_xlsx.status_code == 200
     assert r_xlsx.headers.get("content-type", "").startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def test_slice_a_mid_period_subinterval_shortfall_and_persisted_p50_status(env):  # noqa: F811
+    """Review Finding A1/A2 regression: match evaluate_dated sub-interval cuts and P50_CAP_EXCEEDED mapping."""
+    from fractions import Fraction
+    from domain.revenue.r04_global_p50_cap import PhysicalContractRequest, assess_r04_bank_case_readiness
+    from app.workbook.revenue_multistream import assess_snapshot_bank_case_readiness
+
+    solar = _make_80mw_solar_pi(cod=date(2031, 1, 1), p50_hours=1500.0, p90_hours=1250.0)
+    # 80 MW Solar (P50=117.612 GWh, P90=98.010 GWh); 100 GWh/yr active ONLY in 2031-04-01..2031-07-01 (91 days).
+    # Unsplit whole-period H1 (~48,602 MWh) would mask the 91-day sub-interval shortfall (24,931.5 > 24,435.4 MWh).
+    contracts = (
+        PhysicalContractRequest(
+            contract_id="mid_ppa",
+            start_date=date(2031, 4, 1),
+            end_date=date(2031, 7, 1),
+            mode="ABSOLUTE_ANNUAL",
+            annual_quantity_mwh=Fraction(100_000),
+            original_unit="GWh",
+        ),
+    )
+    res = assess_r04_bank_case_readiness(solar, contracts, technology="solar", bank_yield_scenario="P90-10y")
+    assert res.runnable is False
+    assert res.status == "BANK_CASE_SHORTFALL_BLOCKED"
+    assert res.shortfall_periods[0]["period_start"] == "2031-04-01"
+    assert res.shortfall_periods[0]["period_end_exclusive"] == "2031-07-01"
+
+    # Persisted P50 cap exceedance maps cleanly to P50_CAP_EXCEEDED instead of INVALID_CONTRACT
+    rec = env.create()
+    ws = get_workspace_state(OWNER, rec.project_id)
+    bad_snap = dict(ws.draft_snapshot)
+    bad_snap["date_authority_version"] = "OD-TIME-01/v1"
+    bad_snap["rev_multistream_config_json"] = _r04_book(
+        [_ppa("ppa_huge", str(bad_snap.get("cod_date") or "2028-01-01"), "2038-01-01", "500", "GWh")]
+    )
+    out = assess_snapshot_bank_case_readiness(bad_snap)
+    assert out is not None
+    assert out["runnable"] is False
+    assert out["status"] == "P50_CAP_EXCEEDED"
+    assert out["error_code"] == "R04_GLOBAL_P50_CAP_EXCEEDED"

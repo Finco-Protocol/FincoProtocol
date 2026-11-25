@@ -36,6 +36,7 @@ from typing import Sequence
 
 from finco_core.engine.contractual_calendar import (
     ContractualInterval,
+    add_calendar_years,
     build_contractual_reporting_axis,
     contractual_generation_for_interval,
     days_in_calendar_year,
@@ -745,34 +746,45 @@ def assess_r04_bank_case_readiness(
     avail = float(tech.combined_availability)
     deg = float(tech.pv_degradation)
 
+    contract_cuts = {d for c in contracts for d in (c.start_date, c.end_date)}
     shortfall_periods: list[dict[str, object]] = []
     for rp in build_contractual_reporting_axis(cod, horizon_years):
-        available_mwh, _ = contractual_generation_for_interval(
-            rp.interval,
-            cod=cod,
-            capacity_mw=cap_mw,
-            annual_hours=bank_hours,
-            combined_availability=avail,
-            annual_degradation=deg,
-            horizon_end_exclusive=horizon_iv.end_exclusive,
-        )
-        _, _, rec = allocate_r04_period_deliveries(
-            rp.interval,
-            available_generation_mwh=float(available_mwh),
-            contracts=contracts,
-            allow_shortfall_without_settlement=True,
-        )
-        if rec is not None:
-            shortfall_periods.append({
-                "period_index": rp.index,
-                "period_start": rec.period_start.isoformat(),
-                "period_end_exclusive": rec.period_end_exclusive.isoformat(),
-                "calendar_year": rec.calendar_year,
-                "contracted_mwh": rec.total_contracted_mwh,
-                "available_mwh": rec.available_generation_mwh,
-                "shortfall_mwh": rec.shortfall_mwh,
-                "contract_obligations_mwh": dict(rec.contract_obligations_mwh),
-            })
+        # Match MultiStreamRevenue.evaluate_dated sub-interval segmentation so a
+        # mid-period contract boundary, Jan-1 transition, or COD-anniversary step
+        # cannot hide a delivery shortfall inside whole-period aggregation.
+        cuts = set(contract_cuts)
+        cuts.update(date(y, 1, 1) for y in range(rp.interval.start.year + 1, rp.interval.end_exclusive.year + 1))
+        k = 1
+        while add_calendar_years(cod, k) < rp.interval.end_exclusive:
+            cuts.add(add_calendar_years(cod, k))
+            k += 1
+        for sub in split_at_dates(rp.interval, cuts):
+            available_mwh, _ = contractual_generation_for_interval(
+                sub,
+                cod=cod,
+                capacity_mw=cap_mw,
+                annual_hours=bank_hours,
+                combined_availability=avail,
+                annual_degradation=deg,
+                horizon_end_exclusive=horizon_iv.end_exclusive,
+            )
+            _, _, rec = allocate_r04_period_deliveries(
+                sub,
+                available_generation_mwh=float(available_mwh),
+                contracts=contracts,
+                allow_shortfall_without_settlement=True,
+            )
+            if rec is not None:
+                shortfall_periods.append({
+                    "period_index": rp.index,
+                    "period_start": rec.period_start.isoformat(),
+                    "period_end_exclusive": rec.period_end_exclusive.isoformat(),
+                    "calendar_year": rec.calendar_year,
+                    "contracted_mwh": rec.total_contracted_mwh,
+                    "available_mwh": rec.available_generation_mwh,
+                    "shortfall_mwh": rec.shortfall_mwh,
+                    "contract_obligations_mwh": dict(rec.contract_obligations_mwh),
+                })
 
     if shortfall_periods:
         first = shortfall_periods[0]
