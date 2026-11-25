@@ -498,14 +498,18 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
 
     # Corrupt stored composite hash to simulate a workbook version bump or factory change.
     # The live hash hasn't changed, but stored says "old_model_version" → triggers re-seed.
-    for ts in first_seeded:
-        rec = get_reference_by_template_source(ts)
+    from app.persistence.project_lifecycle_repository import workspace_freshness_writer
+
+    @workspace_freshness_writer          # FINCO45C: trusted test fixture simulating an out-of-band version bump
+    def _corrupt(rec):
         with get_cursor() as cur:
             cur.execute(
                 "UPDATE workspace_states SET last_runtime_composite_hash=? "
                 "WHERE user_id=? AND project_id=?",
                 ("__stale_hash_simulating_version_bump__", rec.user_id, rec.project_id),
             )
+    for ts in first_seeded:
+        _corrupt(get_reference_by_template_source(ts))
 
     re_seeded = ensure_reference_canonical_last_runs()
 

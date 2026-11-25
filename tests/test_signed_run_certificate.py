@@ -88,15 +88,20 @@ def ev_project(tmp_path, monkeypatch):
     # does (these columns live on workspace_states; save_workspace_state
     # does not carry them).
     from app.persistence.db import get_connection
-    conn = get_connection()
-    conn.execute(
-        "UPDATE workspace_states SET any_run_committed=1, "
-        "last_runtime_identity_json=?, last_runtime_composite_hash=? "
-        "WHERE workspace_id=? AND user_id=?",
-        (json.dumps(identity), COMPOSITE_HASH, ws.workspace_id, "cert-user"),
-    )
-    conn.commit()
-    conn.close()
+    from app.persistence.project_lifecycle_repository import workspace_freshness_writer
+
+    @workspace_freshness_writer          # FINCO45C: trusted test fixture standing in for v2_atomic_run_commit
+    def _seed_commit_state():
+        conn = get_connection()
+        conn.execute(
+            "UPDATE workspace_states SET any_run_committed=1, "
+            "last_runtime_identity_json=?, last_runtime_composite_hash=? "
+            "WHERE workspace_id=? AND user_id=?",
+            (json.dumps(identity), COMPOSITE_HASH, ws.workspace_id, "cert-user"),
+        )
+        conn.commit()
+        conn.close()
+    _seed_commit_state()
     from app.persistence.workspace_repository import get_workspace_state as _gws
     return {"record": record, "user_id": "cert-user", "ws": _gws("cert-user", record.project_id)}
 
@@ -403,16 +408,21 @@ def test_signed_run_user_isolation(ev_project, tmp_path, monkeypatch):
         dirty=False, governance_state=ws_own.governance_state,
         replay_metadata=ws_own.replay_metadata,
     )
-    conn = get_connection()
-    conn.execute(
-        "UPDATE workspace_states SET any_run_committed=1, last_runtime_identity_json=?, "
-        "last_runtime_composite_hash=? "
-        "WHERE workspace_id=? AND user_id=?",
-        (_json.dumps({"engine_version": "t", "workbook_version": "v2.0.0",
-                      "composite_hash": COMPOSITE_HASH}), COMPOSITE_HASH,
-         ws_own.workspace_id, "cert-user"),
-    )
-    conn.commit(); conn.close()
+    from app.persistence.project_lifecycle_repository import workspace_freshness_writer
+
+    @workspace_freshness_writer          # FINCO45C: trusted test fixture standing in for v2_atomic_run_commit
+    def _seed_commit_state():
+        conn = get_connection()
+        conn.execute(
+            "UPDATE workspace_states SET any_run_committed=1, last_runtime_identity_json=?, "
+            "last_runtime_composite_hash=? "
+            "WHERE workspace_id=? AND user_id=?",
+            (_json.dumps({"engine_version": "t", "workbook_version": "v2.0.0",
+                          "composite_hash": COMPOSITE_HASH}), COMPOSITE_HASH,
+             ws_own.workspace_id, "cert-user"),
+        )
+        conn.commit(); conn.close()
+    _seed_commit_state()
     # another user's EV working copy in the same DB
     other = create_reference_seeded_project(
         user_id="other-user", template_source="generic_ev_charging_reference",

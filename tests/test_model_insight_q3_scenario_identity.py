@@ -227,14 +227,19 @@ def test_D2_selected_scenario_name_is_never_substituted_for_a_different_last_run
     ws0 = last_run(user, rec)
     assert ws0.active_scenario_id == up.scenario_id
     # restore the Base Run into the workspace Last Run while the other scenario stays selected (legacy shape)
-    with get_cursor() as cur:
-        cur.execute("SELECT * FROM model_run_history WHERE project_id=? ORDER BY ran_at DESC LIMIT 1", (rec.project_id,))
-        h = dict(cur.fetchone())
-        cur.execute("UPDATE workspace_states SET last_runtime_summary_json=?, last_runtime_snapshot_id=?, last_runtime_scenario_id=NULL,"
-                    " last_runtime_composite_hash=?, last_runtime_at=?, last_integrity_evidence_json=?, last_sponsor_schedule_json=?,"
-                    " last_runtime_identity_json=? WHERE project_id=?",
-                    (h["runtime_summary_json"], h["runtime_snapshot_id"], h["composite_hash"], h["ran_at"],
-                     h["integrity_evidence_json"], h["sponsor_schedule_json"], h["last_runtime_identity_json"], rec.project_id))
+    from app.persistence.project_lifecycle_repository import workspace_freshness_writer
+
+    @workspace_freshness_writer          # FINCO45C: trusted fixture forging the legacy Last-Run shape
+    def _forge_legacy_last_run():
+        with get_cursor() as cur:
+            cur.execute("SELECT * FROM model_run_history WHERE project_id=? ORDER BY ran_at DESC LIMIT 1", (rec.project_id,))
+            h = dict(cur.fetchone())
+            cur.execute("UPDATE workspace_states SET last_runtime_summary_json=?, last_runtime_snapshot_id=?, last_runtime_scenario_id=NULL,"
+                        " last_runtime_composite_hash=?, last_runtime_at=?, last_integrity_evidence_json=?, last_sponsor_schedule_json=?,"
+                        " last_runtime_identity_json=? WHERE project_id=?",
+                        (h["runtime_summary_json"], h["runtime_snapshot_id"], h["composite_hash"], h["ran_at"],
+                         h["integrity_evidence_json"], h["sponsor_schedule_json"], h["last_runtime_identity_json"], rec.project_id))
+    _forge_legacy_last_run()
     html = page(env, user, rec)
     line = scenario_line(html)
     assert "Selected but never run" not in context(html)
