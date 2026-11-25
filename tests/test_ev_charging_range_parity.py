@@ -309,9 +309,9 @@ def test_invalid_efficiency_form_edit_rejected_and_snapshot_preserved(ev_wc):
     form["value"] = "150"  # outside registry max 100
     resp = post_valid_mutation(client, "/v2/workbook/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
-    # HTMX contract: 200 with an error partial (the UI shows the banner);
+    # HTMX contract (C1-Q-06): 422 with an error partial (the UI swaps the banner);
     # the update service validation result must flag the max violation.
-    assert resp.status_code == 200
+    assert resp.status_code == 422
     assert "must be" in resp.text and "100" in resp.text
 
     # nothing persisted: a fresh read still shows the valid value

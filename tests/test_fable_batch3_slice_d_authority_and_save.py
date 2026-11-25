@@ -601,10 +601,11 @@ def test_slice_d_p1_fin_01_and_02_mutation_witnesses_wrong_draw_idc_and_missing_
         )
 
 
-# ── 5. P1-REV-03: Combined % Merchant + EUR/MWh Generation Balancing Probe ──
+# ── 5. P1-REV-03: Dual % Merchant + EUR/MWh Balancing Basis Rejected (FINCO45A) ──
 
 
 def test_slice_d_p1_rev_03_combined_percent_and_eur_mwh_balancing_additive():
+    """Dual nonzero % merchant and per-MWh balancing must fail closed (DUAL_BALANCING_COST_BASIS_FORBIDDEN)."""
     base = pf.create_generic_solar_reference()
     pi = replace(
         base,
@@ -622,18 +623,8 @@ def test_slice_d_p1_rev_03_combined_percent_and_eur_mwh_balancing_additive():
         ppa_years=int(pi.revenue.ppa_term_years),
         cod_date=pi.info.cod_date,
     )
-    decomps = revenue_decomposition_schedule(pi, eng)
-    checked = 0
-    for d in decomps.values():
-        if not d["is_operation"]:
-            continue
-        exp_pct = d["gross_merchant_revenue_keur"] * 0.05
-        exp_mwh = d["generation_mwh"] * 2.50 / 1000.0
-        assert d["balancing_cost_pv_keur"] == pytest.approx(exp_pct, abs=1e-9)
-        assert d["balancing_cost_wind_keur"] == pytest.approx(exp_mwh, abs=1e-9)
-        assert d["balancing_cost_keur"] == pytest.approx(exp_pct + exp_mwh, abs=1e-9)
-        checked += 1
-    assert checked > 0
+    with pytest.raises(ValueError, match="DUAL_BALANCING_COST_BASIS_FORBIDDEN"):
+        revenue_decomposition_schedule(pi, eng)
 
 
 # ── 6. F2-NEW-03: Tax Loss Continuity on DC & EV ─────────────────────────────

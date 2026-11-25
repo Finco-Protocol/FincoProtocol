@@ -131,7 +131,7 @@ def test_stale_rate_save_keeps_value_and_unit_together(env,mode):
         r=env.client.post('/v2/workbook/update',headers={'HX-Request':'true'},data={
             'project':record.project_code,'field_id':RATE_FIELD,'value':'9',
             'content_hash':old,'workbook_version':WORKBOOK.version,'csrf_token':projection['save']['csrf_token']})
-        assert r.status_code==200  # Existing HTMX error-envelope contract.
+        assert r.status_code==409  # C1-Q-06 HTMX 4xx CAS error-envelope contract.
         event=json.loads(r.headers['HX-Trigger'])['workbook-field-error']
         assert event['conflict'] is True and 'not saved' in event['message']
     assert _snapshot(record)==before

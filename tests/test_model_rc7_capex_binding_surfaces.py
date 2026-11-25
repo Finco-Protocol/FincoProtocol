@@ -34,6 +34,7 @@ NO_ENGINE_RUN = {
     "app/capex_profiles/projection.py": "planner catalogue (reads, never runs)",
     "app/capex_profiles/service.py": "Save validation (materialises, never runs the engine)",
     "app/services/run_service.py": "legacy /run routes: refused through the guarded snapshot builder (main_web)",
+    "app/v2/react_opex_projection.py": "read-only Phase 2A operating-model OPEX preview (no construction/financing CAPEX profile solve)",
 }
 
 

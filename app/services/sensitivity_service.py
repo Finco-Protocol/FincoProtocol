@@ -388,14 +388,18 @@ class EVRuntimeAuthorityUnavailable(ValueError):
 
 
 def assert_ev_runtime_authority(proj: Any) -> None:
-    """An EV vertical must run on EV-adapted inputs: all-merchant calendar price schedule + derived electricity line.
+    """An EV vertical must run on EV-adapted inputs: all-merchant operating-year ramp + derived electricity line.
 
     Guards the factory fallback of the legacy resolver (an unresolved project code falls back to the Wind reference),
     which would otherwise be sensitised under an EV label with Wind economics.
     """
     revenue = proj.revenue
+    has_rate_schedule = bool(
+        getattr(revenue, "market_prices_curve", ())
+        or getattr(revenue, "market_prices_by_calendar_year_eur_mwh", ())
+    )
     if (getattr(revenue, "first_merchant_operating_period_index", None) != 0
-            or not getattr(revenue, "market_prices_by_calendar_year_eur_mwh", ())
+            or not has_rate_schedule
             or not any(str(getattr(o, "name", "")) == "Electricity Procurement" for o in proj.opex)):
         raise EVRuntimeAuthorityUnavailable(
             "the resolved inputs are not the EV Charging runtime authority; no sensitivity was run")
@@ -468,6 +472,17 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float,
     elif shock_type == "merchant_price":
         if getattr(proj.revenue, "multistream_config_json", ""):
             raise ValueError("REVENUE_V2_SENSITIVITY_UNSUPPORTED: " + CONTRACTED_PRICE_SHOCK_REFUSAL)
+        is_ev_adapted = (
+            resolve_vertical(vertical) == "ev_charging"
+            or (
+                getattr(proj.revenue, "first_merchant_operating_period_index", None) == 0
+                and any(str(getattr(o, "name", "")) == "Electricity Procurement" for o in getattr(proj, "opex", ()))
+            )
+        )
+        if level_pct != 0.0 and is_ev_adapted:
+            raise InactiveShockDriver(
+                "merchant_price: EV Charging uses a driver-derived operating-year charging ramp, not a generic "
+                "renewable merchant curve")
         if level_pct != 0.0 and getattr(proj.revenue, "market_prices_by_calendar_year_eur_mwh", ()):
             raise InactiveShockDriver(
                 "merchant_price: an explicit per-calendar-year price schedule overrides the merchant curve, so scaling "

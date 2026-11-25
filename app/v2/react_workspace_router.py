@@ -227,6 +227,16 @@ def _senior_debt_metric(runtime_result) -> dict[str, Any]:
         return {**absent, "reason": "The Senior debt amount could not be read from the committed Run."}
 
 
+def _workspace_r04_bank_readiness(ws, owner: str):
+    """Non-mutating R04 bank-case readiness for the active workspace snapshot, or None when not applicable."""
+    try:
+        from app.workbook.revenue_multistream import assess_workspace_bank_case_readiness
+
+        return assess_workspace_bank_case_readiness(ws, owner)
+    except Exception:  # noqa: BLE001 - readiness check must never block workspace load
+        return None
+
+
 # ───────────────────────────── workspace shell ─────────────────────────────
 
 @router.get("/model-react/workspace")
@@ -280,6 +290,7 @@ async def react_workspace_shell(request: Request, project: str):
             "status_dimensions": None,
             "engine": {"persisted_version": None, "current_version": None,
                        "currency": None, "treatment": "EVIDENCE_ONLY_D2_PENDING"},
+            "bank_case_readiness": _workspace_r04_bank_readiness(context.workspace, owner),
         }
         if context.runtime_result is not None and context.freshness.state.value != "NOT_RUN":
             from app.v2.output_workspace_projection import build_output_workspace_safe
@@ -651,7 +662,33 @@ async def react_workspace_inputs(request: Request, project: str):
     except WorkbookIdentityError:
         return _json({"ok": False, "code": "WORKSPACE_UNAVAILABLE",
                       "message": "The workspace identity could not be assembled. Reload to refresh."}, 503)
-    return _json({
+
+    from app.v2.grid_router import _post_save_plausibility_warnings
+    _eff_snap = dict(ws.draft_snapshot or {})
+    if getattr(ws, "active_scenario_id", None):
+        try:
+            from app.persistence.scenarios_repository import get_scenario
+            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+            _sc = get_scenario(ws.active_scenario_id, owner)
+            if (
+                _sc is not None
+                and _sc.project_id == ws.project_id
+                and not _sc.archived
+                and not _sc.is_base_case
+                and isinstance(_sc.overrides, dict)
+            ):
+                if "tariff_eur_mwh" in _sc.overrides:
+                    _eff_snap = bind_scenario_tariff(_eff_snap, _sc.overrides)
+                elif (
+                    (_sc.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"
+                    and "rev_ppa_base_tariff" in _sc.overrides
+                ):
+                    _eff_snap["rev_ppa_base_tariff"] = str(_sc.overrides["rev_ppa_base_tariff"])
+        except Exception:  # noqa: BLE001
+            pass
+    _warnings = _post_save_plausibility_warnings(ProjectInputSet.from_snapshot(_eff_snap, workbook=WORKBOOK))
+
+    out = {
         "ok": True,
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
         "project": {"code": record.project_code,
@@ -670,7 +707,10 @@ async def react_workspace_inputs(request: Request, project: str):
                     "CAPEX and OPEX line-item editors, not in this grid; the totals shown here follow those lines.",
             "capex_opex_editable": False,
         },
-    })
+    }
+    if _warnings:
+        out["warnings"] = _warnings
+    return _json(out)
 
 
 def _pis_with_identity(record, owner: str, ws):
@@ -961,6 +1001,7 @@ async def react_revenue_contracts(request: Request, project: str):
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
         "contracts": editor,
+        "bank_case_readiness": _workspace_r04_bank_readiness(ws, owner),
         "save": {"url": "/v2/workbook/revenue/contracts",
                  "method": "form",
                  # The released Revenue writer retains its plain signed token
@@ -1023,13 +1064,21 @@ async def react_revenue_r04_review(request: Request):
         snapshot.pop(SNAPSHOT_KEY, None)                    # technical/timeline facts only; the proposed book is evaluated, not stored
         proposed = ProjectInputSet.from_snapshot(snapshot).to_projectinputs()
         review = config.review_global_p50_cap(proposed)
+        bank_case_readiness = config.assess_bank_case_readiness(proposed).to_dict()
     except R04CapValidationError as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc), "details": exc.details, "stale": stale}, 422)
     except (ValueError, TypeError) as exc:
         return _json({"ok": False, "code": "REVENUE_REVIEW_BOOK_INVALID", "message": str(exc)[:600], "stale": stale}, 422)
     except Exception:  # noqa: BLE001 - fail closed, never a half review
         return _json({"ok": False, "code": "REVENUE_REVIEW_UNAVAILABLE", "message": "The cap review could not be computed. Reload to refresh."}, 503)
-    return _json({"ok": True, "applicable": True, "stale": stale, "saved_content_hash": tokens["content_hash"], "review": review})
+    return _json({
+        "ok": True,
+        "applicable": True,
+        "stale": stale,
+        "saved_content_hash": tokens["content_hash"],
+        "review": review,
+        "bank_case_readiness": bank_case_readiness,
+    })
 
 
 def _last_run_export_availability(record, owner) -> tuple[bool, str, str]:

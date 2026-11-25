@@ -67,6 +67,29 @@ export interface VerticalScope {
   status_note: string;
 }
 
+export interface R04BankCaseReadiness {
+  applicable: boolean;
+  runnable: boolean;
+  status: "READY" | "BANK_CASE_SHORTFALL_BLOCKED" | "P50_CAP_EXCEEDED" | "INVALID_CONTRACT" | "NOT_APPLICABLE";
+  cap_envelope_basis: string;
+  base_yield_scenario?: string;
+  bank_yield_scenario?: string;
+  bank_case_hours?: number | null;
+  p50_hours?: number | null;
+  error_code: string | null;
+  message: string;
+  remediation: string | null;
+  shortfall_periods: Array<{
+    period_index?: number;
+    period_start: string;
+    period_end_exclusive: string;
+    calendar_year: number;
+    contracted_mwh: number;
+    available_mwh: number;
+    shortfall_mwh: number;
+  }>;
+}
+
 export interface WorkspacePayload {
   ok: true;
   react_workspace: { version: string };
@@ -79,6 +102,7 @@ export interface WorkspacePayload {
   integrity_available: boolean;
   status_dimensions: StatusDimensions | null;
   engine: EngineProjection;
+  bank_case_readiness?: R04BankCaseReadiness | null;
 }
 
 export interface LibraryProject {

@@ -818,7 +818,7 @@ def create_default_ev_charging_project(
     operating horizon on a semestrial period axis.
     """
     from app.ev_charging_economics import electricity_opex_item
-    from app.ev_charging_economics import merchant_price_schedule as ev_merchant_price_schedule
+    from app.ev_charging_economics import operating_year_price_curve as ev_operating_year_price_curve
 
     z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
     # V1 frozen-path compromise: charging equipment rides the existing
@@ -892,14 +892,13 @@ def create_default_ev_charging_project(
     # The PPA-named fields below remain the DECLARED price authority
     # (400 EUR/MWh = 0.40 EUR/kWh, 2% escalation) and the only values the
     # UI/API may surface — as "Charging Price", never as PPA/market terms.
-    _ev_price_curve = tuple(400.0 * (1.02 ** i) for i in range(30))
-    _ev_cal_start, _ev_cal_prices = ev_merchant_price_schedule(int(_ev_fc.year), horizon_years)
+    _ev_price_curve = ev_operating_year_price_curve(None, horizon_years)
     revenue = RevenueParams(ppa_base_tariff=400.0, ppa_term_years=horizon_years, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=_ev_price_curve,
         market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0,
         first_merchant_operating_period_index=0,
-        market_price_calendar_start_year=_ev_cal_start,
-        market_prices_by_calendar_year_eur_mwh=_ev_cal_prices)
+        market_price_calendar_start_year=None,
+        market_prices_by_calendar_year_eur_mwh=())
     # Funding: 65% gearing on total uses -> senior ~5,850 kEUR, sponsor ~3,150.
     # share_capital 500 + SHL 2,650 reconciles the sponsor share; G2A derives
     # the SHL from Sources & Uses (compatibility assertion only).

@@ -186,7 +186,7 @@ def test_single_save_refuses_negative_and_changes_nothing(env, field_id):
     tokens = _page_tokens(env, record)
     before = _snapshot(record)
     response = _single_save(env, record, field_id, "-20000", tokens)
-    assert response.status_code == 200 and "≥ 0" in response.text           # typed bounds message, HTMX 200 contract
+    assert response.status_code == 422 and "≥ 0" in response.text           # typed bounds message, C1-Q-06 HTMX 422 contract
     assert _snapshot(record) == before                                      # nothing persisted
     assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
 
@@ -338,7 +338,7 @@ def test_cas_csrf_ownership_and_scenario_guards_unchanged(env):
         assert _snapshot(record) == before
     # single-field stale hash is refused as before
     s = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "content_hash": "0" * 64})
-    assert s.status_code == 200 and "changed" in s.text.lower()
+    assert s.status_code == 409 and "changed" in s.text.lower()
     assert _snapshot(record) == before
     # and the valid write still works afterwards
     assert _grid_save(env, record, cells, t).status_code == 200
@@ -368,8 +368,8 @@ def test_forged_workbook_update_token_never_commits_once_the_server_enforces_it(
     missing = _single_save(env, record, "capex.C.epc_contract", "21000", {**t, "update_csrf": ""})
     assert forged.status_code == 403 and missing.status_code == 403
     assert {k: _snapshot(record).get(k) for k in watched} == before_values
-    # the authentic rendered token is accepted, so the refusal above is attributable to the token only
-    assert _single_save(env, record, "capex.C.epc_contract", "21000", t).status_code == 200
+    # the authentic rendered token passes CSRF (enters validation: 200 or 422 COST_CATEGORY_LINE_OWNED), so refusal above is CSRF-only
+    assert _single_save(env, record, "capex.C.epc_contract", "21000", t).status_code in (200, 422)
 
 
 # ── SC-4: precision-safe allocation ─────────────────────────────────────────────────────────────────

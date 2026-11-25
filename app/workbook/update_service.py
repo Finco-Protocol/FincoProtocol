@@ -305,6 +305,21 @@ class WorkbookUpdateService:
                 error_class=FieldErrorClass.INVALID,
             )
 
+        # --- FINCO44-NEW-05: constrain new/edited currency saves to EUR ---
+        if field_id == "project_setup.identity.currency":
+            if str(typed).strip().upper() != "EUR":
+                return FieldValidationResult(
+                    field_id=field_id,
+                    raw_value=raw_value,
+                    typed_value=typed,
+                    spec=spec,
+                    error=(
+                        f"UNSUPPORTED_CURRENCY_EUR_ONLY: {spec.label} {typed!r} has no FX conversion "
+                        "authority; only 'EUR' is supported for new or edited saves."
+                    ),
+                    error_class=FieldErrorClass.INVALID,
+                )
+
         # --- 5. Bounds validation ----------------------------------------
         if spec.min_value is not None and isinstance(typed, (int, float)):
             if typed < spec.min_value:
@@ -568,6 +583,17 @@ class WorkbookUpdateService:
             if (snap.get("rev_multistream_config_json") or "").strip():
                 _validate_ppa_book_against_proposed_snapshot(snap)
 
+        # --- P1-REV-03: reject competing dual nonzero balancing charges at Save ---
+        if field_id in ("revenue.balancing.merchant_pct", "revenue.balancing.cost_eur_per_mwh"):
+            from finco_core.revenue.generation import validate_balancing_cost_inputs
+            snap_bal = dict(ws.draft_snapshot or {})
+            snap_bal[validation.spec.snapshot_key] = str(validation.typed_value)
+            try:
+                pi_bal = ProjectInputSet.from_snapshot(snap_bal).to_projectinputs()
+                validate_balancing_cost_inputs(pi_bal.revenue, horizon_years=pi_bal.info.horizon_years)
+            except ValueError as exc:
+                raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
+
         # --- R-1: early finite derived-amount refusal (advisory) ----------
         # A capacity edit rescales the reference-seeded PER_MW lines.  A rolled-back dry run gives the user an
         # early, specific refusal for the expected overflow case.  It is NOT the safeguard: the authoritative
@@ -732,6 +758,20 @@ class WorkbookUpdateService:
                 if spec_i.snapshot_key:
                     snap_fh[spec_i.snapshot_key] = raw_v
             validate_proposed_financing_horizon_snapshot(snap_fh)
+
+        # P1-REV-03: reject competing dual nonzero balancing charges atomically on batch save
+        if seen_ids & {"revenue.balancing.merchant_pct", "revenue.balancing.cost_eur_per_mwh"}:
+            from finco_core.revenue.generation import validate_balancing_cost_inputs
+            snap_bal = dict(ws.draft_snapshot or {})
+            for fid, raw_v in updates:
+                spec_i = WORKBOOK.field(fid)
+                if spec_i.snapshot_key:
+                    snap_bal[spec_i.snapshot_key] = raw_v
+            try:
+                pi_bal = ProjectInputSet.from_snapshot(snap_bal).to_projectinputs()
+                validate_balancing_cost_inputs(pi_bal.revenue, horizon_years=pi_bal.info.horizon_years)
+            except ValueError as exc:
+                raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
 
         result = v2_atomic_batch_draft_update(
             user_id=actor_user_id,

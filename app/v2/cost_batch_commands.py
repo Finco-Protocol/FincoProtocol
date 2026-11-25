@@ -42,7 +42,7 @@ from app.v2.capex_commands import (
     _check_project_allows as _capex_project_allows,
     _check_workbook_version,
     _exclusive_tx,
-    _parse_finite_amount_keur,
+    _parse_new_line_amount_keur,
 )
 from app.v2.opex_commands import _check_project_allows as _opex_project_allows
 from app.v2.opex_commands import _parse_finite_opex_numerics
@@ -120,7 +120,7 @@ def _validate_shape(edits: Sequence[CostLineEdit]) -> list[tuple[CostLineEdit, f
             if edit.kind == "capex":
                 if edit.inflation_pct not in (None, ""):
                     raise ValueError("Escalation does not apply to CAPEX lines.")
-                amount, inflation = _parse_finite_amount_keur(edit.amount_keur), None
+                amount, inflation = _parse_new_line_amount_keur(edit.amount_keur), None
             else:
                 amount, inflation = _parse_finite_opex_numerics(
                     edit.amount_keur, 0.0 if edit.inflation_pct in (None, "") else edit.inflation_pct)

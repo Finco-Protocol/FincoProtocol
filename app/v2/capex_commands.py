@@ -404,7 +404,7 @@ def update_capex_line(
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
-    _amount = _parse_finite_amount_keur(amount_keur)
+    _amount = _parse_new_line_amount_keur(amount_keur)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()

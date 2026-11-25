@@ -24,6 +24,10 @@ const CHECKS = { href: "#diagnostics", label: "Model checks" } as const;
  */
 export function classifyRunFailure(code: string | undefined, message: string): RunFailureView {
   const text = `${code || ""} ${message}`;
+  if (/R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT|R04_GLOBAL_P50_CAP_EXCEEDED/i.test(text)) {
+    return { kind: "REFUSED", retryable: false, links: [INPUTS, FINANCING, CHECKS],
+      guidance: "Physical PPA delivery obligations cannot be met without an approved settlement contract or within the P50 envelope. Adjust physical commitments, review supported lender-case settings in Financing / Equity, or supply an approved settlement contract when supported. The previous Last Run is preserved." };
+  }
   if (/SHL_MATURITY|shareholder.loan.*(?:matur|repa|residual|unpaid)/i.test(text)) {
     return { kind: "SHL", retryable: false, links: [FINANCING, CHECKS],
       guidance: "The shareholder loan cannot be repaid under the current model terms. Review its maturity and available cash in Financing / Equity. Terms that are read-only need Financial Owner review; this screen cannot override the refusal. The previous Last Run is preserved." };

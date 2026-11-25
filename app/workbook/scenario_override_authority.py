@@ -82,5 +82,86 @@ def supported_editor_fields() -> list[str]:
     return [key for key, _l, _u in OVERRIDE_EDITOR_FIELDS if key in EFFECTIVE_SCALAR_KEYS]
 
 
+def resolve_effective_scenario_inputs(
+    pis_draft: Any,
+    base_override: Any,
+    *,
+    project_id: str,
+    sc_rec: Any,
+) -> tuple[Any, Optional[dict[str, Any]]]:
+    """Resolve scenario overrides using the single canonical Run authority contract.
+
+    Enforces scenario existence/archive/project scope, unbound override rejection,
+    full Q4 What-If source equality & field validation, and tariff/multistream/BESS binding.
+    """
+    if sc_rec is None:
+        raise ValueError("SCENARIO_NOT_FOUND: Active scenario could not be found. Please re-select a scenario and try again.")
+    if getattr(sc_rec, "archived", False):
+        raise ValueError("SCENARIO_ARCHIVED: Active scenario has been archived. Please re-select a scenario and try again.")
+    if getattr(sc_rec, "project_id", None) != project_id:
+        raise ValueError("SCENARIO_PROJECT_MISMATCH: Active scenario does not belong to this project. Please re-select and try again.")
+
+    if getattr(sc_rec, "is_base_case", False):
+        return base_override, None
+
+    assert_overrides_bound(getattr(sc_rec, "overrides", None), getattr(sc_rec, "replay_metadata", None))
+
+    override = base_override
+    q4_effective_binding: Optional[dict[str, Any]] = None
+    replay_meta = getattr(sc_rec, "replay_metadata", None) or {}
+    overrides = dict(getattr(sc_rec, "overrides", None) or {})
+
+    if replay_meta.get("action") == Q4_ACTION:
+        from app.persistence.scenarios_repository import resolve_scenario_snapshot
+        from app.v2.whatif import CANDIDATES
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.service import WorkbookService
+        from app.workbook.update_service import WorkbookUpdateService
+
+        q4_mapping = CANDIDATES.get(replay_meta.get("finding_id"))
+        if (
+            not q4_mapping
+            or q4_mapping[1] != replay_meta.get("field_id")
+            or set(overrides) != {q4_mapping[2]}
+        ):
+            raise ValueError("Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID")
+        q4_spec = WORKBOOK.field(q4_mapping[1])
+        if q4_spec.snapshot_key != q4_mapping[2]:
+            raise ValueError("Q4_WORKBOOK_MAPPING_CHANGED")
+        raw_scenario_value = overrides[q4_spec.snapshot_key]
+        validation = WorkbookUpdateService.validate_field_update(
+            q4_spec.field_id, str(raw_scenario_value)
+        )
+        if not validation.is_valid:
+            raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
+        source_pis = ProjectInputSet.from_snapshot(dict(getattr(sc_rec, "base_input_set", None) or {}))
+        if dict(source_pis.snapshot_origin) != dict(pis_draft.snapshot_origin):
+            raise ValueError("Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED")
+        effective_snapshot = resolve_scenario_snapshot(
+            dict(source_pis.snapshot_origin), overrides
+        )
+        resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
+        if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
+            raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
+        override = WorkbookService.to_projectinputs(resolved_pis)
+        q4_effective_binding = {
+            "authority": "q4_canonical_reviewed_scenario_v1",
+            "scenario_id": sc_rec.scenario_id,
+            "field_id": q4_spec.field_id,
+            "snapshot_key": q4_spec.snapshot_key,
+            "value": validation.typed_value,
+        }
+
+    if any(key in overrides for key in ("tariff_eur_mwh", "rev_multistream_config_json", "bess_native_config_json")):
+        from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+        from app.workbook.service import WorkbookService
+
+        effective_snapshot = bind_scenario_tariff(dict(pis_draft.snapshot_origin), overrides)
+        override = WorkbookService.to_projectinputs(WorkbookService.build_input_set(effective_snapshot))
+
+    return override, q4_effective_binding
+
+
 __all__ = ["UNBOUND_CODE", "EFFECTIVE_SCALAR_KEYS", "EFFECTIVE_PAYLOAD_KEYS", "ScenarioOverrideUnbound", "unbound_override_keys",
-           "assert_overrides_bound", "authority_matrix", "supported_editor_fields"]
+           "assert_overrides_bound", "authority_matrix", "supported_editor_fields", "resolve_effective_scenario_inputs"]

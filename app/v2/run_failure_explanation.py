@@ -17,17 +17,33 @@ KIND_LABELS = {
 
 _DEBT = ("Senior debt · capital stack", "tab-debt")
 _SETUP = ("Project setup · horizon and construction timing", "tab-project-setup")
+_REVENUE = ("Revenue · PPA contracts", "tab-revenue")
 _INVESTOR = ("Investor · shareholder-loan terms", "tab-investor")
 _RECENT = ("Inputs you changed most recently", "tab-project-setup")
 
 # (token, kind, (section label, tab id), explanation, recovery). Order matters: first match wins.
 _RULES = (
+    ("DUAL_BALANCING_COST_BASIS_FORBIDDEN", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "Both percentage merchant balancing (% of spot sales) and per-MWh balancing cost are nonzero. The model refuses competing dual balancing deductions rather than double-counting or silently dropping one.",
+     "Set either Merchant Balancing (%) or Balancing Cost (EUR/MWh) explicitly to 0 in Revenue -> Balancing & CO2, then Run again."),
+    ("UNKNOWN_YIELD_SCENARIO", "INPUT_NOT_RUNNABLE", _SETUP,
+     "The selected yield scenario is unrecognized; only documented P50 or P90-10y scenarios are admitted.",
+     "Set Yield Scenario to a valid P50 or P90-10y value in Project Setup -> Technical and Run again."),
+    ("UNSUPPORTED_CURRENCY_EUR_ONLY", "INPUT_NOT_RUNNABLE", _SETUP,
+     "The Working Copy specifies a non-EUR currency label. All FINCO financial calculations operate strictly in EUR with no FX conversion contract.",
+     "Reset Currency to EUR in Project Setup -> Identity to execute a EUR Run, or keep historical snapshots read-only."),
+    ("R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "The physical PPA commitments fit the P50 envelope, but exceed available generation in the selected bank/debt-sizing case without an approved shortfall settlement contract.",
+     "Reduce the declared physical PPA annual quantities or adjust contract dates to fit bank-case generation, review the lender-case policy in Bankability where supported, or supply an approved settlement contract when supported."),
+    ("R04_GLOBAL_P50_CAP_EXCEEDED", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "The sum of physical PPA commitments exceeds the canonical P50 generation envelope.",
+     "Reduce the declared annual physical PPA quantities or adjust contract dates so total commitments fit within P50."),
     ("SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED", "FAIL_CLOSED_REFUSAL", _SETUP,
      "The shareholder loan matures after the last period the model covers, so there is no period on which it could be repaid.",
      "Lengthen the project horizon so the model covers the shareholder-loan maturity, or review the shareholder-loan terms. The model never moves the maturity for you."),
     ("SHL_MATURITY_RESIDUAL_FAILS_CLOSED", "FAIL_CLOSED_REFUSAL", _INVESTOR,
      "These inputs leave part of the shareholder loan unpaid at its maturity.",
-     "Review revenue, OPEX, CAPEX or shareholder-loan terms, then Run again."),
+     "Increase share capital / equity funding or lower senior gearing, adjust shareholder-loan repayment/maturity terms, or review revenue, OPEX, and CAPEX, then Run again."),
     ("F3_CONTRACTUAL_SERVICE_CASH_SHORTFALL", "FAIL_CLOSED_REFUSAL", _DEBT,
      "Project cash cannot pay the contractual Senior debt service, including principal due at maturity. The model does not invent a repayment or refinancing.",
      "Review the facility terms (commitment, rate, grace, maturity) or the revenue and cost inputs that fund debt service."),
@@ -112,20 +128,38 @@ def explain_run_failure(exc: Optional[BaseException], *, message: str, ws: Any =
         if "FAIL_CLOSED" in evidence:
             out.update(classification="ENGINE_FAIL_CLOSED", kind="FAIL_CLOSED_REFUSAL", kind_label=KIND_LABELS["FAIL_CLOSED_REFUSAL"],
                        explanation="The model's integrity checks refused to produce a result for the current inputs.")
-    if pis is not None:
-        _refine(out, pis)
+    _refine(out, pis, evidence=evidence)
     return out
 
 
-def _refine(out: dict, pis: Any) -> None:
-    """Add input-specific facts read from the saved inputs (no calculation)."""
-    if out["classification"] == "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED":
+def _refine(out: dict, pis: Any, *, evidence: str = "") -> None:
+    """Add input-specific facts read from the saved inputs or typed evidence (no calculation)."""
+    if out["classification"] == "SHL_MATURITY_RESIDUAL_FAILS_CLOSED":
+        import re as _re
+        m_bal = _re.search(r"closing balance\s+([0-9]+(?:\.[0-9]+)?)\s*kEUR", evidence)
+        m_per = _re.search(r"period_index=(\d+)", evidence)
+        if m_bal or m_per:
+            bal_txt = f" Unpaid closing balance: {m_bal.group(1)} kEUR" if m_bal else ""
+            per_txt = f" at maturity period {m_per.group(1)}" if m_per else ""
+            out["explanation"] += f"{bal_txt}{per_txt}."
+    elif out["classification"] == "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT":
+        import re as _re
+        m = _re.search(
+            r"in period\s+(\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}):\s*contracted\s+([0-9.]+)\s*MWh\s+exceeds\s+available generation\s+([0-9.]+)\s*MWh\s*\(shortfall\s+([0-9.]+)\s*MWh\)",
+            evidence,
+        )
+        if m:
+            out["explanation"] += (
+                f" Period {m.group(1)}: contracted {m.group(2)} MWh vs available {m.group(3)} MWh "
+                f"(shortfall {m.group(4)} MWh)."
+            )
+    elif pis is not None and out["classification"] == "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED":
         from app.v2.horizon_readiness import shl_horizon_notice
         notice = shl_horizon_notice(pis)
         if notice and notice.get("min_horizon_years"):
             out["explanation"] += (f" With a {notice['horizon_years']}-year horizon the model ends at period {notice['last_period']}; the shareholder loan "
                                    f"matures in period {notice['maturity_period']}. A horizon of at least {notice['min_horizon_years']} years covers it.")
-    elif out["classification"] == "PR8_PROJECT_TYPE_NOT_CLASSIFIED":
+    elif pis is not None and out["classification"] == "PR8_PROJECT_TYPE_NOT_CLASSIFIED":
         horizon, tenor = _number(pis, "project_setup.technical.horizon_years"), _number(pis, "debt.senior.tenor_years")
         if horizon is not None and tenor is not None and horizon <= tenor:
             out["explanation"] = (f"The project horizon ({horizon:g} years) is not longer than the senior debt tenor ({tenor:g} years), "

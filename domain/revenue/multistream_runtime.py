@@ -275,6 +275,17 @@ class MultiStreamRevenue:
 
         return review_global_p50_physical_cap(project_inputs, self.physical_contract_requests(), technology=self.technology)
 
+    def assess_bank_case_readiness(self, project_inputs, *, bank_yield_scenario=None):
+        """Non-mutating check of both P50 global cap validity and active bank-case delivery readiness."""
+        from domain.revenue.r04_global_p50_cap import assess_r04_bank_case_readiness
+
+        return assess_r04_bank_case_readiness(
+            project_inputs,
+            self.physical_contract_requests(),
+            technology=self.technology,
+            bank_yield_scenario=bank_yield_scenario,
+        )
+
     def plan_at(self, when, year_index=None):
         """Resolve a financial plan; active index-series prices require an explicit operating year."""
         return self._plan_at(when, year_index, structural=False)

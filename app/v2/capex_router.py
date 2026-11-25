@@ -239,7 +239,7 @@ async def capex_line_update(
     project: str = Form(...),
     sub_line_id: str = Form(...),
     label: str = Form(...),
-    amount_keur: float = Form(default=0.0),
+    amount_keur: Optional[str] = Form(default=None),
     notes: str = Form(default=""),
     row_version: str = Form(...),
     workbook_version: str = Form(...),

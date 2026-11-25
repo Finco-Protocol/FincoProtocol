@@ -148,6 +148,22 @@ def effective_charging_price_eur_mwh(year_index: int) -> float:
     )
 
 
+def operating_year_price_curve(
+    drivers: EVChargingDrivers | None = None, horizon_years: int = 20
+) -> tuple[float, ...]:
+    """Canonical operating-year effective charging-rate curve (EUR/MWh).
+
+    Entry ``i`` (0-based) corresponds to operating year ``i + 1`` regardless of
+    Financial Close year, construction duration, or intra-year COD boundaries.
+    """
+    resolved = drivers or GENERIC_EV_CHARGING_REFERENCE_DRIVERS
+    horizon = max(1, int(horizon_years))
+    return tuple(
+        driver_effective_rate_eur_mwh(resolved, op_year)
+        for op_year in range(1, horizon + 1)
+    )
+
+
 def merchant_price_schedule(fc_year: int, horizon_years: int = 20) -> tuple[int, tuple[float, ...]]:
     """Calendar-year effective-price schedule for the engine's merchant path.
 
@@ -219,6 +235,7 @@ __all__ = [
     "electricity_opex_item", "scale_capacity",
     "scaled_ev_reference_inputs",
     "effective_charging_price_eur_mwh", "merchant_price_schedule",
+    "operating_year_price_curve",
     "EV_DRIVER_BOUNDS", "ev_driver_registry_bounds", "EVDriverValidationError",
 ]
 
@@ -465,11 +482,17 @@ def apply_ev_charging_runtime_adapter(pi, drivers: EVChargingDrivers | None = No
         drivers: y1 + Y2/Y3 sustained steps + escalation.
     """
     import dataclasses
+    from finco_core.engine.date_authority import date_authority_active
+
+    if date_authority_active(pi):
+        raise ValueError(
+            "EV_DATED_CALENDAR_UNSUPPORTED: EV Charging operating-year ramp requires legacy "
+            "period indexing and does not support OD-TIME-01/v1."
+        )
 
     drivers = drivers or GENERIC_EV_CHARGING_REFERENCE_DRIVERS
     capacity = float(pi.technical.capacity_mw)
     horizon = max(1, int(pi.info.horizon_years))
-    fc_year = int(pi.info.financial_close.year)
 
     technical = dataclasses.replace(
         pi.technical,
@@ -480,19 +503,19 @@ def apply_ev_charging_runtime_adapter(pi, drivers: EVChargingDrivers | None = No
         plant_availability=1.0,
         grid_availability=1.0,
     )
-    # Calendar schedule rebuilt from CURRENT drivers (index 0 = FC-year
-    # placeholder at the Y1 rate; operating year n lives at index n).
-    cal_prices = [driver_effective_rate_eur_mwh(drivers, 1)]
-    for op_year in range(1, horizon + 1):
-        cal_prices.append(driver_effective_rate_eur_mwh(drivers, op_year))
+    # Operating-year curve rebuilt from CURRENT drivers (index n - 1 = operating year n).
+    # Clearing calendar-year overrides avoids FC-to-COD duration shifts and non-Jan-1
+    # period-end-year boundary leaps inside an operating year.
+    op_year_curve = operating_year_price_curve(drivers, horizon)
     revenue = dataclasses.replace(
         pi.revenue,
         ppa_base_tariff=drivers.charging_price_eur_kwh * 1000.0,
         ppa_index=drivers.charging_price_escalation,
         ppa_term_years=float(horizon),
         ppa_production_share=0.0,
-        market_prices_by_calendar_year_eur_mwh=tuple(cal_prices),
-        market_price_calendar_start_year=fc_year,
+        market_prices_curve=op_year_curve,
+        market_prices_by_calendar_year_eur_mwh=(),
+        market_price_calendar_start_year=None,
         market_inflation=drivers.charging_price_escalation,
         balancing_cost_pv=0.0,
         balancing_cost_bess=0.0,

@@ -36,6 +36,7 @@ from typing import Sequence
 
 from finco_core.engine.contractual_calendar import (
     ContractualInterval,
+    add_calendar_years,
     build_contractual_reporting_axis,
     contractual_generation_for_interval,
     days_in_calendar_year,
@@ -170,6 +171,42 @@ class R04ShortfallRecord:
     total_contracted_mwh: float
     shortfall_mwh: float
     contract_obligations_mwh: dict[str, float]
+
+
+@dataclass(frozen=True)
+class R04BankCaseReadiness:
+    """Read-only assessment of R04 P50 cap validity and bank-case Run readiness."""
+
+    applicable: bool
+    runnable: bool
+    status: str  # "READY" | "BANK_CASE_SHORTFALL_BLOCKED" | "P50_CAP_EXCEEDED" | "INVALID_CONTRACT" | "NOT_APPLICABLE"
+    cap_envelope_basis: str
+    base_yield_scenario: str
+    bank_yield_scenario: str
+    bank_case_hours: float | None
+    p50_hours: float | None
+    error_code: str | None
+    message: str
+    remediation: str | None
+    shortfall_periods: tuple[dict[str, object], ...]
+    details: dict[str, object]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "applicable": self.applicable,
+            "runnable": self.runnable,
+            "status": self.status,
+            "cap_envelope_basis": self.cap_envelope_basis,
+            "base_yield_scenario": self.base_yield_scenario,
+            "bank_yield_scenario": self.bank_yield_scenario,
+            "bank_case_hours": self.bank_case_hours,
+            "p50_hours": self.p50_hours,
+            "error_code": self.error_code,
+            "message": self.message,
+            "remediation": self.remediation,
+            "shortfall_periods": list(self.shortfall_periods),
+            "details": dict(self.details),
+        }
 
 
 def _validate_admitted_inputs(project_inputs, *, technology: str) -> None:
@@ -602,6 +639,214 @@ def allocate_r04_period_deliveries(
     return allocated, residual_merchant, None
 
 
+def _resolve_bank_yield_scenario(project_inputs, bank_yield_scenario: str | None) -> str:
+    if bank_yield_scenario is not None and str(bank_yield_scenario).strip():
+        raw = getattr(bank_yield_scenario, "value", bank_yield_scenario)
+        return str(raw).strip()
+    fin = getattr(project_inputs, "financing", None)
+    dsc = getattr(fin, "debt_sizing_case", None) if fin is not None else None
+    if dsc is not None and getattr(dsc, "production_yield_scenario", None) is not None:
+        raw = getattr(dsc.production_yield_scenario, "value", dsc.production_yield_scenario)
+        return str(raw).strip()
+    return "P90-10y"
+
+
+def _hours_for_yield_scenario(tech, yield_scenario: str) -> float | None:
+    norm = str(yield_scenario or "").strip().replace("_", "-").upper()
+    if norm in {"P90", "P90-10Y", "P90-10-Y", "P90 10Y"}:
+        return float(tech.operating_hours_p90_10y)
+    if norm in {"P50", "P50-1Y", "P50 1Y", "P-50"}:
+        return float(tech.operating_hours_p50)
+    return None
+
+
+def assess_r04_bank_case_readiness(
+    project_inputs,
+    contracts: Sequence[PhysicalContractRequest],
+    *,
+    technology: str,
+    bank_yield_scenario: str | None = None,
+) -> R04BankCaseReadiness:
+    """Assess whether R04 physical contracts pass BOTH the P50 cap AND bank-case delivery.
+
+    Pure, non-mutating check reusing canonical period segmentation, generation, and
+    shortfall allocation without triggering a financing or tax Run.
+    """
+    tech = getattr(project_inputs, "technical", None)
+    base_scenario = str(getattr(tech, "yield_scenario", "P_50") or "P_50")
+    if hasattr(getattr(tech, "yield_scenario", None), "value"):
+        base_scenario = str(tech.yield_scenario.value)
+    resolved_bank = _resolve_bank_yield_scenario(project_inputs, bank_yield_scenario)
+
+    if not any(c.mode == "ABSOLUTE_ANNUAL" for c in contracts):
+        return R04BankCaseReadiness(
+            applicable=False,
+            runnable=True,
+            status="NOT_APPLICABLE",
+            cap_envelope_basis="P50",
+            base_yield_scenario=base_scenario,
+            bank_yield_scenario=resolved_bank,
+            bank_case_hours=None,
+            p50_hours=float(tech.operating_hours_p50) if tech is not None else None,
+            error_code=None,
+            message="No fixed annual physical PPA contracts are present; R04 bank-case readiness check is not applicable.",
+            remediation=None,
+            shortfall_periods=(),
+            details={},
+        )
+
+    try:
+        validate_global_p50_physical_cap(project_inputs, contracts, technology=technology)
+    except R04CapValidationError as exc:
+        status = "P50_CAP_EXCEEDED" if exc.code == "R04_GLOBAL_P50_CAP_EXCEEDED" else "INVALID_CONTRACT"
+        remedy = (
+            "Reduce declared annual physical PPA quantities or adjust contract dates so total physical commitments fit within the P50 envelope."
+            if status == "P50_CAP_EXCEEDED"
+            else "Review physical contract dates, quantities, and technology eligibility."
+        )
+        return R04BankCaseReadiness(
+            applicable=True,
+            runnable=False,
+            status=status,
+            cap_envelope_basis="P50",
+            base_yield_scenario=base_scenario,
+            bank_yield_scenario=resolved_bank,
+            bank_case_hours=_hours_for_yield_scenario(tech, resolved_bank) if tech is not None else None,
+            p50_hours=float(tech.operating_hours_p50) if tech is not None else None,
+            error_code=exc.code,
+            message=str(exc),
+            remediation=remedy,
+            shortfall_periods=(),
+            details=dict(exc.details),
+        )
+
+    bank_hours = _hours_for_yield_scenario(tech, resolved_bank)
+    p50_hours = float(tech.operating_hours_p50)
+    if bank_hours is None or not math.isfinite(bank_hours) or bank_hours < 0:
+        return R04BankCaseReadiness(
+            applicable=True,
+            runnable=False,
+            status="INVALID_CONTRACT",
+            cap_envelope_basis="P50",
+            base_yield_scenario=base_scenario,
+            bank_yield_scenario=resolved_bank,
+            bank_case_hours=None,
+            p50_hours=p50_hours,
+            error_code="R04_BANK_YIELD_SCENARIO_UNSUPPORTED",
+            message=f"Selected bank/lender yield scenario {resolved_bank!r} is not supported for R04 physical delivery.",
+            remediation="Select an authorized lender case in Bankability.",
+            shortfall_periods=(),
+            details={"bank_yield_scenario": resolved_bank},
+        )
+
+    cod = project_inputs.info.cod_date
+    horizon_years = int(project_inputs.info.horizon_years)
+    horizon_iv = operating_horizon_interval(cod, horizon_years)
+    cap_mw = float(tech.capacity_mw)
+    avail = float(tech.combined_availability)
+    deg = float(tech.pv_degradation)
+
+    contract_cuts = {d for c in contracts for d in (c.start_date, c.end_date)}
+    shortfall_periods: list[dict[str, object]] = []
+    for rp in build_contractual_reporting_axis(cod, horizon_years):
+        # Match MultiStreamRevenue.evaluate_dated sub-interval segmentation so a
+        # mid-period contract boundary, Jan-1 transition, or COD-anniversary step
+        # cannot hide a delivery shortfall inside whole-period aggregation.
+        cuts = set(contract_cuts)
+        cuts.update(date(y, 1, 1) for y in range(rp.interval.start.year + 1, rp.interval.end_exclusive.year + 1))
+        k = 1
+        while add_calendar_years(cod, k) < rp.interval.end_exclusive:
+            cuts.add(add_calendar_years(cod, k))
+            k += 1
+        for sub in split_at_dates(rp.interval, cuts):
+            available_mwh, _ = contractual_generation_for_interval(
+                sub,
+                cod=cod,
+                capacity_mw=cap_mw,
+                annual_hours=bank_hours,
+                combined_availability=avail,
+                annual_degradation=deg,
+                horizon_end_exclusive=horizon_iv.end_exclusive,
+            )
+            _, _, rec = allocate_r04_period_deliveries(
+                sub,
+                available_generation_mwh=float(available_mwh),
+                contracts=contracts,
+                allow_shortfall_without_settlement=True,
+            )
+            if rec is not None:
+                shortfall_periods.append({
+                    "period_index": rp.index,
+                    "period_start": rec.period_start.isoformat(),
+                    "period_end_exclusive": rec.period_end_exclusive.isoformat(),
+                    "calendar_year": rec.calendar_year,
+                    "contracted_mwh": rec.total_contracted_mwh,
+                    "available_mwh": rec.available_generation_mwh,
+                    "shortfall_mwh": rec.shortfall_mwh,
+                    "contract_obligations_mwh": dict(rec.contract_obligations_mwh),
+                })
+
+    if shortfall_periods:
+        first = shortfall_periods[0]
+        msg = (
+            f"Physical PPA commitments pass the global P50 cap, but the active bank/debt-sizing case "
+            f"({resolved_bank}, {bank_hours:g} h/yr) has a physical delivery shortfall in {len(shortfall_periods)} "
+            f"operating period(s). First shortfall: {first['period_start']}..{first['period_end_exclusive']} "
+            f"(contracted {first['contracted_mwh']:.3f} MWh vs available {first['available_mwh']:.3f} MWh, "
+            f"shortfall {first['shortfall_mwh']:.3f} MWh). Run will fail closed with "
+            f"R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT because no approved shortfall settlement contract is configured."
+        )
+        remediation = (
+            "Reduce declared physical PPA quantities or adjust contract dates so commitments fit bank-case generation, "
+            "configure an authorized supported lender-case policy through Bankability where appropriate, or supply an "
+            "approved shortfall settlement contract when supported."
+        )
+        return R04BankCaseReadiness(
+            applicable=True,
+            runnable=False,
+            status="BANK_CASE_SHORTFALL_BLOCKED",
+            cap_envelope_basis="P50",
+            base_yield_scenario=base_scenario,
+            bank_yield_scenario=resolved_bank,
+            bank_case_hours=bank_hours,
+            p50_hours=p50_hours,
+            error_code="R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT",
+            message=msg,
+            remediation=remediation,
+            shortfall_periods=tuple(shortfall_periods),
+            details={
+                "bank_yield_scenario": resolved_bank,
+                "bank_case_hours": bank_hours,
+                "p50_hours": p50_hours,
+                "shortfall_count": len(shortfall_periods),
+                "first_shortfall": dict(first),
+            },
+        )
+
+    return R04BankCaseReadiness(
+        applicable=True,
+        runnable=True,
+        status="READY",
+        cap_envelope_basis="P50",
+        base_yield_scenario=base_scenario,
+        bank_yield_scenario=resolved_bank,
+        bank_case_hours=bank_hours,
+        p50_hours=p50_hours,
+        error_code=None,
+        message=(
+            f"Physical PPA commitments fit both the global P50 cap ({p50_hours:g} h/yr) and the active "
+            f"bank/debt-sizing case ({resolved_bank}, {bank_hours:g} h/yr)."
+        ),
+        remediation=None,
+        shortfall_periods=(),
+        details={
+            "bank_yield_scenario": resolved_bank,
+            "bank_case_hours": bank_hours,
+            "p50_hours": p50_hours,
+        },
+    )
+
+
 __all__ = [
     "R04_PRODUCTION_CONTRACT_VERSION",
     "ADMITTED_TECHNOLOGIES",
@@ -613,8 +858,10 @@ __all__ = [
     "CalendarYearCapStatus",
     "R04CapReviewSummary",
     "R04ShortfallRecord",
+    "R04BankCaseReadiness",
     "parse_annual_quantity_spec",
     "validate_global_p50_physical_cap",
     "review_global_p50_physical_cap",
     "allocate_r04_period_deliveries",
+    "assess_r04_bank_case_readiness",
 ]

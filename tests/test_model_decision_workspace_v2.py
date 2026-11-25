@@ -170,7 +170,7 @@ def test_merchant_invalid_save_rejected_without_write(env, curve):
     response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "sheet_id": "revenue", "field_id": "revenue.merchant.price_curve_json",
         "value": json.dumps(curve), **tokens(page.text)})
-    assert response.status_code == 200  # existing HTMX field-error transport
+    assert response.status_code == 422  # C1-Q-06 HTMX field-error transport
     assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
     assert "workbook-field-saved" not in response.headers.get("HX-Trigger", "")
     assert get_workspace_state("decision-user", record.project_id) == before
@@ -190,7 +190,7 @@ def test_merchant_valid_canonical_save_reload_and_stale_cas(env):
     assert json.loads(stored.draft_snapshot["rev_merchant_price_curve_json"])[0]["price_eur_mwh"] == 81
     before = stored
     conflict = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
-    assert conflict.status_code == 200  # CAS rejection is transported for HTMX swap
+    assert conflict.status_code == 409  # C1-Q-06 CAS rejection is transported for HTMX swap
     assert "workbook-field-error" in conflict.headers.get("HX-Trigger", "")
     assert "Draft changed since page loaded" in conflict.text
     assert get_workspace_state("decision-user", record.project_id) == before

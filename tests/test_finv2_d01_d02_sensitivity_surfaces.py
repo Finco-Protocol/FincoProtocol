@@ -206,14 +206,14 @@ def test_ev_price_shock_without_a_vertical_gate_is_structurally_refused(driver):
 
 
 def test_ev_ppa_price_was_inert_before_the_refusal():
-    """Documents the defect: the shock changed an input the engine never reads (revenue delta exactly 0)."""
+    """Documents the structural refusal: PPA shock is inert on all-merchant EV and merchant_price shock is refused."""
     pi = _ref("ev_charging")
     rev = pi.revenue
-    assert rev.first_merchant_operating_period_index == 0 and rev.market_prices_by_calendar_year_eur_mwh
+    assert rev.first_merchant_operating_period_index == 0 and rev.market_prices_curve and not rev.market_prices_by_calendar_year_eur_mwh
     inert = replace(pi, revenue=replace(rev, ppa_base_tariff=rev.ppa_base_tariff * 1.1))
     assert inert != pi and svc._run_once(inert)["total_revenue_keur"] == _base("ev_charging")["total_revenue_keur"]
-    merchant = replace(pi, revenue=replace(rev, market_prices_curve=tuple(v * 1.1 for v in rev.market_prices_curve)))
-    assert merchant != pi and svc._run_once(merchant)["total_revenue_keur"] == _base("ev_charging")["total_revenue_keur"]
+    with pytest.raises(svc.InactiveShockDriver):
+        svc._apply_shock(pi, "merchant_price", 10.0)
 
 
 def test_every_offered_ev_driver_changes_its_input_and_its_output():

@@ -40,11 +40,11 @@ class P:
         html = self.c.get(f"/v2/workbook?project={self.rec.project_code}").text
         return re.search(r'data-content-hash="([^"]+)"', html).group(1), re.search(r'data-workbook-version="([^"]+)"', html).group(1)
 
-    def set_horizon(self, years):
+    def set_horizon(self, years, *, expected_status: int = 200):
         ch, wv = self.ident()
         r = post_valid_mutation(self.c, "/v2/workbook/update", headers=H, data={"project": self.rec.project_code, "sheet_id": "project_setup", "field_id": HORIZON,
                                                                "value": str(years), "content_hash": ch, "workbook_version": wv})
-        assert r.status_code == 200, r.text
+        assert r.status_code == expected_status, r.text
         return r
 
     def setup_sheet(self):
@@ -113,7 +113,7 @@ def test_eligible_working_copy_gets_no_stale_index_notice_and_nothing_is_moved(e
 
 def test_eligible_unserviceable_horizon_shows_no_false_minimum_and_the_run_names_the_real_reason(env):
     p = P(env, "sc34-rf-1u")
-    p.set_horizon(12)                                    # not longer than the senior tenor (15)
+    p.set_horizon(12, expected_status=422)                 # not longer than the senior tenor (15)
     assert 'data-testid="shl-horizon-notice"' not in p.setup_sheet()
 
 
@@ -159,7 +159,7 @@ def test_a_horizon_not_longer_than_the_senior_tenor_is_refused_at_save_with_no_m
     p = P(env, "sc34-rf-3")
     p.ident()                                              # first render normalises stored types; baseline is taken after it
     before = p.snapshot()
-    resp = p.set_horizon(12)                              # HTTP 200 is NOT a successful Save: inspect the body and the stored state
+    resp = p.set_horizon(12, expected_status=422)          # C1-Q-06 HTTP 422 on refused Save: inspect the body and stored state
     assert "DEBT_TENOR_EXCEEDS_HORIZON" in _text(resp.text)
     assert "saved" not in resp.headers.get("HX-Trigger", "").lower() or "error" in resp.headers.get("HX-Trigger", "").lower()
     assert p.snapshot() == before and len(p.history()) == 0

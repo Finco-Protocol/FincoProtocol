@@ -2601,12 +2601,13 @@ async def v2_workbook_update(
             status_code=303,
         )
 
-    def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+    def _htmx_error(pis_for_render, field_error: str, *, status_code: int = 200) -> HTMLResponse:
         resp = _htmx_error_sheet(pis_for_render, field_error)
         if field_id == "debt.financing.instruments":
             # SC-04: the capital stack form holds many typed cells. A rejected Save must not swap the persisted sheet over them; the
             # browser shows the error in the form (workbook-field-error) and keeps the draft. OOB swaps are still processed.
             resp.headers["HX-Reswap"] = "none"
+        resp.status_code = status_code
         return resp
 
     def _htmx_error_sheet(pis_for_render, field_error: str) -> HTMLResponse:
@@ -2663,7 +2664,7 @@ async def v2_workbook_update(
     except ProtectedReferenceError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            resp = _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc), status_code=403)
             return _add_field_error_trigger(resp, field_id, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
@@ -2672,7 +2673,7 @@ async def v2_workbook_update(
             msg = STALE_FIELD_MESSAGE
             # The conflict is shown once, at the field (with a Reload action). The message stays in the response body (the banner carries it hidden, so the
             # response contract is unchanged) but the banner is not shown or announced a second time.
-            resp = _htmx_error(pis, msg)
+            resp = _htmx_error(pis, msg, status_code=409)
             return _add_field_error_trigger(resp, field_id, msg, conflict=True)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
@@ -2682,7 +2683,7 @@ async def v2_workbook_update(
     except FieldValidationError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            resp = _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc), status_code=422)
             resp = _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
         else:
             resp = _redirect_with_error(str(exc))
@@ -2892,6 +2893,23 @@ def _engine_failure_message(exc: BaseException) -> str:
             getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), getattr(exc, "message", ""), exc,
         ) if part
     )
+    if "DUAL_BALANCING_COST_BASIS_FORBIDDEN" in evidence:
+        return (
+            "Both percentage merchant balancing (% of spot sales) and per-MWh balancing cost are nonzero. "
+            "Set one basis explicitly to 0 in Revenue -> Balancing & CO2 and run again. "
+            "No Run was saved; the previous Last Run is unchanged. (Reference: DUAL_BALANCING_COST_BASIS_FORBIDDEN)"
+        )
+    if "UNKNOWN_YIELD_SCENARIO" in evidence:
+        return (
+            "The selected yield scenario is unrecognized; only documented P50 or P90-10y cases are supported. "
+            "Update Technical -> Yield Scenario and run again. No Run was saved; the previous Last Run is unchanged. "
+            "(Reference: UNKNOWN_YIELD_SCENARIO)"
+        )
+    if "UNSUPPORTED_CURRENCY_EUR_ONLY" in evidence:
+        return (
+            "Only EUR monetary models are supported; no FX conversion contract exists for non-EUR display currency labels. "
+            "Reset currency to EUR (or review legacy historical entries without converting amounts). No Run was saved."
+        )
     if "MERCHANT_PRICE_COVERAGE_MISSING" in evidence:
         import re as _re
         m = _re.search(r"calendar year\(s\)\s*(\[[0-9,\s]+\])", evidence)
@@ -2900,6 +2918,30 @@ def _engine_failure_message(exc: BaseException) -> str:
             f"Merchant price coverage is missing for calendar year(s){years_part} where "
             "positive merchant volume exists. Supply explicit prices (0 is valid for zero price) "
             "and run again. No Run was saved. (Reference: MERCHANT_PRICE_COVERAGE_MISSING)"
+        )
+    if "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT" in evidence:
+        import re as _re
+        m = _re.search(
+            r"in period\s+(\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}):\s*contracted\s+([0-9.]+)\s*MWh\s+exceeds\s+available generation\s+([0-9.]+)\s*MWh\s*\(shortfall\s+([0-9.]+)\s*MWh\)",
+            evidence,
+        )
+        detail_part = (
+            f" Period {m.group(1)}: contracted {m.group(2)} MWh exceeds available bank-case generation "
+            f"{m.group(3)} MWh (shortfall {m.group(4)} MWh)."
+            if m else ""
+        )
+        return (
+            "Physical PPA commitments fit P50, but fail the active bank/debt-sizing case without an approved "
+            f"shortfall settlement contract.{detail_part} Reduce declared physical commitments, review the "
+            "supported lender-case policy in Bankability, or supply an approved settlement contract when supported. "
+            "No Run was saved; the previous Last Run is unchanged. "
+            "(Reference: R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT)"
+        )
+    if "R04_GLOBAL_P50_CAP_EXCEEDED" in evidence:
+        return (
+            "Declared physical PPA commitments exceed the canonical P50 generation envelope. "
+            "Reduce physical contract quantities or adjust contract dates and run again. "
+            "No Run was saved; the previous Last Run is unchanged. (Reference: R04_GLOBAL_P50_CAP_EXCEEDED)"
         )
     if "DEBT_TENOR_EXCEEDS_HORIZON" in evidence:
         import re as _re
@@ -3223,6 +3265,26 @@ async def v2_workbook_run(
         return JSONResponse({"error": msg}, status_code=409)
 
     # ── Step 7: materialise from draft snapshot ────────────────────────────── #
+    # FINCO44-NEW-05: refuse executing a model labeled non-EUR (no FX conversion contract exists)
+    _draft_currency = str((pis_draft.to_snapshot() or {}).get("currency") or "EUR").strip().upper()
+    if _draft_currency and _draft_currency != "EUR":
+        from app.v2.run_failure_explanation import explain_run_failure
+        _curr_err = ValueError(
+            f"UNSUPPORTED_CURRENCY_EUR_ONLY: Working Copy specifies {_draft_currency!r}, "
+            "which has no FX conversion authority; only EUR models can be Run."
+        )
+        _curr_msg = _engine_failure_message(_curr_err)
+        if is_htmx:
+            _curr_resp = _htmx_error(_curr_msg, ws, explain_run_failure(_curr_err, message=_curr_msg, ws=ws, pis=pis_draft))
+            _curr_resp.status_code = 422
+            return _curr_resp
+        if "application/json" in (request.headers.get("accept") or ""):
+            return JSONResponse(
+                {"ok": False, "outcome": "FAILED", "code": "UNSUPPORTED_CURRENCY_EUR_ONLY", "message": _curr_msg},
+                status_code=422,
+            )
+        return _non_htmx_error(_curr_msg)
+
     # draft_snapshot is the V2 canonical run boundary: it contains the exact
     # scalar values the user saw and approved when they clicked Run.
     try:
@@ -3243,6 +3305,11 @@ async def v2_workbook_run(
             from app.v2.run_failure_explanation import explain_run_failure
             return (_htmx_error(_q_msg, ws, explain_run_failure(_build_exc, message=_q_msg, ws=ws, pis=pis_draft))
                     if is_htmx else _non_htmx_error(_q_msg))
+        if "DUAL_BALANCING_COST_BASIS_FORBIDDEN" in str(_build_exc):
+            _bal_msg = _engine_failure_message(_build_exc)
+            from app.v2.run_failure_explanation import explain_run_failure
+            return (_htmx_error(_bal_msg, ws, explain_run_failure(_build_exc, message=_bal_msg, ws=ws, pis=pis_draft))
+                    if is_htmx else _non_htmx_error(_bal_msg))
         logging.getLogger(__name__).exception(
             "v2_workbook_run: build_project_inputs failed project=%s user=%s",
             project, user.user_id,
@@ -3275,77 +3342,22 @@ async def v2_workbook_run(
             )
             msg = "Active scenario does not belong to this project. Please re-select and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-        _scenario_overrides_for_fold = sc_rec.overrides
-        # RC-5: refuse BEFORE the engine runs or anything is committed when a saved override is not consumed by the Run.
-        if not sc_rec.is_base_case:
-            from app.workbook.scenario_override_authority import ScenarioOverrideUnbound, unbound_override_keys
-            _unbound_saved = unbound_override_keys(sc_rec.overrides, sc_rec.replay_metadata)
-            if _unbound_saved:
-                msg = str(ScenarioOverrideUnbound(_unbound_saved))
-                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        _scenario_overrides_for_fold = None if sc_rec.is_base_case else sc_rec.overrides
         # Keep display name for provenance only; engine always receives "Base"
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
-        # WF-08 Q4: only explicit, auditable Finding-to-Scenario scalar
-        # overrides may reach the engine. The canonical scenario resolver
-        # expects legacy snapshot keys, not Workbook semantic field IDs.
-        # This is the existing Run materialization path, not a second writer.
-        if (not sc_rec.is_base_case and
-                (sc_rec.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"):
-            from app.persistence.scenarios_repository import resolve_scenario_snapshot
-            from app.v2.whatif import CANDIDATES
-            from app.workbook.input_set import ProjectInputSet
-            from app.workbook.update_service import WorkbookUpdateService
-            from app.workbook.registry import WORKBOOK
-            try:
-                q4_meta = sc_rec.replay_metadata
-                q4_mapping = CANDIDATES.get(q4_meta.get("finding_id"))
-                if (not q4_mapping or q4_mapping[1] != q4_meta.get("field_id")
-                        or set(sc_rec.overrides or {}) != {q4_mapping[2]}):
-                    raise ValueError("Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID")
-                q4_spec = WORKBOOK.field(q4_mapping[1])
-                if q4_spec.snapshot_key != q4_mapping[2]:
-                    raise ValueError("Q4_WORKBOOK_MAPPING_CHANGED")
-                raw_scenario_value = sc_rec.overrides[q4_spec.snapshot_key]
-                validation = WorkbookUpdateService.validate_field_update(
-                    q4_spec.field_id, str(raw_scenario_value))
-                if not validation.is_valid:
-                    raise ValueError("Q4_SCENARIO_OVERRIDE_VALUE_INVALID")
-                # Q4 child must be bound to exactly the reviewed complete
-                # source snapshot. An unrelated later scalar edit cannot
-                # silently change the What-if's inherited economics.
-                source_pis = ProjectInputSet.from_snapshot(
-                    dict(sc_rec.base_input_set or {}))
-                if dict(source_pis.snapshot_origin) != dict(pis_draft.snapshot_origin):
-                    raise ValueError("Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED")
-                effective_snapshot = resolve_scenario_snapshot(
-                    dict(source_pis.snapshot_origin), dict(sc_rec.overrides))
-                resolved_pis = ProjectInputSet.from_snapshot(effective_snapshot)
-                if resolved_pis.get(q4_spec.field_id) != validation.typed_value:
-                    raise ValueError("Q4_SCENARIO_ENGINE_INPUT_MISMATCH")
-                override = WorkbookService.to_projectinputs(resolved_pis)
-                _q4_effective_binding = {
-                    "authority": "q4_canonical_reviewed_scenario_v1",
-                    "scenario_id": sc_rec.scenario_id,
-                    "field_id": q4_spec.field_id,
-                    "snapshot_key": q4_spec.snapshot_key,
-                    "value": validation.typed_value,
-                }
-            except (ValueError, KeyError) as exc:
-                msg = str(exc)
-                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-
-        if not sc_rec.is_base_case and any(key in (sc_rec.overrides or {}) for key in ("tariff_eur_mwh", "rev_multistream_config_json", "bess_native_config_json")):
-            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
-            try:
-                effective_snapshot = bind_scenario_tariff(
-                    dict(pis_draft.snapshot_origin), sc_rec.overrides)
-                override = WorkbookService.to_projectinputs(
-                    WorkbookService.build_input_set(effective_snapshot))
-            except ValueError as exc:
-                msg = str(exc)
-                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        from app.workbook.scenario_override_authority import resolve_effective_scenario_inputs
+        try:
+            override, _q4_effective_binding = resolve_effective_scenario_inputs(
+                pis_draft,
+                override,
+                project_id=project_record.project_id,
+                sc_rec=sc_rec,
+            )
+        except (ValueError, KeyError) as exc:
+            msg = str(exc)
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
     from dataclasses import replace as _dc_replace
@@ -6100,7 +6112,7 @@ async def v2_workbook_goal_seek_run(
                 "apply": None,
                 "request": request,
             })
-        _scenario_overrides_for_fold = sc_rec.overrides
+        _scenario_overrides_for_fold = None if sc_rec.is_base_case else sc_rec.overrides
 
     from app.services.capex_sub_lines_integration import (
         apply_user_sub_lines_replacing_base,

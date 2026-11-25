@@ -83,7 +83,7 @@ def test_valid_token_real_save_htmx_rerender_and_stale_cas(env):
     assert second.status_code == 200 and 'field-error-banner' not in second.text
     before = saved_state(record)
     conflict = env.client.post('/v2/workbook/update', data=data, headers={'HX-Request': 'true'})
-    assert conflict.status_code == 200 and 'field-error-banner' in conflict.text
+    assert conflict.status_code == 409 and 'field-error-banner' in conflict.text
     assert saved_state(record) == before
 
 
