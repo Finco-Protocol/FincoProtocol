@@ -7,6 +7,7 @@
 import type {
   InputsPayload,
   LibraryPayload,
+  R04BankCaseReadiness,
   StatementsPayload,
   WorkspacePayload,
 } from "./types";
@@ -545,7 +546,7 @@ export interface R04Review {
   p90_shortfall_slices: Array<{ year: number; period_start: string; period_end_exclusive: string; p90_available_mwh: number; fixed_commitment_mwh: number; shortfall_mwh: number }>;
 }
 export type R04ReviewResult =
-  | { kind: "ok"; applicable: boolean; stale: boolean; review: R04Review | null }
+  | { kind: "ok"; applicable: boolean; stale: boolean; review: R04Review | null; bank_case_readiness?: R04BankCaseReadiness | null }
   | { kind: "refused"; code: string; message: string; stale: boolean }
   | { kind: "unavailable"; message: string };
 
@@ -557,7 +558,7 @@ export async function reviewRevenueContracts(args: { project: string; csrfToken:
   let payload: Record<string, unknown> | null = null;
   try { payload = (await response.json()) as Record<string, unknown>; } catch { payload = null; }
   if (!payload) return { kind: "unavailable", message: `The cap review returned an unreadable answer (HTTP ${response.status}).` };
-  if (payload.ok === true) return { kind: "ok", applicable: payload.applicable === true, stale: payload.stale === true, review: (payload.review as R04Review) ?? null };
+  if (payload.ok === true) return { kind: "ok", applicable: payload.applicable === true, stale: payload.stale === true, review: (payload.review as R04Review) ?? null, bank_case_readiness: (payload.bank_case_readiness as R04BankCaseReadiness | null) ?? null };
   if (response.status === 422 || response.status === 403) {
     return { kind: "refused", code: String(payload.code ?? "REVIEW_REFUSED"), message: String(payload.message ?? "The proposed contract book was refused."), stale: payload.stale === true };
   }

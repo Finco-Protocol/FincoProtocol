@@ -44,3 +44,37 @@ def apply_config(inputs, raw, *, project_type):
         assert_grid_conserves_operating_life(candidate, engine)
         config.validate_global_p50_cap(candidate)
     return candidate
+
+
+def assess_snapshot_bank_case_readiness(snapshot, *, scenario_overrides=None):
+    """Non-mutating bank-case R04 readiness assessment for a workspace snapshot.
+
+    Returns ``None`` when no explicit R04 absolute-annual contract book is active.
+    Never triggers a financing/tax Run and never mutates persistence.
+    """
+    effective = dict(snapshot or {})
+    if scenario_overrides:
+        from app.persistence.scenarios_repository import resolve_scenario_snapshot
+        effective = resolve_scenario_snapshot(effective, scenario_overrides)
+    raw = (effective.get(SNAPSHOT_KEY) or "").strip()
+    if not raw:
+        return None
+    try:
+        config = parse_config(raw)
+        if config is None or not getattr(config, "has_absolute_annual_quantity", False):
+            return None
+        from app.workbook.input_set import ProjectInputSet
+        pi = ProjectInputSet.from_snapshot(effective).to_projectinputs()
+        return config.assess_bank_case_readiness(pi).to_dict()
+    except Exception as exc:  # noqa: BLE001 - fail closed with typed diagnostic
+        return {
+            "applicable": True,
+            "runnable": False,
+            "status": "INVALID_CONTRACT",
+            "cap_envelope_basis": "P50",
+            "error_code": getattr(exc, "code", "R04_READINESS_UNAVAILABLE"),
+            "message": str(exc),
+            "remediation": "Review revenue contract dates, quantities, and project timeline.",
+            "shortfall_periods": [],
+            "details": {},
+        }

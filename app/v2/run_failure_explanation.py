@@ -17,11 +17,18 @@ KIND_LABELS = {
 
 _DEBT = ("Senior debt · capital stack", "tab-debt")
 _SETUP = ("Project setup · horizon and construction timing", "tab-project-setup")
+_REVENUE = ("Revenue · PPA contracts", "tab-revenue")
 _INVESTOR = ("Investor · shareholder-loan terms", "tab-investor")
 _RECENT = ("Inputs you changed most recently", "tab-project-setup")
 
 # (token, kind, (section label, tab id), explanation, recovery). Order matters: first match wins.
 _RULES = (
+    ("R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "The physical PPA commitments fit the P50 envelope, but exceed available generation in the selected bank/debt-sizing case without an approved shortfall settlement contract.",
+     "Reduce the declared physical PPA annual quantities or adjust contract dates to fit bank-case generation, review the lender-case policy in Bankability where supported, or supply an approved settlement contract when supported."),
+    ("R04_GLOBAL_P50_CAP_EXCEEDED", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "The sum of physical PPA commitments exceeds the canonical P50 generation envelope.",
+     "Reduce the declared annual physical PPA quantities or adjust contract dates so total commitments fit within P50."),
     ("SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED", "FAIL_CLOSED_REFUSAL", _SETUP,
      "The shareholder loan matures after the last period the model covers, so there is no period on which it could be repaid.",
      "Lengthen the project horizon so the model covers the shareholder-loan maturity, or review the shareholder-loan terms. The model never moves the maturity for you."),
@@ -113,13 +120,24 @@ def explain_run_failure(exc: Optional[BaseException], *, message: str, ws: Any =
             out.update(classification="ENGINE_FAIL_CLOSED", kind="FAIL_CLOSED_REFUSAL", kind_label=KIND_LABELS["FAIL_CLOSED_REFUSAL"],
                        explanation="The model's integrity checks refused to produce a result for the current inputs.")
     if pis is not None:
-        _refine(out, pis)
+        _refine(out, pis, evidence=evidence)
     return out
 
 
-def _refine(out: dict, pis: Any) -> None:
+def _refine(out: dict, pis: Any, *, evidence: str = "") -> None:
     """Add input-specific facts read from the saved inputs (no calculation)."""
-    if out["classification"] == "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED":
+    if out["classification"] == "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT":
+        import re as _re
+        m = _re.search(
+            r"in period\s+(\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}):\s*contracted\s+([0-9.]+)\s*MWh\s+exceeds\s+available generation\s+([0-9.]+)\s*MWh\s*\(shortfall\s+([0-9.]+)\s*MWh\)",
+            evidence,
+        )
+        if m:
+            out["explanation"] += (
+                f" Period {m.group(1)}: contracted {m.group(2)} MWh vs available {m.group(3)} MWh "
+                f"(shortfall {m.group(4)} MWh)."
+            )
+    elif out["classification"] == "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED":
         from app.v2.horizon_readiness import shl_horizon_notice
         notice = shl_horizon_notice(pis)
         if notice and notice.get("min_horizon_years"):

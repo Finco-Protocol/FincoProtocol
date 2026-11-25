@@ -227,6 +227,25 @@ def _senior_debt_metric(runtime_result) -> dict[str, Any]:
         return {**absent, "reason": "The Senior debt amount could not be read from the committed Run."}
 
 
+def _workspace_r04_bank_readiness(ws, owner: str):
+    """Non-mutating R04 bank-case readiness for the active workspace snapshot, or None when not applicable."""
+    try:
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.revenue_multistream import SNAPSHOT_KEY, assess_snapshot_bank_case_readiness
+
+        overrides = None
+        if getattr(ws, "active_scenario_id", None):
+            scenario = get_scenario(ws.active_scenario_id, owner)
+            if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+                overrides = scenario.overrides
+        snap = dict(getattr(ws, "draft_snapshot", None) or {})
+        if not (snap.get(SNAPSHOT_KEY) or (overrides or {}).get(SNAPSHOT_KEY)):
+            return None
+        return assess_snapshot_bank_case_readiness(snap, scenario_overrides=overrides)
+    except Exception:  # noqa: BLE001 - readiness check must never block workspace load
+        return None
+
+
 # ───────────────────────────── workspace shell ─────────────────────────────
 
 @router.get("/model-react/workspace")
@@ -280,6 +299,7 @@ async def react_workspace_shell(request: Request, project: str):
             "status_dimensions": None,
             "engine": {"persisted_version": None, "current_version": None,
                        "currency": None, "treatment": "EVIDENCE_ONLY_D2_PENDING"},
+            "bank_case_readiness": _workspace_r04_bank_readiness(context.workspace, owner),
         }
         if context.runtime_result is not None and context.freshness.state.value != "NOT_RUN":
             from app.v2.output_workspace_projection import build_output_workspace_safe
@@ -961,6 +981,7 @@ async def react_revenue_contracts(request: Request, project: str):
         "project": {"code": record.project_code,
                     "protected_reference": _is_protected(record)},
         "contracts": editor,
+        "bank_case_readiness": _workspace_r04_bank_readiness(ws, owner),
         "save": {"url": "/v2/workbook/revenue/contracts",
                  "method": "form",
                  # The released Revenue writer retains its plain signed token
@@ -1023,13 +1044,21 @@ async def react_revenue_r04_review(request: Request):
         snapshot.pop(SNAPSHOT_KEY, None)                    # technical/timeline facts only; the proposed book is evaluated, not stored
         proposed = ProjectInputSet.from_snapshot(snapshot).to_projectinputs()
         review = config.review_global_p50_cap(proposed)
+        bank_case_readiness = config.assess_bank_case_readiness(proposed).to_dict()
     except R04CapValidationError as exc:
         return _json({"ok": False, "code": exc.code, "message": str(exc), "details": exc.details, "stale": stale}, 422)
     except (ValueError, TypeError) as exc:
         return _json({"ok": False, "code": "REVENUE_REVIEW_BOOK_INVALID", "message": str(exc)[:600], "stale": stale}, 422)
     except Exception:  # noqa: BLE001 - fail closed, never a half review
         return _json({"ok": False, "code": "REVENUE_REVIEW_UNAVAILABLE", "message": "The cap review could not be computed. Reload to refresh."}, 503)
-    return _json({"ok": True, "applicable": True, "stale": stale, "saved_content_hash": tokens["content_hash"], "review": review})
+    return _json({
+        "ok": True,
+        "applicable": True,
+        "stale": stale,
+        "saved_content_hash": tokens["content_hash"],
+        "review": review,
+        "bank_case_readiness": bank_case_readiness,
+    })
 
 
 def _last_run_export_availability(record, owner) -> tuple[bool, str, str]:

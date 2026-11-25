@@ -205,7 +205,8 @@ async def grid_save(body: GridSaveRequest, request: Request,
     from app.workbook.runtime_authority import resolve_runtime_freshness
     freshness = resolve_runtime_freshness(fresh, current_composite_hash=identity.composite_hash)
     pis = ProjectInputSet.from_snapshot(fresh.draft_snapshot, workbook=WORKBOOK)
-    return _json({
+    readiness = _post_save_bank_readiness(fresh, owner)
+    out = {
         "ok": True,
         "saved": [{"field_id": fid, "value": _display(pis.get(fid))} for fid, _ in updates],
         "content_hash": identity.composite_hash,
@@ -213,7 +214,10 @@ async def grid_save(body: GridSaveRequest, request: Request,
         "scenario_id": fresh.active_scenario_id,
         "run_state": freshness.state.value,
         "model_executed": False,
-    })
+    }
+    if readiness is not None:
+        out["bank_case_readiness"] = readiness
+    return _json(out)
 
 
 # ── CAPEX / OPEX line items: staged multi-row atomic Save ────────────────────────────────────────
@@ -416,11 +420,33 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     identity = assemble_consistent_for_get(owner, record.project_id, WORKBOOK.version)
     from app.workbook.runtime_authority import resolve_runtime_freshness
     freshness = resolve_runtime_freshness(fresh, current_composite_hash=identity.composite_hash)
-    return _json({
+    readiness = _post_save_bank_readiness(fresh, owner)
+    out = {
         "ok": True, "replayed": result.replayed, "saved": result.counts,
         "content_hash": identity.composite_hash, "workbook_version": WORKBOOK.version,
         "scenario_id": fresh.active_scenario_id, "run_state": freshness.state.value, "model_executed": False,
-    })
+    }
+    if readiness is not None:
+        out["bank_case_readiness"] = readiness
+    return _json(out)
+
+
+def _post_save_bank_readiness(ws, owner: str):
+    try:
+        from app.persistence.scenarios_repository import get_scenario
+        from app.workbook.revenue_multistream import SNAPSHOT_KEY, assess_snapshot_bank_case_readiness
+
+        overrides = None
+        if getattr(ws, "active_scenario_id", None):
+            scenario = get_scenario(ws.active_scenario_id, owner)
+            if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
+                overrides = scenario.overrides
+        snap = dict(getattr(ws, "draft_snapshot", None) or {})
+        if not (snap.get(SNAPSHOT_KEY) or (overrides or {}).get(SNAPSHOT_KEY)):
+            return None
+        return assess_snapshot_bank_case_readiness(snap, scenario_overrides=overrides)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _display(value: Any) -> str:

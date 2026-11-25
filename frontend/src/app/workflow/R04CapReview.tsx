@@ -82,6 +82,18 @@ export function R04CapReview({ project, csrfToken, contentHash, contractsJson }:
               refused (R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT); the fixed quantity is never reduced.
             </p>
           )}
+          {result.bank_case_readiness && result.bank_case_readiness.status === "BANK_CASE_SHORTFALL_BLOCKED" && (
+            <div className="wf-error" role="alert" data-r04-bank-readiness={result.bank_case_readiness.status}>
+              <strong>Bank-case Run readiness: BLOCKED ({result.bank_case_readiness.error_code})</strong>
+              <p>{result.bank_case_readiness.message}</p>
+              {result.bank_case_readiness.remediation && <p>{result.bank_case_readiness.remediation}</p>}
+            </div>
+          )}
+          {result.bank_case_readiness && result.bank_case_readiness.status === "READY" && (
+            <p className="fm-info-note" role="status" data-r04-bank-readiness="READY">
+              Bank-case Run readiness ({result.bank_case_readiness.bank_yield_scenario}): READY.
+            </p>
+          )}
           <div className="wf-table-wrap" tabIndex={0} role="region" aria-label="P50 envelope by calendar year" style={{ overflowX: "auto" }}>
             <table className="fm-table" data-r04-table="years">
               <thead><tr><th scope="col">Year</th><th scope="col">Available P50</th><th scope="col">Committed</th><th scope="col">Remaining</th><th scope="col">Used</th><th scope="col">Status</th></tr></thead>

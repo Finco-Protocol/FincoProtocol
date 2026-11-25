@@ -2901,6 +2901,30 @@ def _engine_failure_message(exc: BaseException) -> str:
             "positive merchant volume exists. Supply explicit prices (0 is valid for zero price) "
             "and run again. No Run was saved. (Reference: MERCHANT_PRICE_COVERAGE_MISSING)"
         )
+    if "R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT" in evidence:
+        import re as _re
+        m = _re.search(
+            r"in period\s+(\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}):\s*contracted\s+([0-9.]+)\s*MWh\s+exceeds\s+available generation\s+([0-9.]+)\s*MWh\s*\(shortfall\s+([0-9.]+)\s*MWh\)",
+            evidence,
+        )
+        detail_part = (
+            f" Period {m.group(1)}: contracted {m.group(2)} MWh exceeds available bank-case generation "
+            f"{m.group(3)} MWh (shortfall {m.group(4)} MWh)."
+            if m else ""
+        )
+        return (
+            "Physical PPA commitments fit P50, but fail the active bank/debt-sizing case without an approved "
+            f"shortfall settlement contract.{detail_part} Reduce declared physical commitments, review the "
+            "supported lender-case policy in Bankability, or supply an approved settlement contract when supported. "
+            "No Run was saved; the previous Last Run is unchanged. "
+            "(Reference: R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT)"
+        )
+    if "R04_GLOBAL_P50_CAP_EXCEEDED" in evidence:
+        return (
+            "Declared physical PPA commitments exceed the canonical P50 generation envelope. "
+            "Reduce physical contract quantities or adjust contract dates and run again. "
+            "No Run was saved; the previous Last Run is unchanged. (Reference: R04_GLOBAL_P50_CAP_EXCEEDED)"
+        )
     if "DEBT_TENOR_EXCEEDS_HORIZON" in evidence:
         import re as _re
         m = _re.search(r"project horizon \((\d+) years\) is not longer than the senior debt tenor \((\d+) years\)", evidence)

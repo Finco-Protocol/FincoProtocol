@@ -583,6 +583,13 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
         {runRefresh !== "idle" && <div role={runRefresh === "blocked" ? "alert" : "status"} className="rx-card" data-run-refresh={runRefresh}>
           {runRefresh === "reading" ? "Reading the confirmed Run…" : "The Run was committed, but its current views could not be matched. Reload to reconcile before relying on the results. No extra Run was started."}
         </div>}
+        {workspace.bank_case_readiness && workspace.bank_case_readiness.status === "BANK_CASE_SHORTFALL_BLOCKED" && (
+          <div role="alert" className="rx-card wf-error" data-workspace-bank-readiness={workspace.bank_case_readiness.status}>
+            <strong>Bank-case Run readiness: BLOCKED ({workspace.bank_case_readiness.error_code})</strong>
+            <p>{workspace.bank_case_readiness.message}</p>
+            {workspace.bank_case_readiness.remediation && <p>{workspace.bank_case_readiness.remediation}</p>}
+          </div>
+        )}
         <WorkspaceExtensionBoundary extensions={extensions} context={extensionContext}>
         {extensions?.renderChanges?.(extensionContext)}
         <div key={section === "scenarios" ? "scenarios" : `scope-${scopeEpoch}`} data-scope-epoch={scopeEpoch}>
