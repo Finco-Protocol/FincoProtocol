@@ -446,12 +446,34 @@ def _require_settled_senior_maturity(g2c, project_inputs) -> None:
         )
 
 
-def _is_dated_native_proved(inputs) -> bool:
+# FINCO43B: the vertical that may be admitted natively on a dated grid is decided by the SERVER-OWNED typed project type
+# (``projects.project_type`` -> the route's runtime key -> ``run_project(project_type)`` -> ``run_clean_production``),
+# never by the user-editable project name or code. Exact, closed mapping: anything else (empty, unknown, DC/EV, Storage,
+# Portfolio, test aliases) is not admitted. This only narrows NATIVE admission; financial authority is unchanged.
+_DATED_NATIVE_VERTICALS = {
+    "solar": "solar", "generic solar reference": "solar",
+    "wind": "wind", "generic wind reference": "wind",
+}
+
+
+def _dated_native_vertical(project_type) -> str | None:
+    if not isinstance(project_type, str):
+        return None
+    return _DATED_NATIVE_VERTICALS.get(project_type.strip().lower())
+
+
+def _is_dated_native_proved(inputs, project_type="") -> bool:
     """True only for dated grids with empirically proved V10/V11 bit-identity vs canonical Python.
 
     Proved scope (FINCO39 Slice D): admitted Solar/Wind semi-annual dated grids (OD-TIME-01/v1
     and R04 ABSOLUTE_ANNUAL, with or without annual OPEX overrides). Non-semestrial frequencies
     and non-Solar/Wind technologies stay declined run-locally with DATE_AUTHORITY_NATIVE_UNSUPPORTED.
+
+    FINCO43B: ADMISSION requires the typed server-owned ``project_type`` to be Solar or Wind
+    (``_DATED_NATIVE_VERTICALS``) and, when a multistream revenue configuration is present, the SAME technology
+    (contradiction -> decline). The check order and the multistream ``parse_config`` call are unchanged from the
+    accepted source, so any exception it raises surfaces exactly as before. The legacy name/code tokens remain only
+    as an earlier DECLINE (they can never admit): a decline is always the canonical Python path.
     """
     info = getattr(inputs, "info", None)
     freq = getattr(info, "period_frequency", None) if info is not None else None
@@ -465,6 +487,7 @@ def _is_dated_native_proved(inputs) -> bool:
     name = str(getattr(info, "name", "") or "").lower()
     if any(tok in code or tok in name for tok in ("data center", "data_center", "ev charging", "ev_charging")):
         return False
+    vertical = _dated_native_vertical(project_type)
     rev = getattr(inputs, "revenue", None)
     raw_cfg = getattr(rev, "multistream_config_json", "") or ""
     if raw_cfg:
@@ -472,10 +495,12 @@ def _is_dated_native_proved(inputs) -> bool:
         cfg = parse_config(raw_cfg)
         if cfg is None or getattr(cfg, "technology", None) not in ("solar", "wind"):
             return False
-    return True
+        if vertical is not None and getattr(cfg, "technology", None) != vertical:
+            return False
+    return vertical is not None
 
 
-def _decline_native_on_dated_grid(inputs) -> None:
+def _decline_native_on_dated_grid(inputs, project_type="") -> None:
     """OD-TIME-01 / FINCO39 Slice D: admit proved Solar/Wind semi-annual dated grids to native V10/V11;
     decline every unproven dated path run-locally with DATE_AUTHORITY_NATIVE_UNSUPPORTED.
 
@@ -486,7 +511,7 @@ def _decline_native_on_dated_grid(inputs) -> None:
 
     if not date_authority_active(inputs):
         return
-    if _is_dated_native_proved(inputs):
+    if _is_dated_native_proved(inputs, project_type):
         return
     from financial_engine.run_scope import current_run_scope
     from financial_engine.native_v10.config import DATE_AUTHORITY_SCOPE_KEY, current_stats as _v10_stats
@@ -552,7 +577,7 @@ def run_clean_production(
         # and structuring fees) and DSRA policy. One production calculation; the
         # policy owns the initial-DSRA fixed point around the single engine entry.
         with engine_run_scope():
-            _decline_native_on_dated_grid(effective_inputs)
+            _decline_native_on_dated_grid(effective_inputs, project_type)
             g2c, effective_inputs, policy_evidence = _memoised_policy_run(
                 effective_inputs,
                 policy,

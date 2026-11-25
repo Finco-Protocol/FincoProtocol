@@ -24,7 +24,8 @@ def _unproven_dated_annual(base):
 def test_dated_run_admits_proved_solar_and_declines_unproven_dated_scope():
     dated_pi = _with_r04(pf.create_generic_solar_reference(), "solar")
     with native_run(NativeConfig(mode="candidate")) as v10, stage3_run(Stage3Config(mode="candidate")) as v11:
-        run_clean_production(dated_pi)
+        # FINCO43B: admission is decided by the typed server-owned project type every Run route passes
+        run_clean_production(dated_pi, project_type="Solar")
         assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in v10.declines
         assert "DATE_AUTHORITY_NATIVE_UNSUPPORTED" not in v11.declines
     # Unproven dated scope (e.g. non-semestrial frequency) still records typed run-local decline
@@ -32,7 +33,7 @@ def test_dated_run_admits_proved_solar_and_declines_unproven_dated_scope():
     unproven_pi = _unproven_dated_annual(pf.create_generic_solar_reference())
     with native_run(NativeConfig(mode="candidate")) as v10, stage3_run(Stage3Config(mode="candidate")) as v11:
         with engine_run_scope():
-            _decline_native_on_dated_grid(unproven_pi)
+            _decline_native_on_dated_grid(unproven_pi, "Solar")   # typed Solar: declined by the ANNUAL frequency alone
             assert current_config().mode == "off" and v11_current_config().mode == "off"
         assert v10.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1
         assert v11.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1

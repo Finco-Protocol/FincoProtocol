@@ -56,16 +56,46 @@ def _artifacts() -> list[Path]:
     return [directory / _manifest(directory, name)["artifact"] for directory, _module, name in KERNELS]
 
 
-def activation_text() -> str:
-    """The exact production activation: V10 Stage 1+2 and V11 Stage 3, each pinned to its reviewed build ID."""
+# FINCO43B: reviewed activation PROFILES. ``full`` (default, unchanged) = V10 Stage 1 + experimental Stage 2 + V11 Stage 3;
+# ``stage3`` = V11 Stage 3 only (V10 off), the smallest measured-exact configuration without the experimental Stage 2.
+# Chosen at install time with ``--profile`` or FINCO_NATIVE_RELEASE_PROFILE (passed through release_native.sh); any other
+# value refuses the release. ``verify`` accepts an activation file only when it is exactly one reviewed profile text.
+PROFILES = ("full", "stage3")
+DEFAULT_PROFILE = "full"
+ENV_PROFILE = "FINCO_NATIVE_RELEASE_PROFILE"
+
+
+def _profile(value: str | None = None) -> str:
+    profile = (value if value is not None else os.environ.get(ENV_PROFILE, DEFAULT_PROFILE)).strip().lower()
+    if profile not in PROFILES:
+        raise ValueError(f"unknown native release profile {profile!r}; expected one of {PROFILES}")
+    return profile
+
+
+def activation_text(profile: str = DEFAULT_PROFILE) -> str:
+    """The exact production activation of a reviewed profile, each enabled stage pinned to its reviewed build ID."""
     s1 = _manifest(*KERNELS[0][::2])["build_id"]
     s3 = _manifest(*KERNELS[2][::2])["build_id"]
-    return ("# Written by tools/native_release.py install after the kernels were built, verified and self-tested.\n"
-            "# Do not edit; remove with: deploy/scripts/release_native.sh remove. No secrets in this file.\n"
+    head = ("# Written by tools/native_release.py install after the kernels were built, verified and self-tested.\n"
+            "# Do not edit; remove with: deploy/scripts/release_native.sh remove. No secrets in this file.\n")
+    if _profile(profile) == "stage3":
+        return (head + "# Profile: stage3 (V11 Stage 3 only; V10 Stage 1/2 off).\n"
+                "FINCO_NATIVE_V10_RUN=off\n"
+                "FINCO_NATIVE_V11_RUN=on\n"
+                f"FINCO_NATIVE_V11_RUN_BUILD_ID={s3}\n")
+    return (head +
             "FINCO_NATIVE_V10_RUN=stage1+2\n"
             f"FINCO_NATIVE_V10_RUN_BUILD_ID={s1}\n"
             "FINCO_NATIVE_V11_RUN=on\n"
             f"FINCO_NATIVE_V11_RUN_BUILD_ID={s3}\n")
+
+
+def installed_profile() -> str | None:
+    """The reviewed profile the activation file is EXACTLY, else ``None`` (missing or edited)."""
+    if not ACTIVATION_FILE.is_file():
+        return None
+    text = ACTIVATION_FILE.read_text(encoding="utf-8")
+    return next((p for p in PROFILES if text == activation_text(p)), None)
 
 
 def remove() -> int:
@@ -98,8 +128,11 @@ if out["loaders_ok"]:
         v10_only = run()
     with native_run(v10) as st10, stage3_run(Stage3Config(mode="candidate", require_build_id=s3_id)) as st3:
         combined = run()                                 # the production configuration: Stage 3 on top of V10 1+2
+    with stage3_run(Stage3Config(mode="candidate", require_build_id=s3_id)) as st3_only:
+        stage3_alone = run()                             # profile "stage3": V11 Stage 3 with V10 off
     out["self_test"] = {"run": [project, scenario], "digest": canonical,
-                        "identical": v10_only == canonical and combined == canonical,
+                        "identical": v10_only == canonical and combined == canonical and stage3_alone == canonical,
+                        "v11_alone_native_models": st3_only.native_models,
                         "v10_alone_native_calls": alone.native_solves + alone.stage2_native_calls,
                         "v10_build_id": alone.build_id, "v11_native_models": st3.native_models,
                         "v11_build_id": st3.build_id, "v11_declines": dict(st3.declines),
@@ -121,6 +154,7 @@ def verify() -> dict:
         raise RuntimeError(f"production loaders refused the kernels: {result}")
     test = result["self_test"]
     if not (test["identical"] and test["v10_alone_native_calls"] > 0 and test["v11_native_models"] > 0
+            and test.get("v11_alone_native_models", 0) > 0
             and test["v10_build_id"] == s1_id and test["v11_build_id"] == s3_id):
         raise RuntimeError(f"exact replay self-test failed: {test}")
     return result
@@ -139,9 +173,9 @@ def unit_loads_activation() -> str | None:
     return None
 
 
-def _write_activation() -> None:
+def _write_activation(profile: str = DEFAULT_PROFILE) -> None:
     staged = ACTIVATION_FILE.with_name(f".{ACTIVATION_FILE.name}.staged")
-    staged.write_text(activation_text(), encoding="utf-8")
+    staged.write_text(activation_text(profile), encoding="utf-8")
     os.chmod(staged, 0o644)
     os.replace(staged, ACTIVATION_FILE)
 
@@ -159,8 +193,9 @@ def _cleanup() -> None:
             staged.unlink(missing_ok=True)
 
 
-def install() -> int:
+def install(profile: str | None = None) -> int:
     try:
+        profile = _profile(profile)
         with tempfile.TemporaryDirectory(prefix="native_release_") as tmp:
             out = Path(tmp)
             for directory, module, name in KERNELS:
@@ -179,25 +214,28 @@ def install() -> int:
         reason = unit_loads_activation()
         if reason:
             raise RuntimeError(reason)
-        _write_activation()
+        _write_activation(profile)
     except Exception as exc:  # noqa: BLE001 - fail closed: never leave an unverified or unreachable activation
         _cleanup()
         print(f"native release: REFUSED ({exc}); no kernel and no activation installed, Runs stay canonical",
               file=sys.stderr)
         return 1
-    print(f"native release: installed, verified and activated {json.dumps(result, sort_keys=True)}; "
+    print(f"native release: installed, verified and activated profile={profile} {json.dumps(result, sort_keys=True)}; "
           f"restart {UNIT} to serve Runs natively")
     return 0
 
 
-def check() -> int:
+def check(profile: str | None = None) -> int:
     try:
         result = verify()
         reason = unit_loads_activation()
         if reason:
             raise RuntimeError(reason)
-        if not ACTIVATION_FILE.is_file() or ACTIVATION_FILE.read_text(encoding="utf-8") != activation_text():
-            raise RuntimeError(f"{ACTIVATION_FILE} is missing or differs from the reviewed activation")
+        installed = installed_profile()
+        if installed is None:
+            raise RuntimeError(f"{ACTIVATION_FILE} is missing or differs from every reviewed activation profile")
+        if profile is not None and installed != _profile(profile):
+            raise RuntimeError(f"installed activation profile is {installed!r}, expected {profile!r}")
     except Exception as exc:  # noqa: BLE001
         print(f"native release: NOT VERIFIED ({exc})", file=sys.stderr)
         return 1
@@ -208,8 +246,17 @@ def check() -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("action", choices=("install", "verify", "remove"))
-    action = parser.parse_args(argv).action
-    return {"install": install, "verify": check, "remove": remove}[action]()
+    parser.add_argument("--profile", choices=PROFILES, default=None,
+                        help=f"install: reviewed activation profile (default: ${ENV_PROFILE} or {DEFAULT_PROFILE}); "
+                             "verify: additionally require exactly this installed profile")
+    args = parser.parse_args(argv)
+    if args.action == "install":
+        return install(args.profile)
+    if args.action == "verify":
+        return check(args.profile)
+    if args.profile is not None:
+        parser.error("--profile is not valid with remove")
+    return remove()
 
 
 if __name__ == "__main__":
