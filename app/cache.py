@@ -7,31 +7,57 @@ unavailable.
 """
 from __future__ import annotations
 
+import sys
+import threading
 from functools import lru_cache, wraps
 from typing import TYPE_CHECKING
-from app.streamlit_compat import get_streamlit
 
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
     from domain.period_engine import PeriodEngine
 
 
-def cache_data(*decorator_args, **decorator_kwargs):
-    """Return Streamlit's cache decorator when available, else a safe fallback.
+def _active_streamlit_runtime():
+    """The Streamlit module ONLY when a Streamlit runtime is actually serving this process, else ``None``.
 
-    The fallback keeps the decorated function callable shape and a ``clear()``
-    method so the rest of the runtime can invalidate caches without caring
-    whether Streamlit is installed.
+    FINCO45C (FINCO44-NEW-06 / C3-E-04): the FastAPI path (``main_web``/``main_api``) must never initialise
+    ``st.cache_data`` outside a Streamlit runtime - doing so at import time logged "No runtime found" warnings on API
+    start. Streamlit is never imported here: when a legacy Streamlit shell runs, it has already imported it.
     """
-    st = get_streamlit()
-    if st is not None:
-        return st.cache_data(*decorator_args, **decorator_kwargs)
+    st = sys.modules.get("streamlit")
+    if st is None:
+        return None
+    try:
+        from streamlit import runtime as st_runtime
+        return st if st_runtime.exists() else None
+    except Exception:  # noqa: BLE001 - any doubt -> headless fallback (same values, no Streamlit cache)
+        return None
+
+
+def cache_data(*decorator_args, **decorator_kwargs):
+    """Cache decorator: Streamlit's ``st.cache_data`` inside a live Streamlit runtime, else a headless fallback.
+
+    The choice is made per call, lazily: the Streamlit-cached function is created on the first call made INSIDE a
+    Streamlit runtime (never at import), so API processes never touch Streamlit. The fallback keeps the historical
+    behaviour (``lru_cache`` keyed by the arguments, uncached when they are unhashable). ``clear()`` invalidates both.
+    """
 
     def decorator(func):
         cached_func = lru_cache(maxsize=None)(func)
+        streamlit_cached: list = []
+        lock = threading.Lock()
+
+        def _streamlit_version(st):
+            with lock:
+                if not streamlit_cached:
+                    streamlit_cached.append(st.cache_data(*decorator_args, **decorator_kwargs)(func))
+                return streamlit_cached[0]
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            st = _active_streamlit_runtime()
+            if st is not None:
+                return _streamlit_version(st)(*args, **kwargs)
             try:
                 return cached_func(*args, **kwargs)
             except TypeError:
@@ -39,6 +65,9 @@ def cache_data(*decorator_args, **decorator_kwargs):
 
         def clear() -> None:
             cached_func.cache_clear()
+            with lock:
+                if streamlit_cached:
+                    streamlit_cached[0].clear()
 
         wrapper.clear = clear
         return wrapper

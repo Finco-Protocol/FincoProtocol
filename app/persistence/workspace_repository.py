@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
 from app.persistence.db import get_cursor
 from app.persistence._helpers import _now_utc, _to_json
+from app.persistence.project_lifecycle_repository import workspace_freshness_writer
 
 
 def _draft_content_hash(draft_snapshot: dict) -> str:
@@ -281,6 +282,7 @@ def _prove_history_commit_correlation(
         )
 
 
+@workspace_freshness_writer
 def save_workspace_state(
     *,
     user_id: str,
@@ -976,6 +978,7 @@ class V2RunCommitConflictError(Exception):
     """
 
 
+@workspace_freshness_writer
 def v2_atomic_run_commit(
     *,
     user_id: str,

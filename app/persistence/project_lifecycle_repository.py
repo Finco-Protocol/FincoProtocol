@@ -30,6 +30,24 @@ class LifecycleError(ValueError):
 _admissions: ContextVar[dict | None] = ContextVar("wf03_admissions", default=None)
 _actor: ContextVar[str | None] = ContextVar("wf03_actor", default=None)
 _creator: ContextVar[bool] = ContextVar("wf03_creator", default=False)
+# FINCO45C (FINCO44-NEW-06 / C3-E-04): capability for the workspace freshness authority. Only the named authoritative
+# repository writers (decorated with ``workspace_freshness_writer``) may mark a dirty workspace clean or replace its
+# committed-runtime binding on an application connection; every other statement on a guarded connection is refused.
+_freshness_writer: ContextVar[bool] = ContextVar("wf03_workspace_freshness_writer", default=False)
+
+
+def workspace_freshness_writer(func):
+    """Grant the workspace freshness capability for exactly the duration of one authoritative writer call."""
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        token = _freshness_writer.set(True)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            _freshness_writer.reset(token)
+    return wrapper
 
 
 @contextmanager
@@ -72,6 +90,7 @@ def install_connection_functions(conn):
     conn.create_function("wf03_creator_allowed", 0, lambda: int(_admissions.get() is None or _creator.get()))
     conn.create_function("wf03_was_admitted", 2,
                          lambda owner, project: int((owner, project) in (_admissions.get() or {})))
+    conn.create_function("wf03_workspace_freshness_writer", 0, lambda: int(_freshness_writer.get()))
 
 
 def ensure_schema(conn):
@@ -169,6 +188,21 @@ def install_write_fences(conn):
                          AND wf03_creator_allowed()!=1 ELSE 1 END
                     OR wf03_epoch_matches(p.user_id,p.project_id,p.lifecycle_version)!=1))
                 BEGIN SELECT RAISE(ABORT,'WF03_LIFECYCLE_CONFLICT'); END""")
+    # FINCO45C: workspace freshness fence. A dirty->clean transition, or a change of the committed runtime binding
+    # (snapshot id / composite hash), is legitimate only inside the authoritative writers (save_workspace_state,
+    # v2_atomic_run_commit, select_scenario). Marking a workspace dirty, draft edits and inserts are unaffected.
+    # TEMP triggers are connection-local: this guards every application connection, not an arbitrary independent
+    # SQLite connection or raw OS file access (a separate trust boundary).
+    if "workspace_states" in present:
+        ws_cols = {r[1] for r in conn.execute("PRAGMA table_info(workspace_states)")}
+        if {"dirty", "last_runtime_snapshot_id", "last_runtime_composite_hash"} <= ws_cols:
+            _install_trigger(conn, """CREATE TEMP TRIGGER IF NOT EXISTS wf03_workspace_states_freshness
+                BEFORE UPDATE ON workspace_states WHEN wf03_terminal_disposal()!=1
+                AND wf03_workspace_freshness_writer()!=1
+                AND ((OLD.dirty!=0 AND NEW.dirty=0)
+                     OR NEW.last_runtime_snapshot_id IS NOT OLD.last_runtime_snapshot_id
+                     OR NEW.last_runtime_composite_hash IS NOT OLD.last_runtime_composite_hash)
+                BEGIN SELECT RAISE(ABORT,'WF03_WORKSPACE_FRESHNESS_AUTHORITY_REQUIRED'); END""")
     _install_trigger(conn, """CREATE TEMP TRIGGER IF NOT EXISTS wf03_projects_update
         BEFORE UPDATE ON projects WHEN OLD.user_id!='__reference__'
         AND wf03_lifecycle_command()!=1 AND wf03_terminal_disposal()!=1
