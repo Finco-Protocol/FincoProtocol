@@ -77,8 +77,12 @@ def test_release_script_passes_every_argument_through():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     script = (root / "deploy/scripts/release_native.sh").read_text()
-    shim = script.replace('exec "$PYTHON_BIN" -m tools.native_release "$@"', 'printf "%s|" "$@"; exit 0')
-    shim = shim.replace('if [[ ! -x "$PYTHON_BIN" ]]; then', 'if false; then')
+    exec_line = 'exec "$PYTHON_BIN" -m tools.native_release "$@"'
+    venv_check = 'if [[ ! -x "$PYTHON_BIN" ]]; then'
+    # fail cleanly (never exec a real release) if the script no longer has exactly these lines
+    assert script.count(exec_line) == 1 and script.count(venv_check) == 1
+    shim = script.replace(exec_line, 'printf "%s|" "$@"; exit 0').replace(venv_check, 'if false; then')
+    assert "tools.native_release" not in shim.split("set -- install", 1)[1]
     for args, expected in (([], "install|"), (["install", "--profile", "stage3"], "install|--profile|stage3|"),
                            (["verify"], "verify|")):
         out = subprocess.run(["bash", "-c", shim, "release_native.sh", *args], capture_output=True, text=True,
