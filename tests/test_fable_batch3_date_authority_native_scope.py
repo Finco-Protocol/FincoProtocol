@@ -33,7 +33,7 @@ def test_dated_run_admits_proved_solar_and_declines_unproven_dated_scope():
     unproven_pi = _unproven_dated_annual(pf.create_generic_solar_reference())
     with native_run(NativeConfig(mode="candidate")) as v10, stage3_run(Stage3Config(mode="candidate")) as v11:
         with engine_run_scope():
-            _decline_native_on_dated_grid(unproven_pi)
+            _decline_native_on_dated_grid(unproven_pi, "Solar")   # typed Solar: declined by the ANNUAL frequency alone
             assert current_config().mode == "off" and v11_current_config().mode == "off"
         assert v10.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1
         assert v11.declines["DATE_AUTHORITY_NATIVE_UNSUPPORTED"] == 1

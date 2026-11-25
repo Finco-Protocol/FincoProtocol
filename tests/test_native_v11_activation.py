@@ -407,7 +407,9 @@ def test_release_verification_proves_loaders_and_exact_replay_in_a_fresh_interpr
 
 def test_release_script_runs_the_release_transaction():
     script = (ROOT / "deploy/scripts/release_native.sh").read_text()
-    assert 'exec "$PYTHON_BIN" -m tools.native_release "${1:-install}"' in script
+    # FINCO43B: every argument is passed through (``install --profile stage3``); no argument still means install
+    assert 'exec "$PYTHON_BIN" -m tools.native_release "$@"' in script
+    assert "set -- install" in script
     assert (ROOT / "deploy/scripts/release_native.sh").stat().st_mode & 0o111
 
 

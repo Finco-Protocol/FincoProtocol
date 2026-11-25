@@ -201,6 +201,11 @@ def http(args) -> int:
                         snap = native_activation.snapshot()
                         # evidence of THIS Run, returned by the worker that executed it (None: canonical call, OFF)
                         native = snap["last_run"] if snap["totals"].get("runs", 0) == before + 1 else None
+                        if arm != "OFF" and native is None:   # never let a silently canonical Run count as native
+                            raise SystemExit(f"arm {arm} was NOT served through native activation (thread mode, "
+                                             f"kill switch or invalid setting?); refusing to report it as native")
+                        if arm == "OFF" and native is not None:
+                            raise SystemExit("OFF arm recorded native evidence")
                         _, _, get_bytes, get_s = tokens()
                         stages = {key: int(x) for key, x in re.findall(r"(\w+)=(\d+)ms", lines[-1])}
                         rows.append({"case": case, "arm": arm, "i": i, "first": i == 0, "route_s": route,

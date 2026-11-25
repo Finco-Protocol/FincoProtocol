@@ -54,6 +54,7 @@ def test_install_stage3_profile_writes_exactly_that_activation_and_verify_accept
     assert rel.install("stage3") == 0
     assert rel.ACTIVATION_FILE.read_text() == rel.activation_text("stage3")
     assert rel.installed_profile() == "stage3" and rel.check() == 0
+    assert rel.check("stage3") == 0 and rel.check("full") == 1          # verify can assert the exact profile
     rel.ACTIVATION_FILE.write_text(rel.activation_text("stage3").replace("V10_RUN=off", "V10_RUN=stage1+2"))
     assert rel.installed_profile() is None and rel.check() == 1          # an edited activation is not verified
     monkeypatch.setenv(rel.ENV_PROFILE, "full")
@@ -70,11 +71,31 @@ def test_install_with_unknown_env_profile_refuses_and_leaves_nothing(tmp_path, m
     assert not rel.ACTIVATION_FILE.exists() and not any(p.exists() for p in rel._artifacts())
 
 
+def test_release_script_passes_every_argument_through():
+    """Review finding: `release_native.sh install --profile stage3` must not silently install `full`."""
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "deploy/scripts/release_native.sh").read_text()
+    shim = script.replace('exec "$PYTHON_BIN" -m tools.native_release "$@"', 'printf "%s|" "$@"; exit 0')
+    shim = shim.replace('if [[ ! -x "$PYTHON_BIN" ]]; then', 'if false; then')
+    for args, expected in (([], "install|"), (["install", "--profile", "stage3"], "install|--profile|stage3|"),
+                           (["verify"], "verify|")):
+        out = subprocess.run(["bash", "-c", shim, "release_native.sh", *args], capture_output=True, text=True,
+                             cwd=root / "deploy/scripts", check=True).stdout
+        assert out == expected, (args, out)
+
+
 def test_cli_profile_flag(monkeypatch):
     from tools import native_release as rel
     seen = {}
     monkeypatch.setattr(rel, "install", lambda profile=None: seen.setdefault("profile", profile) and 0)
     rel.main(["install", "--profile", "stage3"])
     assert seen["profile"] == "stage3"
+    monkeypatch.setattr(rel, "check", lambda profile=None: seen.setdefault("verify", profile) and 0)
+    rel.main(["verify", "--profile", "full"])
+    assert seen["verify"] == "full"
+    with pytest.raises(SystemExit):
+        rel.main(["remove", "--profile", "stage3"])
     with pytest.raises(SystemExit):
         rel.main(["install", "--profile", "everything"])

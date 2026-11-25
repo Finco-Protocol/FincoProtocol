@@ -92,6 +92,15 @@ def test_non_semestrial_and_bess_still_declined_for_typed_solar():
     from finco_core.engine.period_engine import PeriodFrequency
     annual = replace(_dated_solar(), info=replace(_dated_solar().info, period_frequency=PeriodFrequency.ANNUAL))
     assert pfa._is_dated_native_proved(annual, "Solar") is False
+    # BESS markers decline even for a typed Solar project (the helper reads only these two typed attributes)
+    from types import SimpleNamespace
+    for technical in (SimpleNamespace(bess_enabled=True, bess_native_config_json=""),
+                      SimpleNamespace(bess_enabled=False, bess_native_config_json='{"x":1}')):
+        bess = SimpleNamespace(info=_dated_solar().info, technical=technical, revenue=_dated_solar().revenue)
+        assert pfa._is_dated_native_proved(bess, "Solar") is False
+    plain = SimpleNamespace(info=_dated_solar().info, technical=SimpleNamespace(bess_enabled=False, bess_native_config_json=""),
+                            revenue=_dated_solar().revenue)
+    assert pfa._is_dated_native_proved(plain, "Solar") is True          # control: only the BESS marker differs
 
 
 # ── end-to-end: real verified kernels; declines are canonical and financially identical ─────────────────────────────

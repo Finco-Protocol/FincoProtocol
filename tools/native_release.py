@@ -225,14 +225,17 @@ def install(profile: str | None = None) -> int:
     return 0
 
 
-def check() -> int:
+def check(profile: str | None = None) -> int:
     try:
         result = verify()
         reason = unit_loads_activation()
         if reason:
             raise RuntimeError(reason)
-        if installed_profile() is None:
+        installed = installed_profile()
+        if installed is None:
             raise RuntimeError(f"{ACTIVATION_FILE} is missing or differs from every reviewed activation profile")
+        if profile is not None and installed != _profile(profile):
+            raise RuntimeError(f"installed activation profile is {installed!r}, expected {profile!r}")
     except Exception as exc:  # noqa: BLE001
         print(f"native release: NOT VERIFIED ({exc})", file=sys.stderr)
         return 1
@@ -244,11 +247,16 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("action", choices=("install", "verify", "remove"))
     parser.add_argument("--profile", choices=PROFILES, default=None,
-                        help=f"install only: reviewed activation profile (default: ${ENV_PROFILE} or {DEFAULT_PROFILE})")
+                        help=f"install: reviewed activation profile (default: ${ENV_PROFILE} or {DEFAULT_PROFILE}); "
+                             "verify: additionally require exactly this installed profile")
     args = parser.parse_args(argv)
     if args.action == "install":
         return install(args.profile)
-    return {"verify": check, "remove": remove}[args.action]()
+    if args.action == "verify":
+        return check(args.profile)
+    if args.profile is not None:
+        parser.error("--profile is not valid with remove")
+    return remove()
 
 
 if __name__ == "__main__":
