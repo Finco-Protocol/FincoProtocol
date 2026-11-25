@@ -10,6 +10,14 @@ import os
 
 os.environ.setdefault("FINCO_MODEL_EXECUTION_MODE", "thread")
 
+# FINCO45C: the login/demo rate-limit counters are a shared SQLite store (app.persistence.rate_limit_store). Give every
+# test process its own fresh store - the same isolation the former per-process dicts had - instead of a file next to
+# the checkout's default database that would persist across local runs.
+if "FINCO_RATE_LIMIT_DB_PATH" not in os.environ:
+    import tempfile as _tempfile
+    os.environ["FINCO_RATE_LIMIT_DB_PATH"] = os.path.join(
+        _tempfile.mkdtemp(prefix="finco-rate-limit-"), "rate_limit.sqlite")
+
 
 # ── Suite-owned executor / process lifecycle ────────────────────────────────────────────
 # One authority for model-worker cleanup (replaces per-module reset fixtures as the safety

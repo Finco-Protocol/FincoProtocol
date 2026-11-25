@@ -51,6 +51,7 @@ from app.auth import (
     validate_csrf_token,
     _check_rate_limit,
     _record_failed_login,
+    _reserve_login_attempt,
     _clear_failed_logins,
     COOKIE_NAME,
     # Demo session
@@ -3145,11 +3146,14 @@ def _format_kpis(kpis: dict) -> list[dict]:
 # -- Auth Routes --------------------------------------------------------------
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP from request, checking X-Forwarded-For first."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """The client address used as the login rate-limit subject.
+
+    FINCO45C (C1-Q-08): the left-most ``X-Forwarded-For`` entry is CLIENT-CONTROLLED (nginx appends with
+    ``$proxy_add_x_forwarded_for``), so trusting it let a caller rotate the header to escape the lockout. Proxy trust is
+    uvicorn's job: its proxy-headers middleware resolves ``request.client`` from X-Forwarded-For only when the peer is
+    in ``--forwarded-allow-ips`` / ``FORWARDED_ALLOW_IPS`` (default 127.0.0.1, the local nginx), walking from the right.
+    An unknown peer shares the single ``unknown`` bucket (never a bypass)."""
+    return request.client.host if request.client and request.client.host else "unknown"
 
 
 @app.get("/login")
@@ -3188,6 +3192,7 @@ async def login_post(
                 "csrf_token": generate_csrf_token(),
             },
             status_code=429,
+            headers={"Retry-After": str(seconds_left)},
         )
 
     # CSRF validation
@@ -3202,6 +3207,20 @@ async def login_post(
             status_code=403,
         )
 
+    # FINCO45C: atomically admit this verification across every worker (pre-charged; cleared on success).
+    allowed, seconds_left = _reserve_login_attempt(ip)
+    if not allowed:
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": f"Too many failed attempts. Try again in {seconds_left}s.",
+                "csrf_token": generate_csrf_token(),
+            },
+            status_code=429,
+            headers={"Retry-After": str(seconds_left)},
+        )
+
     if verify_login(username, password):
         _clear_failed_logins(ip)
         token = create_session_token()
@@ -3210,8 +3229,7 @@ async def login_post(
         response.set_cookie(**cookie)
         return response
 
-    # Failed login
-    _record_failed_login(ip)
+    # Failed login: already counted by _reserve_login_attempt (atomic, shared across workers).
     return templates.TemplateResponse(
         request=request,
         name="login.html",
@@ -3579,6 +3597,7 @@ async def run(request: Request):
                     ),
                 },
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     # P6.6 — global concurrency limiter (atomic non-blocking acquire)
@@ -3970,6 +3989,7 @@ async def download_post(request: Request):
             return HTMLResponse(
                 content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     form = await request.form()
@@ -4076,6 +4096,7 @@ async def runtime_summary_export(request: Request, project: str = "generic_wind_
             return HTMLResponse(
                 content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     safe_project = project.strip().lower() if project else "generic_wind_reference"
@@ -4134,6 +4155,7 @@ async def institutional_workbook_export(request: Request, project: str = "generi
             return HTMLResponse(
                 content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     safe_project = project.strip().lower() if project else "generic_wind_reference"
@@ -4648,6 +4670,7 @@ async def create_project_route(
                     ),
                 },
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     # Build submitted dict from defaults + form values
@@ -6186,6 +6209,7 @@ async def add_scenario_endpoint(request: Request):
                     )
                 },
                 status_code=429,
+                headers={"Retry-After": str(retry_after)},
             )
 
     form = await request.form()

@@ -77,7 +77,7 @@ def test_session_cookie_flags_are_hardened():
 def test_login_rate_limit_locks_out_after_repeated_failures(monkeypatch):
     from app import auth
 
-    monkeypatch.setattr(auth, "_rate_limit_store", {})
+    auth._shared_limits.reset_for_tests()
     for _ in range(auth.MAX_LOGIN_FAILURES):
         auth._record_failed_login("203.0.113.9")
     allowed, wait = auth._check_rate_limit("203.0.113.9")
@@ -88,7 +88,7 @@ def test_login_rate_limit_locks_out_after_repeated_failures(monkeypatch):
 def test_login_requires_valid_csrf_token(client, monkeypatch):
     from app import auth
 
-    monkeypatch.setattr(auth, "_rate_limit_store", {})
+    auth._shared_limits.reset_for_tests()
     bad = client.post("/login", data={"username": "x", "password": "y", "csrf_token": "forged"},
                       follow_redirects=False)
     assert bad.status_code == 403
@@ -101,18 +101,23 @@ def test_login_requires_valid_csrf_token(client, monkeypatch):
     assert wrong_password.status_code == 401  # token accepted, credentials rejected
 
 
-def test_rate_limit_counters_are_in_memory_and_stale_ones_are_purged(monkeypatch):
+def test_rate_limit_counters_are_shared_and_stale_ones_are_purged(monkeypatch):
+    """FINCO45C (C1-Q-08): counters live in the shared SQLite store used by every worker; stale ones are purged."""
     import time
 
     from app import auth
+    from app.persistence import rate_limit_store as store
 
-    monkeypatch.setattr(auth, "_demo_op_store", {
-        "demo_stale": {"model_run": [time.time() - 3 * 3600]},
-        "demo_fresh": {"model_run": [time.time()]},
-    })
+    store.reset_for_tests()
+    now = time.time()
+    monkeypatch.setattr(store, "_clock", lambda: now - 3 * 3600)
+    assert auth.check_demo_rate_limit("demo_stale", "model_run") == (True, 0)
+    monkeypatch.setattr(store, "_clock", lambda: now)
+    assert auth.check_demo_rate_limit("demo_fresh", "model_run") == (True, 0)
+    assert store.counts()["operation_events"] == 2
     auth.purge_expired_demo_rate_entries()
-    assert set(auth._demo_op_store) == {"demo_fresh"}
-    assert isinstance(auth._demo_op_store, dict)  # process memory, not the database
+    assert store.counts()["operation_events"] == 1                     # only the fresh event survives
+    assert not hasattr(auth, "_demo_op_store") and not hasattr(auth, "_rate_limit_store")   # no process memory
 
 
 # ── Tenant isolation ────────────────────────────────────────────────────────

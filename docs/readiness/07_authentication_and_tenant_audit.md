@@ -31,9 +31,9 @@ Evidence: CODE `app/auth.py`; TEST `tests/test_trust_readiness_controls.py`; TES
 
 **Implemented and verified.** After 5 failed logins from one address, further attempts are refused for 300 seconds.
 
-Limit: The counter lives in process memory. It is per address, not shared between workers, and resets on restart.
+Limit: The counter is per client address (resolved by the server's trusted-proxy rules) and is kept in a small SQLite store shared by all worker processes on the host. If that store is unavailable, login attempts are refused with a retry delay rather than allowed.
 
-Evidence: CODE `app/auth.py`; TEST `tests/test_trust_readiness_controls.py`
+Evidence: CODE `app/auth.py`; TEST `tests/test_trust_readiness_controls.py`; CODE `app/persistence/rate_limit_store.py`; TEST `tests/test_finco45c_shared_rate_limiter.py`
 
 ### CSRF token on the login form
 
@@ -53,9 +53,9 @@ Evidence: CODE `app/auth.py`; TEST `tests/test_p6_demo_isolation.py`; TEST `test
 
 **Implemented and verified.** Anonymous demo sessions are rate limited on expensive operations such as exports and scenario creation. The operator session is not limited.
 
-Limit: Counters are in process memory, as for login limiting.
+Limit: Counters are shared by all worker processes on the host, as for login limiting.
 
-Evidence: CODE `app/auth.py`; TEST `tests/test_p6_demo_isolation.py`; TEST `tests/test_p6_demo_isolation.py`
+Evidence: CODE `app/auth.py`; TEST `tests/test_p6_demo_isolation.py`; TEST `tests/test_p6_demo_isolation.py`; TEST `tests/test_finco45c_shared_rate_limiter.py`
 
 ### Multi-user identity, roles, SSO and MFA
 

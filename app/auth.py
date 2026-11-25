@@ -32,7 +32,6 @@ import re
 import secrets
 import time as time_module
 from datetime import datetime, timezone, timedelta
-from threading import Lock
 from typing import Optional
 
 import bcrypt
@@ -241,42 +240,33 @@ def validate_csrf_token(token: str) -> bool:
 MAX_LOGIN_FAILURES = 5
 LOCKOUT_SECONDS = 300
 
-_rate_limit_lock = Lock()
-_rate_limit_store: dict[str, dict] = {}
+# FINCO45C (C1-Q-08 / C3-E-08): the counters live in the SHARED store (app.persistence.rate_limit_store), one SQLite
+# file used by every worker process on the host, with atomic check-and-consume and fail-closed 429 on store failure.
+# The previous per-process dicts (``_rate_limit_store`` / ``_demo_op_store``) gave every worker its own budget.
+from app.persistence import rate_limit_store as _shared_limits  # noqa: E402
 
 
 def _record_failed_login(ip: str) -> None:
-    with _rate_limit_lock:
-        entry = _rate_limit_store.get(ip, {"failures": 0, "locked_until": None})
-        entry["failures"] += 1
-        _rate_limit_store[ip] = entry
+    _shared_limits.login_record_failure(ip)
 
 
 def _check_rate_limit(ip: str) -> tuple[bool, int]:
-    """Check if IP is rate-limited. Returns (allowed, seconds_remaining)."""
-    with _rate_limit_lock:
-        entry = _rate_limit_store.get(ip, {"failures": 0, "locked_until": None})
-        now = time_module.time()
-        locked_until = entry.get("locked_until")
-        if locked_until is not None and now < locked_until:
-            return False, int(locked_until - now)
-        if entry["failures"] >= MAX_LOGIN_FAILURES:
-            entry["locked_until"] = now + LOCKOUT_SECONDS
-            _rate_limit_store[ip] = entry
-            return False, LOCKOUT_SECONDS
-        return True, 0
+    """Check if a client is rate-limited (non-consuming). Returns (allowed, seconds_remaining)."""
+    return _shared_limits.login_check(ip, MAX_LOGIN_FAILURES, LOCKOUT_SECONDS)
+
+
+def _reserve_login_attempt(ip: str) -> tuple[bool, int]:
+    """Atomically admit one credential verification across ALL workers (pre-charged as a failure; a successful login
+    clears the record). Returns (allowed, seconds_remaining)."""
+    return _shared_limits.login_reserve(ip, MAX_LOGIN_FAILURES, LOCKOUT_SECONDS)
 
 
 def _clear_failed_logins(ip: str) -> None:
-    with _rate_limit_lock:
-        _rate_limit_store.pop(ip, None)
+    _shared_limits.login_clear(ip)
 
 
 # ── Demo-session rate limiting ────────────────────────────────────────────────
-# Separate bucket per demo user_id for model-run and project-create operations.
-
-_demo_op_lock = Lock()
-_demo_op_store: dict[str, dict] = {}  # user_id -> {op -> [timestamps]}
+# Separate bucket per demo user_id for model-run and project-create operations (shared across workers).
 
 DEMO_RATE_LIMITS: dict[str, tuple[int, int]] = {
     # op_name -> (max_calls, window_seconds)
@@ -285,43 +275,30 @@ DEMO_RATE_LIMITS: dict[str, tuple[int, int]] = {
     "scenario_add": (15, 3600),       # 15 scenarios per hour
     "export_generate": (10, 3600),    # 10 exports per hour
 }
+_DEMO_RETENTION_SECONDS = 7200        # longer than every window above
+_PURGE_INTERVAL_SECONDS = 600
+_last_purge = {"at": 0.0}
 
 
 def check_demo_rate_limit(user_id: str, op: str) -> tuple[bool, int]:
     """Check if a demo session is rate-limited for a specific operation.
 
-    Returns (allowed, retry_after_seconds). Only applies to demo user IDs.
+    Returns (allowed, retry_after_seconds). Only applies to demo user IDs. One shared budget per (demo id, operation)
+    across every worker; store failure fails closed (``(False, Retry-After)``).
     """
     if not user_id.startswith(DEMO_USER_ID_PREFIX):
         return True, 0
     limit_max, window = DEMO_RATE_LIMITS.get(op, (100, 3600))
     now = time_module.time()
-    cutoff = now - window
-    with _demo_op_lock:
-        bucket = _demo_op_store.setdefault(user_id, {})
-        timestamps = bucket.get(op, [])
-        # Evict expired timestamps
-        timestamps = [t for t in timestamps if t > cutoff]
-        if len(timestamps) >= limit_max:
-            oldest = min(timestamps)
-            retry_after = int(window - (now - oldest)) + 1
-            bucket[op] = timestamps
-            _demo_op_store[user_id] = bucket
-            return False, retry_after
-        timestamps.append(now)
-        bucket[op] = timestamps
-        _demo_op_store[user_id] = bucket
-    return True, 0
+    if now - _last_purge["at"] > _PURGE_INTERVAL_SECONDS:
+        _last_purge["at"] = now
+        purge_expired_demo_rate_entries()
+    return _shared_limits.consume("demo", user_id, op, limit_max, window)
 
 
 def purge_expired_demo_rate_entries() -> None:
-    """Remove stale entries from the in-memory demo rate-limit store."""
-    now = time_module.time()
-    with _demo_op_lock:
-        dead = [uid for uid, bucket in _demo_op_store.items()
-                if all(max(ts, default=0) < now - 7200 for ts in bucket.values())]
-        for uid in dead:
-            del _demo_op_store[uid]
+    """Remove stale entries from the shared rate-limit store (bounded retention)."""
+    _shared_limits.purge(_DEMO_RETENTION_SECONDS)
 
 
 # ── Password hashing ──────────────────────────────────────────────────────────

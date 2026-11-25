@@ -20,7 +20,7 @@ What the product stores, where, and what it can contain. Facts for counsel; not 
 | Non-runnable setup drafts (WF03) | SQLite database | user_id | Yes | User-entered setup name, country, selected technology and explicit field IDs/values, draft version/state, timestamps and minimal per-request digests/receipts. Drafts contain user text and financial assumptions, but no calculated results, credentials or CSRF/session tokens. | Requires operational controls |
 | Database backups | Files on the host (default under the data directory) | whole database | Yes | A full copy of every table above. | Requires operational controls |
 | Application and access logs | Standard output, then host log storage | none | No | Method, path, status and request id. No cookies, bodies or client addresses. | Requires operational controls |
-| Rate-limit counters | Process memory | client address or demo id | No | Failed-login counts and demo operation counts. | Implemented and verified |
+| Rate-limit counters | Shared SQLite file beside the database | hashed client address or demo id | No | Failed-login counts and demo operation counts. | Implemented and verified |
 | Imported model files | Not stored | not applicable | Yes | Processed in memory to prefill a project; the upload is not written to disk. | Implemented and verified |
 
 ---

@@ -20,7 +20,7 @@ How long each category of data is kept and how it is removed today. Not a retent
 | Non-runnable setup drafts (WF03) | Not automatically deleted. No TTL or erasure SLA. Setup drafts and their request evidence are retained until an explicitly authorized retention/disposal mechanism exists. | No product deletion path or cascading project deletion. No canonical project exists before approved promotion. | No |
 | Database backups | Automatic backups: the newest 10 are kept. Manual and pre-restore safety backups are kept until removed. | Delete the backup files. Data removed from the live database remains in older backups. | Yes |
 | Application and access logs | Decided by the host. An example logrotate file keeps 7 to 14 days. | Host log management. | No |
-| Rate-limit counters | Cleared on restart; demo counters are purged when stale. | Restart the process. | Yes |
+| Rate-limit counters | Demo events older than two hours and idle login records older than a day are purged; counters survive a restart. | Delete the rate-limit file while the service is stopped. | Yes |
 | Imported model files | Not retained. | Not applicable. | Yes |
 
 ---
