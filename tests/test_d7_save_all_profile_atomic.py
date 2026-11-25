@@ -63,7 +63,7 @@ def _stored_profile(rec):
 
 
 def test_a_profile_document_is_refused_before_any_transaction_while_the_switch_is_off(world, monkeypatch):
-    monkeypatch.delenv("FINCO_SAVE_ALL_PROFILE_ENABLED")
+    monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "0")  # FINCO45B: explicit operator rollback (default is ON)
     rec = _project()
     before = _state(rec)
     r = _post(world, rec, _doc(_leaf(rec)))

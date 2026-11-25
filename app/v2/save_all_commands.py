@@ -75,8 +75,15 @@ class SaveAllProfileNotEnabled(SaveAllInvalid):
 
 
 def profile_enabled() -> bool:
-    """D7 activation switch (Owner decision OD-B2, NOT approved): read per call, never cached. Off => a profile document is refused before any transaction."""
-    return os.environ.get("FINCO_SAVE_ALL_PROFILE_ENABLED", "0") == "1"
+    """D7 activation switch, read per call, never cached.
+
+    FINCO45B (owner-authorized B2 activation, OD-B2): ON by default for the one supported profile kind (the CAPEX monthly
+    profile document, Base case of an editable non-reference project; every other case keeps its typed refusal in
+    ``save_profiles_in_tx``). Operator rollback: ``FINCO_SAVE_ALL_PROFILE_ENABLED=0`` (also false/off/no; any
+    unrecognised value is treated as OFF) => a profile document is refused before any transaction and the CAPEX read
+    payload stays byte-identical to the pre-activation one. Existing saved profiles stay readable either way."""
+    from app.utils.workbook_flag import env_flag
+    return env_flag("FINCO_SAVE_ALL_PROFILE_ENABLED", default=True)
 
 
 class SaveAllRequestIdReused(SaveAllError):

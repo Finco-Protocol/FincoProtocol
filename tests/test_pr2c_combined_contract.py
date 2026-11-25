@@ -55,7 +55,7 @@ def token_of(env, record):
 
 class TestGatedReadEcho:
     def test_flag_off_keeps_the_profiles_read_byte_identical(self, capex, monkeypatch):
-        monkeypatch.delenv("FINCO_SAVE_ALL_PROFILE_ENABLED", raising=False)
+        monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "0")  # FINCO45B: explicit operator rollback (default is ON)
         payload = read_profiles(capex, capex.record)
         assert "save_all_combined" not in payload["save"]
 
@@ -90,14 +90,14 @@ class TestGatedReadEcho:
     def test_flag_off_the_read_token_is_still_the_writer_token(self, capex, monkeypatch):
         """The OFF payload gains no fields, but the primitive the writer uses is the same one the
         echo would expose — no second token authority exists."""
-        monkeypatch.delenv("FINCO_SAVE_ALL_PROFILE_ENABLED", raising=False)
+        monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "0")  # FINCO45B: explicit operator rollback (default is ON)
         payload = read_profiles(capex, capex.record)
         assert token_of(capex, capex.record)  # primitive exists and is non-empty for a saved doc
 
 
 class TestGatedAdvertisement:
     def test_flag_off_advertises_exactly_the_pr2b_sections(self, capex, monkeypatch):
-        monkeypatch.delenv("FINCO_SAVE_ALL_PROFILE_ENABLED", raising=False)
+        monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "0")  # FINCO45B: explicit operator rollback (default is ON)
         sections = read_workspace(capex, capex.record)["save_all"]["sections"]
         assert sections == ["cells", "contracts", "cost_lines"]
 
@@ -111,6 +111,7 @@ class TestGatedAdvertisement:
         assert sections == ["cells", "contracts", "cost_lines"]
 
     def test_the_save_all_url_and_csrf_are_unchanged_by_the_flag(self, capex, monkeypatch):
+        monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "0")
         off = read_workspace(capex, capex.record)["save_all"]
         monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", "1")
         on = read_workspace(capex, capex.record)["save_all"]

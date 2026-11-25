@@ -35,10 +35,10 @@ router = APIRouter()
 
 
 def g10_run_projection_enabled() -> bool:
-    """Dedicated G10 gate: absent/empty -> OFF. The React surface flag alone does NOT authorize this panel —
-    owner ratification of G10 Option A is a separate, still-pending decision, so the panel ships dark until
-    ``FINCO_G10_RUN_OPEX_PANEL`` is explicitly set."""
-    return env_flag("FINCO_G10_RUN_OPEX_PANEL", default=False)
+    """Dedicated G10 gate. FINCO45B (owner-authorized B2 activation): absent/empty -> ON. Operator rollback:
+    ``FINCO_G10_RUN_OPEX_PANEL=0`` (false/off/no; any unrecognised value is OFF) -> typed 404
+    ``G10_RUN_OPEX_PANEL_DISABLED``. The panel is read-only committed-Run evidence; it never writes."""
+    return env_flag("FINCO_G10_RUN_OPEX_PANEL", default=True)
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -59,13 +59,28 @@ def build_run_opex_projection(record, ws, owner: str) -> dict[str, Any]:
     from app.workbook.runtime_authority import resolve_runtime_freshness
     from app.workbook.workbook_identity import assemble_consistent_for_get
 
-    entry = get_latest_history_entry(ws.user_id, record.project_id)
-    if entry is None:
+    # FINCO45B: the panel shows the Run the ACTIVE workspace/scenario is bound to (``last_runtime_snapshot_id``), the
+    # same binding its freshness label is computed from - never simply the project's newest Run, which after a
+    # scenario switch can belong to another scenario.
+    bound_snapshot = getattr(ws, "last_runtime_snapshot_id", None)
+    entry = _history_entry_for_snapshot(ws.user_id, record.project_id, bound_snapshot) if bound_snapshot else None
+    if entry is None and not bound_snapshot:
+        latest = get_latest_history_entry(ws.user_id, record.project_id)
+        basis = ("No committed Run exists for this project yet." if latest is None else
+                 "The active scenario has no committed Run yet (other scenarios' Runs are in History).")
         return {
             "ok": True, "project": {"code": record.project_code}, "unit": "kEUR",
             "status": "NOT_RUN", "run": None, "periods": [], "years": [], "freshness": {"state": "NOT_RUN"},
-            "basis": ("No committed Run exists for this project yet. Last-Run OPEX is shown only from a "
-                      "committed immutable Run; no estimate is invented from the working copy."),
+            "basis": (basis + " Last-Run OPEX is shown only from a committed immutable Run; no estimate is "
+                      "invented from the working copy."),
+        }
+    if entry is None:
+        return {
+            "ok": True, "project": {"code": record.project_code}, "unit": "kEUR",
+            "status": "RUN_EVIDENCE_UNAVAILABLE", "run": None, "periods": [], "years": [],
+            "freshness": {"state": "UNKNOWN"},
+            "basis": ("The active scenario's last result has no immutable Run History entry (for example a legacy "
+                      "Run); its OPEX is NOT_AVAILABLE here rather than taken from another Run."),
         }
 
     from app.workbook.registry import WORKBOOK
@@ -106,6 +121,11 @@ def build_run_opex_projection(record, ws, owner: str) -> dict[str, Any]:
                   "This is the immutable Run's own P&L evidence — not the draft projection, not a "
                   "calendar-year sum, and not an editor preview."),
     }
+
+
+def _history_entry_for_snapshot(user_id: str, project_id: str, snapshot_id: str):
+    from app.persistence.run_history_repository import get_run_history
+    return next((e for e in get_run_history(user_id, project_id) if e.runtime_snapshot_id == snapshot_id), None)
 
 
 def _run_identity(entry) -> dict[str, Any]:

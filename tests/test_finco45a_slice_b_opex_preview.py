@@ -234,9 +234,14 @@ def test_opex_preview_overrides_contingency_dated_leap_and_g10_gate(env, monkeyp
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
     reset_model_executor_for_tests(ModelExecutor(ModelExecutionConfig(mode="thread")))
 
-    # G10 panel remains OFF by default (404), and works when enabled in isolated monkeypatch
+    # FINCO45B: G10 panel is ON by default (NOT_RUN before any Run); the explicit operator OFF is a typed 404
     record = env.create("wind")
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
+    first = env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
+    assert first.status_code == 200 and first.json()["status"] == "NOT_RUN"
+    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "0")
     assert env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code}).status_code == 404
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
 
     # Nonzero B.13 contingency (5%)
     _set_opex_contingency(record, 5.0)
@@ -301,8 +306,7 @@ def test_opex_preview_overrides_contingency_dated_leap_and_g10_gate(env, monkeyp
     y2_after = after_del["operating_preview"]["operating_years"][1]["operating_expenses_keur"]
     assert y2_after > y2_before
 
-    # Isolated G10 test: reflects committed Last Run while draft preview reflects edited state
-    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "1")
+    # G10 (default ON, no flag): reflects committed Last Run while draft preview reflects edited state
     g10 = env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
     assert g10.status_code == 200
     assert g10.json()["freshness"]["state"] == "STALE"
