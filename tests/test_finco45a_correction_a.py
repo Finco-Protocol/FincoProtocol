@@ -490,6 +490,27 @@ def test_bcorr01_non_eur_and_unsupported_project_fail_closed(env):
     assert body["operating_preview"]["available"] is False
     assert body["operating_preview"]["code"] == "UNSUPPORTED_CURRENCY_EUR_ONLY"
 
+    # Typed input validation errors (DUAL_BALANCING_COST_BASIS_FORBIDDEN) must surface in operating_preview (HTTP 200), never HTTP 503
+    snap_dual = dict(ws.draft_snapshot)
+    snap_dual["rev_merchant_balancing_pct"] = "2.5"
+    snap_dual["rev_balancing_cost_eur_per_mwh"] = "8.0"
+    save_workspace_state(
+        user_id=OWNER,
+        project_id=rec.project_id,
+        project_code=rec.project_code,
+        draft_snapshot=snap_dual,
+        saved_snapshot=snap_dual,
+        dirty=False,
+        governance_state=ws.governance_state,
+        replay_metadata=ws.replay_metadata,
+    )
+    resp_dual = env.client.get("/v2/model-react/opex-projection", params={"project": rec.project_code})
+    assert resp_dual.status_code == 200, resp_dual.text
+    body_dual = resp_dual.json()
+    assert body_dual["ok"] is True
+    assert body_dual["operating_preview"]["available"] is False
+    assert body_dual["operating_preview"]["code"] == "DUAL_BALANCING_COST_BASIS_FORBIDDEN"
+
 
 # ── Narrow R04 Scenario Guard & PPA Reload Visibility ──────────────────────────
 

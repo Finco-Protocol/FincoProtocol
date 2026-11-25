@@ -364,7 +364,11 @@ def build_operating_preview(
                 project_id=snap_before.record.project_id,
                 sc_rec=sc_rec,
             )
-            scenario_overrides = sc_rec.overrides if sc_rec is not None else None
+            scenario_overrides = (
+                sc_rec.overrides
+                if (sc_rec is not None and not getattr(sc_rec, "is_base_case", False))
+                else None
+            )
 
         folded_capex = apply_user_sub_lines_replacing_base(
             override.capex,
@@ -537,13 +541,30 @@ async def react_opex_projection(request: Request, project: str = ""):
         snap_before = _capture_opex_read_snapshot(owner, record.project_id)
         ws = snap_before.ws
         pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-        ctx = _build_opex_vm_ctx(snap_before.record, pis, ws=ws, workspace_owner=owner)
-        vm, groups = ctx["opex_vm"], ctx["opex_sheet_groups"]
-        years = int(vm.display_years)
-        rows = [{"code": g.code, "name": g.display_name, "derived": bool(g.is_derived), "has_data": bool(g.has_vm_data),
-                 "escalation": g.escalation_display, "values": _series(g.year_rows, years) if g.has_vm_data else [None] * years}
-                for g in groups]
-        escalation = ctx.get("opex_escalation_summary") or {}
+        try:
+            ctx = _build_opex_vm_ctx(snap_before.record, pis, ws=ws, workspace_owner=owner)
+            vm, groups = ctx["opex_vm"], ctx["opex_sheet_groups"]
+            years = int(vm.display_years)
+            rows = [{"code": g.code, "name": g.display_name, "derived": bool(g.is_derived), "has_data": bool(g.has_vm_data),
+                     "escalation": g.escalation_display, "values": _series(g.year_rows, years) if g.has_vm_data else [None] * years}
+                    for g in groups]
+            escalation = ctx.get("opex_escalation_summary") or {}
+            years_list = list(range(1, years + 1))
+            contingency_out = {"rate_pct": float(vm.contingency_rate), "by_year": _series(vm.contingency_by_year, years)}
+            totals_out = {"excluding_contingency": _series(vm.total_excl_contingency, years), "including_contingency": _series(vm.total_incl_contingency, years)}
+            kpis_out = {"year1_total_keur": vm.y1_total_opex, "final_year_total_keur": vm.final_year_total_opex,
+                        "per_mw_year1_keur": vm.opex_per_mw_y1, "per_mwh_year1_eur": vm.opex_per_mwh_y1}
+            esc_out = {"value": escalation.get("value"), "label": escalation.get("label")}
+        except Exception as vm_exc:  # noqa: BLE001 - surface typed input refusal inside operating_preview rather than 503
+            if _extract_preview_error_code(vm_exc) == "OPERATING_PREVIEW_UNAVAILABLE":
+                raise
+            years_list = []
+            rows = []
+            contingency_out = {"rate_pct": 0.0, "by_year": []}
+            totals_out = {"excluding_contingency": [], "including_contingency": []}
+            kpis_out = {"year1_total_keur": None, "final_year_total_keur": None,
+                        "per_mw_year1_keur": None, "per_mwh_year1_eur": None}
+            esc_out = {"value": None, "label": None}
         operating_preview = build_operating_preview(snap_before.record, ws, owner, _snapshot=snap_before)
 
         snap_after = _capture_opex_read_snapshot(owner, record.project_id)
@@ -572,12 +593,11 @@ async def react_opex_projection(request: Request, project: str = ""):
                 "content_hash": snap_before.identity.composite_hash,
                 "scenario_id": ws.active_scenario_id,
             },
-            "unit": "kEUR", "years": list(range(1, years + 1)), "rows": rows,
-            "contingency": {"rate_pct": float(vm.contingency_rate), "by_year": _series(vm.contingency_by_year, years)},
-            "totals": {"excluding_contingency": _series(vm.total_excl_contingency, years), "including_contingency": _series(vm.total_incl_contingency, years)},
-            "kpis": {"year1_total_keur": vm.y1_total_opex, "final_year_total_keur": vm.final_year_total_opex,
-                     "per_mw_year1_keur": vm.opex_per_mw_y1, "per_mwh_year1_eur": vm.opex_per_mwh_y1},
-            "escalation": {"value": escalation.get("value"), "label": escalation.get("label")},
+            "unit": "kEUR", "years": years_list, "rows": rows,
+            "contingency": contingency_out,
+            "totals": totals_out,
+            "kpis": kpis_out,
+            "escalation": esc_out,
             "basis": (
                 "The saved project's nominal annual OPEX budget (full-year rates per operating year for editable lines, "
                 "each line's escalation and the applied contingency; not prorated for partial COD). Not a Run result."

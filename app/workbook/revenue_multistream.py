@@ -107,6 +107,12 @@ def assess_workspace_bank_case_readiness(ws, owner: str):
         return None
 
     try:
+        if sc_rec is None:
+            raise ValueError("SCENARIO_NOT_FOUND: Active scenario could not be found. Please re-select a scenario and try again.")
+        if getattr(sc_rec, "archived", False):
+            raise ValueError("SCENARIO_ARCHIVED: Active scenario has been archived. Please re-select a scenario and try again.")
+        if getattr(sc_rec, "project_id", None) != getattr(ws, "project_id", ""):
+            raise ValueError("SCENARIO_PROJECT_MISMATCH: Active scenario does not belong to this project. Please re-select and try again.")
         pis = ProjectInputSet.from_snapshot(snap)
         base_override = WorkbookService.to_projectinputs(pis)
         resolved_pi, _ = resolve_effective_scenario_inputs(

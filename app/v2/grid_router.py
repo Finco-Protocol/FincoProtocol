@@ -447,6 +447,11 @@ def _post_save_plausibility_warnings(pis: ProjectInputSet) -> list[dict[str, Any
         tariff = pis.get("revenue.ppa.base_tariff")
     except Exception:  # noqa: BLE001
         tariff = None
+    if tariff is None:
+        try:
+            tariff = (pis.to_snapshot() or {}).get("tariff_eur_mwh")
+        except Exception:  # noqa: BLE001
+            tariff = None
     if tariff is not None and not isinstance(tariff, bool):
         try:
             t_val = float(tariff)

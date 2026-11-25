@@ -31,9 +31,43 @@ def test_sealed_native_sources_and_manifests_unmodified():
         assert "build_id" in data and "source_sha256" in data and "approved_blobs_sha256" in data
 
 
-def _solar_with_zero_schedule_and_shadowed_scalars():
+def _wind_pct_only_explicit_zero():
+    """D-CORR-01 scalar contract via production pipeline: explicit 0.0 per-MWh + pct=0.025."""
+    wind = pf.create_generic_wind_reference()
+    return replace(
+        wind,
+        revenue=replace(
+            wind.revenue,
+            ppa_production_share=0.5,
+            balancing_cost_pv=0.025,
+            balancing_cost_eur_per_mwh=0.0,
+            balancing_cost_wind_eur_mwh=0.0,
+        ),
+    )
+
+
+def _solar_dual_scalar():
+    """Genuine dual nonzero charges (pct + scalar EUR/MWh) refused identically across all arms."""
     solar = pf.create_generic_solar_reference()
     return replace(
+        solar,
+        revenue=replace(
+            solar.revenue,
+            ppa_production_share=0.5,
+            balancing_cost_pv=0.025,
+            balancing_cost_eur_per_mwh=2.0,
+            balancing_cost_wind_eur_mwh=0.0,
+        ),
+    )
+
+
+def test_dcorr01_schedule_precedence_finco_core_authority():
+    """Schedule precedence verified directly against finco_core.revenue.generation (RevenueInput is sealed scalar-only)."""
+    from finco_core.engine.period_engine import PeriodEngine
+    from finco_core.revenue.generation import revenue_decomposition_schedule
+
+    solar = pf.create_generic_solar_reference()
+    masked = replace(
         solar,
         revenue=replace(
             solar.revenue,
@@ -44,21 +78,24 @@ def _solar_with_zero_schedule_and_shadowed_scalars():
             balancing_cost_wind_eur_mwh=8.0,
         ),
     )
-
-
-def _solar_with_dual_nonzero():
-    solar = pf.create_generic_solar_reference()
-    return replace(
-        solar,
+    eng = PeriodEngine(
+        financial_close=masked.info.financial_close,
+        construction_months=masked.info.construction_months,
+        horizon_years=masked.info.horizon_years,
+        ppa_years=int(masked.revenue.ppa_term_years),
+        cod_date=masked.info.cod_date,
+    )
+    decomps = revenue_decomposition_schedule(masked, eng)
+    assert all(d["balancing_cost_wind_keur"] == 0.0 for d in decomps.values() if d["is_operation"])
+    dual_sched = replace(
+        masked,
         revenue=replace(
-            solar.revenue,
-            ppa_production_share=0.5,
-            balancing_cost_pv=0.025,
+            masked.revenue,
             balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=2.0),
-            balancing_cost_eur_per_mwh=0.0,
-            balancing_cost_wind_eur_mwh=0.0,
         ),
     )
+    with pytest.raises(ValueError, match="DUAL_BALANCING_COST_BASIS_FORBIDDEN"):
+        revenue_decomposition_schedule(dual_sched, eng)
 
 
 def _solar_unknown_yield():
@@ -95,8 +132,8 @@ def _r04_dated_100gwh_shortfall():
 @pytest.mark.parametrize(
     "case_id,builder,project_type,expect_digest,expect_positive_native",
     [
-        ("dcorr01_zero_schedule_solar", _solar_with_zero_schedule_and_shadowed_scalars, "Solar", True, True),
-        ("dcorr01_dual_nonzero_refused", _solar_with_dual_nonzero, "Solar", False, False),
+        ("dcorr01_pct_only_explicit_zero_wind", _wind_pct_only_explicit_zero, "Wind", True, True),
+        ("dcorr01_dual_scalar_refused", _solar_dual_scalar, "Solar", False, False),
         ("p1b_tech_02_unknown_yield", _solar_unknown_yield, "Solar", False, False),
         ("r04_dated_70gwh_solar", _r04_dated_70gwh, "Solar", True, True),
         ("r04_dated_100gwh_shortfall", _r04_dated_100gwh_shortfall, "Solar", False, False),

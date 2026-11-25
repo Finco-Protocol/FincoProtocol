@@ -3342,7 +3342,7 @@ async def v2_workbook_run(
             )
             msg = "Active scenario does not belong to this project. Please re-select and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-        _scenario_overrides_for_fold = sc_rec.overrides
+        _scenario_overrides_for_fold = None if sc_rec.is_base_case else sc_rec.overrides
         # Keep display name for provenance only; engine always receives "Base"
         # so the legacy ScenarioManager is never activated by a user-created name.
         scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
@@ -6112,7 +6112,7 @@ async def v2_workbook_goal_seek_run(
                 "apply": None,
                 "request": request,
             })
-        _scenario_overrides_for_fold = sc_rec.overrides
+        _scenario_overrides_for_fold = None if sc_rec.is_base_case else sc_rec.overrides
 
     from app.services.capex_sub_lines_integration import (
         apply_user_sub_lines_replacing_base,
