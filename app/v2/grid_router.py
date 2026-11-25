@@ -439,7 +439,7 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
 
 
 def _post_save_plausibility_warnings(pis: ProjectInputSet) -> list[dict[str, Any]]:
-    """FINCO44-NEW-03: deterministic plausibility warning without an unapproved hard cap."""
+    """FINCO44-NEW-03: post-persistence advisory plausibility warning (UI gate local to React Grid; no hard cap)."""
     import math as _math
 
     warnings: list[dict[str, Any]] = []
@@ -459,9 +459,11 @@ def _post_save_plausibility_warnings(pis: ProjectInputSet) -> list[dict[str, Any
                 "value": t_val,
                 "unit": "EUR/MWh",
                 "threshold": 1000.0,
+                "advisory_only": True,
+                "confirmation_scope": "react_grid_ui_only",
                 "requires_acknowledgment": True,
                 "message": (
-                    f"Plausibility warning: Base Tariff is {t_val:g} EUR/MWh (> 1,000 EUR/MWh threshold). "
+                    f"Plausibility warning (advisory): Base Tariff is {t_val:g} EUR/MWh (> 1,000 EUR/MWh threshold). "
                     "Confirm EUR/MWh vs EUR/kWh units; no hard upper cap is enforced without owner approval."
                 ),
             })
@@ -470,18 +472,9 @@ def _post_save_plausibility_warnings(pis: ProjectInputSet) -> list[dict[str, Any
 
 def _post_save_bank_readiness(ws, owner: str):
     try:
-        from app.persistence.scenarios_repository import get_scenario
-        from app.workbook.revenue_multistream import SNAPSHOT_KEY, assess_snapshot_bank_case_readiness
+        from app.workbook.revenue_multistream import assess_workspace_bank_case_readiness
 
-        overrides = None
-        if getattr(ws, "active_scenario_id", None):
-            scenario = get_scenario(ws.active_scenario_id, owner)
-            if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
-                overrides = scenario.overrides
-        snap = dict(getattr(ws, "draft_snapshot", None) or {})
-        if not (snap.get(SNAPSHOT_KEY) or (overrides or {}).get(SNAPSHOT_KEY)):
-            return None
-        return assess_snapshot_bank_case_readiness(snap, scenario_overrides=overrides)
+        return assess_workspace_bank_case_readiness(ws, owner)
     except Exception:  # noqa: BLE001
         return None
 

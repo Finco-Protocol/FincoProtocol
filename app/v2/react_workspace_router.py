@@ -230,18 +230,9 @@ def _senior_debt_metric(runtime_result) -> dict[str, Any]:
 def _workspace_r04_bank_readiness(ws, owner: str):
     """Non-mutating R04 bank-case readiness for the active workspace snapshot, or None when not applicable."""
     try:
-        from app.persistence.scenarios_repository import get_scenario
-        from app.workbook.revenue_multistream import SNAPSHOT_KEY, assess_snapshot_bank_case_readiness
+        from app.workbook.revenue_multistream import assess_workspace_bank_case_readiness
 
-        overrides = None
-        if getattr(ws, "active_scenario_id", None):
-            scenario = get_scenario(ws.active_scenario_id, owner)
-            if scenario is not None and scenario.project_id == ws.project_id and not scenario.archived and not scenario.is_base_case:
-                overrides = scenario.overrides
-        snap = dict(getattr(ws, "draft_snapshot", None) or {})
-        if not (snap.get(SNAPSHOT_KEY) or (overrides or {}).get(SNAPSHOT_KEY)):
-            return None
-        return assess_snapshot_bank_case_readiness(snap, scenario_overrides=overrides)
+        return assess_workspace_bank_case_readiness(ws, owner)
     except Exception:  # noqa: BLE001 - readiness check must never block workspace load
         return None
 
@@ -671,7 +662,33 @@ async def react_workspace_inputs(request: Request, project: str):
     except WorkbookIdentityError:
         return _json({"ok": False, "code": "WORKSPACE_UNAVAILABLE",
                       "message": "The workspace identity could not be assembled. Reload to refresh."}, 503)
-    return _json({
+
+    from app.v2.grid_router import _post_save_plausibility_warnings
+    _eff_snap = dict(ws.draft_snapshot or {})
+    if getattr(ws, "active_scenario_id", None):
+        try:
+            from app.persistence.scenarios_repository import get_scenario
+            from app.workbook.scenario_revenue_authority import bind_scenario_tariff
+            _sc = get_scenario(ws.active_scenario_id, owner)
+            if (
+                _sc is not None
+                and _sc.project_id == ws.project_id
+                and not _sc.archived
+                and not _sc.is_base_case
+                and isinstance(_sc.overrides, dict)
+            ):
+                if "tariff_eur_mwh" in _sc.overrides:
+                    _eff_snap = bind_scenario_tariff(_eff_snap, _sc.overrides)
+                elif (
+                    (_sc.replay_metadata or {}).get("action") == "q4_finding_whatif_v1"
+                    and "rev_ppa_base_tariff" in _sc.overrides
+                ):
+                    _eff_snap["rev_ppa_base_tariff"] = str(_sc.overrides["rev_ppa_base_tariff"])
+        except Exception:  # noqa: BLE001
+            pass
+    _warnings = _post_save_plausibility_warnings(ProjectInputSet.from_snapshot(_eff_snap, workbook=WORKBOOK))
+
+    out = {
         "ok": True,
         "react_workspace": {"version": REACT_WORKSPACE_VERSION},
         "project": {"code": record.project_code,
@@ -690,7 +707,10 @@ async def react_workspace_inputs(request: Request, project: str):
                     "CAPEX and OPEX line-item editors, not in this grid; the totals shown here follow those lines.",
             "capex_opex_editable": False,
         },
-    })
+    }
+    if _warnings:
+        out["warnings"] = _warnings
+    return _json(out)
 
 
 def _pis_with_identity(record, owner: str, ws):

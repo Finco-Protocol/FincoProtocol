@@ -590,7 +590,7 @@ class WorkbookUpdateService:
             snap_bal[validation.spec.snapshot_key] = str(validation.typed_value)
             try:
                 pi_bal = ProjectInputSet.from_snapshot(snap_bal).to_projectinputs()
-                validate_balancing_cost_inputs(pi_bal.revenue)
+                validate_balancing_cost_inputs(pi_bal.revenue, horizon_years=pi_bal.info.horizon_years)
             except ValueError as exc:
                 raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
 
@@ -769,7 +769,7 @@ class WorkbookUpdateService:
                     snap_bal[spec_i.snapshot_key] = raw_v
             try:
                 pi_bal = ProjectInputSet.from_snapshot(snap_bal).to_projectinputs()
-                validate_balancing_cost_inputs(pi_bal.revenue)
+                validate_balancing_cost_inputs(pi_bal.revenue, horizon_years=pi_bal.info.horizon_years)
             except ValueError as exc:
                 raise FieldValidationError(str(exc), FieldErrorClass.INVALID) from exc
 

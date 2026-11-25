@@ -23,10 +23,68 @@ from finco_core.inputs import TechnicalParams, ProjectInputs, RevenueParams
 from finco_core.engine.period_engine import PeriodEngine, PeriodMeta
 
 
-def validate_balancing_cost_inputs(revenue: RevenueParams) -> None:
+def _has_positive_effective_schedule(
+    sched,
+    *,
+    operating_periods: Sequence[tuple[int, int, int]] | None = None,
+    horizon_years: int | None = None,
+) -> bool:
+    """Return True iff the winning per-period lookup of ``sched`` is strictly > 0.0."""
+    if operating_periods is not None:
+        return any(
+            float(
+                sched.value_for_period(
+                    operating_period_index=op_idx,
+                    operating_year_index=op_yr,
+                    period_in_year=p_in_yr,
+                )
+            ) > 0.0
+            for op_idx, op_yr, p_in_yr in operating_periods
+        )
+    semi_len = len(getattr(sched, "semiannual_values", ()) or ())
+    ann_len = len(getattr(sched, "annual_values", ()) or ())
+    if horizon_years is not None and int(horizon_years) > 0:
+        hy = int(horizon_years)
+        n_slots = (2 * hy + 1) if semi_len > 2 * hy else (2 * hy)
+        for op_idx in range(n_slots):
+            op_yr = min(hy, (op_idx // 2) + 1)
+            p_in_yr = (op_idx % 2) + 1
+            if float(
+                sched.value_for_period(
+                    operating_period_index=op_idx,
+                    operating_year_index=op_yr,
+                    period_in_year=p_in_yr,
+                )
+            ) > 0.0:
+                return True
+        return False
+    tail_year = max((semi_len + 1) // 2, ann_len) + 1
+    n_slots = max(semi_len, 2 * tail_year)
+    for op_idx in range(n_slots):
+        op_yr = (op_idx // 2) + 1
+        p_in_yr = (op_idx % 2) + 1
+        if float(
+            sched.value_for_period(
+                operating_period_index=op_idx,
+                operating_year_index=op_yr,
+                period_in_year=p_in_yr,
+            )
+        ) > 0.0:
+            return True
+    return False
+
+
+def validate_balancing_cost_inputs(
+    revenue: RevenueParams,
+    *,
+    operating_periods: Sequence[tuple[int, int, int]] | None = None,
+    horizon_years: int | None = None,
+) -> None:
     """Reject ambiguous dual nonzero balancing charges (% of merchant + per-MWh).
 
-    Preserves explicit ``0.0`` (distinct from missing) and single-basis charges.
+    Precedence mirrors ``revenue_decomposition_schedule`` exactly:
+    ``balancing_cost_schedule`` (presence) > ``balancing_cost_eur_per_mwh`` > ``balancing_cost_wind_eur_mwh``.
+    Preserves explicit ``0.0`` (distinct from missing) and validates finiteness / non-negativity.
     """
     pct = float(getattr(revenue, "balancing_cost_pv", 0.0))
     per_mwh = float(getattr(revenue, "balancing_cost_eur_per_mwh", 0.0))
@@ -41,7 +99,6 @@ def validate_balancing_cost_inputs(revenue: RevenueParams) -> None:
                 f"BALANCING_COST_INVALID: {name} must be finite and zero or greater (got {val!r})."
             )
     sched = getattr(revenue, "balancing_cost_schedule", None)
-    sched_nonzero = False
     if sched is not None:
         sched_vals = (
             getattr(sched, "constant_value", 0.0),
@@ -54,15 +111,13 @@ def validate_balancing_cost_inputs(revenue: RevenueParams) -> None:
                 raise ValueError(
                     f"BALANCING_COST_INVALID: balancing_cost_schedule entries must be finite and >= 0 (got {v!r})."
                 )
-            if fv > 0.0:
-                sched_nonzero = True
-    # Only the effective winning per-MWh source counts against merchant-% balancing:
-    # precedence is schedule > balancing_cost_eur_per_mwh > balancing_cost_wind_eur_mwh.
-    has_effective_per_mwh = (
-        sched_nonzero
-        or per_mwh > 0.0
-        or (sched is None and per_mwh == 0.0 and wind_mwh > 0.0)
-    )
+        has_effective_per_mwh = _has_positive_effective_schedule(
+            sched,
+            operating_periods=operating_periods,
+            horizon_years=horizon_years,
+        )
+    else:
+        has_effective_per_mwh = (per_mwh > 0.0) or (wind_mwh > 0.0)
     if pct > 0.0 and has_effective_per_mwh:
         raise ValueError(
             "DUAL_BALANCING_COST_BASIS_FORBIDDEN: Merchant % balancing (balancing_cost_pv) and "
@@ -270,18 +325,29 @@ def revenue_decomposition_schedule(
     engine: PeriodEngine,
 ) -> dict[int, dict[str, float | bool]]:
     """Generate period-level revenue decomposition for calibration diagnostics."""
-    validate_balancing_cost_inputs(inputs.revenue)
-    decompositions: dict[int, dict[str, float | bool]] = {}
-    generation_schedule = full_generation_schedule(inputs, engine)
-    multistream = None
     _dated = getattr(engine, "dated_life_end_exclusive", None) is not None
     if _dated:
+        from finco_core.engine.contractual_calendar import operating_year_index as _op_yr_idx
         from finco_core.engine.date_authority import (
             dated_generation_for_interval,
             dated_scalar_revenue_for_period,
             legacy_operating_intervals,
         )
         _intervals = legacy_operating_intervals(engine, inputs.info.cod_date)
+        _op_periods = [
+            (_p.operating_period_index, _op_yr_idx(inputs.info.cod_date, _intervals[_p.index].start), _p.period_in_year)
+            for _p in engine.periods() if _p.is_operation
+        ]
+    else:
+        _op_periods = [
+            (_p.operating_period_index, _p.operating_year_index, _p.period_in_year)
+            for _p in engine.periods() if _p.is_operation
+        ]
+    validate_balancing_cost_inputs(inputs.revenue, operating_periods=_op_periods)
+    decompositions: dict[int, dict[str, float | bool]] = {}
+    generation_schedule = full_generation_schedule(inputs, engine)
+    multistream = None
+    if _dated:
         _hours = _selected_operating_hours(inputs.technical)
     if getattr(inputs.revenue, "multistream_config_json", ""):
         from domain.revenue.multistream_runtime import parse_config

@@ -84,3 +84,80 @@ def assess_snapshot_bank_case_readiness(snapshot, *, scenario_overrides=None):
             "shortfall_periods": [],
             "details": dict(getattr(exc, "details", {}) or {}),
         }
+
+
+def assess_workspace_bank_case_readiness(ws, owner: str):
+    """Non-mutating R04 bank-case readiness for an active workspace, enforcing Run scenario authority."""
+    snap = dict(getattr(ws, "draft_snapshot", None) or {})
+    active_scenario_id = getattr(ws, "active_scenario_id", None)
+    if not active_scenario_id:
+        if not (snap.get(SNAPSHOT_KEY) or "").strip():
+            return None
+        return assess_snapshot_bank_case_readiness(snap)
+
+    from app.persistence.scenarios_repository import get_scenario
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.scenario_override_authority import resolve_effective_scenario_inputs
+    from app.workbook.service import WorkbookService
+
+    sc_rec = get_scenario(active_scenario_id, owner)
+    sc_overrides = dict(getattr(sc_rec, "overrides", None) or {}) if sc_rec is not None else {}
+    has_r04_book = bool((snap.get(SNAPSHOT_KEY) or "").strip() or (sc_overrides.get(SNAPSHOT_KEY) or "").strip())
+    if not has_r04_book:
+        return None
+
+    try:
+        pis = ProjectInputSet.from_snapshot(snap)
+        base_override = WorkbookService.to_projectinputs(pis)
+        resolved_pi, _ = resolve_effective_scenario_inputs(
+            pis,
+            base_override,
+            project_id=getattr(ws, "project_id", ""),
+            sc_rec=sc_rec,
+        )
+        sc_raw = (getattr(resolved_pi.revenue, "multistream_config_json", "") or "").strip()
+        if not sc_raw:
+            return None
+        cfg = parse_config(sc_raw)
+        if cfg is None or not getattr(cfg, "has_absolute_annual_quantity", False):
+            return None
+        return cfg.assess_bank_case_readiness(resolved_pi).to_dict()
+    except Exception as exc:  # noqa: BLE001 - fail closed; never report READY for stale/invalid scenario
+        msg = str(exc)
+        err_code = getattr(exc, "code", None)
+        if not err_code:
+            for prefix in (
+                "Q4_SCENARIO_SOURCE_CHANGED_REPREVIEW_REQUIRED",
+                "Q4_SCENARIO_OVERRIDE_AUTHORITY_INVALID",
+                "Q4_WORKBOOK_MAPPING_CHANGED",
+                "Q4_SCENARIO_OVERRIDE_VALUE_INVALID",
+                "Q4_SCENARIO_ENGINE_INPUT_MISMATCH",
+                "SCENARIO_OVERRIDE_UNBOUND",
+                "SCENARIO_NOT_FOUND",
+                "SCENARIO_ARCHIVED",
+                "SCENARIO_PROJECT_MISMATCH",
+            ):
+                if prefix in msg:
+                    err_code = prefix
+                    break
+        is_p50_cap = err_code == "R04_GLOBAL_P50_CAP_EXCEEDED"
+        is_scenario_err = bool(err_code and (err_code.startswith("SCENARIO_") or err_code.startswith("Q4_")))
+        return {
+            "applicable": True,
+            "runnable": False,
+            "status": (
+                "P50_CAP_EXCEEDED"
+                if is_p50_cap
+                else ("SCENARIO_UNAVAILABLE" if is_scenario_err else "INVALID_CONTRACT")
+            ),
+            "cap_envelope_basis": "P50",
+            "error_code": err_code or "R04_READINESS_UNAVAILABLE",
+            "message": msg,
+            "remediation": (
+                "Re-select, repair, or re-preview the active scenario before running R04 physical contracts."
+                if is_scenario_err
+                else "Review revenue contract dates, quantities, and project timeline."
+            ),
+            "shortfall_periods": [],
+            "details": dict(getattr(exc, "details", {}) or {}),
+        }

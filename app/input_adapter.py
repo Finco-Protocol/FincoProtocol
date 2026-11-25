@@ -1024,7 +1024,7 @@ def _resolve_user_inputs(
         proj = resolve_generic_shl_policy(proj)
 
     from finco_core.revenue.generation import validate_balancing_cost_inputs
-    validate_balancing_cost_inputs(proj.revenue)
+    validate_balancing_cost_inputs(proj.revenue, horizon_years=proj.info.horizon_years)
 
     return proj
 
