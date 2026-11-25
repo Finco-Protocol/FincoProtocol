@@ -8,8 +8,14 @@ import { useOptionalChanges } from "./editing/ChangesProvider";
 import { SCALAR_SECTIONS, sectionOfField } from "./editing/fieldSection";
 import { useDensity } from "./uiDensity";
 
+export interface SavePlausibilityWarning {
+  code: string;
+  field_id?: string;
+  message: string;
+}
+
 export type GridSaveOutcome =
-  | { kind: "saved"; contentHash: string; runState: string }
+  | { kind: "saved"; contentHash: string; runState: string; warnings?: SavePlausibilityWarning[] }
   | { kind: "stale"; message: string }
   | { kind: "rejected"; message: string }
   | { kind: "unknown"; message: string };
@@ -112,6 +118,8 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
   const [message, setMessage] = useState(
     () => (isUnresolved("input-grid") ? "A previous Save outcome is unresolved. Reload to reconcile before saving again." : ""));
   const [activeCode, setActiveCode] = useState<string>("");
+  const [ackHighTariff, setAckHighTariff] = useState(false);
+  const [saveWarnings, setSaveWarnings] = useState<SavePlausibilityWarning[]>([]);
   const [density, toggleDensity] = useDensity();
   // The last submitted batch and the composite hash it was built on: the evidence a reconciliation needs.
   const attempt = useRef<{ cells: Array<{ field_id: string; value: string }>; baselineHash: string } | null>(null);
@@ -125,6 +133,12 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
     const row = rows.find((r) => (r.field_id || r.code) === code);
     return row !== undefined && drafts[code] !== row.value;
   });
+  const tariffRow = rows.find((r) => (r.field_id || r.code) === "revenue.ppa.base_tariff");
+  const rawTariffValue = tariffRow ? (drafts["revenue.ppa.base_tariff"] ?? tariffRow.value) : "";
+  const parsedTariffValue = rawTariffValue !== "" ? Number(rawTariffValue) : NaN;
+  const highTariffWarning = Number.isFinite(parsedTariffValue) && parsedTariffValue > 1000;
+  const tariffDirty = dirtyCodes.includes("revenue.ppa.base_tariff");
+  const ackRequiredAndMissing = highTariffWarning && tariffDirty && !ackHighTariff;
   const locked = status === "conflict" || status === "unknown" || status === "reconciling" || busy;
   const singleFlight = useSingleFlight();
   // Unsaved work: only cells whose staged value really differs from the persisted
@@ -136,20 +150,24 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
   function stage(code: string, value: string) {
     if (protectedRef || locked) return;
     setDrafts((prev) => ({ ...prev, [code]: value }));
+    if (code === "revenue.ppa.base_tariff") setAckHighTariff(false);
     if (status === "saved" || status === "rejected") {
       setStatus("idle");
       setMessage("");
+      setSaveWarnings([]);
     }
   }
 
   function discard() {
     setDrafts({});
+    setAckHighTariff(false);
+    setSaveWarnings([]);
     setStatus("idle");
     setMessage("");
   }
 
   async function save() {
-    if (protectedRef || locked || dirtyCodes.length === 0) return;
+    if (protectedRef || locked || dirtyCodes.length === 0 || ackRequiredAndMissing) return;
     await singleFlight(runSave);
   }
 
@@ -165,6 +183,7 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
     }
     setStatus("saving");
     setMessage("");
+    setSaveWarnings([]);
     activeCellRef.current?.focus();
     attempt.current = { cells, baselineHash: payload.save.content_hash };
     const outcome = await onSave(cells);
@@ -172,6 +191,8 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
       case "saved":
         attempt.current = null;
         setDrafts({});
+        setAckHighTariff(false);
+        setSaveWarnings(outcome.warnings ?? []);
         setStatus("saved");
         setMessage(outcome.runState === "STALE"
           ? "Saved. The project changed after the last Run (results outdated); nothing was re-run."
@@ -372,12 +393,42 @@ export function CanonicalInputGrid({ payload, busy, onSave, onReconcile, query =
         </details>
       ))}
       </div>
+      {(highTariffWarning || saveWarnings.length > 0) && (
+        <div
+          role="alert"
+          data-plausibility-warning="PPA_TARIFF_IMPLAUSIBLE_HIGH"
+          style={{
+            marginTop: "0.75rem",
+            padding: "0.75rem",
+            border: "1px solid #b45309",
+            background: "#fffbeb",
+            color: "#78350f",
+            borderRadius: "6px",
+          }}
+        >
+          <strong>Plausibility warning (not a hard validation error):</strong>{" "}
+          {highTariffWarning
+            ? `Base Tariff (${rawTariffValue} EUR/MWh) exceeds 1,000 EUR/MWh. Confirm EUR/MWh vs EUR/kWh units.`
+            : saveWarnings.map((w) => w.message).join(" ")}
+          {tariffDirty && highTariffWarning && (
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem" }}>
+              <input
+                type="checkbox"
+                data-plausibility-ack="PPA_TARIFF_IMPLAUSIBLE_HIGH"
+                checked={ackHighTariff}
+                onChange={(e) => setAckHighTariff(e.target.checked)}
+              />
+              Acknowledge implausibly high PPA tariff (&gt; 1,000 EUR/MWh) before saving
+            </label>
+          )}
+        </div>
+      )}
       <div className="rx-field-row" style={{ marginTop: "0.75rem" }}>
         <button
           type="button"
           id="rx-grid-save"
           className="rx-button"
-          disabled={protectedRef || dirtyCodes.length === 0 || locked || busy}
+          disabled={protectedRef || dirtyCodes.length === 0 || locked || busy || ackRequiredAndMissing}
           data-save-state={status}
           data-dirty-count={dirtyCodes.length}
           onClick={() => void save()}

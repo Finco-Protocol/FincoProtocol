@@ -180,7 +180,7 @@ def test_selected_scenario_contracts_reject_legacy_price_edits_and_old_selection
     page = env.client.get("/v2/workbook", params=project).text
     rejected = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
         data={**project, **tokens(page), "sheet_id": "revenue", "field_id": "revenue.ppa.base_tariff", "value": "123"})
-    assert rejected.status_code == 200
+    assert rejected.status_code == 422
     assert "workbook-field-error" in rejected.headers.get("HX-Trigger", "")
     assert "REVENUE_V2_PRICING_AUTHORITY" in rejected.text
     assert get_workspace_state("decision-user", record.project_id) == before

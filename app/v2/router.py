@@ -2601,12 +2601,13 @@ async def v2_workbook_update(
             status_code=303,
         )
 
-    def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+    def _htmx_error(pis_for_render, field_error: str, *, status_code: int = 200) -> HTMLResponse:
         resp = _htmx_error_sheet(pis_for_render, field_error)
         if field_id == "debt.financing.instruments":
             # SC-04: the capital stack form holds many typed cells. A rejected Save must not swap the persisted sheet over them; the
             # browser shows the error in the form (workbook-field-error) and keeps the draft. OOB swaps are still processed.
             resp.headers["HX-Reswap"] = "none"
+        resp.status_code = status_code
         return resp
 
     def _htmx_error_sheet(pis_for_render, field_error: str) -> HTMLResponse:
@@ -2663,7 +2664,7 @@ async def v2_workbook_update(
     except ProtectedReferenceError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            resp = _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc), status_code=403)
             return _add_field_error_trigger(resp, field_id, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
@@ -2672,7 +2673,7 @@ async def v2_workbook_update(
             msg = STALE_FIELD_MESSAGE
             # The conflict is shown once, at the field (with a Reload action). The message stays in the response body (the banner carries it hidden, so the
             # response contract is unchanged) but the banner is not shown or announced a second time.
-            resp = _htmx_error(pis, msg)
+            resp = _htmx_error(pis, msg, status_code=409)
             return _add_field_error_trigger(resp, field_id, msg, conflict=True)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
@@ -2682,7 +2683,7 @@ async def v2_workbook_update(
     except FieldValidationError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
-            resp = _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc), status_code=422)
             resp = _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
         else:
             resp = _redirect_with_error(str(exc))
@@ -2897,6 +2898,17 @@ def _engine_failure_message(exc: BaseException) -> str:
             "Both percentage merchant balancing (% of spot sales) and per-MWh balancing cost are nonzero. "
             "Set one basis explicitly to 0 in Revenue -> Balancing & CO2 and run again. "
             "No Run was saved; the previous Last Run is unchanged. (Reference: DUAL_BALANCING_COST_BASIS_FORBIDDEN)"
+        )
+    if "UNKNOWN_YIELD_SCENARIO" in evidence:
+        return (
+            "The selected yield scenario is unrecognized; only documented P50 or P90-10y cases are supported. "
+            "Update Technical -> Yield Scenario and run again. No Run was saved; the previous Last Run is unchanged. "
+            "(Reference: UNKNOWN_YIELD_SCENARIO)"
+        )
+    if "UNSUPPORTED_CURRENCY_EUR_ONLY" in evidence:
+        return (
+            "Only EUR monetary models are supported; no FX conversion contract exists for non-EUR display currency labels. "
+            "Reset currency to EUR (or review legacy historical entries without converting amounts). No Run was saved."
         )
     if "MERCHANT_PRICE_COVERAGE_MISSING" in evidence:
         import re as _re
@@ -3253,6 +3265,26 @@ async def v2_workbook_run(
         return JSONResponse({"error": msg}, status_code=409)
 
     # ── Step 7: materialise from draft snapshot ────────────────────────────── #
+    # FINCO44-NEW-05: refuse executing a model labeled non-EUR (no FX conversion contract exists)
+    _draft_currency = str((pis_draft.to_snapshot() or {}).get("currency") or "EUR").strip().upper()
+    if _draft_currency and _draft_currency != "EUR":
+        from app.v2.run_failure_explanation import explain_run_failure
+        _curr_err = ValueError(
+            f"UNSUPPORTED_CURRENCY_EUR_ONLY: Working Copy specifies {_draft_currency!r}, "
+            "which has no FX conversion authority; only EUR models can be Run."
+        )
+        _curr_msg = _engine_failure_message(_curr_err)
+        if is_htmx:
+            _curr_resp = _htmx_error(_curr_msg, ws, explain_run_failure(_curr_err, message=_curr_msg, ws=ws, pis=pis_draft))
+            _curr_resp.status_code = 422
+            return _curr_resp
+        if "application/json" in (request.headers.get("accept") or ""):
+            return JSONResponse(
+                {"ok": False, "outcome": "FAILED", "code": "UNSUPPORTED_CURRENCY_EUR_ONLY", "message": _curr_msg},
+                status_code=422,
+            )
+        return _non_htmx_error(_curr_msg)
+
     # draft_snapshot is the V2 canonical run boundary: it contains the exact
     # scalar values the user saw and approved when they clicked Run.
     try:

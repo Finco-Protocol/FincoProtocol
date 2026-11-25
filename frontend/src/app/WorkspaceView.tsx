@@ -486,7 +486,10 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           save: { ...prev.save, content_hash: b.content_hash as string, csrf_token: "" },
         } : prev);
         afterMutation();
-        return { kind: "saved", contentHash: b.content_hash as string, runState: b.run_state as string };
+        const warnings = Array.isArray(b.warnings)
+          ? (b.warnings as Array<{ code: string; message: string }>)
+          : undefined;
+        return { kind: "saved", contentHash: b.content_hash as string, runState: b.run_state as string, warnings };
       }
       if (response.ok) {
         return {

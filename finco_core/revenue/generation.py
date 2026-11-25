@@ -72,18 +72,37 @@ def validate_balancing_cost_inputs(revenue: RevenueParams) -> None:
 
 
 
+_P90_10Y_ALIASES = frozenset({"P90-10Y", "P90-10-Y", "P90 10Y"})
+_P50_ALIASES = frozenset({"P50", "P-50", "P 50"})
+
+
+def _normalize_yield_scenario(yield_scenario: object) -> str:
+    raw = getattr(yield_scenario, "value", yield_scenario)
+    return str(raw).replace("_", "-").strip().upper()
+
+
 def _is_p90_10y_scenario(yield_scenario: str) -> bool:
     """Normalize common P90-10y spellings used across Excel/app inputs."""
-    normalized = str(yield_scenario).replace("_", "-").upper()
-    return normalized in {"P90-10Y", "P90-10-Y", "P90 10Y"}
+    return _normalize_yield_scenario(yield_scenario) in _P90_10Y_ALIASES
 
 
 def _selected_operating_hours(tech: TechnicalParams, yield_scenario: str | None = None) -> float:
-    """Return operating hours for the selected yield scenario."""
+    """Return operating hours for the selected yield scenario; fail closed on unknown strings."""
     selected = yield_scenario if yield_scenario is not None else tech.yield_scenario
-    if _is_p90_10y_scenario(str(selected)):
+    if selected is None:
+        return tech.operating_hours_p50
+    raw = getattr(selected, "value", selected)
+    if str(raw).strip() == "":
+        return tech.operating_hours_p50
+    normalized = _normalize_yield_scenario(selected)
+    if normalized in _P90_10Y_ALIASES:
         return tech.operating_hours_p90_10y
-    return tech.operating_hours_p50
+    if normalized in _P50_ALIASES:
+        return tech.operating_hours_p50
+    raise ValueError(
+        f"UNKNOWN_YIELD_SCENARIO: unrecognized yield_scenario {selected!r}; "
+        "expected a documented P50 or P90-10y scenario."
+    )
 
 
 def period_generation(

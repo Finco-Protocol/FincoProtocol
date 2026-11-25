@@ -305,6 +305,21 @@ class WorkbookUpdateService:
                 error_class=FieldErrorClass.INVALID,
             )
 
+        # --- FINCO44-NEW-05: constrain new/edited currency saves to EUR ---
+        if field_id == "project_setup.identity.currency":
+            if str(typed).strip().upper() != "EUR":
+                return FieldValidationResult(
+                    field_id=field_id,
+                    raw_value=raw_value,
+                    typed_value=typed,
+                    spec=spec,
+                    error=(
+                        f"UNSUPPORTED_CURRENCY_EUR_ONLY: {spec.label} {typed!r} has no FX conversion "
+                        "authority; only 'EUR' is supported for new or edited saves."
+                    ),
+                    error_class=FieldErrorClass.INVALID,
+                )
+
         # --- 5. Bounds validation ----------------------------------------
         if spec.min_value is not None and isinstance(typed, (int, float)):
             if typed < spec.min_value:

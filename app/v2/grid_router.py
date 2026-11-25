@@ -206,6 +206,7 @@ async def grid_save(body: GridSaveRequest, request: Request,
     freshness = resolve_runtime_freshness(fresh, current_composite_hash=identity.composite_hash)
     pis = ProjectInputSet.from_snapshot(fresh.draft_snapshot, workbook=WORKBOOK)
     readiness = _post_save_bank_readiness(fresh, owner)
+    warnings = _post_save_plausibility_warnings(pis)
     out = {
         "ok": True,
         "saved": [{"field_id": fid, "value": _display(pis.get(fid))} for fid, _ in updates],
@@ -217,6 +218,8 @@ async def grid_save(body: GridSaveRequest, request: Request,
     }
     if readiness is not None:
         out["bank_case_readiness"] = readiness
+    if warnings:
+        out["warnings"] = warnings
     return _json(out)
 
 
@@ -421,6 +424,8 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     from app.workbook.runtime_authority import resolve_runtime_freshness
     freshness = resolve_runtime_freshness(fresh, current_composite_hash=identity.composite_hash)
     readiness = _post_save_bank_readiness(fresh, owner)
+    pis = ProjectInputSet.from_snapshot(fresh.draft_snapshot, workbook=WORKBOOK)
+    warnings = _post_save_plausibility_warnings(pis)
     out = {
         "ok": True, "replayed": result.replayed, "saved": result.counts,
         "content_hash": identity.composite_hash, "workbook_version": WORKBOOK.version,
@@ -428,7 +433,39 @@ async def workbook_save_all(body: SaveAllBody, request: Request, _: None = Depen
     }
     if readiness is not None:
         out["bank_case_readiness"] = readiness
+    if warnings:
+        out["warnings"] = warnings
     return _json(out)
+
+
+def _post_save_plausibility_warnings(pis: ProjectInputSet) -> list[dict[str, Any]]:
+    """FINCO44-NEW-03: deterministic plausibility warning without an unapproved hard cap."""
+    import math as _math
+
+    warnings: list[dict[str, Any]] = []
+    try:
+        tariff = pis.get("revenue.ppa.base_tariff")
+    except Exception:  # noqa: BLE001
+        tariff = None
+    if tariff is not None and not isinstance(tariff, bool):
+        try:
+            t_val = float(tariff)
+        except (TypeError, ValueError):
+            t_val = float("nan")
+        if _math.isfinite(t_val) and t_val > 1000.0:
+            warnings.append({
+                "code": "PPA_TARIFF_IMPLAUSIBLE_HIGH",
+                "field_id": "revenue.ppa.base_tariff",
+                "value": t_val,
+                "unit": "EUR/MWh",
+                "threshold": 1000.0,
+                "requires_acknowledgment": True,
+                "message": (
+                    f"Plausibility warning: Base Tariff is {t_val:g} EUR/MWh (> 1,000 EUR/MWh threshold). "
+                    "Confirm EUR/MWh vs EUR/kWh units; no hard upper cap is enforced without owner approval."
+                ),
+            })
+    return warnings
 
 
 def _post_save_bank_readiness(ws, owner: str):

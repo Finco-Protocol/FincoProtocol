@@ -192,7 +192,7 @@ class TestTypedClassTravelsThroughTheRealRouter:
 
     def test_status_codes_and_rerender_are_preserved(self, project, client, path):
         resp = _post(client, project, path, CAPACITY, "0")
-        assert resp.status_code == (422 if path == SLICE1 else 200)
+        assert resp.status_code == 422
         assert "text/html" in resp.headers["content-type"]
         assert resp.text.strip()                           # the sheet is still re-rendered
 
@@ -214,7 +214,7 @@ class TestUntypedRejectionsStayUntyped:
             event = _event(resp)
             assert "error_class" in event and event["error_class"] is None
             assert "Draft changed" in event["message"]
-            assert resp.status_code == (409 if path == SLICE1 else 200)
+            assert resp.status_code == 409
 
     def test_value_validation_precedes_the_stale_check_and_stays_typed(self, project, client):
         """Existing order (unchanged): pure validation runs before the CAS, so an

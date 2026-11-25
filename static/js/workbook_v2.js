@@ -159,10 +159,11 @@
   });
 })();
 
-// Scoped HTMX handling for controlled Slice 1 application errors.
+// Scoped HTMX handling for controlled workbook/slice1 4xx error fragments (C1-Q-06).
 (function () {
   var SLICE1_UPDATE_ENDPOINT = '/v2/workbook/inputs-slice1/update';
-  var CONTROLLED_SWAP_STATUSES = { 409: true, 422: true };
+  var GENERAL_UPDATE_ENDPOINT = '/v2/workbook/update';
+  var CONTROLLED_SWAP_STATUSES = { 403: true, 409: true, 422: true };
 
   window.v2ShouldSwapSlice1ErrorResponse = function (event) {
     var detail = (event && event.detail) || {};
@@ -180,7 +181,8 @@
 
     return !!(
       CONTROLLED_SWAP_STATUSES[status] &&
-      requestPath.indexOf(SLICE1_UPDATE_ENDPOINT) !== -1
+      (requestPath.indexOf(SLICE1_UPDATE_ENDPOINT) !== -1 ||
+       requestPath.indexOf(GENERAL_UPDATE_ENDPOINT) !== -1)
     );
   };
 
