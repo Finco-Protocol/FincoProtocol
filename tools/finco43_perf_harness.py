@@ -111,6 +111,20 @@ def engine(args) -> int:
     return 0
 
 
+NATIVE_ARMS = {  # arm -> (FINCO_NATIVE_V10_RUN, FINCO_NATIVE_V11_RUN): the real production settings, read per Run
+    "OFF": ("off", "off"), "S1": ("stage1", "off"), "S1+2": ("stage1+2", "off"), "S3": ("off", "on"),
+    "S1+S3": ("stage1", "on"), "S1+2+S3": ("stage1+2", "on"),
+}
+
+
+def _set_native_arm(arm: str, tmp: str) -> None:
+    v10, v11 = NATIVE_ARMS[arm]
+    os.environ["FINCO_NATIVE_V10_RUN"], os.environ["FINCO_NATIVE_V11_RUN"] = v10, v11
+    # kill-switch paths inside the disposable directory (absent -> not switched); never the host's /var/lib paths
+    os.environ["FINCO_NATIVE_V10_KILL_SWITCH_FILE"] = str(Path(tmp) / "native_v10_run.disabled")
+    os.environ["FINCO_NATIVE_V11_KILL_SWITCH_FILE"] = str(Path(tmp) / "native_v11_run.disabled")
+
+
 def http(args) -> int:
     os.environ["FINCO_MODEL_EXECUTION_MODE"] = args.mode
     tree = os.path.abspath(args.tree)
@@ -132,6 +146,9 @@ def http(args) -> int:
         from app.workbook.update_service import WorkbookUpdateService
         from tests.run_clone_csrf import post_valid_csrf
 
+        from app.runtime import native_activation
+
+        arms = args.native_arms.split(",")
         lines: list[str] = []
 
         class _Stages(logging.Handler):
@@ -160,41 +177,58 @@ def http(args) -> int:
                             re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1),
                             len(page.content), elapsed)
 
+                k = 0
                 for i in range(args.runs + 1):
-                    h, v, _, _ = tokens()
-                    if i:  # real draft edit before every measured Run -> unique inputs, real recompute
-                        WorkbookUpdateService.apply_draft_update(
-                            ws=get_workspace_state(uid, record.project_id), field_id="revenue.ppa.base_tariff",
-                            raw_value=f"{60.0 + 0.125 * i:.3f}", content_hash=h, workbook_version=v,
-                            project_record=record)
+                    order = arms if i % 2 == 0 else arms[::-1]          # AB / BA alternation within one warm pool
+                    for arm in order:
+                        k += 1
+                        _set_native_arm(arm, tmp)
                         h, v, _, _ = tokens()
-                    t = time.perf_counter()
-                    response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies,
-                                               headers={"HX-Request": "true"},
-                                               data={"project": record.project_code, "content_hash": h,
-                                                     "workbook_version": v})
-                    route = time.perf_counter() - t
-                    assert response.status_code == 200, response.status_code
-                    _, _, get_bytes, get_s = tokens()
-                    stages = {k: int(x) for k, x in re.findall(r"(\w+)=(\d+)ms", lines[-1])}
-                    rows.append({"case": case, "i": i, "first": i == 0, "route_s": route,
-                                 "response_bytes": len(response.content), "get_after_bytes": get_bytes,
-                                 "get_after_s": get_s, "stages_ms": stages})
-                    print(json.dumps(rows[-1]), flush=True)
+                        if k > 1:  # real draft edit before every Run after the first -> unique inputs, real recompute
+                            WorkbookUpdateService.apply_draft_update(
+                                ws=get_workspace_state(uid, record.project_id), field_id="revenue.ppa.base_tariff",
+                                raw_value=f"{60.0 + 0.125 * k:.3f}", content_hash=h, workbook_version=v,
+                                project_record=record)
+                            h, v, _, _ = tokens()
+                        before = native_activation.snapshot()["totals"].get("runs", 0)
+                        t = time.perf_counter()
+                        response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies,
+                                                   headers={"HX-Request": "true"},
+                                                   data={"project": record.project_code, "content_hash": h,
+                                                         "workbook_version": v})
+                        route = time.perf_counter() - t
+                        assert response.status_code == 200, response.status_code
+                        snap = native_activation.snapshot()
+                        # evidence of THIS Run, returned by the worker that executed it (None: canonical call, OFF)
+                        native = snap["last_run"] if snap["totals"].get("runs", 0) == before + 1 else None
+                        _, _, get_bytes, get_s = tokens()
+                        stages = {key: int(x) for key, x in re.findall(r"(\w+)=(\d+)ms", lines[-1])}
+                        rows.append({"case": case, "arm": arm, "i": i, "first": i == 0, "route_s": route,
+                                     "response_bytes": len(response.content), "get_after_bytes": get_bytes,
+                                     "get_after_s": get_s, "stages_ms": stages, "native": native})
+                        print(json.dumps({x: y for x, y in rows[-1].items() if x != "native"}
+                                         | {"native_calls": (native or {}).get("native_calls"),
+                                            "v11_models": ((native or {}).get("v11") or {}).get("native_models")}),
+                              flush=True)
         stage_log.removeHandler(handler)
         summary = {}
         for case in ("solar", "wind"):
-            sel = [r for r in rows if r["case"] == case and not r["first"]]
-            summary[case] = {"route_s": _summ([r["route_s"] for r in sel]),
-                             "response_bytes_p50": statistics.median(r["response_bytes"] for r in sel),
-                             "stages_ms_p50": {k: statistics.median(r["stages_ms"].get(k, 0) for r in sel)
-                                               for k in sel[0]["stages_ms"]}}
+            for arm in arms:
+                sel = [r for r in rows if r["case"] == case and r["arm"] == arm and not r["first"]]
+                if not sel:
+                    continue
+                summary[f"{case}:{arm}"] = {
+                    "route_s": _summ([r["route_s"] for r in sel]),
+                    "model_ms": _summ([r["stages_ms"].get("model_completed", 0) for r in sel]),
+                    "response_bytes_p50": statistics.median(r["response_bytes"] for r in sel),
+                    "stages_ms_p50": {key: statistics.median(r["stages_ms"].get(key, 0) for r in sel)
+                                      for key in sel[0]["stages_ms"]}}
         print(json.dumps(summary, indent=1))
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True).stdout.strip()
         import financial_engine
         assert os.path.dirname(os.path.dirname(os.path.abspath(financial_engine.__file__))) == tree
-        Path(args.out).write_text(json.dumps({"mode": args.mode, "head": head, "rows": rows, "summary": summary},
-                                             indent=1))
+        Path(args.out).write_text(json.dumps({"mode": args.mode, "head": head, "arms": arms, "rows": rows,
+                                              "summary": summary}, indent=1))
         return 0
     finally:
         try:
@@ -220,6 +254,8 @@ def main(argv=None) -> int:
     h.add_argument("--mode", choices=("process", "thread"), default="process")
     h.add_argument("--out", required=True)
     h.add_argument("--tree", default=str(ROOT), help="source tree to measure (baseline or candidate checkout)")
+    h.add_argument("--native-arms", default="OFF",
+                   help="comma-separated arms interleaved AB/BA in ONE server: " + ",".join(NATIVE_ARMS))
     args = ap.parse_args(argv)
     return engine(args) if args.cmd == "engine" else http(args)
 
