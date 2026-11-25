@@ -146,7 +146,39 @@ function BessSetupEditor({ capability, requestId, csrfToken }: {
             <strong>Native schema valid · financial activation blocked</strong>
             <dl><div><dt>Duration (usable MWh ÷ discharge MW)</dt><dd><output>{result.battery.duration_hours} h</output></dd></div>
               <div><dt>Explicit hourly horizon</dt><dd>{result.start} → {result.end}</dd></div>
-              <div><dt>Dispatch</dt><dd>{result.dispatch_mode} · {result.dispatch_rows} rows · {result.events} events</dd></div></dl>
+              <div><dt>Dispatch</dt><dd>{result.dispatch_mode} · {result.dispatch_rows} rows · {result.events} events</dd></div>
+              <div><dt>Rated discharge power / usable DC capacity</dt><dd>{result.battery.discharge_power_mw} MW / {result.battery.usable_energy_mwh} MWh (installed {result.battery.installed_energy_mwh} MWh)</dd></div>
+              <div><dt>Efficiencies (charge × discharge = RTE)</dt><dd>{result.battery.charge_efficiency} × {result.battery.discharge_efficiency} = {result.battery.round_trip_efficiency}</dd></div>
+              <div><dt>State-of-charge bounds</dt><dd>{result.battery.soc_min} – {result.battery.soc_max} (initial {result.battery.initial_energy_mwh} / terminal {result.battery.terminal_energy_mwh} MWh)</dd></div></dl>
+            {result.declared_terms && (
+              <div className="bess-declared-terms" data-bess-declared-terms="true">
+                <p className="rx-note">Declared terms ({result.declared_terms.scope}) · SHA-256 <code>{result.declared_terms.native_input_sha256.slice(0, 16)}…</code></p>
+                <dl>
+                  <div><dt>Variable O&amp;M</dt><dd>{result.declared_terms.costs.variable_om.value ?? "NOT_AVAILABLE"} {result.declared_terms.costs.variable_om.unit ?? ""}</dd></div>
+                  <div><dt>CAPEX / Fixed OPEX / Tax</dt><dd>{result.declared_terms.costs.capex.status} / {result.declared_terms.costs.fixed_opex.status} / {result.declared_terms.costs.tax.status}</dd></div>
+                  <div><dt>Funding / Debt / DSCR</dt><dd>{result.declared_terms.financing.funding.status} / {result.declared_terms.financing.debt.status} / {result.declared_terms.financing.dscr.status}</dd></div>
+                  <div><dt>Capacity / Ancillary / Tolling</dt><dd>{result.declared_terms.dispatch_and_prices.capacity.status} / {result.declared_terms.dispatch_and_prices.ancillary.status} / {result.declared_terms.dispatch_and_prices.tolling.status}</dd></div>
+                </dl>
+                {result.declared_terms.dispatch_and_prices.rows.length > 0 && (
+                  <details>
+                    <summary>Declared dispatch &amp; price rows ({result.declared_terms.dispatch_and_prices.rows.length} of {result.declared_terms.dispatch_and_prices.total_rows})</summary>
+                    <div className="bess-table-scroll">
+                      <table>
+                        <thead><tr><th>Coordinate ({result.declared_terms.dispatch_and_prices.time_basis})</th><th>Charge MW</th><th>Discharge MW</th><th>Aux MW</th><th>Buy EUR/MWh</th><th>Sell EUR/MWh</th></tr></thead>
+                        <tbody>
+                          {result.declared_terms.dispatch_and_prices.rows.map((r, idx) => (
+                            <tr key={idx}>
+                              <td>{String(r.coordinate)}</td><td>{String(r.charge_mw)}</td><td>{String(r.discharge_mw)}</td>
+                              <td>{String(r.auxiliary_grid_mw)}</td><td>{String(r.buy_price_eur_mwh)}</td><td>{String(r.sell_price_eur_mwh)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
             <p>Schema validation does not evaluate physical dispatch balance, align a financial period axis, or prove revenue, financing or Results. Nothing was saved or run.</p>
           </div>}
         </div>

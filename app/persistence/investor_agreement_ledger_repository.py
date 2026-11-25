@@ -111,6 +111,29 @@ def tombstone_agreement(
     )
 
 
+def list_scope_versions(
+    conn: sqlite3.Connection | sqlite3.Cursor,
+    *,
+    owner_id: str,
+    project_id: str,
+    scenario_id: str,
+) -> dict[str, int]:
+    """Return {agreement_id: max_version} for the given (owner_id, project_id, scenario_id) scope."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='investor_agreement_version_ledger'"
+    ).fetchone()
+    if has_table is None:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT agreement_id, max_version FROM investor_agreement_version_ledger
+        WHERE owner_id = ? AND project_id = ? AND scenario_id = ?
+        """,
+        (owner_id, project_id, scenario_id or ""),
+    ).fetchall()
+    return {str(row[0]): int(row[1]) for row in rows}
+
+
 def next_version_for_agreement(
     owner_id: str,
     project_id: str,

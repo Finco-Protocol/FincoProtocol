@@ -7,10 +7,24 @@ export interface AgreementDraft { agreementId: string; investors: InvestorRow[];
 
 const numberOrNull = (text: string): number | null => (text === "" ? null : Number(text));
 
-export function serializeAgreement(d: AgreementDraft, saved: { agreementId: string; nextVersion: number }): string {
+export function resolveNextVersion(
+  agreementId: string,
+  saved: { agreementId: string; nextVersion: number; ledgerNextVersions?: Record<string, number> },
+): number {
+  const map = saved.ledgerNextVersions;
+  if (map && Object.prototype.hasOwnProperty.call(map, agreementId)) {
+    return map[agreementId];
+  }
+  return agreementId === saved.agreementId ? saved.nextVersion : 1;
+}
+
+export function serializeAgreement(
+  d: AgreementDraft,
+  saved: { agreementId: string; nextVersion: number; ledgerNextVersions?: Record<string, number> },
+): string {
   return JSON.stringify({
     schema_version: 1, agreement_id: d.agreementId,
-    version: d.agreementId === saved.agreementId ? saved.nextVersion : 1,
+    version: resolveNextVersion(d.agreementId, saved),
     currency: "EUR", unit: "kEUR", policy: "RESIDUAL_ONLY",
     investors: d.investors.map((r) => {
       const fraction = numberOrNull(r.ownershipPct);

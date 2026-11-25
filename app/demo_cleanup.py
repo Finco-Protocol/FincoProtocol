@@ -66,9 +66,18 @@ def _timestamp(value: str) -> datetime:
         raise DemoCleanupError("Invalid demo activity timestamp") from exc
 
 
+def _optional_table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,),
+    ).fetchone() is not None
+
+
 def _demo_activity(conn: sqlite3.Connection) -> dict[str, list[datetime]]:
     activity: dict[str, list[datetime]] = {}
-    for table, column in _ACTIVITY:
+    pairs = list(_ACTIVITY)
+    if _optional_table_exists(conn, "model_m6_acquisition_cases"):
+        pairs.append(("model_m6_acquisition_cases", "updated_at"))
+    for table, column in pairs:
         rows = conn.execute(
             f"SELECT user_id, {column} AS activity FROM {table} "
             "WHERE substr(user_id, 1, ?) = ? COLLATE BINARY",
@@ -139,6 +148,17 @@ def _delete_owned_state(conn: sqlite3.Connection, user_ids: list[str], summary: 
         )
         if cur.rowcount:
             summary[table] = cur.rowcount
+    if _optional_table_exists(conn, "model_m6_acquisition_revisions") and _optional_table_exists(conn, "model_m6_acquisition_cases"):
+        cur = conn.execute(
+            "DELETE FROM model_m6_acquisition_revisions WHERE case_id IN "
+            f"(SELECT case_id FROM model_m6_acquisition_cases WHERE user_id IN ({marks}))", user_ids,
+        )
+        if cur.rowcount:
+            summary["model_m6_acquisition_revisions"] = cur.rowcount
+    if _optional_table_exists(conn, "model_m6_acquisition_cases"):
+        cur = conn.execute(f"DELETE FROM model_m6_acquisition_cases WHERE user_id IN ({marks})", user_ids)
+        if cur.rowcount:
+            summary["model_m6_acquisition_cases"] = cur.rowcount
     for table in _TABLES_WITH_USER_ID:
         cur = conn.execute(f"DELETE FROM {table} WHERE user_id IN ({marks})", user_ids)
         if cur.rowcount:
@@ -189,6 +209,11 @@ def _bootstrap_preflight(conn: sqlite3.Connection) -> list[str]:
             owner = row["user_id"]
             if owner != "__reference__" and not owner.startswith(DEMO_USER_ID_PREFIX):
                 raise DemoCleanupError("Bootstrap refuses permanent/admin state before mutation")
+    if _optional_table_exists(conn, "model_m6_acquisition_cases"):
+        for row in conn.execute("SELECT DISTINCT user_id FROM model_m6_acquisition_cases"):
+            owner = row["user_id"]
+            if owner != "__reference__" and not owner.startswith(DEMO_USER_ID_PREFIX):
+                raise DemoCleanupError("Bootstrap refuses permanent/admin state before mutation")
     owners = sorted(_demo_activity(conn))
     _validate_owned_state(conn, owners)
     return owners
@@ -200,6 +225,9 @@ def _bootstrap_postcondition(conn: sqlite3.Connection) -> None:
     for table in ("projects",) + _TABLES_WITH_USER_ID:
         if conn.execute(f"SELECT 1 FROM {table} WHERE user_id != '__reference__' LIMIT 1").fetchone():
             raise ValueError(f"bootstrap_staging_db post-condition failed: {table}")
+    if _optional_table_exists(conn, "model_m6_acquisition_cases"):
+        if conn.execute("SELECT 1 FROM model_m6_acquisition_cases WHERE user_id != '__reference__' LIMIT 1").fetchone():
+            raise ValueError("bootstrap_staging_db post-condition failed: model_m6_acquisition_cases")
 
 
 def bootstrap_staging_db(conn: sqlite3.Connection) -> dict:

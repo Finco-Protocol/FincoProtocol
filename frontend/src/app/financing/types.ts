@@ -83,9 +83,25 @@ export interface InvestorEvidenceRow {
   dpi: number | null; realized_moic: number | null; xirr: number | null; xirr_status: string;
 }
 export interface SponsorMetric { label: string; value: number | null; display: string; source: string; reason: string }
+export interface InvestorHistoryEntry {
+  history_id: string;
+  ran_at: string;
+  scenario_name: string;
+  has_investor_evidence: boolean;
+}
 export interface InvestorPayload {
   ok: true; project: { code: string }; editable: boolean; state: string;
-  identity: { content_hash: string; workbook_version: string; scenario_name: string | null };
+  selected_history_id?: string | null;
+  identity: {
+    scope?: "CURRENT" | "HISTORICAL";
+    history_id?: string;
+    snapshot_id?: string;
+    ran_at?: string;
+    content_hash: string;
+    workbook_version: string;
+    scenario_id?: string | null;
+    scenario_name: string | null;
+  };
   terms: AgreementDocument | null;
   workflow: { state: string; text: string };
   draft_warning?: {
@@ -94,14 +110,23 @@ export interface InvestorPayload {
     total_paid_in_keur: number;
     total_commitment_keur: number;
     mismatched_dates?: string[];
+    funding_reference_state?: string;
+    stale_funding_reference?: boolean;
+    advisory_message?: string;
     message: string;
   } | null;
   evidence: { snapshot_id: string; agreement: { agreement_id: string; version: number }; investors: InvestorEvidenceRow[] } | null;
   unavailable: string;
   funding: Array<{ date: string; paid_in_keur: number }>;
-  sponsor: { mode: string; equity: SponsorMetric[]; other: SponsorMetric[]; shl: SponsorMetric[]; repayment: string; day_count: string;
-             eligibility: number | null; maturity: number | null; returns: SponsorMetric[] };
-  save: { url: string; csrf_token: string; next_version: number; saved_agreement_id: string };
+  history?: InvestorHistoryEntry[];
+  sponsor: {
+    source_scope?: string;
+    inputs_available?: boolean;
+    inputs_unavailable_reason?: string;
+    mode: string; equity: SponsorMetric[]; other: SponsorMetric[]; shl: SponsorMetric[]; repayment: string; day_count: string;
+    eligibility: number | null; maturity: number | null; returns: SponsorMetric[];
+  };
+  save: { url: string; csrf_token: string; next_version: number; saved_agreement_id: string; ledger_next_versions?: Record<string, number> } | null;
   export_url: string;
   not_released: string[];
 }

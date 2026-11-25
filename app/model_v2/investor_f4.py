@@ -191,6 +191,8 @@ def _parse_terms(raw) -> AgreementTerms | None:
 def assess_contribution_completeness(
     terms: AgreementTerms | None,
     funding: list[dict] | None = None,
+    *,
+    workspace_state: str | None = None,
 ) -> dict | None:
     """C1F-B-1: report whether a saved working agreement has incomplete paid-in contributions.
 
@@ -210,12 +212,24 @@ def assess_contribution_completeness(
         if d and amt:
             funding_by_date[d] = funding_by_date.get(d, 0.0) + amt
 
+    ref_state = workspace_state or ("CURRENT" if funding_by_date else "UNKNOWN")
+    stale_ref = workspace_state == "STALE"
+    stale_advisory = (
+        "Last Run legal-equity funding reference is STALE after draft changes; "
+        "Run again to confirm exact-date reconciliation against updated funding."
+        if stale_ref
+        else ""
+    )
+
     if not terms.contributions:
         return {
             "incomplete_draft": True,
             "code": "INCOMPLETE_CONTRIBUTIONS_EMPTY",
             "total_paid_in_keur": total_paid_in,
             "total_commitment_keur": total_commitment,
+            "funding_reference_state": ref_state,
+            "stale_funding_reference": stale_ref,
+            "advisory_message": stale_advisory,
             "message": (
                 "Incomplete draft: no actual paid-in capital contributions are recorded yet. "
                 "Saving is permitted for drafting, but Run will fail closed until paid-in "
@@ -240,18 +254,38 @@ def assess_contribution_completeness(
                 "total_paid_in_keur": total_paid_in,
                 "total_commitment_keur": total_commitment,
                 "mismatched_dates": mismatched,
+                "funding_reference_state": ref_state,
+                "stale_funding_reference": stale_ref,
+                "advisory_message": stale_advisory,
                 "message": (
                     "Incomplete draft: recorded paid-in contributions do not reconcile to Last Run "
                     f"canonical legal-equity funding on {', '.join(mismatched[:3])}. "
                     "Run will fail closed until paid-in capital reconciles by exact date."
                 ),
             }
+    elif workspace_state == "NOT_RUN":
+        return {
+            "incomplete_draft": False,
+            "code": "UNVERIFIED_NO_LAST_RUN",
+            "total_paid_in_keur": total_paid_in,
+            "total_commitment_keur": total_commitment,
+            "funding_reference_state": ref_state,
+            "stale_funding_reference": False,
+            "advisory_message": (
+                "Saved paid-in contributions have not been verified against a canonical Run yet. "
+                "Run to verify exact-date reconciliation."
+            ),
+            "message": "",
+        }
 
     return {
         "incomplete_draft": False,
         "code": "COMPLETE",
         "total_paid_in_keur": total_paid_in,
         "total_commitment_keur": total_commitment,
+        "funding_reference_state": ref_state,
+        "stale_funding_reference": stale_ref,
+        "advisory_message": stale_advisory,
         "message": "",
     }
 

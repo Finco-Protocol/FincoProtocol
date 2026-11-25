@@ -35,6 +35,23 @@ def _workflow(view: dict[str, Any]) -> dict[str, str]:
     """Where the saved agreement stands relative to the Last Run (mirrors the Legacy S7-07 states; never claims more)."""
     terms, evidence = view["terms"], view["evidence"]
     recorded = evidence["agreement"] if evidence else None
+    if view.get("selected") is not None or view.get("history_id"):
+        snap = view.get("snapshot_id") or getattr(view.get("selected"), "runtime_snapshot_id", "") or ""
+        if recorded:
+            return {
+                "state": "HISTORICAL",
+                "text": (
+                    f"Historical committed Run ({snap}): agreement {recorded['agreement_id']} v{recorded['version']} "
+                    "was recorded in this immutable Run. Read-only; no later change affects it."
+                ),
+            }
+        return {
+            "state": "HISTORICAL",
+            "text": (
+                f"Historical committed Run ({snap}): no investor agreement was recorded in this Run. "
+                "Read-only; legacy allocations are not reconstructed."
+            ),
+        }
     if terms is None:
         return {"state": "NONE", "text": "No working agreement is saved. Investor allocations exist only for Runs that record a saved agreement."}
     same = recorded and recorded["agreement_id"] == terms.agreement_id and recorded["version"] == terms.version
@@ -49,46 +66,93 @@ def _workflow(view: dict[str, Any]) -> dict[str, str]:
 
 
 @router.get("/model-react/investors/agreement")
-async def react_investor_agreement(request: Request, project: str):
+async def react_investor_agreement(request: Request, project: str, history_id: str | None = None):
     if not react_poc_enabled():
         return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from fastapi.responses import HTMLResponse
+    from urllib.parse import urlencode
 
     from app.auth import generate_csrf_token, resolve_request_session
+    from app.model_v2.investor_f4 import EVIDENCE_KEY
     from app.persistence.run_history_repository import RunHistoryError
     from app.v2.investor_f4_router import _load
     from app.v2.post_run_context import PostRunContextChanged
     from app.v2.react_workspace_router import _jsonable
+    from app.workbook.runtime_projection import thaw_runtime_payload
     from app.workbook.workbook_identity import WorkbookIdentityError
 
     if resolve_request_session(request) is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
     try:
-        view, error = _load(request, project)
+        view, error = _load(request, project, history_id)
     except (ValueError, TypeError, KeyError, PermissionError, RunHistoryError, WorkbookIdentityError, PostRunContextChanged):
         return _json({"ok": False, "code": "INVESTOR_EVIDENCE_UNAVAILABLE",
                       "message": "Investor evidence or the workspace identity changed. Reload to refresh."}, 503)
     if isinstance(error, HTMLResponse) or view is None:
         status = getattr(error, "status_code", 404)
+        err_text = bytes(getattr(error, "body", b"") or b"").decode("utf-8", "ignore")
+        if status == 404 and "Run History entry not found" in err_text:
+            return _json({"ok": False, "code": "HISTORY_NOT_FOUND"}, 404)
         return _json({"ok": False, "code": "PROJECT_NOT_FOUND" if status == 404 else "UNAVAILABLE"}, status)
     try:
         from app.v2.financing_projection import build_sponsor_view
 
         context = view["context"]
-        fin = None
-        try:
-            fin = context.inputs.to_projectinputs().financing
-        except Exception:  # noqa: BLE001 - the sponsor presentation then reports "unavailable", never a guessed value
+        selected = view.get("selected")
+        if selected is not None:
+            sponsor = build_sponsor_view(None, selected, historical=True)
+            identity_payload = {
+                "scope": "HISTORICAL",
+                "history_id": selected.history_id,
+                "snapshot_id": selected.runtime_snapshot_id,
+                "ran_at": selected.ran_at,
+                "content_hash": selected.composite_hash or "",
+                "workbook_version": selected.workbook_version or "",
+                "scenario_id": selected.last_runtime_scenario_id or selected.active_scenario_id,
+                "scenario_name": selected.active_scenario_name or "Base",
+            }
+            save_payload = None
+        else:
             fin = None
-        sponsor = build_sponsor_view(fin, context.runtime_result)
+            try:
+                fin = context.inputs.to_projectinputs().financing
+            except Exception:  # noqa: BLE001 - the sponsor presentation then reports "unavailable", never a guessed value
+                fin = None
+            sponsor = build_sponsor_view(fin, context.runtime_result)
+            identity_payload = {
+                "scope": "CURRENT",
+                "content_hash": context.identity.composite_hash,
+                "workbook_version": context.identity.workbook_version,
+                "scenario_name": context.workspace.active_scenario_name,
+            }
+            terms = view["terms"]
+            save_payload = {
+                "url": "/v2/workbook/investor/agreement",
+                "csrf_token": generate_csrf_token(),
+                "next_version": (terms.version + 1) if terms else 1,
+                "saved_agreement_id": terms.agreement_id if terms else "",
+                "ledger_next_versions": view.get("ledger_next_versions") or {},
+            }
         workflow = _workflow(view)
         terms = view["terms"]
+        export_params = {"project": view["project_code"]}
+        if selected is not None:
+            export_params["history_id"] = selected.history_id
+        history_items = [
+            {
+                "history_id": run.history_id,
+                "ran_at": run.ran_at,
+                "scenario_name": run.active_scenario_name or "Base",
+                "has_investor_evidence": EVIDENCE_KEY in thaw_runtime_payload(getattr(run, "runtime_summary", None) or {}),
+            }
+            for run in (view.get("history") or ())
+        ]
         payload = {
             "ok": True,
             "project": {"code": view["project_code"]},
             "editable": bool(view["editable"]), "state": view["state"],
-            "identity": {"content_hash": context.identity.composite_hash, "workbook_version": context.identity.workbook_version,
-                         "scenario_name": context.workspace.active_scenario_name},
+            "selected_history_id": selected.history_id if selected is not None else None,
+            "identity": identity_payload,
             "terms": None if terms is None else terms.document(),
             "workflow": workflow,
             "draft_warning": view.get("draft_warning"),
@@ -99,9 +163,9 @@ async def react_investor_agreement(request: Request, project: str):
             "unavailable": view["unavailable"],
             "funding": view["funding"],
             "sponsor": sponsor,
-            "save": {"url": "/v2/workbook/investor/agreement", "csrf_token": generate_csrf_token(),
-                     "next_version": (terms.version + 1) if terms else 1, "saved_agreement_id": terms.agreement_id if terms else ""},
-            "export_url": f"/v2/workbook/investor/export?project={view['project_code']}",
+            "history": history_items,
+            "save": save_payload,
+            "export_url": f"/v2/workbook/investor/export?{urlencode(export_params)}",
             "not_released": ["Return-of-capital ordering", "Preferences and carry", "NAV / terminal valuation",
                              "Shareholder-loan lender allocation", "Waterfall mechanisms beyond residual common equity"],
         }

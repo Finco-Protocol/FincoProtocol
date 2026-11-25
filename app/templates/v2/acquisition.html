@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Valuation & Acquisition — FINCO Model{% endblock %}
 {% block body %}
-<main class="mx-auto" style="max-width:1100px;padding:24px;font-family:inherit" data-testid="m6-workspace">
+<main class="mx-auto" style="max-width:1100px;padding:24px;font-family:inherit;overflow-wrap:anywhere;box-sizing:border-box" data-testid="m6-workspace">
   <nav><a href="/v2/developer-decision?project={{ project_code | urlencode }}">← Investment Decision</a> · <a href="/v2/workbook?project={{ project_code | urlencode }}">Workbook</a></nav>
   <p style="letter-spacing:.07em">FINCO MODEL · RC-3 / M6</p>
   <h1>Valuation &amp; Acquisition</h1>
@@ -15,9 +15,12 @@
     <p>Evidence: <strong data-testid="m6-evidence-status">{{ evidence_status }}</strong></p>
     {% if stored %}<p>Case: {{ stored.case_id }} · revision {{ stored.revision }} · saved {{ stored.updated_at }}</p>{% endif %}
     {% if selected %}
-      <p>Snapshot: <code>{{ selected.runtime_snapshot_id }}</code></p>
-      <p>Composite hash: <code>{{ selected.composite_hash or 'UNAVAILABLE' }}</code></p>
-      <p>Scenario: <code>{{ selected.last_runtime_scenario_id or 'Base' }}</code> · Model Run: {{ selected.ran_at }}</p>
+      <p>Snapshot: <code style="overflow-wrap:anywhere">{{ selected.runtime_snapshot_id }}</code></p>
+      <p>Composite hash: <code style="overflow-wrap:anywhere">{{ selected.composite_hash or 'UNAVAILABLE' }}</code></p>
+      <p>Scenario: <code style="overflow-wrap:anywhere">{{ selected.last_runtime_scenario_id or 'Base' }}</code> · Model Run: {{ selected.ran_at }}</p>
+      {% if source_calendar %}
+      <p data-testid="m6-calendar-authority">Calendar authority: <code>{{ source_calendar.date_authority_version }}</code> ({{ source_calendar.calendar_mode }}{% if source_calendar.calendar_contract_version %} · {{ source_calendar.calendar_contract_version }}{% endif %})</p>
+      {% endif %}
     {% else %}<p>No committed Run history available.</p>{% endif %}
     <h3>Select committed Run</h3>
     <ul>
@@ -78,9 +81,9 @@
     <h2>3. Enterprise → Equity bridge</h2>
     <p>WACC = AUTHORITY_MISSING. No company-calculated EV is inferred from Project NPV. Debt and cash must be evidenced at closing or labelled as assumptions. DSRA/restricted cash is not free cash.</p>
     {% if bridge %}<p>EXPLICIT_USER_UNDERWRITING — closing date {{ bridge.balance_date }}. The financial bridge output remains {{ status }}.</p>
-      <table><thead><tr><th>Input assumption</th><th>Amount (kEUR)</th></tr></thead><tbody>
+      <div style="overflow-x:auto"><table><thead><tr><th>Input assumption</th><th>Amount (kEUR)</th></tr></thead><tbody>
       {% for key in bridge_keys %}<tr><td>{{ key | replace('_',' ') }}</td><td>{{ bridge[key] }}</td></tr>{% endfor %}
-      </tbody></table>
+      </tbody></table></div>
     {% else %}<p>Closing bridge: UNAVAILABLE. No closing balance assumptions saved.</p>{% endif %}
   </section>
   <section data-testid="m6-buyer-returns">
@@ -110,17 +113,17 @@
       </tr>{% endfor %}</tbody></table></div>
     {% else %}<p>EVIDENCE_UNAVAILABLE: historical data is never backfilled from a Working Copy.</p>{% endif %}
     <details><summary>Source-proven unlevered project cashflows (not ordinary dividends)</summary>
-      <table><thead><tr><th>Date</th><th>C1 project net cashflow (kEUR)</th></tr></thead>
-      <tbody>{% for row in project_rows %}<tr><td>{{ row.date }}</td><td>{{ row.net_unlevered_project_cashflow_keur }}</td></tr>{% endfor %}</tbody></table>
+      <div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>C1 project net cashflow (kEUR)</th></tr></thead>
+      <tbody>{% for row in project_rows %}<tr><td>{{ row.date }}</td><td>{{ row.net_unlevered_project_cashflow_keur }}</td></tr>{% endfor %}</tbody></table></div>
     </details>
   </section>
   <section data-testid="m6-comparison">
     <h2>6. Case comparison</h2>
     <p>Comparison reuses the selected committed Run basis; no second financial matrix engine. A different source or closing date is NOT_COMPARABLE. Candidate returns are not released.</p>
-    <table><thead><tr><th>Case</th><th>Closing</th><th>Proposed price (kEUR)</th><th>Source/date compatibility</th></tr></thead>
+    <div style="overflow-x:auto"><table><thead><tr><th>Case</th><th>Closing</th><th>Proposed price (kEUR)</th><th>Source/date compatibility</th></tr></thead>
     <tbody>{% for c in comparison %}
       <tr><td><a href="/v2/valuation-acquisition?project={{ project_code | urlencode }}&amp;case_id={{ c.id | urlencode }}">{{ c.id[:8] }}</a></td><td>{{ c.closing_date }}</td><td>{{ c.price }}</td><td>{{ c.status }}</td></tr>
-    {% else %}<tr><td colspan="4">No saved cases</td></tr>{% endfor %}</tbody></table>
+    {% else %}<tr><td colspan="4">No saved cases</td></tr>{% endfor %}</tbody></table></div>
     <a href="/v2/workbook/run-history?project={{ project_code | urlencode }}">Open Run History</a>
   </section>
 </main>
