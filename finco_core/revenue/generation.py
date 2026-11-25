@@ -17,9 +17,58 @@ Caching is handled in the app layer.
 Authoritative location: finco_core.revenue.generation (V2-7).
 Legacy location: domain.revenue.generation (compatibility shim).
 """
+from math import isfinite as _isfinite
 from typing import Sequence, Optional
-from finco_core.inputs import TechnicalParams, ProjectInputs
+from finco_core.inputs import TechnicalParams, ProjectInputs, RevenueParams
 from finco_core.engine.period_engine import PeriodEngine, PeriodMeta
+
+
+def validate_balancing_cost_inputs(revenue: RevenueParams) -> None:
+    """Reject ambiguous dual nonzero balancing charges (% of merchant + per-MWh).
+
+    Preserves explicit ``0.0`` (distinct from missing) and single-basis charges.
+    """
+    pct = float(getattr(revenue, "balancing_cost_pv", 0.0))
+    per_mwh = float(getattr(revenue, "balancing_cost_eur_per_mwh", 0.0))
+    wind_mwh = float(getattr(revenue, "balancing_cost_wind_eur_mwh", 0.0))
+    for name, val in (
+        ("balancing_cost_pv", pct),
+        ("balancing_cost_eur_per_mwh", per_mwh),
+        ("balancing_cost_wind_eur_mwh", wind_mwh),
+    ):
+        if not _isfinite(val) or val < 0.0:
+            raise ValueError(
+                f"BALANCING_COST_INVALID: {name} must be finite and zero or greater (got {val!r})."
+            )
+    sched = getattr(revenue, "balancing_cost_schedule", None)
+    sched_nonzero = False
+    if sched is not None:
+        sched_vals = (
+            getattr(sched, "constant_value", 0.0),
+            *(getattr(sched, "annual_values", ()) or ()),
+            *(getattr(sched, "semiannual_values", ()) or ()),
+        )
+        for v in sched_vals:
+            fv = float(v)
+            if not _isfinite(fv) or fv < 0.0:
+                raise ValueError(
+                    f"BALANCING_COST_INVALID: balancing_cost_schedule entries must be finite and >= 0 (got {v!r})."
+                )
+            if fv > 0.0:
+                sched_nonzero = True
+    # Only the effective winning per-MWh source counts against merchant-% balancing:
+    # precedence is schedule > balancing_cost_eur_per_mwh > balancing_cost_wind_eur_mwh.
+    has_effective_per_mwh = (
+        sched_nonzero
+        or per_mwh > 0.0
+        or (sched is None and per_mwh == 0.0 and wind_mwh > 0.0)
+    )
+    if pct > 0.0 and has_effective_per_mwh:
+        raise ValueError(
+            "DUAL_BALANCING_COST_BASIS_FORBIDDEN: Merchant % balancing (balancing_cost_pv) and "
+            "per-MWh balancing (balancing_cost_schedule / balancing_cost_eur_per_mwh / balancing_cost_wind_eur_mwh) "
+            "cannot both be nonzero. Set the unused basis explicitly to 0."
+        )
 
 
 
@@ -202,6 +251,7 @@ def revenue_decomposition_schedule(
     engine: PeriodEngine,
 ) -> dict[int, dict[str, float | bool]]:
     """Generate period-level revenue decomposition for calibration diagnostics."""
+    validate_balancing_cost_inputs(inputs.revenue)
     decompositions: dict[int, dict[str, float | bool]] = {}
     generation_schedule = full_generation_schedule(inputs, engine)
     multistream = None
@@ -508,6 +558,7 @@ def contractual_generation_schedule(
 
 
 __all__ = [
+    "validate_balancing_cost_inputs",
     "period_generation",
     "annual_generation_mwh",
     "period_revenue",

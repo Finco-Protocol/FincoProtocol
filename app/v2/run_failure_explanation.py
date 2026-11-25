@@ -23,6 +23,9 @@ _RECENT = ("Inputs you changed most recently", "tab-project-setup")
 
 # (token, kind, (section label, tab id), explanation, recovery). Order matters: first match wins.
 _RULES = (
+    ("DUAL_BALANCING_COST_BASIS_FORBIDDEN", "FAIL_CLOSED_REFUSAL", _REVENUE,
+     "Both percentage merchant balancing (% of spot sales) and per-MWh balancing cost are nonzero. The model refuses competing dual balancing deductions rather than double-counting or silently dropping one.",
+     "Set either Merchant Balancing (%) or Balancing Cost (EUR/MWh) explicitly to 0 in Revenue -> Balancing & CO2, then Run again."),
     ("R04_PHYSICAL_SHORTFALL_NO_SETTLEMENT_CONTRACT", "FAIL_CLOSED_REFUSAL", _REVENUE,
      "The physical PPA commitments fit the P50 envelope, but exceed available generation in the selected bank/debt-sizing case without an approved shortfall settlement contract.",
      "Reduce the declared physical PPA annual quantities or adjust contract dates to fit bank-case generation, review the lender-case policy in Bankability where supported, or supply an approved settlement contract when supported."),

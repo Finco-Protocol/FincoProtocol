@@ -2892,6 +2892,12 @@ def _engine_failure_message(exc: BaseException) -> str:
             getattr(exc, "reason_code", ""), getattr(exc, "detail", ""), getattr(exc, "message", ""), exc,
         ) if part
     )
+    if "DUAL_BALANCING_COST_BASIS_FORBIDDEN" in evidence:
+        return (
+            "Both percentage merchant balancing (% of spot sales) and per-MWh balancing cost are nonzero. "
+            "Set one basis explicitly to 0 in Revenue -> Balancing & CO2 and run again. "
+            "No Run was saved; the previous Last Run is unchanged. (Reference: DUAL_BALANCING_COST_BASIS_FORBIDDEN)"
+        )
     if "MERCHANT_PRICE_COVERAGE_MISSING" in evidence:
         import re as _re
         m = _re.search(r"calendar year\(s\)\s*(\[[0-9,\s]+\])", evidence)
@@ -3267,6 +3273,11 @@ async def v2_workbook_run(
             from app.v2.run_failure_explanation import explain_run_failure
             return (_htmx_error(_q_msg, ws, explain_run_failure(_build_exc, message=_q_msg, ws=ws, pis=pis_draft))
                     if is_htmx else _non_htmx_error(_q_msg))
+        if "DUAL_BALANCING_COST_BASIS_FORBIDDEN" in str(_build_exc):
+            _bal_msg = _engine_failure_message(_build_exc)
+            from app.v2.run_failure_explanation import explain_run_failure
+            return (_htmx_error(_bal_msg, ws, explain_run_failure(_build_exc, message=_bal_msg, ws=ws, pis=pis_draft))
+                    if is_htmx else _non_htmx_error(_bal_msg))
         logging.getLogger(__name__).exception(
             "v2_workbook_run: build_project_inputs failed project=%s user=%s",
             project, user.user_id,
