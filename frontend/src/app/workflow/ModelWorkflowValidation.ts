@@ -291,7 +291,8 @@ export interface PpaTypeState {
   allowed: Record<PpaTypeValue, { ok: boolean; reason: string | null }>;
 }
 
-export function ppaTypeState(stream: StreamDraft, preserved: string[], version: number, indexedIntent = false): PpaTypeState {
+export function ppaTypeState(stream: StreamDraft, preserved: string[], version: number, indexedIntent = false,
+                             curveUnsupportedReason: string | null = null): PpaTypeState {
   const none = { ok: false, reason: null as string | null };
   if (stream.type !== "ppa") return { value: null, editable: false, reason: null, allowed: { fixed: none, indexed: none, scheduled: none } };
   const protectedTerms = preserved.filter((k) => k !== "reference_stream_id");
@@ -307,15 +308,19 @@ export function ppaTypeState(stream: StreamDraft, preserved: string[], version: 
     value, editable: true, reason: null,
     allowed: {
       fixed: { ok: true, reason: null }, indexed: { ok: true, reason: null },
-      scheduled: version === 2 ? { ok: true, reason: null } : { ok: false, reason: "A scheduled price curve requires a version-2 contract book." },
+      // FINCO46: the server declares when the project's calendar (OD-TIME-01/v1) cannot accept a per-row curve; the option is
+      // disabled with that reason BEFORE Save (the server refusal stays authoritative).
+      scheduled: curveUnsupportedReason ? { ok: false, reason: curveUnsupportedReason }
+        : version === 2 ? { ok: true, reason: null } : { ok: false, reason: "A scheduled price curve requires a version-2 contract book." },
     },
   };
 }
 
 /** The draft patch for choosing `choice`; null when the choice is not allowed.  `fixed` only zeroes the indexation rate, `scheduled` starts the
  *  existing one-point curve from the current tariff; `indexed` changes nothing (the user must then enter a rate above 0). */
-export function applyPpaType(stream: StreamDraft, preserved: string[], version: number, choice: PpaTypeValue): Partial<StreamDraft> | null {
-  const state = ppaTypeState(stream, preserved, version);
+export function applyPpaType(stream: StreamDraft, preserved: string[], version: number, choice: PpaTypeValue,
+                             curveUnsupportedReason: string | null = null): Partial<StreamDraft> | null {
+  const state = ppaTypeState(stream, preserved, version, false, curveUnsupportedReason);
   if (!state.editable || !state.allowed[choice].ok) return null;
   if (choice === "fixed") return { indexation_rate: "0" };
   if (choice === "scheduled") return { curve: [{ period_start: stream.start_date, price_eur_mwh: stream.price_eur_mwh }], indexation_rate: "0" };

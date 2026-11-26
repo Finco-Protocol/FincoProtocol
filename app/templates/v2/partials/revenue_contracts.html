@@ -7,10 +7,12 @@
   <form method="post" action="/v2/workbook/revenue/contracts"
         hx-post="/v2/workbook/revenue/contracts" hx-target="#v2-sheet-revenue" hx-swap="outerHTML"
         data-testid="revenue-contracts-form" data-revenue-editor data-technology="{{ (contracts.technology or project_type | default('')) | lower | e }}"
-        data-v3-enabled="{{ 'true' if contracts.v3_enabled else 'false' }}" autocomplete="off">
+        data-v3-enabled="{{ 'true' if contracts.v3_enabled else 'false' }}"
+        data-price-curve-supported="{{ 'false' if contracts.price_curve_supported is sameas false else 'true' }}" autocomplete="off">
     <input type="hidden" data-calendar-cod value="{{ contracts.project_cod | default('') }}">
     <input type="hidden" data-calendar-preview value="{{ contracts.calendar_preview | default({}) | tojson | forceescape }}">
     <input type="hidden" data-rounding-preview value="{{ contracts.rounding_preview | default({}) | tojson | forceescape }}">
+    {% if contracts.price_curve_supported is sameas false %}<p class="d-context" data-testid="revenue-curve-calendar-notice">{{ contracts.price_curve_unsupported_reason.split(': ', 1)[-1] }}</p>{% endif %}
     {% if contracts.calendar_preview_error %}<p role="alert" data-calendar-validation>{{ contracts.calendar_preview_error }}</p>{% endif %}
     <input type="hidden" name="project" value="{{ project_code }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
@@ -25,7 +27,7 @@
       <h3 id="rc-quick-title" class="text-base font-semibold text-gray-900 dark:text-white">Add a PPA</h3>
       <p class="d-context text-sm text-gray-500 dark:text-gray-400 !border-0 !bg-transparent !p-0">For a signed or term-sheet PPA. To test an illustrative price without a contract, use the PPA terms under Revenue inputs instead. Contract IDs are generated for you.</p>
       <div class="rc-quick-grid">
-        <label class="block text-sm font-medium text-gray-900 dark:text-white">Pricing<select data-quick="kind" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"><option value="fixed_ppa">Fixed</option><option value="indexed_ppa">Indexed</option><option value="scheduled_ppa">Scheduled</option></select></label>
+        <label class="block text-sm font-medium text-gray-900 dark:text-white">Pricing<select data-quick="kind" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"><option value="fixed_ppa">Fixed</option><option value="indexed_ppa">Indexed</option><option value="scheduled_ppa"{% if contracts.price_curve_supported is sameas false %} disabled{% endif %}>Scheduled{% if contracts.price_curve_supported is sameas false %} (legacy calendar only){% endif %}</option></select></label>
         <label data-quick-price class="block text-sm font-medium text-gray-900 dark:text-white"><span data-quick-price-label>Starting price (EUR/MWh)</span><input data-quick="price" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" inputmode="decimal" autocomplete="off"></label>
         <label class="block text-sm font-medium text-gray-900 dark:text-white">Contracted production (%)<input data-quick="share" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" inputmode="decimal" autocomplete="off" value="100"></label>
         <label data-quick-index hidden class="block text-sm font-medium text-gray-900 dark:text-white">Indexation (%/yr)<input data-quick="index" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" inputmode="decimal" autocomplete="off" value="0"></label>

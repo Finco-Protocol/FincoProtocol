@@ -1321,6 +1321,12 @@ def _build_revenue_contract_editor(pis, ws):
     rounding_preview = {}
     calendar_preview_error = ""
     project_cod = ""
+    # FINCO46: explicit per-row price curves are a LEGACY_CALENDAR/v0 feature; on the OD-TIME-01/v1 dated grid Save refuses
+    # them (REVENUE_V2_DATED_CURVE_UNSUPPORTED). Read from the SAME engine admission the Save validator uses so the editors
+    # can disable the option with this reason before Save. Presentation only: the server refusal stays authoritative.
+    date_authority_version = str((getattr(pis, "snapshot_origin", None) or {}).get("date_authority_version") or "")
+    price_curve_supported = True
+    price_curve_unsupported_reason = ""
     if technology in ("solar", "wind"):
         # Read-only: the operating period boundaries the model already derives from the project's own dates. They only
         # pre-fill the guided PPA form; the canonical validator still decides what is accepted.
@@ -1340,6 +1346,13 @@ def _build_revenue_contract_editor(pis, ws):
                 editor_inputs = pis.to_projectinputs()
             project_cod = editor_inputs.info.cod_date.isoformat()
             _editor_engine = _build_period_engine(from_project_inputs(editor_inputs), contract_config_json=getattr(config, "canonical_json", "") if config else "")
+            date_authority_version = str(getattr(editor_inputs.info, "date_authority_version", None) or date_authority_version)
+            if _editor_engine.dated_life_end_exclusive is not None:
+                price_curve_supported = False
+                price_curve_unsupported_reason = (
+                    "REVENUE_V2_DATED_CURVE_UNSUPPORTED: scheduled per-period price curves are available on legacy-calendar "
+                    "projects only. This project uses the contractual calendar (" + (date_authority_version or "OD-TIME-01/v1") +
+                    "); use a fixed or indexed tariff with dated indexation terms.")
             operating = [p for p in _editor_engine.periods() if p.is_operation]
             if operating:
                 operating_window = {"start": operating[0].start_date.isoformat(), "end": operating[-1].end_date.isoformat()}
@@ -1390,7 +1403,9 @@ def _build_revenue_contract_editor(pis, ws):
             "overridden": overridden, "rows": payload.get("streams", []), "rounding_preview": rounding_preview,
             "base_token": _contracts_base_token(ws),
             "v3_enabled": ACTIVATION_ENABLED, "products": payload.get("products", []),
-            "period_axis": axis}
+            "period_axis": axis, "date_authority_version": date_authority_version,
+            "price_curve_supported": price_curve_supported,
+            "price_curve_unsupported_reason": price_curve_unsupported_reason}
 
 
 @router.post("/workbook/revenue/contracts")

@@ -147,6 +147,9 @@
     // PPA-01 explicit CPI/PPI index series. Presentation/serialization only: levels are typed or pasted by the user, never invented; the canonical
     // Python validator and runtime remain the only authority for what is accepted and what a Run prices.
     const operatingYears = (() => { try { return JSON.parse(form.querySelector('[data-revenue-quick]')?.dataset.operatingYears || '[]'); } catch (_) { return []; } })();
+    // FINCO46: per-row price curves are a legacy-calendar feature; on a dated (OD-TIME-01/v1) project the server says so before
+    // Save and the scheduled types are offered disabled. The canonical validator still refuses them (defence in depth).
+    const curveBlocked = form.dataset.priceCurveSupported === 'false';
     const LEVEL = /^\d+(\.\d+)?$/;
     const contractYears = (row) => {
       if (!row.start_date || !row.end_date) return [];
@@ -516,6 +519,7 @@
           const option = document.createElement('option');
           option.value = key; option.textContent = title;
           if (key === kind) option.selected = true;
+          if (curveBlocked && isScheduled(key) && key !== kind) { option.disabled = true; option.textContent = title + ' (legacy calendar only)'; }
           select.appendChild(option);
         }
         select.addEventListener('change', () => {
