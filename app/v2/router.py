@@ -2746,6 +2746,7 @@ async def v2_workbook_update(
                 project_record=project_record,
                 project=project,
                 workspace_owner=_workspace_owner,
+                request=request,  # FINCO46: Scenarios sheet mutation tokens need the session
             )
             resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "opex":
@@ -2775,6 +2776,7 @@ async def v2_workbook_update(
                 project_record=project_record,
                 project=project,
                 workspace_owner=_workspace_owner,
+                request=request,  # FINCO46: Scenarios sheet mutation tokens need the session
             )
             resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "debt":
@@ -2807,6 +2809,7 @@ async def v2_workbook_update(
                 include_runtime_bars=False,
                 rr=_rr,
                 projection=_proj,
+                request=request,  # FINCO46: Scenarios sheet mutation tokens need the session
             )
             return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "tax":
@@ -2830,6 +2833,7 @@ async def v2_workbook_update(
                 include_runtime_bars=False,
                 rr=_rr,
                 projection=_proj,
+                request=request,  # FINCO46: Scenarios sheet mutation tokens need the session
             )
             return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "financial_statements":

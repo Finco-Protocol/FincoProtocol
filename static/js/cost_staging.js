@@ -26,6 +26,7 @@
   var stageMode = storedMode() !== 'immediate';
   var batchInFlight = false;
   var pendingStageMsg = '';
+  var settleAnchor = null;   // FINCO46: focused cell + its on-screen top to keep still across a sheet swap
   var lastCell = null;         // {rowId, name} of the cell the user last edited (focus is restored there after a Save)
 
   function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
@@ -326,7 +327,11 @@
       target.__view = {
         id: target.id, open: openMap, y: window.scrollY,
         top: target.scrollTop, focusId: f2 && f2.closest(ROW) ? f2.closest(ROW).id : null,
-        focusName: f2 ? f2.name : null
+        focusName: f2 ? f2.name : null,
+        // FINCO46: where the focused cell sits ON SCREEN. While the Save is in flight the stale-view guard prepends a
+        // notice to the sheet and the browser's scroll anchoring moves window.scrollY to keep the cell still; the swap
+        // removes that notice, so restoring scrollY alone left the cell 64 px higher. Re-anchor on the cell instead.
+        focusTop: f2 ? f2.getBoundingClientRect().top : null
       };
       window.__v2CostView = target.__view;
     }
@@ -350,6 +355,8 @@
           var r = document.getElementById(v.focusId);
           var inp = r && r.querySelector('input[name="' + v.focusName + '"]');
           if (inp) inp.focus({ preventScroll: true });
+          // Re-anchored by the later afterSettle handler, AFTER the stage bar text above the grid has changed height.
+          if (inp && v.focusTop !== null) settleAnchor = { input: inp, top: v.focusTop };
         }
         window.__v2CostView = null;
       }
@@ -679,6 +686,13 @@
     if (pendingStageMsg) { stageMessage(pendingStageMsg); pendingStageMsg = ''; }
     restoreCellFocus();
     restoreFocusAfterSave = false;
+    if (settleAnchor) {
+      var a = settleAnchor; settleAnchor = null;
+      if (document.body.contains(a.input)) {
+        var drift = a.input.getBoundingClientRect().top - a.top;
+        if (Math.abs(drift) > 1) window.scrollBy(0, drift);
+      }
+    }
   });
 
   // Mouse "Save" leaves focus on a button that the swap replaces: put it back on the cell the user was
