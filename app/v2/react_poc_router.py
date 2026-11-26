@@ -75,8 +75,8 @@ _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"
 
 
 def react_poc_enabled() -> bool:
-    """Flag contract: absent/empty → OFF (legacy behaviour unchanged)."""
-    return env_flag("FINCO_MODEL_REACT_V1", default=False)
+    """Flag contract: absent/empty → ON (FINCO47 React-only default); explicit 0/false/no/off → OFF."""
+    return env_flag("FINCO_MODEL_REACT_V1", default=True)
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:

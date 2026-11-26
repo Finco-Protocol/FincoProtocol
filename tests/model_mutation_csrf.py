@@ -11,6 +11,7 @@ from app.workbook.mutation_csrf import mutation_token
 
 ROUTES = {
     '/v2/workbook/update': 'workbook-update',
+    '/v2/workbook/inputs-slice1/update': 'inputs-slice1-update',
     '/v2/workbook/export': 'workbook-export',
     '/v2/reference-seed/reset': 'reference-seed-reset',
     '/v2/workbook/grid/save': 'grid-save',

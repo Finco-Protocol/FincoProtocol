@@ -8,7 +8,7 @@
   <main style="max-width: 640px; margin: 3rem auto; font-family: system-ui, sans-serif; padding: 1.5rem;">
     <h1>{{ error_title | default("Request Refused") }}</h1>
     <p>{{ error_message | default("The request could not be completed.") }}</p>
-    <p><a href="/library">Return to Project Library</a></p>
+    <p><a href="{% if finco_model_react %}/v2/model-react/{% else %}/library{% endif %}">Return to My Projects</a></p>
   </main>
 </body>
 </html>

@@ -83,6 +83,7 @@ def test_inputs_slice1_htmx_save_uses_resolved_owner_and_preserves_last_run():
             workbook_version=WORKBOOK.version,
         )
         changed_p50 = float(before.draft_snapshot["p50_hours"]) * 1.2
+        from tests.model_mutation_csrf import post_valid_mutation
         with (
             patch(
                 "app.api.project_runner.run_project",
@@ -97,7 +98,8 @@ def test_inputs_slice1_htmx_save_uses_resolved_owner_and_preserves_last_run():
                 side_effect=AssertionError("execute_production_waterfall called during Save"),
             ) as waterfall,
         ):
-            response = client.post(
+            response = post_valid_mutation(
+                client,
                 "/v2/workbook/inputs-slice1/update",
                 data={
                     "field_id": "project_setup.technical.p50_hours",

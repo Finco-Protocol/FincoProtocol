@@ -75,6 +75,14 @@ function ModelApp({ host }: { host: HTMLElement }) {
   }, [config, nonce]);
 
   const retry = useCallback(() => setNonce((n) => n + 1), []);
+  const backToLibrary = useCallback(() => {
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      setTopRoute("library");
+    } else {
+      window.location.href = APP_ROUTES.library;
+    }
+  }, []);
 
   if (!config || phase === "loading") {
     return (
@@ -91,14 +99,6 @@ function ModelApp({ host }: { host: HTMLElement }) {
   const project = config.project;
   // UX-03B: the theme layer is presentation-only; scoping it to the mount root
   // keeps the legacy Jinja/HTMX UI untouched and no data path is involved.
-  const backToLibrary = useCallback(() => {
-    if (window.location.hash) {
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
-      setTopRoute("library");
-    } else {
-      window.location.href = APP_ROUTES.library;
-    }
-  }, []);
 
   if (project) {
     return (

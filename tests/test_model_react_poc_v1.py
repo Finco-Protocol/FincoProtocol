@@ -49,7 +49,7 @@ def env(tmp_path, monkeypatch):
     from app.v2.router import router as v2_router
     from fastapi.staticfiles import StaticFiles
 
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     monkeypatch.delenv("FINCO_WORKBOOK_V2", raising=False)
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
@@ -90,13 +90,15 @@ def save_cit(env, body: dict, value: str):
     return post_valid_mutation(env.client, "/v2/workbook/grid/save", json=body)
 
 
-def grid_tokens(page_text: str) -> dict:
-    match = re.search(
-        r'data-csrf="([^"]+)"[^>]*data-content-hash="([0-9a-f]+)"[^>]*data-workbook-version="([^"]+)"',
-        page_text, re.S)
-    assert match, "legacy workbook page must expose grid identity tokens"
-    return {"csrf_token": match.group(1), "content_hash": match.group(2),
-            "workbook_version": match.group(3), "scenario_id": None}
+def react_tokens(env, code: str) -> dict:
+    payload = bootstrap(env, code)
+    wb = payload["workbook"]
+    return {
+        "csrf_token": payload["csrf_token"],
+        "content_hash": wb["composite_hash"],
+        "workbook_version": wb["version"],
+        "scenario_id": wb.get("scenario_id"),
+    }
 
 
 # ───────────────────────────── flag OFF: legacy preservation ─────────────────────────────
@@ -121,8 +123,9 @@ def test_legacy_grid_routes_still_function_with_flag_on(env, monkeypatch):
     flag_on(monkeypatch)
     c = env.client
     record = env.create()
-    page = c.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200 and 'id="v2-hybrid-bar"' in page.text
+    page = c.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
+    assert page.status_code == 302
+    assert page.headers["location"] == f"/v2/model-react/{record.project_code}"
     for sheet in ("capex", "opex", "tax", "project_setup", "revenue"):
         assert c.get("/v2/workbook/grid/sheet",
                      params={"project": record.project_code, "sheet": sheet}).status_code == 200
@@ -180,12 +183,14 @@ def test_bootstrap_reports_canonical_project_name_distinct_from_code(env, monkey
 
 
 def test_bootstrap_identity_matches_the_legacy_workbook_identity(env, monkeypatch):
-    flag_on(monkeypatch)
     record = env.create()
     legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
+    match = re.search(r'data-content-hash="([0-9a-f]+)"', legacy.text)
+    assert match, "legacy workbook page must expose composite CAS identity when flag is off"
+    flag_on(monkeypatch)
     payload = bootstrap(env, record.project_code)
     assert payload["workbook"]["version"]
-    assert payload["workbook"]["composite_hash"] == grid_tokens(legacy.text)["content_hash"], \
+    assert payload["workbook"]["composite_hash"] == match.group(1), \
         "React bootstrap must read the SAME composite CAS identity as the legacy grid"
     assert payload["field"]["field_id"] == CIT
     assert payload["field"]["editable"] is True
@@ -212,8 +217,7 @@ def test_protected_reference_stays_read_only(env, monkeypatch):
     payload = bootstrap(env, record.project_code)
     assert payload["field"]["editable"] is False
     assert payload["project"]["protected_reference"] is True
-    legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
-    body = dict(grid_tokens(legacy.text))
+    body = react_tokens(env, record.project_code)
     body["project"] = record.project_code
     response = save_cit(env, body, "22.5")
     assert response.status_code == 403, "canonical authority must keep protected references read-only"
@@ -224,8 +228,7 @@ def test_protected_reference_stays_read_only(env, monkeypatch):
 def test_forged_or_missing_csrf_is_rejected(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = grid_tokens(legacy.text)
+    tokens = react_tokens(env, record.project_code)
     # Every forged case is guaranteed to differ from the original token: flipping
     # the first character always changes the decoded payload (the historical
     # `[:-1] + "x"` mutation could alias to the original through noncanonical
@@ -306,9 +309,9 @@ def test_stale_cas_conflict_returns_reload_without_retry(env, monkeypatch):
 def test_save_after_run_classifies_last_run_stale_and_never_recomputes(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tokens = react_tokens(env, record.project_code)
     run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                                   data=dict(project=record.project_code, **grid_tokens(page.text)))
+                                   data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200, run_response.text[:600]
     from app.workbook.service import WorkbookService
     ws0 = get_workspace_state(OWNER, record.project_id)
@@ -342,9 +345,9 @@ def _persisted_pnl(rr):
 def test_pnl_projection_matches_canonical_persisted_evidence(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tokens = react_tokens(env, record.project_code)
     run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                                   data=dict(project=record.project_code, **grid_tokens(page.text)))
+                                   data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200, run_response.text[:600]
     from app.workbook.service import WorkbookService
     rr = WorkbookService.get_runtime_result(get_workspace_state(OWNER, record.project_id))
@@ -378,9 +381,9 @@ def test_pnl_projection_matches_canonical_persisted_evidence(env, monkeypatch):
 def test_unavailable_values_are_never_zeros_and_period_labels_survive(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tokens = react_tokens(env, record.project_code)
     run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                                   data=dict(project=record.project_code, **grid_tokens(page.text)))
+                                   data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200, run_response.text[:600]
     payload = bootstrap(env, record.project_code)
     pnl = payload["outputs"]["pnl"]
@@ -397,9 +400,9 @@ def test_unavailable_values_are_never_zeros_and_period_labels_survive(env, monke
 def test_input_freshness_and_run_integrity_remain_independent(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tokens = react_tokens(env, record.project_code)
     run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                                   data=dict(project=record.project_code, **grid_tokens(page.text)))
+                                   data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200, run_response.text[:600]
     payload = bootstrap(env, record.project_code)
     dimensions = payload["outputs"]["status_dimensions"]

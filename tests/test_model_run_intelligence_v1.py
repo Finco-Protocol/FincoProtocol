@@ -63,15 +63,12 @@ def _client_with_project(template_source: str = VERTICAL[0],
 
 def _run(client, cookies, code, *, tamper_hash: str | None = None):
     """Execute the canonical run route once (real engine, real commit)."""
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    assert page.status_code == 200
-    m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-    mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
+    wb = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()["workbook"]
     return post_valid_csrf(client,
         "/v2/workbook/run",
         data={"project": code,
-              "content_hash": tamper_hash or m.group(1),
-              "workbook_version": mv.group(1)},
+              "content_hash": tamper_hash or wb["composite_hash"],
+              "workbook_version": wb["version"]},
         cookies=cookies,
         headers={"HX-Request": "true"},
     )
@@ -79,16 +76,16 @@ def _run(client, cookies, code, *, tamper_hash: str | None = None):
 
 def _edit_p50(client, cookies, code, value):
     """Causal Working Copy edit (Canonical Inputs Slice 1 field)."""
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-    mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-    resp = client.post(
+    from tests.model_mutation_csrf import post_valid_mutation
+    ws = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()
+    resp = post_valid_mutation(
+        client,
         "/v2/workbook/inputs-slice1/update",
         data={"field_id": "project_setup.technical.p50_hours",
               "value": str(value),
               "project": code,
-              "workbook_version": mv.group(1),
-              "content_hash": m.group(1)},
+              "workbook_version": ws["workbook"]["version"],
+              "content_hash": ws["workbook"]["composite_hash"]},
         cookies=cookies,
         headers={"HX-Request": "true"},
     )
@@ -414,17 +411,15 @@ class TestNoEngineOnRender:
 class TestNavigationAndRefresh:
     def test_nav_item_available_and_tab_mounted(self, seeded_db):
         client, cookies, record = _client_with_project()
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
+        page = client.get(f"/v2/model-react/{record.project_code}", cookies=cookies)
         assert page.status_code == 200
-        assert 'id="tab-run-history"' in page.text
-        assert 'id="panel-run-history"' in page.text
-        # persistent left navigation: Run History is now available
-        assert 'data-nav-tab="tab-run-history"' in page.text
-        assert 'nav-future-run-history' not in page.text
-        # listing is embedded in the workbook
-        assert 'data-testid="run-history"' in page.text
-        assert 'data-testid="run-history-failed-note"' in page.text
+        assert 'id="finco-react-root"' in page.text
+        runs = client.get(f"/v2/model-react/runs?project={record.project_code}", cookies=cookies)
+        assert runs.status_code == 200
+        payload = runs.json()
+        assert payload["ok"] is True
+        assert payload["run_contract"]["url"] == "/v2/workbook/run"
+        assert "runs" in payload
 
     def test_post_run_refreshes_history_listing(self, seeded_db):
         client, cookies, record = _client_with_project()

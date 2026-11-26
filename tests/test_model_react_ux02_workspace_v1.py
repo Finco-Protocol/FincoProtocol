@@ -38,7 +38,7 @@ def env(tmp_path, monkeypatch):
     from app.v2.react_workspace_router import router as workspace_router
     from app.v2.router import router as v2_router
 
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
     app.include_router(grid_router, prefix="/v2")
@@ -64,9 +64,8 @@ def flag_on(monkeypatch):
 
 
 def _run_canonical(env, code):
-    page = env.client.get("/v2/workbook", params={"project": code})
-    tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
-              for k in ("content_hash", "workbook_version")}
+    wb = env.client.get("/v2/model-react/workspace", params={"project": code}).json()["workbook"]
+    tokens = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data=dict(project=code, **tokens))
     assert response.status_code == 200, response.text[:400]
@@ -316,10 +315,9 @@ def test_statements_status_distinguishes_current_from_stale(env):
         assert current["status"]["freshness"] == "current"
         assert current["state"] == "CURRENT"
         # a Save makes the Working Copy newer than the persisted Run: STALE
-        legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
-        tokens = {k: re.search(f'name="{k}" value="([^"]*)"', legacy.text).group(1)
-                  for k in ("content_hash", "workbook_version")}
-        csrf = re.search(r'data-csrf="([^"]+)"', legacy.text).group(1)
+        inp = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()
+        tokens = {"content_hash": inp["save"]["content_hash"], "workbook_version": inp["save"]["workbook_version"]}
+        csrf = inp["save"]["csrf_token"]
         saved = post_valid_mutation(env.client, "/v2/workbook/grid/save", json={
             "project": record.project_code, "csrf_token": csrf,
             "cells": [{"field_id": CIT, "value": "24.0"}],
