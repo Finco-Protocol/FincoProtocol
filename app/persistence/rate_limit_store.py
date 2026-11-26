@@ -79,12 +79,22 @@ def _connect() -> sqlite3.Connection:
         if path not in _ready:
             with _ready_lock:
                 if path not in _ready:
-                    conn.execute("PRAGMA journal_mode=WAL")
-                    conn.executescript(_SCHEMA)
-                    try:
-                        os.chmod(path, 0o600)
-                    except OSError:
-                        pass
+                    # Several worker processes can initialise the store at the same moment; the WAL switch and DDL can
+                    # report SQLITE_BUSY without the busy handler. Bounded retry (< 1 s total), then fail closed.
+                    for attempt in range(8):
+                        try:
+                            conn.execute("PRAGMA journal_mode=WAL")
+                            conn.executescript(_SCHEMA)
+                            break
+                        except sqlite3.OperationalError:
+                            if attempt == 7:
+                                raise
+                            time.sleep(0.02 * (attempt + 1))
+                    for suffix in ("", "-wal", "-shm"):
+                        try:
+                            os.chmod(path + suffix, 0o600)
+                        except OSError:
+                            pass
                     _ready.add(path)
         return conn
     except BaseException:

@@ -33,6 +33,10 @@ def world(live_server):
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.workbook import dscr_contract_terms as terms_module
 
+    # FINCO45B: these acceptance cases prove the LEGACY 54-period grid (the dated default adds the final contractual
+    # stub); the module-scoped world is created through the explicit LEGACY creation rollback.
+    legacy_creation = pytest.MonkeyPatch()
+    legacy_creation.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
     with TestClient(main_web.app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=USER, username="admin"))
         counter = {"n": 0}
@@ -72,6 +76,7 @@ def world(live_server):
         update(env, out.history, EOD, "0.50")
         run(env, out.history)
         update(env, out.history, EOD, "0.40")                       # edited after the Last Run: STALE
+        legacy_creation.undo()
         yield out
 
 
