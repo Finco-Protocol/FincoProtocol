@@ -416,7 +416,9 @@ def test_results_distinguish_current_from_stale(browser, react_enabled):
         assert current_state in ("CURRENT", "STALE")
         body = page.locator("[data-results-view]").inner_text()
         if current_state == "CURRENT":
-            assert "CURRENT" in body and "prior saved Run" not in body,                 "CURRENT must not be presented as stale"
+            # Product language (productLanguage.tsx) renders CURRENT as "Results up to date" (no internal codes).
+            assert "Results up to date" in body and "prior saved Run" not in body and "STALE" not in body, \
+                "CURRENT must not be presented as stale"
         else:
             assert "STALE" in body and "prior saved Run" in body
         # integrity tag shows the canonical verdict (evaluated), not a placeholder

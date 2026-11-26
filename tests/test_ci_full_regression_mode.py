@@ -50,10 +50,28 @@ FINCO45C_FIXED = {
 }
 
 
-def test_known_defects_list_is_exactly_the_reviewed_61():
+# FINCO46: 61 -> 51. Exactly these ten nodes now pass and are delisted in the same PR (product fixes: workbook GET no
+# longer rewrites a seeded working copy, Scenarios sheet tokens after a Save, focused-cell anchoring across a cost
+# Save, contained Diagnostics thresholds table; CSRF-correct / template-correct harness). Every other node is retained.
+FINCO46_FIXED = {
+    "tests/test_cost_editing_ux_v2_browser.py::test_stale_composite_hash_is_rejected_when_a_different_row_changed",
+    "tests/test_cost_editing_ux_v2_browser.py::test_stale_row_version_is_rejected_and_rolls_everything_back",
+    "tests/test_cost_editing_ux_v2_browser.py::test_cross_project_foreign_line_and_protected_reference_are_denied",
+    "tests/test_cost_editing_ux_v2_browser.py::test_scenario_switch_with_staged_edits_offers_save_discard_or_stay",
+    "tests/test_cost_editing_ux_v2_browser.py::test_scroll_and_focus_survive_a_keyboard_save",
+    "tests/test_model_react_poc_browser_acceptance.py::test_statements_results_stale_and_unknown_outcomes",
+    "tests/test_model_react_poc_browser_acceptance.py::test_results_distinguish_current_from_stale",
+    "tests/test_model_v7_diagnostics_browser.py::test_lazy_payload_hidden_save_deep_link_and_history[generic_solar_reference-1440-light]",
+    "tests/test_model_v7_diagnostics_browser.py::test_lazy_payload_hidden_save_deep_link_and_history[generic_wind_reference-1366-dark]",
+    "tests/test_model_v7_diagnostics_browser.py::test_visible_save_refresh_and_late_read_cannot_overwrite_new_run",
+}
+
+
+def test_known_defects_list_is_exactly_the_reviewed_51():
     listed = check_groups.known(ROOT / "tests/known_defects.txt")
-    assert len(listed) == 61
+    assert len(listed) == 51
     assert not (set(listed) & FINCO45C_FIXED)
+    assert not (set(listed) & FINCO46_FIXED)
 
 
 # ── mode decision ────────────────────────────────────────────────────────────────────────────────────────────────────

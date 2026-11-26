@@ -255,7 +255,10 @@ def _concurrent_row_edit(s, row_index, amount):
         "project": s.rec.project_code, "sub_line_id": row.get_attribute("data-sub-line-id"),
         "label": row.locator('input[name="label"]').input_value(), "amount_keur": amount,
         "row_version": row.locator('input[name="row_version"]').input_value(),
-        "workbook_version": tokens[1], "content_hash": tokens[0]}, headers={"HX-Request": "true"})
+        "workbook_version": tokens[1], "content_hash": tokens[0],
+        # FINCO46 (as FINCO45C KD-01): the single-row writer is CSRF-bound; the concurrent writer is a legitimate second
+        # editor and sends the row form's own operation token (a missing token is a 403, proved elsewhere).
+        "csrf_token": row.locator('input[name="csrf_token"]').input_value()}, headers={"HX-Request": "true"})
     assert resp.status == 200
 
 
@@ -290,7 +293,8 @@ def test_stale_row_version_is_rejected_and_rolls_everything_back(make):
 
 
 def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
-    from app.auth import generate_csrf_token
+    from types import SimpleNamespace
+    from app.workbook.mutation_csrf import mutation_token
 
     a, b = make("u-ux-owner-a"), make("u-ux-owner-b")
     a.open("capex")
@@ -302,9 +306,14 @@ def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
     line = [{"kind": "capex", "sub_line_id": foreign, "row_version": "x", "label": "stolen", "amount_keur": "1"}]
     import json
 
+    # FINCO46: the batch writer takes a session+project+operation bound token. A's OWN valid token for each addressed
+    # project (minted from A's browser session, never a server patch) so the ownership/404/403 checks are what is tested.
+    session = SimpleNamespace(cookies={c["name"]: c["value"] for c in a.ctx.cookies()}, state=SimpleNamespace())
+
     def post(project):
         return a.ctx.request.post(f"{a.base}/v2/workbook/grid/cost-lines/save", form={
-            "project": project, "csrf_token": generate_csrf_token(), "workbook_version": tokens[1],
+            "project": project, "csrf_token": mutation_token(session, project, "grid-cost-lines-save"),
+            "workbook_version": tokens[1],
             "content_hash": tokens[0], "sheet": "capex", "payload": json.dumps(line)})
 
     assert post("no-such-project-xyz").status == 404, "an unknown or unowned project is not addressable"
@@ -321,8 +330,11 @@ def test_cross_project_foreign_line_and_protected_reference_are_denied(make):
 # ── nothing is lost to a scenario switch or a Run ───────────────────────────────────────────
 
 def _make_scenario(s):
+    # FINCO46 (as FINCO45C KD-03): scenario creation is CSRF-bound; use the page's own rendered operation token.
+    token = s.page.locator('form.v2-scenario-create-form input[name="csrf_token"]').first.input_value()
+    assert token
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                            form={"project": s.rec.project_code, "scenario_name": "UX Case"},
+                            form={"project": s.rec.project_code, "scenario_name": "UX Case", "csrf_token": token},
                             headers={"HX-Request": "true"})
     assert r.status == 200
     s.open("capex")
@@ -389,11 +401,17 @@ def test_scroll_and_focus_survive_a_keyboard_save(make):
     s.rows("capex").nth(1).locator('input[name="amount_keur"]').focus()
     s.page.evaluate("window.scrollTo(0, 260)")
     y = s.page.evaluate("window.scrollY")
+    # FINCO46: exact accounting of legitimate layout change ABOVE the focused cell (the stage bar's count/"Saved N lines"
+    # text changes height across the Save). Nothing above it changing -> the original strict |dy| <= 2 check.
+    where = "(() => { const r = document.activeElement.getBoundingClientRect(); return [r.top, r.top + window.scrollY]; })()"
+    screen_before, doc_before = s.page.evaluate(where)
     with s.page.expect_response(lambda r: "/cost-lines/save" in r.url):
         s.page.keyboard.press("Control+s")
     s.wait_saved_message()
-    assert abs(s.page.evaluate("window.scrollY") - y) <= 2
     assert s.page.evaluate("!!document.activeElement.matches('input[data-cost-cell]')")
+    screen_after, doc_after = s.page.evaluate(where)
+    assert abs(screen_after - screen_before) <= 2, "the focused cell does not jump on screen"
+    assert abs(s.page.evaluate("window.scrollY") - (y + (doc_after - doc_before))) <= 2
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
