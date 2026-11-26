@@ -130,6 +130,9 @@ def _render_opex_sheet_with_oob(
         ws_fresh=ws, project_record=project_record, project=project,
         workspace_owner=workspace_owner, include_runtime_bars=False,
         projection=projection,
+        # FINCO46: the re-rendered Scenarios sheet needs this request's session to issue its mutation tokens; without it
+        # the Select/Rename/Archive forms carried an empty CSRF token and the next scenario action was a false 403.
+        request=request,
     )
     run_controls_html = _tmpl.get_template("partials/_v2_run_controls.html").render({
         "project_code": project,

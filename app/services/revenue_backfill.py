@@ -29,6 +29,13 @@ GENERIC_SOLAR_REFERENCE_CANONICAL_REVENUE_KEYS = (
 )
 
 
+def _is_absent(value) -> bool:
+    """ABSENT or EMPTY only. A stored ``0`` / ``0.0`` / ``False`` is a value (FINCO46: the old falsy test replaced a
+    reference-seeded CO2 price of 0.0 with the factory 1.5 on the first GET and invalidated concurrent editors' tokens)."""
+    return (value is None or (isinstance(value, str) and value.strip() == "")
+            or (isinstance(value, (list, dict)) and not value))
+
+
 def needs_revenue_backfill(project_record, draft_snapshot: dict) -> bool:
     """Return True if this project is an Generic Solar Reference working copy missing canonical keys."""
     if (project_record.project_origin or "") == "factory_template":
@@ -36,7 +43,7 @@ def needs_revenue_backfill(project_record, draft_snapshot: dict) -> bool:
     if (project_record.template_source or "").strip().lower() != "generic_solar_reference":
         return False
     return any(
-        not draft_snapshot.get(k)
+        _is_absent(draft_snapshot.get(k))
         for k in GENERIC_SOLAR_REFERENCE_CANONICAL_REVENUE_KEYS
     )
 
@@ -63,10 +70,10 @@ def backfill_generic_solar_reference_revenue_canonical_keys(
 
     updated = dict(draft_snapshot)
     for key, default_val in defaults.items():
-        if not updated.get(key):
+        if _is_absent(updated.get(key)):
             updated[key] = default_val
 
-    return updated
+    return updated if updated != draft_snapshot else draft_snapshot
 
 
 def persist_revenue_backfill(

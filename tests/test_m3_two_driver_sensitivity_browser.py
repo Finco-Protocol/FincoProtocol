@@ -57,8 +57,13 @@ def make(live_server, browser):
 
 def test_form_selection_run_results_threshold_and_scenario(make):
     s = make("u-m3-desktop", template="generic_solar_reference")
+    # FINCO46 (as FINCO45C KD-03): scenario creation is CSRF-bound; use the page's own rendered operation token.
+    s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
+    s.page.wait_for_selector('form.v2-scenario-create-form input[name="csrf_token"]', state="attached")
+    token = s.page.locator('form.v2-scenario-create-form input[name="csrf_token"]').first.input_value()
+    assert token
     created = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                                  form={"project": s.rec.project_code, "scenario_name": "Upside"},
+                                  form={"project": s.rec.project_code, "scenario_name": "Upside", "csrf_token": token},
                                   headers={"HX-Request": "true"})
     assert created.ok
     _open_sensitivity(s)

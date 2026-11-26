@@ -334,7 +334,7 @@
     if (event.key === 'Enter') {
       event.preventDefault();
       var form = input.closest('form');
-      if (form) { _markSaving(form); v2ClearPending(input); form.requestSubmit(); }
+      if (form) { _submitFieldForm(form, input); }
     } else if (event.key === 'Escape') {
       event.preventDefault();
       var original = input.getAttribute('data-original-value');
@@ -345,17 +345,42 @@
     }
   };
 
+  // FINCO46: one Save per edit. After Enter (focus stays in the input) the htmx swap removes the still-focused input;
+  // the browser then fires change (-> v2MarkPending) and blur on it, and the blur handler re-submitted the SAME value
+  // from a form being swapped out: a second, NATIVE POST that navigated the page back to Overview. A form whose
+  // request for this exact value is still in flight is not submitted again; a genuinely different value still is.
+  function _submitFieldForm(form, input) {
+    _markSaving(form); v2ClearPending(input);
+    form.requestSubmit();          // the in-flight marker is set only once htmx really sends (htmx:beforeRequest)
+  }
+
   window.v2FieldBlur = function (event) {
     var input = event.target;
     if (input.getAttribute('data-pending') === 'true') {
       var form = input.closest('form');
-      if (form) { _markSaving(form); v2ClearPending(input); form.requestSubmit(); }
+      if (!form) return;
+      if (form.__fincoInFlightValue !== undefined && form.__fincoInFlightValue === input.value) {
+        v2ClearPending(input);       // duplicate of the in-flight Save: nothing new to send
+        return;
+      }
+      _submitFieldForm(form, input);
     }
   };
+
 
   document.addEventListener('htmx:beforeRequest', function (event) {
     var form = event.detail.elt;
     if (!form || !form.classList || !form.classList.contains('v2-field-form')) return;
+    // FINCO46 (review): mark the value as in flight only when the request is really sent (a cancelled submit never
+    // marks it), and clear it from THIS request's own completion on THIS form (never from a swapped detail.elt).
+    var sentInput = form.querySelector('.v2-field-input');
+    if (sentInput && event.detail.xhr) {
+      var sentValue = sentInput.value;
+      form.__fincoInFlightValue = sentValue;
+      event.detail.xhr.addEventListener('loadend', function () {
+        if (form.__fincoInFlightValue === sentValue) delete form.__fincoInFlightValue;
+      }, { once: true });
+    }
     _inFlightSaveCount++;
     _markSaving(form);
     var input = form.querySelector('.v2-field-input');

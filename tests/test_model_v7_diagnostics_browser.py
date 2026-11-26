@@ -59,7 +59,8 @@ def test_lazy_payload_hidden_save_deep_link_and_history(live_server, browser, te
         page.wait_for_selector('#panel-diagnostics', state='visible')
         page.go_forward(); page.wait_for_selector('#panel-overview', state='visible')
         s.requests.clear()
-        _save(page, 1517)
+        # A valid edit for THIS template (Wind P50 3000 h / P90 2700 h refuses a solar-sized 1517 h as P50 < P90).
+        _save(page, 1517 if template == 'generic_solar_reference' else 3017)
         page.wait_for_timeout(150)
         assert not [u for m,u in s.requests if '/workbook/diagnostics?' in u]
         assert page.locator('[data-md-payload]').count() == 0
@@ -113,6 +114,11 @@ def test_visible_save_refresh_and_late_read_cannot_overwrite_new_run(live_server
         response = page.evaluate("""async project => {
           const form = document.querySelector('#v2-canonical-run-form');
           const body = new FormData(form);
+          // /v2/workbook/update takes the scoped 'workbook-update' mutation token (as every field editor form carries),
+          // not the Run form's token; the Run form still supplies the current composite content_hash.
+          const fieldToken = document.querySelector('form.v2-field-form input[name="csrf_token"]');
+          if (!fieldToken) throw new Error('no workbook-update token on the page');
+          body.set('csrf_token', fieldToken.value);
           body.set('project', project); body.set('field_id','project_setup.technical.p50_hours');
           body.set('value','1549'); body.set('sheet_id','project_setup');
           return htmx.ajax('POST','/v2/workbook/update', {source:document.body, target:'body', swap:'none',

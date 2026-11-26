@@ -95,6 +95,10 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
   const scope = plain(String(contracts.scope ?? "Project / Base case"));
   const operatingWindow = (contracts.operating_window ?? null) as { start: string; end: string } | null;
   const calendar = useMemo(() => calendarFrom(contracts), [contracts]);
+  // FINCO46: per-row price curves are a legacy-calendar feature; the server says so (with its typed reason) before Save.
+  const curveUnsupported = contracts.price_curve_supported === false
+    ? String(contracts.price_curve_unsupported_reason || "Scheduled price curves are not available on this project's calendar.").replace(/^[A-Z0-9_]+:\s*/, "")
+    : null;
 
   const parsed = useMemo(() => (hasContract ? parseContractModel(raw) : null), [hasContract, raw]);
   const savedModel = parsed && parsed.ok ? parsed.model : null;
@@ -350,9 +354,9 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
           const preserved = model.preservedKeys[i] ?? [];
           const klass = contractClass(s, preserved);
           const pid = `ppa-${i}`;
-          const typeState = ppaTypeState(s, preserved, model.version, indexedIntent[i] === true);
+          const typeState = ppaTypeState(s, preserved, model.version, indexedIntent[i] === true, curveUnsupported);
           const choose = (choice: PpaTypeValue) => {
-            const patch = applyPpaType(s, preserved, model.version, choice);
+            const patch = applyPpaType(s, preserved, model.version, choice, curveUnsupported);
             if (patch === null) return;
             setIndexedIntent((prev) => ({ ...prev, [i]: choice === "indexed" }));
             update(i, patch);
@@ -469,7 +473,7 @@ export function PpaContractsEditor({ project, protectedReference, contracts, sav
                 </p>
               )}
               {s.curve && renderCurve(i, s)}
-              {!s.curve && model.version === 2 && s.type === "ppa" && preserved.length === 0 && !model.streams.some(isAnnual) && (
+              {!s.curve && !curveUnsupported && model.version === 2 && s.type === "ppa" && preserved.length === 0 && !model.streams.some(isAnnual) && (
                 <button type="button" className="fm-btn" disabled={readOnly} onClick={() => choose("scheduled")}>
                   Switch to a scheduled price curve
                 </button>

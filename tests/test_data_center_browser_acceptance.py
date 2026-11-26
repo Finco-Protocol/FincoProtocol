@@ -281,12 +281,16 @@ def test_DC_BROWSER_VERTICAL_INTEGRITY_1280(dc_app, browser):
         activate_destination(page, "tab-debt")
         debt_panel = page.locator("#panel-debt")
         debt_panel.wait_for(state="visible")
-        actual_senior = debt_panel.locator('[data-testid="debt-kpi-actual-senior"]')
-        actual_senior.wait_for(state="attached", timeout=15_000)
-        assert actual_senior.is_visible(), "Actual Senior Debt tile must be visible after run"
-        actual_gearing = debt_panel.locator('[data-testid="debt-kpi-actual-gearing"]')
-        actual_gearing.wait_for(state="attached", timeout=15_000)
-        assert actual_gearing.is_visible(), "Actual Gearing tile must be visible after run"
+        # FINCO46: the Senior Debt summary renders the persisted financing evidence (dl[data-testid=debt-kpi-bar],
+        # one dt/dd per metric) instead of the former per-tile test ids; the invariant is unchanged: actual sized
+        # senior debt and actual gearing are visible with a value after the Run.
+        kpi_bar = debt_panel.locator('[data-testid="debt-kpi-bar"]').first
+        kpi_bar.wait_for(state="visible", timeout=15_000)
+        for label in ("Actual sized Senior debt", "Actual gearing (Last Run)"):
+            row = kpi_bar.locator("div", has=page.locator("dt", has_text=label)).first
+            assert row.is_visible(), f"{label} must be visible after run"
+            value = row.locator("dd").inner_text().strip()
+            assert value and any(ch.isdigit() for ch in value), f"{label} must show a value after run, got {value!r}"
         debt_text = debt_panel.inner_text()
         assert "Max. gearing cap" in debt_text, (
             "Debt tab must show 'Max. gearing cap' label (input cap, not realized gearing)"
@@ -379,14 +383,11 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         )
         kpi_irr_before = page.locator('[data-testid="kpi-project-irr"]').inner_text()
 
-        # Navigate to revenue tab.  Each sheet panel is an iframe that
-        # navigates to ?sheet=<id> asynchronously when its tab is first
-        # activated — wait for the revenue frame before probing it.
+        # Navigate to revenue tab.  FINCO46: sheets are in-page panels of the one workbook document (the former
+        # per-sheet iframe that navigated to ?sheet=<id> no longer exists); probe the revenue panel itself.
         activate_destination(page, "tab-revenue")
-        page.wait_for_url("**/v2/workbook?project=**&sheet=revenue**", timeout=30_000)
-        revenue_frame = next(
-            f for f in page.frames if "sheet=revenue" in (f.url or "")
-        )
+        revenue_frame = page.locator("#panel-revenue")
+        revenue_frame.wait_for(state="visible", timeout=30_000)
         revenue_frame.locator(
             '[data-field-id="revenue.data_center.service_price"]'
         ).wait_for(state="visible", timeout=30_000)
