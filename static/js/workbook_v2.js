@@ -334,7 +334,7 @@
     if (event.key === 'Enter') {
       event.preventDefault();
       var form = input.closest('form');
-      if (form) { _markSaving(form); v2ClearPending(input); form.requestSubmit(); }
+      if (form) { _submitFieldForm(form, input); }
     } else if (event.key === 'Escape') {
       event.preventDefault();
       var original = input.getAttribute('data-original-value');
@@ -345,13 +345,35 @@
     }
   };
 
+  // FINCO46: one Save per edit. After Enter (focus stays in the input) the htmx swap removes the still-focused input;
+  // the browser then fires change (-> v2MarkPending) and blur on it, and the blur handler re-submitted the SAME value
+  // from a form being swapped out: a second, NATIVE POST that navigated the page back to Overview. A form whose
+  // request for this exact value is still in flight is not submitted again; a genuinely different value still is.
+  function _submitFieldForm(form, input) {
+    _markSaving(form); v2ClearPending(input);
+    form.__fincoInFlightValue = input.value;
+    form.requestSubmit();
+  }
+
   window.v2FieldBlur = function (event) {
     var input = event.target;
     if (input.getAttribute('data-pending') === 'true') {
       var form = input.closest('form');
-      if (form) { _markSaving(form); v2ClearPending(input); form.requestSubmit(); }
+      if (!form) return;
+      if (form.__fincoInFlightValue !== undefined && form.__fincoInFlightValue === input.value) {
+        v2ClearPending(input);       // duplicate of the in-flight Save: nothing new to send
+        return;
+      }
+      _submitFieldForm(form, input);
     }
   };
+
+  ['htmx:afterRequest', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+    document.addEventListener(name, function (event) {
+      var elt = event.detail && event.detail.elt;
+      if (elt && elt.__fincoInFlightValue !== undefined) delete elt.__fincoInFlightValue;
+    });
+  });
 
   document.addEventListener('htmx:beforeRequest', function (event) {
     var form = event.detail.elt;

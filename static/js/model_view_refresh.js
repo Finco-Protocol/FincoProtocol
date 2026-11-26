@@ -26,7 +26,10 @@
   }
   function visible(view) { var panel=document.getElementById(view.panel); return panel && !panel.hidden; }
   function syncSetupControls(view, node) {
-    if(view.name!=='project_setup')return;
+    // FINCO46: the Inputs summary is the same scalar field sheet as Project setup. Typing into it while its authorized
+    // replacement was in flight marked it dirty, the fresh sheet was then refused ('This view could not refresh') and the
+    // Save was swallowed; the only way out discarded the edit. Lock it the same way until the replacement has loaded.
+    if(view.name!=='project_setup' && view.name!=='inputs')return;
     var locked=node.dataset.modelViewState!=='loaded';
     // Never accept an edit into the old scalar form while its authorized replacement is pending.
     node.querySelectorAll('input:not([type="hidden"]),select,textarea,button:not([data-model-view-retry])').forEach(function(control){
