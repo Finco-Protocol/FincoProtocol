@@ -16,13 +16,18 @@ def post_valid_csrf(client, url, *args, **kwargs):
         form = dict(kwargs["form"])
         parsed = urlsplit(str(url))
         assert parsed.path == "/v2/workbook/run"
-        boot = client.get(parsed.scheme + "://" + parsed.netloc + "/v2/workbook",
+        base = parsed.scheme + "://" + parsed.netloc
+        boot = client.get(base + "/v2/workbook",
                           params={"project": form["project"]})
         from bs4 import BeautifulSoup
         run_form = BeautifulSoup(boot.text(), "html.parser").select_one("#v2-canonical-run-form")
-        assert run_form is not None
         form.pop("run_csrf_token", None)
-        form["csrf_token"] = run_form.select_one('[name="run_csrf_token"]')["value"]
+        if run_form is not None:
+            form["csrf_token"] = run_form.select_one('[name="run_csrf_token"]')["value"]
+        else:
+            runs_boot = client.get(base + "/v2/model-react/runs", params={"project": form["project"]})
+            assert runs_boot.ok, runs_boot.text()[:300]
+            form["csrf_token"] = runs_boot.json()["run_contract"]["csrf_token"]
         kwargs["form"] = form
         return client.post(url, *args, **kwargs)
     # Ask httpx to resolve its actual jar, per-request cookies and explicit

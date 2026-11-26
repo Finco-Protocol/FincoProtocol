@@ -37,7 +37,7 @@ import { PpaContractsEditor } from "./workflow/PpaContractsEditor";
 import { ScenarioWorkspace } from "./workflow/ScenarioWorkspace";
 import { SheetFieldsEditor } from "./workflow/SheetFieldsEditor";
 import { WorkflowBar } from "./workflow/WorkflowBar";
-import { DirtyProvider, useLeaveGuard, useDirtyTotal } from "./workflow/workflowShared";
+import { DirtyProvider, useLeaveGuard, useDirtyTotal, useReportPending } from "./workflow/workflowShared";
 import { isRecoveryPayload, type InputsPayload, type RecoveryPayload, type RevenueContractsPayload, type StatementsPayload, type WorkspacePayload } from "./types";
 import { fetchRevenueContracts } from "./api";
 import { changeLifecycle } from "./library/api";
@@ -155,6 +155,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
   const [revenueVersion, setRevenueVersion] = useState(0);
   const revenueTicket = useRef(0);
   const [busy, setBusy] = useState(false);
+  useReportPending("grid-save", busy);
   // Bumped after ANY committed change so every editor re-reads its CAS tokens;
   // unsaved drafts in other editors are reconciled, never silently rebased.
   const [dataVersion, setDataVersion] = useState(0);
@@ -572,6 +573,7 @@ function WorkspaceViewInner({ project, onNavigateToLibrary, extensions }: Worksp
           onRan={reconcileRun}
           onReload={refreshAll}
           reconciliationBlocked={runRefresh !== "idle"}
+          identityRefreshing={identityReads > 0 || busy}
         >
           <ReportPrecisionControl />
           <nav aria-label="Project actions" className="ux-project-actions">

@@ -16,6 +16,19 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.v2 import register_path_map as rpm
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _spec(field_id, engine_path):
     return SimpleNamespace(field_id=field_id, engine_path=engine_path)
 

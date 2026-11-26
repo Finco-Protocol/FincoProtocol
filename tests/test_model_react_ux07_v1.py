@@ -28,7 +28,7 @@ def env(tmp_path, monkeypatch):
     from app.v2.react_workspace_router import router as workspace_router
     from app.v2.router import router as v2_router
 
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
     app.include_router(grid_router, prefix="/v2")

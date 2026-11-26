@@ -86,7 +86,7 @@ def test_context_is_flagged_authenticated_and_scoped(imp, monkeypatch):
     assert data["csrf_token"] and data["content_hash"] and data["limits"]["max_upload_bytes"] == 2 * 1024 * 1024
     assert any(f["id"] == FIELD for f in data["fields"]) and data["semantics"]["file_is_stored"] is False
     assert imp.client.get(CONTEXT, params={"project": "nope"}).status_code == 404
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert imp.client.get(CONTEXT, params={"project": record.project_code}).status_code == 404
 
 

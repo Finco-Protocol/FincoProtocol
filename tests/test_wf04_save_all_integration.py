@@ -11,6 +11,19 @@ import pytest
 from tests.run_clone_csrf import post_valid_csrf
 from tests.test_fin_val_b1_capex_save_integrity import USER, env as grid_env  # noqa: F401  (fixture; the grid router carries Save All)
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 EOD = "debt.contract.min_dscr_eod"
 COV = "debt.contract.contractual_dscr"
 URL = "/v2/workbook/save-all"

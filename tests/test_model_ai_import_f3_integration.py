@@ -34,6 +34,19 @@ from app.workbook.multisenior_config import (
     FIELD_ID as F3_FIELD, SNAPSHOT_KEY as F3_KEY, parse_state,
 )
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 OWNER = "decision-user"
 F3_FORBIDDEN = "debt.senior.interest_rate_pct"
 

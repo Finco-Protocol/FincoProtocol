@@ -25,6 +25,19 @@ from tests.test_wf07_revenue_multistream import contracts
 from tests.test_model_decision_workspace_v2 import env
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (explicit per-row price curves); new Solar/Wind projects default to

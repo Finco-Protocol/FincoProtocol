@@ -135,10 +135,9 @@ def _identity(record):
 
 def _post(client, record, path, field_id, value, *, content_hash=None):
     version, current = _identity(record)
-    # Only the general endpoint adopted SEC-02; slice1 keeps its released contract.
     from tests.model_mutation_csrf import post_valid_mutation
-    post = (lambda url, **kwargs: post_valid_mutation(client, url, **kwargs)) if path == GENERAL else client.post
-    return post(
+    return post_valid_mutation(
+        client,
         path,
         data={"field_id": field_id, "value": value, "project": record.project_code,
               "workbook_version": version, "content_hash": content_hash or current,
@@ -263,7 +262,8 @@ class TestUntypedRejectionsStayUntyped:
 class TestRunIntelligenceStillCoexists:
     """I: after the normal sync with #209, its surface and this wave live in one page."""
 
-    def test_workbook_page_carries_both_surfaces(self, project, client):
+    def test_workbook_page_carries_both_surfaces(self, project, client, monkeypatch):
+        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
         resp = client.get(f"/v2/workbook?project={project.project_code}")
         assert resp.status_code == 200
         html = resp.text

@@ -47,12 +47,10 @@ def env(tmp_path, monkeypatch):
                                              template_source="generic_solar_reference")
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id="wf1-unit", username="admin"))
-        page = client.get("/v2/workbook", params={"project": record.project_code})
-        from bs4 import BeautifulSoup
-        form = BeautifulSoup(page.text, "html.parser").select_one("#v2-canonical-run-form")
-        tokens = {f["name"]: f.get("value", "") for f in form.select("input[name]")}
-        response = client.post("/v2/workbook/run", headers={"HX-Request": "true"},
-                               data={"project": record.project_code, **tokens})
+        from tests.run_clone_csrf import post_valid_csrf
+        wb = client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+        response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"},
+                                   data={"project": record.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"]})
         assert response.status_code == 200 and response.headers.get("X-Finco-Run-Outcome") != "FAILED"
         yield SimpleNamespace(client=client, record=record)
     reset_model_executor_for_tests()

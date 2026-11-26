@@ -16,6 +16,19 @@ from app.v2.returns_projection import NOT_AVAILABLE, build_returns_projection
 from app.workbook.runtime_result import RuntimeResult
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _rr(*, project_irr=0.0759, equity_irr=0.1025, sponsor=True, distribution=True):
     sponsor_payload = None
     if sponsor:

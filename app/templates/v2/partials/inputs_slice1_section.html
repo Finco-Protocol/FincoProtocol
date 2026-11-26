@@ -29,6 +29,7 @@
               <input type="hidden" name="project" value="{{ project_code }}">
               <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
               <input type="hidden" name="content_hash" value="{{ content_hash }}">
+              <input type="hidden" name="csrf_token" value="{{ slice1_csrf_token }}">
               {% if row.field_type == 'date' %}
                 <input type="date"
                        name="value"

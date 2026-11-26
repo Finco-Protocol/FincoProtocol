@@ -10,6 +10,19 @@ from tests.test_model_financing_f2 import save, run
 from tests.test_financing_f3_junior_workspace import state, working_case
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_saved_junior_proposal_has_real_commitment_closed_activation_and_no_policy_guess(env, kind):
     from app.persistence.workspace_repository import get_workspace_state

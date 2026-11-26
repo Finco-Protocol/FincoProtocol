@@ -39,6 +39,19 @@ from app.model_quality.scoring import BLOCKED_SCORE_CAP, MIN_COVERAGE, rank_gaps
 from app.run_integrity import evidence_digest
 from app.ui.runtime_summary import _format_revenue_derivation
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 REPO = Path(__file__).resolve().parents[1]
 HASH = "ab" * 32
 SNAP = "20261010T000000.000000+0000"

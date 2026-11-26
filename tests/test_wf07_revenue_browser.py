@@ -10,6 +10,19 @@ from tests.test_model_golden_flows_browser import golden_app, browser, _page
 from tests.test_wf07_revenue_multistream import contracts
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 
 def _click_tab(page, tab_id: str, panel_id: str) -> None:
     """Open a destination through the consolidated workspace navigation (the legacy flat tab strip is hidden)."""

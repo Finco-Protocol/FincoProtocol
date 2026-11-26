@@ -53,8 +53,9 @@ def db_dump():
 
 
 def run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **tokens(page.text)})
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
+                               data={"project": record.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"]})
     assert response.status_code == 200
     from app.persistence.run_history_repository import get_run_history
     return get_run_history(OWNER, record.project_id)[0]
@@ -181,7 +182,7 @@ def test_security_foreign_unauthenticated_flag_and_scenario_read_only(capex, mon
                 response = client.get(path, params={"project": record.project_code, "spec": "[]"}, headers=headers, follow_redirects=False)
                 assert response.status_code == (404 if who else 401)
     assert capex.client.get(READ, params={"project": "no-such-project"}).status_code == 404
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert capex.client.get(READ, params={"project": record.project_code}).status_code == 404
 
 

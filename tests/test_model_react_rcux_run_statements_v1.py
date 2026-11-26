@@ -38,6 +38,7 @@ def test_flag_session_ownership_and_input_validation(env, monkeypatch):  # noqa:
     from app.auth import COOKIE_NAME, create_session_token
     from app.v2.react_run_statements import router
     env.client.app.include_router(router, prefix="/v2")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert env.client.get(PATH, params={"project": "x", "history_id": "y"}).json()["code"] == "REACT_POC_DISABLED"
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     assert TestClient(env.client.app).get(PATH, params={"project": "x", "history_id": "y"}).status_code == 401
@@ -82,13 +83,13 @@ def test_an_earlier_run_shows_its_own_values_not_the_edited_inputs(renv):
     first = history(record)[0]
     expected = [p["revenues_keur"] for p in first.financial_statements["pnl"]["periods"]]
     from tests.model_mutation_csrf import post_valid_mutation
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = renv.client.get("/v2/workbook", params={"project": record.project_code}).text
+    wb = renv.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(OWNER, record.project_id)
     tariff = float(ws.draft_snapshot.get("rev_ppa_base_tariff") or ws.draft_snapshot["tariff_eur_mwh"])
     post_valid_mutation(renv.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                        data=dict(project=record.project_code, sheet_id="revenue", field_id="revenue.ppa.base_tariff", value=str(tariff * 1.5), **tokens(page)))
+                        data=dict(project=record.project_code, sheet_id="revenue", field_id="revenue.ppa.base_tariff", value=str(tariff * 1.5),
+                                  content_hash=wb["composite_hash"], workbook_version=wb["version"]))
     run(renv, record)
     body = renv.client.get(PATH, params={"project": record.project_code, "history_id": first.history_id}).json()
     pnl = next(s for s in body["statements"]["drilldown"]["statements"] if s["id"] == "pnl")

@@ -39,6 +39,7 @@ def test_router_is_mounted_before_the_project_catch_all():
 def test_flag_and_session_are_required(env, monkeypatch):
     from app.v2.react_compare_projects import router
     env.client.app.include_router(router, prefix="/v2")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert env.client.get(PATH).json()["code"] == "REACT_POC_DISABLED"
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     from fastapi.testclient import TestClient

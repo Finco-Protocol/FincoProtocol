@@ -18,6 +18,19 @@ from tests.test_correction_a_required_gates import _rendered_form_values
 from tests.test_model_react_wf2_projections_v1 import OWNER, env  # noqa: F401  (shared real-app fixture)
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _scenario_select_tokens(html: str) -> list[str]:
     tokens = []
     for form in re.findall(r'<form[^>]*hx-post="/v2/workbook/scenarios/select".*?</form>', html, flags=re.S):
@@ -37,7 +50,8 @@ def _with_alternative_scenario(env, kind):
 
 
 @pytest.mark.parametrize("kind", ["capex", "opex"])
-def test_row_save_refreshes_scenarios_with_valid_select_tokens(env, kind):
+def test_row_save_refreshes_scenarios_with_valid_select_tokens(env, monkeypatch, kind):
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     from app.persistence import capex_sub_lines as capex_repo, opex_sub_lines as opex_repo
     record = _with_alternative_scenario(env, "solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})

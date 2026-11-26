@@ -7,6 +7,19 @@ import pytest
 from tools import model_financing_f3_evidence as tool
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.fixture
 def evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")

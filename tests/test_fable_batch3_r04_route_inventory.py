@@ -15,6 +15,19 @@ from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _asser
 from tests.test_fable_batch3_r04_review_route import MERCHANT, _ppa, book
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _absolute_book(world, rec, amount, unit="MWh"):
     payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
     window = payload["contracts"]["operating_window"]
@@ -121,8 +134,9 @@ def test_scenario_book_is_validated_against_the_scenario_effective_state_and_nev
     req = SimpleNamespace(cookies=env.client.cookies, state=SimpleNamespace())
     direct = env.client.post("/v2/workbook/update", headers={"Accept": "application/json"}, data={
         "project": record.project_code, "field_id": "revenue.multistream.contracts", "value": book([_ppa("a", "2031-03-01", "2032-03-01", 10), MERCHANT]),
-        "content_hash": tok["content_hash"], "workbook_version": tok["workbook_version"], "csrf_token": mutation_token(req, record.project_code, "workbook-update")})
-    assert "REVENUE_V2_SCENARIO" in direct.text
+        "content_hash": tok["content_hash"], "workbook_version": tok["workbook_version"], "csrf_token": mutation_token(req, record.project_code, "workbook-update")},
+        follow_redirects=False)
+    assert "REVENUE_V2_SCENARIO" in direct.headers.get("location", "") or "REVENUE_V2_SCENARIO" in direct.text
     # the contracts writer validates the scenario's EFFECTIVE state: over-cap refused, valid stored in the scenario overrides only
     over = env.client.post("/v2/workbook/revenue/contracts", data={"project": record.project_code, "csrf_token": tok["csrf_token"], "content_hash": tok["content_hash"],
                            "contracts": book([_ppa("a", "2031-03-01", "2032-03-01", 10 ** 9), MERCHANT]), "action": "save"}, follow_redirects=False)

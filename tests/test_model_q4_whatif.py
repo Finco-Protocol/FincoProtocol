@@ -12,6 +12,19 @@ import pytest
 from app.v2 import whatif
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def test_q4_allowlist_is_exactly_q1_to_workbook_to_scenario():
     from app.model_quality.registry import REGISTRY
     from app.persistence._helpers import SCENARIO_INPUT_FIELDS

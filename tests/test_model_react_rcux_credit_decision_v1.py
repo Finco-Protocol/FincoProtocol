@@ -31,7 +31,16 @@ def db_dump():
 
 
 def legacy_payload(env, record, *runs):
-    page = env.client.get("/v2/credit-decision", params=[("project", record.project_code)] + [("run", r) for r in runs])
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        page = env.client.get("/v2/credit-decision", params=[("project", record.project_code)] + [("run", r) for r in runs])
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     match = re.search(r'<script type="application/json" data-cd-payload>(.*?)</script>', page.text, re.S)
     assert match, page.text[:300]
     return json.loads(match.group(1))
@@ -47,6 +56,7 @@ def test_router_is_mounted_before_the_project_catch_all():
 def test_flag_and_session_are_required(env, monkeypatch):  # noqa: F811
     from app.v2.react_credit_decision import router
     env.client.app.include_router(router, prefix="/v2")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert env.client.get(PATH, params={"project": "x"}).json()["code"] == "REACT_POC_DISABLED"
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     from fastapi.testclient import TestClient

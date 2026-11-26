@@ -44,13 +44,15 @@ RATE_FIELD='debt.senior.interest_rate_pct'
 
 def _save(env,record,human,mode='single',hash_override=None):
     ws=_ws(record);pis=ProjectInputSet.from_snapshot(ws.draft_snapshot)
-    projection=env.client.get('/v2/model-react/fields/debt',params={'project':record.project_code}).json()
+    proj_resp=env.client.get('/v2/model-react/fields/debt',params={'project':record.project_code})
+    assert proj_resp.status_code==200,f"fields/debt returned HTTP {proj_resp.status_code}: {proj_resp.text[:300]}"
+    projection=proj_resp.json()
+    assert 'save' in projection,f"fields/debt missing 'save' contract: {proj_resp.text[:300]}"
     if mode=='batch':
         return WorkbookUpdateService.apply_batch_draft_update(ws=ws,
             updates=[(RATE_FIELD,str(human))], content_hash=hash_override or projection['save']['content_hash'],
             workbook_version=WORKBOOK.version,expected_scenario_id=ws.active_scenario_id,
             project_record=record,actor_user_id=USER)
-    projection=env.client.get('/v2/model-react/fields/debt',params={'project':record.project_code}).json()
     response=env.client.post('/v2/workbook/update',headers={'HX-Request':'true'},data={
         'project':record.project_code,'field_id':RATE_FIELD,'value':str(human),
         'content_hash':hash_override or projection['save']['content_hash'],

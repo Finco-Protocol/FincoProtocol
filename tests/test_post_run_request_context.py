@@ -17,6 +17,19 @@ import pytest
 from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _tokens(client, cookies, code):
     response = client.get("/v2/workbook", params={"project": code}, cookies=cookies)
     assert response.status_code == 200

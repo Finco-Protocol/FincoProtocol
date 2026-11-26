@@ -12,6 +12,19 @@ import pytest
 from tests.test_model_decision_workspace_v2 import env, tokens
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def test_explicit_override_binds_alias_without_reversing_global_precedence(env):
     from app.persistence.scenarios_repository import resolve_scenario_snapshot
     from app.input_adapter import _snapshot_to_dict

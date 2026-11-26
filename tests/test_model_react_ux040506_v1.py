@@ -44,7 +44,7 @@ def env(tmp_path, monkeypatch):
     from app.v2.react_workspace_router import router as workspace_router
     from app.v2.router import router as v2_router
 
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
     app.include_router(grid_router, prefix="/v2")
@@ -87,10 +87,8 @@ def test_runs_projection_lists_committed_history(env, monkeypatch):
     assert "Saving never runs the model" in before["run_contract"]["note"]      # reviewed Addendum B wording
     assert before["run_contract"]["url"] == "/v2/workbook/run"
     # a canonical Run commits exactly one immutable history entry
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = {k: part for k, part in
-              [(k, __import__("re").search(f'name="{k}" value="([^"]*)"', page.text).group(1))
-               for k in ("content_hash", "workbook_version")]}
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    tokens = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
     run_response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                    data=dict(project=record.project_code, **tokens))
     assert run_response.status_code == 200

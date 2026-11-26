@@ -8,6 +8,7 @@ from tests.model_react_rcm_support import rcm_react_flag
 from tests.model_react_rcm_financing_acceptance import fin_session, no_page_overflow
 from tests.model_react_wf1_browser_acceptance import run_canonical
 
+
 @pytest.fixture(scope='module')
 def f04_build(tmp_path_factory):
     root = Path(__file__).resolve().parents[1]

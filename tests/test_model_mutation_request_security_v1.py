@@ -13,6 +13,19 @@ from app.workbook.mutation_csrf import mutation_token, validate_mutation_token, 
 from tests.test_model_react_ux040506_v1 import env as run_env
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def snapshot():
     """All tables, all columns, schema and row counts; no timestamps are ignored."""
     with db.get_connection() as connection:
@@ -125,6 +138,9 @@ def request_spec(env,record,operation):
     if operation=='workbook-update':
         data.update(field_id='debt.senior.gearing_pct',value='65',sheet_id='debt')
         return '/v2/workbook/update',data,False
+    if operation=='inputs-slice1-update':
+        data.update(field_id='debt.senior.gearing_pct',value='65')
+        return '/v2/workbook/inputs-slice1/update',data,False
     if operation=='grid-save':
         data.update(cells=[{'field_id':'debt.senior.gearing_pct','value':'65'}])
         return '/v2/workbook/grid/save',data,True
@@ -137,6 +153,11 @@ def request_spec(env,record,operation):
 @pytest.mark.parametrize('operation',sorted(OPERATIONS))
 def test_each_operation_rejects_missing_invalid_cross_scope_tokens_without_writes(secured,operation,monkeypatch):
     record=secured.create();url,data,is_json=request_spec(secured,record,operation)
+    if operation!='opex-annual-exceptions':
+        # Routing regression: every operation must hit ITS OWN route. A silent fall-through to
+        # /v2/workbook/export previously made 'inputs-slice1-update' test the export guard instead.
+        from tests.model_mutation_csrf import ROUTES
+        assert ROUTES.get(url)==operation,(operation,url,ROUTES.get(url))
     for bad in ['missing','invalid','generic','wrong_session','wrong_project','wrong_operation','expired']:
         values=dict(data)
         if bad=='missing':values['csrf_token']='' # JSON field remains structurally valid to exercise its refusal gate.
@@ -176,14 +197,23 @@ def test_valid_cost_operation_retains_cas_and_row_version_checks(secured,kind):
         if expected==409:assert snapshot()==before
 
 
-def test_react_and_legacy_issue_usable_separate_tokens(secured):
+def test_react_and_legacy_issue_usable_separate_tokens(secured,monkeypatch):
     from bs4 import BeautifulSoup
     record=secured.create();p=record.project_code
-    page=secured.client.get('/v2/workbook',params={'project':p})
-    assert page.status_code==200
+    # The legacy SSR page is only served under the explicit rollback flag; React stays default elsewhere.
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','0')
+    page=secured.client.get('/v2/workbook',params={'project':p},follow_redirects=False)
+    assert page.status_code==200,(page.status_code,page.headers.get('location'))
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','1')
     soup=BeautifulSoup(page.text,'html.parser')
     form=soup.select_one('form[hx-post="/v2/workbook/scenarios/create"]')
     assert form and form.select_one('input[name="csrf_token"]')['value']
+    legacy_token=form.select_one('input[name="csrf_token"]')['value']
+    legacy_req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())
+    assert validate_mutation_token(legacy_req,p,legacy_token,'scenario-create')
+    # Swapped-token negatives: a token issued for one operation never authorises another.
+    assert not validate_mutation_token(legacy_req,p,legacy_token,'grid-save')
+    assert not validate_mutation_token(legacy_req,'other-project',legacy_token,'scenario-create')
     scenarios=secured.client.get('/v2/model-react/scenarios',params={'project':p}).json()
     token=scenarios['mutations']['create']['csrf_token']
     req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())

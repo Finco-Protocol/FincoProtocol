@@ -22,6 +22,19 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (e
 from tests.test_wf07_revenue_multistream import contracts
 from tests.test_wf07_revenue_workspace import contract_tokens
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 OWNER = "decision-user"
 
 

@@ -17,6 +17,19 @@ from tests.test_fin_val_b2_c1_recovery_finite_opex import (  # noqa: F401  (shar
     _history_count, _poison, _prime, _recovery_form, _semantic, _snapshot, env,
 )
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 KEY = "rev_co2_enabled"
 
 

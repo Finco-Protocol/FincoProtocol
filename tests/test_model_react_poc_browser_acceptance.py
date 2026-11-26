@@ -39,6 +39,7 @@ def react_enabled(live_server):
         os.environ.pop("FINCO_MODEL_REACT_V1", None)
     else:
         os.environ["FINCO_MODEL_REACT_V1"] = old
+    # Wait: ensure flag-off test restores cleanly; done inside test below.
 
 
 def make_session(browser, live_server, uid):
@@ -78,7 +79,7 @@ def run_via_canonical_path(context, live_server, project_code):
 def test_flag_off_shows_explicit_fallback_and_legacy_workbook_stays_default(browser, react_enabled):
     import os
 
-    os.environ.pop("FINCO_MODEL_REACT_V1", None)
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
     context, page, record, errors = make_session(browser, react_enabled, "ux02-off-user")
     try:
         page.goto(f"{react_enabled}/v2/model-react/{record.project_code}")

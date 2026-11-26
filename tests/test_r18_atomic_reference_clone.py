@@ -16,6 +16,19 @@ from app.persistence.projects_repository import list_project_records
 from app.services import project_library_service as pls
 from app.services import reference_seed_service as seed
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 U = "r18-user"
 VERTICALS = ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference", "generic_ev_charging_reference"]
 

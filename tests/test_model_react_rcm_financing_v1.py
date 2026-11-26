@@ -74,8 +74,8 @@ def save_field(env, record, field_id, value, *, token_kind="csrf_token"):
 
 
 def run_canonical(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    toks = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    toks = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **toks))
     assert response.status_code == 200, response.text[:300]
 

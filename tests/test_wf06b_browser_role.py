@@ -11,6 +11,7 @@ from tests.model_react_rcm_support import rcm_react_flag  # noqa: F401
 from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 
 
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_wf06b_workbench_matches_projection_and_hides_provenance(live_server, browser, rcm_react_flag, kind):
     from tests.model_react_wf06b_acceptance import check_cost_workbench_matches_the_server_projection_and_hides_provenance

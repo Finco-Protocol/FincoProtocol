@@ -11,7 +11,14 @@ from tests.model_workspace_navigation import activate_destination
 
 
 @pytest.mark.parametrize('theme,width', [('light', 1440), ('dark', 390)])
-def test_integrated_save_run_and_stale_reopen(env, storage, live, theme, width):
+def test_integrated_save_run_and_stale_reopen(env, storage, live, theme, width, monkeypatch):
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1', '0')
+    from app.v2.bess_workspace_router import router as bess_ws_router
+    from app.v2.grid_router import router as grid_router
+    if not any('/workbook/bess/inputs' in getattr(r, 'path', '') for r in env.client.app.routes):
+        env.client.app.include_router(bess_ws_router, prefix='/v2')
+    if not any('/workbook/grid/sheet' in getattr(r, 'path', '') for r in env.client.app.routes):
+        env.client.app.include_router(grid_router, prefix='/v2')
     from app.auth import COOKIE_NAME, create_session_token
     from app.persistence.workspace_repository import get_workspace_state
     with sync_playwright() as pw:

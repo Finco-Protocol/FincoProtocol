@@ -10,6 +10,19 @@ import re
 
 import pytest
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server  # noqa: F401,E402
@@ -85,6 +98,10 @@ def test_project_rename_is_coherent_in_the_browser(live_server, browser):
 
 def test_shortened_horizon_journey_notice_navigation_refusal_and_recovery(live_server, browser):
     s = Session(live_server, browser, "sc34-j-horizon")
+    from app.persistence import db
+    with db.get_cursor() as cur:
+        # Pre-ON-08 SC-08/SC-10 browser contract: custom/unreviewed lineage keeps stored SHL maturity authoritative.
+        cur.execute("UPDATE projects SET source_project_id=NULL WHERE project_id=?", (s.rec.project_id,))
     page = s.page
     activate_destination(page, "tab-project-setup")
     # a committed Run first, so there is a previous result to protect

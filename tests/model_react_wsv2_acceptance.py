@@ -159,6 +159,23 @@ def test_wsv2_before_visuals_use_exact_main_assets(live_server,browser,rcm_react
         for extension,kind in [('js','application/javascript'),('css','text/css')]:
             asset=subprocess.check_output(['git','show',baseline+':static/react/finco-react.'+extension])
             page.route('**/static/react/finco-react.'+extension+'*',lambda route,_request,asset=asset,kind=kind:route.fulfill(status=200,content_type=kind,body=asset))
+        # The b1a58681 bundle's readHostConfig() requires data-legacy-url on #finco-react-root, which FINCO47 retired from react_poc.html.
+        # Supply the baseline attribute ONLY on intercepted HTML host requests inside this baseline-asset witness test.
+        import re as _re
+        def _baseline_host_html(route):
+            req = route.request
+            if req.resource_type != 'document' or req.method != 'GET':
+                return route.continue_()
+            resp = route.fetch()
+            ctype = resp.headers.get('content-type', '')
+            if 'text/html' not in ctype:
+                return route.fulfill(response=resp)
+            html = resp.text()
+            if 'id="finco-react-root"' in html and 'data-legacy-url=' not in html:
+                legacy = f'/v2/workbook?project={record.project_code}' if record.project_code in req.url else '/library'
+                html = html.replace('id="finco-react-root"', f'id="finco-react-root" data-legacy-url="{legacy}"', 1)
+            return route.fulfill(response=resp, body=html)
+        page.route(_re.compile(r'/v2/model-react(?:/|$|\?)'), _baseline_host_html)
         page.goto(f'{live_server}/v2/model-react/')
         page.wait_for_selector('[data-library-view]');shot(page,'before-library')
         page.locator('[data-new-project-cta]').click();page.wait_for_selector('[data-wizard-step="1"]');shot(page,'before-wizard')

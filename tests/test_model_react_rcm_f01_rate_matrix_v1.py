@@ -74,11 +74,9 @@ def test_wizard_to_financing_save_reload_and_run_keeps_one_exact_unit(env, kind,
     assert senior_rate_authority(typed)[1] == pytest.approx(RATIO[human], abs=1e-17)
     assert _ws(record).last_runtime_snapshot_id in (None, "") and _history(env, record) == 0           # Save is not a Run
     # Run: the canonical Run route receives exactly that effective rate
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    form = BeautifulSoup(page.text, "html.parser").select_one("#v2-canonical-run-form")
-    data = {i["name"]: i.get("value", "") for i in form.select("input[name]")}
-    data["csrf_token"] = data.pop("run_csrf_token")
-    data["run_intent_id"] = str(uuid.uuid4())
+    from tests.run_clone_csrf import post_valid_csrf
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    data = {"project": record.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"], "run_intent_id": str(uuid.uuid4())}
     import app.api.project_runner as runner
 
     original, captured = runner.run_project, []
@@ -88,7 +86,7 @@ def test_wizard_to_financing_save_reload_and_run_keeps_one_exact_unit(env, kind,
         return original(*args, **kwargs)
 
     monkeypatch.setattr(runner, "run_project", observed)
-    response = env.client.post("/v2/workbook/run", headers={"Accept": "application/json", "HX-Request": "true"}, data=data, follow_redirects=False)
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json", "HX-Request": "true"}, data=data, follow_redirects=False)
     assert len(captured) == 1 and senior_rate_authority(captured[0])[1] == pytest.approx(RATIO[human], abs=1e-17)
     outcome = response.json()["outcome"]
     assert outcome in ("COMMITTED", "FAILED")                                    # an honest model refusal is typed, never a silent number
@@ -102,12 +100,10 @@ def test_previews_after_a_committed_run_never_change_history_or_the_last_run(env
     record = _wizard_create(env, kind)
     _prime(env, record)
     _save(env, record, 5.6, "single")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    form = BeautifulSoup(page.text, "html.parser").select_one("#v2-canonical-run-form")
-    data = {i["name"]: i.get("value", "") for i in form.select("input[name]")}
-    data["csrf_token"] = data.pop("run_csrf_token")
-    data["run_intent_id"] = str(uuid.uuid4())
-    assert env.client.post("/v2/workbook/run", headers={"Accept": "application/json", "HX-Request": "true"}, data=data,
+    from tests.run_clone_csrf import post_valid_csrf
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    data = {"project": record.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"], "run_intent_id": str(uuid.uuid4())}
+    assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json", "HX-Request": "true"}, data=data,
                            follow_redirects=False).json()["outcome"] == "COMMITTED"
     last_run, rows = _ws(record).last_runtime_snapshot_id, _history(env, record)
     draft = json.dumps(_snapshot(record), sort_keys=True, default=str)

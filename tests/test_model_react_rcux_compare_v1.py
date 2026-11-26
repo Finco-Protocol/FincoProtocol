@@ -221,7 +221,7 @@ def test_security_foreign_user_unauthenticated_protected_and_flag(compare, monke
     with monkeypatch.context() as scoped:
         scoped.setattr("app.services.project_library_service.is_protected_reference", lambda record: True)
         assert get(compare, record, base, down).status_code == 409
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert get(compare, record, base, down).status_code == 404
 
 

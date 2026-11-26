@@ -11,6 +11,19 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -136,3 +149,46 @@ class TestPrimaryNavigation:
             assert "_app_footer.html" not in content, (
                 f"Radar template {path.name} unexpectedly includes _app_footer.html"
             )
+
+
+def test_canonical_react_library_renders_financial_disclaimer_and_excludes_pilot_links(monkeypatch, tmp_path):
+    """Under default React ON, the canonical My Projects page shows the modelling disclaimer and no pilot links."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence import db
+    import socket, threading, time, os, uvicorn
+    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "footer-react.db"))
+    db.init_db()
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(main_web.app, host="127.0.0.1", port=port, log_level="error"))
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+    while not server.started:
+        time.sleep(0.05)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        opts = {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+        if os.environ.get("FINCO_TEST_CHROMIUM_PATH"):
+            opts["executable_path"] = os.environ["FINCO_TEST_CHROMIUM_PATH"]
+        with playwright.sync_playwright() as pw:
+            try:
+                browser = pw.chromium.launch(**opts)
+            except Exception as exc:
+                pytest.skip(f"chromium unavailable: {exc}")
+            ctx = browser.new_context()
+            ctx.add_cookies([{"name": COOKIE_NAME, "value": create_session_token(user_id="footer-u", username="footer-u"), "url": base}])
+            page = ctx.new_page()
+            page.goto(base + "/v2/model-react/", wait_until="load")
+            footer = page.locator('[data-testid="react-library-footer"]')
+            footer.wait_for(timeout=20000)
+            txt = footer.inner_text()
+            assert "financial modelling" in txt and "investment" in txt
+            for forbidden in ("Pilot Guide", "Known Limitations", "Validation Status"):
+                assert forbidden not in txt
+            browser.close()
+    finally:
+        server.should_exit = True
+        t.join(5)

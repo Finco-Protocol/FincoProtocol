@@ -18,6 +18,19 @@ from app.v2.sensitivity_matrix_projection import (
 )
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 USER = "decision-user"
 RUN = "/v2/workbook/sensitivity/matrix/run"
 FORM = "/v2/workbook/decision/sensitivity"      # the Sensitivity sheet hosts the matrix form

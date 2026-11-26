@@ -83,8 +83,8 @@ def with_sensitivity(env):
 
 
 def run_canonical(env, code):
-    page = env.client.get("/v2/workbook", params={"project": code})
-    tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
+    wb = env.client.get("/v2/model-react/workspace", params={"project": code}).json()["workbook"]
+    tokens = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=code, **tokens))
     assert response.status_code == 200, response.text[:300]
 

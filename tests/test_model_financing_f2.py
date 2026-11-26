@@ -13,6 +13,19 @@ from app.workbook.bankability_config import FIELD_ID, SNAPSHOT_KEY, apply_config
 from tests.test_model_decision_workspace_v2 import env, tokens
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.mark.parametrize("raw", ['[]', '{"version":true}', '{"version":2}', '{"version":1,"x":1}',
     '{"version":1,"version":1}', '{"version":1,"rates_pct":[NaN]}',
     '{"version":1,"sizing_mode":"minimum_dscr_sculpted"}', '{"version":1,"lender_case":"P75"}',
@@ -69,11 +82,19 @@ def test_nonrenewable_lender_cases_rejected(kind):
         apply_config(project(kind), config(lender_case='P_50'), project_type=kind.title())
 
 
+def _workbook_tokens(env, project_code):
+    page = env.client.get('/v2/workbook', params={'project': project_code}, follow_redirects=False)
+    if page.status_code == 200 and 'name="content_hash"' in page.text:
+        return tokens(page.text)
+    wb = env.client.get('/v2/model-react/workspace', params={'project': project_code}).json()['workbook']
+    return {'content_hash': wb['composite_hash'], 'workbook_version': wb['version']}
+
+
 def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
     csrf = {}
     if field == 'debt.financing.instruments':
         from bs4 import BeautifulSoup
+        page = env.client.get('/v2/workbook', params={'project': record.project_code})
         form = BeautifulSoup(page.text, 'html.parser').select_one('[data-f3-form]')
         if form is not None:
             csrf['csrf_token'] = form.select_one('[name="csrf_token"]')['value']
@@ -88,15 +109,14 @@ def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
     return post_valid_mutation(env.client, '/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, field_id=field, value=raw, sheet_id='debt',
         **csrf,
-        **(stale_tokens or tokens(page.text))))
+        **(stale_tokens or _workbook_tokens(env, record.project_code))))
 
 
 def run(env, record):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.service import WorkbookService
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
     response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'}, data=dict(
-        project=record.project_code, **tokens(page.text)))
+        project=record.project_code, **_workbook_tokens(env, record.project_code)))
     assert response.status_code == 200
     ws = get_workspace_state('decision-user', record.project_id)
     assert ws.last_runtime_summary, response.text[:1500]

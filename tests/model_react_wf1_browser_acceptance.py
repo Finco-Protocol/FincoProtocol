@@ -54,15 +54,23 @@ SECTIONS = ("overview", "inputs", "statements", "financing", "results", "scenari
 
 
 def run_canonical(context, base, code):
-    """Run through the legacy workbook's own Run form (what its Run button posts)."""
-    from bs4 import BeautifulSoup
-
-    page = context.request.get(f"{base}/v2/workbook?project={code}")
-    form = BeautifulSoup(page.text(), "html.parser").select_one("#v2-canonical-run-form")
-    assert form is not None, "canonical run form missing"
-    tokens = {f["name"]: f.get("value", "") for f in form.select("input[name]")}
-    response = context.request.post(f"{base}/v2/workbook/run", headers={"HX-Request": "true"},
-                                    form={"project": code, **tokens})
+    """Run through the canonical Run POST using React's workspace/runs identity & CSRF authority."""
+    ws_resp = context.request.get(f"{base}/v2/model-react/workspace?project={code}")
+    assert ws_resp.ok, ws_resp.text()[:300]
+    wb = ws_resp.json()["workbook"]
+    runs_resp = context.request.get(f"{base}/v2/model-react/runs?project={code}")
+    assert runs_resp.ok, runs_resp.text()[:300]
+    csrf_token = runs_resp.json()["run_contract"]["csrf_token"]
+    response = context.request.post(
+        f"{base}/v2/workbook/run",
+        headers={"HX-Request": "true"},
+        form={
+            "project": code,
+            "csrf_token": csrf_token,
+            "content_hash": wb["composite_hash"],
+            "workbook_version": wb["version"],
+        },
+    )
     assert response.ok, response.text()[:300]
     assert response.headers.get("x-finco-run-outcome") != "FAILED"
 

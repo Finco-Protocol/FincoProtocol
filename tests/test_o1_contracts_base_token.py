@@ -13,10 +13,30 @@ from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _ident
 from app.workbook import revenue_contracts_service as RC
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _read(world, rec):
     import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
     os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    return world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    try:
+        return world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
 
 
 def _doc(world, rec, price, indexation):
@@ -131,9 +151,8 @@ def _form_tokens(world, rec):
     return got
 
 
-def test_the_legacy_standalone_route_sends_and_verifies_the_token(world):
-    import os
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
+def test_the_legacy_standalone_route_sends_and_verifies_the_token(world, monkeypatch):
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     rec = _project()
     assert _save(world, rec, _doc(world, rec, 55, 0.02)).status_code == 200
     tokens = _form_tokens(world, rec)                                                                # Writer A's legacy page: token echoed in the form

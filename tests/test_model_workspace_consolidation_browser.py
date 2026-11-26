@@ -7,6 +7,19 @@ import pytest
 from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser as _wf03_browser  # noqa: F401
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.fixture
 def wf03_browser(request):
     # Keep the helper module unchanged and the selected cases individually attributable.
@@ -104,9 +117,10 @@ def test_model_diagnostics_v2_run_comparison_acceptance(workspace):
 
 
 @pytest.fixture
-def workspace(live_server, browser):
+def workspace(live_server, browser, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     from app.services.reference_seed_service import create_reference_seeded_project
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     contexts = []
 
     def create(template='generic_solar_reference', width=1440, scheme='light'):

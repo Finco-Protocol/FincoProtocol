@@ -23,7 +23,7 @@ export interface HostConfig {
   project: string;
   bootstrapUrl: string;
   saveUrl: string;
-  legacyUrl: string;
+  legacyUrl?: string;
 }
 
 export function readHostConfig(root: HTMLElement | null): HostConfig | null {
@@ -31,8 +31,8 @@ export function readHostConfig(root: HTMLElement | null): HostConfig | null {
   const project = (root.dataset.project || "").trim();
   const bootstrapUrl = (root.dataset.bootstrapUrl || "").trim();
   const saveUrl = (root.dataset.saveUrl || "").trim();
-  const legacyUrl = (root.dataset.legacyUrl || "").trim();
-  if (!bootstrapUrl || !saveUrl || !legacyUrl) return null;
+  const legacyUrl = (root.dataset.legacyUrl || "").trim() || undefined;
+  if (!bootstrapUrl || !saveUrl) return null;
   return { project, bootstrapUrl, saveUrl, legacyUrl };
 }
 

@@ -255,7 +255,7 @@ def test_finco_token_is_not_in_primary_navigation_but_stays_reachable(home):
 def test_primary_navigation_is_compact_and_rlive_first(home):
     primary, _ = _nav(home.get("/").text)
     hrefs = re.findall(r'href="([^"]+)"', primary)
-    assert hrefs == ["/radar", "/library", "/api", "/docs"]      # Radar opens R-LIVE; no duplicate global R-LIVE entry
+    assert hrefs == ["/radar", "/v2/model-react", "/api", "/docs"]      # Radar opens R-LIVE; Model defaults to React
     for demoted in ("/yield", "/crypto", "/roadmap", "/verify"):
         assert demoted not in primary
 
@@ -277,9 +277,9 @@ def test_rlive_is_the_prominent_public_product_and_reachable(home):
 
 def test_model_is_reachable_and_not_bound_to_rwa_assets(home):
     text = home.get("/").text
-    assert 'href="/library"' in text and "not connected to the market data" in text
+    assert 'href="/v2/model-react"' in text and "not connected to the market data" in text
     assert "R-LIVE" in text.split('data-testid="home-product-rlive"', 1)[1].split("</a>", 1)[0]
-    model_card = text.split('href="/library" class="proto-arch__product"', 1)[1].split("</a>", 1)[0]
+    model_card = text.split('href="/v2/model-react" class="proto-arch__product"', 1)[1].split("</a>", 1)[0]
     assert "tokenized" not in model_card.lower() or "not connected" in model_card.lower()
 
 

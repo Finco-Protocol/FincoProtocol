@@ -2,6 +2,7 @@ import { ReportPrecisionControl, useReportPrecision } from "../ReportPrecision";
 import { reportComparisonText } from "../reportFormatting";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "../../styles/rcm-analysis.css";
+import { Shell } from "../../finco/_shared/FincoShell";
 import { FriendlyError } from "../productLanguage";
 
 /** My Projects > Compare projects: the latest saved Run of up to five of the user's own projects, side by side.  Every figure is the server's
@@ -63,7 +64,8 @@ export function CompareProjectsView({ onBack }: { onBack: () => void }) {
   const open = useMemo(() => new Set(codes), [codes]);
 
   return (
-    <main className="rx-page" role="main" data-compare-projects="true">
+    <Shell crumb="Compare projects" dataOrigin="canonical-run" originLabel="COMPARE PROJECTS">
+    <main className="rx-page" role="main" data-compare-projects="true" id="fm-main-content" tabIndex={-1}>
       <header className="rx-header">
         <div><p className="rx-brand">FINCO Protocol · Model</p><h1 className="rx-title">Compare projects</h1><ReportPrecisionControl /></div>
         <nav aria-label="My Projects"><a className="rx-legacy-link" href="/v2/model-react/" data-compare-back="true" onClick={(e) => { e.preventDefault(); onBack(); }}>← My Projects</a></nav>
@@ -134,5 +136,6 @@ export function CompareProjectsView({ onBack }: { onBack: () => void }) {
         </section>
       )}
     </main>
+    </Shell>
   );
 }

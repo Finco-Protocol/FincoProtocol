@@ -49,10 +49,9 @@ def _client_for(user_id="u-staging-a", template="generic_solar_reference",
 
 
 def _tokens(client, cookies, code):
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    return page, h, v
+    ws = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()
+    wb = ws["workbook"]
+    return ws, wb["composite_hash"], wb["version"]
 
 
 def _run(client, cookies, code):
@@ -65,13 +64,13 @@ def _run(client, cookies, code):
 
 
 def _state(client, cookies, code) -> str:
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies).text
-    return re.search(r'data-testid="toolbar-runtime-state"[^>]*>([^<]+)<', page).group(1).strip()
+    ws = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()
+    return {"NOT_RUN": "Not run", "CURRENT": "Current", "STALE": "Stale"}[ws["freshness"]["state"]]
 
 
 def _edit_p50(client, cookies, code, value):
     _, h, v = _tokens(client, cookies, code)
-    r = client.post("/v2/workbook/inputs-slice1/update",
+    r = post_valid_mutation(client, "/v2/workbook/inputs-slice1/update",
                     data={"field_id": "project_setup.technical.p50_hours",
                           "value": str(value), "project": code,
                           "workbook_version": v, "content_hash": h},
@@ -132,8 +131,8 @@ class TestScenarioLastRunAuthority:
         # provenance is the immutable history row's (pre-scenario Base == None)
         assert ws.last_runtime_scenario_id is None
         assert _state(client, cookies, code) == "Current"
-        page = client.get(f"/v2/workbook?project={code}", cookies=cookies).text
-        assert "Never run" not in page
+        stmt_view = client.get(f"/v2/model-react/statements?project={code}", cookies=cookies).json()
+        assert stmt_view["state"] == "CURRENT"
 
         _select(client, cookies, code, x_id)                          # back to X
         assert get_workspace_state(uid, pid).last_runtime_snapshot_id == x_snapshot_id
@@ -367,8 +366,8 @@ class TestRestoreAuthorityHardening:
         assert base_id not in json.dumps(identity)             # no invented scenario id
         # …yet presentation resolves CURRENT because equivalence is positively proven
         assert _state(client, cookies, code) == "Current"
-        page = client.get(f"/v2/workbook?project={code}", cookies=cookies).text
-        assert STALE_SCENARIO_LABEL not in page
+        ws_view = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()
+        assert STALE_SCENARIO_LABEL not in json.dumps(ws_view)
 
     def test_base_equivalence_is_base_only_and_requires_proof(self, seeded_db):
         import json
@@ -547,7 +546,7 @@ def _form_fields(html: str, form_class: str, index: int = 0) -> dict:
 class TestCapexControls:
     def test_deactivate_form_carries_every_field_the_endpoint_requires(self, seeded_db):
         client, cookies, record = _client_for(user_id="u-wave-b-cx0")
-        page = _tokens(client, cookies, record.project_code)[0].text
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies, headers={"HX-Request": "true"}).text
         fields = _form_fields(page, "v2-capex-custom-form")
         # Form(...) parameters of POST /v2/capex/line/deactivate
         assert {"project", "sub_line_id", "row_version",
@@ -559,7 +558,7 @@ class TestCapexControls:
         client, cookies, record = _client_for(user_id="u-wave-b-cx1")
         code, uid, pid = record.project_code, record.user_id, record.project_id
         _run(client, cookies, code)
-        page = _tokens(client, cookies, code)[0].text
+        page = client.get(f"/v2/workbook?project={code}", cookies=cookies, headers={"HX-Request": "true"}).text
         fields = _form_fields(page, "v2-capex-custom-form")
         with get_cursor() as cur:
             cur.execute("SELECT amount_keur FROM capex_sub_lines WHERE sub_line_id=?",
@@ -575,7 +574,7 @@ class TestCapexControls:
             cur.execute("SELECT is_active FROM capex_sub_lines WHERE sub_line_id=?",
                         (fields["sub_line_id"],))
             assert cur.fetchone()["is_active"] == 0         # persisted
-        after = _tokens(client, cookies, code)[0].text      # fresh page load == reload
+        after = client.get(f"/v2/workbook?project={code}", cookies=cookies, headers={"HX-Request": "true"}).text
         # no longer an ACTIVE row (it is now listed under Inactive lines, reactivatable)
         assert f'data-sub-line-id="{fields["sub_line_id"]}"' not in after
         assert f'data-testid="capex-reactivate-{fields["sub_line_id"]}"' in after
@@ -586,7 +585,7 @@ class TestCapexControls:
 
     def test_category_without_effect_editor_is_replaced_by_an_explained_total(self, seeded_db):
         client, cookies, record = _client_for(user_id="u-wave-b-cx2")
-        page = _tokens(client, cookies, record.project_code)[0].text
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies, headers={"HX-Request": "true"}).text
         # production units has seeded line items -> its category total is derived from them
         assert 'data-field-id="capex.C.production_units"' not in page
         assert 'data-testid="capex-category-total-C.01"' in page
@@ -650,9 +649,9 @@ class TestLibraryCloneSeeding:
         assert capex_rows > 0 and opex_rows > 0
         if driver_key:
             assert driver_key in get_workspace_state(clone.user_id, clone.project_id).draft_snapshot
-        page = client.get(f"/v2/workbook?project={clone.project_code}", cookies=cookies).text
-        assert len(re.findall(r'data-testid="opex-custom-row-', page)) == opex_rows
-        assert "technical_management" not in re.sub(r'(name|value|data-[a-z-]+|id|for)="[^"]*"', "", page)
+        opex_view = client.get(f"/v2/model-react/costlines?sheet=opex&project={clone.project_code}", cookies=cookies).json()
+        assert len(opex_view["lines"]) == opex_rows
+        assert all("technical_management" not in str(line.get("label", "")) for line in opex_view["lines"])
 
     def test_storage_and_non_reference_sources_keep_their_guards(self, seeded_db):
         from app.persistence.db import get_connection

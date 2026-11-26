@@ -10,6 +10,19 @@ from tests.model_mutation_csrf import post_valid_mutation
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 USER = "decision-user"
 EOD = "debt.contract.min_dscr_eod"
 COV = "debt.contract.contractual_dscr"

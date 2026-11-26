@@ -77,8 +77,8 @@ def env(tmp_path, monkeypatch):
                                                    template_source=f"generic_{kind}_reference", capacity_mw=40, country_market="XA")
 
         def tokens(record):
-            page = client.get("/v2/workbook", params={"project": record.project_code})
-            return {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
+            wb = client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+            return {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
 
         def purpose_token(record, purpose):
             return issue_token(SimpleNamespace(cookies=client.cookies, state=SimpleNamespace()), record.project_code, purpose=purpose)

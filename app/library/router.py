@@ -166,6 +166,12 @@ async def project_library_page(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_library_url, react_project_url
+        dest = react_project_url(project) if (project or "").strip() else react_library_url(notice=notice, search=search)
+        return RedirectResponse(url=dest, status_code=302)
+
     from app.persistence.projects_repository import (
         list_workspace_projects_paged,
     )

@@ -75,8 +75,8 @@ _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"
 
 
 def react_poc_enabled() -> bool:
-    """Flag contract: absent/empty → OFF (legacy behaviour unchanged)."""
-    return env_flag("FINCO_MODEL_REACT_V1", default=False)
+    """Flag contract: absent/empty → ON (FINCO47 React-only default); explicit 0/false/no/off → OFF."""
+    return env_flag("FINCO_MODEL_REACT_V1", default=True)
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -92,13 +92,9 @@ def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
 def _render_host(project_code: str) -> HTMLResponse:
     """Same-origin host page.  The React bundle reads its config from data attributes
     (never inline script/data, so no value crosses an HTML boundary unescaped)."""
-    from urllib.parse import quote
-
     code = (project_code or "").strip()
-    legacy_url = f"/v2/workbook?project={quote(code, safe='')}" if code else "/v2/workbook"
     html = _templates.get_template("react_poc.html").render(
         project_code=code,
-        legacy_url=legacy_url,
         asset_version=REACT_ASSET_VERSION,
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})

@@ -60,7 +60,7 @@ def test_home_architecture_and_shared_nav_are_consistent(live_url, browser):
     # Product-reality reset: home leads with R-LIVE; Yield / account & access live in the secondary menu.
     assert "R-LIVE · RADAR · MODEL" in page.inner_text("body")
     nav = page.locator(".proto-nav")
-    for label, href in (("Radar", "/radar"), ("Model", "/library"),
+    for label, href in (("Radar", "/radar"), ("Model", "/v2/model-react"),
                         ("API", "/api"), ("Docs", "/docs")):
         link = nav.locator(f'[data-testid="proto-nav-primary"] a[href="{href}"]')
         assert link.count() == 1, f"missing primary-nav {label} link"

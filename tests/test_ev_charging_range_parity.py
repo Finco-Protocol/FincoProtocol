@@ -27,6 +27,19 @@ from app.ev_charging_economics import (
 )
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 # Registry unit for percent-convention keys is human percent.
 _DISPLAY_SCALE = {"ev_charging_price_escalation", "ev_electricity_price_escalation", "ev_charging_efficiency"}
 

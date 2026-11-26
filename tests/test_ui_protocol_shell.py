@@ -34,6 +34,19 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 pytest.importorskip("playwright")
 pytest.importorskip("uvicorn")
 
@@ -2111,34 +2124,17 @@ class TestApiBetaBrowser:
         page.close()
 
     def test_api_b04_placeholders_not_links(self, live_url, browser):
-        """API-B04: Docs is a live nav link; Roadmap/$FINCO stay placeholders.
-
-        Contract aligned with PR #87 (product documentation surface): Docs
-        became a real navigation anchor; Roadmap and $FINCO remain
-        non-interactive placeholders.
-        """
+        """API-B04: Primary nav exposes live routes; Roadmap and $FINCO live under More without dead '#' anchors."""
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(f"{live_url}/api")
         page.wait_for_load_state("domcontentloaded")
         nav_text = page.inner_text(".proto-nav")
-        for label in ("Docs", "Roadmap", "$FINCO"):
+        for label in ("Radar", "Model", "API", "Docs", "More"):
             assert label in nav_text, f"Nav item '{label}' not in nav"
-        # Docs is LIVE — must be an anchor pointing to /docs
-        docs_link = page.query_selector('a[href="/docs"]')
-        assert docs_link is not None, (
-            "Docs nav item must be an anchor to /docs (Docs is live, not a placeholder)"
-        )
-        # Roadmap and $FINCO remain placeholders — spans, not anchors
-        for label in ("Roadmap", "$FINCO"):
-            matches = page.query_selector_all(f"a:text('{label}')")
-            assert len(matches) == 0, (
-                f"Placeholder '{label}' is rendered as an anchor — must remain non-interactive"
-            )
-        # Roadmap and $FINCO must carry aria-disabled
-        placeholders = page.query_selector_all('[aria-disabled="true"]')
-        placeholder_texts = " ".join(p.inner_text() for p in placeholders)
-        assert "Roadmap" in placeholder_texts, "Roadmap must be aria-disabled"
-        assert "$FINCO" in placeholder_texts, "$FINCO must be aria-disabled"
+        assert page.query_selector('a[href="/docs"]') is not None
+        assert page.query_selector('.proto-nav__more a[href="/roadmap"]') is not None
+        assert page.query_selector('.proto-nav__more a[href="/protocol/finco"]') is not None
+        assert len(page.query_selector_all('.proto-nav a[href="#"]')) == 0
         page.close()
 
     def test_api_b05_model_endpoint_table_visible(self, live_url, browser):

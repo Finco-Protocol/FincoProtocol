@@ -37,6 +37,19 @@ from app.workbook.update_service import (
 from tests.model_mutation_csrf import post_valid_mutation
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def _setup(tmp_path, name: str, kind: str = "solar"):
     user = "test-slicef-user"
     db.DB_PATH = str(tmp_path / f"{name}.db")

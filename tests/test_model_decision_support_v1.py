@@ -55,9 +55,9 @@ def _client_for(user_id: str, template: str = "generic_solar_reference",
 
 
 def _run_once(client, cookies, code):
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    wb = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()["workbook"]
+    h = wb["composite_hash"]
+    v = wb["version"]
     return post_valid_csrf(client, "/v2/workbook/run",
                        data={"project": code, "content_hash": h,
                              "workbook_version": v},
@@ -65,14 +65,25 @@ def _run_once(client, cookies, code):
 
 
 def _edit_p50(client, cookies, code, value):
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    resp = client.post("/v2/workbook/inputs-slice1/update",
-                       data={"field_id": "project_setup.technical.p50_hours",
-                             "value": str(value), "project": code,
-                             "workbook_version": v, "content_hash": h},
-                       cookies=cookies, headers={"HX-Request": "true"})
+    from tests.model_mutation_csrf import post_valid_mutation
+    page = client.get(f"/v2/workbook?project={code}", cookies=cookies, headers={"HX-Request": "true"})
+    # Fallback to react workspace tokens if workbook GET redirected
+    h_m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
+    if h_m:
+        h = h_m.group(1)
+        v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    else:
+        ws = client.get(f"/v2/model-react/workspace?project={code}", cookies=cookies).json()
+        h = ws["workbook"]["composite_hash"]
+        v = ws["workbook"]["version"]
+    resp = post_valid_mutation(
+        client,
+        "/v2/workbook/inputs-slice1/update",
+        data={"field_id": "project_setup.technical.p50_hours",
+              "value": str(value), "project": code,
+              "workbook_version": v, "content_hash": h},
+        cookies=cookies, headers={"HX-Request": "true"},
+    )
     assert resp.status_code == 200
 
 

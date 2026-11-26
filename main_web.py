@@ -449,9 +449,9 @@ app.include_router(_library_router)
 # Flag default changed in PR-A: absent → ACTIVE (see app/utils/workbook_flag.py).
 from app.v2.router import router as _v2_router
 def _finco_model_react_flag(request: Request) -> dict:
-    """Supply the effective React flag to every shared Jinja template."""
-    from app.utils.workbook_flag import env_flag
-    return {"finco_model_react": env_flag("FINCO_MODEL_REACT_V1", default=False)}
+    """Supply the effective React flag to every shared Jinja template (single authority)."""
+    from app.v2.react_poc_router import react_poc_enabled
+    return {"finco_model_react": react_poc_enabled()}
 
 templates.context_processors.append(_finco_model_react_flag)
 app.include_router(_v2_router, prefix="/v2")
@@ -3329,6 +3329,10 @@ async def index(request: Request, project: str | None = None):
 
     project_code = (project or "").strip()
     if project_code:
+        from app.v2.react_poc_router import react_poc_enabled
+        if react_poc_enabled():
+            from app.v2.react_redirect import react_project_url
+            return RedirectResponse(url=react_project_url(project_code), status_code=302)
         from app.utils.workbook_flag import project_workbook_url, workbook_v2_active
         if workbook_v2_active():
             return RedirectResponse(url=project_workbook_url(project_code), status_code=302)
@@ -4198,24 +4202,14 @@ async def institutional_workbook_export(request: Request, project: str = "generi
 
 @app.get("/projects/new")
 async def new_project_form(request: Request):
-    """Phase P2-FIX-1: minimal new-project form.
-
-    Renders the same minimal form as
-    ``/projects/new/minimal`` (4 visible
-    fields: project name, technology,
-    country, capacity MW + optional COD).
-    All other driver values come from the
-    canonical generic factory defaults
-    (server-side, hidden inputs).
-
-    Does NOT render: tariff, PPA, P50,
-    OPEX, CAPEX, gearing, interest, tenor,
-    DSCR, factory function names, or the
-    EXPLORATORY banner block.
-    """
+    """Phase P2-FIX-1: minimal new-project form (redirects to React wizard when active)."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_library_url
+        return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
     return templates.TemplateResponse(
         request=request,
         name="project_new_page.html",
@@ -4471,10 +4465,13 @@ def _build_index_dashboard_context(
 
 @app.get("/home", response_class=HTMLResponse)
 async def project_home(request: Request):
-    """Phase P2-FIX-1: legacy /home redirects to /
-    (canonicalisation). GET / now renders the
-    Project Home directly.
-    """
+    """Redirect legacy /home to React Library when active, else /."""
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        user = get_current_user(request)
+        if not user:
+            return RedirectResponse(url="/login", status_code=302)
+        return RedirectResponse(url="/v2/model-react/", status_code=302)
     return RedirectResponse(url="/", status_code=302)
 
 
@@ -4507,19 +4504,26 @@ def _render_project_home(request: Request, user):
 
 @app.get("/projects/new/minimal", response_class=HTMLResponse)
 async def new_project_minimal(request: Request):
-    """Phase P2-FIX-1: legacy /projects/new/minimal
-    redirects to /projects/new (canonicalisation).
-    Both routes now serve the same minimal form.
-    """
+    """Legacy /projects/new/minimal redirects to /projects/new (or React wizard)."""
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        user = get_current_user(request)
+        if not user:
+            return RedirectResponse(url="/login", status_code=302)
+        from app.v2.react_redirect import react_library_url
+        return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
     return RedirectResponse(url="/projects/new", status_code=302)
 
 
 @app.get("/projects")
 async def projects_redirect(request: Request):
-    """WF-3: /projects is the canonical full-table view (alias for /projects/browse)."""
+    """WF-3: /projects redirects to React Library when active, else /projects/browse."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        return RedirectResponse(url="/v2/model-react/", status_code=302)
     return RedirectResponse(url="/projects/browse", status_code=302)
 
 
@@ -4531,12 +4535,14 @@ async def known_limitations_redirect():
 
 @app.get("/pilot-guide")
 async def pilot_guide_page(request: Request):
-    """EXTERNAL-FRIENDLY-PILOT-PREP-A: standalone Pilot Guide page,
-    reachable from Help and the footer. Renders the existing
-    docs/external_pilot_guide.md content; presentation only."""
+    """Redirect Pilot Guide to unified React guide when active."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_library_url
+        return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
     guide_path = pathlib.Path(__file__).resolve().parent / "docs" / "external_pilot_guide.md"
     guide_text = guide_path.read_text()
     return templates.TemplateResponse(
@@ -4548,19 +4554,29 @@ async def pilot_guide_page(request: Request):
 
 @app.get("/help")
 async def help_page(request: Request):
-    """Redirect the header Help link to the project browser's Help/Guidance entry point."""
+    """Redirect Help to unified React guide when active, else /projects/browse."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_library_url
+        return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
     return RedirectResponse(url="/projects/browse", status_code=302)
 
 
 @app.get("/projects/browse")
 async def project_browser(request: Request):
-    """Render project browser partial — factory templates, baselines, user projects."""
+    """Redirect legacy project browser to React Library when active."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_project_url
+        active = (request.query_params.get("active") or "").strip()
+        dest = react_project_url(active) if active else "/v2/model-react/"
+        return RedirectResponse(url=dest, status_code=302)
 
     baseline_records = seed_baseline_projects_if_needed(user.user_id)
     baseline_project_items = [
@@ -4749,10 +4765,14 @@ async def create_project_route(
 
 @app.get("/scenarios")
 async def list_scenarios_endpoint(request: Request, project: str = "generic_wind_reference"):
-    """Render the saved scenario and export-history workspace for the active project."""
+    """Render the saved scenario workspace (or redirect to React #scenarios when active)."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_poc_router import react_poc_enabled
+    if react_poc_enabled():
+        from app.v2.react_redirect import react_project_url
+        return RedirectResponse(url=react_project_url(project, sheet="scenarios"), status_code=302)
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_record)

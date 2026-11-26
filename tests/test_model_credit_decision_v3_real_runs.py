@@ -15,6 +15,19 @@ from tests.test_financing_f37_instrument_su import _junior_run, _two_senior_run
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import FIELD_ID, config, run, save
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 USER = "decision-user"
 KINDS = ["solar", "wind", "data_center", "ev_charging"]
 CLASSES = {"CONTRACTUAL_COVENANT", "PROJECT_INPUT_ADVISORY", "OBSERVED_FINANCIAL_RESULT", "UNSUPPORTED_EVIDENCE_MISSING"}
@@ -59,9 +72,14 @@ def finding(data, run_index, fid):
 
 
 def set_field(cenv, record, field_id, value):
-    page = cenv.client.get("/v2/workbook", params={"project": record.project_code}).text
+    page = cenv.client.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
+    if page.status_code == 200 and 'name="content_hash"' in page.text:
+        toks = tokens(page.text)
+    else:
+        wb = cenv.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+        toks = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
     response = post_valid_mutation(cenv.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                                data={"project": record.project_code, "field_id": field_id, "value": str(value), **tokens(page)})
+                                data={"project": record.project_code, "field_id": field_id, "value": str(value), **toks})
     assert response.status_code == 200 and "field-error" not in response.text[:4000], response.text[:600]
 
 

@@ -16,6 +16,19 @@ from tests.test_ppa01_contractual_timing import terms, dated, book
 from tests.test_ppa01_index_series_revenue import _operating
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves legacy period-aligned PPA windows and legacy tariff expectations; new Solar/Wind projects now default to OD-TIME-01/v1,

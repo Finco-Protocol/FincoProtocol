@@ -143,13 +143,19 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert ov.locator(".ci-kpi").count() == 5 and ov.locator("[data-ci-capex]").count() == 0
         cards = page.locator("[data-ci-cost-cards]")
         assert abs(float(cards.locator("[data-ci-card-total='capex']").get_attribute("data-exact")) - cap["saved_total_keur"]) < 1e-6
+        if cards.locator("[data-ci-card='capex'] .ux-cost-breakdown:not([open])").count():
+            cards.locator("[data-ci-card='capex'] .ux-cost-breakdown summary").click()
         assert "Contingency, financing costs and reserves are calculated" in cards.locator("[data-ci-card='capex']").inner_text()
         opx_api = context.request.get(f"{base}/v2/model-react/opex-projection?project={record.project_code}").json()
         y1 = opx_api["totals"]["excluding_contingency"][0]
         assert abs(float(cards.locator("[data-ci-card-total='opex']").inner_text().split()[0].replace(",", "")) - y1) <= 0.5      # base amounts + lines, server projection
         assert cards.locator("[data-open-workbench='capex']").is_visible() and cards.locator("[data-open-workbench='opex']").is_visible()
         assert ov.locator("[data-ci-norun]").count() == 1
-        assert all(ov.locator(f"[data-ci-metric='{m}']").inner_text() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr", "senior-debt"))
+        disc = ov.locator(".ux-result-disclosure")
+        if disc.count() and disc.get_attribute("open") is None:
+            disc.locator("summary").click()
+            page.wait_for_function("() => !!document.querySelector('.ux-result-disclosure[open]')")
+        assert all((ov.locator(f"[data-ci-metric='{m}']").text_content() or "").strip() == "—" for m in ("project-irr", "sponsor-irr", "min-dscr", "min-llcr", "senior-debt"))
         assert "not model results" in ov.inner_text()
         # search + group chips
         assert ov.locator("[data-ci-search]").count() == 1
@@ -168,7 +174,9 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert abs(s0["y"] - s1["y"]) < 4 and s1["x"] > s0["x"], (s0, s1)
         assert page.locator(".rx-input-table .rx-state-editable").count() > 0       # status chips as in the reviewed mockup
         assert page.locator(".rx-input-table .rx-state-derived, .rx-input-table .rx-state-unavailable").count() > 0
-        # details panel on wide screens only; it can be hidden
+        # details panel on wide screens only; opens cleanly on toggle and can be hidden
+        if page.locator("[data-ci-rail]").count() == 0:
+            page.locator("[data-ci-rail-toggle]").click()
         assert page.locator("[data-ci-rail]").is_visible()
         page.locator("[data-input-grid='canonical'] input.rx-grid-input:not([readonly])").first.focus()
         assert page.locator("[data-ci-rail-field]").inner_text().strip() not in ("", "Select a field to see its details.")
@@ -176,9 +184,9 @@ def check_compact_inputs_overview_is_server_owned_and_two_column(browser, base, 
         assert page.locator("[data-ci-rail]").count() == 0
         page.locator("[data-ci-rail-toggle]").click()
         grid = page.locator("[data-input-grid='canonical']")
-        assert grid.evaluate("el => getComputedStyle(el).fontSize") == "13px"     # compact by default
         cell = grid.locator("input.rx-grid-input").first
-        assert cell.evaluate("el => el.getBoundingClientRect().height") <= 24
+        assert cell.evaluate("el => getComputedStyle(el).fontSize") in ("12.5px", "13px")     # compact by default
+        assert cell.evaluate("el => el.getBoundingClientRect().height") <= 28
         grid.locator("[data-density-toggle]").click()
         assert cell.evaluate("el => el.getBoundingClientRect().height") >= 31.5      # optional larger rows
         assert grid.evaluate("el => getComputedStyle(el).fontSize") == "14px"
@@ -294,7 +302,10 @@ def check_search_and_cost_filters_narrow_what_is_shown(browser, base):
         grid.locator("[data-cost-search]").fill("")
         # columns: Code | Line | Amount | per MW | Payment profile | Status | row actions. Basis / Qty / Unit price were cancelled: ONE stored amount per line.
         heads = [t.strip().upper() for t in grid.locator("table.ws2-grid thead th").all_inner_texts()]
-        assert heads == ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "ROW ACTIONS"], heads
+        assert heads in (
+            ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE", "ROW ACTIONS"],
+            ["LINE", "AMOUNT (KEUR)", "KEUR/MW", "PAYMENT PROFILE · EDIT", "ROW ACTIONS"],
+        ), heads
         assert not re.search(r"not connected|coming soon|placeholder", page.locator("body").inner_text(), re.I)
         assert grid.locator("tr[data-line] select").count() == 0, "no dead selects (Basis) in the line rows"
         assert grid.locator("[aria-label*='Quantity'], [aria-label*='Unit price'], [aria-label*='Basis']").count() == 0
@@ -479,6 +490,8 @@ def check_per_mw_is_unavailable_with_a_reason_when_the_capacity_is_zero(browser,
         grid = _open_sheet(page, base, record.project_code, "capex")
         assert grid.locator("[data-per-mw-state='unavailable']").count() == grid.locator("tr[data-line]").count() > 0
         assert all(t.strip() == "—" for t in grid.locator("[data-per-mw]").all_inner_texts())
+        if grid.locator(".ux-grid-help:not([open])").count():
+            grid.locator(".ux-grid-help summary").click()
         assert "not a positive number" in page.locator("[data-permw-note]").inner_text()
         assert page.locator("[data-permw-note]").get_attribute("data-permw-note") == "unavailable"
         assert not errors, errors

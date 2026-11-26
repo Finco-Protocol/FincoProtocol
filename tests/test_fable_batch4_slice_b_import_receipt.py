@@ -44,6 +44,19 @@ from app.v2.react_import import router as react_import_router
 from app.v2.router import router as v2_router
 from tests.run_clone_csrf import post_valid_csrf
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 OWNER = "b4-imp-owner"
 STRANGER = "b4-imp-stranger"
 HDR = {"X-Finco-React-Request": "1"}
@@ -148,7 +161,16 @@ def _react_preview_confirm_apply(client: TestClient, code: str, *, filename: str
 
 
 def _run_canonical(client: TestClient, code: str):
-    page = client.get("/v2/workbook", params={"project": code})
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        page = client.get("/v2/workbook", params={"project": code})
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     tokens = {
         k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
         for k in ("content_hash", "workbook_version")

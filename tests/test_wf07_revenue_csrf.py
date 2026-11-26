@@ -9,6 +9,19 @@ from tests.test_wf07_revenue_workspace import contract_tokens
 from tests.test_wf07_revenue_multistream import contracts
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def form_data(env):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.service import WorkbookService

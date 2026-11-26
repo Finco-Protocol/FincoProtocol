@@ -8,7 +8,7 @@ from app.workbook.financing_csrf import extract_bound_token, issue_token
 
 OPERATIONS = frozenset({
     "scenario-create", "scenario-select", "scenario-rename", "scenario-archive",
-    "scenario-update-overrides", "scenario-remove-override", "workbook-update",
+    "scenario-update-overrides", "scenario-remove-override", "workbook-update", "inputs-slice1-update",
     "reference-seed-reset", "workbook-export", "grid-save", "grid-cost-lines-save",
     "capex-add", "capex-update", "capex-deactivate", "capex-reactivate", "capex-reorder", "capex-contingency",
     "opex-add", "opex-update", "opex-deactivate", "opex-reactivate", "opex-reorder", "opex-annual-exceptions",

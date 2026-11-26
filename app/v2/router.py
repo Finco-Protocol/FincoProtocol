@@ -2024,6 +2024,7 @@ def _render_inputs_htmx_sheet(
             submitted_values=slice1_submitted_values,
             field_errors=slice1_field_errors,
         ),
+        "slice1_csrf_token": mutation_token(request, project, "inputs-slice1-update"),
     })
     sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
@@ -2095,8 +2096,12 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    from app.v2.react_poc_router import react_poc_enabled
+    react_on = react_poc_enabled()
+    is_htmx = request.headers.get("HX-Request") == "true"
+
     if not project:
-        return RedirectResponse(url="/library", status_code=302)
+        return RedirectResponse(url="/v2/model-react/" if react_on else "/library", status_code=302)
 
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
@@ -2104,7 +2109,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     with span("workspace_read"):
         project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
+        unavailable = "/v2/model-react/?notice=project-unavailable" if react_on else "/library?notice=project-unavailable"
+        return RedirectResponse(url=unavailable, status_code=302)
 
     if project_record.archived:
         return HTMLResponse('<main><h1>Project archived</h1><p>Saved inputs and Run history are preserved.</p>'
@@ -2113,7 +2119,15 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     with span("workspace_read"):
         ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
-        return RedirectResponse(url="/library?notice=project-unavailable", status_code=302)
+        unavailable = "/v2/model-react/?notice=project-unavailable" if react_on else "/library?notice=project-unavailable"
+        return RedirectResponse(url=unavailable, status_code=302)
+
+    if react_on and not is_htmx:
+        from app.v2.react_redirect import react_project_url
+        return RedirectResponse(
+            url=react_project_url(project, sheet=sheet, v2_err=request.query_params.get("v2_err")),
+            status_code=302,
+        )
 
     # Decide unsupported runtime capability immediately after access and
     # workspace resolution.  Storage must return its controlled surface before
@@ -2154,17 +2168,22 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             },
         )
 
-    # Migration: backfill missing canonical revenue keys for old Generic Solar Reference working
-    # copies created before C2B3 (idempotent — only writes when keys are absent).
+    # Read-only projection for old working copies missing canonical revenue keys:
+    # NEVER write to SQLite during GET; project defaults in memory only while keeping DB/CAS hash stable.
+    ws_for_pis = ws
     try:
-        from app.services.revenue_backfill import persist_revenue_backfill
-        if persist_revenue_backfill(project_record.project_id, workspace_owner, project_record):
-            ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
+        from dataclasses import replace as _dc_replace_ws
+        from app.services.revenue_backfill import backfill_generic_solar_reference_revenue_canonical_keys
+        _projected_snap = backfill_generic_solar_reference_revenue_canonical_keys(
+            project_record.project_id, workspace_owner, project_record, ws.draft_snapshot or {},
+        )
+        if _projected_snap is not (ws.draft_snapshot or {}):
+            ws_for_pis = _dc_replace_ws(ws, draft_snapshot=_projected_snap)
     except Exception:
-        pass  # migration failure must never block page render
+        pass  # projection failure must never block page render
 
     with span("input_build"):
-        pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+        pis = _build_pis_with_composite_identity(ws_for_pis, project_record, workspace_owner)
     # Working Copy recovery: a stored draft the canonical adapter refuses to materialise would fail every
     # builder below.  Return a controlled, read-only recovery page instead; it corrects nothing itself.
     from app.workbook.draft_recovery import diagnose_draft as _diagnose_draft
@@ -2260,6 +2279,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "library_url": "/library",
         # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
         "grid_csrf_token": mutation_token(request, project, "grid-save"),
+        "slice1_csrf_token": mutation_token(request, project, "inputs-slice1-update"),
         "mutation_csrf_tokens": mutation_tokens(request, project),
     }
     # Model Trust Pack V1: read-only composition of existing canonical read
@@ -2411,6 +2431,11 @@ async def v2_inputs_slice1_update(
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    from app.workbook.mutation_csrf import validate_mutation_token
+    _slice1_form = await request.form()
+    if not validate_mutation_token(request, project, _slice1_form.get("csrf_token"), "inputs-slice1-update"):
+        return JSONResponse({"error": "Invalid mutation CSRF token.", "code": "CSRF_INVALID"}, status_code=403)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -4284,6 +4309,7 @@ async def v2_scenario_create(
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
     if is_protected_reference(project_record):
         return JSONResponse({"error": "Protected reference — cannot create scenarios."}, status_code=409)
 

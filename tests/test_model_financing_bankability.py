@@ -20,6 +20,19 @@ from app.v2.financing_projection import (
 from app.workbook.runtime_result import RuntimeResult
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def runtime(**overrides):
     fields = dict(snapshot_id="finance-run", ran_at="2030-01-01T12:00:00Z", origin="saved_state",
         runtime_summary={"senior_debt_keur": 700.0, "actual_gearing_pct": .625,
