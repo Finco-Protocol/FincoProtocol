@@ -109,6 +109,13 @@ def test_login_semantics_match_the_former_limiter(shared_store, monkeypatch):
     assert auth._check_rate_limit("203.0.113.50") == (False, auth.LOCKOUT_SECONDS)
     monkeypatch.setattr(store, "_clock", lambda: t0 + 100)
     assert auth._check_rate_limit("203.0.113.50") == (False, auth.LOCKOUT_SECONDS - 100)
+    monkeypatch.setattr(store, "_clock", lambda: t0 + auth.LOCKOUT_SECONDS + 1)   # lock expired: fresh budget
+    assert auth._check_rate_limit("203.0.113.50") == (True, 0)
+    for _ in range(auth.MAX_LOGIN_FAILURES):
+        assert store.login_reserve("203.0.113.50", auth.MAX_LOGIN_FAILURES, auth.LOCKOUT_SECONDS)[0]
+    assert store.login_reserve("203.0.113.50", auth.MAX_LOGIN_FAILURES, auth.LOCKOUT_SECONDS) == (False, auth.LOCKOUT_SECONDS)
+    monkeypatch.setattr(store, "_clock", lambda: t0 + 2 * 86400)                   # never a permanent lockout
+    assert auth._check_rate_limit("203.0.113.50") == (True, 0)
     auth._clear_failed_logins("203.0.113.50")
     assert auth._check_rate_limit("203.0.113.50") == (True, 0)
     assert auth._check_rate_limit("203.0.113.51") == (True, 0)

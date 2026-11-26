@@ -126,11 +126,16 @@ def _login_row(conn, key):
 
 
 def _login_gate(conn, key, now, max_failures, lockout):
-    """Shared semantics of the original in-memory limiter: an active lock denies with its remaining time; reaching
-    ``max_failures`` starts a lock. Returns (allowed, retry_after)."""
+    """An active lock denies with its remaining time; reaching ``max_failures`` starts a lock of ``lockout`` seconds.
+    When a lock has EXPIRED the failure count starts again from zero (FINCO45C review finding: the former in-memory
+    limiter re-armed an expired lock forever, which only a restart cleared; persisted and shared, that would have
+    locked an operator or a shared egress address out permanently). Returns (allowed, retry_after)."""
     failures, locked_until = _login_row(conn, key)
     if locked_until is not None and now < locked_until:
         return False, max(1, int(locked_until - now))
+    if locked_until is not None:
+        conn.execute("UPDATE login_attempts SET failures=0, locked_until=NULL, updated_at=? WHERE key=?", (now, key))
+        failures = 0
     if failures >= max_failures:
         conn.execute("INSERT INTO login_attempts(key, failures, locked_until, updated_at) VALUES (?,?,?,?) "
                      "ON CONFLICT(key) DO UPDATE SET locked_until=excluded.locked_until, updated_at=excluded.updated_at",

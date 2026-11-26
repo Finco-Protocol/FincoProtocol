@@ -252,6 +252,7 @@ def _record_failed_login(ip: str) -> None:
 
 def _check_rate_limit(ip: str) -> tuple[bool, int]:
     """Check if a client is rate-limited (non-consuming). Returns (allowed, seconds_remaining)."""
+    _maybe_purge()
     return _shared_limits.login_check(ip, MAX_LOGIN_FAILURES, LOCKOUT_SECONDS)
 
 
@@ -289,11 +290,16 @@ def check_demo_rate_limit(user_id: str, op: str) -> tuple[bool, int]:
     if not user_id.startswith(DEMO_USER_ID_PREFIX):
         return True, 0
     limit_max, window = DEMO_RATE_LIMITS.get(op, (100, 3600))
+    _maybe_purge()
+    return _shared_limits.consume("demo", user_id, op, limit_max, window)
+
+
+def _maybe_purge() -> None:
+    """Bounded retention, driven by login AND demo traffic (at most once per interval per process)."""
     now = time_module.time()
     if now - _last_purge["at"] > _PURGE_INTERVAL_SECONDS:
         _last_purge["at"] = now
         purge_expired_demo_rate_entries()
-    return _shared_limits.consume("demo", user_id, op, limit_max, window)
 
 
 def purge_expired_demo_rate_entries() -> None:

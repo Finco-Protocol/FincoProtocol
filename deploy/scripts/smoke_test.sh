@@ -76,7 +76,8 @@ echo ""
 
 if [[ -n "${FINCO_SMOKE_SESSION_COOKIE:-}" ]]; then
     echo "--- /health (authenticated, cookie from FINCO_SMOKE_SESSION_COOKIE; value not shown) ---"
-    fetch /health -H "Cookie: finco_session=${FINCO_SMOKE_SESSION_COOKIE}"
+    ( umask 077; printf 'Cookie: finco_session=%s\n' "$FINCO_SMOKE_SESSION_COOKIE" > "$TMP/cookie_header" )
+    fetch /health -H "@$TMP/cookie_header"          # header from a 0600 file: the value never appears in argv
     if [[ "$CODE" == "200" ]] && grep -q '"status":"ok"' "$TMP/body"; then
         pass "/health (authenticated) → 200 ok"
     else
