@@ -1394,6 +1394,13 @@ def _build_revenue_contract_editor(pis, ws):
             axis = []
             calendar_preview = {}
             rounding_preview = {}
+    if price_curve_supported and technology in ("solar", "wind") and date_authority_version.startswith("OD-TIME-01"):
+        # FINCO46 (review): the engine path above could not run; the persisted version alone decides, as at Save.
+        price_curve_supported = False
+        price_curve_unsupported_reason = (
+            "REVENUE_V2_DATED_CURVE_UNSUPPORTED: scheduled per-period price curves are available on legacy-calendar "
+            "projects only. This project uses the contractual calendar (" + date_authority_version +
+            "); use a fixed or indexed tariff with dated indexation terms.")
     try:
         _term = float(pis.get("revenue.ppa.term_years"))
         ppa_term_years = _term if _term > 0 else None

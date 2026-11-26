@@ -32,7 +32,8 @@ GENERIC_SOLAR_REFERENCE_CANONICAL_REVENUE_KEYS = (
 def _is_absent(value) -> bool:
     """ABSENT or EMPTY only. A stored ``0`` / ``0.0`` / ``False`` is a value (FINCO46: the old falsy test replaced a
     reference-seeded CO2 price of 0.0 with the factory 1.5 on the first GET and invalidated concurrent editors' tokens)."""
-    return value is None or (isinstance(value, str) and value.strip() == "")
+    return (value is None or (isinstance(value, str) and value.strip() == "")
+            or (isinstance(value, (list, dict)) and not value))
 
 
 def needs_revenue_backfill(project_record, draft_snapshot: dict) -> bool:

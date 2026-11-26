@@ -688,7 +688,7 @@
     restoreFocusAfterSave = false;
     if (settleAnchor) {
       var a = settleAnchor; settleAnchor = null;
-      if (document.body.contains(a.input)) {
+      if (document.body.contains(a.input) && document.activeElement === a.input) {   // anchor only the focused cell
         var drift = a.input.getBoundingClientRect().top - a.top;
         if (Math.abs(drift) > 1) window.scrollBy(0, drift);
       }

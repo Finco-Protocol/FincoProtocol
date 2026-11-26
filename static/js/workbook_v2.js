@@ -351,8 +351,7 @@
   // request for this exact value is still in flight is not submitted again; a genuinely different value still is.
   function _submitFieldForm(form, input) {
     _markSaving(form); v2ClearPending(input);
-    form.__fincoInFlightValue = input.value;
-    form.requestSubmit();
+    form.requestSubmit();          // the in-flight marker is set only once htmx really sends (htmx:beforeRequest)
   }
 
   window.v2FieldBlur = function (event) {
@@ -368,16 +367,20 @@
     }
   };
 
-  ['htmx:afterRequest', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
-    document.addEventListener(name, function (event) {
-      var elt = event.detail && event.detail.elt;
-      if (elt && elt.__fincoInFlightValue !== undefined) delete elt.__fincoInFlightValue;
-    });
-  });
 
   document.addEventListener('htmx:beforeRequest', function (event) {
     var form = event.detail.elt;
     if (!form || !form.classList || !form.classList.contains('v2-field-form')) return;
+    // FINCO46 (review): mark the value as in flight only when the request is really sent (a cancelled submit never
+    // marks it), and clear it from THIS request's own completion on THIS form (never from a swapped detail.elt).
+    var sentInput = form.querySelector('.v2-field-input');
+    if (sentInput && event.detail.xhr) {
+      var sentValue = sentInput.value;
+      form.__fincoInFlightValue = sentValue;
+      event.detail.xhr.addEventListener('loadend', function () {
+        if (form.__fincoInFlightValue === sentValue) delete form.__fincoInFlightValue;
+      }, { once: true });
+    }
     _inFlightSaveCount++;
     _markSaving(form);
     var input = form.querySelector('.v2-field-input');

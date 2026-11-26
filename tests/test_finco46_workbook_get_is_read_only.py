@@ -47,3 +47,6 @@ def test_backfill_fills_only_absent_or_empty_keys():
     assert filled["rev_co2_price_eur_mwh"] == "1.5" and filled["rev_ppa_index"] == "2.0"
     assert filled["rev_ppa_base_tariff"] == "50.0"                                 # blank string is EMPTY
     assert filled["rev_co2_enabled"] is False and filled["rev_merchant_balancing_pct"] == 0.0   # values kept
+    from app.services.revenue_backfill import _is_absent
+    assert _is_absent([]) and _is_absent({}) and _is_absent("  ") and _is_absent(None)   # empty containers are EMPTY
+    assert not any(_is_absent(v) for v in (0, 0.0, False, "0", [0]))                    # values are values
