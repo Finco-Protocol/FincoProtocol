@@ -6,19 +6,6 @@ from app.workbook.input_set import ProjectInputSet
 from tests.test_finval_rate_contract import env,USER,_prime,_ws
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def row(env,rec):
     with sqlite3.connect(env.db_path) as c:
         return c.execute('SELECT * FROM workspace_states WHERE project_id=?',(rec.project_id,)).fetchone()
@@ -86,7 +73,8 @@ def test_ambiguous_legacy_rate_cannot_be_changed_even_without_a_hash_hint(env):
     assert _ws(rec).draft_snapshot==ws.draft_snapshot
 
 
-def test_concurrent_save_and_new_clones_keep_distinct_identity_and_source_provenance(env):
+def test_concurrent_save_and_new_clones_keep_distinct_identity_and_source_provenance(env,monkeypatch):
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','1')
     from concurrent.futures import ThreadPoolExecutor
     from app.services.project_library_service import create_working_copy
     from app.persistence.projects_repository import get_reference_by_template_source
@@ -114,7 +102,8 @@ def test_concurrent_save_and_new_clones_keep_distinct_identity_and_source_proven
     assert protected_rows()==before
 
 
-def test_current_unit_ambiguity_preserves_committed_history_and_safe_detail_reads(env):
+def test_current_unit_ambiguity_preserves_committed_history_and_safe_detail_reads(env,monkeypatch):
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','1')
     from tests.test_finval_rate_contract import _save
     from tests.test_finval_rate_run_acceptance import _run
     from tests.test_fin_val_b2_c1_recovery_finite_opex import _poison

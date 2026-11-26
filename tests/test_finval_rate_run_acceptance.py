@@ -40,7 +40,11 @@ def _metrics(pi):
 
 def _run(env,record,keyed):
     from tests.run_clone_csrf import post_valid_csrf
-    wb=env.client.get('/v2/model-react/workspace',params={'project':record.project_code}).json()['workbook']
+    ws_resp=env.client.get('/v2/model-react/workspace',params={'project':record.project_code})
+    assert ws_resp.status_code==200,f"workspace returned HTTP {ws_resp.status_code}: {ws_resp.text[:300]}"
+    ws_payload=ws_resp.json()
+    assert 'workbook' in ws_payload,f"workspace missing 'workbook': {ws_resp.text[:300]}"
+    wb=ws_payload['workbook']
     data={'project':record.project_code,'content_hash':wb['composite_hash'],'workbook_version':wb['version']}
     if keyed:data['run_intent_id']=str(uuid.uuid4())
     response=post_valid_csrf(env.client,'/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data,follow_redirects=False)
