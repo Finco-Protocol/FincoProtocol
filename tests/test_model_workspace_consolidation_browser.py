@@ -913,3 +913,12 @@ from tests.model_react_pr3b1_acceptance import *  # noqa: E402,F401,F403
 
 # PR3b-2: additive canonical block Save lifecycle acceptance.
 from tests.model_react_pr3b2_acceptance import *  # noqa: E402,F401,F403
+
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy 54-period matrix layout (the dated grid adds the final contractual stub); new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+

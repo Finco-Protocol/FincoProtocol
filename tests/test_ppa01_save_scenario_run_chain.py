@@ -19,6 +19,15 @@ from tests.test_developer_economics_persistence_v1 import OWNER, Flow, env  # no
 from tests.test_rc2_integration_acceptance import REV_SAVE, _pi, _save_revenue
 from tests.test_wf07_revenue_workspace import contract_tokens
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy PPA chain expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 SNAPSHOT_KEY = "rev_multistream_config_json"
 
 

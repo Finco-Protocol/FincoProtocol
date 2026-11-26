@@ -9,6 +9,15 @@ from tests.test_rc2_integration_acceptance import _pi, _save_revenue
 from tests.test_rc7_revenue_ppa_v3_economics import _row, _merchant, _payload, _operating
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves Revenue V3 multi-contract ledger on the legacy grid; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 def _book(op, kind, *, ppa2_price=63.0):
     return _payload(kind, [_row(op, "ppa-a", "ppa", share=.30, price=55, end=6),
                            _row(op, "ppa-b", "ppa", share=.30, price=ppa2_price, start=6),

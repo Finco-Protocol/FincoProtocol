@@ -24,6 +24,15 @@ import pytest
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _assert_untouched, URL  # noqa: F401  (fixtures/helpers)
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy period-aligned R04 storability blockers and legacy Fraction oracle; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 USER = "decision-user"
 ROOT = Path(__file__).resolve().parents[2]
 

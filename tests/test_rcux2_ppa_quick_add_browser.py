@@ -17,6 +17,15 @@ import pytest
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves scheduled PPA price points (explicit per-row price curves); new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 PORT = 8801
 SAVED = re.compile(r"^Saved Working Copy")      # case-sensitive start: "Unsaved changes" must never satisfy a wait for the saved state
 

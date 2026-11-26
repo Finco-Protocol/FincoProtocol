@@ -10,6 +10,15 @@ from tests.test_model_golden_flows_browser import golden_app, browser, _page
 from tests.model_workspace_navigation import activate_destination
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves explicit per-row price curves; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 def _save_contracts(page, form):
     with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/v2/workbook/revenue/contracts")) as response:
         form.locator('[data-revenue-save]').click()
