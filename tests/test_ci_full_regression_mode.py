@@ -80,10 +80,28 @@ FINCO46_FIXED_B = {
 }
 
 
-def test_known_defects_list_is_exactly_the_reviewed_45():
+# FINCO46 (third batch): 45 -> 35. These ten nodes pass the exact node locally (6/6 repeated runs; the two formerly
+# intermittent ones 11/11 after the GET read-only / Inputs lock fixes), on the hosted known-defects dispatch
+# 45768880950, and the eight U1/U2 role nodes also on unchanged main. Their listing was stale.
+FINCO46_FIXED_C = {
+    "tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[solar]",
+    "tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[wind]",
+    "tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[solar]",
+    "tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[wind]",
+    "tests/test_u1_browser_role.py::test_u1_routes_aliases_back_forward_protected",
+    "tests/test_u1_browser_role.py::test_u1_moved_studio_tools_reachable",
+    "tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[solar]",
+    "tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[wind]",
+    "tests/test_model_run_workspace_v3_browser.py::test_selector_reference_tracks_three_slots_when_changed_or_cleared",
+    "tests/test_workflow_c_browser_v1.py::test_integrated_statements_kpis_trace_navigation_and_freshness",
+}
+
+
+def test_known_defects_list_is_exactly_the_reviewed_35():
     listed = check_groups.known(ROOT / "tests/known_defects.txt")
-    assert len(listed) == 45
+    assert len(listed) == 35
     assert not (set(listed) & FINCO46_FIXED_B)
+    assert not (set(listed) & FINCO46_FIXED_C)
     assert not (set(listed) & FINCO45C_FIXED)
     assert not (set(listed) & FINCO46_FIXED)
 

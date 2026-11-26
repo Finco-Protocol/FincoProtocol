@@ -4,18 +4,10 @@
 # fixed. Adding a line here is a protected change (CODEOWNERS). Remove a line in the same PR that fixes the test.
 # format: <pytest node id>  # <diagnosis>
 tests/test_radar_n04_browser.py::test_n04_mobile_and_desktop_containment  # Radar refresh button missing (Radar moves to Finco-Protocol/Radar)
-tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u1_browser_role.py::test_u1_a01_one_editable_money_authority_and_no_codes[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
 tests/test_u1_browser_role.py::test_u1_a02_totals_agree_with_the_server[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
 tests/test_u1_browser_role.py::test_u1_a02_totals_agree_with_the_server[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
 tests/test_u1_browser_role.py::test_u1_a14_opex_base_plus_line[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
 tests/test_u1_browser_role.py::test_u1_a14_opex_base_plus_line[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u1_browser_role.py::test_u1_decimals_default_to_zero[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u1_browser_role.py::test_u1_routes_aliases_back_forward_protected  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u1_browser_role.py::test_u1_moved_studio_tools_reachable  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[solar]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
-tests/test_u2_browser_role.py::test_u2_opex_lines_by_year[wind]  # pre-U2/UX U1-U2 workbench role never ran in hosted CI; 404 asset / superseded layout
 tests/test_wf06b_browser_role.py::test_wf06b_compact_inputs_overview_two_column[solar]  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
 tests/test_wf06b_browser_role.py::test_wf06b_compact_inputs_overview_two_column[wind]  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
 tests/test_wf06b_browser_role.py::test_wf06b_search_and_cost_filters  # WF-06B role never ran in hosted CI; layout superseded by later UX PRs
@@ -46,5 +38,3 @@ tests/test_p5_browser_acceptance.py::test_verified_index_asset_cards_present[mob
 tests/test_p5_browser_acceptance.py::test_verified_asset_json_endpoint  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
 tests/test_p5_browser_acceptance.py::test_verified_asset_json_unauthenticated_returns_401  # never ran in CI (assumed an external server on :8000; now has a live-server fixture); /verified product changed (Trust & Verification page, no asset cards, JSON auth)
 tests/test_ux_pr1_browser_role.py::test_dense_responsive_comments_and_default_off  # hosted ubuntu-24.04 font metrics only (first row 238px vs density bound); passes locally on main and branch
-tests/test_model_run_workspace_v3_browser.py::test_selector_reference_tracks_three_slots_when_changed_or_cleared  # FLAKY on main 707e68b2: 2/6 local runs fail (303 redirect), same rate on the branch
-tests/test_workflow_c_browser_v1.py::test_integrated_statements_kpis_trace_navigation_and_freshness  # FLAKY on main 707e68b2: 1/6 local runs, cost-grid save never leaves busy() within 30 s
