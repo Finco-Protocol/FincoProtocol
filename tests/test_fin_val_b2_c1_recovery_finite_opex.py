@@ -126,10 +126,36 @@ def _history_count(env, record):
         return conn.execute("SELECT COUNT(*) FROM model_run_history WHERE project_id=?", (record.project_id,)).fetchone()[0]
 
 
+# FINCO46: registered BOOL snapshot fields compared with the SAME token contract as
+# app.input_adapter._snapshot_bool_strict (bool, or case-insensitive true/1/yes | false/0/no; None/blank = unset).
+# The first Save writes a seeded Python bool back as text ('False'); that is type normalisation, not a change.
+# The result is a typed marker so a bool can never compare equal to a numeric 0/1 of another field, unset stays
+# distinct from False, and an unknown token fails loudly instead of being read as False.
+_SEMANTIC_BOOL_FIELDS = frozenset({"rev_co2_enabled"})
+_BOOL_TRUE = frozenset({"true", "1", "yes"})
+_BOOL_FALSE = frozenset({"false", "0", "no"})
+
+
+def _semantic_bool(key, value):
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None
+    if isinstance(value, bool):
+        return ("BOOL", value)
+    token = str(value).strip().lower()
+    if token in _BOOL_TRUE:
+        return ("BOOL", True)
+    if token in _BOOL_FALSE:
+        return ("BOOL", False)
+    raise AssertionError(f"{key}: {value!r} is not a valid snapshot boolean")
+
+
 def _semantic(snapshot, ignore=()):
     out = {}
     for key, value in snapshot.items():
         if key in ignore:
+            continue
+        if key in _SEMANTIC_BOOL_FIELDS:
+            out[key] = _semantic_bool(key, value)
             continue
         if isinstance(value, str) and value[:1] in "{[":
             try:
