@@ -59,6 +59,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from app.persistence._helpers import _now_utc, _to_json, SCENARIO_INPUT_FIELDS
 from app.persistence.db import get_cursor
+from app.persistence.project_lifecycle_repository import workspace_freshness_writer
 
 if TYPE_CHECKING:
     from app.persistence.records import ScenarioRecord
@@ -331,6 +332,7 @@ def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] =
     )
 
 
+@workspace_freshness_writer
 def select_scenario(
     user_id: str,
     project_id: str,

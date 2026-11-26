@@ -117,9 +117,13 @@ CONTROLS: tuple[ReadinessItem, ...] = (
         (
             _code("app/auth.py", "MAX_LOGIN_FAILURES = 5"),
             _test(_CTRL, "test_login_rate_limit_locks_out_after_repeated_failures"),
+            _code("app/persistence/rate_limit_store.py", "def login_reserve"),
+            _test("tests/test_finco45c_shared_rate_limiter.py",
+                  "test_login_verifications_are_bounded_across_independent_processes"),
         ),
-        "The counter lives in process memory. It is per address, not shared between workers, and "
-        "resets on restart.",
+        "The counter is per client address (resolved by the server's trusted-proxy rules) and is kept in a "
+        "small SQLite store shared by all worker processes on the host. If that store is unavailable, "
+        "login attempts are refused with a retry delay rather than allowed.",
     ),
     ReadinessItem(
         "access.csrf_login", "access_control",
@@ -155,8 +159,10 @@ CONTROLS: tuple[ReadinessItem, ...] = (
             _code("app/auth.py", "def check_demo_rate_limit"),
             _test("tests/test_p6_demo_isolation.py", "test_demo_rate_limit_enforced"),
             _test("tests/test_p6_demo_isolation.py", "test_demo_rate_limit_not_applied_to_admin"),
+            _test("tests/test_finco45c_shared_rate_limiter.py",
+                  "test_demo_budget_is_total_across_independent_processes"),
         ),
-        "Counters are in process memory, as for login limiting.",
+        "Counters are shared by all worker processes on the host, as for login limiting.",
     ),
     ReadinessItem(
         "access.multi_user_identity", "access_control",
@@ -737,14 +743,15 @@ DATA_STORES: tuple[DataStoreEntry, ...] = (
         "The reverse proxy keeps its own access log with client addresses.",
     ),
     DataStoreEntry(
-        "data.rate_limit_counters", "Rate-limit counters", "Process memory",
-        "client address or demo id", "Failed-login counts and demo operation counts.", False,
-        "Cleared on restart; demo counters are purged when stale.",
-        "Restart the process.", True,
+        "data.rate_limit_counters", "Rate-limit counters", "Shared SQLite file beside the database",
+        "hashed client address or demo id", "Failed-login counts and demo operation counts.", False,
+        "Demo events older than two hours and idle login records older than a day are purged; "
+        "counters survive a restart.",
+        "Delete the rate-limit file while the service is stopped.", True,
         S.IMPLEMENTED_VERIFIED,
         (
             _code("app/auth.py", "def purge_expired_demo_rate_entries"),
-            _test(_CTRL, "test_rate_limit_counters_are_in_memory_and_stale_ones_are_purged"),
+            _test(_CTRL, "test_rate_limit_counters_are_shared_and_stale_ones_are_purged"),
         ),
     ),
     DataStoreEntry(

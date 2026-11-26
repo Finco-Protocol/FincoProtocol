@@ -431,8 +431,12 @@ def test_first_save_after_a_scenario_switch_has_no_false_409(make):
     s = make("u-grid-scen")
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")
     s.page.wait_for_selector("#tab-scenarios", state="attached")
+    # FINCO45C (KD-03): scenario creation is CSRF-bound (operation token rendered in the create form); the harness
+    # posted without it and got the correct 403. Use the page's own operation token, as the real form does.
+    token = s.page.locator('form.v2-scenario-create-form input[name="csrf_token"]').first.input_value()
+    assert token
     r = s.page.request.post(f"{s.base}/v2/workbook/scenarios/create",
-                            form={"project": s.rec.project_code, "scenario_name": "Grid Case"},
+                            form={"project": s.rec.project_code, "scenario_name": "Grid Case", "csrf_token": token},
                             headers={"HX-Request": "true"})
     assert r.status == 200
     s.page.goto(f"{s.base}/v2/workbook?project={s.rec.project_code}")

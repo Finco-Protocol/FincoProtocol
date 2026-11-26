@@ -76,10 +76,11 @@ def check_dense_comments_and_responsive(browser,base):
         page.reload();page.wait_for_selector('[data-cost-comments]')
         page.locator('[data-cost-comments]').click()
         assert page.locator(f'.ux-col-notes [data-cost-notes-for="{line_id}"]').input_value()==probe
-        # Default-OFF read contract stays disabled; UI changes must not opt it in.
+        # FINCO45B: the G10 panel is ON by default and is read-only committed-Run evidence: a cost save never
+        # fabricates a Run, so this never-run project reports NOT_RUN (the OFF rollback is a typed 404, tested apart).
         response=context.request.get(f'{base}/v2/model-react/opex-run-projection?project={record.project_code}')
-        assert response.status==404
-        assert response.json().get('code')=='G10_RUN_OPEX_PANEL_DISABLED'
+        assert response.status==200
+        assert response.json().get('status')=='NOT_RUN' and response.json().get('periods')==[]
         if evidence: (evidence/'accepted-layout.json').write_text(json.dumps(measures,indent=2))
         assert not errors,errors
     finally:

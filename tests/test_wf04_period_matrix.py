@@ -11,6 +11,15 @@ import pytest
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture used by cenv)
 from tests.test_wf04_credit_debt_metrics import COV, EOD, cenv, credit, history, run, update, view_of, weak_wind  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy 54-period grid (the dated grid adds the final contractual stub); new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 ROWS = ["LOCKUP", "MIN_DSCR", "CONTRACTUAL_DSCR", "COVERAGE_1X", "CASH_SHORTFALL"]
 
 

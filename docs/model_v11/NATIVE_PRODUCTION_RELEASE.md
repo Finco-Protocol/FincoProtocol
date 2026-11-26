@@ -49,6 +49,11 @@ value means `off`. The staging unit, CI workflows, tests and development never l
 
 ## Release procedure (part of the approved deployment, after the approved normal merge)
 
+> FINCO45C: `release_native.sh install` with no profile now installs the **`stage3`** profile (V11 Stage 3 only,
+> `FINCO_NATIVE_V10_RUN=off`). The settings block above is the `full` profile, available only as an explicit
+> `install --profile full` (or `FINCO_NATIVE_RELEASE_PROFILE=full`). Already installed activation files keep verifying
+> as the profile they are; nothing is reinterpreted. See `docs/operations/FINCO46_OPERATOR_CHECKLIST.md`.
+
 Merging does **not** update the production host: no workflow deploys. The deployment of the merged commit is:
 
 1. Update the checkout on the host to the merged `main` commit and install the declared dependencies into `.venv`.

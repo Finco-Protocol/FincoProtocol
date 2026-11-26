@@ -157,7 +157,14 @@
     var failed = hadFailure; hadFailure = false;
     var cbs = idleCallbacks.splice(0, idleCallbacks.length);
     if (failed) return;                // a failed save cancels the waiting action (never silently proceed)
-    cbs.forEach(function (cb) { try { cb(); } catch (e) { /* ignore */ } });
+    // FINCO45C (KD-04): run the waiting action on the NEXT task. idleCheck runs inside htmx's handling of the save
+    // response (XHR "load"); the presentation-view guard (model_view_refresh.js) only marks the saved sheet loaded
+    // again on the same XHR's "loadend", so a synchronously re-triggered Deactivate/Run was refused by that guard and
+    // the user's click was silently lost. Re-check the grid when it runs: a new edit started meanwhile waits again.
+    setTimeout(function () {
+      if (activeId || queue.length) { Array.prototype.push.apply(idleCallbacks, cbs); return; }
+      cbs.forEach(function (cb) { try { cb(); } catch (e) { /* ignore */ } });
+    }, 0);
   }
 
   function flushDirty() {
@@ -610,10 +617,27 @@
       stageMessage('');
       pendingStageMsg = 'Saved ' + ctx.rows.length + ' lines together · Last Run is now STALE — run the model to refresh results.';
       if (ctx.others) {         // the sheet that was NOT swapped carries stale row versions: refresh it too
+        // FINCO45C (KD-01/KD-02): the server committed every row of the batch, including the rows on the sheet that
+        // was NOT swapped. Those rows are now saved: their committed values become their originals and their
+        // "saving" state ends. Before, they kept the pre-save originals and read as unsaved edits (staged mode could
+        // not be left). The presentation-view guard (model_view_refresh.js) marks that sheet pending after the write
+        // and blocks edits on it until its authorized reload, so no stale row version can be submitted from it.
+        ctx.rows.forEach(function (id) {
+          var r = document.getElementById(id);
+          if (!r || r.getAttribute('data-cost-row') === ctx.sheet) return;
+          cellsOf(r).forEach(function (i) { i.setAttribute('data-original', i.value); });
+          r.removeAttribute('data-failed');
+          setState(r, '', '');
+        });
+        updateStagebars();
+        // Request the fresh sheet after this afterRequest handler returns (htmx drops a request issued from it while
+        // the batch request is still in flight); the view guard may defer it until the sheet is shown again.
         var other = ctx.sheet === 'capex' ? 'opex' : 'capex';
-        var root = document.getElementById('v2-sheet-' + other);
-        if (root) window.htmx.ajax('GET', '/v2/workbook/grid/sheet?project=' + encodeURIComponent(ctx.project) + '&sheet=' + other,
-          { source: '#v2-sheet-' + other, target: '#v2-sheet-' + other, swap: 'outerHTML' });
+        var refreshUrl = '/v2/workbook/grid/sheet?project=' + encodeURIComponent(ctx.project) + '&sheet=' + other;
+        setTimeout(function () {
+          var root = document.getElementById('v2-sheet-' + other);
+          if (root) window.htmx.ajax('GET', refreshUrl, { source: root, target: root, swap: 'outerHTML' });
+        }, 0);
       }
       return;
     }

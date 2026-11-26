@@ -108,9 +108,9 @@ def check_opex_inline_years(browser, base):
         first.fill('1234.5'); page.wait_for_timeout(100)
         assert 'not' in page.locator('[data-timeline-note="ready"]').text_content() and 'reflected' in page.locator('[data-timeline-note="ready"]').text_content()
         first.fill(before)
-        # Last Run all-in OPEX stays its own default-OFF panel.
+        # Last Run all-in OPEX is its own read-only panel (FINCO45B: ON by default); staged edits never reach it.
         r = context.request.get(f'{base}/v2/model-react/opex-run-projection?project={code}')
-        assert r.status == 404 and r.json().get('code') == 'G10_RUN_OPEX_PANEL_DISABLED'
+        assert r.status == 200 and r.json().get('status') == 'NOT_RUN' and r.json().get('periods') == []
         for w in (1440, 1024):
             page.set_viewport_size({'width': w, 'height': 900 if w == 1440 else 768}); page.wait_for_timeout(150)
             assert page.evaluate('document.documentElement.scrollWidth-innerWidth') <= 1, w

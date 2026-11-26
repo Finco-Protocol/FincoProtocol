@@ -13,6 +13,15 @@ from tests.test_revenue_v3_products import candidate
 from tests.revenue_v3_cases import book
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves Revenue V3 advanced products (legacy-grid axis); new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_real_product_editor_save_reload_scenario_run(candidate, golden_app, browser, kind):
     from app.services.reference_seed_service import create_reference_seeded_project

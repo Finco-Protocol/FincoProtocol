@@ -119,7 +119,7 @@ def test_tampered_demo_cookie_is_not_accepted(fresh):
 def test_operator_login_still_works(fresh, monkeypatch):
     from app import auth
 
-    monkeypatch.setattr(auth, "_rate_limit_store", {})
+    auth._shared_limits.reset_for_tests()
     monkeypatch.setattr(auth, "ADMIN_PASSWORD_HASH_ENV", None)
     monkeypatch.setattr(auth, "ADMIN_PASSWORD_PLAIN", "test-only-operator-pw-123")
     page = fresh.get("/login", follow_redirects=False)

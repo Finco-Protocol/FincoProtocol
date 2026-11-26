@@ -561,6 +561,8 @@ class WorkbookUpdateService:
             "debt.senior.gearing_pct",
             "debt.senior.tenor_years",
             "project_setup.technical.horizon_years",
+            "project_setup.technical.cod_date",
+            "project_setup.technical.construction_months",
         ):
             snap = dict(ws.draft_snapshot or {})
             snap[validation.spec.snapshot_key] = str(validation.typed_value)
@@ -751,6 +753,8 @@ class WorkbookUpdateService:
             "debt.senior.gearing_pct",
             "debt.senior.tenor_years",
             "project_setup.technical.horizon_years",
+            "project_setup.technical.cod_date",
+            "project_setup.technical.construction_months",
         }:
             snap_fh = dict(ws.draft_snapshot or {})
             for fid, raw_v in updates:
@@ -806,6 +810,8 @@ def validate_proposed_financing_horizon_snapshot(proposed_snapshot: Mapping[str,
                 FieldErrorClass.INVALID,
             )
 
+    _validate_proposed_cod_construction_axis(proposed_snapshot)
+
     raw_horizon = proposed_snapshot.get("horizon_years")
     raw_tenor = proposed_snapshot.get("tenor_years")
     if (
@@ -823,6 +829,34 @@ def validate_proposed_financing_horizon_snapshot(proposed_snapshot: Mapping[str,
                 f"must be strictly longer than senior debt tenor ({int(tenor_f)} years).",
                 FieldErrorClass.INVALID,
             )
+
+
+def _validate_proposed_cod_construction_axis(proposed_snapshot: Mapping[str, Any]) -> None:
+    """FINCO45B: the period axis derives financial close as COD minus the construction months (end-of-month clamped)
+    and re-derives COD as close + months (EDATE). A COD that this round trip cannot reproduce - a 29 Feb COD, or a
+    29th-31st COD whose close month is shorter - was saved and then failed every read with an unhandled
+    PERIOD_AXIS_COD_MISMATCH (HTTP 500), on both calendars. Refuse it at Save with a typed error instead."""
+    raw_cod = proposed_snapshot.get("cod_date")
+    raw_months = proposed_snapshot.get("construction_months")
+    if raw_cod in (None, "") or raw_months in (None, ""):
+        return
+    try:
+        from datetime import date as _date
+        from dateutil.relativedelta import relativedelta
+        cod = _date.fromisoformat(str(raw_cod).strip()[:10])
+        months = int(float(str(raw_months).strip()))
+    except (TypeError, ValueError):
+        return                                        # malformed values keep their own field-level validation
+    if months < 0:
+        return
+    close = cod - relativedelta(months=months)
+    if close + relativedelta(months=months) != cod:
+        raise FieldValidationError(
+            f"COD_CONSTRUCTION_AXIS_UNREACHABLE: COD {cod.isoformat()} cannot be reached as financial close "
+            f"({close.isoformat()}) + {months} construction months; choose a COD day that exists in the financial "
+            "close month (for example the 28th or the 1st) or a construction period that keeps the day.",
+            FieldErrorClass.INVALID,
+        )
 
 
 def validate_proposed_p90_p50_snapshot(proposed_snapshot: Mapping[str, Any]) -> None:

@@ -451,7 +451,9 @@ async def react_new_project_create(request: Request):
         if known == "NONE":                                  # a replay of an existing request costs no budget
             allowed, retry_after = check_demo_rate_limit(user.user_id, "project_create")
             if not allowed:
-                return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": retry_after}, 429)
+                limited = _json({"ok": False, "code": "RATE_LIMITED", "retry_after": retry_after}, 429)
+                limited.headers["Retry-After"] = str(retry_after)
+                return limited
             wait = _demo_budget_exhausted(user.user_id)
             if wait:
                 return _json({"ok": False, "code": "RATE_LIMITED", "retry_after": wait}, 429)

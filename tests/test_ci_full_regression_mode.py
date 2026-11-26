@@ -40,8 +40,20 @@ def test_exactly_one_deferred_node_and_it_is_the_npv_parity_test():
     assert names.count(NPV.split("::")[1]) == 1
 
 
-def test_known_defects_list_is_unchanged_at_65():
-    assert len(check_groups.known(ROOT / "tests/known_defects.txt")) == 65
+# FINCO45C: 65 -> 61. Exactly these four nodes were fixed and delisted in the same PR (product fixes in
+# static/js/cost_staging.js + model_view_refresh.js, CSRF-correct harness); every other node is retained.
+FINCO45C_FIXED = {
+    "tests/test_cost_batch_save_browser_v1.py::test_failure_in_one_row_rolls_back_all_rows_keeps_typed_values_and_never_retries",
+    "tests/test_cost_batch_save_browser_v1.py::test_cross_sheet_batch_then_single_row_edit_has_no_false_409",
+    "tests/test_cost_grid_editing_browser_v1.py::test_first_save_after_a_scenario_switch_has_no_false_409",
+    "tests/test_cost_grid_editing_browser_v1.py::test_uncommitted_edit_is_saved_before_a_deactivate_runs",
+}
+
+
+def test_known_defects_list_is_exactly_the_reviewed_61():
+    listed = check_groups.known(ROOT / "tests/known_defects.txt")
+    assert len(listed) == 61
+    assert not (set(listed) & FINCO45C_FIXED)
 
 
 # ── mode decision ────────────────────────────────────────────────────────────────────────────────────────────────────

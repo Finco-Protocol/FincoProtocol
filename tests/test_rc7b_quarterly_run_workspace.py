@@ -18,6 +18,15 @@ import pytest
 from app.workbook import quarterly_frequency_config as cfg
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves release-closed 3/3 operating frequency; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 OWNER = "decision-user"
 
 

@@ -18,6 +18,15 @@ from tests.test_developer_economics_persistence_v1 import OWNER, Flow, _doc, _fc
 from tests.test_wf07_revenue_multistream import contracts
 from tests.test_wf07_revenue_workspace import contract_tokens
 
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves Revenue V3 candidate composition (legacy-grid axis); new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
 DEV_SAVE = "/v2/developer-decision/configuration"
 REV_SAVE = "/v2/workbook/revenue/contracts"
 MATRIX = "/v2/workbook/sensitivity/matrix/run"

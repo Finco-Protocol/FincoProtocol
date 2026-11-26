@@ -12,6 +12,15 @@ from tests.test_rc2_integration_acceptance import _save_revenue
 from tests.test_ppa01_save_scenario_run_chain import _book, _levels, _years, _page
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy period-weighted tariff rounding expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_rounding_save_scenario_run_and_immutable_history(env, kind):
     from app.persistence.run_history_repository import get_run_history

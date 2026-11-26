@@ -2,7 +2,7 @@
 # FINCO native Run kernels (V10 Stage 1 + Stage 2, V11 Stage 3): the production release transaction, at DEPLOY time
 # (never during a Model Run).
 #
-#   deploy/scripts/release_native.sh [install|verify|remove] [--profile full|stage3]     (default: install)
+#   deploy/scripts/release_native.sh [install|verify|remove] [--profile stage3|full]     (default: install, profile stage3)
 #
 # install  builds the three kernels with the reviewed build scripts, requires the exact reviewed manifests (artifact
 #          SHA-256, build ID, ABI, source SHA-256, compiler, flags, target), installs them atomically, verifies them
@@ -27,7 +27,8 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
     exit 70
 fi
 
-# All arguments are passed through (e.g. `install --profile stage3`); no argument means `install`.
+# All arguments are passed through (e.g. `install --profile full`); no argument means `install` with the default stage3
+# profile (V11 Stage 3 only). The experimental V10 Stage 2 (`full`) is never selected without an explicit opt-in.
 if [[ $# -eq 0 ]]; then
     set -- install
 fi

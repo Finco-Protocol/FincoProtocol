@@ -111,10 +111,10 @@ def _run_projection(env, record):
     return env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
 
 
-def test_g10_panel_gate_is_default_off(monkeypatch, env):
+def test_g10_panel_gate_explicit_off_is_a_typed_404(monkeypatch, env):
     """No unintended general-release exposure: without the dedicated flag the route is a typed 404,
     even with the React surface flag on."""
-    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
+    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "0")  # FINCO45B: explicit operator rollback (default is ON)
     record = env.create("solar")
     response = _run_projection(env, record)
     assert response.status_code == 404
@@ -259,3 +259,40 @@ def test_g10_endpoint_module_has_no_writer_surface():
     assert "router.include_router(_opex_run_projection_router)" in registered
     router_file = (ROOT / "app/v2/react_workspace_router.py").read_text(encoding="utf-8")
     assert "_g10_opex_run_router" not in router_file and "_opex_run_projection_router" not in router_file
+
+
+# ── FINCO45B: default ON (no monkeypatch) and active-scenario binding ──────────────────────────────────────────
+
+def test_g10_panel_is_on_by_default_without_any_flag(monkeypatch, env):
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
+    record = env.create("solar")
+    response = _run_projection(env, record)
+    assert response.status_code == 200 and response.json()["status"] == "NOT_RUN"
+    for off in ("0", "false", "off", "bogus"):
+        monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", off)
+        assert _run_projection(env, record).json()["code"] == "G10_RUN_OPEX_PANEL_DISABLED"
+
+
+def test_g10_shows_the_active_scenarios_run_never_another_scenarios(env):
+    """After a scenario switch the panel must not label another scenario's newest Run with this scenario's
+    freshness: a never-run scenario is NOT_RUN; switching back restores exactly the Base Run."""
+    from tests.test_model_react_rcm_goal_seek_v1 import run_canonical
+    from app.persistence.scenarios_repository import duplicate_scenario, list_scenarios, select_scenario
+    from app.persistence.workspace_repository import get_workspace_state
+
+    record = env.create("solar")
+    run_canonical(env, record.project_code)
+    base_view = _run_projection(env, record).json()
+    assert base_view["status"] == "OK"
+    base_ws = get_workspace_state(OWNER, record.project_id)
+    scenarios = list_scenarios(OWNER, record.project_id)
+    base = next(s for s in scenarios if s.is_base_case)
+    child = duplicate_scenario(OWNER, base.scenario_id, "G10 downside")
+    assert child is not None and select_scenario(OWNER, record.project_id, child.scenario_id)
+    child_view = _run_projection(env, record).json()
+    assert child_view["status"] == "NOT_RUN" and child_view["run"] is None and child_view["periods"] == []
+    assert "active scenario" in child_view["basis"]
+    assert select_scenario(OWNER, record.project_id, base.scenario_id)
+    back = _run_projection(env, record).json()
+    assert back["status"] == "OK" and back["run"]["history_id"] == base_view["run"]["history_id"]
+    assert back["run"]["runtime_snapshot_id"] == base_ws.last_runtime_snapshot_id

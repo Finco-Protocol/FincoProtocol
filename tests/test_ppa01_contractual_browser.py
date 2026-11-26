@@ -12,6 +12,15 @@ from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server
 from tests.model_workspace_navigation import activate_destination  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy period-aligned PPA anchor refusals; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 def open_calendar(s):
     s.page.on('dialog',lambda d:d.accept())
     activate_destination(s.page,'tab-revenue')

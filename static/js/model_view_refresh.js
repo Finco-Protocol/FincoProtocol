@@ -115,10 +115,17 @@
   }
   function schedule(){if(queued)return;queued=true;queueMicrotask(function(){queued=false;views.forEach(ensure);});}
   function viewOf(node){return views.find(function(view){var root=document.getElementById(view.id);return root && root.contains(node);});}
+  // True only while every in-flight write is this view's own cost-row save and nothing else invalidated the page: the
+  // cost grid (cost_staging.js) then queues the user's structural click/Run behind those saves itself. Any other write
+  // (Run, scenario, another sheet, diagnostics) keeps the full stale-view guard.
+  function ownRowWritesOnly(view){
+    return !!(view && view.ownRowWrites>0 && !writes && pendingWrites.size===view.ownRowWrites);
+  }
   function block(event){
     var view=viewOf(event.target);if(!view || !view.editable)return;
     var node=document.getElementById(view.id);
     if(node.dataset.modelViewState==='loaded')return;
+    if(node.dataset.modelViewState==='pending' && ownRowWritesOnly(view))return;
     event.preventDefault();event.stopImmediatePropagation();schedule();
   }
   // An edit made outside the Construction timing component can never be covered by that component's own Save.
@@ -134,6 +141,7 @@
   document.addEventListener('submit',block,true);
   document.addEventListener('htmx:confirm',function(event){
     var elt=(event.detail||{}).elt,view=elt && viewOf(elt);
+    if(view && document.getElementById(view.id).dataset.modelViewState==='pending' && ownRowWritesOnly(view))return;
     if(view && document.getElementById(view.id).dataset.modelViewState!=='loaded'){
       event.preventDefault();event.stopImmediatePropagation();schedule();
     }
@@ -159,9 +167,15 @@
     var beforeHash=capture().hash;
     var isRun=String(cfg.path||'').split('?')[0]==='/v2/workbook/run';
     var previousHealth=document.getElementById('v2-model-health');
+    // FINCO45C (KD-04): a cost-grid ROW write (the row form itself is the request source) is the user's own edit
+    // being saved; while only such writes are in flight the sheet is not stale for the user's next click.
+    var ownRow=!!(sourceView && sourceView.editable && (sourceView.name==='capex' || sourceView.name==='opex') &&
+      detail.elt && detail.elt.matches && detail.elt.matches('form[data-cost-row]'));
+    if(ownRow)sourceView.ownRowWrites=(sourceView.ownRowWrites||0)+1;
     pendingWrites.add(detail.xhr);invalidate();
     var writeGeneration=generation;
     detail.xhr.addEventListener('loadend',function(){
+      if(ownRow)sourceView.ownRowWrites=Math.max(0,(sourceView.ownRowWrites||0)-1);
       pendingWrites.delete(detail.xhr);
       var health=document.getElementById('v2-model-health');
       if(isRun && detail.xhr.status===200 && generation===writeGeneration &&

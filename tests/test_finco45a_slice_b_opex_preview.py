@@ -73,6 +73,40 @@ def _seed_n_opex_lines(client, record, total_lines: int) -> None:
             conn.commit()
 
 
+def _daily_dated_opex_oracle(op_periods, *, cod: date, horizon_years: int, y1_budget: Decimal, inflation: Decimal):
+    """FINCO45B independent OD-TIME-01/v1 oracle (shares no code with the engine): walk every calendar day of the
+    contractual operating life [COD, COD + horizon years), charge y1 * (1 + i)^(operating year - 1) / days-in-that-
+    calendar-year (exact Fraction), and bucket the days into the preview's half-open operating rows
+    ([COD or previous end + 1 day, period_end + 1 day))."""
+    from datetime import timedelta
+    from fractions import Fraction
+
+    def add_years(d: date, n: int) -> date:
+        y = d.year + n
+        return date(y, 2, 28) if (d.month, d.day) == (2, 29) and not calendar.isleap(y) else d.replace(year=y)
+
+    end_excl = add_years(cod, horizon_years)
+    anniversaries = [add_years(cod, k) for k in range(1, horizon_years + 1)]
+    ops = [p for p in op_periods if p["is_operation"]]
+    bounds, prev_end = [], None
+    for p in ops:
+        start = cod if prev_end is None else prev_end + timedelta(days=1)
+        stop = date.fromisoformat(p["period_end"]) + timedelta(days=1)
+        bounds.append((p["period_index"], start, min(stop, end_excl)))
+        prev_end = date.fromisoformat(p["period_end"])
+    y1, infl = Fraction(str(y1_budget)), Fraction(str(inflation))
+    out = {}
+    for idx, start, stop in bounds:
+        total, d = Fraction(0), start
+        while d < stop:
+            op_year = 1 + sum(1 for a in anniversaries if a <= d)
+            total += y1 * (1 + infl) ** (op_year - 1) / (366 if calendar.isleap(d.year) else 365)
+            d += timedelta(days=1)
+        out[idx] = total
+    return out
+
+
+@pytest.mark.parametrize("authority", ["legacy", "dated"])
 @pytest.mark.parametrize("n_lines,expected_y1_budget", [
     (4, 500.30),
     (25, 503.45),
@@ -80,14 +114,23 @@ def _seed_n_opex_lines(client, record, total_lines: int) -> None:
     (250, 537.20),
 ])
 def test_opex_4_25_100_250_matrix_matches_http_run_xlsx_and_decimal_oracle(
-    env, monkeypatch, n_lines, expected_y1_budget
+    env, monkeypatch, n_lines, expected_y1_budget, authority
 ):
+    """FINCO45B: ``dated`` is the new default creation (OD-TIME-01/v1, no flag set); ``legacy`` is a retained
+    LEGACY_CALENDAR/v0 project created through the explicit creation rollback, proving its old oracle unchanged."""
     from app.runtime.model_execution import ModelExecutionConfig, ModelExecutor, reset_model_executor_for_tests
 
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
     reset_model_executor_for_tests(ModelExecutor(ModelExecutionConfig(mode="thread")))
 
+    if authority == "legacy":
+        monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+    else:
+        monkeypatch.delenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", raising=False)
     record = env.create("solar")
+    monkeypatch.delenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", raising=False)
+    stored_version = get_workspace_state(OWNER, record.project_id).draft_snapshot.get("date_authority_version")
+    assert stored_version == (None if authority == "legacy" else "OD-TIME-01/v1")
     # Keep all 19 reference-seeded lines active (preserving has_reference_seed per group)
     # with total 500.30 kEUR, plus (n_lines - 4) added B.09 lines at 0.15 kEUR each ->
     # exact Neon matrix totals 500.30 / 503.45 / 514.75 / 537.25 kEUR.
@@ -170,17 +213,30 @@ def test_opex_4_25_100_250_matrix_matches_http_run_xlsx_and_decimal_oracle(
         assert round(pp["operating_expenses_keur"], 2) == pytest.approx(float(hp["operating_expenses_keur"]), abs=1e-9)
 
     # Full-precision (<= 1e-9 kEUR) comparison against canonical Decimal(50) oracle across Y1..Y25
-    # In LEGACY_CALENDAR/v0, Year 1 is partial COD year (306/365); subsequent years sum period day_fractions.
-    one_plus_inf = Decimal("1.02")
-    periods_by_op_yr: dict[int, list[dict]] = {}
-    for pp in op["periods"]:
-        if pp["is_operation"] and pp["operating_year"] >= 1:
-            periods_by_op_yr.setdefault(pp["operating_year"], []).append(pp)
-    for op_row in op["operating_years"]:
-        yr = op_row["operating_year"]
-        df_sum = sum(Decimal(repr(p["day_fraction"])) for p in periods_by_op_yr[yr])
-        expected_op_yr = y1_budget_dec * (one_plus_inf ** (yr - 1)) * df_sum
-        assert abs(Decimal(str(op_row["operating_expenses_keur"])) - expected_op_yr) <= Decimal("1e-9"), yr
+    assert op["date_authority_version"] == ("LEGACY_CALENDAR/v0" if authority == "legacy" else "OD-TIME-01/v1")
+    if authority == "legacy":
+        # In LEGACY_CALENDAR/v0, Year 1 is partial COD year (306/365); subsequent years sum period day_fractions.
+        one_plus_inf = Decimal("1.02")
+        periods_by_op_yr: dict[int, list[dict]] = {}
+        for pp in op["periods"]:
+            if pp["is_operation"] and pp["operating_year"] >= 1:
+                periods_by_op_yr.setdefault(pp["operating_year"], []).append(pp)
+        for op_row in op["operating_years"]:
+            yr = op_row["operating_year"]
+            df_sum = sum(Decimal(repr(p["day_fraction"])) for p in periods_by_op_yr[yr])
+            expected_op_yr = y1_budget_dec * (one_plus_inf ** (yr - 1)) * df_sum
+            assert abs(Decimal(str(op_row["operating_expenses_keur"])) - expected_op_yr) <= Decimal("1e-9"), yr
+    else:
+        snap_now = get_workspace_state(OWNER, record.project_id).draft_snapshot
+        oracle = _daily_dated_opex_oracle(
+            op["periods"], cod=date.fromisoformat(str(snap_now["cod_date"])),
+            horizon_years=int(float(snap_now["horizon_years"])), y1_budget=y1_budget_dec, inflation=Decimal("0.02"))
+        by_index = {p["period_index"]: p for p in op["periods"]}
+        assert oracle and set(oracle) <= set(by_index)
+        for idx, expected in oracle.items():
+            assert abs(Decimal(repr(by_index[idx]["operating_expenses_keur"])) - Decimal(expected.numerator) /
+                       Decimal(expected.denominator)) <= Decimal("1e-9"), idx
+        assert sum(p["operating_expenses_keur"] for p in op["periods"] if p["period_index"] not in oracle) == 0.0
     # And full-precision (<= 1e-9 kEUR) comparison against canonical clean engine Run (with CAPEX + ON-08 SHL authority)
     from app.api.project_runner import run_project
     from app.persistence.projects_repository import get_reference_by_template_source
@@ -234,9 +290,14 @@ def test_opex_preview_overrides_contingency_dated_leap_and_g10_gate(env, monkeyp
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
     reset_model_executor_for_tests(ModelExecutor(ModelExecutionConfig(mode="thread")))
 
-    # G10 panel remains OFF by default (404), and works when enabled in isolated monkeypatch
+    # FINCO45B: G10 panel is ON by default (NOT_RUN before any Run); the explicit operator OFF is a typed 404
     record = env.create("wind")
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
+    first = env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
+    assert first.status_code == 200 and first.json()["status"] == "NOT_RUN"
+    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "0")
     assert env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code}).status_code == 404
+    monkeypatch.delenv("FINCO_G10_RUN_OPEX_PANEL", raising=False)
 
     # Nonzero B.13 contingency (5%)
     _set_opex_contingency(record, 5.0)
@@ -301,8 +362,7 @@ def test_opex_preview_overrides_contingency_dated_leap_and_g10_gate(env, monkeyp
     y2_after = after_del["operating_preview"]["operating_years"][1]["operating_expenses_keur"]
     assert y2_after > y2_before
 
-    # Isolated G10 test: reflects committed Last Run while draft preview reflects edited state
-    monkeypatch.setenv("FINCO_G10_RUN_OPEX_PANEL", "1")
+    # G10 (default ON, no flag): reflects committed Last Run while draft preview reflects edited state
     g10 = env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code})
     assert g10.status_code == 200
     assert g10.json()["freshness"]["state"] == "STALE"

@@ -35,11 +35,16 @@ def wt(tmp_path, monkeypatch):
     return ROOT
 
 
-def test_the_gated_flag_is_not_flipped_by_the_cohort():
+def test_the_gated_flag_default_and_rollback(monkeypatch):
+    """FINCO45B (owner-authorized B2 activation): ON by default, explicit operator OFF override, the env is not
+    set by the test environment (so the default is what is proven)."""
     import app.v2.save_all_commands as sac
     import os
-    assert sac.profile_enabled() is False
-    assert os.environ.get("FINCO_SAVE_ALL_PROFILE_ENABLED", "0") == "0"
+    assert "FINCO_SAVE_ALL_PROFILE_ENABLED" not in os.environ
+    assert sac.profile_enabled() is True
+    for off in ("0", "false", "off", "no", "garbage"):
+        monkeypatch.setenv("FINCO_SAVE_ALL_PROFILE_ENABLED", off)
+        assert sac.profile_enabled() is False
 
 
 def test_the_activation_flag_is_a_literal_false_in_no_candidate():

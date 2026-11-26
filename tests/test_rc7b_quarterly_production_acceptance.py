@@ -25,7 +25,15 @@ from app.workbook.runtime_authority import RuntimeAuthorityState, resolve_runtim
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 from tests.test_model_rc7_capex_profile_run import (  # noqa: F401
     OWNER, _base_leaves, _hash, _latest, _planner_routes, _row, _run, _save, _ws,
+
 )
+
+
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (release-closed 3/3 operating frequency); new Solar/Wind projects default to
+    OD-TIME-01/v1, where it is a typed refusal. Its projects are created through the explicit creation rollback."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
 
 # Quarter-end COD keeps the legacy PPA expiry on a quarter boundary (D-05).
 TIMELINE = {"solar": ("2031-03-31", 14), "wind": ("2031-09-30", 20)}

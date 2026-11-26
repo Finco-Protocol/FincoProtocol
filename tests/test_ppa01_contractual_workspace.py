@@ -16,6 +16,15 @@ from tests.test_ppa01_contractual_timing import terms, dated, book
 from tests.test_ppa01_index_series_revenue import _operating
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module proves legacy period-aligned PPA windows and legacy tariff expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
+    where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback
+    (FINCO_NEW_PROJECT_DATE_AUTHORITY=legacy), so the retained LEGACY_CALENDAR/v0 contract stays proved."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_dated_contract_save_stale_run_scenario_and_history(env, kind):
     from app.persistence.run_history_repository import get_run_history

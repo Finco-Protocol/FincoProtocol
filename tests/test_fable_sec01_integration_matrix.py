@@ -209,7 +209,7 @@ def test_anonymous_requests_never_reach_the_mutation(env):
 def test_demo_session_token_is_actor_bound_and_denials_do_not_consume_rate_budget(env, monkeypatch):
     import app.auth as auth
     monkeypatch.setitem(auth.DEMO_RATE_LIMITS, "project_create", (1, 3600))
-    auth._demo_op_store.clear()
+    auth._shared_limits.reset_for_tests()
     with _client() as demo, _client() as admin:
         demo.get("/")  # middleware provisions a demo session cookie
         assert auth.DEMO_COOKIE_NAME in demo.cookies
@@ -237,7 +237,7 @@ def test_demo_session_token_is_actor_bound_and_denials_do_not_consume_rate_budge
                             headers={"HX-Request": "true"})
         assert limited.status_code != 200 and not limited.headers.get("HX-Redirect"), limited.status_code
         assert _db_hash(env) == after_ok
-    auth._demo_op_store.clear()
+    auth._shared_limits.reset_for_tests()
 
 
 # ── validation re-render refresh (both forms) ────────────────────────────────
