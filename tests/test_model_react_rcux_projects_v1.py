@@ -39,10 +39,14 @@ def listing(env, **params):
     return response.json()
 
 
+def _tokens(env, project_code):
+    wb = env.client.get("/v2/model-react/workspace", params={"project": project_code}).json()["workbook"]
+    return {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
+
+
 def run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                           data={"project": record.project_code, **tokens(page.text)}).status_code == 200
+                           data={"project": record.project_code, **_tokens(env, record.project_code)}).status_code == 200
 
 
 def db_dump():
@@ -96,8 +100,7 @@ def test_run_state_labels_follow_the_canonical_freshness_and_the_last_run_time_i
     ws = get_workspace_state(OWNER, record.project_id)
     assert p["freshness"] == "CURRENT" and p["status"] == "Results up to date" and p["has_runs"] is True
     assert datetime.fromisoformat(p["last_run"]["at"]) == ws.last_runtime_at and p["last_run"]["available"] is True
-    page = lib.client.get("/v2/workbook", params={"project": record.project_code})
-    r = post_valid_mutation_update(lib, record, page.text)
+    r = post_valid_mutation_update(lib, record, "")
     assert r.status_code == 200
     after = listing(lib)["projects"][0]
     assert after["freshness"] == "STALE" and after["status"] == "Results outdated"
@@ -108,7 +111,7 @@ def test_run_state_labels_follow_the_canonical_freshness_and_the_last_run_time_i
 def post_valid_mutation_update(env, record, html):
     from tests.model_mutation_csrf import post_valid_mutation
     return post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                               data={"project": record.project_code, "field_id": "debt.senior.target_dscr", "value": "1.25", **tokens(html)})
+                               data={"project": record.project_code, "field_id": "debt.senior.target_dscr", "value": "1.25", **_tokens(env, record.project_code)})
 
 
 def test_filters_sort_search_and_pagination(lib):
@@ -210,5 +213,5 @@ def test_reads_never_write_and_security_flag_auth(lib, monkeypatch):
             other.cookies.set(COOKIE_NAME, create_session_token(user_id="foreign-user", username="x"))
             if path == LIST:
                 assert other.get(path).json()["projects"] == []                                   # another account sees none of Mine
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert lib.client.get(LIST).status_code == 404 and lib.client.get(TEMPLATES).status_code == 404

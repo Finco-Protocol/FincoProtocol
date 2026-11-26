@@ -10,6 +10,12 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run, save
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _raw(mode, months=0):
     return json.dumps(dict(version=1, reserve=dict(mode=mode, months=months, requirement_keur=0, commitment_keur=0, fee_pct=0)))
 

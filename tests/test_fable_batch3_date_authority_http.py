@@ -23,6 +23,12 @@ from app.services.reference_seed_service import create_reference_seeded_project
 from app.v2.router import router as v2_router
 from app.workbook.financing_csrf import issue_token
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 getcontext().prec = 50
 COD, HORIZON = date(2031, 3, 1), 25          # seeded Solar default: off-boundary COD, 25-year life -> end exclusive 2056-03-01
 

@@ -31,6 +31,7 @@ F3_KINDS = ("solar", "wind")
 
 
 def main() -> int:
+    os.environ.setdefault("FINCO_MODEL_REACT_V1", "0")
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("artifacts/outputs-workspace"))
     args = parser.parse_args()

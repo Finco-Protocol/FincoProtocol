@@ -17,6 +17,12 @@ import pytest
 from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _tokens(client, cookies, code):
     response = client.get("/v2/workbook", params={"project": code}, cookies=cookies)
     assert response.status_code == 200

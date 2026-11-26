@@ -14,6 +14,12 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (f
 from tests.test_model_financing_f2 import run, save
 from tests.test_model_financing_f3_workspace import collection_for_inputs, state
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "decision-user"
 
 

@@ -47,7 +47,16 @@ def test_the_json_equals_the_legacy_v5_json_and_never_runs_or_writes(henv, monke
     before = db_dump()
     body = henv.client.get(PATH, params=params).json()
     assert db_dump() == before                                                         # thresholds are hypothetical: nothing is persisted
-    legacy = henv.client.get("/v2/credit-decision/v5", params={**params, "format": "json"}).json()
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        legacy = henv.client.get("/v2/credit-decision/v5", params={**params, "format": "json"}).json()
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     assert body["ok"] and body["state"] == legacy["state"] == "AVAILABLE"
     assert body["data"] == legacy["data"]
     assert body["thresholds"]["min_dscr"] == 1.25 and body["thresholds"]["min_equity_keur"] is None

@@ -9,10 +9,9 @@ from tests.test_finval_rate_contract import env,KINDS,USER,_prime,_save,_ws,_sna
 def test_saved_rate_run_commits_coherent_financial_history_or_refuses(env,kind,human,monkeypatch):
     record=env.create(kind,capacity=20);_prime(env,record)
     _save(env,record,human,'batch')
-    page=env.client.get('/v2/workbook',params={'project':record.project_code})
-    form=BeautifulSoup(page.text,'html.parser').select_one('#v2-canonical-run-form')
-    data={i['name']:i.get('value','') for i in form.select('input[name]')}
-    data['csrf_token']=data.pop('run_csrf_token');data['run_intent_id']=str(uuid.uuid4())
+    from tests.run_clone_csrf import post_valid_csrf
+    wb=env.client.get('/v2/model-react/workspace',params={'project':record.project_code}).json()['workbook']
+    data={'project':record.project_code,'content_hash':wb['composite_hash'],'workbook_version':wb['version'],'run_intent_id':str(uuid.uuid4())}
     # Observe, without substituting, the actual post-fold inputs passed to Run.
     import app.api.project_runner as runner
     from app.input_adapter import senior_rate_authority
@@ -25,7 +24,7 @@ def test_saved_rate_run_commits_coherent_financial_history_or_refuses(env,kind,h
         captured.append(kwargs['project_inputs_override'])
         return original_run(*args,**kwargs)
     monkeypatch.setattr(runner,'run_project',observed_run)
-    response=env.client.post('/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data,follow_redirects=False)
+    response=post_valid_csrf(env.client,'/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data,follow_redirects=False)
     assert len(captured)==1
     assert senior_rate_authority(captured[0])[1]==pytest.approx(human/100,abs=1e-17)
     oracle=_metrics(captured[0])  # independent Decimal opening * rate * day-count

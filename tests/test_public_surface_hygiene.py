@@ -19,6 +19,12 @@ import pytest
 from app import ev_charging_economics as ev
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture(scope="module")
 def hygiene_client(tmp_path_factory):
     from app.persistence import db as db_mod

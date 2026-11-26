@@ -13,6 +13,12 @@ from app.v2.workspace_destinations import DESTINATIONS
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "decision-user"
 TAB_IDS = {d.tab_id for d in DESTINATIONS}
 HASHES = {"#" + d.tab_id.replace("tab-", "", 1) for d in DESTINATIONS}

@@ -21,6 +21,12 @@ from tests.test_wf07_revenue_workspace import contract_tokens
 
 
 @pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
+@pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves legacy PPA chain expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
     where those semantics differ by design. Its projects are created through the explicit LEGACY creation rollback

@@ -11,6 +11,12 @@ import re
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from tests.test_rcux2_ppa_quick_add_browser import Session, browser, live_server  # noqa: F401,E402

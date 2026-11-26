@@ -20,6 +20,12 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
+@pytest.fixture(autouse=True)
 def _routes(env):
     from app.v2.import_router import router
     if not any(getattr(r, "path", "") == "/v2/workbook/import/assess" for r in env.client.app.routes):

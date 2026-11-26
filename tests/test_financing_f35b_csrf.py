@@ -11,6 +11,12 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 from tests.test_financing_f3_junior_workspace import state, working_case
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def page_and_data(env, record):
     page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
     assert page.status_code == 200

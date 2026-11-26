@@ -23,6 +23,12 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared help
 )
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _doc_bytes(project):
     return (_ws(project).draft_snapshot or {}).get(config.SNAPSHOT_KEY)
 

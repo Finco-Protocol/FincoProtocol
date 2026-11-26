@@ -51,11 +51,10 @@ def test_config_save_reload_run_history_export_is_frozen(env,kind,mode):
     pi=ProjectInputSet.from_snapshot(snap).to_projectinputs()
     assert pi.valuation.project.annual_discount_rate==.08
     assert pi.valuation.sponsor.annual_discount_rate==.12
-    page=env.client.get('/v2/workbook',params={'project':record.project_code})
-    form=BeautifulSoup(page.text,'html.parser').select_one('#v2-canonical-run-form')
-    data={i['name']:i.get('value','') for i in form.select('input[name]')}
-    data['csrf_token']=data.pop('run_csrf_token');data['run_intent_id']=str(uuid.uuid4())
-    response=env.client.post('/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data)
+    from tests.run_clone_csrf import post_valid_csrf
+    wb=env.client.get('/v2/model-react/workspace',params={'project':record.project_code}).json()['workbook']
+    data={'project':record.project_code,'content_hash':wb['composite_hash'],'workbook_version':wb['version'],'run_intent_id':str(uuid.uuid4())}
+    response=post_valid_csrf(env.client,'/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data)
     assert response.status_code==200 and response.json()['outcome']=='COMMITTED',response.text[:600]
     rows=history(env,record);assert len(rows)==1
     ws=_ws(record)
@@ -107,7 +106,7 @@ def test_config_save_reload_run_history_export_is_frozen(env,kind,mode):
     assert history(env,record)==old
     assert evidence().evidence_digest==digest
     assert evidence().financial_core==ev.financial_core
-    assert env.as_user('other-financial-owner').get('/v2/workbook',params={'project':record.project_code}).status_code in (403,404)
+    assert env.as_user('other-financial-owner').get('/v2/model-react/workspace',params={'project':record.project_code}).status_code in (403,404)
 
 
 @pytest.mark.parametrize('mode',['single','batch'])

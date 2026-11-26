@@ -18,8 +18,17 @@ def db_dump():
         return "\n".join(conn.iterdump())
 
 
-def legacy_cells(env, record):
-    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+def legacy_cells(env, record, monkeypatch=None):
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     soup = BeautifulSoup(html, "html.parser")
     return soup, {t["data-testid"]: t.get_text(" ", strip=True) for t in soup.select("[data-testid^='proj-']")}
 
@@ -32,6 +41,7 @@ def test_router_is_mounted_before_the_project_catch_all():
 
 def test_flag_session_and_ownership(env, monkeypatch):
     record = env.create("solar")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert env.client.get(PATH, params={"project": record.project_code}).json()["code"] == "REACT_POC_DISABLED"
     flag_on(monkeypatch)
     assert env.client.get(PATH, params={"project": "nope"}).status_code == 404

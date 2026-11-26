@@ -21,6 +21,12 @@ from app.workbook.financing_csrf import issue_token
 from app.workbook.registry import WORKBOOK
 from app.workbook.workbook_identity import assemble_consistent_for_get
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "save-all-owner"
 STRANGER = "save-all-stranger"
 URL = "/v2/workbook/save-all"

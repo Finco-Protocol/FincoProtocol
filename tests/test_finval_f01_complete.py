@@ -61,7 +61,7 @@ def test_clone_refuses_unproven_source_without_any_financial_write(env,monkeypat
     with sqlite3.connect(env.db_path) as c:assert c.execute('SELECT COUNT(*) FROM projects').fetchone()[0]==before
 
 
-def test_ambiguous_projection_is_safe_read_and_save_is_typed_failure(env):
+def test_ambiguous_projection_is_safe_read_and_save_is_typed_failure(env,monkeypatch):
     from tests.test_fin_val_b2_c1_recovery_finite_opex import _poison
     rec=env.create();_prime(env,rec);_poison(env,rec,RATE_UNIT_KEY,'ratio')
     response=env.client.get('/v2/model-react/fields/debt',params={'project':rec.project_code})
@@ -72,6 +72,7 @@ def test_ambiguous_projection_is_safe_read_and_save_is_typed_failure(env):
     result=env.client.post('/v2/workbook/update',headers={'HX-Request':'true'},data={'project':rec.project_code,'field_id':RATE_FIELD,'value':'.056','csrf_token':save['csrf_token'],'content_hash':save['content_hash'],'workbook_version':save['workbook_version']})
     assert result.headers['X-Finco-Error-Code']=='RATE_UNIT_PROVENANCE_AMBIGUOUS'
     assert _snapshot(rec)==before
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','0')
     page=env.client.get('/v2/workbook',params={'project':rec.project_code})
     assert page.status_code==200 and 'workbook-recovery-page' in page.text
     assert 'owner-reviewed provenance repair' in page.text

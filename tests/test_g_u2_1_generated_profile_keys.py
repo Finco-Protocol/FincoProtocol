@@ -17,6 +17,12 @@ from app.workbook.registry import WORKBOOK
 from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared real-app fixtures and helpers)
     OWNER, _doc, _hash, _planner_routes, _row, _save, _ws, env, solar, tokens)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 GROUP = "C.02"      # a category the reference project already times (a category with no base amount has no default construction timing)
 
 

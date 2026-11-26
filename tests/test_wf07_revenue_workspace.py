@@ -14,6 +14,12 @@ from tests.test_wf07_revenue_multistream import contracts
 from app.workbook.revenue_multistream import SNAPSHOT_KEY
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def contract_tokens(html):
     from bs4 import BeautifulSoup
     from app.auth import validate_csrf_token

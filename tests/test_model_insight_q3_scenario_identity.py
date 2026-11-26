@@ -20,6 +20,12 @@ import pytest
 
 from app.persistence.scenario_insight_reads import BASE_CASE_LABEL, resolve_last_run_scenario
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 VERTICALS = {
     "solar": "generic_solar_reference", "wind": "generic_wind_reference",
     "data_center": "generic_data_center_reference", "ev_charging": "generic_ev_charging_reference",

@@ -15,6 +15,12 @@ from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _asser
 from tests.test_fable_batch3_r04_review_route import MERCHANT, _ppa, book
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _absolute_book(world, rec, amount, unit="MWh"):
     payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
     window = payload["contracts"]["operating_window"]

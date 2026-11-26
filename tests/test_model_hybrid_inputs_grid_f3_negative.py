@@ -19,6 +19,12 @@ from tests.test_model_ai_import_f3_integration import (  # noqa: F401  (env is a
 from tests.test_model_financing_f2 import run
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture
 def gclient(env):
     """Same DB/session as ``env``, with the grid router mounted (raise_server_exceptions=True: a 500 fails the test)."""

@@ -26,10 +26,14 @@ def dump():
         return "\n".join(conn.iterdump())
 
 
+def _tokens(env, project_code):
+    wb = env.client.get("/v2/model-react/workspace", params={"project": project_code}).json()["workbook"]
+    return {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
+
+
 def run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                              data={"project": record.project_code, **tokens(page.text)})
+                              data={"project": record.project_code, **_tokens(env, record.project_code)})
     assert response.status_code == 200
     from app.persistence.workspace_repository import get_workspace_state
     state = get_workspace_state("decision-user", record.project_id)
@@ -56,10 +60,9 @@ def test_overview_not_run_and_committed_run_never_write_or_use_the_draft(overvie
     assert body["assumptions"] and body["sources_uses"]["available"]
     assert dump() == before
     # A real canonical mutation makes the draft differ, while Last Run evidence stays immutable.
-    page = overview.client.get("/v2/workbook", params={"project": record.project_code})
     saved = post_valid_mutation(overview.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "sheet_id": "project_setup", "field_id": "project_setup.technical.horizon_years",
-        "value": "31", **tokens(page.text)})
+        "value": "31", **_tokens(overview, record.project_code)})
     assert "workbook-field-saved" in saved.headers.get("HX-Trigger", ""), saved.text[:300]
     before = dump()
     stale = read(overview, record.project_code).json()
@@ -96,9 +99,8 @@ def test_overview_race_or_malformed_evidence_fails_closed(overview, monkeypatch)
 def test_wind_overview_prefers_committed_canonical_ppa_over_legacy_values(overview):
     record = overview.create('wind')
     for field, value in [('revenue.ppa.base_tariff', '81.25'), ('revenue.ppa.term_years', '17')]:
-        page = overview.client.get('/v2/workbook', params={'project': record.project_code})
         response = post_valid_mutation(overview.client, '/v2/workbook/update', headers={'HX-Request': 'true'}, data={
-            'project': record.project_code, 'sheet_id': 'revenue', 'field_id': field, 'value': value, **tokens(page.text)})
+            'project': record.project_code, 'sheet_id': 'revenue', 'field_id': field, 'value': value, **_tokens(overview, record.project_code)})
         assert 'workbook-field-saved' in response.headers.get('HX-Trigger', ''), response.text[:300]
     state = run(overview, record)
     from app.workbook.input_set import ProjectInputSet

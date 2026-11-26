@@ -6,6 +6,12 @@ from app.workbook.input_set import ProjectInputSet
 from tests.test_finval_rate_contract import env,USER,_prime,_ws
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def row(env,rec):
     with sqlite3.connect(env.db_path) as c:
         return c.execute('SELECT * FROM workspace_states WHERE project_id=?',(rec.project_id,)).fetchone()

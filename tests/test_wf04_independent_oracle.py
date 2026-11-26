@@ -12,6 +12,12 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture u
 from tests.test_wf04_credit_debt_metrics import EOD, COV, cenv, credit, history, raw_min, run, update, view_of, weak_wind  # noqa: F401
 from tools import wf04_independent_dscr_oracle as oracle
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 SOURCE = pathlib.Path(oracle.__file__)
 
 

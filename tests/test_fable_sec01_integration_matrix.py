@@ -29,6 +29,12 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 REPO = Path(__file__).resolve().parents[1]
 TOKEN_RE = re.compile(r'name="csrf_token" value="([^"]*)"')
 DENIAL = {"error": "Invalid or missing security token. Reload the page and try again."}

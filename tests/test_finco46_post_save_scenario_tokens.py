@@ -18,6 +18,12 @@ from tests.test_correction_a_required_gates import _rendered_form_values
 from tests.test_model_react_wf2_projections_v1 import OWNER, env  # noqa: F401  (shared real-app fixture)
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _scenario_select_tokens(html: str) -> list[str]:
     tokens = []
     for form in re.findall(r'<form[^>]*hx-post="/v2/workbook/scenarios/select".*?</form>', html, flags=re.S):

@@ -5,6 +5,12 @@ from tests.test_qa_create_project_country_capacity import client,_login
 from app.input_adapter import RATE_UNIT_KEY,RATE_UNIT,senior_rate_authority
 from app.workbook.input_set import ProjectInputSet
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 @pytest.mark.parametrize('kind,project_type',[('solar','Solar'),('wind','Wind')])
 def test_standalone_create_persists_four_true_human_rates(client,kind,project_type):
     import main_web

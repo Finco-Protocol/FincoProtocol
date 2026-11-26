@@ -16,6 +16,12 @@ from fastapi.testclient import TestClient
 from app.persistence import db
 from app.persistence.workspace_repository import get_workspace_state
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "wf05-owner"
 STRANGER = "wf05-stranger"
 

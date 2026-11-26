@@ -46,6 +46,12 @@ from tests.test_model_credit_decision_v3_real_runs import history
 
 
 @pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
+@pytest.fixture(autouse=True)
 def _thread_executor(monkeypatch):
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
     monkeypatch.setenv("FINCO_NATIVE_V10_RUN", "off")

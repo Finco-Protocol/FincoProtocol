@@ -7,6 +7,12 @@ import time
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 from playwright.sync_api import sync_playwright, expect  # noqa: E402
 from tests.test_portfolio_monitoring_real_runs import penv  # noqa: F401

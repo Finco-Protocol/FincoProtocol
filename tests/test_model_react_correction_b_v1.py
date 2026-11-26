@@ -311,12 +311,12 @@ def test_revenue_contracts_save_commits_and_updates_the_projection(env, monkeypa
     payload = contracts(inputs, "solar", price=95, merchant_price=90, strike=100, index=0.02)
     before = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()
     assert before["contracts"]["active"] is False, "the seeded project starts without a contract"
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
-              for k in ("content_hash", "workbook_version", "csrf_token")}
-    tokens["csrf_token"] = _revenue_form_csrf(page.text)
-    response = env.client.post("/v2/workbook/revenue/contracts",
-                               data={"project": record.project_code, **tokens,
+    save = before["save"]
+    response = env.client.post(save["url"],
+                               data={"project": record.project_code,
+                                     "content_hash": save["content_hash"],
+                                     "workbook_version": save["workbook_version"],
+                                     "csrf_token": save["csrf_token"],
                                      "contracts": json.dumps(payload), "action": "save"})
     assert response.status_code in (200, 303), response.text[:300]
     after = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()
@@ -337,12 +337,11 @@ def test_revenue_contracts_stale_cas_is_refused(env, monkeypatch):
         get_workspace_state(OWNER, record.project_id)).to_projectinputs()
     payload = contracts(inputs, "solar", price=95, merchant_price=90)
     stale_hash = "0" * 64
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
-              for k in ("workbook_version", "csrf_token")}
-    tokens["csrf_token"] = _revenue_form_csrf(page.text)
-    response = env.client.post("/v2/workbook/revenue/contracts",
-                               data={"project": record.project_code, **tokens,
+    save = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()["save"]
+    response = env.client.post(save["url"],
+                               data={"project": record.project_code,
+                                     "workbook_version": save["workbook_version"],
+                                     "csrf_token": save["csrf_token"],
                                      "content_hash": stale_hash,
                                      "contracts": json.dumps(payload), "action": "save"})
     assert response.status_code in (403, 409), "a stale composite hash must be refused"
@@ -353,12 +352,12 @@ def test_revenue_contracts_stale_cas_is_refused(env, monkeypatch):
 def test_revenue_contracts_malformed_payload_is_refused(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
-              for k in ("content_hash", "workbook_version", "csrf_token")}
-    tokens["csrf_token"] = _revenue_form_csrf(page.text)
-    response = env.client.post("/v2/workbook/revenue/contracts",
-                               data={"project": record.project_code, **tokens,
+    save = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()["save"]
+    response = env.client.post(save["url"],
+                               data={"project": record.project_code,
+                                     "content_hash": save["content_hash"],
+                                     "workbook_version": save["workbook_version"],
+                                     "csrf_token": save["csrf_token"],
                                      "contracts": json.dumps({"version": 999, "nonsense": True}),
                                      "action": "save"})
     assert response.status_code in (200, 303, 422)

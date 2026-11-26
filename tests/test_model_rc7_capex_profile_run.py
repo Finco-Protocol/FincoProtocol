@@ -18,6 +18,12 @@ from app.workbook.runtime_authority import RuntimeAuthorityState, resolve_runtim
 from app.workbook.workbook_identity import assemble_consistent_for_get
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "decision-user"
 
 

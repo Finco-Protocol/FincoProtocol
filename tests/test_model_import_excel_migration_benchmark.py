@@ -25,6 +25,12 @@ from tests.migration_routes_support import (
 )
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 ARGS = dict(project_type="solar", template_source="generic_solar_reference", project_code="P-1",
             target_scenario_id=None, target_scenario_name=None)
 

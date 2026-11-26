@@ -23,6 +23,12 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared help
     OWNER, _base_leaves, _hash, _planner_routes, _row, _save, _ws, solar,
 )
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 CELL = ("revenue.ppa.base_tariff", "57")
 
 

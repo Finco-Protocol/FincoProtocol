@@ -19,6 +19,12 @@ import pytest
 
 from tests.test_pr394_staging_corrections_v1 import env, history, run_json   # noqa: F401  (fixture re-export)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 LEAK_PROBES = ("Traceback", "/opt/", "/root/", "secret", "hunter2", "password", "sqlite", "SELECT ", "31956", "period_index",
                "SHL_MATURITY", "PR8_CLEAN", "ModelWorkerError", "CleanProductionRunUnavailable")
 

@@ -13,6 +13,12 @@ from app.persistence.project_lifecycle_repository import (
 from app.persistence.projects_repository import get_project_by_code
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "wf03.sqlite"))

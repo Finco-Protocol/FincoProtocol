@@ -10,6 +10,12 @@ from tests.test_model_financing_f2 import save, run
 from tests.test_financing_f3_junior_workspace import state, working_case
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.mark.parametrize("kind", ["solar", "wind"])
 def test_saved_junior_proposal_has_real_commitment_closed_activation_and_no_policy_guess(env, kind):
     from app.persistence.workspace_repository import get_workspace_state

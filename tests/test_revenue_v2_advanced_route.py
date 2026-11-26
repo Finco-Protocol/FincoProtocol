@@ -16,6 +16,12 @@ from tests.test_wf07_revenue_workspace import contract_tokens
 from tests.test_wf07_revenue_multistream import contracts
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.mark.parametrize("invalid", ["csrf", "stale_cas", "other_owner", "protected", "unknown_driver"])
 def test_readonly_commercial_stress_fails_closed_without_financial_run(env, monkeypatch, invalid):
     from app.auth import COOKIE_NAME, create_session_token

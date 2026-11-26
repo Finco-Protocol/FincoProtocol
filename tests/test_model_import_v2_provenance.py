@@ -22,6 +22,12 @@ from tests.test_model_import_v2_review_security import (  # noqa: F401
     OWNER, _apply, _approved_ticket, _confirm, _evidence, _hash, _preview, _routes, _ws,
 )
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 SOLAR = dict(project_type="Solar", template_source="generic_solar_reference")
 TAB = "Assumption\tValue\tUnit\n"
 

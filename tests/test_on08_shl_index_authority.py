@@ -20,6 +20,12 @@ from fastapi.testclient import TestClient
 from app.persistence import db
 from app.services import on08_shl_index_authority as on08
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 ROOT = Path(__file__).resolve().parent.parent
 OWNER, STRANGER = "on08-owner", "on08-stranger"
 H, C = "project_setup.technical.horizon_years", "project_setup.technical.construction_months"

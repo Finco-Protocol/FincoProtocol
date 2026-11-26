@@ -106,7 +106,10 @@ def check_A02_totals_agree_with_the_server_and_opex_includes_the_bases(browser, 
         card = page.locator("[data-ci-card-total='capex']")
         assert card.get_attribute("data-exact") == str(proj["saved_total_keur"])
         assert abs(float(card.inner_text().split()[0].replace(",", "")) - proj["saved_total_keur"]) <= 0.5
-        assert "calculated when you run the model" in page.locator("[data-ci-card='capex']").inner_text()
+        capex_card = page.locator("[data-ci-card='capex']")
+        if capex_card.locator(".ux-cost-breakdown:not([open])").count():
+            capex_card.locator(".ux-cost-breakdown summary").click()
+        assert "calculated when you run the model" in capex_card.inner_text()
         opx = _opex_projection(context, base, record.project_code)
         y1 = opx["totals"]["excluding_contingency"][0]
         assert abs(float(page.locator("[data-ci-card-total='opex']").inner_text().split()[0].replace(",", "")) - y1) <= 0.5
@@ -174,10 +177,13 @@ def check_A14_opex_base_plus_line_is_one_group_one_save_and_reconciles(browser, 
         assert abs(proj - 10.0) < 1e-6, proj
         _goto(page, base, record.project_code, "inputs")
         settle_inputs(page); _wait_cards(page)
+        opex_card = page.locator("[data-ci-card='opex']")
+        if opex_card.locator(".ux-cost-breakdown:not([open])").count():
+            opex_card.locator(".ux-cost-breakdown summary").click()
         assert "not in the figure above" in page.locator("[data-ci-opex-bases]").inner_text() and "20" in page.locator("[data-ci-opex-bases]").inner_text()
         _goto(page, base, record.project_code, "inputs/opex/years")
         page.wait_for_selector("[data-opex-projection='ready']", timeout=60000)
-        assert "not part of this projection" in page.locator("[data-opex-years-scope]").inner_text()
+        assert "not part of this budget table" in page.locator("[data-opex-years-scope]").inner_text()
         # the Run folds the saved base exactly once: total OPEX is linear in the base (0 -> 20 -> 40 adds the same amount twice)
         _goto(page, base, record.project_code, "inputs/opex"); _bench(page, "opex")
         at_20 = total_opex()

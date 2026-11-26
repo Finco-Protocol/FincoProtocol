@@ -17,6 +17,12 @@ import pytest
 
 from app.workbook.registry import WORKBOOK
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 USER = "fin-val-b2-user"
 TECHS = ("solar", "wind", "data_center", "ev_charging")
 
@@ -588,7 +594,7 @@ class TestOpexAuthority:
         assert _single_save(env, record, field_id, "0", tokens).status_code == 200
         assert float(_snapshot(record)[WORKBOOK.field(field_id).snapshot_key]) == 0.0
 
-    def test_grid_and_legacy_sheet_stop_offering_editors_that_cannot_change_the_run(self, env):
+    def test_grid_and_legacy_sheet_stop_offering_editors_that_cannot_change_the_run(self, env, monkeypatch):
         expectations = {
             "solar": ("Maintenance", "opex.lines.site_maintenance"),
             "wind": ("Maintenance", "opex.lines.site_maintenance"),
@@ -598,7 +604,9 @@ class TestOpexAuthority:
             record = env.create(kind, name="auth " + kind)
             tokens = _page_tokens(env, record)
             assert f'data-field-id="{shadowed}"' not in tokens["html"]            # legacy OPEX sheet: no editor
+            monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
             grid = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()["grid"]
+            monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
             editable_ids = {row["field_id"] for s in grid["sections"] for c in s["categories"] for row in c["rows"] if row["editable"]}
             assert shadowed not in editable_ids
         # editors whose edit DOES reach the Run remain

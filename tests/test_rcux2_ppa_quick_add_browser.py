@@ -14,6 +14,12 @@ import time
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -36,6 +42,7 @@ def live_server(tmp_path_factory):
     from app.persistence import db
 
     mp = pytest.MonkeyPatch()
+    mp.setenv("FINCO_MODEL_REACT_V1", "0")
     mp.setattr(db, "DB_PATH", str(tmp_path_factory.mktemp("rcux2-ppa") / "g.db"))
     db.init_db()
     import main_web

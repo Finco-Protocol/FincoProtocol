@@ -52,9 +52,8 @@ def _run(env, record):
         "workbook_version": ws["workbook"]["version"], "csrf_token": contract["csrf_token"]}, follow_redirects=False)
 
 
-def test_forged_over_cap_book_recovery_view_failed_repairs_unchanged_valid_repair_restores_workspace(env):
+def test_forged_over_cap_book_recovery_view_failed_repairs_unchanged_valid_repair_restores_workspace(env, monkeypatch):
     record = env.create("solar")
-    html = env.client.get("/v2/workbook", params={"project": record.project_code})
     good = book([_ppa("a", "2031-03-01", "2032-03-01", 1000), MERCHANT])
     assert _contracts_post(env, record, good, use_recovery_tokens=False).status_code in (200, 303)
     first = _run(env, record)
@@ -77,7 +76,9 @@ def test_forged_over_cap_book_recovery_view_failed_repairs_unchanged_valid_repai
     assert "R04_GLOBAL_P50_CAP_EXCEEDED" in issue["reason"] and "committed" in issue["reason"]
     assert "results" not in body and "grid" not in body and body["contracts_save"]["url"] == "/v2/workbook/revenue/contracts"
     assert _state(record) == before
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     assert 'data-testid="workbook-recovery-book-form"' in page.text and "R04_GLOBAL_P50_CAP_EXCEEDED" in page.text
     assert _state(record) == before
     # 2. refused repairs: the whole state is unchanged each time

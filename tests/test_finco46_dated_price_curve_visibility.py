@@ -62,7 +62,9 @@ def test_dated_project_editor_declares_curves_unsupported_and_save_stays_a_typed
     assert contracts["date_authority_version"] == DATED
     assert "REVENUE_V2_DATED_CURVE_UNSUPPORTED" in contracts["price_curve_unsupported_reason"]
     # The legacy HTMX workbook shows the same notice and offers the quick "Scheduled" type disabled.
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     assert 'data-price-curve-supported="false"' in html and 'data-testid="revenue-curve-calendar-notice"' in html
     assert '<option value="scheduled_ppa" disabled>' in html
     # The server refusal is unchanged (defence in depth): typed 422, nothing written, no history.
@@ -89,7 +91,9 @@ def test_legacy_project_keeps_the_released_curve_feature(env, monkeypatch, kind)
     contracts = projection["contracts"]
     assert contracts["price_curve_supported"] is True
     assert contracts["price_curve_unsupported_reason"] == ""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     assert 'data-price-curve-supported="true"' in html and 'revenue-curve-calendar-notice' not in html
     response = _save(env, record, _curve_book(contracts, kind), projection)
     assert response.status_code == 303, response.text[:500]

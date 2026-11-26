@@ -20,6 +20,12 @@ from app.v2.financing_projection import (
 from app.workbook.runtime_result import RuntimeResult
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def runtime(**overrides):
     fields = dict(snapshot_id="finance-run", ran_at="2030-01-01T12:00:00Z", origin="saved_state",
         runtime_summary={"senior_debt_keur": 700.0, "actual_gearing_pct": .625,

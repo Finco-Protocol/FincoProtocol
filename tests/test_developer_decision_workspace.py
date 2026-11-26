@@ -43,6 +43,12 @@ from finco_core.inputs import (
 from financial_engine.developer_economics import compute_developer_economics
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture(scope="module")
 def solar():
     return create_generic_solar_reference()

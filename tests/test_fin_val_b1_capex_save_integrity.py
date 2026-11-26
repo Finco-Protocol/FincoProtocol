@@ -25,6 +25,12 @@ from app.reference_detail_catalog import (
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import WorkbookUpdateService
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 USER = "fin-val-b1-user"
 CAPEX_FIELDS = sorted(
     f.field_id for f in WORKBOOK.all_fields()

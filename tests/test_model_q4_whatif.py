@@ -12,6 +12,12 @@ import pytest
 from app.v2 import whatif
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def test_q4_allowlist_is_exactly_q1_to_workbook_to_scenario():
     from app.model_quality.registry import REGISTRY
     from app.persistence._helpers import SCENARIO_INPUT_FIELDS

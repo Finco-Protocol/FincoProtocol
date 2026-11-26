@@ -14,6 +14,12 @@ from tests.test_financing_f37_instrument_su import _junior_run, _two_senior_run
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 USER = "decision-user"
 KINDS = ["solar", "wind", "data_center", "ev_charging"]
 MODES = ["legacy", "two", "junior"]

@@ -16,6 +16,12 @@ from app.v2.returns_projection import NOT_AVAILABLE, build_returns_projection
 from app.workbook.runtime_result import RuntimeResult
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _rr(*, project_irr=0.0759, equity_irr=0.1025, sponsor=True, distribution=True):
     sponsor_payload = None
     if sponsor:

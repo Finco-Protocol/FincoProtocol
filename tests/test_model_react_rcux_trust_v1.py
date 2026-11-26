@@ -47,7 +47,7 @@ def test_flag_header_session_and_ownership_are_enforced(trust, monkeypatch, path
     from fastapi.testclient import TestClient
     anonymous = TestClient(trust.client.app)
     assert anonymous.get(path, params={"project": record.project_code}, headers=HDR).status_code == 401
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert trust.client.get(path, params={"project": record.project_code}, headers=HDR).json()["code"] == "REACT_POC_DISABLED"
 
 

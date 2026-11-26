@@ -16,6 +16,12 @@ from tests.test_cost_workspace_consistency_v1 import (  # noqa: F401
     _row, _run, _seeded_line, seeded_db,
 )
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 SRC = {
     "state": "AVAILABLE",
     "runtime_summary": {

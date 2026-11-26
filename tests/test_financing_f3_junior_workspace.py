@@ -18,6 +18,12 @@ from tests.test_model_financing_f3_workspace import collection_for_inputs
 from tests.test_financing_f3_junior_contract import case
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def state(pi, scope="base"):
     return json.dumps({"schema_version": config.SCHEMA, "scopes": {scope: {
         "proposal": pi.financing_collection.to_dict(), "activation": {

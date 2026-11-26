@@ -19,6 +19,12 @@ from app.services import production_financial_authority as authority
 from finco_core.inputs._models import DebtSizingMode, GearingCapRepaymentMethod, SponsorFundingMode
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def project(kind, *, gearing=.95, tenor=8):
     pi = getattr(factories, f"create_generic_{kind}_reference")()
     return replace(pi, financing=replace(

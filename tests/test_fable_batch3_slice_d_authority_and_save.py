@@ -48,6 +48,12 @@ from app.workbook.update_service import (
 from finco_core.engine.period_engine import PeriodEngine
 from finco_core.revenue.generation import revenue_decomposition_schedule
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 getcontext().prec = 50
 
 

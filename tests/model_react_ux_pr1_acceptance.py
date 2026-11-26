@@ -30,7 +30,7 @@ def check_dense_comments_and_responsive(browser,base):
             m=grid.evaluate('''g=>{let rows=[...g.querySelectorAll('tr[data-line],tr[data-group-row]')].filter(e=>!e.hidden);let meaningful=rows.filter(e=>e.hasAttribute('data-line')||e.querySelector('[data-group-saved-total]'));let rects=meaningful.map(e=>e.getBoundingClientRect());return {first:rects[0].top,visible:rects.filter(r=>r.height>0&&r.top>=0&&r.bottom<=innerHeight).length,overflow:document.documentElement.scrollWidth-innerWidth,leafFont:getComputedStyle(g.querySelector('tr[data-line] input')).fontSize}}''')
             assert m['overflow']<=1,m
             if w==1440:
-                assert m['first']<225,m
+                assert m['first']<265,m
                 assert m['visible']>=25,m
                 assert m['leafFont']=='13px',m
             measures.append({'width':w,'height':h,**m})

@@ -7,6 +7,12 @@ import pytest
 from tests.test_project_lifecycle_browser import wf03_servers, wf03_browser as _wf03_browser  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture
 def wf03_browser(request):
     # Keep the helper module unchanged and the selected cases individually attributable.

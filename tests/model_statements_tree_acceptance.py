@@ -90,6 +90,7 @@ def write_browser_summary(out, results, logs):
     return summary
 
 def main() -> int:
+    os.environ.setdefault("FINCO_MODEL_REACT_V1", "0")
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("artifacts/statements-tree"))
     args = parser.parse_args()

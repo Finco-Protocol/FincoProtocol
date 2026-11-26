@@ -17,6 +17,12 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (e
 from tests.test_model_financing_f2 import config, run, save
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def rows_of(data):
     return {r["key"]: r for g in data["comparison"]["groups"] for r in g["rows"]}
 

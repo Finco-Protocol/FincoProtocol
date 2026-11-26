@@ -17,6 +17,12 @@ from tests.test_model_financing_f2 import run
 from tests.test_investor_f4_p1 import document
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def page(env, record, history_id=None):
     return env.client.get("/v2/workbook/investor/agreement", params={
         "project": record.project_code, **({"history_id": history_id} if history_id else {})})

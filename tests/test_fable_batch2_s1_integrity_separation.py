@@ -34,6 +34,12 @@ from app.workbook.financing_csrf import issue_token
 from tests.model_mutation_csrf import post_valid_mutation
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _bank(**kw):
     return json.dumps({"version": 1, **kw}, separators=(",", ":"))
 

@@ -24,6 +24,12 @@ from tools.numerical_validation.identities import reconcile_bundle
 from tools.numerical_validation.periodic import reports
 from tools.numerical_validation.source import bundle_from_history_entry, source_sha256, verify_source_binding
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 KINDS = ["solar", "wind", "data_center", "ev_charging"]
 MODES = ["legacy", "two", "junior"]
 USER = "decision-user"

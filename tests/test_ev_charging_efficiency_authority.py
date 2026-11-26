@@ -28,6 +28,12 @@ from app import ev_charging_economics as ev
 from finco_core.opex.projections import opex_item_amount_at_year
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture()
 def ev_wc(tmp_path, monkeypatch):
     """Fresh DB + a real seeded EV working copy (reconciled S&U)."""

@@ -36,9 +36,9 @@ def wi(env, monkeypatch):  # noqa: F811
 
 
 def run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
     assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                           data={"project": record.project_code, **tokens(page.text)}).status_code == 200
+                           data={"project": record.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"]}).status_code == 200
     from app.persistence.run_history_repository import get_run_history
     return get_run_history(OWNER, record.project_id)[0]
 
@@ -155,5 +155,5 @@ def test_security_foreign_unauthenticated_protected_and_flag(wi, monkeypatch):
     with monkeypatch.context() as scoped:
         scoped.setattr("app.services.project_library_service.is_protected_reference", lambda r: True)
         assert wi.client.get(OPTIONS, params={"project": record.project_code}).status_code == 403
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     assert wi.client.get(OPTIONS, params={"project": record.project_code}).status_code == 404

@@ -16,6 +16,12 @@ from tests.revenue_v3_cases import book
 
 
 @pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
+@pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (Revenue V3 advanced products, legacy-grid axis); new Solar/Wind projects default to
     OD-TIME-01/v1, where it is a typed refusal. Its projects are created through the explicit creation rollback."""

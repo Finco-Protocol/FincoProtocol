@@ -13,6 +13,12 @@ import pytest
 from tests.test_post_run_request_context import _args, _capture, _edit, seed_database, state_db  # noqa: F401  (fixtures)
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _fragment(html, dom_id):
     """The out-of-band fragment whose root element carries ``id=dom_id`` (None when it is not in the response)."""
     match = re.search(r'<(\w+)[^>]*\bid="%s"[^>]*hx-swap-oob="true"' % re.escape(dom_id), html) or \

@@ -9,6 +9,12 @@ from bs4 import BeautifulSoup
 
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 USER = "decision-user"
 ROOT = Path(__file__).resolve().parents[1]
 FIELDS = ("project_setup.technical.cod_date", "project_setup.technical.construction_months", "project_setup.technical.horizon_years")

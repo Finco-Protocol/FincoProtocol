@@ -109,7 +109,16 @@ def test_actual_committed_kpis_units_source_and_periods_are_exact(insights, kind
         assert [c["v"] for c in by_key[key]["cells"]] == [p.get(source) for p in persisted]
     # The established Credit Decision route is an independent projection oracle.
     from tests.test_model_credit_decision_v3_real_runs import payload
-    canonical = payload(insights.client.get("/v2/credit-decision", params={"project": record.project_code, "run": entry.history_id}))
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        canonical = payload(insights.client.get("/v2/credit-decision", params={"project": record.project_code, "run": entry.history_id}))
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     assert credit["timeline"] == canonical["runs"][0]["timeline"]
     assert credit["capacity"] == canonical["runs"][0]["capacity"]
 
@@ -276,7 +285,7 @@ def test_flag_and_protected_reference_denial(insights, monkeypatch):
     monkeypatch.setattr("app.services.project_library_service.is_protected_reference", lambda record: True)
     for path in (DETAIL, INDEX):
         assert insights.client.get(path, params={"project": record.project_code}).status_code == 409
-    monkeypatch.delenv("FINCO_MODEL_REACT_V1")
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     for path in (DETAIL, INDEX):
         assert insights.client.get(path, params={"project": record.project_code}).status_code == 404
 

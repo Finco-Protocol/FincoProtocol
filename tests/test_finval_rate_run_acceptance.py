@@ -39,13 +39,11 @@ def _metrics(pi):
 
 
 def _run(env,record,keyed):
-    page=env.client.get('/v2/workbook',params={'project':record.project_code})
-    form=BeautifulSoup(page.text,'html.parser').select_one('#v2-canonical-run-form');assert form
-    data={f['name']:f.get('value','') for f in form.select('input[name]')}
-    data['csrf_token']=data.pop('run_csrf_token')
+    from tests.run_clone_csrf import post_valid_csrf
+    wb=env.client.get('/v2/model-react/workspace',params={'project':record.project_code}).json()['workbook']
+    data={'project':record.project_code,'content_hash':wb['composite_hash'],'workbook_version':wb['version']}
     if keyed:data['run_intent_id']=str(uuid.uuid4())
-    else:data.pop('run_intent_id',None)
-    response=env.client.post('/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data,follow_redirects=False)
+    response=post_valid_csrf(env.client,'/v2/workbook/run',headers={'Accept':'application/json','HX-Request':'true'},data=data,follow_redirects=False)
     assert response.status_code==200,response.text[:500]
     if keyed:assert response.json()['outcome']=='COMMITTED',response.text
     else:assert 'FAILED'!=response.headers.get('x-finco-run-outcome')

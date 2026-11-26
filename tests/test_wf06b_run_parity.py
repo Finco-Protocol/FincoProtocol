@@ -12,6 +12,12 @@ from tests.model_mutation_csrf import post_valid_mutation
 from tests.test_pr394_staging_corrections_v1 import costlines, run_json, save_batch, first_line, wire_edit  # noqa: F401
 from tests.test_model_react_wf2_projections_v1 import cas, env  # noqa: F401  (this fixture mounts the capex/opex line routers too)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 KINDS = ("solar", "wind")
 KPI_KEYS = ("project_irr", "equity_irr", "sponsor_irr", "min_dscr", "avg_dscr")
 SCHEDULES = ("financial_statements", "debt_schedule", "tax_schedule", "distribution_schedule", "sponsor_schedule")

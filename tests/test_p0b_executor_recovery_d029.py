@@ -20,6 +20,12 @@ from tests.test_d029_run_idempotency_http import intent_state, intents, post, ru
 from tests.test_model_credit_decision_v3_real_runs import history
 from tests.test_model_decision_workspace_v2 import env as _env, tokens  # noqa: F401  (fixture re-export)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 env = _env
 
 

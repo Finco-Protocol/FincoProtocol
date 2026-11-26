@@ -18,6 +18,12 @@ from tests.test_model_financing_f2 import run, save
 from tests.test_model_financing_f3_workspace import collection_for_inputs, state
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def _page(env, record, **params):
     from app.v2.financing_sources_uses_router import router
     if not any(getattr(r, "path", "") == "/v2/financing/sources-uses" for r in env.client.app.routes):

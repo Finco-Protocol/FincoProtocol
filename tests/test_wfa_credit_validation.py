@@ -15,6 +15,12 @@ from tools.numerical_validation import credit
 from tools.numerical_validation.reconcile import ReconciliationInputError
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 @pytest.fixture(scope="module")
 def lab(tmp_path_factory):
     lab = S.make_lab(tmp_path_factory)

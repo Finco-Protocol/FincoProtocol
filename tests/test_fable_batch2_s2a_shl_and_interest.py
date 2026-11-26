@@ -40,6 +40,12 @@ from financial_engine.shareholder_waterfall.model import (
     reconcile_shl_schedules,
 )
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 getcontext().prec = 50
 
 

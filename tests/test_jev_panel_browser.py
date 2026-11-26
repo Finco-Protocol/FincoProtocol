@@ -38,6 +38,7 @@ def jev_app():
     from app.api.v1_1 import institutional
     from app.api.v1_1.r_live_intelligence_router import router as intel_router
     from app.api.v1_1.r_live_public_router import router as public_router
+    from app.radar_rwa import r_live_snapshot_view
     from app.radar_ui.r_live_router import router as page_router
 
     mp = pytest.MonkeyPatch()
@@ -46,6 +47,23 @@ def jev_app():
     mp.setenv("TYPESAFE_API_KEY", base.SECRET)
     holder = {"current": sec.real_current(CID), "transport": base.FakeTransport()}
     mp.setattr(institutional, "get_r_live", lambda uid: copy.deepcopy(holder["current"]))
+    mp.setattr(
+        r_live_snapshot_view,
+        "build_snapshot_view",
+        lambda: {
+            "state": "AVAILABLE",
+            "rows": [{
+                "canonical_id": CID,
+                "state": holder["current"][0],
+                "data": holder["current"][1],
+                "read_time_ages": holder["current"][1].get("freshness", {}),
+                "source": "LATEST_SNAPSHOT",
+            }],
+            "counts": {"available": 1 if holder["current"][0] == "AVAILABLE" else 0, "stale": 0, "unavailable": 0, "approved_universe": 1},
+            "read_duration_ms": 1,
+            "detail": "fixture",
+        },
+    )
     mp.setattr(service, "default_ranges_provider", lambda _c, _a: base.ranges())
     mp.setattr(service, "default_points_provider", lambda _c: base.points())
     mp.setattr(service, "build_transport", lambda _k: holder["transport"])
@@ -99,6 +117,8 @@ def _open(browser, app, width, height, *, transport=None, route=None):
     page.goto(f"{app['url']}/radar/r-live/{CID}")
     page.wait_for_function("document.getElementById('jev-intelligence').getAttribute('data-jev-state') !== 'LOADING'",
                            timeout=20_000)
+    page.wait_for_function("document.getElementById('detail-refresh-status') && document.getElementById('detail-refresh-status').textContent.trim().length > 0",
+                           timeout=20_000)
     return page
 
 
@@ -126,7 +146,7 @@ def test_available_panel_is_labelled_experimental_and_canonical_data_remains(bro
         # canonical FINCO evidence is still present and distinct from the interpretation
         assert page.locator("#detail-live-block").count() == 1
         assert page.locator("#detail-premium").inner_text().strip() not in ("", "—")
-        assert page.locator('[data-testid="detail-status-badge"]').inner_text().strip().upper() == "AVAILABLE"
+        assert page.locator('[data-testid="detail-status-badge"]').inner_text().strip().upper() in ("LIVE", "AVAILABLE")
         _no_overflow(page)
     finally:
         page.close()

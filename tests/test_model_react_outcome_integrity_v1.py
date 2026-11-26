@@ -70,6 +70,11 @@ def _grid_tokens(page: str) -> dict:
             for k in ("content_hash", "workbook_version", "csrf_token")}
 
 
+def _save_tokens(env, project_code: str) -> dict:
+    save = env.client.get("/v2/model-react/fields/project_setup", params={"project": project_code}).json()["save"]
+    return {"content_hash": save["content_hash"], "workbook_version": save["workbook_version"], "csrf_token": save["csrf_token"]}
+
+
 def _redirect_target(response) -> dict:
     location = response.headers.get("location", "")
     parsed = urlparse(location)
@@ -81,8 +86,7 @@ def _redirect_target(response) -> dict:
 def test_valid_scalar_update_commits_exactly_once(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     fields = env.client.get("/v2/model-react/fields/project_setup",
                             params={"project": record.project_code}).json()
     sample = next(f for f in fields["fields"] if f["binding_label"] == "bound")
@@ -100,8 +104,7 @@ def test_valid_scalar_update_commits_exactly_once(env, monkeypatch):
 def test_update_without_session_redirects_to_login_never_success(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     response = post_valid_mutation(env.anonymous, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id="project_setup.identity.project_name", value="renamed",
         workbook_version=tokens["workbook_version"], content_hash=tokens["content_hash"],
@@ -116,8 +119,7 @@ def test_update_without_session_redirects_to_login_never_success(env, monkeypatc
 def test_stale_composite_hash_answers_v2_err_redirect(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
     response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(
         project=record.project_code, field_id="project_setup.identity.project_name", value="renamed-stale",
@@ -134,8 +136,7 @@ def test_stale_composite_hash_answers_v2_err_redirect(env, monkeypatch):
 def test_capital_stack_field_rejects_grid_csrf_token(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     response = env.client.post("/v2/workbook/update", data=dict(
         project=record.project_code, field_id="debt.financing.instruments", value="[]",
         workbook_version=tokens["workbook_version"], content_hash=tokens["content_hash"],
@@ -197,8 +198,7 @@ def test_rejected_run_creates_no_history_entry(env, monkeypatch):
     record = env.create()
     before = _runs_payload(env, record.project_code)
     assert before["runs"] == []
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
     response = post_valid_csrf(env.client, "/v2/workbook/run",
                                data=dict(project=record.project_code, content_hash=stale,
@@ -213,10 +213,10 @@ def test_committed_run_grows_the_history_exactly_once(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
     before = _runs_payload(env, record.project_code)
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                               data=dict(project=record.project_code, **tokens))
+                               data=dict(project=record.project_code, content_hash=tokens["content_hash"],
+                                         workbook_version=tokens["workbook_version"]))
     assert response.status_code == 200 and response.headers.get("X-Finco-Run-Outcome") != "FAILED"
     after = _runs_payload(env, record.project_code)
     assert len(after["runs"]) == len(before["runs"]) + 1, \
@@ -239,8 +239,7 @@ def test_run_without_session_redirects_to_login(env, monkeypatch):
 def test_htmx_run_failure_keeps_200_with_failed_outcome_header(env, monkeypatch):
     flag_on(monkeypatch)
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    tokens = _grid_tokens(page.text)
+    tokens = _save_tokens(env, record.project_code)
     stale = ("0" * 63 + "1") if tokens["content_hash"][-1] != "1" else ("0" * 63 + "2")
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data=dict(project=record.project_code, content_hash=stale,

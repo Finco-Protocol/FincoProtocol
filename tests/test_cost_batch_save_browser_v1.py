@@ -30,6 +30,7 @@ def live_server(tmp_path_factory):
     from app.persistence import db
 
     mp = pytest.MonkeyPatch()
+    mp.setenv("FINCO_MODEL_REACT_V1", "0")
     mp.setattr(db, "DB_PATH", str(tmp_path_factory.mktemp("cost-batch") / "b.db"))
     db.init_db()
     import main_web

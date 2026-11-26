@@ -26,6 +26,12 @@ from app.v2.router import router as v2_router
 from app.workbook.financing_csrf import issue_token
 from app.workbook.mutation_csrf import mutation_token
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 COD = date(2031, 3, 1)
 FIELD = "revenue.multistream.contracts"
 

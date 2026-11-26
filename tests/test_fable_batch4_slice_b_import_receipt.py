@@ -44,6 +44,12 @@ from app.v2.react_import import router as react_import_router
 from app.v2.router import router as v2_router
 from tests.run_clone_csrf import post_valid_csrf
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 OWNER = "b4-imp-owner"
 STRANGER = "b4-imp-stranger"
 HDR = {"X-Finco-React-Request": "1"}

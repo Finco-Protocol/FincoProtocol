@@ -143,6 +143,7 @@ def test_e3_legacy_workbook_update_htmx_4xx_and_swap_config(env, monkeypatch):  
     assert "403: true" in js_text and "409: true" in js_text and "422: true" in js_text
 
     rec = env.create()
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     page = env.client.get("/v2/workbook", params={"project": rec.project_code})
     assert page.status_code == 200
     hash_m = _re.search(r'name="content_hash"\s+value="([^"]+)"', page.text)

@@ -16,6 +16,10 @@
   var views = definitions.map(function (d) {
     return {name:d[0], panel:'panel-'+d[1], id:'v2-sheet-'+d[2], editable:d[3], dirty:false, active:null, node:null};
   });
+  views.forEach(function (view) {
+    var node = document.getElementById(view.id);
+    if (node && !node.dataset.modelViewState) { view.node = node; node.dataset.modelViewState = 'loaded'; }
+  });
   function capture() {
     var input = document.querySelector('#v2-canonical-run-form [name="content_hash"]');
     return {generation:generation, project:shell.dataset.project, hash:input ? input.value : ''};
@@ -144,8 +148,10 @@
   document.addEventListener('submit',block,true);
   document.addEventListener('htmx:confirm',function(event){
     var elt=(event.detail||{}).elt,view=elt && viewOf(elt);
-    if(view && document.getElementById(view.id).dataset.modelViewState==='pending' && ownRowWritesOnly(view))return;
-    if(view && document.getElementById(view.id).dataset.modelViewState!=='loaded'){
+    var node=view && document.getElementById(view.id);
+    var st=node && node.dataset.modelViewState;
+    if(view && st==='pending' && ownRowWritesOnly(view))return;
+    if(view && st && st!=='loaded'){
       event.preventDefault();event.stopImmediatePropagation();schedule();
     }
   });
@@ -169,6 +175,7 @@
     var prevState=sourceNodeBefore ? sourceNodeBefore.dataset.modelViewState : null;
     var beforeHash=capture().hash;
     var isRun=String(cfg.path||'').split('?')[0]==='/v2/workbook/run';
+    var priorRunStates=isRun ? views.map(function(v){var n=document.getElementById(v.id);return [v,n,n?n.dataset.modelViewState:null];}) : null;
     var previousHealth=document.getElementById('v2-model-health');
     // FINCO45C (KD-04): a cost-grid ROW write (the row form itself is the request source) is the user's own edit
     // being saved; while only such writes are in flight the sheet is not stale for the user's next click.
@@ -181,6 +188,18 @@
       if(ownRow)sourceView.ownRowWrites=Math.max(0,(sourceView.ownRowWrites||0)-1);
       pendingWrites.delete(detail.xhr);
       var health=document.getElementById('v2-model-health');
+      if(isRun && detail.xhr.status===200 && detail.xhr.getResponseHeader('X-Finco-Run-Outcome')==='FAILED' &&
+         generation===writeGeneration && capture().hash===beforeHash && priorRunStates){
+        // A refused Run leaves saved inputs and prior committed outputs untouched; keep views loaded so a
+        // redundant presentation refetch does not OOB-overwrite #v2-status-banner's [data-testid=run-failure-detail].
+        priorRunStates.forEach(function(item){
+          var v=item[0],n=item[1],prev=item[2];
+          if(prev==='loaded' && n && n===document.getElementById(v.id)){
+            n.dataset.modelViewState='loaded';syncSetupControls(v,n);
+            var notice=n.querySelector('[data-model-view-notice]');if(notice)notice.remove();
+          }
+        });
+      }
       if(isRun && detail.xhr.status===200 && generation===writeGeneration &&
          health && health!==previousHealth && health.dataset.state==='CURRENT')sharedReadyGeneration=generation;
       // Existing cost writers update one row plus authorized OOB identities,

@@ -15,6 +15,12 @@ from tests.test_financing_f37_instrument_su import _two_senior_run, _junior_run
 from tests.test_model_financing_f2 import run, save
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def view(rr, ws, **kw):
     return build_financing_trace(runtime_result=rr, freshness="CURRENT", snapshot_id=rr.snapshot_id,
         composite_hash=ws.last_runtime_composite_hash, scenario_id=ws.last_runtime_scenario_id,

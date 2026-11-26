@@ -16,6 +16,12 @@ from app.persistence.projects_repository import list_project_records
 from app.services import project_library_service as pls
 from app.services import reference_seed_service as seed
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 U = "r18-user"
 VERTICALS = ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference", "generic_ev_charging_reference"]
 

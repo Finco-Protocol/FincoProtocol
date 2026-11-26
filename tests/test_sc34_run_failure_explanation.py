@@ -15,6 +15,12 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 H = {"HX-Request": "true"}
 HORIZON = "project_setup.technical.horizon_years"
 

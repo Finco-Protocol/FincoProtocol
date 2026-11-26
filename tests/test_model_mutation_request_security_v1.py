@@ -13,6 +13,12 @@ from app.workbook.mutation_csrf import mutation_token, validate_mutation_token, 
 from tests.test_model_react_ux040506_v1 import env as run_env
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 def snapshot():
     """All tables, all columns, schema and row counts; no timestamps are ignored."""
     with db.get_connection() as connection:

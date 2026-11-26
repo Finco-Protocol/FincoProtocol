@@ -18,6 +18,12 @@ from app.v2.sensitivity_matrix_projection import (
 )
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 USER = "decision-user"
 RUN = "/v2/workbook/sensitivity/matrix/run"
 FORM = "/v2/workbook/decision/sensitivity"      # the Sensitivity sheet hosts the matrix form

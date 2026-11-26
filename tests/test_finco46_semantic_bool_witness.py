@@ -17,6 +17,12 @@ from tests.test_fin_val_b2_c1_recovery_finite_opex import (  # noqa: F401  (shar
     _history_count, _poison, _prime, _recovery_form, _semantic, _snapshot, env,
 )
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 KEY = "rev_co2_enabled"
 
 

@@ -50,6 +50,12 @@ from domain.revenue.r04_global_p50_cap import (
 from finco_core.engine.contractual_calendar import ContractualInterval, add_calendar_years
 
 
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
+
 # ── 1. Syntax, Units (1 GWh = 1000 MWh), Dual-Basis & Admission Controls ─────
 
 

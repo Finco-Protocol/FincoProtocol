@@ -17,6 +17,12 @@ from tests.test_developer_economics_persistence_v1 import OWNER, Flow, env  # no
 from tests.test_rc2_integration_acceptance import _pi, _save_revenue
 from tests.test_wf07_revenue_multistream import contracts
 
+
+@pytest.fixture(autouse=True)
+def _finco47_legacy_ssr_rollback(monkeypatch):
+    """Scoped to this legacy SSR test module; default production flag stays React ON."""
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+
 COMPARE = "/v2/workbook/run-compare"
 SENS = "/v2/workbook/scenarios/sensitivity/run"
 
