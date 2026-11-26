@@ -118,11 +118,13 @@ def env(tmp_path, monkeypatch):
     from app.runtime.model_execution import reset_model_executor_for_tests
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from app.v2.react_workspace_router import router as react_workspace_router
     from app.v2.router import router
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "decision.db"))
     db.init_db()
     app = FastAPI()
     app.include_router(router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id="decision-user", username="admin"))
         def create(kind="solar"):

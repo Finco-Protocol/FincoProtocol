@@ -11,21 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env as _env, tokens  # noqa: F401  (fixture re-export)
+from tests.test_model_decision_workspace_v2 import env as _env  # noqa: F401  (fixture re-export)
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.test_model_credit_decision_v3_real_runs import history, last
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "decision-user"
 env = _env
@@ -40,9 +28,8 @@ def _thread_executor(monkeypatch):
 
 def run_form(e, record, intent=None, *, page=None):
     from app.workbook.financing_csrf import issue_token
-    page = page or e.client.get("/v2/workbook", params={"project": record.project_code})
     req = SimpleNamespace(cookies=e.client.cookies, state=SimpleNamespace())
-    data = {"project": record.project_code, **tokens(page.text),
+    data = {"project": record.project_code, **react_workbook_tokens(e.client, record.project_code),
             "csrf_token": issue_token(req, record.project_code, purpose="workbook-run-v1")}
     if intent is not None:
         data["run_intent_id"] = intent
@@ -95,9 +82,8 @@ def intents(record=None):
 
 def edit(e, record, raw, field="revenue.ppa.base_tariff"):
     from tests.model_mutation_csrf import post_valid_mutation
-    page = e.client.get("/v2/workbook", params={"project": record.project_code})
     return post_valid_mutation(e.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                               data={"project": record.project_code, "field_id": field, "value": raw, **tokens(page.text)})
+                               data={"project": record.project_code, "field_id": field, "value": raw, **react_workbook_tokens(e.client, record.project_code)})
 
 
 def last_snapshot(record):

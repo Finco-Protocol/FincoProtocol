@@ -50,11 +50,16 @@ def _ws(project):
 
 
 def _run(env, project):
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    assert page.status_code == 200
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                               data={"project": project.project_code, **tokens(page.text)})
-    return response
+    wb = env.client.get("/v2/model-react/workspace", params={"project": project.project_code})
+    if wb.status_code == 200:
+        data = wb.json()["workbook"]
+        toks = {"content_hash": data["composite_hash"], "workbook_version": data["version"]}
+    else:
+        page = env.client.get("/v2/workbook", params={"project": project.project_code})
+        assert page.status_code == 200
+        toks = tokens(page.text)
+    return post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
+                           data={"project": project.project_code, **toks})
 
 
 def _latest(project):

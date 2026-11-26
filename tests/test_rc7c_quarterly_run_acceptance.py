@@ -15,20 +15,6 @@ from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 from tests.test_model_rc7_capex_profile_run import OWNER, _latest, _run, _ws  # noqa: F401
 from tests.test_rc7b_quarterly_production_acceptance import TIMELINE, _frequency, _set, eligible_references, _state
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (release-closed 3/3 operating frequency); new Solar/Wind projects default to

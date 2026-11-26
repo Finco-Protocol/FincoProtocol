@@ -33,25 +33,14 @@ from app.persistence.run_history_repository import get_run_history
 from app.run_integrity.checks import check_interest_and_debt_service
 from app.run_integrity.contracts import CheckStatus
 from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from app.workbook.financing_csrf import issue_token
 from financial_engine.shareholder_waterfall.model import (
     SHL_RECONCILIATION_TOLERANCE_KEUR,
     reconcile_shl_schedules,
 )
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 getcontext().prec = 50
 
@@ -79,6 +68,7 @@ def _run_v2_reference(tmp_path, kind: str):
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
         rec = create_reference_seeded_project(
@@ -87,11 +77,7 @@ def _run_v2_reference(tmp_path, kind: str):
             template_source=f"generic_{kind}_reference",
             capacity_mw=16,
         )
-        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-        tokens = {
-            k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-            for k in ("content_hash", "workbook_version")
-        }
+        tokens = react_workbook_tokens(client, rec.project_code)
         req = SimpleNamespace(cookies=client.cookies, state=SimpleNamespace())
         resp = client.post(
             "/v2/workbook/run",

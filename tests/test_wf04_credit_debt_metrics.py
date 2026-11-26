@@ -12,21 +12,9 @@ import re
 import pytest
 
 from tests.model_mutation_csrf import post_valid_mutation
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.test_model_financing_f2 import config, run, save
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "decision-user"
 EOD = "debt.contract.min_dscr_eod"
@@ -41,9 +29,8 @@ def cenv(env):  # noqa: F811
 
 
 def update(env, record, field_id, value):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                                   data={"project": record.project_code, "field_id": field_id, "value": str(value), **tokens(page)})
+                                   data={"project": record.project_code, "field_id": field_id, "value": str(value), **react_workbook_tokens(env.client, record.project_code)})
     assert response.status_code == 200 and "field-error" not in response.text[:4000], response.text[:500]
 
 

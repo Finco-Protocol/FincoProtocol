@@ -28,19 +28,6 @@ from fastapi.testclient import TestClient
 
 from app.persistence import db
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = "pr394-corr-owner"
 KINDS = ("solar", "wind", "data_center", "ev_charging")
@@ -50,7 +37,6 @@ KINDS = ("solar", "wind", "data_center", "ev_charging")
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "pr394_corr.db"))
     db.init_db()
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     monkeypatch.setenv("FINCO_MODEL_EXECUTION_MODE", "thread")
     monkeypatch.setenv("FINCO_NATIVE_V10_RUN", "off")
     monkeypatch.setenv("FINCO_NATIVE_V11_RUN", "off")
@@ -116,12 +102,8 @@ def history(env, record):
 
 def run_json(env, record, intent=None):
     from app.workbook.financing_csrf import issue_token
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
-    if page.status_code == 200 and 'name="content_hash"' in page.text:
-        tokens = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
-    else:
-        wb = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
-        tokens = {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
+    from tests.model_react_test_helpers import react_workbook_tokens
+    tokens = react_workbook_tokens(env.client, record.project_code)
     req = SimpleNamespace(cookies=env.client.cookies, state=SimpleNamespace())
     data = {"project": record.project_code, **tokens, "csrf_token": issue_token(req, record.project_code, purpose="workbook-run-v1"),
             "run_intent_id": intent or str(uuid.uuid4())}

@@ -11,20 +11,6 @@ import pytest
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture used by cenv)
 from tests.test_wf04_credit_debt_metrics import COV, EOD, cenv, credit, history, run, update, view_of, weak_wind  # noqa: F401
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves legacy 54-period grid (the dated grid adds the final contractual stub); new Solar/Wind projects now default to OD-TIME-01/v1,

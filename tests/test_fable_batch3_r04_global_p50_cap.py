@@ -34,7 +34,9 @@ from app import project_factories as pf
 from app.auth import COOKIE_NAME, create_session_token
 from app.persistence import db
 from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from app.workbook.financing_csrf import issue_token
 from app.workbook.revenue_multistream import apply_config as apply_multistream_config
 from domain.revenue.multistream_runtime import parse_config
@@ -48,20 +50,6 @@ from domain.revenue.r04_global_p50_cap import (
     validate_global_p50_physical_cap,
 )
 from finco_core.engine.contractual_calendar import ContractualInterval, add_calendar_years
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 
 # ── 1. Syntax, Units (1 GWh = 1000 MWh), Dual-Basis & Admission Controls ─────
 
@@ -293,6 +281,7 @@ def test_r04_production_direct_save_batch_save_and_run_roundtrip(tmp_path):
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
 
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
@@ -315,11 +304,7 @@ def test_r04_production_direct_save_batch_save_and_run_roundtrip(tmp_path):
         full_end = op_periods[-1].end_date
 
         def _get_tokens():
-            html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-            return {
-                k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-                for k in ("content_hash", "workbook_version")
-            }
+            return react_workbook_tokens(client, rec.project_code)
 
         from app.workbook.mutation_csrf import mutation_token
 
@@ -330,7 +315,7 @@ def test_r04_production_direct_save_batch_save_and_run_roundtrip(tmp_path):
         bad_json = _make_r04_multistream_json(c_start, c_end, full_end, "999", unit="GWh")
         resp_bad = client.post(
             "/v2/workbook/update",
-            headers={"Accept": "application/json"},
+            headers={"HX-Request": "true"},
             data={
                 "project": rec.project_code,
                 "field_id": "revenue.multistream.contracts",
@@ -349,7 +334,7 @@ def test_r04_production_direct_save_batch_save_and_run_roundtrip(tmp_path):
         valid_json = _make_r04_multistream_json(c_start, c_end, full_end, "10", unit="GWh")
         resp_ok = client.post(
             "/v2/workbook/update",
-            headers={"Accept": "application/json"},
+            headers={"HX-Request": "true"},
             data={
                 "project": rec.project_code,
                 "field_id": "revenue.multistream.contracts",

@@ -55,6 +55,7 @@ def env(tmp_path, monkeypatch):
     from app.runtime.model_execution import reset_model_executor_for_tests
     from app.services.reference_seed_service import create_reference_seeded_project
     from app.v2.grid_router import router as grid_router
+    from app.v2.react_workspace_router import router as react_workspace_router
     from app.v2.router import router
 
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "finval.db"))
@@ -62,6 +63,7 @@ def env(tmp_path, monkeypatch):
     app = FastAPI()
     app.include_router(router, prefix="/v2")
     app.include_router(grid_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     with TestClient(app, raise_server_exceptions=False) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=USER, username="admin"))
 

@@ -9,20 +9,6 @@ from app.workbook.bankability_config import FIELD_ID, SNAPSHOT_KEY
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run, save
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _raw(mode, months=0):
     return json.dumps(dict(version=1, reserve=dict(mode=mode, months=months, requirement_keur=0, commitment_keur=0, fee_pct=0)))
 
