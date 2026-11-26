@@ -67,9 +67,23 @@ FINCO46_FIXED = {
 }
 
 
-def test_known_defects_list_is_exactly_the_reviewed_51():
+# FINCO46 (second batch): 51 -> 45. Exactly these six nodes now pass (product fixes: one Save per Enter in a field
+# editor, Inputs summary locked until its authorized replacement loads; harness follows the current navigation,
+# Outputs alias, N-side Compare ids, bound Tariff scenario override, CSRF-bound scenario create).
+FINCO46_FIXED_B = {
+    "tests/test_data_center_browser_acceptance.py::test_DC_BROWSER_VERTICAL_INTEGRITY_1280",
+    "tests/test_data_center_browser_acceptance.py::test_DC_HTMX_WORKING_COPY_WORKFLOW",
+    "tests/test_model_golden_flows_browser.py::test_golden_flow_a_new_project_scenario_compare_and_export",
+    "tests/test_model_golden_flows_browser.py::test_golden_flow_b_reference_to_working_copy_causal_run_reopen",
+    "tests/test_model_golden_flows_browser.py::test_golden_flow_c_run_a_stale_working_edit_reopen_run_b",
+    "tests/test_m3_two_driver_sensitivity_browser.py::test_form_selection_run_results_threshold_and_scenario",
+}
+
+
+def test_known_defects_list_is_exactly_the_reviewed_45():
     listed = check_groups.known(ROOT / "tests/known_defects.txt")
-    assert len(listed) == 51
+    assert len(listed) == 45
+    assert not (set(listed) & FINCO46_FIXED_B)
     assert not (set(listed) & FINCO45C_FIXED)
     assert not (set(listed) & FINCO46_FIXED)
 

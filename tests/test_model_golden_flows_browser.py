@@ -99,7 +99,10 @@ def _page(browser, golden_app, *, user_id: str):
 
 
 def _click_tab(page, tab_id: str, panel_id: str) -> None:
-    page.locator(f"#{tab_id}").click()
+    # FINCO46: the legacy tab buttons sit behind the grouped workspace navigation (hidden until their area is open);
+    # drive the real visible navigation (area group + nav entry) through the shared helper, as the user does.
+    from tests.model_workspace_navigation import activate_destination
+    activate_destination(page, tab_id)
     page.locator(f"#{panel_id}").wait_for(state="visible")
 
 
@@ -128,7 +131,8 @@ def _save_p50_hours(page, value: float) -> None:
         '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
     )
     row.locator('input[name="value"]').fill(str(value))
-    row.get_by_role("button", name="Save").click()
+    with page.expect_response(lambda r: "/inputs-slice1/update" in r.url and r.status == 200):  # FINCO46
+        row.get_by_role("button", name="Save").click()
     page.locator('[data-testid="overview-status-stale"], .v2-runtime-dirty').first.wait_for(
         state="attached"
     )
@@ -172,7 +176,8 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         for tab, panel, marker in (
             ("tab-overview", "panel-overview", '[data-testid="kpi-project-irr"]'),
             ("tab-debt", "panel-debt", "#v2-sheet-senior-debt"),
-            ("tab-fs", "panel-fs", "#v2-sheet-financial-statements"),
+            # FINCO46: "tab-fs" is a compatibility alias of the Statements & Debt output destination (tab-outputs).
+            ("tab-outputs", "panel-outputs", '[data-testid="outputs-sheet"]'),
             ("tab-returns", "panel-returns", '[data-testid="returns-authority-bar"]'),
         ):
             _click_tab(page, tab, panel)
@@ -189,7 +194,9 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
             page.locator(".v2-toolbar-scenario-link", has_text=scenario_name).wait_for()
         row = page.locator(".v2-scenario-row", has_text=scenario_name)
         row.get_by_role("button", name="Edit").click()
-        page.locator("#ov-p50_hours").fill(str(initial_p50 * 1.35))
+        # FINCO46: P50 hours is an unbound (disabled) scenario override since #428; Tariff is the bound renewable
+        # override, so the causal scenario edit uses it (the "1 override" + scenario Run assertions are unchanged).
+        page.locator("#ov-tariff_eur_mwh").fill("135")
         page.locator("#v2-scenario-override-form").get_by_role(
             "button", name="Save overrides"
         ).click()
@@ -228,7 +235,8 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         page.locator("#v2-compare-submit-btn:not([disabled])").wait_for(state="visible", timeout=10_000)
         page.locator("#v2-compare-submit-btn").click()
         page.locator(".v2-compare-table").wait_for()
-        assert page.locator('[data-testid="cmp-project_irr-delta"]').inner_text().strip() != "—"
+        # FINCO46: Compare renders N sides; the delta of the second selected side vs the first is "-delta-s2".
+        assert page.locator('[data-testid="cmp-project_irr-delta-s2"]').inner_text().strip() != "—"
 
         calls_before_export = len(golden_app["calls"])
         with page.expect_download(timeout=120_000) as download_info:
@@ -240,7 +248,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         assert len(golden_app["calls"]) == calls_before_export
         assert scenario_run[2] != changed[2]
 
-        page.locator(".v2-toolbar-back").click()
+        page.locator('a.v2-toolbar-back[href="/library"]').click()  # FINCO46: Import link shares the class
         page.wait_for_url("**/library**")
         library_row = page.locator("tr", has_text=name)
         assert library_row.get_by_text("Working copy").count() == 1
@@ -345,7 +353,10 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         p50_row = page.locator(
             '#panel-inputs [data-field-id="project_setup.technical.p50_hours"]'
         )
-        p50_row.get_by_role("button", name="Save").click()
+        # FINCO46: wait for the Save itself (the NOT RUN banner of a never-run copy is already present, so waiting for
+        # a banner alone let the Run race the Save and be refused with the stale composite hash).
+        with page.expect_response(lambda r: "/inputs-slice1/update" in r.url and r.status == 200):
+            p50_row.get_by_role("button", name="Save").click()
         # After save, OOB banner swaps in — wait for any banner to confirm save completed
         page.locator(
             '[data-testid="banner-not-run"], [data-testid="banner-stale"]'
@@ -353,7 +364,13 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
 
         # ── 8. Run exactly once ───────────────────────────────────────────────
         calls_before_run = len(calls)
-        page.locator('[data-testid="v2-run-btn"]').click()
+        with page.expect_response(lambda r: r.url.endswith("/v2/workbook/run") and r.request.method == "POST",
+                                  timeout=120_000) as ran:
+            page.locator('[data-testid="v2-run-btn"]').click()
+        assert ran.value.status == 200
+        # FINCO46: the Overview sheet is a lazy presentation view refreshed when it is opened; the Run was started
+        # from the Inputs sheet, so open Overview (as the user does) before reading its CURRENT status.
+        _click_tab(page, "tab-overview", "panel-overview")
         page.locator('[data-testid="overview-status-current"]').wait_for(
             state="attached", timeout=120_000
         )
@@ -397,7 +414,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         )
 
         # ── 11. Navigate away via toolbar back ───────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator('a.v2-toolbar-back[href="/library"]').click()  # FINCO46: Import link shares the class
         page.wait_for_url("**/library**")
 
         # ── 12. Reopen working copy ───────────────────────────────────────────
@@ -555,7 +572,7 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
             )
 
         # ── 6. Navigate away and reopen ──────────────────────────────────────
-        page.locator(".v2-toolbar-back").click()
+        page.locator('a.v2-toolbar-back[href="/library"]').click()  # FINCO46: Import link shares the class
         page.wait_for_url("**/library**")
 
         calls_before_reopen = len(calls)
