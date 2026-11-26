@@ -118,6 +118,17 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
           <div className="fm-brand-name">FINCO <span style={{ fontWeight: 500 }}>MODEL</span></div>
           <div className="fm-brand-caption">Project finance modelling</div>
         </div>
+        {live && (
+          <nav className="rx-shell-nav" aria-label="FINCO application navigation" data-react-shell-nav="true">
+            <a href="/v2/model-react/" data-shell-nav="library">My Projects</a>
+            <a href="/v2/model-react/#new-project" data-shell-nav="new-project">New Project</a>
+            <a href="/v2/model-react/#compare-projects" data-shell-nav="compare">Compare</a>
+            <a href="/v2/model-react/#guide" data-shell-nav="guide">Guide &amp; Methodology</a>
+            <a href="/v2/model-react/#platform" data-shell-nav="platform">API &amp; Verification</a>
+            <a href="/v2/model-react/#account" data-shell-nav="account">Account</a>
+            <span className="rx-shell-external-status" data-radar-boundary="unavailable" title="FINCO Radar runs as a separate external deployment.">Radar: separate service</span>
+          </nav>
+        )}
         <div className="fm-top-right">
           <span className={live ? "fm-live-label" : "fm-demo-label"} data-origin-chip={dataOrigin}>{originText}</span>
           <ThemeSelector />
@@ -131,17 +142,6 @@ export function Shell({ children, crumb = "Project library", mainContentId = "fm
             <a className="rcm-nav-new-project" href="/v2/model-react/#new-project" data-nav-new-project="true">+ New Project</a></>
           : <><a href={`${fincoBasePath()}ProjectLibrary`}>Portfolio</a><span aria-hidden="true">/</span><strong>Renewables</strong><span aria-hidden="true">/</span><span className="fm-crumb-current" aria-current="page">{crumb}</span></>}
       </nav>}
-      {live && (
-        <nav className="rx-shell-nav" aria-label="FINCO application navigation" data-react-shell-nav="true">
-          <a href="/v2/model-react/" data-shell-nav="library">My Projects</a>
-          <a href="/v2/model-react/#new-project" data-shell-nav="new-project">New Project</a>
-          <a href="/v2/model-react/#compare-projects" data-shell-nav="compare">Compare</a>
-          <a href="/v2/model-react/#guide" data-shell-nav="guide">Guide &amp; Methodology</a>
-          <a href="/v2/model-react/#platform" data-shell-nav="platform">API &amp; Verification</a>
-          <a href="/v2/model-react/#account" data-shell-nav="account">Account</a>
-          <span className="rx-shell-external-status" data-radar-boundary="unavailable" title="FINCO Radar runs as a separate external deployment.">Radar: separate service</span>
-        </nav>
-      )}
       {!live && <div className="fm-notice">Design prototype • No live calculations or backend connection</div>}
       {children}
     </div>

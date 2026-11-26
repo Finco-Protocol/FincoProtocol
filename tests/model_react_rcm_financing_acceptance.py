@@ -167,19 +167,27 @@ def test_react_and_legacy_editors_send_byte_identical_configuration_documents(li
     context, page, record, errors = fin_session("rcm-fin-parity")
     n = len(studio(context, live_server, record.project_code)["bankability"]["periods"])
     assert n >= 10
-    # Legacy form
+    # Legacy form is reached under the explicit rollback flag while the React check below runs under React ON.
     legacy_bodies = []
-    page.route("**/v2/workbook/update", lambda route: (legacy_bodies.append(route.request.post_data), route.abort()))
-    page.goto(f"{live_server}/v2/workbook?project={record.project_code}")
-    page.wait_for_selector("[data-f2-form]", state="attached")
-    page.evaluate(LEGACY_DRIVE, plan(n))
-    page.wait_for_function("() => true")
-    for _ in range(50):
-        if legacy_bodies:
-            break
-        page.wait_for_timeout(100)
-    assert legacy_bodies, "the Legacy form did not submit"
-    page.unroute("**/v2/workbook/update")
+    old_flag = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        page.route("**/v2/workbook/update", lambda route: (legacy_bodies.append(route.request.post_data), route.abort()))
+        page.goto(f"{live_server}/v2/workbook?project={record.project_code}")
+        page.wait_for_selector("[data-f2-form]", state="attached")
+        page.evaluate(LEGACY_DRIVE, plan(n))
+        page.wait_for_function("() => true")
+        for _ in range(50):
+            if legacy_bodies:
+                break
+            page.wait_for_timeout(100)
+        assert legacy_bodies, "the Legacy form did not submit"
+        page.unroute("**/v2/workbook/update")
+    finally:
+        if old_flag is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = old_flag
     # React form, same values
     react_bodies = []
     page.route("**/v2/workbook/update", lambda route: (react_bodies.append(route.request.post_data), route.abort("connectionreset")))

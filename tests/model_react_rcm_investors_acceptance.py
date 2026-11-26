@@ -103,28 +103,36 @@ def test_react_and_legacy_editors_send_byte_identical_agreement_documents(live_s
     bodies = []
     page.route("**/v2/workbook/investor/agreement", lambda route: (bodies.append(route.request.post_data), route.abort())
                if route.request.method == "POST" else route.continue_())
-    # Legacy form
-    page.goto(f"{live_server}/v2/workbook?project={record.project_code}")
-    page.wait_for_selector("[data-testid='f4-agreement-panel']", state="attached")
-    page.evaluate("() => { const p = document.querySelector('[data-testid=\"f4-agreement-panel\"]'); p.open = true; p.dispatchEvent(new Event('toggle', {bubbles: false})); }")
-    page.wait_for_selector(".f4-agreement-form", state="attached", timeout=30000)
-    # htmx binds the swapped-in form after its settle delay (``htmx-added`` is removed then); submitting earlier is a native post
-    page.wait_for_function("() => !document.querySelector('.htmx-added') && !!window.htmx", timeout=30000)
-    page.wait_for_timeout(100)
-    page.evaluate("""(p) => {
-      const form = document.querySelector('.f4-agreement-form');
-      form.elements.agreement_id.value = p.id;
-      const add = (kind) => form.querySelector(`[data-f4-add="${kind}"]`).click();
-      const fill = (row, values) => row.querySelectorAll('[data-f4-field]').forEach((el, i) => { el.value = values[i]; });
-      p.holders.forEach((h) => { add('investor'); fill(form.querySelectorAll('[data-f4-investor]')[form.querySelectorAll('[data-f4-investor]').length - 1], h); });
-      p.contributions.forEach((c) => { add('contribution'); fill(form.querySelectorAll('[data-f4-contribution]')[form.querySelectorAll('[data-f4-contribution]').length - 1], c); });
-      form.requestSubmit(form.querySelector('button[name="action"][value="save"]'));
-    }""", PARITY)
-    for _ in range(60):
-        if bodies:
-            break
+    # Legacy form is reached under the explicit rollback flag while the React check below runs under React ON.
+    old_flag = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        page.goto(f"{live_server}/v2/workbook?project={record.project_code}")
+        page.wait_for_selector("[data-testid='f4-agreement-panel']", state="attached")
+        page.evaluate("() => { const p = document.querySelector('[data-testid=\"f4-agreement-panel\"]'); p.open = true; p.dispatchEvent(new Event('toggle', {bubbles: false})); }")
+        page.wait_for_selector(".f4-agreement-form", state="attached", timeout=30000)
+        # htmx binds the swapped-in form after its settle delay (``htmx-added`` is removed then); submitting earlier is a native post
+        page.wait_for_function("() => !document.querySelector('.htmx-added') && !!window.htmx", timeout=30000)
         page.wait_for_timeout(100)
-    assert bodies, "the Legacy form did not submit"
+        page.evaluate("""(p) => {
+          const form = document.querySelector('.f4-agreement-form');
+          form.elements.agreement_id.value = p.id;
+          const add = (kind) => form.querySelector(`[data-f4-add="${kind}"]`).click();
+          const fill = (row, values) => row.querySelectorAll('[data-f4-field]').forEach((el, i) => { el.value = values[i]; });
+          p.holders.forEach((h) => { add('investor'); fill(form.querySelectorAll('[data-f4-investor]')[form.querySelectorAll('[data-f4-investor]').length - 1], h); });
+          p.contributions.forEach((c) => { add('contribution'); fill(form.querySelectorAll('[data-f4-contribution]')[form.querySelectorAll('[data-f4-contribution]').length - 1], c); });
+          form.requestSubmit(form.querySelector('button[name="action"][value="save"]'));
+        }""", PARITY)
+        for _ in range(60):
+            if bodies:
+                break
+            page.wait_for_timeout(100)
+        assert bodies, "the Legacy form did not submit"
+    finally:
+        if old_flag is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = old_flag
     legacy = parse_qs(bodies[0], keep_blank_values=True)
     # React form, same values
     del bodies[:]

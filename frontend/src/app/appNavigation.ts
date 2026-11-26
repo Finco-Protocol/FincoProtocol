@@ -1,3 +1,5 @@
+import { isWizardHash } from "./newProject/api";
+
 /** One canonical route and navigation source of truth for the unified React application. */
 
 export const APP_ROUTES = {
@@ -25,7 +27,9 @@ export type TopAppRoute =
 
 export function parseAppHash(hash: string): TopAppRoute {
   const clean = (hash || "").replace(/^#/, "");
-  if (clean === "new-project" || clean.startsWith("new-project/")) return "new-project";
+  if (isWizardHash(`#${clean}`) || clean.startsWith("new-project/") || clean.startsWith("new-project:")) {
+    return "new-project";
+  }
   if (clean === "compare-projects") return "compare-projects";
   if (clean === "guide" || clean === "help" || clean === "methodology" || clean === "known-limitations") return "guide";
   if (clean === "platform" || clean === "api" || clean === "verify") return "platform";
