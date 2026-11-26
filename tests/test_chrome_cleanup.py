@@ -125,16 +125,19 @@ class TestLimitationsRemovedFromBrandBar:
 class TestGuideRouteFixed:
     """GET /pilot-guide must return HTTP 200 with guide content."""
 
-    def test_pilot_guide_returns_200(self, client):
-        """GET /pilot-guide must not return 500; root cause was missing docs/external_pilot_guide.md."""
-        resp = client.get("/pilot-guide")
-        assert resp.status_code == 200, (
-            f"/pilot-guide returned {resp.status_code}; expected 200. "
-            "Root cause: docs/external_pilot_guide.md was missing."
-        )
+    def test_pilot_guide_returns_200(self, client, monkeypatch):
+        """Default-ON redirects /pilot-guide to React #guide; explicit rollback renders guide directly."""
+        resp = client.get("/pilot-guide", follow_redirects=False)
+        assert resp.status_code == 302 and resp.headers["location"] == "/v2/model-react/#guide"
+        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+        legacy = client.get("/pilot-guide")
+        assert legacy.status_code == 200
 
-    def test_pilot_guide_content_visible(self, client):
-        """Guide page must render actual guide content, not an error page."""
+    def test_pilot_guide_content_visible(self, client, monkeypatch):
+        """Explicit rollback /pilot-guide renders markdown guide content; default React serves SPA shell."""
+        default_resp = client.get("/pilot-guide", follow_redirects=True)
+        assert default_resp.status_code == 200 and ('id="root"' in default_resp.text or "finco-react" in default_resp.text)
+        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
         resp = client.get("/pilot-guide")
         assert resp.status_code == 200
         text = resp.text

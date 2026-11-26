@@ -254,6 +254,13 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
             </div>
           </>
         )}
+        <footer className="app-footer rx-footer" data-testid="react-library-footer">
+          <p className="app-footer-caveat">
+            Outputs are financial modelling estimates and should be reviewed
+            before use in investment, lender, tax, accounting or legal
+            decisions.
+          </p>
+        </footer>
       </main>
     </Shell>
   );
