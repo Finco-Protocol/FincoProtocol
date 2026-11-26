@@ -25,6 +25,19 @@ from tests.test_cost_workspace_parity_v1 import (  # noqa: F401
 )
 from app.contingency_authority import SCENARIO_OVERRIDE_KEY
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 SOLAR_WIND = ["generic_solar_reference", "generic_wind_reference"]
 
 

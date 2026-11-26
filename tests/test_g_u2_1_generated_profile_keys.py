@@ -18,10 +18,17 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared real
     OWNER, _doc, _hash, _planner_routes, _row, _save, _ws, env, solar, tokens)
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 GROUP = "C.02"      # a category the reference project already times (a category with no base amount has no default construction timing)
 

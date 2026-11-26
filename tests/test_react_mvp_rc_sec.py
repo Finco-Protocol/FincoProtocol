@@ -9,10 +9,17 @@ from app.workbook.financing_csrf import issue_token
 from tests.test_model_react_ux040506_v1 import env, flag_on, OWNER
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 
 def state(record):

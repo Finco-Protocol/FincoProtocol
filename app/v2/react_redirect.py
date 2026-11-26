@@ -32,6 +32,9 @@ _SHEET_TO_HASH: dict[str, str] = {
 }
 
 
+ALLOWED_LIBRARY_NOTICES = frozenset({"project-unavailable"})
+
+
 def react_library_url(
     *,
     hash_fragment: Optional[str] = None,
@@ -40,7 +43,7 @@ def react_library_url(
 ) -> str:
     """Build a safe same-origin React Library URL."""
     params: dict[str, str] = {}
-    if notice:
+    if notice in ALLOWED_LIBRARY_NOTICES:
         params["notice"] = notice
     if search:
         params["search"] = search

@@ -13,6 +13,21 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 ORIGINAL_AST_SHA256 = "ed5810a4daa25f8714b8e19bae725ba723131e43efd1a442f3639095d77fdc8b"   # module as on main d6270d58
 TEST = "test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds"
 FIXTURE = "reference_runs_seeded"

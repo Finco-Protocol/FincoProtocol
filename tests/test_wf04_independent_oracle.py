@@ -13,10 +13,17 @@ from tests.test_wf04_credit_debt_metrics import EOD, COV, cenv, credit, history,
 from tools import wf04_independent_dscr_oracle as oracle
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 SOURCE = pathlib.Path(oracle.__file__)
 

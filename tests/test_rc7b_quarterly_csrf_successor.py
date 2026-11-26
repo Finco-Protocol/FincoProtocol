@@ -9,6 +9,19 @@ import pytest
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 @pytest.mark.parametrize("identity,status", [("anonymous", 401), ("other-owner", 404), ("reference", 403)])
 def test_real_endpoint_security_preserves_workspace_and_history(env, monkeypatch, identity, status):
     from app.auth import COOKIE_NAME, create_session_token, generate_csrf_token

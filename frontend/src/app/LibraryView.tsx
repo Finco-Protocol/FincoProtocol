@@ -9,6 +9,7 @@ import { NO_FILTERS, type MyProjects, type ProjectCard, type ProjectFilters } fr
 import { FriendlyError } from "./productLanguage";
 import { RunIdentityLabel } from "./runIdentity";
 
+const PROJECT_UNAVAILABLE_NOTICE = "That project is not available. It may have been removed or you may not have access to it.";
 const EDITED = [["", "Any time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]] as const;
 const STATUSES = [["", "Any status"], ["not_run", "Not run yet"], ["current", "Results up to date"], ["outdated", "Results outdated"]] as const;
 const SORTS = [["recent", "Recently updated"], ["name", "Name (A–Z)"], ["last_run", "Last Run"]] as const;
@@ -49,6 +50,10 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
   const [loading, setLoading] = useState(true);
   const [lifecycleBusy, setLifecycleBusy] = useState("");
   const [lifecycleMessage, setLifecycleMessage] = useState("");
+  /** UX-027: the server redirects an unknown OR inaccessible project to `?notice=project-unavailable`.  Only that one fixed token is recognised and
+   *  the text is a constant (never echoed from the URL), so "does not exist" and "not yours" stay indistinguishable. Read once: the filter-sync
+   *  below rewrites the query string, the message stays until the user leaves this view. */
+  const [projectUnavailable] = useState(() => new URLSearchParams(window.location.search).get("notice") === "project-unavailable");
   const fromHistory = useRef(false);
   const restoreScroll = useRef<number | null>(null);
   /** Monotonic ticket of the newest list request: an older answer (e.g. the post-Archive refresh of the ACTIVE list arriving after the user opened
@@ -149,6 +154,7 @@ export function LibraryView({ onOpenProject }: { onOpenProject: (code: string) =
         <p><button type="button" className="rx-button rx-button-secondary" aria-pressed={filters.archived}
           onClick={() => patch({ archived: !filters.archived })}>{filters.archived ? "Show active projects" : "Show archived projects"}</button></p>
         {lifecycleMessage && <p className="rx-note" role="status">{lifecycleMessage}</p>}
+        {projectUnavailable && <p className="rx-note" role="status" data-testid="library-notice" data-library-notice="project-unavailable">{PROJECT_UNAVAILABLE_NOTICE}</p>}
 
         {empty ? (
           <section className="rx-card rcux-empty" data-library-empty="true" aria-labelledby="rcux-empty-h">

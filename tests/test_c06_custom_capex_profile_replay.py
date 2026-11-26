@@ -21,6 +21,19 @@ from app.workbook.registry import WORKBOOK
 from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared real-app fixtures and helpers)
     OWNER, _doc, _financing, _hash, _latest, _periods, _planner_routes, _row, _run, _save, _ws, env, solar, tokens)
 
+
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
 GROUP = "C.02"      # a category the reference project already times (a category with no base amount has no default construction timing)
 _LOG: list[dict] = []
 

@@ -97,9 +97,11 @@ FINCO46_FIXED_C = {
 }
 
 
-def test_known_defects_list_is_exactly_the_reviewed_35():
+def test_known_defects_list_is_empty_after_all_reviewed_35_were_resolved():
+    # FINCO47 Slice 47E resolved all 35 reviewed #488 nodes at their root cause (each now passes as a real
+    # test; none was deleted, skipped or xfailed). The list must stay empty: new defects are never added to it.
     listed = check_groups.known(ROOT / "tests/known_defects.txt")
-    assert len(listed) == 35
+    assert len(listed) == 0, sorted(listed)[:5]
     assert not (set(listed) & FINCO46_FIXED_B)
     assert not (set(listed) & FINCO46_FIXED_C)
     assert not (set(listed) & FINCO45C_FIXED)

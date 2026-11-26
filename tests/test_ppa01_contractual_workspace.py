@@ -16,10 +16,17 @@ from tests.test_ppa01_contractual_timing import terms, dated, book
 from tests.test_ppa01_index_series_revenue import _operating
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 
 @pytest.fixture(autouse=True)

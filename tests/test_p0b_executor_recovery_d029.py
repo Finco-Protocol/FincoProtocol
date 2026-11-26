@@ -21,10 +21,17 @@ from tests.test_model_credit_decision_v3_real_runs import history
 from tests.test_model_decision_workspace_v2 import env as _env, tokens  # noqa: F401  (fixture re-export)
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 env = _env
 

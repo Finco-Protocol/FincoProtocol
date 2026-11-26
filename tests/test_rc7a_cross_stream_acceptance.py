@@ -14,6 +14,19 @@ from tests.test_model_rc7_capex_profile_run import (
 )
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
 def test_profiled_run_credit_and_history_export_share_immutable_evidence(cenv):
     from app.persistence.run_history_repository import get_run_history
     from app.services.export_service import resolve_canonical_last_run_from_workspace

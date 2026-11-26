@@ -13,10 +13,17 @@ from tests.test_pr394_staging_corrections_v1 import costlines, run_json, save_ba
 from tests.test_model_react_wf2_projections_v1 import cas, env  # noqa: F401  (this fixture mounts the capex/opex line routers too)
 
 
-@pytest.fixture(autouse=True)
-def _finco47_legacy_ssr_rollback(monkeypatch):
-    """Scoped to this legacy SSR test module; default production flag stays React ON."""
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+@pytest.fixture(autouse=True, scope="module")
+def _finco47_legacy_ssr_rollback():
+    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
+    surface this module still exercises; default production flag stays React ON and the
+    environment is restored exactly when the module finishes."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("FINCO_MODEL_REACT_V1", "0")
+    try:
+        yield
+    finally:
+        patch.undo()
 
 KINDS = ("solar", "wind")
 KPI_KEYS = ("project_irr", "equity_irr", "sponsor_irr", "min_dscr", "avg_dscr")
