@@ -9,19 +9,8 @@ import pytest
 from tests.model_mutation_csrf import post_valid_mutation
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
+from tests.model_react_test_helpers import react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "decision-user"
 EOD = "debt.contract.min_dscr_eod"
@@ -29,9 +18,8 @@ COV = "debt.contract.contractual_dscr"
 
 
 def set_field(env, record, field_id, value):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     return post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                               data={"project": record.project_code, "field_id": field_id, "value": str(value), **tokens(page)})
+                               data={"project": record.project_code, "field_id": field_id, "value": str(value), **react_workbook_tokens(env.client, record.project_code)})
 
 
 def saved(env, record, field_id, value):
@@ -116,7 +104,7 @@ def test_a_later_edit_never_rewrites_a_historical_run_and_the_last_run_becomes_s
 @pytest.mark.parametrize("bad", ["abc", "0", "-1", "0.001", "10.5", "nan", "inf"])
 def test_invalid_values_are_rejected_by_the_writer_and_persist_nothing(env, bad):
     record = env.create("solar")
-    env.client.get("/v2/workbook", params={"project": record.project_code})      # the first page load normalises unrelated snapshot values
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})      # the first page load normalises unrelated snapshot values
     before = workspace(record)
     response = set_field(env, record, EOD, bad)
     assert response.status_code != 500
@@ -219,6 +207,6 @@ def test_opening_the_workbook_adds_no_snapshot_key_and_never_stales_an_existing_
     run(env, record)
     assert freshness(env, record) == "CURRENT"
     for _ in range(2):
-        env.client.get("/v2/workbook", params={"project": record.project_code})
+        env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     assert freshness(env, record) == "CURRENT"
     assert not [k for k in workspace(record).draft_snapshot if k in ("dscr_min_eod_x", "dscr_contractual_x")]

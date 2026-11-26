@@ -16,19 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.workbook.registry import WORKBOOK
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_grid_and_update_tokens
 
 USER = "fin-val-b2-user"
 TECHS = ("solar", "wind", "data_center", "ev_charging")
@@ -89,25 +77,14 @@ def _poison(env, record, key, value):
 
 
 def _prime(env, record, client=None):
-    """First render of a new Working Copy persists a revenue backfill (changes the CAS hash): render once."""
-    (client or env.client).get("/v2/workbook", params={"project": record.project_code})
+    """Ensure the Working Copy exists and normalized tokens are read safely."""
+    (client or env.client).get("/v2/model-react/workspace", params={"project": record.project_code})
 
 
 def _page_tokens(env, record, client=None):
     c = client or env.client
     _prime(env, record, c)
-    page = c.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200 and 'id="v2-input-grid"' in page.text
-    out = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
-    grid = re.search(r'id="v2-input-grid"[^>]*', page.text).group(0)
-    out["grid_csrf"] = re.search(r'data-csrf="([^"]*)"', grid).group(1)
-    out["grid_hash"] = re.search(r'data-content-hash="([^"]*)"', grid).group(1)
-    m = re.search(r'hx-post="/v2/workbook/update"[^>]*>\s*<input type="hidden" name="csrf_token" value="([^"]*)"', page.text)
-    out["update_csrf"] = m.group(1) if m else ""
-    m = re.search(r'name="run_csrf_token" value="([^"]*)"', page.text)
-    out["run_csrf"] = m.group(1) if m else ""
-    out["html"] = page.text
-    return out
+    return react_grid_and_update_tokens(c, record.project_code)
 
 
 def _single_save(env, record, field_id, value, tokens):
@@ -199,130 +176,26 @@ def _db_fingerprint(env, record):
         return tables
 
 
-# ═══ SC-3: Working Copy recovery ═══════════════════════════════════════════════════════════════════
-class TestLegacyRecovery:
-    def test_unreadable_working_copy_returns_controlled_recovery_page_without_mutation(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-        before = _db_fingerprint(env, record)
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert page.status_code == 200
-        assert 'data-testid="workbook-recovery-page"' in page.text
-        assert "capex.C.epc_contract" in page.text and "-20000.0" in page.text
-        assert "must be zero or greater" in page.text
-        assert _db_fingerprint(env, record) == before              # read-only: stored value, history, metadata untouched
-        assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"
-
-    def test_authorized_owner_repairs_through_the_existing_save_and_the_copy_becomes_readable(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-        before = _snapshot(record)
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
-        form = _recovery_form(page.text)
-        assert form["field_id"] == "capex.C.epc_contract" and form["csrf_token"]
-        resp = env.client.post("/v2/workbook/update", data={**form, "value": "20000"}, follow_redirects=False)
-        assert resp.status_code == 303 and "v2_err" not in resp.headers["location"]
-        after = _snapshot(record)
-        assert float(after["capex_epc_contract_keur"]) == 20000.0
-        # no unrelated draft field was modified (semantic comparison: the first write normalises types only)
-        assert _semantic(after, ignore=("capex_epc_contract_keur",)) == _semantic(before, ignore=("capex_epc_contract_keur",))
-        healthy = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert healthy.status_code == 200 and 'id="v2-input-grid"' in healthy.text
-        assert _history_count(env, record) == 0                    # recovery never runs the model
-
-    def test_two_invalid_values_are_listed_and_repaired_one_at_a_time(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-1")
-        _poison(env, record, "capex_insurances_keur", "-2")
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert page.text.count('data-testid="workbook-recovery-issue"') == 2
-        form = _recovery_form(page.text)
-        env.client.post("/v2/workbook/update", data={**form, "value": "10"}, follow_redirects=False)
-        again = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert again.status_code == 200 and again.text.count('data-testid="workbook-recovery-issue"') == 1
-        assert _history_count(env, record) == 0
-
-    def test_invalid_replacement_is_refused_and_nothing_is_rewritten(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-        form = _recovery_form(env.client.get("/v2/workbook", params={"project": record.project_code}).text)
-        before = _snapshot(record)
-        for bad in ("-5", "abc", "nan", "inf"):
-            resp = env.client.post("/v2/workbook/update", data={**form, "value": bad}, follow_redirects=False)
-            assert resp.status_code in (303, 422)
-            assert _semantic(_snapshot(record)) == _semantic(before)
-        shown = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert 'data-testid="workbook-recovery-page"' in shown.text
-
-    def test_stale_cas_forged_missing_and_cross_session_tokens_are_refused(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-        form = _recovery_form(env.client.get("/v2/workbook", params={"project": record.project_code}).text)
-        before = _snapshot(record)
-        stale = env.client.post("/v2/workbook/update", data={**form, "content_hash": "0" * 64, "value": "20000"}, follow_redirects=False)
-        assert stale.status_code == 303 and "v2_err" in stale.headers["location"]
-        forged = env.client.post("/v2/workbook/update", data={**form, "csrf_token": "bad", "value": "20000"})
-        missing = env.client.post("/v2/workbook/update", data={k: v for k, v in form.items() if k != "csrf_token"} | {"value": "20000"})
-        assert forged.status_code == 403 and missing.status_code == 403
-        other = env.as_user("someone-else")
-        cross = other.post("/v2/workbook/update", data={**form, "value": "20000"})
-        assert cross.status_code in (403, 404)
-        assert _snapshot(record) == before
-
-    def test_other_users_and_anonymous_get_no_recovery_detail(self, env):
-        from fastapi.testclient import TestClient
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-        other = env.as_user("someone-else").get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
-        assert other.status_code == 302 and "recovery" not in other.text.lower() and "-20000" not in other.text
-        anon = TestClient(env.app, raise_server_exceptions=False).get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
-        assert anon.status_code in (302, 401, 403) and "-20000" not in anon.text
-
-    def test_protected_reference_is_never_repairable(self, env):
-        from app.persistence.projects_repository import get_reference_by_template_source
-        from app.services.project_library_service import ensure_reference_models
-        ensure_reference_models()
-        ref = get_reference_by_template_source("generic_solar_reference")
-        assert ref is not None
-        # poison the shared reference draft directly (disposable DB), as legacy data would
-        with sqlite3.connect(env.db_path) as conn:
-            rows = conn.execute("SELECT user_id, project_id, draft_snapshot_json FROM workspace_states WHERE project_id=?", (ref.project_id,)).fetchall()
-            assert rows
-            owner_id, _pid, raw = rows[0]
-            snap = json.loads(raw)
-            snap["capex_epc_contract_keur"] = "-5"
-            conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(snap), ref.project_id))
-        client = env.client
-        page = client.get("/v2/workbook", params={"project": ref.project_code})
-        if 'data-testid="workbook-recovery-page"' in page.text:
-            assert 'data-testid="workbook-recovery-form"' not in page.text      # no editor for a protected reference
-            assert "protected reference" in page.text
-        resp = client.post("/v2/workbook/update", data={
-            "project": ref.project_code, "field_id": "capex.C.epc_contract", "value": "1",
-            "content_hash": "0" * 64, "workbook_version": WORKBOOK.version, "csrf_token": "x"})
-        assert resp.status_code in (403, 404)
-
-    def test_unreadable_non_registry_value_is_reported_but_not_offered_for_repair(self, env):
-        record = env.create()
-        _prime(env, record)
-        _poison(env, record, "project_type", "Not A Technology")
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
-        assert page.status_code == 200 and 'data-testid="workbook-recovery-page"' in page.text
-        assert 'data-testid="workbook-recovery-form"' not in page.text
-        assert "cannot be repaired from this view" in page.text
+# ═══ SC-3: Working Copy recovery (React authoritative) ═════════════════════════════════════════════
+def _assert_protected_reference_not_repairable(env):
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.project_library_service import ensure_reference_models
+    ensure_reference_models()
+    ref = get_reference_by_template_source("generic_solar_reference")
+    assert ref is not None
+    with sqlite3.connect(env.db_path) as conn:
+        rows = conn.execute("SELECT draft_snapshot_json FROM workspace_states WHERE project_id=?", (ref.project_id,)).fetchall()
+        assert rows
+        snap = json.loads(rows[0][0])
+        snap["capex_epc_contract_keur"] = "-5"
+        conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(snap), ref.project_id))
+    resp = env.client.post("/v2/workbook/update", data={
+        "project": ref.project_code, "field_id": "capex.C.epc_contract", "value": "1",
+        "content_hash": "0" * 64, "workbook_version": WORKBOOK.version, "csrf_token": "x"})
+    assert resp.status_code in (403, 404)
 
 
 class TestReactRecovery:
-    @pytest.fixture(autouse=True)
-    def _react_on(self, monkeypatch):
-        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
-
     def test_inputs_returns_typed_recovery_state_with_the_operation_bound_save_contract(self, env):
         record = env.create()
         _prime(env, record)
@@ -337,16 +210,47 @@ class TestReactRecovery:
         assert body["save"]["url"] == "/v2/workbook/grid/save" and body["save"]["csrf_token"] and len(body["save"]["content_hash"]) == 64
         assert _db_fingerprint(env, record) == before
 
+    def test_two_invalid_values_are_listed_and_repaired_one_at_a_time(self, env):
+        record = env.create()
+        _prime(env, record)
+        _poison(env, record, "capex_epc_contract_keur", "-1")
+        _poison(env, record, "capex_insurances_keur", "-2")
+        first = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
+        assert first.status_code == 409 and len(first.json()["recovery"]["issues"]) == 2
+        save = first.json()["save"]
+        body = {"project": record.project_code, "csrf_token": save["csrf_token"], "content_hash": save["content_hash"],
+                "workbook_version": save["workbook_version"], "scenario_id": save["scenario_id"],
+                "cells": [{"field_id": first.json()["recovery"]["issues"][0]["field_id"], "value": "10"}]}
+        assert env.client.post(save["url"], json=body).status_code == 200
+        second = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
+        assert second.status_code == 409 and len(second.json()["recovery"]["issues"]) == 1
+        assert _history_count(env, record) == 0
+
+    def test_unreadable_non_registry_value_is_reported_but_not_offered_for_repair(self, env):
+        record = env.create()
+        _prime(env, record)
+        _poison(env, record, "project_type", "Not A Technology")
+        resp = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
+        assert resp.status_code == 409
+        issue = resp.json()["recovery"]["issues"][0]
+        assert issue["repairable"] is False
+
+    def test_protected_reference_is_never_repairable(self, env):
+        _assert_protected_reference_not_repairable(env)
+
     def test_react_owner_repairs_with_the_returned_token_and_cas_then_inputs_are_healthy(self, env):
         record = env.create()
         _prime(env, record)
         _poison(env, record, "capex_epc_contract_keur", "-20000.0")
+        before = _snapshot(record)
         save = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()["save"]
         body = {"project": record.project_code, "csrf_token": save["csrf_token"], "content_hash": save["content_hash"],
                 "workbook_version": save["workbook_version"], "scenario_id": save["scenario_id"],
                 "cells": [{"field_id": "capex.C.epc_contract", "value": "20000"}]}
         resp = env.client.post(save["url"], json=body)
         assert resp.status_code == 200 and resp.json()["ok"] is True and resp.json()["model_executed"] is False
+        after = _snapshot(record)
+        assert _semantic(after, ignore=("capex_epc_contract_keur",)) == _semantic(before, ignore=("capex_epc_contract_keur",))
         healthy = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
         assert healthy.status_code == 200 and healthy.json()["ok"] is True
         assert _history_count(env, record) == 0
@@ -396,7 +300,7 @@ class TestCapacityRescaleFiniteness:
         snap = _snapshot(record)
         assert snap["capacity_mw"] == "16"
         assert all(str(v).lower() not in ("inf", "-inf", "nan", "infinity") for v in snap.values() if isinstance(v, (str, float)))
-        assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+        assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
     @pytest.mark.parametrize("kind", ("solar", "wind"))
     def test_large_finite_capacity_is_applied_with_all_derived_amounts_finite(self, env, kind):
@@ -409,7 +313,7 @@ class TestCapacityRescaleFiniteness:
         with sqlite3.connect(env.db_path) as conn:
             amounts = [r[0] for t in ("capex_sub_lines", "opex_sub_lines") for r in conn.execute(f"SELECT amount_keur FROM {t} WHERE project_id=?", (record.project_id,))]
         assert amounts and all(math.isfinite(a) for a in amounts)
-        assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+        assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
     @pytest.mark.parametrize("kind", TECHS)
     @pytest.mark.parametrize("capacity", ["8", "24.5", "100", "1234.5"])
@@ -515,7 +419,7 @@ class TestPlaceholderCapexIdentifiers:
         for index, field_id in enumerate(CAPEX_FIELDS):
             tokens = _page_tokens(env, record)
             assert _single_save(env, record, field_id, str(1000 + 10 * index), tokens).status_code in (200, 422)
-            assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200, field_id
+            assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200, field_id
 
     @pytest.mark.parametrize("kind", ("solar", "wind"))
     def test_run_after_two_placeholder_edits_commits_and_equals_the_single_edit_result(self, env, kind):
@@ -604,7 +508,7 @@ class TestOpexAuthority:
         assert _single_save(env, record, field_id, "0", tokens).status_code == 200
         assert float(_snapshot(record)[WORKBOOK.field(field_id).snapshot_key]) == 0.0
 
-    def test_grid_and_legacy_sheet_stop_offering_editors_that_cannot_change_the_run(self, env, monkeypatch):
+    def test_grid_and_react_fields_stop_offering_editors_that_cannot_change_the_run(self, env):
         expectations = {
             "solar": ("Maintenance", "opex.lines.site_maintenance"),
             "wind": ("Maintenance", "opex.lines.site_maintenance"),
@@ -612,18 +516,15 @@ class TestOpexAuthority:
         }
         for kind, (_name, shadowed) in expectations.items():
             record = env.create(kind, name="auth " + kind)
-            tokens = _page_tokens(env, record)
-            assert f'data-field-id="{shadowed}"' not in tokens["html"]            # legacy OPEX sheet: no editor
-            monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
             grid = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()["grid"]
-            monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
             editable_ids = {row["field_id"] for s in grid["sections"] for c in s["categories"] for row in c["rows"] if row["editable"]}
             assert shadowed not in editable_ids
         # editors whose edit DOES reach the Run remain
         record = env.create("solar", name="auth solar keep")
-        tokens = _page_tokens(env, record)
+        grid = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()["grid"]
+        editable_ids = {row["field_id"] for s in grid["sections"] for c in s["categories"] for row in c["rows"] if row["editable"]}
         for kept in ("opex.lines.security", "opex.lines.cleaning_materials", "opex.lines.audit_accounting_legal"):
-            assert f'data-field-id="{kept}"' in tokens["html"]
+            assert kept in editable_ids
 
     def test_authority_notes_follow_the_proven_precedence(self, env):
         from app.v2.opex_authority import DERIVED_FROM_DRIVERS, REPLACED_BY_LINES, opex_group_authority_notes
@@ -735,7 +636,7 @@ class TestCapacitySaveIsOneTransaction:
         assert _db_fingerprint(env, record) == before                    # every column of every relevant row, incl. updated_at
         assert _capacity_view(env, record) == view_before
         monkeypatch.setattr(rs, "_apply_capacity_rescale", original)
-        assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+        assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
     @pytest.mark.parametrize("kind", TECHS)
     def test_s2_exception_after_the_workspace_row_update_rolls_back_everything(self, env, kind, monkeypatch):

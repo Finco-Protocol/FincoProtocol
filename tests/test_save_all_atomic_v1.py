@@ -21,19 +21,6 @@ from app.workbook.financing_csrf import issue_token
 from app.workbook.registry import WORKBOOK
 from app.workbook.workbook_identity import assemble_consistent_for_get
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 OWNER = "save-all-owner"
 STRANGER = "save-all-stranger"
 URL = "/v2/workbook/save-all"
@@ -325,7 +312,7 @@ def test_unauthenticated_request_is_refused(world):
 
 def test_protected_reference_is_never_writable(world):
     from app.persistence.projects_repository import resolve_accessible_project
-    page = world.owner.get("/v2/workbook?project=generic_solar_reference-reference")
+    page = world.owner.get("/v2/model-react/workspace?project=generic_solar_reference-reference")
     if page.status_code != 200:
         pytest.skip("reference project not seeded in this fixture")
     ref, _owner = resolve_accessible_project(OWNER, "generic_solar_reference-reference")
@@ -416,8 +403,6 @@ def test_save_all_persists_exactly_what_the_section_writers_persist(world):
 # ── PPA contracts and non-Base scenario ───────────────────────────────────────────────────────────
 
 def _contracts_json(world, rec, indexation=0.02):
-    import os
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
     payload = world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
     window = payload["contracts"].get("operating_window") or {}
     assert window.get("start") and window.get("end"), payload["contracts"].keys()

@@ -11,19 +11,8 @@ import pytest
 
 from tools.quarterly_research import RESEARCH_ONLY, RELEASE_CLOSED, NOT_A_PROJECT_RUN, ACTIVATION_ENABLED
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
+from tests.model_react_test_helpers import react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -146,7 +135,6 @@ def test_actual_workbook_run_refusal_preserves_last_run_and_history(env, monkeyp
     before = [r.to_dict() for r in get_run_history(OWNER, project.project_id)]
     ws = get_workspace_state(OWNER, project.project_id)
     runtime = (ws.last_runtime_snapshot, ws.last_runtime_summary, ws.last_runtime_composite_hash)
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     normal = factories.create_generic_solar_reference
 
     def unsupported(*args, **kwargs):
@@ -156,7 +144,7 @@ def test_actual_workbook_run_refusal_preserves_last_run_and_history(env, monkeyp
     # Inject invalid typed input upstream, not a substituted engine/result.
     monkeypatch.setattr(factories, "create_generic_solar_reference", unsupported)
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-        data={"project": project.project_code, **tokens(page.text)})
+        data={"project": project.project_code, **react_workbook_tokens(env.client, project.project_code)})
     assert response.status_code == 200 and "v2-banner-error" in response.text
     assert "H1_UNSUPPORTED_PERIOD_FREQUENCY" in caplog.text
     assert [r.to_dict() for r in get_run_history(OWNER, project.project_id)] == before

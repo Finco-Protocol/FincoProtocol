@@ -24,19 +24,7 @@ from app.reference_detail_catalog import (
 )
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import WorkbookUpdateService
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_grid_and_update_tokens
 
 USER = "fin-val-b1-user"
 CAPEX_FIELDS = sorted(
@@ -90,27 +78,8 @@ def _ws(record):
 
 
 def _page_tokens(env, record):
-    """Tokens exactly as the server renders them for this session and project.
-
-    * ``grid_csrf``    - ``data-csrf`` of the rendered input grid (the grid-save token of whichever contract
-                         the server is running: plain signed token on current main, operation-bound
-                         ``grid-save`` token under the SEC-02 mutation contract).
-    * ``update_csrf``  - the hidden ``csrf_token`` of a rendered ``/v2/workbook/update`` field form
-                         (``workbook-update`` operation token under SEC-02; absent on current main, where
-                         that route carries no token and the key is simply not sent).
-    Nothing is minted by the test; no unpublished security module is imported.
-    """
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200
-    out = {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
-    grid = re.search(r'id="v2-input-grid"[^>]*', page.text)
-    assert grid is not None
-    attrs = grid.group(0)
-    out["grid_csrf"] = re.search(r'data-csrf="([^"]*)"', attrs).group(1)
-    out["grid_hash"] = re.search(r'data-content-hash="([^"]*)"', attrs).group(1)
-    form = re.search(r'hx-post="/v2/workbook/update"[^>]*>\s*<input type="hidden" name="csrf_token" value="([^"]*)"', page.text)
-    out["update_csrf"] = form.group(1) if form else ""
-    return out
+    """Tokens as issued by the canonical React inputs/fields JSON contracts."""
+    return react_grid_and_update_tokens(env.client, record.project_code)
 
 
 def _refresh_cas(tokens, record):
@@ -203,7 +172,7 @@ def test_single_save_refuses_negative_and_changes_nothing(env, field_id):
     response = _single_save(env, record, field_id, "-20000", tokens)
     assert response.status_code == 422 and "≥ 0" in response.text           # typed bounds message, C1-Q-06 HTMX 422 contract
     assert _snapshot(record) == before                                      # nothing persisted
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
 
 @pytest.mark.parametrize("field_id", CAPEX_FIELDS)
@@ -274,7 +243,7 @@ def test_other_technologies_and_cost_line_authorities_unchanged(env):
         t = _page_tokens(env, record)
         bad = _single_save(env, record, "capex.C.epc_contract", "-5", t)
         assert "≥ 0" in bad.text
-        assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+        assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
     # B2/C1 supersedes the B1 statement that negative OPEX stays accepted: the engine clamps negative OPEX to zero
     # (a silently ignored input), so the Save contract now refuses it.  See OPEX_FIELD_TO_ENGINE_AUTHORITY_MATRIX.md.
     assert not WorkbookUpdateService.validate_field_update("opex.lines.om_preventive", "-100").is_valid
@@ -296,8 +265,8 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
     assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"           # reading never mutates the stored value
     # B2/C1 (SC-3): the unreadable draft is now answered by an explicit recovery page (HTTP 200, no 500); the stored
     # value is still not rewritten, cleaned or masked, and nothing is run.
-    recovery = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert recovery.status_code == 200 and 'data-testid="workbook-recovery-page"' in recovery.text
+    recovery = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
+    assert recovery.status_code == 409 and recovery.json()["code"] == "WORKING_COPY_RECOVERY_REQUIRED"
     assert _snapshot(record)["capex_epc_contract_keur"] == "-20000.0"
     # an unrelated, valid canonical Save still works and leaves the legacy negative value untouched
     response = _grid_save(env, record, [{"field_id": "revenue.ppa.base_tariff", "value": "51"}], _refresh_cas(rendered, record))
@@ -312,7 +281,7 @@ def test_stored_invalid_snapshot_is_not_rewritten_by_this_change(env):
     # the explicit repair path remains a deliberate user Save of a valid value (no automatic rewrite happened before it)
     fixed = _grid_save(env, record, [{"field_id": "capex.C.epc_contract", "value": "20000"}], _refresh_cas(rendered, record))
     assert fixed.status_code == 200 and float(_snapshot(record)["capex_epc_contract_keur"]) == 20000.0
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
 
 # ── CAS / CSRF / ownership unchanged ────────────────────────────────────────────────────────────────
@@ -508,14 +477,14 @@ def test_workbook_page_renders_for_large_finite_capacity(env, capacity):
     t = _page_tokens(env, record)
     assert _single_save(env, record, "project_setup.technical.capacity_mw", capacity, t).status_code == 200
     assert float(_snapshot(record)["capacity_mw"]) == float(capacity)
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
 
 
 def test_large_finite_capex_amount_page_renders_and_run_inputs_unchanged(env):
     record = env.create_line_free()
     t = _page_tokens(env, record)
     assert _single_save(env, record, "capex.C.epc_contract", "1e21", t).status_code == 200
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
     assert float(_snapshot(record)["capex_epc_contract_keur"]) == 1e21          # stored value is exactly what was saved
 
 
@@ -529,6 +498,6 @@ def test_residual_capacity_overflow_never_yields_a_plausible_value(env):
     assert "Nothing was changed" in response.text and "representable numeric range" in response.text   # explicit refusal
     after = _snapshot(record)
     assert after == before
-    assert env.client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).status_code == 200
     with pytest.raises(NonFiniteParentAmountError):
         allocate_parent_amount(float("inf"), capex_children("solar", "C.01"))

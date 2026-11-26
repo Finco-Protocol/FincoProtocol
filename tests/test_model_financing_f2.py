@@ -10,21 +10,8 @@ from pathlib import Path
 import pytest
 
 from app.workbook.bankability_config import FIELD_ID, SNAPSHOT_KEY, apply_config, build_view, parse_config
+from tests.model_react_test_helpers import react_fields_save_contract, react_workbook_tokens
 from tests.test_model_decision_workspace_v2 import env, tokens
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 
 @pytest.mark.parametrize("raw", ['[]', '{"version":true}', '{"version":2}', '{"version":1,"x":1}',
     '{"version":1,"version":1}', '{"version":1,"rates_pct":[NaN]}',
@@ -83,29 +70,13 @@ def test_nonrenewable_lender_cases_rejected(kind):
 
 
 def _workbook_tokens(env, project_code):
-    page = env.client.get('/v2/workbook', params={'project': project_code}, follow_redirects=False)
-    if page.status_code == 200 and 'name="content_hash"' in page.text:
-        return tokens(page.text)
-    wb = env.client.get('/v2/model-react/workspace', params={'project': project_code}).json()['workbook']
-    return {'content_hash': wb['composite_hash'], 'workbook_version': wb['version']}
+    return react_workbook_tokens(env.client, project_code)
 
 
 def save(env, record, raw, *, field=FIELD_ID, stale_tokens=None):
     csrf = {}
     if field == 'debt.financing.instruments':
-        from bs4 import BeautifulSoup
-        page = env.client.get('/v2/workbook', params={'project': record.project_code})
-        form = BeautifulSoup(page.text, 'html.parser').select_one('[data-f3-form]')
-        if form is not None:
-            csrf['csrf_token'] = form.select_one('[name="csrf_token"]')['value']
-        else:
-            # Isolated Junior activation tests have no customer editor. Issue
-            # the same server-bound token from their actual signed session;
-            # the route still enforces owner, CSRF, protected and CAS checks.
-            from types import SimpleNamespace
-            from app.workbook.financing_csrf import issue_token
-            csrf['csrf_token'] = issue_token(
-                SimpleNamespace(cookies=env.client.cookies, state=SimpleNamespace()), record.project_code)
+        csrf['csrf_token'] = react_fields_save_contract(env.client, record.project_code, 'debt')['financing_csrf_token']
     return post_valid_mutation(env.client, '/v2/workbook/update', headers={'HX-Request': 'true'}, data=dict(
         project=record.project_code, field_id=field, value=raw, sheet_id='debt',
         **csrf,
@@ -146,7 +117,7 @@ def test_real_save_reload_stale_run_current_last_run_immutability(env, kind):
     assert export.project_inputs.financing.senior_debt_interest_config.rate_schedule.explicit_all_in_rates[0] != .065
     pis = ProjectInputSet.from_snapshot(ws.draft_snapshot)
     assert pis.to_projectinputs().financing.senior_debt_interest_config.rate_schedule.explicit_all_in_rates[0] == .065
-    assert 'bankability-workspace' in env.client.get('/v2/workbook', params={'project': record.project_code}).text
+    assert env.client.get('/v2/model-react/fields/debt', params={'project': record.project_code}).json()['save']['content_hash'] == _workbook_tokens(env, record.project_code)['content_hash']
     _, new = run(env, record)
     assert new.runtime_summary['senior_debt_keur'] != old_summary['senior_debt_keur']
     assert dict(old.runtime_summary) == old_summary
@@ -159,7 +130,7 @@ def test_real_save_reload_stale_run_current_last_run_immutability(env, kind):
 def test_atomic_validation_scalar_lock_and_stale_cas_do_not_write(env):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    stale_toks = _workbook_tokens(env, record.project_code)
     original = get_workspace_state('decision-user', record.project_id)
     assert 'exactly' in save(env, record, config(targets=[1.2])).text
     assert get_workspace_state('decision-user', record.project_id) == original
@@ -168,7 +139,7 @@ def test_atomic_validation_scalar_lock_and_stale_cas_do_not_write(env):
     before = get_workspace_state('decision-user', record.project_id)
     assert 'owns this input' in save(env, record, '7', field='debt.senior.interest_rate_pct').text
     assert 'exactly' in save(env, record, '10', field='debt.senior.tenor_years').text
-    save(env, record, config(lender_case='P_50'), stale_tokens=tokens(page.text))
+    save(env, record, config(lender_case='P_50'), stale_tokens=stale_toks)
     assert get_workspace_state('decision-user', record.project_id) == before
     save(env, record, '')
     assert not get_workspace_state('decision-user', record.project_id).draft_snapshot[SNAPSHOT_KEY]
@@ -251,12 +222,14 @@ def test_cross_owner_rejection_and_get_does_not_execute_solver(env, monkeypatch)
     def forbidden(*args, **kwargs):
         raise AssertionError('Opening/editing a sheet must not run the model')
     monkeypatch.setattr(model_execution, 'run_model_process', forbidden)
-    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
-    assert page.status_code == 200 and 'bankability-workspace' in page.text
+    ws_data = env.client.get('/v2/model-react/fields/debt', params={'project': record.project_code})
+    assert ws_data.status_code == 200 and ws_data.json()['sheet'] == 'debt'
     assert save(env, record, config(lender_case='P_50')).status_code == 200
+    owner_tokens = _workbook_tokens(env, record.project_code)
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id='f2-other-owner', username='admin'))
+    assert env.client.get('/v2/model-react/workspace', params={'project': record.project_code}).status_code == 404
     response = post_valid_mutation(env.client, '/v2/workbook/update', data=dict(project=record.project_code,
-        field_id=FIELD_ID, value=config(lender_case='P90-10y'), sheet_id='debt', **tokens(page.text)))
+        field_id=FIELD_ID, value=config(lender_case='P90-10y'), sheet_id='debt', **owner_tokens))
     assert response.status_code == 404
 
 
@@ -272,7 +245,7 @@ def test_protected_template_and_context_contract():
 def test_first_save_after_scenario_selection_preserves_scenario_payload(env):
     from app.persistence.scenarios_repository import list_scenarios, get_scenario
     record = env.create()
-    env.client.get('/v2/workbook', params={'project': record.project_code})
+    env.client.get('/v2/model-react/workspace', params={'project': record.project_code})
     response = post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'F2 alternate'})
     assert response.status_code == 200
@@ -309,7 +282,7 @@ def test_protected_reference_save_rejected_before_cas(env):
     from app.workbook.update_service import WorkbookUpdateService, ProtectedReferenceError
     from app.workbook.registry import WORKBOOK
     record = env.create()
-    env.client.get('/v2/workbook', params={'project': record.project_code})
+    env.client.get('/v2/model-react/workspace', params={'project': record.project_code})
     ws = get_workspace_state('decision-user', record.project_id)
     with pytest.raises(ProtectedReferenceError):
         WorkbookUpdateService.apply_draft_update(ws=ws, project_record=replace(record, project_origin='factory_template'),
@@ -332,9 +305,9 @@ def test_materialized_manual_fee_conflict_rejects_save_and_run_without_solver(en
         raise AssertionError('Conflicting fee authority must reject before solver execution')
     monkeypatch.setattr(model_execution, 'run_model_process', forbidden)
     assert 'no competing fee override' in save(env, record, config(fees=fees)).text
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
-    assert 'uncheck to remove' in page.text
+    studio = env.client.get('/v2/model-react/financing/studio', params={'project': record.project_code})
+    assert studio.status_code == 200 and studio.json()['bankability']['fees_editable'] is False
     response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
-        data=dict(project=record.project_code, **tokens(page.text)))
+        data=dict(project=record.project_code, **_workbook_tokens(env, record.project_code)))
     assert 'Remove the bankability fee override before Run' in response.text
     assert get_workspace_state('decision-user', record.project_id) == before

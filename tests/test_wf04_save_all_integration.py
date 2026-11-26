@@ -10,19 +10,8 @@ import pytest
 
 from tests.run_clone_csrf import post_valid_csrf
 from tests.test_fin_val_b1_capex_save_integrity import USER, env as grid_env  # noqa: F401  (fixture; the grid router carries Save All)
+from tests.model_react_test_helpers import react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 EOD = "debt.contract.min_dscr_eod"
 COV = "debt.contract.contractual_dscr"
@@ -103,9 +92,7 @@ def _freshness(record):
 
 
 def _run(env, record):
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **tokens(page.text)))
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **react_workbook_tokens(env.client, record.project_code)))
     assert response.status_code == 200
     from app.persistence.run_history_repository import get_run_history
     return list(get_run_history(USER, record.project_id))

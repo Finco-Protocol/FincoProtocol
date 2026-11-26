@@ -17,19 +17,7 @@ from tests.revenue_v3_cases import book
 from tests.test_developer_economics_persistence_v1 import OWNER, Flow, _doc, _fc, _form, _tokens, env  # noqa: F401
 from tests.test_wf07_revenue_multistream import contracts
 from tests.test_wf07_revenue_workspace import contract_tokens
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_revenue_save_contract, react_workbook_tokens
 
 
 @pytest.fixture(autouse=True)
@@ -51,9 +39,8 @@ def _pi(flow):
 
 
 def _save_revenue(flow, payload, **extra):
-    page = flow.env.client.get("/v2/workbook", params=flow.project).text
     return flow.env.client.post(REV_SAVE, headers={"HX-Request": "true"}, data={
-        **flow.project, **contract_tokens(page), "contracts": json.dumps(payload), **extra})
+        **flow.project, **contract_tokens(react_revenue_save_contract(flow.env.client, flow.record.project_code)), "contracts": json.dumps(payload), **extra})
 
 
 @pytest.fixture
@@ -104,7 +91,7 @@ def test_revenue_v2_and_developer_coexist_with_stale_current_immutable_history_a
     assert [h.history_id for h in after] == [h.history_id for h in history] and after[0].runtime_summary == frozen
     # security: stale CAS, missing CSRF and a foreign owner are rejected on BOTH writers, with no writes
     before = copy.deepcopy(flow.ws().draft_snapshot)
-    stale = {**flow.project, **contract_tokens(env.client.get("/v2/workbook", params=flow.project).text), "contracts": json.dumps(v2)}
+    stale = {**flow.project, **contract_tokens(react_revenue_save_contract(env.client, flow.record.project_code)), "contracts": json.dumps(v2)}
     stale["content_hash"] = "0" * 64
     assert env.client.post(REV_SAVE, headers={"HX-Request": "true"}, data=stale).status_code == 409
     assert env.client.post(REV_SAVE, data={**flow.project, "contracts": json.dumps(v2)}).status_code == 403
@@ -182,8 +169,7 @@ def test_failed_combined_run_commits_nothing(env, monkeypatch):
     summary, count = copy.deepcopy(flow.ws().last_runtime_summary), len(get_run_history(OWNER, flow.record.project_id))
     import app.api.project_runner as runner
     monkeypatch.setattr(runner, "run_project", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic")))
-    wb = env.client.get("/v2/workbook", params=flow.project)
-    post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **react_workbook_tokens(env.client, flow.record.project_code)})
     assert flow.ws().last_runtime_summary == summary and flow.ws().dirty
     assert len(get_run_history(OWNER, flow.record.project_id)) == count
 

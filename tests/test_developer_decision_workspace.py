@@ -41,19 +41,7 @@ from finco_core.inputs import (
     DevelopmentSpendEntry,
 )
 from financial_engine.developer_economics import compute_developer_economics
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 
 @pytest.fixture(scope="module")
@@ -258,10 +246,8 @@ def _client(user_id, template="generic_solar_reference", name="DD Project"):
 
 
 def _run(client, cookies, code):
-    page = client.get(f"/v2/workbook?project={code}", cookies=cookies)
-    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
-    r = post_valid_csrf(client, "/v2/workbook/run", data={"project": code, "content_hash": h, "workbook_version": v},
+    toks = react_workbook_tokens(client, code)
+    r = post_valid_csrf(client, "/v2/workbook/run", data={"project": code, **toks},
                     cookies=cookies, headers={"HX-Request": "true"})
     assert r.status_code == 200
 

@@ -79,6 +79,7 @@ def run_via_canonical_path(context, live_server, project_code):
 def test_flag_off_shows_explicit_fallback_and_legacy_workbook_stays_default(browser, react_enabled):
     import os
 
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
     os.environ["FINCO_MODEL_REACT_V1"] = "0"
     context, page, record, errors = make_session(browser, react_enabled, "ux02-off-user")
     try:
@@ -89,6 +90,10 @@ def test_flag_off_shows_explicit_fallback_and_legacy_workbook_stays_default(brow
         page.wait_for_selector("#model-workspace-main")
         assert errors == [], errors
     finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
         context.close()
 
 
