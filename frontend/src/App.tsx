@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { readHostConfig, type HostConfig } from "./api/client";
+import { AccountSessionView, GuideMethodologyView, PlatformApiVerifyView } from "./app/AppInfoViews";
+import { APP_ROUTES, parseAppHash, type TopAppRoute } from "./app/appNavigation";
 import { CompareProjectsView } from "./app/compare/CompareProjectsView";
 import { LibraryView } from "./app/LibraryView";
 import { NewProjectWizard } from "./app/newProject/NewProjectWizard";
-import { isWizardHash } from "./app/newProject/api";
 import { ThemeProvider } from "./finco/_shared/ThemeSelector";
 import { WorkspaceView } from "./app/WorkspaceView";
 import { ws2Extensions } from "./app/editing/wsv2Extensions";
@@ -57,12 +58,9 @@ function ModelApp({ host }: { host: HTMLElement }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [nonce, setNonce] = useState(0);
-  // RC-M: `#new-project` on the Library route opens the New Project wizard (a real link, so Back/Forward work).
-  const [wizardOpen, setWizardOpen] = useState(() => isWizardHash(window.location.hash));
-  // RC-UX: `#compare-projects` on the Library route opens the cross-project comparison (a real link, so Back/Forward and refresh work).
-  const [compareOpen, setCompareOpen] = useState(() => window.location.hash === "#compare-projects");
+  const [topRoute, setTopRoute] = useState<TopAppRoute>(() => parseAppHash(window.location.hash));
   useEffect(() => {
-    const sync = () => { setWizardOpen(isWizardHash(window.location.hash)); setCompareOpen(window.location.hash === "#compare-projects"); };
+    const sync = () => { setTopRoute(parseAppHash(window.location.hash)); };
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
@@ -93,6 +91,15 @@ function ModelApp({ host }: { host: HTMLElement }) {
   const project = config.project;
   // UX-03B: the theme layer is presentation-only; scoping it to the mount root
   // keeps the legacy Jinja/HTMX UI untouched and no data path is involved.
+  const backToLibrary = useCallback(() => {
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      setTopRoute("library");
+    } else {
+      window.location.href = APP_ROUTES.library;
+    }
+  }, []);
+
   if (project) {
     return (
       <ThemeProvider host={host}>
@@ -100,25 +107,43 @@ function ModelApp({ host }: { host: HTMLElement }) {
           key={project}
           project={project}
           extensions={ws2Extensions}
-          onNavigateToLibrary={() => { window.location.href = "/v2/model-react/"; }}
+          onNavigateToLibrary={() => { window.location.href = APP_ROUTES.library; }}
         />
       </ThemeProvider>
     );
   }
-  if (wizardOpen) {
+  if (topRoute === "new-project") {
     return (
       <ThemeProvider host={host}>
-        <NewProjectWizard onCancel={() => {
-          window.history.replaceState(null, "", window.location.pathname + window.location.search);
-          setWizardOpen(false);
-        }} />
+        <NewProjectWizard onCancel={backToLibrary} />
       </ThemeProvider>
     );
   }
-  if (compareOpen) {
+  if (topRoute === "compare-projects") {
     return (
       <ThemeProvider host={host}>
-        <CompareProjectsView onBack={() => { window.location.href = "/v2/model-react/"; }} />
+        <CompareProjectsView onBack={backToLibrary} />
+      </ThemeProvider>
+    );
+  }
+  if (topRoute === "guide") {
+    return (
+      <ThemeProvider host={host}>
+        <GuideMethodologyView onBack={backToLibrary} />
+      </ThemeProvider>
+    );
+  }
+  if (topRoute === "platform") {
+    return (
+      <ThemeProvider host={host}>
+        <PlatformApiVerifyView onBack={backToLibrary} />
+      </ThemeProvider>
+    );
+  }
+  if (topRoute === "account") {
+    return (
+      <ThemeProvider host={host}>
+        <AccountSessionView onBack={backToLibrary} />
       </ThemeProvider>
     );
   }

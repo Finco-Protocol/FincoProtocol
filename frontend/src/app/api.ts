@@ -354,7 +354,27 @@ export function classifyFormPostOutcome(response: Response, expectedPath: string
   const v2Err = url.searchParams.get("v2_err");
   if (v2Err !== null) return { kind: "error-redirect", v2Err };
   if (url.pathname === expectedPath) return { kind: "clean", finalPath: url.pathname };
+  if (expectedPath === "/v2/workbook" && (url.pathname === "/v2/model-react" || url.pathname.startsWith("/v2/model-react/"))) {
+    return { kind: "clean", finalPath: url.pathname };
+  }
   return { kind: "other", finalPath: url.pathname };
+}
+
+export async function fetchJsonEndpoint<T>(url: string): Promise<T | { ok: false; code: string; message?: string }> {
+  return getJson<T>(url);
+}
+
+export async function signOutSession(): Promise<void> {
+  try {
+    const response = await fetch("/logout", { method: "POST", credentials: "same-origin", redirect: "follow" });
+    if (response.url) {
+      window.location.assign(response.url);
+      return;
+    }
+  } catch {
+    /* fallback below */
+  }
+  window.location.reload();
 }
 
 async function postForm(url: string, body: URLSearchParams): Promise<Response | null> {

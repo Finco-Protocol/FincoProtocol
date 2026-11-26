@@ -28,6 +28,7 @@ interface Props {
   contentHash: string;
   workbookVersion: string;
   reconciliationBlocked?: boolean;
+  identityRefreshing?: boolean;
   /** Presentation only: shown in the top bar. */
   projectName?: string;
   technology?: string;
@@ -44,7 +45,7 @@ const MEANING: Record<string, string> = {
   NOT_RUN: "No committed Run yet.",
 };
 
-export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload, reconciliationBlocked = false, projectName, technology, scenarioName, children }: Props) {
+export function WorkflowBar({ project, freshness, protectedReference, contentHash, workbookVersion, onRan, onReload, reconciliationBlocked = false, identityRefreshing = false, projectName, technology, scenarioName, children }: Props) {
   const saveAll = useSaveAllBridge();
   const { total, breakdown, pendingKeys, confirmIfDirty } = useDirtyTotal();
   const fetcher = useCallback(() => fetchRuns(project), [project]);
@@ -74,6 +75,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
   const resuming = pending !== null;
   const blockedReason = protectedReference ? "Templates cannot be run. Start a project from this template."
     : reconciliationBlocked ? "Refresh the confirmed Run views before starting another Run."
+    : identityRefreshing ? "Refreshing saved project state before Run…"
     : total > 0 ? `Save or cancel your ${total} unsaved edit${total === 1 ? "" : "s"} before running.`
       : pendingKeys.some((k) => k !== "run") ? "A save or change is still in progress or unresolved. Wait for it, or reload to reconcile, before running."
         : locked || resuming ? "The last Run outcome is not confirmed. Resume it, or reload to reconcile, before starting a new Run."
@@ -132,7 +134,7 @@ export function WorkflowBar({ project, freshness, protectedReference, contentHas
   }
 
   const techLabel = technology ? technology.charAt(0).toUpperCase() + technology.slice(1) : "";
-  const savePending = saveAll.saving || pendingKeys.some((key) => key !== "run");
+  const savePending = identityRefreshing || saveAll.saving || pendingKeys.some((key) => key !== "run");
   const saveAllDisabled = total === 0 || saveAll.disabled || saveAll.run === null || running;
   return (
     <div className="wf-bar ci-bar" role="region" aria-label="Model status and actions" data-workflow-bar="true"

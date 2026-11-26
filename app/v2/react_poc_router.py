@@ -92,13 +92,9 @@ def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
 def _render_host(project_code: str) -> HTMLResponse:
     """Same-origin host page.  The React bundle reads its config from data attributes
     (never inline script/data, so no value crosses an HTML boundary unescaped)."""
-    from urllib.parse import quote
-
     code = (project_code or "").strip()
-    legacy_url = f"/v2/workbook?project={quote(code, safe='')}" if code else "/v2/workbook"
     html = _templates.get_template("react_poc.html").render(
         project_code=code,
-        legacy_url=legacy_url,
         asset_version=REACT_ASSET_VERSION,
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
