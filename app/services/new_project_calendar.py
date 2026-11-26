@@ -44,8 +44,22 @@ def _is_quarterly(snapshot: dict) -> bool:
     return bool(str(snapshot.get(Q_KEY) or "").strip())
 
 
+_ENGINE_REFUSED_NAME_TOKENS = ("data center", "data_center", "ev charging", "ev_charging")
+
+
+def _engine_would_refuse(snapshot: dict, names) -> bool:
+    """Mirror of ``finco_core.engine.date_authority._assert_admitted_technology_for_dated`` at creation: that admission
+    check refuses OD-TIME-01/v1 when the project name/code contains a Data Center / EV Charging token or a BESS
+    configuration is present. Such a project is not stamped (it stays on the released legacy contract) instead of
+    being created into a refusal. (Review finding, FINCO45B.)"""
+    text = " ".join(str(n or "") for n in names).lower()
+    if any(tok in text for tok in _ENGINE_REFUSED_NAME_TOKENS):
+        return True
+    return bool(str(snapshot.get("bess_native_config_json") or "").strip())
+
+
 def stamp_new_project_date_authority(snapshot: dict, *, project_type: str | None = None,
-                                     template_source: str | None = None) -> dict:
+                                     template_source: str | None = None, names=()) -> dict:
     """Return the creation snapshot with ``date_authority_version`` set when (and only when) it is eligible."""
     if not dated_default_enabled():
         return snapshot
@@ -58,5 +72,8 @@ def stamp_new_project_date_authority(snapshot: dict, *, project_type: str | None
     if not eligible:
         return snapshot
     if _is_quarterly(snapshot) or snapshot.get("bess_enabled") in (True, "true", "1", 1):
+        return snapshot
+    candidates = (*names, snapshot.get("project_name"), snapshot.get("project_code"), snapshot.get("active_project"))
+    if _engine_would_refuse(snapshot, candidates):
         return snapshot
     return {**snapshot, SNAPSHOT_KEY: DATE_AUTHORITY_VERSION}

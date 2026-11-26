@@ -279,3 +279,47 @@ def test_dated_project_save_run_history_xlsx_match_the_independent_oracle(env, k
     assert _version(record) == DATED
     stale = env.client.get("/v2/model-react/opex-run-projection", params={"project": record.project_code}).json()
     assert stale["freshness"]["state"] == "STALE" and stale["run"]["history_id"] == entry.history_id
+
+
+def test_quarterly_selection_on_a_dated_project_is_a_typed_refusal(env):
+    """The release-closed 3/3 frequency stays a LEGACY_CALENDAR/v0 feature: no silent dated/quarterly mix."""
+    from app.input_adapter import SnapshotInputError, build_projectinputs_from_snapshot
+    from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as Q_KEY
+    from tests.test_rc7b_quarterly_production_acceptance import TIMELINE  # noqa: F401 - module import proves availability
+    record = env.create("solar")
+    snap = dict(get_workspace_state(OWNER, record.project_id).draft_snapshot)
+    assert snap["date_authority_version"] == DATED
+    snap[Q_KEY] = '{"version": 1}'
+    with pytest.raises(SnapshotInputError, match="DATE_AUTHORITY_FREQUENCY_UNSUPPORTED|QUARTERLY"):
+        build_projectinputs_from_snapshot(snap)
+
+
+
+@pytest.mark.parametrize("name", ["EV Charging Hub Solar", "Data Center Rooftop PV", "ev_charging site"])
+def test_names_the_engine_admission_refuses_are_not_stamped(env, name):
+    """Review finding: finco_core's dated admission refuses projects whose name/code carries a DC/EV token; such a
+    new Solar project stays on the released legacy contract instead of being created into a refusal."""
+    from app.services.reference_seed_service import create_reference_seeded_project
+    record = create_reference_seeded_project(user_id=OWNER, requested_name=name,
+                                             template_source="generic_solar_reference", capacity_mw=16)
+    assert _version(record) is None
+    assert npc.stamp_new_project_date_authority({"bess_native_config_json": "{}"}, project_type="Solar") == \
+        {"bess_native_config_json": "{}"}
+
+
+def test_legacy_run_route_refuses_a_dated_project_before_any_write(env):
+    """Review finding: the legacy POST /run engine path ignores the persisted date authority; it now refuses an
+    OD-TIME-01/v1 project with a typed 409 and writes nothing (the workbook Run is the supported path)."""
+    import asyncio
+    from types import SimpleNamespace
+    from app.services import run_service
+    from app.persistence.run_history_repository import get_run_history
+    record = env.create("solar")
+    ws = get_workspace_state(OWNER, record.project_id)
+    deps = SimpleNamespace(collect_form_snapshot=lambda form: {"active_project": record.project_code},
+                           project_workspace_from_snapshot=lambda user, snap: (record, ws))
+    outcome = asyncio.run(run_service.execute_run_route(
+        request=None, user=SimpleNamespace(user_id=OWNER, is_demo=False), form={}, deps=deps))
+    assert outcome.status_code == 409 and "LEGACY_RUN_DATED_UNSUPPORTED" in outcome.context["errors"][0]
+    assert get_run_history(OWNER, record.project_id) == []
+    assert get_workspace_state(OWNER, record.project_id).draft_snapshot == ws.draft_snapshot

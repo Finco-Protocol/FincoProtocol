@@ -561,7 +561,7 @@ def test_historical_export_of_a_dated_run_is_immutable_after_a_draft_edit(with_s
         _verify_v3_export_against_history(tampered, pd_rows1, entry, expected_final_date="2056-02-29")
 
 
-def test_real_route_export_dated_wind_and_unchanged_legacy_reference(with_sensitivity):
+def test_real_route_export_dated_wind_and_unchanged_legacy_reference(with_sensitivity, monkeypatch):
     """Verify real XLSX export on dated Wind (off-boundary COD 2031-09-01 -> stub 2058-08-31) and legacy Solar (2055-12-31)."""
     env = with_sensitivity
 
@@ -588,8 +588,12 @@ def test_real_route_export_dated_wind_and_unchanged_legacy_reference(with_sensit
     pd_w = [[wb_w["Periods_Dates"].cell(r, c).value for c in range(1, 5)] for r in range(6, wb_w["Periods_Dates"].max_row + 1)]
     _verify_v3_export_against_history(parsed_w, pd_w, w_entry, expected_final_date="2058-08-31")
 
-    # 2. Unchanged legacy Solar reference (no R04 absolute contract) -> legacy final date 2055-12-31 (no stub)
+    # 2. Unchanged legacy Solar reference (no R04 absolute contract) -> legacy final date 2055-12-31 (no stub).
+    # FINCO45B: new Solar projects are OD-TIME-01/v1 by default; a LEGACY_CALENDAR/v0 project is created through the
+    # explicit creation rollback so the retained legacy contract stays proved byte-for-byte here.
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
     legacy = env.create(kind="solar", name="Legacy Export Solar")
+    monkeypatch.delenv("FINCO_NEW_PROJECT_DATE_AUTHORITY")
     env.client.get("/v2/workbook", params={"project": legacy.project_code})
     run_canonical(env, legacy.project_code)
     l_entry = get_run_history(legacy.user_id, legacy.project_id)[0]

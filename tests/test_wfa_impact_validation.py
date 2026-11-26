@@ -318,7 +318,9 @@ def _stepped(pi):
     return p
 
 
-def test_P4_scheduled_stepped_price_curve_executes_and_reconciles_period_by_period(env):
+def test_P4_scheduled_stepped_price_curve_executes_and_reconciles_period_by_period(env, monkeypatch):
+    # FINCO45B: explicit per-row price curves are a LEGACY_CALENDAR/v0 contract (typed refusal on OD-TIME-01/v1)
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
     record, base_entry, base, payload, response = _ppa_case(env, _stepped)
     assert response.status_code == 200, response.text[:800]
     entry = C.commit(env, record)
@@ -405,7 +407,11 @@ def test_P8_p50_and_p90_lender_cases_are_both_saved_executed_and_compared(env):
     ("unknown_type", lambda p: p["streams"][0].update(type="forward_swap")),
     ("window_off_period_boundary", lambda p: p["streams"][0].update(start_date="2031-03-15")),
 ])
-def test_P9_invalid_contract_books_are_rejected_without_persisting(env, name, mutate):
+def test_P9_invalid_contract_books_are_rejected_without_persisting(env, name, mutate, monkeypatch):
+    if name == "window_off_period_boundary":
+        # FINCO45B: an off-boundary contract window is invalid on the LEGACY_CALENDAR/v0 grid only; on OD-TIME-01/v1
+        # (the new-project default) contract dates may fall inside a row by design. Prove the legacy refusal here.
+        monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
     record = env.create("solar")
     C.commit(env, record)
     before = _ws(record)
@@ -452,3 +458,17 @@ def test_case_verdict_requires_feature_specific_identities():
     assert C.classify(feature_missing, (), baseline=True) == "BASELINE_VERIFIED"
     with pytest.raises(ValueError):
         C.classify(good, ())
+
+
+def test_P9b_off_boundary_window_is_admitted_on_a_new_dated_project(env, monkeypatch):
+    """FINCO45B regression (adapter ordering bug): a new default project is OD-TIME-01/v1, and its contract book is
+    validated on the DATED grid, where a window inside a reporting row is admitted (the legacy-only refusal is P9)."""
+    from app.persistence.workspace_repository import get_workspace_state
+    monkeypatch.delenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", raising=False)
+    record = env.create("solar")
+    assert get_workspace_state(record.user_id, record.project_id).draft_snapshot["date_authority_version"] == "OD-TIME-01/v1"
+    payload = contracts(C.working_inputs(record), "solar")
+    payload["streams"][0].update(start_date="2031-03-15")
+    response = _post_contracts(env, record, payload)
+    assert response.status_code == 200, response.text[:300]
+    assert "REVENUE_V2_AXIS" not in response.text

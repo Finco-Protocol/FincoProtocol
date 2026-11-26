@@ -408,7 +408,8 @@ def _create_reference_seeded_project(
         snapshot.update(ev_driver_snapshot_values(GENERIC_EV_CHARGING_REFERENCE_DRIVERS))
     # FINCO45B (B1): a NEW ordinary Solar/Wind project is created under OD-TIME-01/v1 (explicit, persisted version).
     from app.services.new_project_calendar import stamp_new_project_date_authority
-    snapshot = stamp_new_project_date_authority(snapshot, template_source=template_source)
+    snapshot = stamp_new_project_date_authority(snapshot, template_source=template_source,
+                                                names=(requested_name, record.project_code, record.project_name))
     update_project_record(
         user_id=user_id,
         project_code=record.project_code,

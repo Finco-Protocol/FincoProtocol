@@ -25,6 +25,14 @@ from tests.test_wf07_revenue_multistream import contracts
 from tests.test_model_decision_workspace_v2 import env
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (explicit per-row price curves); new Solar/Wind projects default to
+    OD-TIME-01/v1, where it is a typed refusal. Its projects are created through the explicit creation rollback."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 def book(kind="solar", *, with_cfd=True, pi=None):
     if pi is None:
         pi = getattr(factories, "create_generic_" + kind + "_reference")()

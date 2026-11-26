@@ -16,6 +16,14 @@ from tests.test_model_rc7_capex_profile_run import OWNER, _latest, _run, _ws  # 
 from tests.test_rc7b_quarterly_production_acceptance import TIMELINE, _frequency, _set, eligible_references, _state
 
 
+@pytest.fixture(autouse=True)
+def _legacy_calendar_creation(monkeypatch):
+    """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (release-closed 3/3 operating frequency); new Solar/Wind projects default to
+    OD-TIME-01/v1, where it is a typed refusal. Its projects are created through the explicit creation rollback."""
+    monkeypatch.setenv("FINCO_NEW_PROJECT_DATE_AUTHORITY", "legacy")
+
+
+
 def _capture(env, project, monkeypatch):
     from app.services import production_financial_authority as authority
     captured = []

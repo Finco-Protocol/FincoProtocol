@@ -1504,6 +1504,25 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
                 raise SnapshotInputError("BESS_DUPLICATE_REVENUE_AUTHORITY: renewable fields are not battery assumptions")
             adapter_snapshot.pop(key, None)
     result = _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(adapter_snapshot))
+    # OD-TIME-01/v1 explicit versioned date authority (Solar/Wind only; fail-closed on unsupported tech/version).
+    # FINCO45B: applied BEFORE every config below that builds a period engine to validate itself (revenue contracts,
+    # bankability, quarterly). Applied last, those validators checked a dated project's contracts against the LEGACY
+    # grid (REVENUE_V2_AXIS refusals for contracts aligned to the dated grid). Legacy/no-key snapshots are unchanged.
+    raw_da_ver = str(snapshot.get("date_authority_version") or "").strip()
+    if raw_da_ver:
+        from finco_core.engine.date_authority import DATE_AUTHORITY_VERSION, LEGACY_DATE_AUTHORITY_VERSION
+        if raw_da_ver == DATE_AUTHORITY_VERSION:
+            if project_type not in {"Solar", "Wind"}:
+                raise SnapshotInputError(
+                    f"DATE_AUTHORITY_TECHNOLOGY_UNSUPPORTED: {project_type!r} is not admitted to {DATE_AUTHORITY_VERSION}"
+                )
+            import dataclasses as _dc
+            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=DATE_AUTHORITY_VERSION))
+        elif raw_da_ver == LEGACY_DATE_AUTHORITY_VERSION:
+            import dataclasses as _dc
+            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=LEGACY_DATE_AUTHORITY_VERSION))
+        else:
+            raise SnapshotInputError(f"DATE_AUTHORITY_VERSION_UNSUPPORTED: {raw_da_ver!r}")
     if project_type == "Storage" and snapshot.get("bess_native_config_json"):
         from app.workbook.bess_config import apply_config
         result = apply_config(result, snapshot["bess_native_config_json"])
@@ -1572,27 +1591,22 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # RC-7B: an explicit 3/3 operating/debt frequency selection (release-closed).
     # Absent/empty is the released 6/6 contract and returns the same object.
     from app.workbook.quarterly_frequency_config import SNAPSHOT_KEY as Q_KEY, apply_config as apply_quarterly
+    if str(snapshot.get(Q_KEY) or "").strip() and getattr(result.info, "date_authority_version", None) == "OD-TIME-01/v1":
+        # FINCO45B: the dated authority is admitted on the released semi-annual 6/6 grid only; the release-closed 3/3
+        # selection stays a LEGACY_CALENDAR feature. Typed refusal, never a silent dated/quarterly mix.
+        from app.workbook.quarterly_frequency_config import canonical_json as _q_canon
+        try:
+            _q_active = bool(_q_canon(snapshot.get(Q_KEY)))
+        except Exception:  # noqa: BLE001 - malformed selections keep their own refusal below
+            _q_active = True
+        if _q_active:
+            raise SnapshotInputError("DATE_AUTHORITY_FREQUENCY_UNSUPPORTED: the 3/3 operating frequency is available on "
+                                     "LEGACY_CALENDAR/v0 projects only; OD-TIME-01/v1 projects use the 6/6 grid")
     try:
         result = apply_quarterly(result, snapshot.get(Q_KEY), project_type)
     except ValueError as exc:
         raise SnapshotInputError(str(exc)) from exc
 
-    # OD-TIME-01/v1 explicit versioned date authority (Solar/Wind only; fail-closed on unsupported tech/version).
-    raw_da_ver = str(snapshot.get("date_authority_version") or "").strip()
-    if raw_da_ver:
-        from finco_core.engine.date_authority import DATE_AUTHORITY_VERSION, LEGACY_DATE_AUTHORITY_VERSION
-        if raw_da_ver == DATE_AUTHORITY_VERSION:
-            if project_type not in {"Solar", "Wind"}:
-                raise SnapshotInputError(
-                    f"DATE_AUTHORITY_TECHNOLOGY_UNSUPPORTED: {project_type!r} is not admitted to {DATE_AUTHORITY_VERSION}"
-                )
-            import dataclasses as _dc
-            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=DATE_AUTHORITY_VERSION))
-        elif raw_da_ver == LEGACY_DATE_AUTHORITY_VERSION:
-            import dataclasses as _dc
-            result = _dc.replace(result, info=_dc.replace(result.info, date_authority_version=LEGACY_DATE_AUTHORITY_VERSION))
-        else:
-            raise SnapshotInputError(f"DATE_AUTHORITY_VERSION_UNSUPPORTED: {raw_da_ver!r}")
     return result
 
 

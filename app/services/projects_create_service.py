@@ -415,7 +415,8 @@ async def execute_projects_create_route(
 
     # FINCO45B (B1): new ordinary Solar/Wind factory projects are created under OD-TIME-01/v1 (explicit version).
     from app.services.new_project_calendar import stamp_new_project_date_authority
-    baseline_snapshot = stamp_new_project_date_authority(baseline_snapshot, project_type=canonical_type)
+    baseline_snapshot = stamp_new_project_date_authority(baseline_snapshot, project_type=canonical_type,
+                                                         names=(clean_name, project_code))
 
     # ── Create project record (Quirk 8: user_created only) ────────────
     project_record = deps.create_project_record(

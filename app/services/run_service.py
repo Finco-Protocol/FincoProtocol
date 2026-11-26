@@ -107,6 +107,24 @@ async def execute_run_route(
     project_code = project_record.project_code
     project_name = project_record.project_name
 
+    # ── 2a. FINCO45B: the legacy /run engine paths build inputs without the versioned date authority, so an
+    # OD-TIME-01/v1 project would silently compute on the LEGACY grid. Refuse it before any write (typed, nothing run or
+    # saved) using the project's STORED authority, and point to the canonical workbook Run. Unversioned/legacy projects
+    # are unchanged.
+    _stored = {}
+    for _source in (getattr(workspace_state, "draft_snapshot", None), getattr(project_record, "baseline_snapshot", None)):
+        if isinstance(_source, dict) and _source.get("date_authority_version"):
+            _stored = _source
+            break
+    if str(_stored.get("date_authority_version") or "").strip() == "OD-TIME-01/v1":
+        return RunRouteOutcome(
+            template_name="partials/errors.html",
+            context={"errors": ["LEGACY_RUN_DATED_UNSUPPORTED: this project uses the dated contractual calendar "
+                                "(OD-TIME-01/v1). Run it from the workbook (Run model); the legacy Run does not "
+                                "support it. Nothing was run or saved."]},
+            status_code=409,
+        )
+
     # ── 2b. PILOT-HOTFIX-2: Auto-select scenario from form. ─────────────
     # Bug: prior to this fix, ``/run`` always read
     # ``workspace_state.active_scenario_id`` for the runtime snapshot.
