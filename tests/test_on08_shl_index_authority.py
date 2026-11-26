@@ -20,19 +20,6 @@ from fastapi.testclient import TestClient
 from app.persistence import db
 from app.services import on08_shl_index_authority as on08
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 ROOT = Path(__file__).resolve().parent.parent
 OWNER, STRANGER = "on08-owner", "on08-stranger"
 H, C = "project_setup.technical.horizon_years", "project_setup.technical.construction_months"
@@ -90,8 +77,8 @@ def env(tmp_path, monkeypatch):
                                                    template_source=f"generic_{kind}_reference", capacity_mw=40, country_market="XA")
 
         def tokens(record):
-            page = client.get("/v2/workbook", params={"project": record.project_code})
-            return {k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1) for k in ("content_hash", "workbook_version")}
+            wb = client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+            return {"content_hash": wb["composite_hash"], "workbook_version": wb["version"]}
 
         def purpose_token(record, purpose):
             return issue_token(SimpleNamespace(cookies=client.cookies, state=SimpleNamespace()), record.project_code, purpose=purpose)

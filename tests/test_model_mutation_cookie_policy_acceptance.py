@@ -171,6 +171,8 @@ def check_legacy_cost_buttons_use_their_own_operation_tokens(mutation_browser_se
                 document.addEventListener(type,e=>{if(e.target.id==='v2-sheet-capex'){
                     if(type==='htmx:afterSettle')window.__capexSettled++;
                     window.__capexEvents.push({type,target:e.target.id});}},false);""")
+        prev_react=os.environ.get('FINCO_MODEL_REACT_V1')
+        os.environ['FINCO_MODEL_REACT_V1']='0'
         try:
             page.goto(target+'/_security_test_login')
             page.goto(target+'/v2/workbook?project='+own.project_code+'&sheet=capex')
@@ -238,6 +240,10 @@ def check_legacy_cost_buttons_use_their_own_operation_tokens(mutation_browser_se
             evidence.parent.mkdir(parents=True,exist_ok=True)
             page.screenshot(path=str(evidence.with_suffix('.png')),full_page=False)
         finally:
+            if prev_react is None:
+                os.environ.pop('FINCO_MODEL_REACT_V1', None)
+            else:
+                os.environ['FINCO_MODEL_REACT_V1']=prev_react
             evidence.parent.mkdir(parents=True,exist_ok=True)
             evidence.write_text(json.dumps({'scope':'Actual visible Legacy CAPEX controls under isolated HTTPS; no production deployment claim','requests_and_responses':events,'errors':errors,'htmx_events':page.evaluate('window.__capexEvents || []') if not page.is_closed() else [],'capex_selected':page.locator('#tab-capex').get_attribute('aria-selected')=='true' if not page.is_closed() else False},indent=2),encoding='utf-8')
             context.close();browser.close()

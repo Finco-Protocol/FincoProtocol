@@ -22,19 +22,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 
 TAX_FIELDS = (
@@ -84,9 +71,10 @@ def sealed(tmp_path_factory):
         record = create_reference_seeded_project(
             user_id=user, requested_name="PR3 tax",
             template_source="generic_solar_reference", capacity_mw=10)
-        page = client.get("/v2/workbook", params={"project": record.project_code})
-        toks = {k: re.search(r'name="' + k + r'" value="([^"]+)"', page.text).group(1)
-                for k in ("content_hash", "workbook_version")}
+        ws_resp = client.get("/v2/model-react/workspace", params={"project": record.project_code})
+        assert ws_resp.status_code == 200, ws_resp.text[:300]
+        wb = ws_resp.json()["workbook"]
+        toks = {"content_hash": wb["composite_hash"], "workbook_version": str(wb["version"])}
         assert post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"},
                                data={"project": record.project_code, **toks}).status_code == 200
         entry = get_run_history(user, record.project_id)[0]

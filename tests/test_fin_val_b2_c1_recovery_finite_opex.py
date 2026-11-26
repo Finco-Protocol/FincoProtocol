@@ -48,7 +48,6 @@ def env(tmp_path, monkeypatch):
     from app.v2.router import router
 
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "b2.db"))
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     db.init_db()
     app = FastAPI()
     app.include_router(router, prefix="/v2")
@@ -320,6 +319,10 @@ class TestLegacyRecovery:
 
 
 class TestReactRecovery:
+    @pytest.fixture(autouse=True)
+    def _react_on(self, monkeypatch):
+        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
+
     def test_inputs_returns_typed_recovery_state_with_the_operation_bound_save_contract(self, env):
         record = env.create()
         _prime(env, record)

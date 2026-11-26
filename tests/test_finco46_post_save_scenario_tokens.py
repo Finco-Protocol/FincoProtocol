@@ -50,7 +50,8 @@ def _with_alternative_scenario(env, kind):
 
 
 @pytest.mark.parametrize("kind", ["capex", "opex"])
-def test_row_save_refreshes_scenarios_with_valid_select_tokens(env, kind):
+def test_row_save_refreshes_scenarios_with_valid_select_tokens(env, monkeypatch, kind):
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     from app.persistence import capex_sub_lines as capex_repo, opex_sub_lines as opex_repo
     record = _with_alternative_scenario(env, "solar")
     page = env.client.get("/v2/workbook", params={"project": record.project_code})

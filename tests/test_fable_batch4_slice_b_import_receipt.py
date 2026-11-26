@@ -161,7 +161,16 @@ def _react_preview_confirm_apply(client: TestClient, code: str, *, filename: str
 
 
 def _run_canonical(client: TestClient, code: str):
-    page = client.get("/v2/workbook", params={"project": code})
+    import os
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
+    os.environ["FINCO_MODEL_REACT_V1"] = "0"
+    try:
+        page = client.get("/v2/workbook", params={"project": code})
+    finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
     tokens = {
         k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
         for k in ("content_hash", "workbook_version")

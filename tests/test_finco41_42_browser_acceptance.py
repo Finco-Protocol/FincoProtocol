@@ -10,19 +10,6 @@ import time
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 VIEWPORTS = [
     (1440, 900),
     (1280, 800),
@@ -99,12 +86,14 @@ def _open_context(browser, server: str, user_id: str, width: int, height: int):
 
 
 def _run_canonical(context, server: str, user_id: str, project_id: str, project_code: str) -> None:
-    from bs4 import BeautifulSoup
-
-    page = context.request.get(f"{server}/v2/workbook?project={project_code}")
-    form = BeautifulSoup(page.text(), "html.parser").select_one("#v2-canonical-run-form")
-    assert form is not None, "canonical run form missing"
-    tokens = {f["name"]: f.get("value", "") for f in form.select("input[name]")}
+    runs = context.request.get(f"{server}/v2/model-react/runs", params={"project": project_code}).json()
+    ws = context.request.get(f"{server}/v2/model-react/workspace", params={"project": project_code}).json()
+    wb = ws["workbook"]
+    tokens = {
+        "content_hash": wb["composite_hash"],
+        "workbook_version": str(wb["version"]),
+        "run_csrf_token": runs["run_contract"]["csrf_token"],
+    }
     resp = context.request.post(
         f"{server}/v2/workbook/run",
         headers={"HX-Request": "true"},
