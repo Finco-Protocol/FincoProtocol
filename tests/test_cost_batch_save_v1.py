@@ -25,19 +25,7 @@ from fastapi.testclient import TestClient
 
 from app.persistence import db
 from app.persistence.workspace_repository import get_workspace_state
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workspace_payload
 
 OWNER = "cost-batch-owner"
 STRANGER = "cost-batch-stranger"
@@ -65,15 +53,11 @@ def _project(template="generic_solar_reference", uid=OWNER):
 
 
 def _tokens(client, rec):
-    page = client.get(f"/v2/workbook?project={rec.project_code}")
-    assert page.status_code == 200
-    m = re.search(r'id="v2-input-grid"[^>]*data-csrf="([^"]+)"[^>]*data-content-hash="([0-9a-f]+)"'
-                  r'[^>]*data-workbook-version="([^"]+)"', page.text, re.S)
-    csrf, chash, version = m.groups()
+    res = client.get("/v2/model-react/costlines", params={"project": rec.project_code, "sheet": "capex"})
+    assert res.status_code == 200, res.text[:300]
+    save = res.json()["save"]
     # Batch Save has its own operation domain; grid-edit tokens are deliberately refused.
-    from bs4 import BeautifulSoup
-    csrf = BeautifulSoup(page.text, "html.parser").select_one("[data-cost-csrf]")["data-cost-csrf"]
-    return {"csrf": csrf, "hash": chash, "version": version}
+    return {"csrf": save["csrf_token"], "hash": save["content_hash"], "version": save["workbook_version"]}
 
 
 def _rows(table, project_id):
@@ -143,10 +127,12 @@ def test_ten_edits_across_capex_and_opex_persist_atomically_and_exactly(world, t
     assert after["dirty"] == 1 and after["hash"] != before["hash"]
     assert after["draft"] == before["draft"], "line items must not touch the scalar draft"
     assert after["last_run"] == before["last_run"] and after["history"] == before["history"]
-    # the response carries the NEW CAS token for the next command
-    new_hash = re.search(r'id="v2-cost-authority-capex"[^>]*data-content-hash="([0-9a-f]+)"', res.text).group(1)
-    assert new_hash == after["hash"] != tok["hash"]
-    assert 'data-testid="toolbar-runtime-state"' in res.text, "post-Save STALE refresh must ride on the response"
+    # the canonical React endpoints reflect the NEW CAS token & non-executed state
+    ws_after = react_workspace_payload(world["owner"], rec.project_code)
+    assert ws_after["workbook"]["composite_hash"] == after["hash"] != tok["hash"]
+    assert ws_after["freshness"]["state"] == "NOT_RUN"
+    cl_after = world["owner"].get("/v2/model-react/costlines", params={"project": rec.project_code, "sheet": "capex"}).json()
+    assert cl_after["save"]["content_hash"] == after["hash"] != tok["hash"]
 
 
 def test_unedited_cells_keep_their_exact_stored_value(world):
@@ -291,8 +277,8 @@ def test_csrf_session_ownership_and_unknown_sheet_are_enforced(world):
 
 def test_protected_reference_is_never_writable(world):
     from app.persistence.projects_repository import resolve_accessible_project
-    page = world["owner"].get("/v2/workbook?project=generic_solar_reference-reference")
-    if page.status_code != 200:
+    ws_ref = world["owner"].get("/v2/model-react/workspace", params={"project": "generic_solar_reference-reference"})
+    if ws_ref.status_code != 200:
         pytest.skip("reference project not seeded in this fixture")
     ref, _owner = resolve_accessible_project(OWNER, "generic_solar_reference-reference")
     assert ref is not None
@@ -442,20 +428,18 @@ def test_single_row_command_still_works_after_a_batch_with_the_returned_token(wo
     lines, _ = _edits(rec, 2, 1)
     res = _post(world["owner"], rec, tok, lines)
     assert res.status_code == 200
-    new_hash = re.search(r'id="v2-cost-authority-capex"[^>]*data-content-hash="([0-9a-f]+)"', res.text).group(1)
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(res.text, "html.parser")
+    cl2 = world["owner"].get("/v2/model-react/costlines", params={"project": rec.project_code, "sheet": "capex"}).json()
+    new_hash = cl2["save"]["content_hash"]
     rows = _rows("capex_sub_lines", rec.project_id)
     # #419 Correction K: sub_line_id is a random UUID, so "the first row" was a random row. C.13 Construction Contingency is a calculated
-    # line under the typed contingency-percentage authority (its own % form, no single-row amount editor) and was picked ~1 run in 31.
-    # Every OTHER active CAPEX row must keep its single-row editor after a batch; C.13 must not gain one.
-    forms = {f.get("data-sub-line-id") for f in soup.select("form[data-sub-line-id]")}
+    # line under the typed contingency-percentage authority (no single-row amount editor) and was picked ~1 run in 31.
+    # Every OTHER active CAPEX row remains in editable non-C.13 groups; C.13 stays outside eligible_groups.
+    eligible_codes = {g["code"] for g in cl2["line_management"]["eligible_groups"]}
+    assert "C.13" not in eligible_codes
     editable = [r for r in rows if r["parent_category_code"] != "C.13"]
-    assert editable and all(r["sub_line_id"] in forms for r in editable)
-    assert all(r["sub_line_id"] not in forms for r in rows if r["parent_category_code"] == "C.13")
+    assert editable and all(r["parent_category_code"] in eligible_codes for r in editable)
     row = editable[0]
-    form = soup.select_one(f'form[data-sub-line-id="{row["sub_line_id"]}"]')
-    row_csrf = form.select_one('input[name="csrf_token"]')["value"]
+    row_csrf = cl2["line_management"]["csrf_tokens"]["update"]
     single = world["owner"].post("/v2/capex/line/update", data={
         "project": rec.project_code, "sub_line_id": row["sub_line_id"], "label": row["label"], "amount_keur": "42",
         "row_version": row["updated_at"], "workbook_version": tok["version"], "content_hash": new_hash, "csrf_token": row_csrf},

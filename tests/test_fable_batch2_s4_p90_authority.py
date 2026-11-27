@@ -30,19 +30,7 @@ from app.services.reference_seed_service import create_reference_seeded_project
 from app.v2.router import router as v2_router
 from app.workbook.financing_csrf import issue_token
 from tests.model_mutation_csrf import post_valid_mutation
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens, react_workspace_payload
 
 
 def _setup(tmp_path, name: str, kind: str = "solar"):
@@ -64,11 +52,7 @@ def _setup(tmp_path, name: str, kind: str = "solar"):
 
 
 def _tokens(client, project_code: str) -> dict[str, str]:
-    html = client.get("/v2/workbook", params={"project": project_code}).text
-    return {
-        k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-        for k in ("content_hash", "workbook_version")
-    }
+    return react_workbook_tokens(client, project_code)
 
 
 def _edit(client, project_code: str, field_id: str, value: str, tokens=None):
@@ -185,9 +169,8 @@ def test_p90_validation_rejects_gt_p50_zero_reverse_p50_stale_cas_and_forged_len
         assert float(ws_after_p50.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
         assert _tokens(client, rec.project_code)["content_hash"] == before_hash
         # Worksheet GET remains clean (never stuck in recovery)
-        wb_get = client.get("/v2/workbook", params={"project": rec.project_code})
-        assert wb_get.status_code == 200
-        assert 'data-testid="workbook-recovery-back"' not in wb_get.text
+        wb_get = react_workspace_payload(client, rec.project_code)
+        assert wb_get["ok"] is True
 
         # 4) Valid P50-only edit >= saved explicit P90 (1450 >= 1400) succeeds while preserving explicit P90=1400
         r_p50_ok = _edit(client, rec.project_code, "project_setup.technical.p50_hours", "1450")

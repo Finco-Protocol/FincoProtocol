@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 import uuid
 from datetime import date
 from decimal import Decimal, ROUND_FLOOR
@@ -25,19 +26,7 @@ from app.services.reference_seed_service import create_reference_seeded_project
 from app.v2.router import router as v2_router
 from app.workbook.financing_csrf import issue_token
 from app.workbook.mutation_csrf import mutation_token
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 COD = date(2031, 3, 1)
 FIELD = "revenue.multistream.contracts"
@@ -74,8 +63,7 @@ class Env:
         self.cm.__exit__(None, None, None)
 
     def tokens(self):
-        html = self.client.get("/v2/workbook", params={"project": self.rec.project_code}).text
-        return {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
+        return react_workbook_tokens(self.client, self.rec.project_code)
 
     def snapshot(self):
         return dict(get_workspace_state(self.user, self.rec.project_id).draft_snapshot)
@@ -89,7 +77,8 @@ class Env:
         t = tokens or self.tokens()
         return self.client.post("/v2/workbook/update", headers={"Accept": "application/json"}, data={
             "project": self.rec.project_code, "field_id": field, "value": value, **t,
-            "csrf_token": mutation_token(self.req, self.rec.project_code, "workbook-update")})
+            "csrf_token": mutation_token(self.req, self.rec.project_code, "workbook-update")},
+            follow_redirects=False)
 
     def run(self):
         t = self.tokens()
@@ -114,8 +103,13 @@ def _one_year_book(amount, unit="MWh"):
     return _book([_ppa("ppa_1", "2031-03-01", "2032-03-01", amount, unit), MERCHANT])
 
 
+def _resp_msg(resp) -> str:
+    loc = urllib.parse.unquote_plus(resp.headers.get("location", ""))
+    return f"{loc}\n{resp.text}"
+
+
 def _assert_refused(env, resp, code, before):
-    assert code in resp.text, resp.text[:300]
+    assert code in _resp_msg(resp), _resp_msg(resp)[:300]
     after = env.state()
     assert after["snapshot"] == before["snapshot"] and after["tokens"] == before["tokens"] and after["history"] == before["history"]
 
@@ -124,7 +118,7 @@ def test_exact_p50_boundary_accept_at_cap_refuse_by_0_001_mwh(env):
     first_ops = env.state()                                    # first render normalises stored types; baseline after it
     cap = env.annual_p50_mwh().quantize(Decimal("0.001"), rounding=ROUND_FLOOR)
     ok = env.save(FIELD, _one_year_book(cap))
-    assert ok.status_code == 200 and "R04_" not in ok.text
+    assert ok.status_code in (200, 303) and "v2_err=" not in ok.headers.get("location", "") and "R04_" not in _resp_msg(ok)
     assert json.loads(env.snapshot()["rev_multistream_config_json"])["streams"][0]["annual_quantity"]["amount"] in (str(cap), format(cap, "f"))
     before = env.state()
     over = env.save(FIELD, _one_year_book(cap + Decimal("0.001")))
@@ -134,7 +128,7 @@ def test_exact_p50_boundary_accept_at_cap_refuse_by_0_001_mwh(env):
 def test_gwh_and_mwh_are_equivalent_at_the_boundary(env):
     env.state()
     cap_gwh = (env.annual_p50_mwh() / 1000).quantize(Decimal("0.000001"), rounding=ROUND_FLOOR)
-    assert "R04_" not in env.save(FIELD, _one_year_book(cap_gwh, "GWh")).text
+    assert "R04_" not in _resp_msg(env.save(FIELD, _one_year_book(cap_gwh, "GWh")))
     before = env.state()
     _assert_refused(env, env.save(FIELD, _one_year_book(cap_gwh + Decimal("0.000001"), "GWh")), "R04_GLOBAL_P50_CAP_EXCEEDED", before)
 
@@ -155,10 +149,10 @@ def test_malformed_and_invalid_books_are_refused_without_mutation(env, label, va
 
 def test_stale_cas_is_refused_without_mutation(env):
     stale = env.tokens()
-    assert "R04_" not in env.save(FIELD, _one_year_book(1000)).text            # a competing committed change
+    assert "R04_" not in _resp_msg(env.save(FIELD, _one_year_book(1000)))            # a competing committed change
     before = env.state()
     resp = env.save(FIELD, _one_year_book(2000), tokens=stale)
-    assert "changed" in resp.text.lower()
+    assert "changed" in _resp_msg(resp).lower()
     after = env.state()
     assert after["snapshot"] == before["snapshot"] and after["history"] == before["history"]
 
@@ -182,7 +176,7 @@ def test_race_between_preflight_and_write_is_refused_by_the_transaction(env, mon
                 workbook_version=WORKBOOK.version, project_record=env.rec)
     monkeypatch.setattr(us, "_validate_ppa_book_against_proposed_snapshot", racing)
     resp = env.save(FIELD, _one_year_book(2500))
-    assert fired and "changed" in resp.text.lower()
+    assert fired and "changed" in _resp_msg(resp).lower()
     streams = json.loads(env.snapshot()["rev_multistream_config_json"])["streams"]
     assert streams[0]["annual_quantity"]["amount"] == "1500"                          # only the competing, committed write survives
 
@@ -199,7 +193,7 @@ def test_batch_route_refuses_the_contract_book_and_technical_pairs_validate_the_
 
     env.state()
     cap = env.annual_p50_mwh().quantize(Decimal("0.001"), rounding=ROUND_FLOOR)       # P50 1500 h, P90 1400 h seeded
-    assert "R04_" not in env.save(FIELD, _one_year_book(cap)).text
+    assert "R04_" not in _resp_msg(env.save(FIELD, _one_year_book(cap)))
     before = env.state()
     with pytest.raises(BatchApplyError, match="BATCH_REVENUE_CONTRACT_EDITOR_ONLY"):   # explicit refusal: the book has ONE writer
         batch([(FIELD, _one_year_book(1))])
@@ -213,7 +207,7 @@ def test_batch_route_refuses_the_contract_book_and_technical_pairs_validate_the_
         assert "R04_GLOBAL_P50_CAP_EXCEEDED" in str(exc.value)
         assert env.state()["snapshot"] == before["snapshot"]
     # shrink the contract first (single writer), then the same paired technical edit is valid in BOTH orders (P90 below P50 in the final state)
-    assert "R04_" not in env.save(FIELD, _one_year_book(Decimal("1000"))).text
+    assert "R04_" not in _resp_msg(env.save(FIELD, _one_year_book(Decimal("1000"))))
     for edits in ([("project_setup.technical.p50_hours", "1400"), ("project_setup.technical.p90_10y_hours", "1300")],
                   [("project_setup.technical.p90_10y_hours", "1250"), ("project_setup.technical.p50_hours", "1350")]):
         batch(edits)
@@ -222,7 +216,7 @@ def test_batch_route_refuses_the_contract_book_and_technical_pairs_validate_the_
 
 
 def test_run_refuses_a_forged_over_cap_snapshot_and_keeps_history_and_last_run(env):
-    assert "R04_" not in env.save(FIELD, _one_year_book(1000)).text
+    assert "R04_" not in _resp_msg(env.save(FIELD, _one_year_book(1000)))
     first = env.run()
     assert first.status_code == 200 and first.json()["outcome"] == "COMMITTED"
     stale_tokens = env.tokens()
@@ -231,7 +225,8 @@ def test_run_refuses_a_forged_over_cap_snapshot_and_keeps_history_and_last_run(e
     forged["rev_multistream_config_json"] = _one_year_book(10 ** 9)                  # written below the validators, straight to storage
     with db.get_cursor() as cur:
         cur.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(forged), env.rec.project_id))
-    page = env.client.get("/v2/workbook", params={"project": env.rec.project_code})
+    page = env.client.get("/v2/model-react/inputs", params={"project": env.rec.project_code})
+    assert page.status_code == 409
     assert "R04_GLOBAL_P50_CAP_EXCEEDED" in page.text                                # typed, read-only recovery view (fail closed)
     second = env.client.post("/v2/workbook/run", headers={"Accept": "application/json"}, data={
         "project": env.rec.project_code, **stale_tokens, "csrf_token": issue_token(env.req, env.rec.project_code, purpose="workbook-run-v1"),

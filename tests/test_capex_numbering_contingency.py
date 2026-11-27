@@ -25,19 +25,6 @@ from app.contingency_authority import (
 from app.ui.capex_view_model import derive_custom_display_code
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 # ───────────────────────── fixtures ─────────────────────────
 @pytest.fixture()
 def seeded_db(tmp_path, monkeypatch):
@@ -398,9 +385,8 @@ class TestContingencyRoute:
             "workbook_version": wv, "content_hash": h})
         assert r.status_code == 303, r.text
         assert read_authority(get_project_by_id(solar_copy.project_id).replay_metadata, "capex") == 5.0
-        page = client.get(f"/v2/workbook?project={solar_copy.project_code}", cookies=cookies)
-        assert 'data-testid="capex-contingency-authority"' in page.text
-        assert "OTHER_ELIGIBLE_CAPEX" in page.text
+        cont = _vm("cap-user", solar_copy)["capex_vm"].contingency
+        assert cont is not None and cont.basis_mode == "OTHER_ELIGIBLE_CAPEX" and cont.pct == 5.0
 
     def test_invalid_pct_rejected_422(self, solar_copy):
         client, cookies = self._client()

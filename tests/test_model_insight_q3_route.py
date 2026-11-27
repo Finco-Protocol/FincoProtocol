@@ -70,7 +70,13 @@ def _tokens(html):
 
 
 def _run(env, user, rec):
-    h, v = _tokens(_get(env, user, rec).text)
+    import os
+    if os.environ.get("FINCO_MODEL_REACT_V1") != "0":
+        from tests.model_react_test_helpers import react_workbook_tokens
+        t = react_workbook_tokens(env.client, rec.project_code, cookies=env.cookie(user))
+        h, v = t["content_hash"], t["workbook_version"]
+    else:
+        h, v = _tokens(_get(env, user, rec).text)
     r = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
                         cookies=env.cookie(user), headers={"HX-Request": "true"})
     assert r.status_code == 200

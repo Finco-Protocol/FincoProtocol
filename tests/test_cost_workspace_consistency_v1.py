@@ -14,18 +14,7 @@ import re
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workspace_payload
 
 TECHNOLOGIES = [
     "generic_solar_reference",
@@ -73,15 +62,14 @@ def _project(user_id, template, name="Cost WS", capacity=40.0):
 
 
 def _page(client, code):
-    pg = client.get(f"/v2/workbook?project={code}").text
-    h = re.search(r'name="content_hash" value="([^"]+)"', pg).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', pg).group(1)
-    return pg, h, v
+    ws = react_workspace_payload(client, code)
+    wb = ws["workbook"]
+    return ws, wb["composite_hash"], str(wb["version"])
 
 
 def _state(client, code):
-    pg = client.get(f"/v2/workbook?project={code}").text
-    return re.search(r'data-testid="toolbar-runtime-state"[^>]*>([^<]+)<', pg).group(1).strip()
+    ws = react_workspace_payload(client, code)
+    return {"CURRENT": "Current", "STALE": "Stale", "NOT_RUN": "Not Run"}[ws["freshness"]["state"]]
 
 
 def _run(client, code):
@@ -189,10 +177,9 @@ def test_line_lifecycle_active_inactive_reactivated(seeded_db, template, kind):
     total_off = _canonical_total(uid, rec, kind)
     assert total_off == pytest.approx(total_added - float(before["amount_keur"]))
 
-    # RELOAD: gone from the active list, listed as inactive with a Reactivate control
-    page, _, _ = _page(client, code)
-    assert f'data-testid="{kind}-reactivate-{sid}"' in page
-    assert "Inactive lines" in page
+    # RELOAD: gone from the active list, listed as inactive in React costlines
+    cl = client.get(f"/v2/model-react/costlines", params={"project": code, "sheet": kind}).json()
+    assert next(l for l in cl["lines"] if l["sub_line_id"] == sid)["active"] is False
 
     # REACTIVATE
     resp = _post(client, kind, "reactivate", **_line_fields(client, rec, kind, sid))
@@ -207,9 +194,9 @@ def test_line_lifecycle_active_inactive_reactivated(seeded_db, template, kind):
         assert after["inflation_pct"] == before["inflation_pct"]
     assert _canonical_total(uid, rec, kind) == pytest.approx(total_added)
 
-    # RELOAD: reactivated line is back in the active list, no longer listed inactive
-    page, _, _ = _page(client, code)
-    assert f'data-testid="{kind}-reactivate-{sid}"' not in page
+    # RELOAD: reactivated line is back in the active list
+    cl2 = client.get(f"/v2/model-react/costlines", params={"project": code, "sheet": kind}).json()
+    assert next(l for l in cl2["lines"] if l["sub_line_id"] == sid)["active"] is True
     assert _state(client, code) == "Stale"
 
     # RUN: real canonical run reads the updated inputs; Current again
@@ -367,8 +354,8 @@ def test_previously_deactivated_lines_become_reactivatable_without_changes(seede
     snap = _row(rec.project_id, sid, "opex")
     with get_cursor() as cur:                                # historical soft-delete
         cur.execute("UPDATE opex_sub_lines SET is_active=0 WHERE sub_line_id=?", (sid,))
-    page, _, _ = _page(client, rec.project_code)
-    assert f'data-testid="opex-reactivate-{sid}"' in page
+    cl = client.get("/v2/model-react/costlines", params={"project": rec.project_code, "sheet": "opex"}).json()
+    assert next(l for l in cl["lines"] if l["sub_line_id"] == sid)["active"] is False
     assert _post(client, "opex", "reactivate", **_line_fields(client, rec, "opex", sid)).status_code == 200
     back = _row(rec.project_id, sid, "opex")
     assert back["is_active"] == 1
@@ -490,20 +477,27 @@ def test_scenario_cost_override_survives_deactivate_and_reactivate(seeded_db, ki
 
 # ───────────── no category editor that saves without reaching the model ───────
 
-def _category_editor_ids(page, sheet):
-    m = re.search(rf'id="panel-{sheet}".*?(?=<div class="v2-sheet-panel" role="tabpanel"|\Z)', page, re.S)
-    return set(re.findall(r'name="field_id"\s+value="(opex\.lines\.[^"]+)"', m.group(0))) if m else set()
+def _category_editor_ids(client, project_code, sheet):
+    inp = client.get("/v2/model-react/inputs", params={"project": project_code}).json()
+    secs = {s["section_id"]: s for s in inp["grid"]["sections"]}
+    sec = secs.get(sheet)
+    if not sec:
+        return {}
+    return {
+        c["code"]: row
+        for c in sec.get("categories", [])
+        for row in c.get("rows", [])
+    }
 
 
 @pytest.mark.parametrize("template", TECHNOLOGIES)
 def test_opex_categories_with_lines_have_no_inert_category_editor(seeded_db, template):
     client, rec = _project(f"u-cw-noed-{template[8:12]}", template)
-    page, h, v = _page(client, rec.project_code)
-    editors = _category_editor_ids(page, "opex")
+    rows = _category_editor_ids(client, rec.project_code, "opex")
     # every seeded category (B.01 etc.) is an explained read-only total instead
-    assert 'data-testid="opex-category-total-B.01"' in page
-    assert "opex.lines.technical_management" not in editors
-    assert "Sum of the line items below" in page
+    b01 = rows["B.01"]
+    assert b01["editable"] is False and b01["field_id"] == ""
+    assert "Sum of line items" in b01["reason"]
 
 
 def test_capex_category_editor_remains_where_a_category_has_no_lines(seeded_db):
@@ -516,6 +510,6 @@ def test_capex_category_editor_remains_where_a_category_has_no_lines(seeded_db):
     client, _seed = _project("u-cw-legacy-ed", "generic_solar_reference", name="seed")
     ref = get_reference_by_template_source("generic_solar_reference")
     legacy = pls.create_working_copy(user_id="u-cw-legacy-ed", source_reference_id=ref.project_id)
-    page, _, _ = _page(client, legacy.project_code)
-    assert 'data-field-id="capex.C.production_units"' in page
-    assert 'data-testid="capex-category-total-C.01"' not in page
+    rows = _category_editor_ids(client, legacy.project_code, "capex")
+    c01 = rows["C.01"]
+    assert c01["field_id"] == "capex.C.production_units" and c01["editable"] is True

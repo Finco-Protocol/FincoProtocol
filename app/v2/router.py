@@ -134,7 +134,7 @@ def _fmt_runtime_at(ts) -> str:
             dt = ts
         else:
             dt = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-        return dt.strftime("%-d %b %Y, %H:%M")
+        return f"{dt.day} {dt.strftime('%b %Y, %H:%M')}"
     except Exception:
         return ""
 
