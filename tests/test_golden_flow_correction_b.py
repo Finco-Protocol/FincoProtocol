@@ -4,26 +4,13 @@ from __future__ import annotations
 from tests.model_mutation_csrf import post_valid_mutation
 
 from tests.run_clone_csrf import post_valid_csrf
+from tests.model_react_test_helpers import react_workbook_tokens, react_workspace_payload
 
-import re
 import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def _ws(**overrides):
@@ -135,7 +122,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
         dirty=False,
     )
     cookie = {"Cookie": f"{COOKIE_NAME}={create_session_token(user_id=owner, username=owner)}"}
-    htmx = {**cookie, "HX-Request": "true"}
+    react_headers = {**cookie, "X-Finco-React-Request": "1"}
 
     calls = 0
     real_run = project_runner.run_project
@@ -149,10 +136,10 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
         with TestClient(main_web.app, raise_server_exceptions=False) as client:
             created = post_valid_mutation(client, "/v2/workbook/scenarios/create",
                 data={"project": code, "scenario_name": "Scenario X"},
-                headers=htmx,
+                headers=react_headers,
             )
             assert created.status_code == 200, created.text
-            create_hash = _hashes(created.text)[-1]
+            create_hash = react_workbook_tokens(client, code, headers=cookie)["content_hash"]
 
             first_run = post_valid_csrf(client,
                 "/v2/workbook/run",
@@ -161,7 +148,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
                     "workbook_version": WORKBOOK.version,
                     "content_hash": create_hash,
                 },
-                headers=htmx,
+                headers=react_headers,
             )
             assert first_run.status_code == 200, first_run.text
             assert calls == 1
@@ -185,7 +172,7 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
             ws_before_reject = get_workspace_state(owner, record.project_id)
             rejected = post_valid_mutation(client, "/v2/workbook/scenarios/update-overrides",
                 data={"project": code, "scenario_id": scenario_id, "p50_hours": str(float(snapshot["p50_hours"]) * 1.1)},
-                headers=htmx,
+                headers=react_headers,
             )
             assert rejected.status_code == 422 and "SCENARIO_OVERRIDE_UNBOUND" in rejected.text, rejected.text[:300]
             assert "p50_hours" not in (get_scenario(scenario_id, owner).overrides or {})
@@ -205,22 +192,18 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
                     "scenario_id": scenario_id,
                     "tariff_eur_mwh": str(changed_tariff),
                 },
-                headers=htmx,
+                headers=react_headers,
             )
             assert mutated.status_code == 200, mutated.text
             assert float(get_scenario(scenario_id, owner).overrides["tariff_eur_mwh"]) == changed_tariff       # persisted
             assert calls == calls_before_mutation
-            assert 'id="v2-run-controls" hx-swap-oob="true"' in mutated.text
-            assert 'data-testid="toolbar-runtime-state">Stale<' in mutated.text
-            assert 'data-testid="overview-status-stale"' in mutated.text
-            assert "Working changes pending" in mutated.text
-            assert "Run required" in mutated.text
-            assert "STALE" in mutated.text
+            ws_mutated = react_workspace_payload(client, code, headers=cookie)
+            assert ws_mutated["freshness"]["state"] == "STALE"
 
             after = get_workspace_state(owner, record.project_id)
             current_after = assemble_consistent_for_get(
                 owner, record.project_id, WORKBOOK.version).composite_hash
-            returned_hash = _hashes(mutated.text)[-1]
+            returned_hash = ws_mutated["workbook"]["composite_hash"]
             assert after.dirty is False
             assert current_after != old_runtime_hash
             assert returned_hash == current_after
@@ -229,11 +212,8 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
             assert after.last_runtime_at == old_runtime_at
             assert get_scenario(scenario_id, owner).last_run_summary
 
-            reopened = client.get(f"/v2/workbook?project={code}", headers=cookie)
-            assert reopened.status_code == 200, reopened.text
-            assert 'data-testid="toolbar-runtime-state">Stale<' in reopened.text
-            assert 'data-testid="overview-status-stale"' in reopened.text
-            assert "Working changes pending" in reopened.text
+            reopened = react_workspace_payload(client, code, headers=cookie)
+            assert reopened["freshness"]["state"] == "STALE"
             assert calls == calls_before_mutation
 
             rerun = post_valid_csrf(client,
@@ -243,12 +223,12 @@ def test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds(r
                     "workbook_version": WORKBOOK.version,
                     "content_hash": returned_hash,
                 },
-                headers=htmx,
+                headers=react_headers,
             )
             assert rerun.status_code == 200, rerun.text
             assert "Draft changed since page loaded" not in rerun.text
             assert calls == calls_before_mutation + 1
-            assert 'data-testid="toolbar-runtime-state">Current<' in rerun.text
+            assert react_workspace_payload(client, code, headers=cookie)["freshness"]["state"] == "CURRENT"
 
             final_ws = get_workspace_state(owner, record.project_id)
             final_hash = assemble_consistent_for_get(

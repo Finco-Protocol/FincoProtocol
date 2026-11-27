@@ -4,24 +4,11 @@ import json
 
 from app.workbook import junior_debt_config as junior_config, multisenior_config as config
 from finco_core.inputs.financing_instruments import FinancingCollection, InstrumentType
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import save
 from tests.test_model_financing_f3_workspace import collection_for_inputs
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def _proposal(ws):
@@ -40,11 +27,15 @@ def test_saved_junior_proposal_renders_read_only_and_never_executes(env):
     ws = get_workspace_state("decision-user", record.project_id)
     response = save(env, record, _proposal(ws), field=config.FIELD_ID)
     assert response.status_code == 200 and "field-error-banner" not in response.text, response.text[:800]
-    page = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "debt"}).text
-    assert "Junior term loan" in page and "Activation closed" in page and "SAVED PROPOSAL" in page
-    assert page.count("data-f3-instrument=") == 1               # only the Senior row is a posted instrument
-    assert "data-cs-readonly-instrument=" in page
-    assert 'data-testid="cs-summary-last-run"' not in page      # a proposal is never calculated financing
+    studio_resp = env.client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
+    assert studio_resp.status_code == 200, studio_resp.text[:300]
+    stack = studio_resp.json()["capital_stack"]
+    assert stack["status"] == "SAVED PROPOSAL" and stack["junior_activation_closed"] is True
+    assert any(r["junior"] and r["type"] == "Junior term loan" for r in stack["rows"])
+    assert sum(1 for r in stack["rows"] if r["junior"] and not r["executable"]) == 1
+    assert all(not r["executable"] for r in stack["rows"])
+    assert any("Junior" in u["name"] and u["status"] == "UNSUPPORTED" for u in stack["unsupported"])
+    assert stack["last_run"] is None      # a proposal is never calculated financing
     saved = get_workspace_state("decision-user", record.project_id)
     assert saved.dirty is True and not saved.last_runtime_summary      # no Run happened
     assert json.loads(saved.draft_snapshot[config.SNAPSHOT_KEY])["scopes"]["base"]["activation"] is None

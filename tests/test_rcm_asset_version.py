@@ -58,7 +58,7 @@ def test_every_template_reference_to_the_react_bundle_carries_the_version_query(
         for query in re.findall(r'(?:href|src)="/static/react/finco-react\.(?:js|css)([^"]*)"', template.read_text(encoding="utf-8")):
             seen += 1
             assert query == "?v={{ asset_version }}", (template.name, query)
-    assert seen >= 3
+    assert seen >= 2
 
 
 def test_the_static_location_is_immutable_so_the_url_is_the_only_cache_key():

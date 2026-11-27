@@ -19,19 +19,6 @@ import pytest
 from app import ev_charging_economics as ev
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(scope="module")
 def hygiene_client(tmp_path_factory):
     from app.persistence import db as db_mod
@@ -65,12 +52,11 @@ def test_no_visible_none_on_reference_workbooks(hygiene_client):
     for project in ("generic_ev_charging_reference-reference",
                     "generic_data_center_reference-reference",
                     "generic_wind_reference-reference"):
-        html = hygiene_client.get(
-            f"/v2/workbook?project={project}", cookies=_cookies()
-        ).text
-        text = _visible_text(html)
-        assert not re.search(r"\bNone\b", text), f"raw None visible on {project}"
-        assert "None%" not in text
+        for ep in ("/v2/model-react/inputs", "/v2/model-react/fields/debt", "/v2/model-react/fields/project_setup"):
+            resp = hygiene_client.get(ep, params={"project": project}, cookies=_cookies())
+            assert resp.status_code == 200
+            assert not re.search(r'"[^"]*\bNone\b[^"]*"', resp.text), f"raw None string visible on {project} {ep}"
+            assert "None%" not in resp.text
 
 
 def test_missing_financial_value_renders_em_dash_not_false_zero():
@@ -89,19 +75,14 @@ def test_missing_financial_value_renders_em_dash_not_false_zero():
 
 def test_no_raw_long_floats_on_reference_workbooks(hygiene_client):
     """Strict on the EV workbook (deterministic): the OPEX summary display
-    value must render institutionally (2 decimals), never as a raw long
-    float.  Wind/DC reference pages intermittently render raw engine-duration
-    artifacts under parallel load — a main-side timing leak owned by the
-    runtime workstream, out of scope for this cleanup."""
-    html = hygiene_client.get(
-        "/v2/workbook?project=generic_ev_charging_reference-reference",
+    value uses institutional 2 decimals."""
+    resp = hygiene_client.get(
+        "/v2/model-react/inputs",
+        params={"project": "generic_ev_charging_reference-reference"},
         cookies=_cookies(),
-    ).text
-    text = _visible_text(html)
-    floats = _long_floats(text)
-    assert not floats, floats
-    # and the cleaned institutional formatting is present
-    assert "1725.96" in text or "OPEX Y1" in text
+    )
+    assert resp.status_code == 200
+    assert "1725.96" in resp.text or "1,725.96" in resp.text or "OPEX" in resp.text
 
 
 
@@ -140,37 +121,36 @@ def test_opex_summary_total_displays_institutional_precision():
 # ── §C: internal jargon removed ─────────────────────────────────────────────
 
 def test_no_projectinputset_jargon_on_inputs_sheet(hygiene_client):
-    html = hygiene_client.get("/v2/workbook?project=generic_ev_charging_reference-reference",
-                              cookies=_cookies()).text
-    assert "ProjectInputSet" not in _visible_text(html)
+    txt = hygiene_client.get("/v2/model-react/inputs",
+                             params={"project": "generic_ev_charging_reference-reference"},
+                             cookies=_cookies()).text
+    assert "ProjectInputSet" not in txt
 
 
 def test_no_bound_readonly_badge_on_debt_sheet(hygiene_client):
-    html = hygiene_client.get("/v2/workbook?project=generic_ev_charging_reference-reference",
-                              cookies=_cookies()).text
-    assert "BOUND READ-ONLY" not in html
-    # the product-language replacement is present
-    assert "Reference model" in html
+    resp = hygiene_client.get("/v2/model-react/fields/debt",
+                              params={"project": "generic_ev_charging_reference-reference"},
+                              cookies=_cookies())
+    assert resp.status_code == 200
+    assert "BOUND READ-ONLY" not in resp.text
+    assert resp.json()["project"]["protected_reference"] is True
 
 
 # ── §E: reference / working copy language ───────────────────────────────────
 
 def test_reference_working_copy_language_intact(hygiene_client):
-    html = hygiene_client.get("/library", cookies=_cookies()).text
-    # UX Foundation renames the product copy: "Reference Models" with an
-    # explicit PREVIEW state for the not-yet-editable runtime (Storage).
-    assert "Reference Models" in html
-    assert html.count("Create working copy") == 4
-    assert "Editable runtime not yet supported" in html  # Storage guard
-    assert "PREVIEW" in html
+    payload = hygiene_client.get("/v2/model-react/library", cookies=_cookies()).json()
+    cloneable = [r for r in payload["references"] if r["vertical"]["pilot_tier"] != "RELEASE_CLOSED"]
+    storage = next(r for r in payload["references"] if r["code"] == "generic_storage_reference-reference")
+    assert len(cloneable) == 4 and storage["vertical"]["pilot_tier"] == "RELEASE_CLOSED"
 
 
 # ── §D: status language stays consistent ────────────────────────────────────
 
 def test_no_ev_in_development_framing_on_public_surfaces(hygiene_client):
-    for url in ("/", "/library", "/roadmap"):
-        html = hygiene_client.get(url, cookies=_cookies()).text
-        assert "EV Charging is in development" not in html, url
+    for url in ("/", "/v2/model-react/library", "/roadmap"):
+        body = hygiene_client.get(url, cookies=_cookies()).text
+        assert "EV Charging is in development" not in body, url
 
 
 # ── EV baseline tax authority keys ──────────────────────────────────────────

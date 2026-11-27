@@ -21,19 +21,8 @@ from tests.test_investor_f4_workspace import funded_agreement
 from tests.test_investor_f4_workspace import save as save_agreement
 from tests.test_wf07_revenue_multistream import contracts
 from tests.test_wf07_revenue_workspace import contract_tokens
+from tests.model_react_test_helpers import react_revenue_save_contract, react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 U = C.USER
 
@@ -230,9 +219,7 @@ def test_E4_contribution_total_mismatch_rejects_the_run_and_commits_nothing(equi
     doc = funded_agreement(ws)
     doc["contributions"][0]["amount_keur"] -= 5
     assert save_agreement(env, record, doc).status_code == 200
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    from tests.test_model_decision_workspace_v2 import tokens
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **tokens(page.text)))
+    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=record.project_code, **react_workbook_tokens(env.client, record.project_code)))
     after = _ws(record)
     assert after.dirty and after.last_runtime_snapshot_id == ws.last_runtime_snapshot_id
     C.emit({"case": "E4", "family": "EQUITY", "input_modification": "contribution total 5 kEUR below project funding",
@@ -254,9 +241,8 @@ def test_E5_invalid_agreement_rejected(equity_baseline):
 
 # ───────────────────────────────────────────── Add PPA ─────────────────────────────────────────────
 def _post_contracts(env, record, payload):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-                           data={"project": record.project_code, **contract_tokens(page.text), "contracts": json.dumps(payload)})
+                           data={"project": record.project_code, **contract_tokens(react_revenue_save_contract(env.client, record.project_code)), "contracts": json.dumps(payload)})
 
 
 def _ppa_case(env, payload_fn, case=None):

@@ -26,19 +26,6 @@ from types import SimpleNamespace
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -69,7 +56,8 @@ def _client():
 
 def _create_project(user_id: str, project_code: str):
     from app.persistence.repository import create_project_record
-    return create_project_record(
+    from app.persistence.workspace_repository import save_workspace_state
+    rec = create_project_record(
         user_id=user_id,
         project_code=project_code,
         project_name=f"F05 test {project_code}",
@@ -78,11 +66,20 @@ def _create_project(user_id: str, project_code: str):
         template_source="",
         baseline_snapshot={},
     )
+    save_workspace_state(
+        user_id=user_id,
+        project_id=rec.project_id,
+        project_code=project_code,
+        draft_snapshot={},
+        saved_snapshot={},
+    )
+    return rec
 
 
 def _delete_projects(user_id: str) -> None:
     from app.persistence.db import get_connection
     conn = get_connection()
+    conn.execute("DELETE FROM workspace_states WHERE user_id=?", (user_id,))
     conn.execute("DELETE FROM projects WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
@@ -189,7 +186,7 @@ def _demo_headers() -> dict[str, str]:
 
 
 def test_anonymous_first_visit_gets_provisioned_demo_session(client):
-    resp = client.get("/library")  # provisioning skip-list does not include /library
+    resp = client.get("/v2/model-react/library")
     assert resp.status_code == 200
     assert "finco_demo" in resp.headers.get("set-cookie", ""), (
         "first visit must be auto-provisioned a demo session"
@@ -197,19 +194,18 @@ def test_anonymous_first_visit_gets_provisioned_demo_session(client):
 
 
 def test_demo_session_authenticates_library(client):
-    resp = client.get("/library", headers=_demo_headers(), follow_redirects=False)
+    resp = client.get("/v2/model-react/library", headers=_demo_headers(), follow_redirects=False)
     assert resp.status_code == 200, (
-        f"a valid demo session must open the Library, got {resp.status_code}"
+        f"a valid demo session must open the React Library, got {resp.status_code}"
     )
 
 
 def test_demo_session_authenticates_v2_gate_not_bounced_to_login(client):
-    """Core F05 pin: the demo session that opens /library must pass the
-    Workbook V2 authentication gate. Without a project the V2 route's
-    downstream policy redirects to /library — never to /login."""
+    """Core F05 pin: the demo session that opens /v2/model-react/library must pass the
+    Workbook V2 authentication gate. Without a project the V2 route redirects to React Library — never to /login."""
     resp = client.get("/v2/workbook", headers=_demo_headers(), follow_redirects=False)
     assert resp.status_code == 302
-    assert resp.headers["location"].startswith("/library"), (
+    assert resp.headers["location"].startswith("/v2/model-react"), (
         f"demo session must resolve on /v2/workbook (got redirect to {resp.headers['location']})"
     )
 
@@ -222,7 +218,7 @@ def test_admin_session_authenticates_v2_gate(client):
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"].startswith("/library")
+    assert resp.headers["location"].startswith("/v2/model-react")
 
 
 def test_demo_session_denied_other_users_project(client):
@@ -235,14 +231,12 @@ def test_demo_session_denied_other_users_project(client):
         _create_project(victim_id, code)
         from app.auth import DEMO_COOKIE_NAME
         resp = client.get(
-            f"/v2/workbook?project={code}",
+            f"/v2/model-react/workspace?project={code}",
             headers={"Cookie": f"{DEMO_COOKIE_NAME}={_demo_cookie_value(demo_id)}"},
             follow_redirects=False,
         )
-        assert resp.status_code == 302
-        assert resp.headers["location"].startswith("/library"), (
-            "cross-user project access must be denied by route policy, not /login-bounced "
-            "(the session itself must still resolve)"
+        assert resp.status_code == 404, (
+            f"cross-user project access must fail closed with 404, got {resp.status_code}"
         )
     finally:
         _delete_projects(victim_id)
@@ -275,8 +269,7 @@ def test_tampered_demo_session_fails_closed_on_library(client):
 
 def test_demo_redirect_chain_never_touches_login(client):
     """Redirect-chain proof: /v2/workbook with a valid demo session and no
-    project follows its documented policy redirect to /library, which accepts
-    the same demo identity — the chain must end 200 on /library."""
+    project redirects to /v2/model-react/ without touching /login."""
     resp = client.get("/v2/workbook", headers=_demo_headers(), follow_redirects=True)
     assert resp.status_code == 200
     chain_urls = [str(r.url) for r in getattr(resp, "history", [])] + [str(resp.url)]
@@ -365,20 +358,19 @@ def test_ca_logout_no_demo_reauth_defeats_logout(client):
 
 def test_ca_demo_own_project_workbook_v2_access_positive(client):
     """Section 4 positive authority proof: a valid demo identity can open
-    its OWN accessible Workbook V2 project — the request reaches the
-    Workbook V2 rendering path (not a redirect to /library or /login)."""
+    its OWN accessible React Workspace project (200 JSON)."""
     demo_id = "f05demo_" + uuid.uuid4().hex[:12]
     code = "f05own_" + uuid.uuid4().hex[:10]
     try:
         _create_project(demo_id, code)
         from app.auth import DEMO_COOKIE_NAME
         resp = client.get(
-            f"/v2/workbook?project={code}",
+            f"/v2/model-react/workspace?project={code}",
             headers={"Cookie": f"{DEMO_COOKIE_NAME}={_demo_cookie_value(demo_id)}"},
         )
         assert resp.status_code == 200, (
-            f"own-project access must reach the Workbook V2 rendering path, "
-            f"got {resp.status_code} -> {resp.headers.get('location')}")
-        assert "workbook" in resp.text.lower() or "sheet" in resp.text.lower()
+            f"own-project access must reach the React workspace, "
+            f"got {resp.status_code}: {resp.text[:200]}")
+        assert resp.json()["ok"] is True and resp.json()["project"]["code"] == code
     finally:
         _delete_projects(demo_id)

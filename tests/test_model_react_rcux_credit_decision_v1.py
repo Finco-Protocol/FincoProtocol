@@ -57,8 +57,7 @@ def test_flag_and_session_are_required(env, monkeypatch):  # noqa: F811
     from app.v2.react_credit_decision import router
     env.client.app.include_router(router, prefix="/v2")
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert env.client.get(PATH, params={"project": "x"}).json()["code"] == "REACT_POC_DISABLED"
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
+    assert env.client.get(PATH, params={"project": "x"}).status_code == 404
     from fastapi.testclient import TestClient
     assert TestClient(env.client.app).get(PATH, params={"project": "x"}).status_code == 401
 

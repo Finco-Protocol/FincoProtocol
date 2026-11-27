@@ -14,21 +14,18 @@ import time
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-pytest.importorskip("playwright", reason="playwright not installed in this workflow")
+pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright, Page
+
+
+def _chromium_launch_kwargs() -> dict:
+    exec_path = os.getenv("FINCO_TEST_CHROMIUM_PATH") or (
+        "/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else ""
+    )
+    kwargs: dict = {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+    if exec_path:
+        kwargs["executable_path"] = exec_path
+    return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +110,7 @@ def test_run_certificate_browser_1280(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(**({"executable_path": "/opt/pw-browsers/chromium"} if os.path.exists("/opt/pw-browsers/chromium") else {}))
+        browser = pw.chromium.launch(**_chromium_launch_kwargs())
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         _set_auth_cookie(context, app_server)
         page = context.new_page()
@@ -162,7 +159,7 @@ def test_run_certificate_browser_390(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(**({"executable_path": "/opt/pw-browsers/chromium"} if os.path.exists("/opt/pw-browsers/chromium") else {}))
+        browser = pw.chromium.launch(**_chromium_launch_kwargs())
         context = browser.new_context(viewport={"width": 390, "height": 844})
         _set_auth_cookie(context, app_server)
         page = context.new_page()
@@ -208,38 +205,34 @@ def test_run_certificate_browser_contextual_journey(app_server):
     project_code = _solar_project_code()
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(**({"executable_path": "/opt/pw-browsers/chromium"} if os.path.exists("/opt/pw-browsers/chromium") else {}))
+        browser = pw.chromium.launch(**_chromium_launch_kwargs())
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         _set_auth_cookie(context, app_server)
         page = context.new_page()
         try:
-            # Navigate to the model index page for the reference project
+            # Navigate to the canonical React Trust view for the reference project
             page.goto(
-                f"{app_server}/?project={project_code}",
-                wait_until="domcontentloaded",
+                f"{app_server}/v2/model-react/{project_code}#trust",
+                wait_until="load",
             )
 
-            # "View Run Certificate" link must appear in the last-run indicator
-            cert_link = page.locator("a[href*='/verify/run/']")
-            assert cert_link.count() > 0, (
-                "A 'View Run Certificate' link must appear on the model surface for a project "
-                "with a committed last run. Check _last_run_indicator.html."
+            # Trust view renders certificate request control for a committed last run
+            cert_panel = page.locator('[data-trust-panel="certificate"]')
+            cert_panel.wait_for(timeout=20000)
+            cert_btn = cert_panel.locator('[data-trust-load="certificate"]')
+            assert cert_btn.count() == 1, (
+                "Run certificate request control must appear on the React Trust tab for a committed last run."
             )
+            cert_btn.click()
+            cert_panel.locator('[data-trust-result="certificate"]').wait_for(timeout=20000)
 
-            # The link must point to this project's certificate
-            href = cert_link.first.get_attribute("href")
-            assert project_code in href, (
-                f"Certificate link {href!r} must reference project_code={project_code!r}"
-            )
-
-            # Follow the link
-            with page.expect_navigation(wait_until="domcontentloaded"):
-                cert_link.first.click()
+            # Follow the canonical /verify/run/{project_code} certificate page
+            _navigate_to_certificate(page, app_server, project_code)
 
             # Certificate page must load
             body_text = page.locator("body").inner_text()
             assert "INTEGRITY BOUND" in body_text, (
-                "Navigating the contextual 'View Run Certificate' link must reach the "
+                "Navigating to the Run Certificate page must reach the "
                 "certificate page showing INTEGRITY BOUND."
             )
 

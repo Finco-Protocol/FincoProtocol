@@ -9,19 +9,6 @@ from tests.test_rc2_integration_acceptance import _pi, _save_revenue
 from tests.test_rc7_revenue_ppa_v3_economics import _row, _merchant, _payload, _operating
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves Revenue V3 multi-contract ledger on the legacy grid; new Solar/Wind projects now default to OD-TIME-01/v1,
@@ -63,13 +50,13 @@ def test_multi_contract_save_run_ledger_history_stale_and_duplicate_refusal(env,
     # Deactivate a contract (remove ppa-c): saved-but-not-run is STALE and the older Run history is untouched.
     fewer = copy.deepcopy(good); fewer["streams"] = [s for s in fewer["streams"] if s["id"] != "ppa-c"]
     assert _save_revenue(flow, fewer).status_code == 200
-    assert flow.ws().dirty and "STALE" in env.client.get("/v2/workbook", params=flow.project).text
+    assert flow.ws().dirty and "STALE" in env.client.get("/v2/model-react/workspace", params=flow.project).text
     second = flow.run()
     assert second["total_revenue_keur"] != run["total_revenue_keur"]
     history = get_run_history(OWNER, flow.record.project_id)
     assert len(history) == len(before) + 1
     assert next(h for h in history if h.history_id == before[0].history_id).runtime_summary == before[0].runtime_summary
-    assert not flow.ws().dirty and "CURRENT" in env.client.get("/v2/workbook", params=flow.project).text
+    assert not flow.ws().dirty and "CURRENT" in env.client.get("/v2/model-react/workspace", params=flow.project).text
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])

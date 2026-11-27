@@ -13,18 +13,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workspace_payload
 
 HTMX = {"HX-Request": "true"}
 NAME_FIELD = "project_setup.identity.project_name"
@@ -52,8 +41,9 @@ def _project(client, uid, name="Original Name"):
 
 
 def _identity(client, rec):
-    html = client.get(f"/v2/workbook?project={rec.project_code}").text
-    return (re.search(r'data-content-hash="([^"]+)"', html).group(1), re.search(r'data-workbook-version="([^"]+)"', html).group(1), html)
+    payload = react_workspace_payload(client, rec.project_code)
+    wb = payload["workbook"]
+    return (wb["composite_hash"], str(wb["version"]), payload)
 
 
 def _rename(client, rec, value, content_hash, version):
@@ -75,18 +65,17 @@ def _snapshot_name(uid, rec):
 
 def test_rename_is_coherent_across_record_header_library_and_reload(env):
     rec = _project(env, "sc34-id-1")
-    ch, wv, html = _identity(env, rec)
-    assert re.findall(r'v2-toolbar-name">([^<]*)', html) == ["Original Name"]
+    ch, wv, payload = _identity(env, rec)
+    assert payload["project"]["name"] == "Original Name"
     r = _rename(env, rec, "  Renamed Project  ", ch, wv)
     assert r.status_code == 200
     after = _record("sc34-id-1", rec)
     assert after.project_name == "Renamed Project"                                    # canonical owner, trimmed
     assert (after.project_id, after.project_code) == (rec.project_id, rec.project_code)      # stable identity
     assert _snapshot_name("sc34-id-1", rec) == "Renamed Project"                        # the field mirrors the same value
-    page = env.get(f"/v2/workbook?project={rec.project_code}").text
-    assert re.findall(r'v2-toolbar-name">([^<]*)', page) == ["Renamed Project"]
-    assert "<title>Renamed Project — Workbook</title>" in page
-    library = env.get("/library").text
+    page = react_workspace_payload(env, rec.project_code)
+    assert page["project"]["name"] == "Renamed Project"
+    library = env.get("/v2/model-react/library").text
     assert "Renamed Project" in library and "Original Name" not in library
 
 
@@ -118,8 +107,8 @@ def test_scenario_navigation_keeps_the_renamed_identity(env):
     scenarios = list_scenarios("sc34-id-4", rec.project_id)
     for sc in scenarios:
         assert post_valid_mutation(env, "/v2/workbook/scenarios/select", headers=HTMX, data={"project": rec.project_code, "scenario_id": sc.scenario_id}).status_code == 200
-        page = env.get(f"/v2/workbook?project={rec.project_code}").text
-        assert re.findall(r'v2-toolbar-name">([^<]*)', page) == ["Scenario Safe Name"]
+        page = react_workspace_payload(env, rec.project_code)
+        assert page["project"]["name"] == "Scenario Safe Name"
     assert _snapshot_name("sc34-id-4", rec) == "Scenario Safe Name"
     assert get_workspace_state("sc34-id-4", rec.project_id) is not None
 

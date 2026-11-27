@@ -39,19 +39,6 @@ from app.model_quality.scoring import BLOCKED_SCORE_CAP, MIN_COVERAGE, rank_gaps
 from app.run_integrity import evidence_digest
 from app.ui.runtime_summary import _format_revenue_derivation
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 HASH = "ab" * 32
 SNAP = "20261010T000000.000000+0000"
@@ -858,12 +845,12 @@ def test_maturity_authority_is_bound_to_the_committed_run_and_history(seeded_db)
     record = create_reference_seeded_project(user_id=user, template_source="generic_solar_reference",
                                              requested_name="Q1 SHL", capacity_mw=40.0)
     cookies = {COOKIE_NAME: create_session_token(user_id=user, username="admin")}
-    client = TestClient(main_web.app)
-    page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-    h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    client = TestClient(main_web.app, cookies=cookies)
+    from tests.model_react_test_helpers import react_workbook_tokens
+    wb_toks = react_workbook_tokens(client, record.project_code)
+    h, v = wb_toks["content_hash"], wb_toks["workbook_version"]
     resp = post_valid_csrf(client, "/v2/workbook/run", data={"project": record.project_code, "content_hash": h, "workbook_version": v},
-                       cookies=cookies, headers={"HX-Request": "true"})
+                       headers={"HX-Request": "true"})
     assert resp.status_code == 200
     ws = get_workspace_state(user, record.project_id)
     assert ws.last_runtime_snapshot_id and ws.last_runtime_composite_hash == h

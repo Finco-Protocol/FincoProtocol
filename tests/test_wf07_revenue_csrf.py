@@ -4,33 +4,20 @@ import time
 
 import pytest
 
+from tests.model_react_test_helpers import react_revenue_save_contract
 from tests.test_model_decision_workspace_v2 import env
 from tests.test_wf07_revenue_workspace import contract_tokens
 from tests.test_wf07_revenue_multistream import contracts
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def form_data(env):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.service import WorkbookService
     record = env.create()
-    response = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert response.status_code == 200
+    save_contract = react_revenue_save_contract(env.client, record.project_code)
     ws = get_workspace_state("decision-user", record.project_id)
     raw = contracts(WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs())
-    return record, ws, {"project": record.project_code, **contract_tokens(response.text), "contracts": json.dumps(raw)}
+    return record, ws, {"project": record.project_code, **contract_tokens(save_contract), "contracts": json.dumps(raw)}
 
 
 @pytest.mark.parametrize("kind", ["missing", "forged", "expired"])
@@ -79,9 +66,9 @@ def test_valid_form_csrf_save_reload_and_refresh_do_not_execute_engine(env, monk
     assert after.dirty
     assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id
     assert json.loads(after.draft_snapshot[SNAPSHOT_KEY]) == json.loads(data["contracts"])
-    reload = env.client.get("/v2/workbook", params={"project": record.project_code})
+    reload = env.client.get("/v2/model-react/revenue", params={"project": record.project_code})
     assert reload.status_code == 200
-    contract_tokens(reload.text)
+    assert reload.json()["save"]["csrf_token"]
 
 
 @pytest.mark.parametrize("scope", ["anonymous", "other_owner", "protected"])
@@ -104,9 +91,10 @@ def test_valid_csrf_does_not_grant_project_write_authority(env, monkeypatch, sco
         finally:
             conn.close()
         expected = 409
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
+        page = env.client.get("/v2/model-react/revenue", params={"project": record.project_code})
         assert page.status_code == 200
-        assert 'data-testid="revenue-contracts-form"' not in page.text
+        body = page.json()
+        assert body["project"]["protected_reference"] is True
     def forbidden(**kwargs):
         pytest.fail("Rejected project authority must not reach the writer")
     monkeypatch.setattr("app.workbook.revenue_contracts_service.save_contracts", forbidden)

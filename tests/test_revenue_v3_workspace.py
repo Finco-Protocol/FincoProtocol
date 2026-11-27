@@ -9,23 +9,25 @@ from io import BytesIO
 
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env, tokens
-from tests.test_wf07_revenue_workspace import contract_tokens
+from tests.model_react_test_helpers import react_workbook_tokens, react_workspace_payload
+from tests.test_model_decision_workspace_v2 import env
 from tests.test_revenue_v3_products import candidate
 from tests.revenue_v3_cases import book
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+def _rev_payload(client, project_code: str) -> dict:
+    res = client.get("/v2/model-react/revenue", params={"project": project_code})
+    assert res.status_code == 200, res.text[:500]
+    return res.json()
+
+
+def _rev_tokens(client, project_code: str) -> dict[str, str]:
+    save = _rev_payload(client, project_code)["save"]
+    return {
+        "csrf_token": save["csrf_token"],
+        "content_hash": save["content_hash"],
+        "workbook_version": save["workbook_version"],
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -49,23 +51,21 @@ def test_candidate_save_scenario_stale_run_history_and_product_export(env, candi
     project = {"project": record.project_code}
     def ws():
         return get_workspace_state("decision-user", record.project_id)
-    def page():
-        response = env.client.get("/v2/workbook", params=project)
-        assert response.status_code == 200
-        return response.text
     def save(payload, **extra):
-        return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-            data={**project, **contract_tokens(page()), "contracts": json.dumps(payload), **extra})
+        return env.client.post("/v2/workbook/revenue/contracts",
+            data={**project, **_rev_tokens(env.client, record.project_code), "contracts": json.dumps(payload), **extra})
     def run():
-        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page())})
+        response = post_valid_csrf(env.client, "/v2/workbook/run", data={**project, **react_workbook_tokens(env.client, record.project_code)})
         assert response.status_code == 200, response.text[:2000]
-        assert 'data-testid="overview-status-current"' in response.text
+        ws_payload = react_workspace_payload(env.client, record.project_code)
+        assert ws_payload["freshness"]["state"] == "CURRENT"
         assert not ws().dirty
-        assert 'data-testid="revenue-products-audit"' in response.text
+        assert ws_payload["identity"]["snapshot_id"] == ws().last_runtime_snapshot_id
+        assert ws().last_runtime_summary["revenue_multistream_audit"][0]["products"]
         return copy.deepcopy(ws().last_runtime_summary)
     raw, axis = book(WorkbookService.build_draft_input_set_from_workspace(ws()).to_projectinputs(), kind)
-    html = page()
-    assert 'data-product-add' in html and axis[0].start_date.isoformat() in html
+    rev_contracts = _rev_payload(env.client, record.project_code)["contracts"]
+    assert rev_contracts["v3_enabled"] is True and any(p["period_start"] == axis[0].start_date.isoformat() for p in rev_contracts["period_axis"])
     assert save(raw).status_code == 200
     assert ws().dirty
     assert json.loads(ws().draft_snapshot[SNAPSHOT_KEY]) == raw
@@ -95,7 +95,8 @@ def test_candidate_save_scenario_stale_run_history_and_product_export(env, candi
     with monkeypatch.context() as patch:
         patch.setattr("app.services.production_financial_authority.run_clean_production", forbidden)
         patch.setattr("app.runtime.model_execution.run_model_process", forbidden)
-        assert 'data-testid="revenue-products-audit"' in page()
+        assert react_workspace_payload(env.client, record.project_code)["freshness"]["state"] == "STALE"
+        assert ws().last_runtime_summary["revenue_multistream_audit"][0]["products"]
         exported = build_canonical_last_run_institutional_workbook_export("generic_" + kind + "_reference",
             safe_project=record.project_code, project_record=record, user_id="decision-user")
         assert exported.status_code == 200, exported.error_content
@@ -116,12 +117,12 @@ def test_closed_release_route_and_cas_csrf_owner(env, monkeypatch):
     from domain.revenue import advanced_products
     record = env.create()
     project = {"project": record.project_code}
-    html = env.client.get("/v2/workbook", params=project).text
+    rev_state = _rev_payload(env.client, record.project_code)["contracts"]
     initial = get_workspace_state("decision-user", record.project_id)
     raw, _ = book(WorkbookService.build_draft_input_set_from_workspace(initial).to_projectinputs())
-    data = {**project, **contract_tokens(html), "contracts": json.dumps(raw)}
-    assert 'data-product-add' not in html
-    assert 'data-testid="revenue-v3-release-closed"' in html
+    data = {**project, **_rev_tokens(env.client, record.project_code), "contracts": json.dumps(raw)}
+    assert rev_state["v3_enabled"] is False
+    assert rev_state["products"] == []
     response = env.client.post("/v2/workbook/revenue/contracts", data=data)
     assert response.status_code == 422 and "RELEASE_CLOSED" in response.text
     assert get_workspace_state("decision-user", record.project_id) == initial

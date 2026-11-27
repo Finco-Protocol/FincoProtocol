@@ -13,30 +13,8 @@ from tests.test_save_all_atomic_v1 import world, _project, _body, _state, _ident
 from app.workbook import revenue_contracts_service as RC
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _read(world, rec):
-    import os
-    prev = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "1"
-    try:
-        return world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
-    finally:
-        if prev is None:
-            os.environ.pop("FINCO_MODEL_REACT_V1", None)
-        else:
-            os.environ["FINCO_MODEL_REACT_V1"] = prev
+    return world.owner.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
 
 
 def _doc(world, rec, price, indexation):
@@ -144,18 +122,19 @@ def test_a_token_from_another_project_is_refused(world):
 
 
 def _form_tokens(world, rec):
-    page = world.owner.get("/v2/workbook", params={"project": rec.project_code}).text
-    got = {k: re.search(rf'name="{k}" value="([^"]*)"', page).group(1) for k in ("content_hash", "workbook_version", "contracts_base_token")}
-    form = re.search(r'<form[^>]*revenue-contracts-form.*?</form>', page, re.S).group(0)
-    got["csrf_token"] = re.search(r'name="csrf_token" value="([^"]*)"', form).group(1)
-    return got
+    body = _read(world, rec)
+    return {
+        "content_hash": body["save"]["content_hash"],
+        "workbook_version": str(body["save"]["workbook_version"]),
+        "contracts_base_token": body["contracts"]["base_token"],
+        "csrf_token": body["save"]["csrf_token"],
+    }
 
 
-def test_the_legacy_standalone_route_sends_and_verifies_the_token(world, monkeypatch):
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+def test_the_canonical_contracts_route_sends_and_verifies_the_token(world):
     rec = _project()
     assert _save(world, rec, _doc(world, rec, 55, 0.02)).status_code == 200
-    tokens = _form_tokens(world, rec)                                                                # Writer A's legacy page: token echoed in the form
+    tokens = _form_tokens(world, rec)                                                                # Writer A's React read: token echoed in contract payload
     assert re.fullmatch(r"[0-9a-f]{64}", tokens["contracts_base_token"])
     assert _save(world, rec, _doc(world, rec, 55, 0.03), token=tokens["contracts_base_token"]).status_code == 200      # Writer B moves to H2
     fresh = _form_tokens(world, rec)

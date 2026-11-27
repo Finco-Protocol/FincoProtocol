@@ -75,49 +75,40 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
                                           requested_name=f"F3 evidence {kind}", capacity_mw=16)
     recon = Recon()
 
-    def page():
-        return client.get(f"/v2/workbook?project={rec.project_code}")
-
-    def bound_csrf(html):
-        """The Capital Stack form issues a session/project-bound CSRF token; read it from the DOM like a browser."""
-        return re.search(r'<form[^>]*data-f3-form.*?name="csrf_token" value="([^"]+)"', html, re.S).group(1)
-
-    def tokens(html):
-        return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
-                re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
-
     ws0 = get_workspace_state(cookie_user, rec.project_id)
     pi = ProjectInputSet.from_snapshot(ws0.draft_snapshot).to_projectinputs()
     raw = state(active=True, collection=collection_for_inputs(pi))
-    editor = page().text
-    h, v = tokens(editor)
-    saved = client.post("/v2/workbook/update", data={"field_id": config.FIELD_ID, "value": raw, "project": rec.project_code,
-                        "workbook_version": v, "content_hash": h, "sheet_id": "debt", "csrf_token": bound_csrf(editor)},
-                        headers={"HX-Request": "true"})
+    debt_save = client.get("/v2/model-react/fields/debt", params={"project": rec.project_code}).json()["save"]
+    saved = client.post(
+        "/v2/workbook/update",
+        data={
+            "field_id": config.FIELD_ID,
+            "value": raw,
+            "project": rec.project_code,
+            "workbook_version": debt_save["workbook_version"],
+            "content_hash": debt_save["content_hash"],
+            "sheet_id": "debt",
+            "csrf_token": debt_save["financing_csrf_token"],
+        },
+        headers={"HX-Request": "true"},
+    )
     recon.add("F3 proposal + activation saved through the workspace CAS", saved.status_code == 200 and "field-error" not in saved.text)
-    # The Run uses its OWN operation-scoped token, not the Capital Stack
-    # token from the F3 editor.  Read all fields from one authenticated
-    # canonical Run form so the CSRF, project and CAS identity agree.
-    from bs4 import BeautifulSoup
-    run_page = page()
-    assert run_page.status_code == 200, f"{kind}: workbook Run form unavailable ({run_page.status_code})"
-    run_form = BeautifulSoup(run_page.text, "html.parser").select_one("#v2-canonical-run-form")
-    if run_form is None:
-        raise RuntimeError(f"{kind}: canonical Run form missing after F3 activation")
-    def run_field(name):
-        field = run_form.select_one(f'input[name="{name}"]')
-        if field is None or not field.get("value"):
-            raise RuntimeError(f"{kind}: canonical Run form missing {name}")
-        return field["value"]
-    if run_field("project") != rec.project_code:
-        raise RuntimeError(f"{kind}: canonical Run form project mismatch")
-    h, v, run_csrf = (run_field("content_hash"), run_field("workbook_version"),
-                      run_field("run_csrf_token"))
-    ran = client.post("/v2/workbook/run",
-                      data={"project": rec.project_code, "content_hash": h,
-                            "workbook_version": v, "run_csrf_token": run_csrf},
-                      headers={"HX-Request": "true"})
-    if ran.status_code != 200 or ran.headers.get("X-Finco-Run-Outcome") == "FAILED":
+    ws_payload = client.get("/v2/model-react/workspace", params={"project": rec.project_code}).json()["workbook"]
+    run_payload = client.get("/v2/model-react/runs", params={"project": rec.project_code}).json()
+    run_contract = run_payload["run_contract"]
+    import uuid
+    ran = client.post(
+        run_contract["url"],
+        data={
+            "project": rec.project_code,
+            "content_hash": ws_payload["composite_hash"],
+            "workbook_version": str(ws_payload["version"]),
+            "csrf_token": run_contract["csrf_token"],
+            "run_intent_id": str(uuid.uuid4()),
+        },
+        headers={"Accept": "application/json"},
+    )
+    if ran.status_code != 200 or (ran.json().get("outcome") not in ("COMMITTED", "REPLAYED")):
         raise RuntimeError(f"{kind}: canonical Run rejected (HTTP {ran.status_code}, "
                            f"outcome {ran.headers.get('X-Finco-Run-Outcome', 'missing')})")
     ws = get_workspace_state(cookie_user, rec.project_id)
@@ -299,10 +290,9 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
     edited = json.loads(raw)
     edited["scopes"]["base"]["proposal"]["instruments"][0]["interest"]["fixed_rate"] = 0.05
     edited["scopes"]["base"]["activation"]["proposal_digest"] = "BIND_ON_SAVE"
-    editor = page().text
-    h, v = tokens(editor)
+    debt_save = client.get("/v2/model-react/fields/debt", params={"project": rec.project_code}).json()["save"]
     edit_resp = client.post("/v2/workbook/update", data={"field_id": config.FIELD_ID, "value": json.dumps(edited), "project": rec.project_code,
-                            "workbook_version": v, "content_hash": h, "sheet_id": "debt", "csrf_token": bound_csrf(editor)},
+                            "workbook_version": debt_save["workbook_version"], "content_hash": debt_save["content_hash"], "sheet_id": "debt", "csrf_token": debt_save["financing_csrf_token"]},
                             headers={"HX-Request": "true"})
     ws_after = get_workspace_state(cookie_user, rec.project_id)
     entry_after = get_latest_history_entry(cookie_user, rec.project_id)
@@ -311,9 +301,9 @@ def run_case(kind: str, client, cookie_user: str) -> dict:
               and ws_after.last_integrity_evidence["digest"] == before["integrity"]
               and entry_after.history_id == before["history_id"] and _digest(entry_after.runtime_summary) == before["entry"]
               and ws_after.last_runtime_snapshot_id == before["snapshot"])
-    stale_page = page().text
+    insights_state = client.get("/v2/model-react/insights", params={"project": rec.project_code, "run": entry_after.history_id}).json()
     recon.add("the page labels the edited Working Copy STALE while Q3 still evaluates the prior committed Run",
-              'data-q3-state="STALE"' in stale_page)
+              (insights_state.get("working_copy") or {}).get("freshness") == "STALE")
 
     # Q3 Findings on the F3 Run (read from the committed CURRENT render before the edit is not available now,
     # so evaluate Q1 over the committed record exactly as the panel does)

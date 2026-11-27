@@ -26,19 +26,6 @@ from typing import Any
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -548,12 +535,10 @@ class TestGenericWorkingCopyLineEditingHttp:
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
 
-        # This is the rendered product page acceptance: no Verify module and
-        # no legacy /scenarios navigation from the V2 toolbar.
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        assert 'href="/verify"' not in page.text
-        assert "/scenarios?project=" not in page.text
+        # This is the React product workspace boundary: no Verify module.
+        ws_res = client.get(f"/v2/model-react/workspace?project={record.project_code}", cookies=cookies)
+        assert ws_res.status_code == 200
+        assert 'href="/verify"' not in ws_res.text
 
         capex_before = get_active_sub_lines_for_project(record.project_id)
         assert capex_before
@@ -564,12 +549,19 @@ class TestGenericWorkingCopyLineEditingHttp:
             record, _build_pis_with_hash(user_id, record),
             get_workspace_state(user_id, record.project_id), workspace_owner=user_id,
         )["capex_vm"]
-        capex_form = _rendered_form_values(
-            page.text, "/v2/capex/line/update", capex_line.sub_line_id,
-        )
+        cap_cl = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=capex", cookies=cookies).json()
+        cap_row = next(r for r in cap_cl["lines"] if r["sub_line_id"] == capex_line.sub_line_id)
+        capex_form = {
+            "project": record.project_code,
+            "sub_line_id": capex_line.sub_line_id,
+            "row_version": cap_row["row_version"],
+            "workbook_version": cap_cl["save"]["workbook_version"],
+            "content_hash": cap_cl["save"]["content_hash"],
+            "label": cap_row["label"],
+            "amount_keur": str(capex_line.amount_keur + 17.0),
+        }
         assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur"}.issubset(capex_form)
         capex_new_amount = capex_line.amount_keur + 17.0
-        capex_form["amount_keur"] = str(capex_new_amount)
         response = post_valid_mutation(client, "/v2/capex/line/update",
             data=capex_form,
             cookies=cookies,
@@ -596,15 +588,20 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert capex_vm.total_capex_keur == pytest.approx(capex_before_vm.total_capex_keur + 17.0)
         assert capex_vm.total_per_mw == pytest.approx(capex_before_vm.total_per_mw + 17.0 / capacity_mw)
 
-        # Second mutation must use the fresh form emitted by the HTMX swap.
-        capex_second_form = _rendered_form_values(
-            response.text, "/v2/capex/line/update", capex_line.sub_line_id,
-        )
-        assert capex_second_form["row_version"] == changed_capex.updated_at
-        assert capex_second_form["workbook_version"] == capex_form["workbook_version"]
-        assert capex_second_form["content_hash"] != capex_form["content_hash"]
+        # Second mutation uses the fresh CAS/row tokens returned by React costlines endpoint.
+        cap_cl2 = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=capex", cookies=cookies).json()
+        cap_row2 = next(r for r in cap_cl2["lines"] if r["sub_line_id"] == capex_line.sub_line_id)
+        assert cap_row2["row_version"] == changed_capex.updated_at
+        assert cap_cl2["save"]["workbook_version"] == capex_form["workbook_version"]
+        assert cap_cl2["save"]["content_hash"] != capex_form["content_hash"]
         capex_second_delta = 11.0
-        capex_second_form["amount_keur"] = str(capex_new_amount + capex_second_delta)
+        capex_second_form = {
+            **capex_form,
+            "row_version": cap_row2["row_version"],
+            "workbook_version": cap_cl2["save"]["workbook_version"],
+            "content_hash": cap_cl2["save"]["content_hash"],
+            "amount_keur": str(capex_new_amount + capex_second_delta),
+        }
         response = post_valid_mutation(client, "/v2/capex/line/update", data=capex_second_form, cookies=cookies,
             headers={"HX-Request": "true"}, follow_redirects=False,
         )
@@ -629,14 +626,20 @@ class TestGenericWorkingCopyLineEditingHttp:
         opex_vm_before = _build_opex_vm_ctx(
             record, _build_pis_with_hash(user_id, record)
         )["opex_vm"]
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        opex_form = _rendered_form_values(
-            page.text, "/v2/opex/line/update", opex_line.sub_line_id,
-        )
-        assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur", "inflation_pct"}.issubset(opex_form)
+        ox_cl = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=opex", cookies=cookies).json()
+        ox_row = next(r for r in ox_cl["lines"] if r["sub_line_id"] == opex_line.sub_line_id)
         opex_new_amount = opex_line.amount_keur + 9.0
-        opex_form["amount_keur"] = str(opex_new_amount)
+        opex_form = {
+            "project": record.project_code,
+            "sub_line_id": opex_line.sub_line_id,
+            "row_version": ox_row["row_version"],
+            "workbook_version": ox_cl["save"]["workbook_version"],
+            "content_hash": ox_cl["save"]["content_hash"],
+            "label": ox_row["label"],
+            "amount_keur": str(opex_new_amount),
+            "inflation_pct": "" if ox_row.get("inflation_pct") is None else str(ox_row["inflation_pct"]),
+        }
+        assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur", "inflation_pct"}.issubset(opex_form)
         response = post_valid_mutation(client, "/v2/opex/line/update",
             data=opex_form,
             cookies=cookies,
@@ -656,14 +659,19 @@ class TestGenericWorkingCopyLineEditingHttp:
         expected_total_delta = 9.0 * (1 + opex_vm_before.contingency_rate / 100)
         assert opex_vm.y1_total_opex == pytest.approx(opex_vm_before.y1_total_opex + expected_total_delta)
 
-        opex_second_form = _rendered_form_values(
-            response.text, "/v2/opex/line/update", opex_line.sub_line_id,
-        )
-        assert opex_second_form["row_version"] == changed_opex.updated_at
-        assert opex_second_form["workbook_version"] == opex_form["workbook_version"]
-        assert opex_second_form["content_hash"] != opex_form["content_hash"]
+        ox_cl2 = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=opex", cookies=cookies).json()
+        ox_row2 = next(r for r in ox_cl2["lines"] if r["sub_line_id"] == opex_line.sub_line_id)
+        assert ox_row2["row_version"] == changed_opex.updated_at
+        assert ox_cl2["save"]["workbook_version"] == opex_form["workbook_version"]
+        assert ox_cl2["save"]["content_hash"] != opex_form["content_hash"]
         opex_second_delta = 5.0
-        opex_second_form["amount_keur"] = str(opex_new_amount + opex_second_delta)
+        opex_second_form = {
+            **opex_form,
+            "row_version": ox_row2["row_version"],
+            "workbook_version": ox_cl2["save"]["workbook_version"],
+            "content_hash": ox_cl2["save"]["content_hash"],
+            "amount_keur": str(opex_new_amount + opex_second_delta),
+        }
         response = post_valid_mutation(client, "/v2/opex/line/update", data=opex_second_form, cookies=cookies,
             headers={"HX-Request": "true"}, follow_redirects=False,
         )
@@ -677,16 +685,11 @@ class TestGenericWorkingCopyLineEditingHttp:
         expected_second_total_delta = opex_second_delta * (1 + opex_vm.contingency_rate / 100)
         assert opex_vm_second.y1_total_opex == pytest.approx(opex_vm.y1_total_opex + expected_second_total_delta)
 
-        # HTTP reload is the persistence proof, not only the project_editable flag.
-        reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert reloaded.status_code == 200
-        # Editable cells show the exact stored amount (shortest text, up to 4 decimals):
-        # a rounded display would hide the real value from the person editing it.
-        def _shown(v):
-            t = f"{v:.4f}".rstrip("0").rstrip(".")
-            return f'value="{t}"'
-        assert _shown(capex_new_amount + capex_second_delta) in reloaded.text
-        assert _shown(opex_new_amount + opex_second_delta) in reloaded.text
+        # HTTP reload via React costlines endpoint is the persistence proof.
+        reloaded_cap = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=capex", cookies=cookies).json()
+        reloaded_op = client.get(f"/v2/model-react/costlines?project={record.project_code}&sheet=opex", cookies=cookies).json()
+        assert next(r for r in reloaded_cap["lines"] if r["sub_line_id"] == capex_line.sub_line_id)["amount_keur"] == pytest.approx(capex_new_amount + capex_second_delta)
+        assert next(r for r in reloaded_op["lines"] if r["sub_line_id"] == opex_line.sub_line_id)["amount_keur"] == pytest.approx(opex_new_amount + opex_second_delta)
 
     def test_canonical_reference_remains_readonly_and_fails_closed_on_mutation(self, seeded_db):
         """A working-copy edit path must never make the canonical model mutable."""
@@ -703,10 +706,10 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert reference is not None and reference.is_readonly
         cookies = {COOKIE_NAME: create_session_token(user_id="gate-user", username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        page = client.get("/v2/workbook?project=generic_wind_reference-reference", cookies=cookies)
-        assert page.status_code == 200
-        assert "Reference project — create a working copy to edit." in page.text
-        assert 'hx-post="/v2/capex/line/update"' not in page.text
+        ws_ref = client.get("/v2/model-react/workspace?project=generic_wind_reference-reference", cookies=cookies)
+        assert ws_ref.status_code == 200
+        assert ws_ref.json()["project"]["protected_reference"] is True
+        assert ws_ref.json()["save_all"]["available"] is False
         with pytest.raises(CapexProtectedReferenceError):
             add_capex_line(
                 project_record=reference, user_id="__reference__", label="Rejected",

@@ -17,19 +17,7 @@ import pytest
 from app import project_factories as factories
 from app.services import production_financial_authority as authority
 from finco_core.inputs._models import DebtSizingMode, GearingCapRepaymentMethod, SponsorFundingMode
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workspace_payload
 
 
 def project(kind, *, gearing=.95, tenor=8):
@@ -348,7 +336,7 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
 
     with closing(TestClient(app)) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id="maturity-owner", username="admin"))
-        assert client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+        assert react_workspace_payload(client, record.project_code)["freshness"]["state"] == "NOT_RUN"
         _, data = tokens()
         response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=data)
         assert response.status_code == 200
@@ -365,7 +353,7 @@ def test_authenticated_failed_run_preserves_last_run_history_and_export(tmp_path
             assert '"workbook-field-saved"' in response.headers.get("HX-Trigger", ""), response.text[:600]
         stale, data = tokens()
         assert stale.dirty
-        assert "STALE" in client.get("/v2/workbook", params={"project": record.project_code}).text
+        assert react_workspace_payload(client, record.project_code)["freshness"]["state"] == "STALE"
         effective = WorkbookService.build_draft_input_set_from_workspace(stale).to_projectinputs()
         assert effective.financing.gearing_ratio == .95
         assert effective.financing.senior_tenor_years == 8

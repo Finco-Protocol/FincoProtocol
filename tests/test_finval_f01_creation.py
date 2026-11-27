@@ -1,39 +1,41 @@
 """Existing standalone Solar/Wind creation adapter establishes canonical units."""
 import json
 import pytest
-from tests.test_qa_create_project_country_capacity import client,_login
-from app.input_adapter import RATE_UNIT_KEY,RATE_UNIT,senior_rate_authority
+from tests.model_react_test_helpers import react_fields_save_contract
+from tests.test_qa_create_project_country_capacity import client, _login
+from app.input_adapter import RATE_UNIT_KEY, RATE_UNIT, senior_rate_authority
 from app.workbook.input_set import ProjectInputSet
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-@pytest.mark.parametrize('kind,project_type',[('solar','Solar'),('wind','Wind')])
-def test_standalone_create_persists_four_true_human_rates(client,kind,project_type):
-    import main_web
+@pytest.mark.parametrize('kind,project_type', [('solar', 'Solar'), ('wind', 'Wind')])
+def test_standalone_create_persists_four_true_human_rates(client, kind, project_type):
     from app.persistence import db
     _login(client)
-    for human in [.056,.56,5.6,9.]:
-        data=main_web._generic_prefill_values('generic_'+kind)
-        data.update(project_name=f'F01 standalone {kind} {human}',country_market='HR',interest_rate_pct=str(human))
-        from tests.fable_pr1_csrf_client import fetch_create_csrf_token
-        response=client.post('/projects/create',data={**data,'csrf_token':fetch_create_csrf_token(client)},follow_redirects=False)
-        assert response.status_code in (200,303),response.text[:500]
+    for human in (.056, .56, 5.6, 9.):
+        opts = client.get('/v2/model-react/new-project/options').json()
+        name = f'F01 standalone {kind} {human}'
+        created = client.post('/v2/model-react/new-project/create', json={
+            'request_id': opts['request_id'], 'csrf_token': opts['csrf_token'],
+            'name': name, 'technology': kind, 'country': 'HR', 'capacity_mw': 20.0,
+            'acknowledge_preview': True,
+        })
+        assert created.status_code in (200, 201), created.text[:500]
+        code = created.json()['project']['code']
+        save = react_fields_save_contract(client, code, 'debt')
+        upd = client.post('/v2/workbook/update', data={
+            'project': code, 'sheet_id': 'debt', 'field_id': 'debt.senior.interest_rate_pct',
+            'value': str(human), 'workbook_version': save['workbook_version'],
+            'content_hash': save['content_hash'], 'csrf_token': save['csrf_token'],
+        }, follow_redirects=False)
+        assert upd.status_code in (200, 303), upd.text[:500]
         with db.get_connection() as c:
-            row=c.execute('SELECT * FROM projects WHERE project_name=?',(data['project_name'],)).fetchone()
-            ws=c.execute('SELECT * FROM workspace_states WHERE project_id=?',(row['project_id'],)).fetchone()
-        for raw in [row['baseline_snapshot_json'],ws['draft_snapshot_json'],ws['saved_snapshot_json']]:
-            snap=json.loads(raw)
-            assert snap[RATE_UNIT_KEY]==RATE_UNIT
-            assert float(snap['interest_rate_pct'])==human
-            assert senior_rate_authority(ProjectInputSet.from_snapshot(snap).to_projectinputs())[1]==pytest.approx(human/100,abs=1e-17)
+            row = c.execute('SELECT * FROM projects WHERE project_name=?', (name,)).fetchone()
+            ws = c.execute('SELECT * FROM workspace_states WHERE project_id=?', (row['project_id'],)).fetchone()
+        base_snap = json.loads(row['baseline_snapshot_json'])
+        assert base_snap[RATE_UNIT_KEY] == RATE_UNIT
+        saved_snap = json.loads(ws['saved_snapshot_json'])
+        assert saved_snap[RATE_UNIT_KEY] == RATE_UNIT
+        snap = json.loads(ws['draft_snapshot_json'])
+        assert snap[RATE_UNIT_KEY] == RATE_UNIT
+        assert float(snap['interest_rate_pct']) == human
+        assert senior_rate_authority(ProjectInputSet.from_snapshot(snap).to_projectinputs())[1] == pytest.approx(human / 100, abs=1e-17)

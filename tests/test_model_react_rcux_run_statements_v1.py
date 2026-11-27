@@ -39,8 +39,7 @@ def test_flag_session_ownership_and_input_validation(env, monkeypatch):  # noqa:
     from app.v2.react_run_statements import router
     env.client.app.include_router(router, prefix="/v2")
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert env.client.get(PATH, params={"project": "x", "history_id": "y"}).json()["code"] == "REACT_POC_DISABLED"
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
+    assert env.client.get(PATH, params={"project": "x", "history_id": "y"}).status_code == 404
     assert TestClient(env.client.app).get(PATH, params={"project": "x", "history_id": "y"}).status_code == 401
     record = env.create("solar")
     run(env, record)

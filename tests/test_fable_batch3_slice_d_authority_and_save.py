@@ -38,7 +38,9 @@ from app.persistence import db
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.production_financial_authority import run_clean_production
 from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from app.workbook.mutation_csrf import mutation_token
 from app.workbook.update_service import (
     FieldValidationError,
@@ -47,19 +49,6 @@ from app.workbook.update_service import (
 )
 from finco_core.engine.period_engine import PeriodEngine
 from finco_core.revenue.generation import revenue_decomposition_schedule
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 getcontext().prec = 50
 
@@ -77,6 +66,7 @@ def test_slice_d_e2e_01_zero_gearing_and_c1f_a5_horizon_tenor_save_validation(tm
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
 
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
@@ -88,11 +78,7 @@ def test_slice_d_e2e_01_zero_gearing_and_c1f_a5_horizon_tenor_save_validation(tm
         )
 
         def _get_tokens():
-            html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-            return {
-                k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-                for k in ("content_hash", "workbook_version")
-            }
+            return react_workbook_tokens(client, rec.project_code)
 
         req_ns = SimpleNamespace(cookies=client.cookies, state=SimpleNamespace())
         tokens0 = _get_tokens()
@@ -107,8 +93,9 @@ def test_slice_d_e2e_01_zero_gearing_and_c1f_a5_horizon_tenor_save_validation(tm
                 **tokens0,
                 "csrf_token": mutation_token(req_ns, rec.project_code, "workbook-update"),
             },
+            follow_redirects=False,
         )
-        assert "ZERO_SENIOR_GEARING_NOT_SUPPORTED" in resp_zero.text
+        assert "ZERO_SENIOR_GEARING_NOT_SUPPORTED" in (resp_zero.headers.get("location", "") + resp_zero.text)
         assert _get_tokens() == tokens0
 
         # C1F-A-5: single-field horizon_years <= senior_tenor_years (default tenor=15, set horizon=15) -> refused
@@ -121,8 +108,9 @@ def test_slice_d_e2e_01_zero_gearing_and_c1f_a5_horizon_tenor_save_validation(tm
                 **tokens0,
                 "csrf_token": mutation_token(req_ns, rec.project_code, "workbook-update"),
             },
+            follow_redirects=False,
         )
-        assert "DEBT_TENOR_EXCEEDS_HORIZON" in resp_ht.text
+        assert "DEBT_TENOR_EXCEEDS_HORIZON" in (resp_ht.headers.get("location", "") + resp_ht.text)
         assert _get_tokens() == tokens0
 
         # C1F-A-5: paired atomic batch edit (both orders) succeeds when proposed horizon > proposed tenor!
@@ -162,6 +150,7 @@ def test_slice_d_c1f_a1_single_field_refuses_line_owned_capex_and_opex_scalars(t
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
 
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
@@ -171,11 +160,7 @@ def test_slice_d_c1f_a1_single_field_refuses_line_owned_capex_and_opex_scalars(t
             template_source="generic_solar_reference",
             capacity_mw=16,
         )
-        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-        tokens = {
-            k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-            for k in ("content_hash", "workbook_version")
-        }
+        tokens = react_workbook_tokens(client, rec.project_code)
         req_ns = SimpleNamespace(cookies=client.cookies, state=SimpleNamespace())
 
         # Reference-seeded project has active CAPEX & OPEX cost lines -> scalar edit MUST refuse
@@ -189,8 +174,9 @@ def test_slice_d_c1f_a1_single_field_refuses_line_owned_capex_and_opex_scalars(t
                     **tokens,
                     "csrf_token": mutation_token(req_ns, rec.project_code, "workbook-update"),
                 },
+                follow_redirects=False,
             )
-            assert "COST_CATEGORY_LINE_OWNED" in resp.text, (fid, resp.text[:400])
+            assert "COST_CATEGORY_LINE_OWNED" in (resp.headers.get("location", "") + resp.text), (fid, resp.status_code, resp.headers.get("location", ""), resp.text[:400])
 
 
 # ── 3. C1F-C-1: Prospective Acquisition Date Validation Against Source Horizon

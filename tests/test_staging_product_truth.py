@@ -264,9 +264,10 @@ class TestStatusVocabulary:
 
 class TestMasterWorkflowInventory:
     def test_library_storage_clone_copy_pinned(self):
-        # UX Foundation: the explicit PREVIEW product-state copy.
-        assert "Editable runtime not yet supported" in _read("app/templates/library/project_library_list.html")
-        assert "PREVIEW" in _read("app/templates/library/project_library_list.html")
+        # React LibraryView preserves the explicit PREVIEW tier notice.
+        library_view = _read("frontend/src/app/LibraryView.tsx")
+        assert "Preview technology" in library_view
+        assert "PREVIEW" in library_view
 
     def test_readme_r_live_freshness_precision(self):
         readme = _flat("README.md")

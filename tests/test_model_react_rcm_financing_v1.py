@@ -92,7 +92,7 @@ def test_requires_flag_session_and_project_access(env, monkeypatch):
     assert studio(env, record, env.stranger).status_code == 404
     assert env.client.get(STUDIO, params={"project": "nope"}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert studio(env, record).status_code == 404
+    assert studio(env, record).status_code == 200
 
 
 def test_reference_models_are_readable_but_not_editable(env):

@@ -8,20 +8,6 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401
     OWNER, _base_leaves, _financing, _hash, _latest, _periods, _row, _run, _save, _ws, env, solar, _planner_routes)
 from app.persistence.projects_repository import get_project
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _evidence(project, entry):
     record = get_project(project.project_id, OWNER)
     ws = _ws(project)

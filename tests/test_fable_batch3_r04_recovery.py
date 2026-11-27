@@ -77,9 +77,9 @@ def test_forged_over_cap_book_recovery_view_failed_repairs_unchanged_valid_repai
     assert "results" not in body and "grid" not in body and body["contracts_save"]["url"] == "/v2/workbook/revenue/contracts"
     assert _state(record) == before
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    redir = env.client.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
-    assert 'data-testid="workbook-recovery-book-form"' in page.text and "R04_GLOBAL_P50_CAP_EXCEEDED" in page.text
+    assert redir.status_code == 302 and f"/v2/model-react/{record.project_code}" in redir.headers["location"]
     assert _state(record) == before
     # 2. refused repairs: the whole state is unchanged each time
     still_over = book([_ppa("a", "2031-03-01", "2032-03-01", 10 ** 8), MERCHANT])

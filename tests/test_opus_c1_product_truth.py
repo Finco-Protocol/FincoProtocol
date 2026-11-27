@@ -25,19 +25,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -74,45 +62,37 @@ class TestReferenceRegressionCheckNaming:
         cookies = {COOKIE_NAME: create_session_token(user_id="c1-truth-user", username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
 
-        # Never-run page: fail-closed UNAVAILABLE branch still carries the scope.
-        pre = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert pre.status_code == 200
-        assert "does <strong>not</strong> independently validate" in pre.text
+        # Never-run React trust payload: fail-closed UNAVAILABLE branch still carries the scope.
+        pre_res = client.get(f"/v2/model-react/trust?project={record.project_code}", cookies=cookies)
+        assert pre_res.status_code == 200
+        pre = pre_res.json()
+        assert pre["validation"]["authority"] == "REFERENCE_REGRESSION_CHECK"
+        assert "not validation of this working copy" in pre["validation"]["scope"].lower()
 
-        import re as _re
-
-        m = _re.search(r'name="content_hash" value="([^"]+)"', pre.text)
-        mv = _re.search(r'name="workbook_version" value="([^"]+)"', pre.text)
+        toks = react_workbook_tokens(client, record.project_code, cookies=cookies)
         run = post_valid_csrf(client,
             "/v2/workbook/run",
-            data={"project": record.project_code, "content_hash": m.group(1),
-                  "workbook_version": mv.group(1)},
+            data={"project": record.project_code, "content_hash": toks["content_hash"],
+                  "workbook_version": toks["workbook_version"]},
             cookies=cookies, headers={"HX-Request": "true"},
         )
         assert run.status_code == 200
 
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
+        trust_res = client.get(f"/v2/model-react/trust?project={record.project_code}", cookies=cookies)
+        assert trust_res.status_code == 200
+        trust = trust_res.json()
 
-        assert "REFERENCE REGRESSION CHECK" in page.text
-        # The generic misleading label is gone from the user-facing surface.
-        assert "MODEL VALIDATION" not in page.text
-        assert "Load validation evidence" not in page.text
-        assert "Load regression evidence" in page.text
-        # The scope statement is explicit and user-visible.
-        assert "independently validate your project's Last Run" in page.text
-        assert "regression protection" in page.text
-        # The authority separation keeps the invariant with the new term.
-        separator_text = " ".join(page.text.split())
-        assert (
-            "REFERENCE REGRESSION CHECK, RUN INTEGRITY CHECKS and FINCO "
-            "VERIFY are separate authorities" in separator_text
-        )
-        assert "never implies Verified status" in separator_text
-        # Run Integrity Checks: SHIPPED (H-4b) and authority-separated.
-        assert "Run Integrity Checks" in page.text
-        assert "Run Integrity Checks (shipped)" in page.text
-        assert "planned (P0) and not yet shipped" not in page.text
+        assert trust["validation"]["authority"] == "REFERENCE_REGRESSION_CHECK"
+        assert trust["validation"]["not_verify"] is True
+        assert "MODEL VALIDATION" not in trust_res.text
+        assert "Load validation evidence" not in trust_res.text
+        assert "/v2/workbook/trust/validation?" in (trust["validation"]["load_url"] or "")
+        # Run Integrity Checks: SHIPPED (H-4b) and authority-separated from Reference Regression & Verify.
+        assert trust["integrity"]["authority"] == "RUN_INTEGRITY_CHECKS"
+        assert trust["integrity"]["overall"] == "PASS"
+        assert "does not verify" in trust["integrity"]["scope"].lower() or "scope" in trust["integrity"]
+        assert trust["certificate"]["authority"] == "SIGNED_RUN_CERTIFICATE"
+        assert trust["certificate"]["not_verify"] is True
 
     def test_validation_fragment_carries_scope_statement(self):
         body = _read("app/templates/v2/partials/_trust_validation_body.html")

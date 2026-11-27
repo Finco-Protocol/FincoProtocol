@@ -260,36 +260,23 @@ class TestUntypedRejectionsStayUntyped:
 
 
 class TestRunIntelligenceStillCoexists:
-    """I: after the normal sync with #209, its surface and this wave live in one page."""
+    """Run intelligence routes remain read-only while /v2/workbook redirects to React."""
 
-    def test_workbook_page_carries_both_surfaces(self, project, client, monkeypatch):
+    def test_workbook_page_redirects_to_react_even_with_flag_zero(self, project, client, monkeypatch):
         monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-        resp = client.get(f"/v2/workbook?project={project.project_code}")
-        assert resp.status_code == 200
-        html = resp.text
-        for needle in (
-            'id="tab-run-history"', 'id="panel-run-history"',            # #209
-            "/static/css/model_v2_run_history.css",                      # #209
-            "/static/css/workbook_v2.css", "/static/js/workbook_v2.js",  # this wave
-            'id="v2-validation-summary"', 'data-summary-class="REQUIRED_MISSING"',
-            'data-fc-row', 'data-field-label=',
-        ):
-            assert needle in html, needle
+        resp = client.get(f"/v2/workbook?project={project.project_code}", follow_redirects=False)
+        assert resp.status_code == 302
+        assert f"/v2/model-react/{project.project_code}" in resp.headers.get("location", "")
 
-    def test_run_history_routes_are_untouched_and_read_only(self, project, client):
-        for path in ("/v2/workbook/run-history",):
-            resp = client.get(path, params={"project": project.project_code},
-                              headers={"HX-Request": "true"})
-            assert resp.status_code == 200, path
+    def test_run_history_routes_are_read_only_and_reject_htmx_presentation(self, project, client):
+        resp = client.get("/v2/workbook/run-history", params={"project": project.project_code})
+        assert resp.status_code == 200
+        htmx_resp = client.get("/v2/workbook/run-history", params={"project": project.project_code},
+                               headers={"HX-Request": "true"})
+        assert htmx_resp.status_code == 410 and htmx_resp.json()["code"] == "HTMX_DECOMMISSIONED"
         paths = {getattr(r, "path", "") for r in __import__("app.v2.router", fromlist=["x"]).router.routes}
         assert {"/workbook/run-history", "/workbook/run-history/detail",
                 "/workbook/run-history/compare"} <= {p.replace("/v2", "", 1) if p.startswith("/v2") else p for p in paths}
-
-    def test_both_stylesheets_are_served_and_independent(self, client):
-        css = client.get("/static/css/workbook_v2.css").text
-        history = client.get("/static/css/model_v2_run_history.css").text
-        assert "Workspace productivity v1" in css and "Workspace productivity v1" not in history
-        assert "v2-field-error-msg" in css
 
     def test_my_field_updates_do_not_touch_the_run_history_authority(self, project, client):
         from app.persistence.run_history_repository import get_run_history

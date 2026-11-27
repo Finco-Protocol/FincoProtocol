@@ -27,19 +27,6 @@ from app.ev_charging_economics import (
 )
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 # Registry unit for percent-convention keys is human percent.
 _DISPLAY_SCALE = {"ev_charging_price_escalation", "ev_electricity_price_escalation", "ev_charging_efficiency"}
 
@@ -299,37 +286,43 @@ def _cookies():
     return {COOKIE_NAME: create_session_token(user_id="cord-user", username="admin")}
 
 
-def _efficiency_form(page_html: str) -> dict[str, str]:
-    i = page_html.find('data-field-id="revenue.ev_charging.charging_efficiency"')
-    assert i != -1
-    block = page_html[i:i + 3000]
-    form_html = block[block.rfind("<form", 0, block.find('name="value"')):block.find("</form>", block.find('name="value"'))]
-    values = dict(re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', form_html))
-    values["value"] = re.search(r'name="value"([^>]*)value="([^"]*)"', block).group(2)
-    return values
+def _efficiency_form(client, project_code: str, cookies: dict[str, str]) -> dict[str, str]:
+    res = client.get("/v2/model-react/inputs", params={"project": project_code}, cookies=cookies)
+    assert res.status_code == 200, res.text[:300]
+    body = res.json()
+    save = body["save"]
+    for sec in body["grid"]["sections"]:
+        for cat in sec.get("categories", []):
+            for row in cat.get("rows", []):
+                if row.get("field_id") == "revenue.ev_charging.charging_efficiency":
+                    return {
+                        "project": project_code,
+                        "sheet_id": "revenue",
+                        "field_id": row["field_id"],
+                        "value": str(row["value"]),
+                        "workbook_version": save["workbook_version"],
+                        "content_hash": save["content_hash"],
+                    }
+    raise AssertionError("efficiency field not found in /v2/model-react/inputs")
 
 
 def test_invalid_efficiency_form_edit_rejected_and_snapshot_preserved(ev_wc):
-    """Real HTMX POST with an out-of-registry-range value → rejection; the
+    """Canonical save with an out-of-registry-range value -> rejection; the
     persisted snapshot keeps the existing valid value (defense in depth:
     UI layer)."""
     client = _client()
     cookies = _cookies()
-    page = client.get(f"/v2/workbook?project={ev_wc.project_code}", cookies=cookies)
-    form = _efficiency_form(page.text)
+    form = _efficiency_form(client, ev_wc.project_code, cookies)
     assert float(form["value"]) == pytest.approx(94.0)
 
     form["value"] = "150"  # outside registry max 100
     resp = post_valid_mutation(client, "/v2/workbook/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
-    # HTMX contract (C1-Q-06): 422 with an error partial (the UI swaps the banner);
-    # the update service validation result must flag the max violation.
     assert resp.status_code == 422
     assert "must be" in resp.text and "100" in resp.text
 
     # nothing persisted: a fresh read still shows the valid value
-    page2 = client.get(f"/v2/workbook?project={ev_wc.project_code}", cookies=cookies)
-    form2 = _efficiency_form(page2.text)
+    form2 = _efficiency_form(client, ev_wc.project_code, cookies)
     assert float(form2["value"]) == pytest.approx(94.0)
 
 

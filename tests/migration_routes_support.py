@@ -14,6 +14,7 @@ from app.persistence.workspace_repository import get_workspace_state
 from app.workbook.registry import WORKBOOK
 from app.workbook.workbook_identity import assemble_consistent_for_get
 from tests import migration_fixtures as F
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.test_model_decision_workspace_v2 import tokens
 
 OWNER = "decision-user"
@@ -123,8 +124,12 @@ def apply(env, project, approved, manifest=""):
 
 
 def run_model(env, project):
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": project.project_code, **tokens(page.text)})
+    response = post_valid_csrf(
+        env.client,
+        "/v2/workbook/run",
+        headers={"HX-Request": "true"},
+        data={"project": project.project_code, **react_workbook_tokens(env.client, project.project_code)},
+    )
     assert response.status_code == 200
     return response
 

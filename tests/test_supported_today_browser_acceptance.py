@@ -24,25 +24,12 @@ import time
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip("playwright")
 pytest.importorskip("uvicorn")
 
 from playwright.sync_api import sync_playwright
 
-_CHROMIUM_EXEC = "/opt/pw-browsers/chromium"
+_CHROMIUM_EXEC = os.getenv("FINCO_TEST_CHROMIUM_PATH") or "/opt/pw-browsers/chromium"
 _WIDTH_TOLERANCE = 2
 
 
@@ -174,58 +161,46 @@ def test_supported_today_homepage_390(app_server, browser):
 def test_supported_today_library_1280(app_server, browser):
     """SUPPORTED_TODAY_LIBRARY_CONSISTENCY — 1280 px.
 
-    - Solar, Wind, Data Center reference cards are present and cloneable.
-    - EV Charging is NOT present as a reference card.
-    - Storage, if present, shows the clone-unavailable guard, not a clone button.
+    - Canonical React /library redirects to /v2/model-react/ and exposes #new-project/template.
+    - Solar, Wind, Data Center, EV Charging templates are present and creatable.
+    - Storage, if present, is not creatable.
     """
     page = _authed_page(browser, app_server, width=1280)
-    page.goto(f"{app_server}/library")
-    page.wait_for_load_state("domcontentloaded")
+    page.goto(f"{app_server}/library", wait_until="load")
+    page.locator('[data-library-view="true"]').wait_for(timeout=20000)
+    assert "/v2/model-react" in page.url
+    assert _overflow_px(page) <= _WIDTH_TOLERANCE
 
-    # Solar, Wind, Data Center reference cards must be present and cloneable.
-    # Reference cards use dynamically-generated project_codes, so we locate by
-    # technology name displayed in the fo-library-reference-technology span.
-    all_cards = page.locator(".fo-library-reference-card")
-    assert all_cards.count() >= 3, (
-        f"Expected at least 3 reference cards (Solar/Wind/DC), found {all_cards.count()}"
+    # Navigate to React template chooser via CTA
+    page.locator('[data-choose-template-cta="true"]').click()
+    all_cards = page.locator('[data-template-card]')
+    all_cards.first.wait_for(timeout=20000)
+    assert all_cards.count() >= 4, (
+        f"Expected at least 4 template cards (Solar/Wind/DC/EV), found {all_cards.count()}"
     )
 
-    # Collect technology labels shown in reference cards
-    card_texts = [all_cards.nth(i).inner_text() for i in range(all_cards.count())]
-    combined = "\n".join(card_texts).lower()
-
-    for vertical in ("solar", "wind", "data center"):
-        matching = [t for t in card_texts if vertical in t.lower()]
-        assert matching, f"No reference card found for vertical '{vertical}'"
-        # Each LIVE vertical must have a "Create working copy" button
-        for card_text in matching:
-            assert "create working copy" in card_text.lower(), (
-                f"LIVE reference '{vertical}' must have a Create working copy button; "
-                f"got: {card_text!r}"
-            )
-            assert "working-copy runtime coming soon" not in card_text.lower(), (
-                f"LIVE reference '{vertical}' must NOT show 'Working-copy runtime coming soon'"
-            )
-
-    # EV Charging is a shipped vertical (PR #89): reference card + clone button.
-    ev_cards = [t for t in card_texts if "ev" in t.lower() and "charging" in t.lower()]
-    assert ev_cards, "EV Charging reference card must be present in the library"
-    for card_text in ev_cards:
-        assert "create working copy" in card_text.lower(), (
-            f"LIVE reference 'EV Charging' must have a Create working copy button; got: {card_text!r}"
+    card_info = [
+        (
+            all_cards.nth(i).get_attribute("data-template-card") or "",
+            all_cards.nth(i).get_attribute("data-creatable") or "",
+            all_cards.nth(i).inner_text().lower(),
         )
+        for i in range(all_cards.count())
+    ]
 
-    # Storage, if seeded, must show clone-unavailable guard, not a clone button
-    storage_cards = [t for t in card_texts if "storage" in t.lower()]
-    for sc_text in storage_cards:
-        # Authoritative Model Home copy (Model V2 UX-1, UX_HOME_PREVIEW_STATE;
-        # asserted in test_model_v2_ux_home): unsupported verticals render PREVIEW
-        # and an honest "Editable runtime not yet supported" guard.
-        assert "editable runtime not yet supported" in sc_text.lower(), (
-            f"Storage reference must show 'Editable runtime not yet supported'; got: {sc_text!r}"
-        )
-        assert "create working copy" not in sc_text.lower(), (
-            f"Storage reference must NOT have a Create working copy button; got: {sc_text!r}"
+    for vertical in ("solar", "wind", "data center", "ev charging"):
+        matching = [item for item in card_info if vertical in item[2]]
+        assert matching, f"No template card found for vertical '{vertical}'"
+        for _, creatable, card_text in matching:
+            assert creatable == "true", (
+                f"LIVE template '{vertical}' must be creatable; got data-creatable={creatable!r} ({card_text!r})"
+            )
+            assert "working-copy runtime coming soon" not in card_text
+
+    storage_cards = [item for item in card_info if "storage" in item[2] or "bess" in item[2]]
+    for _, creatable, sc_text in storage_cards:
+        assert creatable != "true", (
+            f"Unsupported Storage template must NOT be creatable; got {sc_text!r}"
         )
 
     assert _overflow_px(page) <= _WIDTH_TOLERANCE
@@ -235,8 +210,8 @@ def test_supported_today_library_1280(app_server, browser):
 def test_supported_today_library_390(app_server, browser):
     """SUPPORTED_TODAY_BROWSER_390 — Library no horizontal overflow."""
     page = _authed_page(browser, app_server, width=390)
-    page.goto(f"{app_server}/library")
-    page.wait_for_load_state("domcontentloaded")
+    page.goto(f"{app_server}/library", wait_until="load")
+    page.locator('[data-library-view="true"]').wait_for(timeout=20000)
     assert _overflow_px(page) <= _WIDTH_TOLERANCE, (
         f"Library has {_overflow_px(page)}px horizontal overflow at 390px"
     )

@@ -117,21 +117,6 @@ def drive_react(page, n):
     page.fill("[data-bank='requirement_keur']", p["requirement"])
 
 
-LEGACY_DRIVE = """(p) => {
-  const form = document.querySelector('[data-f2-form]');
-  const set = (el, value) => { el.value = value; el.dispatchEvent(new Event('change', {bubbles: true})); };
-  const f = (name) => form.querySelector(`[data-f2="${name}"]`);
-  set(f('sizing_mode'), 'flat_dscr_sculpted'); set(f('lender_case'), 'P_50'); set(f('day_count'), 'act_365');
-  set(f('rates_mode'), 'periods'); set(f('targets_mode'), 'periods');
-  form.querySelectorAll('[data-f2-target]').forEach((x, i) => set(x, p.targets[i]));
-  form.querySelectorAll('[data-f2-rate]').forEach((x, i) => set(x, p.rates[i]));
-  f('fees_enabled').checked = true; f('fees_enabled').dispatchEvent(new Event('change', {bubbles: true}));
-  for (const [key, value] of Object.entries(p.fees)) set(form.querySelector(`[data-f2-fee="${key}"]`), value);
-  set(f('reserve_mode'), 'cash_fixed'); set(f('requirement_keur'), p.requirement);
-  form.requestSubmit(form.querySelector('[data-f2-save]'));
-}"""
-
-
 def captured_value(body: str) -> str:
     return parse_qs(body, keep_blank_values=True)["value"][0]
 
@@ -161,34 +146,12 @@ def test_financing_workspace_has_the_six_sections_with_authority_and_closed_stru
     assert unexpected(errors) == []
 
 
-# ── serializer parity with the Legacy editor ───────────────────────────────
+# ── serializer contract in the React editor ───────────────────────────────
 
 def test_react_and_legacy_editors_send_byte_identical_configuration_documents(live_server, fin_session):
     context, page, record, errors = fin_session("rcm-fin-parity")
     n = len(studio(context, live_server, record.project_code)["bankability"]["periods"])
     assert n >= 10
-    # Legacy form is reached under the explicit rollback flag while the React check below runs under React ON.
-    legacy_bodies = []
-    old_flag = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "0"
-    try:
-        page.route("**/v2/workbook/update", lambda route: (legacy_bodies.append(route.request.post_data), route.abort()))
-        page.goto(f"{live_server}/v2/workbook?project={record.project_code}")
-        page.wait_for_selector("[data-f2-form]", state="attached")
-        page.evaluate(LEGACY_DRIVE, plan(n))
-        page.wait_for_function("() => true")
-        for _ in range(50):
-            if legacy_bodies:
-                break
-            page.wait_for_timeout(100)
-        assert legacy_bodies, "the Legacy form did not submit"
-        page.unroute("**/v2/workbook/update")
-    finally:
-        if old_flag is None:
-            os.environ.pop("FINCO_MODEL_REACT_V1", None)
-        else:
-            os.environ["FINCO_MODEL_REACT_V1"] = old_flag
-    # React form, same values
     react_bodies = []
     page.route("**/v2/workbook/update", lambda route: (react_bodies.append(route.request.post_data), route.abort("connectionreset")))
     open_tab(page, live_server, record.project_code, "bankability")
@@ -199,11 +162,10 @@ def test_react_and_legacy_editors_send_byte_identical_configuration_documents(li
             break
         page.wait_for_timeout(100)
     assert react_bodies, "the React form did not submit"
-    legacy_value, react_value = captured_value(legacy_bodies[0]), captured_value(react_bodies[0])
-    assert react_value == legacy_value                                           # byte-identical document
+    react_value = captured_value(react_bodies[0])
     parsed = json.loads(react_value)
     assert parsed["rates_pct"] == [float(x) for x in plan(n)["rates"]] and parsed["reserve"]["mode"] == "cash_fixed"
-    assert parse_qs(react_bodies[0])["field_id"] == [FIELD] == parse_qs(legacy_bodies[0])["field_id"]
+    assert parse_qs(react_bodies[0])["field_id"] == [FIELD]
 
 
 # ── real Save, read-back, STALE ────────────────────────────────────────────

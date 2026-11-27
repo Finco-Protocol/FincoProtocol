@@ -14,20 +14,7 @@ import pytest
 
 from app.v2.decision_workspace import scenario_assumptions, sensitivity_presentation, tender_presentation
 from app.v2.scenario_kpi_projection import build_compare_rows, build_scenario_projection
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
+from tests.model_react_test_helpers import react_workbook_tokens
 
 def projection(name, **kpis):
     return build_scenario_projection(name, kpis, "2026-01-01T12:00:00Z", False)
@@ -92,14 +79,6 @@ def test_failed_baseline_never_inferred_from_neighbors():
     assert view["chart"] == view["tornado"] == view["delta_rows"] == []
 
 
-def test_scoped_javascript_is_only_canonical_input_serialization():
-    source = (Path(__file__).resolve().parents[1] / "static/js/model_merchant_curve.js").read_text(encoding="utf-8")
-    assert "JSON.stringify" in source and "htmx:configRequest" in source
-    assert "seen.has(year)" in source and "Number.isFinite(price)" in source
-    assert "stopImmediatePropagation" in source
-    assert not re.search(r"\b(irr|dscr|npv|cfads|ebitda|debt_service)\b", source, re.I)
-
-
 def test_working_and_run_bound_overrides_are_independent():
     sc = SimpleNamespace(scenario_name="Case", overrides={"tariff_eur_mwh": 90},
                          last_run_summary={"scenario_overrides_at_run": {"tariff_eur_mwh": 80}})
@@ -118,11 +97,13 @@ def env(tmp_path, monkeypatch):
     from app.runtime.model_execution import reset_model_executor_for_tests
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from app.v2.react_workspace_router import router as react_workspace_router
     from app.v2.router import router
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "decision.db"))
     db.init_db()
     app = FastAPI()
     app.include_router(router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id="decision-user", username="admin"))
         def create(kind="solar"):
@@ -140,33 +121,35 @@ def tokens(html):
 @pytest.mark.parametrize("kind", ["solar", "wind", "data_center", "ev_charging"])
 def test_vertical_capability_and_route_render_context(env, kind):
     record = env.create(kind)
-    response = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert response.status_code == 200
-    html = response.text
+    ws = env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
+    assert ws.status_code == 200
+    hdrs = {"x-finco-react-request": "1"}
+    sens = env.client.get("/v2/model-react/analysis/sensitivity/catalog", params={"project": record.project_code}, headers=hdrs)
+    gs = env.client.get("/v2/model-react/analysis/goal-seek/catalog", params={"project": record.project_code}, headers=hdrs)
+    assert gs.status_code == 200
+    grid = env.client.get("/v2/model-react/inputs", params={"project": record.project_code}).json()["grid"]
+    field_ids = {row["field_id"] for sec in grid["sections"] for cat in sec["categories"] for row in cat["rows"]}
+    debt_fields = env.client.get("/v2/model-react/fields/debt", params={"project": record.project_code}).json()["fields"]
+    debt_field_ids = {f["field_id"] for f in debt_fields}
     if kind == "data_center":
-        assert '<option value="dc_pue">' in html
-        assert '<option value="dc_it_mw">' in html
-        assert '<option value="dc_electricity_price">' in html
-        assert '<option value="tariff">' not in html
+        assert sens.status_code == 200
+        drivers = {d["key"] for d in sens.json()["drivers"]}
+        assert {"dc_pue", "dc_it_mw", "dc_electricity_price"} <= drivers
+        assert "tariff" not in drivers
     if kind in ("data_center", "ev_charging"):
-        assert 'data-testid="goal-seek-unsupported"' in html
-        assert 'data-testid="gs-run-btn"' not in html
-        assert 'id="ov-tariff_eur_mwh"' not in html
-        assert 'id="ov-p50_hours"' not in html
-        assert 'data-testid="merchant-curve-preview"' not in html
-        assert 'id="ov-gearing_pct"' in html
-        assert 'id="ov-interest_rate_pct"' in html
+        assert gs.json()["available"] is False
+        assert "revenue.ppa.base_tariff" not in field_ids
+        assert "project_setup.technical.p50_hours" not in field_ids
+        assert "debt.senior.gearing_pct" in debt_field_ids
+        assert "debt.senior.interest_rate_pct" in debt_field_ids
     if kind == "ev_charging":
-        assert 'data-testid="sensitivity-unsupported"' in html
-        assert 'id="ov-tariff_eur_mwh"' not in html
-        assert 'data-testid="merchant-curve-preview"' not in html
+        assert sens.status_code == 409 and sens.json()["code"] == "MATRIX_VERTICAL_UNSUPPORTED"
     else:
-        assert 'data-testid="sensitivity-run-btn"' in html
+        assert sens.status_code == 200 and len(sens.json()["drivers"]) > 0
     if kind in ("solar", "wind"):
-        assert 'id="ov-tariff_eur_mwh"' in html
-        assert 'id="ov-p50_hours"' in html
-        assert 'data-testid="goal-seek-scenario-boundary"' in html
-        assert "not scenario scalar overrides" in html
+        assert "revenue.ppa.base_tariff" in field_ids
+        assert "project_setup.technical.p50_hours" in field_ids
+        assert gs.json()["available"] is True
 
 
 @pytest.mark.parametrize("curve", [
@@ -178,11 +161,11 @@ def test_vertical_capability_and_route_render_context(env, kind):
 def test_merchant_invalid_save_rejected_without_write(env, curve):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    toks = react_workbook_tokens(env.client, record.project_code)
     before = get_workspace_state("decision-user", record.project_id)
     response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "sheet_id": "revenue", "field_id": "revenue.merchant.price_curve_json",
-        "value": json.dumps(curve), **tokens(page.text)})
+        "value": json.dumps(curve), **toks})
     assert response.status_code == 422  # C1-Q-06 HTMX field-error transport
     assert "workbook-field-error" in response.headers.get("HX-Trigger", "")
     assert "workbook-field-saved" not in response.headers.get("HX-Trigger", "")
@@ -192,12 +175,12 @@ def test_merchant_invalid_save_rejected_without_write(env, curve):
 def test_merchant_valid_canonical_save_reload_and_stale_cas(env):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    toks = react_workbook_tokens(env.client, record.project_code)
     payload = {"project": record.project_code, "sheet_id": "revenue", "field_id": "revenue.merchant.price_curve_json",
-               "value": '[{"year":2031,"price_eur_mwh":81},{"year":2030,"price_eur_mwh":80}]', **tokens(page.text)}
+               "value": '[{"year":2031,"price_eur_mwh":81},{"year":2030,"price_eur_mwh":80}]', **toks}
     response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=payload)
     assert response.status_code == 200
-    reload = env.client.get("/v2/workbook", params={"project": record.project_code})
+    reload = env.client.get("/v2/model-react/fields/revenue", params={"project": record.project_code})
     assert reload.status_code == 200
     stored = get_workspace_state("decision-user", record.project_id)
     assert json.loads(stored.draft_snapshot["rev_merchant_price_curve_json"])[0]["price_eur_mwh"] == 81
@@ -246,7 +229,7 @@ def test_decision_lazy_refresh_coherent_context_and_concurrent_change_fails_clos
     from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     url = "/v2/workbook/decision/" + surface
     result = env.client.get(url, params={"project": record.project_code})
@@ -280,7 +263,7 @@ def test_sensitivity_real_canonical_points_do_not_write_workspace_or_history(env
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.run_history_repository import get_run_history
     record = env.create()
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     response = env.client.post("/v2/workbook/scenarios/sensitivity/run", data={"project": record.project_code, "driver": "tariff"})
     assert response.status_code == 200
@@ -292,19 +275,20 @@ def test_sensitivity_real_canonical_points_do_not_write_workspace_or_history(env
 
 
 def test_tender_apply_refreshes_canonical_run_tokens_without_touching_last_run(env):
+    import uuid
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.run_history_repository import get_run_history
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    run = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                          data={"project": record.project_code, **tokens(page.text)})
-    assert run.status_code == 200 and 'id="v2-sheet-returns"' in run.text
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    toks0 = react_workbook_tokens(env.client, record.project_code)
+    run = post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json"},
+                          data={"project": record.project_code, "run_intent_id": str(uuid.uuid4()), **toks0})
+    assert run.status_code == 200 and run.json()["outcome"] == "COMMITTED"
+    toks1 = react_workbook_tokens(env.client, record.project_code)
     before = get_workspace_state("decision-user", record.project_id)
     history = get_run_history("decision-user", record.project_id)
     result = env.client.post("/v2/workbook/goal-seek/apply", headers={"HX-Request": "true"}, data={
         "project": record.project_code, "field_id": "revenue.ppa.base_tariff", "value": "51.23456789",
-        "target_metric": "project_irr", "target_value": "9", **tokens(page.text)})
+        "target_metric": "project_irr", "target_value": "9", **toks1})
     assert result.status_code == 200
     after = get_workspace_state("decision-user", record.project_id)
     assert after.dirty
@@ -312,9 +296,9 @@ def test_tender_apply_refreshes_canonical_run_tokens_without_touching_last_run(e
     assert after.last_runtime_snapshot_id == before.last_runtime_snapshot_id
     assert after.last_runtime_at == before.last_runtime_at
     assert get_run_history("decision-user", record.project_id) == history
-    assert 'hx-swap-oob="true"' in result.text
-    assert tokens(result.text)["content_hash"] != tokens(page.text)["content_hash"]
-    rerun = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                            data={"project": record.project_code, **tokens(result.text)})
-    assert rerun.status_code == 200 and 'id="v2-sheet-returns"' in rerun.text
+    toks2 = react_workbook_tokens(env.client, record.project_code)
+    assert toks2["content_hash"] != toks1["content_hash"]
+    rerun = post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json"},
+                            data={"project": record.project_code, "run_intent_id": str(uuid.uuid4()), **toks2})
+    assert rerun.status_code == 200 and rerun.json()["outcome"] == "COMMITTED"
     assert not get_workspace_state("decision-user", record.project_id).dirty

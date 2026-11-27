@@ -22,19 +22,6 @@ from fastapi import Request
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -105,10 +92,8 @@ _CREATE_FORM = {
 
 def test_create_renders_bound_token_in_form(client):
     _login(client)
-    page = client.get("/projects/new")
-    assert page.status_code == 200
-    m = re.search(r'name="csrf_token" value="([^"]*)"', page.text)
-    assert m and m.group(1), "minimal create form must render a bound csrf_token"
+    page = client.get("/projects/new", follow_redirects=False)
+    assert page.status_code == 302 and "/v2/model-react/" in page.headers.get("location", "")
     page2 = client.get("/projects/new/prefill")
     assert page2.status_code == 200
     m2 = re.search(r'name="csrf_token" value="([^"]*)"', page2.text)
@@ -156,7 +141,7 @@ def test_create_with_valid_bound_token_succeeds(client):
     _login(client)
     before = _user_project_codes(client)
     # Positive client path: the exact token the server rendered into the form.
-    page = client.get("/projects/new")
+    page = client.get("/projects/new/prefill")
     token = re.search(r'name="csrf_token" value="([^"]*)"', page.text).group(1)
     r = client.post("/projects/create", data={**_CREATE_FORM, "csrf_token": token},
                     headers={"HX-Request": "true"})
@@ -270,7 +255,7 @@ def test_issuance_fault_fails_closed_and_is_logged(client, monkeypatch, caplog):
 
     monkeypatch.setattr(main_web, "_csrf_issue_token", _boom)
     with caplog.at_level(_logging.ERROR, logger="main_web"):
-        page = client.get("/projects/new")
+        page = client.get("/projects/new/prefill")
         assert page.status_code == 200
         m = re.search(r'name="csrf_token" value="([^"]*)"', page.text)
         assert m is not None and m.group(1) == "", "fail-closed: no token rendered on issuance fault"

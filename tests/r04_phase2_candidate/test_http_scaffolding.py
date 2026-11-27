@@ -16,19 +16,8 @@ from tests.test_wf07_revenue_workspace import contract_tokens
 from tests.r04_phase2_candidate.test_candidate import document
 
 import pytest
+from tests.model_react_test_helpers import react_revenue_save_contract
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 TABLES = ("projects", "workspace_states", "scenarios", "model_run_history", "save_all_requests", "model_run_intents", "capex_sub_lines", "opex_sub_lines")
 
@@ -53,9 +42,7 @@ def evidence(label, response, before, after, scope):
 
 def test_new_annual_dto_direct_save_is_still_closed_and_does_not_write(env):
     rec=env.create("solar")
-    page=env.client.get("/v2/workbook",params={"project":rec.project_code})
-    assert page.status_code==200
-    tokens=contract_tokens(page.text)
+    tokens=contract_tokens(react_revenue_save_contract(env.client, rec.project_code))
     before=digest()
     response=env.client.post('/v2/workbook/revenue/contracts',headers={"HX-Request":"true"},
         data={"project":rec.project_code,**tokens,"contracts":json.dumps(document())})

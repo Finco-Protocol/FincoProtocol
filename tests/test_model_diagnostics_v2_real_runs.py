@@ -13,19 +13,8 @@ import pytest
 from tests.test_financing_f37_instrument_su import _junior_run, _two_senior_run
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
+from tests.model_react_test_helpers import react_revenue_save_contract, react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "decision-user"
 KINDS = ["solar", "wind", "data_center", "ev_charging"]
@@ -107,9 +96,8 @@ def test_revenue_v2_contracts_coexist_and_reconcile_by_stream(env, kind, strike)
     project = {"project": record.project_code}
     inputs = WorkbookService.build_draft_input_set_from_workspace(get_workspace_state(USER, record.project_id)).to_projectinputs()
     payload = contracts(inputs, kind, price=95, merchant_price=90, strike=strike, index=.02)
-    page = env.client.get("/v2/workbook", params=project)
     r = env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-                        data={**project, **contract_tokens(page.text), "contracts": json.dumps(payload)})
+                        data={**project, **contract_tokens(react_revenue_save_contract(env.client, record.project_code)), "contracts": json.dumps(payload)})
     assert r.status_code == 200
     run(env, record)
     _, data = _get(env, record)
@@ -127,10 +115,8 @@ def test_stale_run_is_historical_evidence_and_never_mixes_the_changed_working_co
     _, current = _get(env, record)
     assert current["state"] == "CURRENT" and current["v2"]["reserve_regime_bound"] is True
     # a Working Copy change makes the committed Run STALE; its evidence stays the prior Run
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     saved = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                            data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "17", **tokens(page)})
+                            data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "17", **react_workbook_tokens(env.client, record.project_code)})
     assert saved.status_code == 200
     before = get_workspace_state(USER, record.project_id)
     _, stale = _get(env, record)
@@ -145,10 +131,8 @@ def test_a_new_run_changes_identity_and_the_first_runs_evidence_is_not_reused(en
     record = env.create("solar")
     run(env, record)
     _, first = _get(env, record)
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                    data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **tokens(page)})
+                    data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **react_workbook_tokens(env.client, record.project_code)})
     run(env, record)
     _, second = _get(env, record)
     assert second["identity"]["snapshot_id"] != first["identity"]["snapshot_id"]
@@ -195,10 +179,8 @@ def test_comparison_of_two_real_committed_runs_is_read_only_and_honest(env):
     _, single = _get(env, record)
     assert single["v2"]["run_comparison"] == {"available": False, "reason": "NEED_AT_LEAST_TWO_COMMITTED_RUNS",
                                               "last_run": single["v2"]["run_comparison"]["last_run"]}
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"},
-                    data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **tokens(page)})
+                    data={"project": record.project_code, "field_id": "project_setup.technical.capacity_mw", "value": "18", **react_workbook_tokens(env.client, record.project_code)})
     run(env, record)
     history_before = [(h.history_id, h.composite_hash) for h in get_run_history(USER, record.project_id, limit=50)]
     _, data = _get(env, record)

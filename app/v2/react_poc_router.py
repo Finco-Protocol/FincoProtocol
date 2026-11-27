@@ -35,7 +35,6 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import resolve_request_session
 from app.workbook.mutation_csrf import mutation_token
-from app.utils.workbook_flag import env_flag
 from app.workbook.registry import WORKBOOK
 
 router = APIRouter()
@@ -75,8 +74,23 @@ _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"
 
 
 def react_poc_enabled() -> bool:
-    """Flag contract: absent/empty → ON (FINCO47 React-only default); explicit 0/false/no/off → OFF."""
-    return env_flag("FINCO_MODEL_REACT_V1", default=True)
+    """Canonical React Model UI is unconditionally active after FINCO48 decommissioning."""
+    return True
+
+
+def block_htmx_presentation(request: Request) -> Optional[JSONResponse]:
+    """Reject forged HTMX presentation requests on decommissioned Model surfaces."""
+    if request.headers.get("HX-Request") == "true":
+        return JSONResponse(
+            {
+                "ok": False,
+                "code": "HTMX_DECOMMISSIONED",
+                "message": "Legacy Model HTMX presentation has been decommissioned; use /v2/model-react/.",
+            },
+            status_code=410,
+            headers={"Cache-Control": "no-store"},
+        )
+    return None
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -100,29 +114,12 @@ def _render_host(project_code: str) -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
-def _render_fallback(request: Request, project_code: str) -> HTMLResponse:
-    """Explicit fallback/rollback surface shown while the flag is OFF."""
-    from urllib.parse import quote
-
-    code = (project_code or "").strip()
-    legacy_url = f"/v2/workbook?project={quote(code, safe='')}" if code else "/v2/workbook"
-    html = _templates.get_template("react_poc_fallback.html").render(
-        project_code=code, legacy_url=legacy_url, asset_version=REACT_ASSET_VERSION)
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
-
-
 @router.get("/model-react", response_class=HTMLResponse)
 async def react_poc_home(request: Request):
-    if not react_poc_enabled():
-        return _render_fallback(request, "")
     return _render_host("")
 
 
 # ───────────────────────────── bootstrap projection ─────────────────────────────
-
-def _bootstrap_disabled() -> JSONResponse:
-    return _json({"ok": False, "code": "REACT_POC_DISABLED",
-                  "message": "The React preview is disabled on this server."}, 404)
 
 
 def _field_projection(pis: Any, editable: bool) -> dict[str, Any]:
@@ -150,15 +147,7 @@ def _field_projection(pis: Any, editable: bool) -> dict[str, Any]:
 
 @router.get("/model-react/bootstrap")
 async def react_poc_bootstrap(request: Request, project: str):
-    """One coherent authorized snapshot for the React PoC page.
-
-    Same capture/validation order as ``GET /workbook/outputs``: session → accessible
-    project → ``PostRunRequestContext`` → Run integrity → statement projection →
-    ``validate_current()``.  The mutation path is NOT here: the React client saves
-    through the existing ``POST /v2/workbook/grid/save``.
-    """
-    if not react_poc_enabled():
-        return _bootstrap_disabled()
+    """One coherent authorized snapshot for the React PoC page."""
     user = resolve_request_session(request)
     if user is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
@@ -238,6 +227,4 @@ router.include_router(_bess_setup_router)
 
 @router.get("/model-react/{project_code}", response_class=HTMLResponse)
 async def react_poc_page(request: Request, project_code: str):
-    if not react_poc_enabled():
-        return _render_fallback(request, project_code)
     return _render_host(project_code)

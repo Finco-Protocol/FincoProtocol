@@ -17,19 +17,7 @@ from app.workbook.registry import WORKBOOK
 from app.workbook.runtime_authority import RuntimeAuthorityState, resolve_runtime_freshness
 from app.workbook.workbook_identity import assemble_consistent_for_get
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 OWNER = "decision-user"
 
@@ -50,11 +38,9 @@ def _ws(project):
 
 
 def _run(env, project):
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    assert page.status_code == 200
-    response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                               data={"project": project.project_code, **tokens(page.text)})
-    return response
+    toks = react_workbook_tokens(env.client, project.project_code)
+    return post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
+                           data={"project": project.project_code, **toks})
 
 
 def _latest(project):

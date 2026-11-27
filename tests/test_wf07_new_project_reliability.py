@@ -9,46 +9,53 @@ import pytest
 from tests.test_qa_create_project_country_capacity import _login, client  # noqa: F401
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-VERTICALS = [("generic_solar_reference", "Solar"), ("generic_wind_reference", "Wind"),
-             ("generic_data_center_reference", "Data Center"), ("generic_ev_charging_reference", "EV Charging")]
+VERTICALS = [
+    ("solar", "generic_solar_reference", "Solar"),
+    ("wind", "generic_wind_reference", "Wind"),
+    ("data_center", "generic_data_center_reference", "Data Center"),
+    ("ev_charging", "generic_ev_charging_reference", "EV Charging"),
+]
 
 
-def _create(client, name, template, country, project_type, capacity="20"):
-    # FABLE-SEC-01: the legacy route now enforces the bound CSRF token (D07b);
-    # the positive client path supplies the token rendered into the form.
-    from tests.fable_pr1_csrf_client import fetch_create_csrf_token
-    return client.post("/projects/create", data={"csrf_token": fetch_create_csrf_token(client), "project_name": name, "project_type": project_type, "template_source": template,
-                                                  "country_market": country, "capacity_mw": capacity}, follow_redirects=False)
+def _create(client, name, technology, country, capacity=20):
+    opts = client.get("/v2/model-react/new-project/options").json()
+    return client.post(
+        "/v2/model-react/new-project/create",
+        json={
+            "request_id": opts["request_id"],
+            "csrf_token": opts["csrf_token"],
+            "name": name,
+            "technology": technology,
+            "country": country,
+            "capacity_mw": float(capacity),
+            "acknowledge_preview": True,
+        },
+    )
 
 
 def test_the_form_discloses_generic_reference_assumptions_and_country_scope(client):
     _login(client)
-    page = re.sub(r"\s+", " ", client.get("/projects/new").text)
-    assert 'data-testid="reference-assumptions-note"' in page
-    assert "generic, editable assumptions" in page and "not verified for the selected country" in page
-    assert "does not change tariff, market or cost assumptions" in page
-    assert "Country-specific tax templates are not yet active" in page
+    opts = client.get("/v2/model-react/new-project/options").json()
+    assert opts["ok"] is True
+    for tech in opts["technologies"]:
+        if tech["creatable"]:
+            text = " ".join(tech["limitations"])
+            assert "Generic market profiles are illustrative" in text or "generic" in text.lower()
+            assert "country-specific tax" in text.lower()
+    preview = client.get(
+        "/v2/model-react/new-project/preview",
+        params={"name": "Disclosure Check", "technology": "solar", "country": "HR", "capacity_mw": "20"},
+    ).json()
+    assert preview["effective"]["tax_template"] == "Generic Tax Template"
 
 
-@pytest.mark.parametrize("template, project_type", VERTICALS)
-def test_template_type_country_and_capacity_are_persisted_and_country_changes_no_price_input(client, template, project_type):
+@pytest.mark.parametrize("technology, template, project_type", VERTICALS)
+def test_template_type_country_and_capacity_are_persisted_and_country_changes_no_price_input(client, technology, template, project_type):
     _login(client)
     snaps = {}
     for country in ("HR", "DE"):
-        r = _create(client, f"V {template} {country}", template, country, project_type)
-        assert r.status_code in (200, 303), r.text[:300]
+        r = _create(client, f"V {template} {country}", technology, country)
+        assert r.status_code in (200, 201), r.text[:300]
         import app.persistence.db as db
         with db.get_connection() as conn:
             row = conn.execute("SELECT * FROM projects WHERE project_name=?", (f"V {template} {country}",)).fetchone()

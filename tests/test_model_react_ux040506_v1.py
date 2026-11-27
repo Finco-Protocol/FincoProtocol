@@ -74,9 +74,9 @@ NEW_PATHS = ["/v2/model-react/runs", "/v2/model-react/diagnostics", "/v2/model-r
 
 
 @pytest.mark.parametrize("path", NEW_PATHS)
-def test_new_surfaces_disabled_without_the_flag(env, path):
+def test_new_surfaces_stay_enabled_even_when_flag_is_zero(env, path):
     response = env.client.get(path, params={"project": "whatever"})
-    assert response.status_code == 404 and response.json()["code"] == "REACT_POC_DISABLED"
+    assert response.status_code == 404 and response.json()["code"] != "REACT_POC_DISABLED"
 
 
 def test_runs_projection_lists_committed_history(env, monkeypatch):

@@ -22,24 +22,12 @@ import pytest
 
 from app.workbook import quarterly_frequency_config as cfg
 from app.workbook.runtime_authority import RuntimeAuthorityState, resolve_runtime_freshness
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 from tests.test_model_rc7_capex_profile_run import (  # noqa: F401
     OWNER, _base_leaves, _hash, _latest, _planner_routes, _row, _run, _save, _ws,
 
 )
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.fixture(autouse=True)
@@ -68,19 +56,18 @@ def eligible_references(monkeypatch):
 
 
 def _set(env, project, field_id, value, sheet="project_setup"):
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     response = post_valid_mutation(env.client, "/v2/workbook/update", data={
-        "project": project.project_code, "sheet_id": sheet, "field_id": field_id, "value": value, **tokens(page.text)})
+        "project": project.project_code, "sheet_id": sheet, "field_id": field_id, "value": value,
+        **react_workbook_tokens(env.client, project.project_code)})
     assert response.status_code in (200, 303), response.text[:400]
 
 
 def _frequency(env, project, frequency):
     from app.auth import generate_csrf_token
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": project.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency,
         "financing_structure": "EQUITY_ONLY_NO_RESERVE" if frequency == "3/3" else "",
-        **tokens(page.text)}, follow_redirects=False)
+        **react_workbook_tokens(env.client, project.project_code)}, follow_redirects=False)
     assert response.status_code == 303, response.text[:400]
 
 
@@ -277,7 +264,7 @@ def test_closed_gate_blocks_the_real_run_of_a_saved_selection_and_reset_recovers
     _set(env, project, "project_setup.technical.cod_date", cod)
     _frequency(env, project, "3/3")
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", False)
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    page = env.client.get("/v2/model-react/workspace", params={"project": project.project_code})
     assert page.status_code == 200  # the Working Copy still renders
     response = _run(env, project)
     assert "QUARTERLY_ADMISSION_CLOSED" in response.text
@@ -304,16 +291,15 @@ def test_a_selection_written_by_another_writer_cannot_make_the_real_run_discard_
     cod, months = TIMELINE["solar"]
     _set(env, project, "project_setup.technical.construction_months", str(months))
     _set(env, project, "project_setup.technical.cod_date", cod)
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     if recorded is None:
         from app.input_adapter import build_projectinputs_from_snapshot
         recorded = cfg.structure_of(build_projectinputs_from_snapshot(dict(_ws(project).draft_snapshot)).financing)
     WorkbookUpdateService.apply_draft_update(
         ws=get_workspace_state(OWNER, project.project_id), field_id=cfg.FIELD_ID,
-        raw_value=cfg.candidate_config_json(recorded), content_hash=tokens(page.text)["content_hash"],
+        raw_value=cfg.candidate_config_json(recorded), content_hash=react_workbook_tokens(env.client, project.project_code)["content_hash"],
         workbook_version=WORKBOOK.version, project_record=project)
     assert cfg.frequency_label(_ws(project).draft_snapshot.get(cfg.SNAPSHOT_KEY)) == "3/3"   # accepted as a well-formed selection
-    assert env.client.get("/v2/workbook", params={"project": project.project_code}).status_code == 200
+    assert env.client.get("/v2/model-react/workspace", params={"project": project.project_code}).status_code == 200
     response = _run(env, project)
     assert "QUARTERLY_SHL_UNSUPPORTED" in response.text
     assert "UNCLASSIFIED_ENGINE_FAILURE" not in response.text
@@ -328,7 +314,7 @@ def test_every_workbook_sheet_stays_renderable_with_an_unbound_3_3_selection_and
     refuses with the typed code before any calculation, and neither the Last Run nor the Run history changes."""
     from app.persistence.run_history_repository import get_run_history
     from app.persistence.workspace_repository import get_workspace_state
-    from app.v2.presentation_views import PRESENTATION_SHEETS
+    from app.v2.router import _build_pis_with_composite_identity, _quarterly_selection_error
     from app.workbook.registry import WORKBOOK
     from app.workbook.update_service import WorkbookUpdateService
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
@@ -338,17 +324,27 @@ def test_every_workbook_sheet_stays_renderable_with_an_unbound_3_3_selection_and
     _set(env, project, "project_setup.technical.cod_date", cod)
     assert _run(env, project).status_code == 200
     historical = _latest(project).to_dict()
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     recorded = {"sponsor_funding_mode": "EQUITY_ONLY", "shl_amount_keur": 0.0, "clean_shl_principal_keur": 0.0, "dsra_months": 0}
     WorkbookUpdateService.apply_draft_update(
         ws=get_workspace_state(OWNER, project.project_id), field_id=cfg.FIELD_ID, raw_value=cfg.candidate_config_json(recorded),
-        content_hash=tokens(page.text)["content_hash"], workbook_version=WORKBOOK.version, project_record=project)
+        content_hash=react_workbook_tokens(env.client, project.project_code)["content_hash"], workbook_version=WORKBOOK.version, project_record=project)
     before = _ws(project)
     draft_before = dict(before.draft_snapshot)
-    for sheet in sorted(PRESENTATION_SHEETS) + ["overview", "outputs"]:
-        response = env.client.get("/v2/workbook", params={"project": project.project_code, "sheet": sheet})
-        assert response.status_code == 200, sheet
-        assert "Invalid saved 3/3 selection" in response.text, sheet
+    pis = _build_pis_with_composite_identity(before, project, OWNER)
+    assert "Invalid saved 3/3 selection" in _quarterly_selection_error(pis)
+    for path in (
+        "/v2/model-react/workspace",
+        "/v2/model-react/overview",
+        "/v2/model-react/inputs",
+        "/v2/model-react/revenue",
+        "/v2/model-react/statements",
+        "/v2/model-react/fields/project_setup",
+        "/v2/model-react/fields/debt",
+        "/v2/model-react/fields/tax",
+        "/v2/model-react/financing/studio",
+    ):
+        response = env.client.get(path, params={"project": project.project_code})
+        assert response.status_code == 200, path
     from app.services import production_financial_authority as authority
     calls = []
     def forbidden(*args, **kwargs):
@@ -377,10 +373,9 @@ def test_default_solar_cannot_consent_to_discard_actual_shl_or_dsra(env, monkeyp
     history = [h.to_dict() for h in get_run_history(OWNER, project.project_id)]
     pi = build_projectinputs_from_snapshot(dict(before.draft_snapshot))
     assert pi.financing.shl_amount_keur > 0 and pi.financing.dsra_months == 6
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": project.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3",
-        "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)}, follow_redirects=False)
+        "financing_structure": "EQUITY_ONLY_NO_RESERVE", **react_workbook_tokens(env.client, project.project_code)}, follow_redirects=False)
     assert response.status_code == 409 and "QUARTERLY_SHL_UNSUPPORTED" in response.text
     assert _ws(project) == before
     assert [h.to_dict() for h in get_run_history(OWNER, project.project_id)] == history

@@ -19,19 +19,6 @@ import pytest
 
 from tests.test_pr394_staging_corrections_v1 import env, history, run_json   # noqa: F401  (fixture re-export)
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 LEAK_PROBES = ("Traceback", "/opt/", "/root/", "secret", "hunter2", "password", "sqlite", "SELECT ", "31956", "period_index",
                "SHL_MATURITY", "PR8_CLEAN", "ModelWorkerError", "CleanProductionRunUnavailable")
 

@@ -13,19 +13,6 @@ from app.workbook.mutation_csrf import mutation_token, validate_mutation_token, 
 from tests.test_model_react_ux040506_v1 import env as run_env
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def snapshot():
     """All tables, all columns, schema and row counts; no timestamps are ignored."""
     with db.get_connection() as connection:
@@ -197,45 +184,32 @@ def test_valid_cost_operation_retains_cas_and_row_version_checks(secured,kind):
         if expected==409:assert snapshot()==before
 
 
-def test_react_and_legacy_issue_usable_separate_tokens(secured,monkeypatch):
-    from bs4 import BeautifulSoup
+def test_react_and_legacy_issue_usable_separate_tokens(secured):
     record=secured.create();p=record.project_code
-    # The legacy SSR page is only served under the explicit rollback flag; React stays default elsewhere.
-    monkeypatch.setenv('FINCO_MODEL_REACT_V1','0')
-    page=secured.client.get('/v2/workbook',params={'project':p},follow_redirects=False)
-    assert page.status_code==200,(page.status_code,page.headers.get('location'))
-    monkeypatch.setenv('FINCO_MODEL_REACT_V1','1')
-    soup=BeautifulSoup(page.text,'html.parser')
-    form=soup.select_one('form[hx-post="/v2/workbook/scenarios/create"]')
-    assert form and form.select_one('input[name="csrf_token"]')['value']
-    legacy_token=form.select_one('input[name="csrf_token"]')['value']
-    legacy_req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())
-    assert validate_mutation_token(legacy_req,p,legacy_token,'scenario-create')
-    # Swapped-token negatives: a token issued for one operation never authorises another.
-    assert not validate_mutation_token(legacy_req,p,legacy_token,'grid-save')
-    assert not validate_mutation_token(legacy_req,'other-project',legacy_token,'scenario-create')
+    req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())
     scenarios=secured.client.get('/v2/model-react/scenarios',params={'project':p}).json()
     token=scenarios['mutations']['create']['csrf_token']
-    req=SimpleNamespace(cookies={auth.COOKIE_NAME:secured.cookie},state=SimpleNamespace())
     assert validate_mutation_token(req,p,token,'scenario-create')
+    # Swapped-token negatives: a token issued for one operation or project never authorises another.
     assert not validate_mutation_token(req,p,token,'scenario-select')
+    assert not validate_mutation_token(req,p,token,'grid-save')
+    assert not validate_mutation_token(req,'other-project',token,'scenario-create')
     for endpoint,operation in [('inputs','grid-save'),('fields/debt','workbook-update'),('costlines','grid-cost-lines-save')]:
         payload=secured.client.get('/v2/model-react/'+endpoint,params={'project':p}).json()
         assert payload['ok'] and validate_mutation_token(req,p,payload['save']['csrf_token'],operation)
+        assert not validate_mutation_token(req,p,payload['save']['csrf_token'],'scenario-create')
 
 
 def test_real_htmx_scenario_create_and_select_render_usable_forms(secured):
-    from bs4 import BeautifulSoup
     from app.persistence.scenarios_repository import list_scenarios
     record=secured.create();p=record.project_code
-    response=secured.client.post('/v2/workbook/scenarios/create',data={'project':p,'scenario_name':'HTMX scenario','csrf_token':secured.token(p,'scenario-create')},headers={'HX-Request':'true'},follow_redirects=False)
-    assert response.status_code==200,response.text[:300]
-    soup=BeautifulSoup(response.text,'html.parser')
-    form=soup.select_one('form[hx-post="/v2/workbook/scenarios/create"]')
-    assert form and form.select_one('input[name="csrf_token"]')['value']
-    sc=next(s for s in list_scenarios(secured.owner,record.project_id) if s.scenario_name=='HTMX scenario')
-    response=secured.client.post('/v2/workbook/scenarios/select',data={'project':p,'scenario_id':sc.scenario_id,'csrf_token':secured.token(p,'scenario-select')},headers={'HX-Request':'true'},follow_redirects=False)
-    assert response.status_code==200
+    response=secured.client.post('/v2/workbook/scenarios/create',data={'project':p,'scenario_name':'React scenario','csrf_token':secured.token(p,'scenario-create')},follow_redirects=False)
+    assert response.status_code==303,response.text[:300]
+    sc_payload=secured.client.get('/v2/model-react/scenarios',params={'project':p}).json()
+    assert sc_payload['ok'] and any(s['name']=='React scenario' for s in sc_payload['scenarios'])
+    sc=next(s for s in list_scenarios(secured.owner,record.project_id) if s.scenario_name=='React scenario')
+    response=secured.client.post('/v2/workbook/scenarios/select',data={'project':p,'scenario_id':sc.scenario_id,'csrf_token':secured.token(p,'scenario-select')},follow_redirects=False)
+    assert response.status_code==303
 
 
 def test_grid_bound_token_validation_save_and_stale_cas(secured):
@@ -249,23 +223,23 @@ def test_grid_bound_token_validation_save_and_stale_cas(secured):
 
 
 def test_real_htmx_run_returns_bound_export_token_after_atomic_commit(run_env, monkeypatch):
-    from bs4 import BeautifulSoup
     from tests.run_clone_csrf import post_valid_csrf
     from app.persistence.workspace_repository import get_workspace_state
     monkeypatch.setenv('FINCO_WORKBOOK_V2','1')
+    monkeypatch.setenv('FINCO_MODEL_REACT_V1','1')
     record=run_env.create()
     data=identity(record,record.user_id)
-    response=post_valid_csrf(run_env.client,'/v2/workbook/run',data=data,headers={'HX-Request':'true'},follow_redirects=False)
-    assert response.status_code==200
+    response=post_valid_csrf(run_env.client,'/v2/workbook/run',data=data,follow_redirects=False)
+    assert response.status_code==303
     ws=get_workspace_state(record.user_id,record.project_id)
     assert ws.last_runtime_snapshot_id
     with db.get_connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM model_run_history WHERE project_id=?',(record.project_id,)).fetchone()[0]==1
-    soup=BeautifulSoup(response.text,'html.parser')
-    forms=soup.select('form[action="/v2/workbook/export"]')
-    assert forms and all(f.select_one('input[name="csrf_token"]')['value'] for f in forms)
+    runs_payload=run_env.client.get('/v2/model-react/runs',params={'project':record.project_code}).json()
+    export_token=runs_payload['exports']['last_run']['csrf_token']
+    assert export_token
     request=SimpleNamespace(cookies=dict(run_env.client.cookies),state=SimpleNamespace())
-    assert all(validate_mutation_token(request,record.project_code,f.select_one('input[name="csrf_token"]')['value'],'workbook-export') for f in forms)
+    assert validate_mutation_token(request,record.project_code,export_token,'workbook-export')
     def no_engine(*a,**kw):pytest.fail('committed evidence export executed finance')
     monkeypatch.setattr('app.api.project_runner.run_project',no_engine)
     before=snapshot()
@@ -273,7 +247,7 @@ def test_real_htmx_run_returns_bound_export_token_after_atomic_commit(run_env, m
     assert rejected.status_code==403 and snapshot()==before
     with db.get_connection() as connection:
         exports_before=connection.execute('SELECT COUNT(*) FROM scenario_exports').fetchone()[0]
-    exported=run_env.client.post('/v2/workbook/export',data={'project':record.project_code,'csrf_token':forms[0].select_one('input[name="csrf_token"]')['value']},follow_redirects=False)
+    exported=run_env.client.post('/v2/workbook/export',data={'project':record.project_code,'csrf_token':export_token},follow_redirects=False)
     assert exported.status_code==200 and exported.content.startswith(b'PK')
     with db.get_connection() as connection:
         assert connection.execute('SELECT COUNT(*) FROM scenario_exports').fetchone()[0]==exports_before+1

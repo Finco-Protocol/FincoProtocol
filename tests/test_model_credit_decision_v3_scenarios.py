@@ -15,19 +15,7 @@ from tests.test_model_credit_decision_v3_real_runs import (  # noqa: F401  (cenv
     USER, cenv, credit, finding, history, last, set_field)
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (env is the fixture cenv builds on)
 from tests.test_model_financing_f2 import config, run, save
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 
 def rows_of(data):
@@ -166,8 +154,7 @@ def test_failed_run_attempt_is_never_committed_and_cannot_appear_as_a_scenario(c
     ok = last(record)
     count = len(history(record))
     set_field(cenv, record, "revenue.ppa.base_tariff", 1)
-    page = cenv.client.get("/v2/workbook", params={"project": record.project_code})
-    response = post_valid_csrf(cenv.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **tokens(page.text)})
+    response = post_valid_csrf(cenv.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={"project": record.project_code, **react_workbook_tokens(cenv.client, record.project_code)})
     assert response.status_code == 200
     if len(history(record)) != count:
         pytest.skip("this input did not fail closed; the failure contract is covered by the synthetic integrity test")

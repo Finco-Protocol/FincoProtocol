@@ -14,19 +14,6 @@ from app.workbook.runtime_authority import EngineCurrency, RunContext
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 OWNER = "decision-user"
 
 
@@ -148,10 +135,10 @@ def test_current_inputs_on_a_run_with_proven_superseded_engine_stay_distinct(env
 def test_stale_inputs_remain_distinct_from_engine_currency(env):
     record = env.create("solar")
     run(env, record)
-    from tests.test_model_decision_workspace_v2 import tokens
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    from tests.model_react_test_helpers import react_workbook_tokens
     r = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700", **tokens(page)))
+        project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700",
+        **react_workbook_tokens(env.client, record.project_code)))
     assert r.status_code == 200
     out = get_outputs(env, record)
     assert (dim(out, "inputs"), dim(out, "engine")) == ("STALE", "CURRENT_ENGINE")

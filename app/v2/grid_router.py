@@ -499,7 +499,11 @@ def _display(value: Any) -> str:
 async def grid_sheet(request: Request, project: str = "", sheet: str = "",
                      presentation_only: bool = False, content_hash: str = "",
                      _: None = Depends(require_v2_active)):
-    """Re-render one grid sheet (+ OOB banner / run controls) for an in-place swap."""
+    """Re-render one grid sheet (+ OOB banner / run controls) for non-HTMX backend checks."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = resolve_request_session(request)
     if user is None:
         return HTMLResponse("", status_code=401)
@@ -528,28 +532,15 @@ async def grid_sheet(request: Request, project: str = "", sheet: str = "",
 
 
 @router.get("/workbook/grid/panel", response_class=HTMLResponse)
-async def grid_panel(request: Request, project: str = "",
-                     refresh_state: bool = False, content_hash: str = "", grid_only: bool = False,
-                     _: None = Depends(require_v2_active)):
-    """Re-render the Inputs grid panel (after Save) for an in-place swap that keeps focus/scroll."""
-    user = resolve_request_session(request)
-    if user is None:
-        return HTMLResponse("", status_code=401)
-    record, owner = resolve_accessible_project(user.user_id, project)
-    if record is None:
-        return HTMLResponse("", status_code=404)
-    if refresh_state:
-        from app.v2.presentation_views import render_saved_grid
-        return render_saved_grid(request, record, owner, project, content_hash, include_shared_state=not grid_only)
-    ws = get_workspace_state(owner, record.project_id)
-    if ws is None:
-        return HTMLResponse("", status_code=404)
-    from app.auth import generate_csrf_token
-    from app.v2 import router as _v2
-    pis = _v2._build_pis_with_composite_identity(ws, record, owner)
-    editable = not is_protected_reference(record)
-    ctx = {"request": request, "project_code": project, "project_editable": editable,
-           "grid_csrf_token": generate_csrf_token()}
-    ctx.update(_v2._build_input_grid_ctx(record, pis, ws, owner, project_editable=editable))
-    html = _v2._templates.get_template("partials/sheet_input_grid.html").render(ctx)
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+async def grid_panel(request: Request):
+    """Decommissioned legacy HTMX grid panel swap endpoint."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        {
+            "ok": False,
+            "code": "HTMX_DECOMMISSIONED",
+            "message": "Legacy HTMX grid panel swap has been decommissioned; use /v2/model-react/.",
+        },
+        status_code=410,
+        headers={"Cache-Control": "no-store"},
+    )

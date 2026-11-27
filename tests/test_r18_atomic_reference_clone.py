@@ -16,19 +16,6 @@ from app.persistence.projects_repository import list_project_records
 from app.services import project_library_service as pls
 from app.services import reference_seed_service as seed
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 U = "r18-user"
 VERTICALS = ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference", "generic_ev_charging_reference"]
 
@@ -157,20 +144,17 @@ def test_the_library_clone_route_is_atomic(world, monkeypatch, template):
 @pytest.mark.parametrize("template", VERTICALS)
 def test_the_legacy_projects_create_route_is_atomic(world, monkeypatch, template):
     _fail_on(monkeypatch, "create_opex_line", 3)
-    # FABLE-SEC-01: supply the bound CSRF token so the atomicity semantics of
-    # the legacy create route are still exercised (a 403 CSRF denial would
-    # otherwise satisfy the assertion without reaching the atomic path).
-    # The token is bound to the session cookie, so it must be fetched and posted by the SAME client.
-    from tests.fable_pr1_csrf_client import fetch_create_csrf_token
     client = _client()
-    r = client.post("/projects/create", data={
-        "csrf_token": fetch_create_csrf_token(client),
-        "project_name": "R18 legacy", "project_type": template.replace("generic_", "").replace("_reference", ""),
-        "template_source": template, "capacity_mw": "20"}, follow_redirects=False)
+    opts = client.get("/v2/model-react/new-project/options").json()
+    tech = template.replace("generic_", "").replace("_reference", "")
+    r = client.post("/v2/model-react/new-project/create", json={
+        "request_id": opts["request_id"], "csrf_token": opts["csrf_token"],
+        "name": "R18 atomic create", "technology": tech, "country": "HR",
+        "capacity_mw": 20.0, "acknowledge_preview": True})
     assert r.status_code != 403, "the CSRF gate must pass so the atomic create path is really exercised"
     assert r.status_code >= 400 or not [p for p in _mine() if _state(p) == "COMPLETE"], r.status_code
     for p in _mine():
-        assert _state(p) in ("CREATING", None)
+        assert _state(p) in ("CREATING", "ABANDONED", None)
         if _state(p) == "CREATING":
             assert not _writable(p) and _counts(p.project_id)[::2] == (0, 0)
 

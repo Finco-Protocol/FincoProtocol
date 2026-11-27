@@ -9,18 +9,6 @@ import pytest
 import test_model_insight_q3_route as q3
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 env = q3.env
 
 
@@ -64,7 +52,9 @@ def test_failed_run_keeps_prior_successful_diagnostics(env):
     rec = q3._project(env, owner, 'generic_solar_reference', 'Diagnostics failed Run')
     q3._run(env, owner, rec)
     before = get_workspace_state(owner, rec.project_id)
-    h, v = q3._tokens(q3._get(env, owner, rec).text)
+    from tests.model_react_test_helpers import react_workbook_tokens
+    t = react_workbook_tokens(env.client, rec.project_code, cookies=env.cookie(owner))
+    h, v = t["content_hash"], t["workbook_version"]
     with mock.patch('app.api.project_runner.run_project', side_effect=RuntimeError('synthetic failed Run')):
         post_valid_csrf(env.client, '/v2/workbook/run', data={'project':rec.project_code,'content_hash':h,'workbook_version':v},
                         cookies=env.cookie(owner), headers={'HX-Request':'true'})

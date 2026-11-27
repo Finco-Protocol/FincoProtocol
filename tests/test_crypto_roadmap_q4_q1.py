@@ -133,9 +133,8 @@ def test_protocol_home_model_navigation_obeys_effective_runtime_flag(monkeypatch
     client = TestClient(main_web.app, raise_server_exceptions=True)
     for flag, destination, forbidden in (
         ("on", "/v2/model-react", "/library"),
-        ("off", "/library", "/v2/model-react"),
-        ("on", "/v2/model-react", "/library"),  # runtime switch without re-import
-        ("invalid", "/library", "/v2/model-react"),  # unknown values fail closed
+        ("off", "/v2/model-react", "/library"),
+        ("invalid", "/v2/model-react", "/library"),
     ):
         monkeypatch.setenv("FINCO_MODEL_REACT_V1", flag)
         response = client.get("/", follow_redirects=False)

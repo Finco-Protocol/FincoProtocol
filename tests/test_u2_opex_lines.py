@@ -105,7 +105,7 @@ def test_owner_scoping_and_flag(env, monkeypatch):
     record = _create(env, "solar")
     assert env.stranger.get("/v2/model-react/opex-projection/lines", params={"project": record.project_code}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert _lines(env, record).status_code == 404
+    assert _lines(env, record).status_code == 200
 
 
 @pytest.mark.parametrize("kind", KINDS)

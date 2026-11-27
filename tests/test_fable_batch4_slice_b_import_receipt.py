@@ -41,21 +41,10 @@ from app.persistence.workspace_repository import get_workspace_state
 from app.services.reference_seed_service import create_reference_seeded_project
 from app.v2.import_router import router as import_router
 from app.v2.react_import import router as react_import_router
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.run_clone_csrf import post_valid_csrf
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 OWNER = "b4-imp-owner"
 STRANGER = "b4-imp-stranger"
@@ -74,6 +63,7 @@ def imp_env(tmp_path, monkeypatch):
         app.include_router(v2_router, prefix="/v2")
         app.include_router(import_router, prefix="/v2")
         app.include_router(react_import_router, prefix="/v2")
+        app.include_router(react_workspace_router, prefix="/v2")
         return app
 
     app = _make_app()
@@ -161,21 +151,8 @@ def _react_preview_confirm_apply(client: TestClient, code: str, *, filename: str
 
 
 def _run_canonical(client: TestClient, code: str):
-    import os
-    prev = os.environ.get("FINCO_MODEL_REACT_V1")
-    os.environ["FINCO_MODEL_REACT_V1"] = "0"
-    try:
-        page = client.get("/v2/workbook", params={"project": code})
-    finally:
-        if prev is None:
-            os.environ.pop("FINCO_MODEL_REACT_V1", None)
-        else:
-            os.environ["FINCO_MODEL_REACT_V1"] = prev
-    tokens = {
-        k: re.search(f'name="{k}" value="([^"]*)"', page.text).group(1)
-        for k in ("content_hash", "workbook_version")
-    }
-    resp = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data=dict(project=code, **tokens))
+    tokens = react_workbook_tokens(client, code)
+    resp = post_valid_csrf(client, "/v2/workbook/run", data=dict(project=code, **tokens))
     assert resp.status_code == 200, resp.text[:300]
 
 
@@ -244,46 +221,26 @@ def test_slice_b_csv_and_xlsx_react_and_legacy_receipt_lineage_and_privacy(imp_e
     assert rcpt_noop["before_composite_hash"] == before_noop == rcpt_noop["after_composite_hash"]
     assert len(list_receipts_for_project(OWNER, pid)) == 2
 
-    # 5. Legacy HTML XLSX Apply -> receipt rendered in provenance HTML & persisted with source_format='xlsx'
+    # 5. React XLSX Apply -> receipt persisted with source_format='xlsx' & SHA-256
     xlsx_bytes = _make_xlsx_bytes("project_setup.technical.p50_hours", "1525")
     xlsx_sha = hashlib.sha256(xlsx_bytes).hexdigest()
-    ctx = imp_env.client.get("/v2/model-react/import/context", params={"project": code}).json()
-    leg_prev = imp_env.client.post(
-        "/v2/workbook/import/preview",
-        data={"project": code, "csrf_token": ctx["csrf_token"], "encoding": "utf-8-sig"},
-        files={"upload": ("SECRET_XLSX_2026.xlsx", xlsx_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    before_x, _, _, resp_xlsx = _react_preview_confirm_apply(
+        imp_env.client,
+        code,
+        filename="SECRET_XLSX_2026.xlsx",
+        payload=xlsx_bytes,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    assert leg_prev.status_code == 200
-    ptok = re.search(r'name="preview_ticket" value="([^"]+)"', leg_prev.text).group(1)
-    # Preview wrote zero new receipts
-    assert len(list_receipts_for_project(OWNER, pid)) == 2
-
-    leg_conf = imp_env.client.post(
-        "/v2/workbook/import/confirm",
-        data={
-            "project": code,
-            "csrf_token": ctx["csrf_token"],
-            "preview_ticket": ptok,
-            "keep_0": "on",
-            "field_0": "project_setup.technical.p50_hours",
-        },
-    )
-    assert leg_conf.status_code == 200
-    atok = re.search(r'name="approved_ticket" value="([^"]+)"', leg_conf.text).group(1)
-    # Confirm wrote zero new receipts
-    assert len(list_receipts_for_project(OWNER, pid)) == 2
-
-    leg_app = imp_env.client.post(
-        "/v2/workbook/import/apply",
-        data={"project": code, "csrf_token": ctx["csrf_token"], "approved_ticket": atok},
-    )
-    assert leg_app.status_code == 200
-    assert 'data-testid="import-receipt-id"' in leg_app.text
+    assert resp_xlsx.status_code == 200, resp_xlsx.text[:300]
+    rcpt_xlsx = resp_xlsx.json()["receipt"]
+    assert rcpt_xlsx["before_composite_hash"] == before_x
     receipts = list_receipts_for_project(OWNER, pid)
     assert len(receipts) == 3
     newest = receipts[0]
     assert newest.source_format == "xlsx" and newest.source_sha256 == xlsx_sha
-    assert newest.receipt_id in leg_app.text
+    assert newest.receipt_id == rcpt_xlsx["receipt_id"]
+    for secret_str in ("SECRET_XLSX_2026", "1525"):
+        assert secret_str not in json.dumps(rcpt_xlsx)
 
     # 6. Durability across fresh app restart + owner-scoped read route (stranger gets 404)
     fresh_app = imp_env.make_app()

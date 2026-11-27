@@ -287,7 +287,7 @@ def test_flag_and_protected_reference_denial(insights, monkeypatch):
         assert insights.client.get(path, params={"project": record.project_code}).status_code == 409
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     for path in (DETAIL, INDEX):
-        assert insights.client.get(path, params={"project": record.project_code}).status_code == 404
+        assert insights.client.get(path, params={"project": record.project_code}).status_code == 409
 
 
 def test_incoherent_concurrent_working_copy_read_fails_closed(insights, monkeypatch):

@@ -229,23 +229,28 @@ class TestScenarioConsistency:
             _set(owner, rec, kind, 5.0)
             _active_scenario(client, h, owner, rec, {SCENARIO_OVERRIDE_KEY: {kind: 8.0}})
 
-            # display: sheet + inputs summary
-            page = client.get(f"/v2/workbook?project={rec.project_code}", headers=h)
-            assert page.status_code == 200
-            if kind == "capex":
-                assert 'data-testid="capex-contingency-authority"' in page.text
-                m = re.search(r'capex-contingency-authority".*?Contingency %</span><span class="v2-field-value">([\d.]+)%',
-                              page.text, re.S)
-                assert m and float(m.group(1)) == 8.0
-            else:
-                m = re.search(r'data-testid="opex-contingency-rate">\s*([\d.]+)%', page.text)
-                assert m and float(m.group(1)) == 8.0
             from app.persistence.projects_repository import get_project_by_id
             from app.persistence.workspace_repository import get_workspace_state
             from app.ui.inputs_summary import build_inputs_summary
             from app.workbook.service import WorkbookService
             ws = get_workspace_state(owner, rec.project_id)
             pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+
+            # display: React canonical inputs / opex-projection agree on the 8% override
+            if kind == "capex":
+                resp = client.get(f"/v2/model-react/inputs?project={rec.project_code}", headers=h)
+                assert resp.status_code == 200, resp.text
+                c13 = next(
+                    cat for sec in resp.json()["grid"]["sections"]
+                    for cat in sec["categories"] if cat["code"] == "C.13"
+                )
+                assert float(c13["total_display"].replace(",", "")) == pytest.approx(
+                    0.08 * capex_basis_keur(WorkbookService.to_projectinputs(pis).capex), rel=1e-4, abs=0.1
+                )
+            else:
+                resp = client.get(f"/v2/model-react/opex-projection?project={rec.project_code}", headers=h)
+                assert resp.status_code == 200, resp.text
+                assert float(resp.json()["contingency"]["rate_pct"]) == 8.0
             summ = build_inputs_summary(get_project_by_id(rec.project_id), pis, ws)
             baseline_ws = None  # noqa: F841
             # Inputs summary must follow the 8% authority, not the 5% project value

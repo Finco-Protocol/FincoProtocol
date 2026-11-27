@@ -9,22 +9,10 @@ import pytest
 from app.workbook import multisenior_config as config
 from finco_core.inputs.multisenior import AUTHORITY, MultiSeniorProjectInputs
 from finco_core.inputs.financing_instruments import FinancingError
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.test_financing_f3_multisenior import case
-from tests.test_model_decision_workspace_v2 import env, tokens
+from tests.test_model_decision_workspace_v2 import env
 from tests.test_model_financing_f2 import save, run
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def state(*, active=False, scope="base", collection=None):
@@ -125,9 +113,9 @@ def test_proposal_save_reload_cas_and_blocked_activation_are_real(env, monkeypat
     monkeypatch.setattr(config, "ACTIVATION_ENABLED", False)
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
-    assert 'f3-activation-blocked' in page.text
-    old_tokens = tokens(page.text)
+    studio0 = env.client.get('/v2/model-react/financing/studio', params={'project': record.project_code})
+    assert studio0.status_code == 200 and studio0.json()['capital_stack']['release_enabled'] is False and studio0.json()['multisenior']['active'] is False
+    old_tokens = react_workbook_tokens(env.client, record.project_code)
     response = save(env, record, state(), field=config.FIELD_ID)
     assert response.status_code == 200 and 'field-error-banner' not in response.text
     ws = get_workspace_state('decision-user', record.project_id)
@@ -138,8 +126,9 @@ def test_proposal_save_reload_cas_and_blocked_activation_are_real(env, monkeypat
     assert get_workspace_state('decision-user', record.project_id) == stored
     save(env, record, state(), field=config.FIELD_ID, stale_tokens=old_tokens)
     assert get_workspace_state('decision-user', record.project_id) == stored
-    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
-    assert 'senior-a' in page.text and 'senior-b' in page.text
+    studio1 = env.client.get('/v2/model-react/financing/studio', params={'project': record.project_code}).json()
+    ids = {r['instrument_id'] for r in studio1['capital_stack']['rows']}
+    assert 'senior-a' in ids and 'senior-b' in ids
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
@@ -201,8 +190,8 @@ def test_real_active_save_run_export_and_stale_last_run_binding(env, monkeypatch
     assert preview.run_id is None
     assert resolve_canonical_last_run_from_workspace(record, 'decision-user', latest).project_inputs.financing_collection.content_digest() == digest
     assert exported_senior() == exported_before
-    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
-    assert 'Last Run facility schedules' in page.text
+    studio_after = env.client.get('/v2/model-react/financing/studio', params={'project': record.project_code}).json()
+    assert studio_after['capital_stack']['last_run'] is not None and len(studio_after['capital_stack']['last_run']['facilities']) == 2
     after, rr2 = run(env, record)
     assert not after.dirty and rr2.snapshot_id != rr.snapshot_id
     assert rr2.runtime_summary['financing_evidence']['collection_digest'] != digest
@@ -244,7 +233,7 @@ def test_cross_owner_protected_reference_and_unrelated_project_are_isolated(env)
     from app.workbook.update_service import WorkbookUpdateService, ProtectedReferenceError
     from app.workbook.registry import WORKBOOK
     record, other = env.create(), env.create('wind')
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    old_tokens = react_workbook_tokens(env.client, record.project_code)
     original = get_workspace_state('decision-user', record.project_id)
     with pytest.raises(ProtectedReferenceError):
         WorkbookUpdateService.apply_draft_update(ws=original,
@@ -255,7 +244,7 @@ def test_cross_owner_protected_reference_and_unrelated_project_are_isolated(env)
     assert config.SNAPSHOT_KEY not in get_workspace_state('decision-user', other.project_id).draft_snapshot
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id='f3-other-owner', username='admin'))
     response = post_valid_mutation(env.client, '/v2/workbook/update', data=dict(project=record.project_code,
-        field_id=config.FIELD_ID, value=state(), sheet_id='debt', **tokens(page.text)))
+        field_id=config.FIELD_ID, value=state(), sheet_id='debt', **old_tokens))
     assert response.status_code == 404
 
 
@@ -263,14 +252,14 @@ def test_selected_scope_changes_invalidate_pre_selection_cas_token(env):
     from app.persistence.workspace_repository import get_workspace_state
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create()
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
+    old_tokens = react_workbook_tokens(env.client, record.project_code)
     post_valid_mutation(env.client, '/v2/workbook/scenarios/create', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_name': 'Concurrent selection'})
     scenario = next(s for s in list_scenarios('decision-user', record.project_id) if not s.is_base_case)
     post_valid_mutation(env.client, '/v2/workbook/scenarios/select', headers={'HX-Request': 'true'},
         data={'project': record.project_code, 'scenario_id': scenario.scenario_id})
     before = get_workspace_state('decision-user', record.project_id)
-    save(env, record, state(), field=config.FIELD_ID, stale_tokens=tokens(page.text))
+    save(env, record, state(), field=config.FIELD_ID, stale_tokens=old_tokens)
     assert get_workspace_state('decision-user', record.project_id) == before
 
 

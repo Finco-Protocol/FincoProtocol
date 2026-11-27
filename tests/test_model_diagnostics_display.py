@@ -101,18 +101,9 @@ def test_display_formatter_preserves_tiny_negative_missing_and_ratio_units():
     assert str(number(-1.299999999979685, "ratio")) == "-1.300"
 
 
-def test_diagnostics_javascript_formats_only_display_and_keeps_json_full_precision():
-    js = (ROOT / "static/js/model_diagnostics_v1.js").read_text(encoding="utf-8")
-    assert "return node ? JSON.parse(node.textContent) : null" in js
-    assert "value.toExponential(3)" in js
-    assert "value.toLocaleString('en-US'" in js
-    assert "dd.textContent = displayFact(value)" in js
-    assert "JSON.stringify(value, function" in js
-
-
-def test_ev_reference_workbook_visible_text_uses_institutional_precision(hygiene_client):
+def test_ev_reference_diagnostics_visible_text_uses_institutional_precision(hygiene_client):
     html = hygiene_client.get(
-        "/v2/workbook?project=generic_ev_charging_reference-reference",
+        "/v2/workbook/diagnostics?project=generic_ev_charging_reference-reference",
         cookies=_cookies(),
     ).text
     visible = _visible_text(html)

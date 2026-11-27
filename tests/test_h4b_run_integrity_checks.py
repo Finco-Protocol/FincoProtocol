@@ -30,19 +30,7 @@ from app.services.production_financial_authority import run_clean_production
 from financial_engine.financing.generic_product_policy import (
     DISABLED_GENERIC_FINANCING_POLICY as OFF,
 )
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -257,13 +245,11 @@ def committed_project(tmp_path_factory):
     client = TestClient(main_web.app, raise_server_exceptions=True)
     api = TestClient(main_api.app, raise_server_exceptions=False)
 
-    page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-    content_hash = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
-    version = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+    toks = react_workbook_tokens(client, record.project_code, cookies=cookies)
     before = api.get(f"/api/v1.1/projects/{record.project_id}/integrity", cookies=cookies)
     run = post_valid_csrf(client, "/v2/workbook/run",
-                      data={"project": record.project_code, "content_hash": content_hash,
-                            "workbook_version": version},
+                      data={"project": record.project_code, "content_hash": toks["content_hash"],
+                            "workbook_version": toks["workbook_version"]},
                       cookies=cookies, headers={"HX-Request": "true"})
     assert run.status_code == 200
     return SimpleNamespace(client=client, api=api, cookies=cookies, record=record, before=before, user=user)
@@ -319,11 +305,12 @@ def test_reading_integrity_does_not_mutate_the_last_run(committed_project):
 
 def test_trust_pack_shows_the_separate_integrity_section(committed_project):
     p = committed_project
-    page = p.client.get(f"/v2/workbook?project={p.record.project_code}", cookies=p.cookies)
-    assert page.status_code == 200
-    assert "RUN INTEGRITY CHECKS" in page.text
-    assert 'data-testid="trust-pack-integrity-SOURCES_EQUAL_USES"' in page.text
-    assert 'data-testid="trust-pack-validation"' in page.text  # the other authority is untouched
+    trust = p.client.get(f"/v2/model-react/trust?project={p.record.project_code}", cookies=p.cookies)
+    assert trust.status_code == 200
+    body = trust.json()
+    assert body["integrity"]["authority"] == "RUN_INTEGRITY_CHECKS"
+    assert "SOURCES_EQUAL_USES" in {c["check_id"] for c in body["integrity"]["checks"]}
+    assert body["validation"]["authority"] == "REFERENCE_REGRESSION_CHECK"  # the other authority is untouched
 
 
 def test_last_run_committed_without_evidence_reads_as_incomplete_not_pass(monkeypatch):

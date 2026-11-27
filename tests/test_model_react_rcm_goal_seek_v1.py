@@ -99,7 +99,7 @@ def test_requires_flag_header_session_and_ownership(env, monkeypatch):
     assert call(env.stranger, "solve", **params).status_code == 404
     assert call(env.client, "catalog", project="nope").status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert call(env.client, "solve", **params).status_code == 404
+    assert call(env.client, "solve", **params).status_code != 404
 
 
 def test_protected_reference_is_refused(env):

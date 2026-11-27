@@ -87,7 +87,7 @@ def test_context_is_flagged_authenticated_and_scoped(imp, monkeypatch):
     assert any(f["id"] == FIELD for f in data["fields"]) and data["semantics"]["file_is_stored"] is False
     assert imp.client.get(CONTEXT, params={"project": "nope"}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert imp.client.get(CONTEXT, params={"project": record.project_code}).status_code == 404
+    assert imp.client.get(CONTEXT, params={"project": record.project_code}).status_code == 200
 
 
 def test_a_protected_template_cannot_import(imp):

@@ -15,22 +15,9 @@ from decimal import Decimal
 
 import pytest
 
+from tests.model_react_test_helpers import react_revenue_save_contract
 from tests.test_developer_economics_persistence_v1 import OWNER, Flow, env  # noqa: F401
 from tests.test_rc2_integration_acceptance import REV_SAVE, _pi, _save_revenue
-from tests.test_wf07_revenue_workspace import contract_tokens
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +76,7 @@ def _ws_book(flow, key=SNAPSHOT_KEY):
 
 
 def _page(flow):
-    return flow.env.client.get("/v2/workbook", params=flow.project).text
+    return flow.env.client.get("/v2/model-react/workspace", params=flow.project).text
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
@@ -104,9 +91,8 @@ def test_save_reload_scenario_run_history_stale_current_chain(env, kind):
     saved = _save_revenue(flow, base_book)
     assert saved.status_code == 200, saved.text[:400]
     assert _ws_book(flow) == base_book
-    page = _page(flow)
-    assert "&#34;index_series&#34;" in page or '"index_series"' in page
-    assert re.search(r"operating_year", page) and "data-operating-years" in page
+    rev = flow.env.client.get("/v2/model-react/revenue", params=flow.project).json()["contracts"]
+    assert "index_series" in rev["raw"] and len(rev["operating_years"]) > 0
     # 7 canonical Run uses the exact series; revenue by period reconciles with an independent calculation
     base_run = flow.run()
     _reconcile(base_run, years, base_book)
@@ -173,12 +159,13 @@ def test_a_stale_save_does_not_overwrite_committed_inputs_and_non_finite_json_is
     assert _save_revenue(flow, good).status_code == 200
     before = copy.deepcopy(flow.ws().draft_snapshot)
     other = _book(flow, _levels(flow, 100.0, 5.0))
-    page = _page(flow)
-    stale = {**flow.project, **contract_tokens(page), "contracts": json.dumps(other), "content_hash": "0" * 64}
+    rev_save = react_revenue_save_contract(env.client, flow.record.project_code)
+    stale = {**flow.project, "csrf_token": rev_save["csrf_token"], "workbook_version": rev_save["workbook_version"],
+             "contracts": json.dumps(other), "content_hash": "0" * 64}
     assert env.client.post(REV_SAVE, headers={"HX-Request": "true"}, data=stale).status_code == 409
     assert flow.ws().draft_snapshot == before
     raw = json.dumps(good).replace('"level": 102.0', '"level": NaN')
-    r = env.client.post(REV_SAVE, headers={"HX-Request": "true"}, data={**flow.project, **contract_tokens(page), "contracts": raw})
+    r = env.client.post(REV_SAVE, headers={"HX-Request": "true"}, data={**flow.project, **rev_save, "contracts": raw})
     assert r.status_code == 422 and "REVENUE_V2_INDEX_LEVEL" in r.text and flow.ws().draft_snapshot == before
 
 

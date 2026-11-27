@@ -22,20 +22,6 @@ from tests.test_model_rc7_capex_profile_run import (  # noqa: F401  (shared help
     OWNER, _base_leaves, _hash, _latest, _planner_routes, _row, _run, _save, _ws, solar,
 )
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _doc_bytes(project):
     return (_ws(project).draft_snapshot or {}).get(config.SNAPSHOT_KEY)
 

@@ -21,7 +21,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.auth import resolve_request_session
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 
@@ -524,8 +523,6 @@ def build_operating_preview(
 
 @router.get("/model-react/opex-projection")
 async def react_opex_projection(request: Request, project: str = ""):
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)
     if user is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)

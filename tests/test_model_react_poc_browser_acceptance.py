@@ -76,19 +76,22 @@ def run_via_canonical_path(context, live_server, project_code):
     assert "/login" not in final_url, "the Run request lost its session cookie"
 
 
-def test_flag_off_shows_explicit_fallback_and_legacy_workbook_stays_default(browser, react_enabled):
+def test_flag_zero_keeps_react_enabled_and_redirects_workbook(browser, react_enabled):
     import os
 
+    prev = os.environ.get("FINCO_MODEL_REACT_V1")
     os.environ["FINCO_MODEL_REACT_V1"] = "0"
     context, page, record, errors = make_session(browser, react_enabled, "ux02-off-user")
     try:
-        page.goto(f"{react_enabled}/v2/model-react/{record.project_code}")
-        assert page.locator(".rx-fallback").count() == 1
-        assert page.locator("#finco-react-root").count() == 0
-        page.locator(".rx-fallback a[href*='/v2/workbook']").click()
-        page.wait_for_selector("#model-workspace-main")
+        page.goto(f"{react_enabled}/v2/workbook?project={record.project_code}")
+        page.wait_for_selector("#finco-react-root")
+        assert page.locator(".rx-fallback").count() == 0
         assert errors == [], errors
     finally:
+        if prev is None:
+            os.environ.pop("FINCO_MODEL_REACT_V1", None)
+        else:
+            os.environ["FINCO_MODEL_REACT_V1"] = prev
         context.close()
 
 

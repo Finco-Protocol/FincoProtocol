@@ -44,8 +44,8 @@ def test_flag_authority_defaults_to_on_everywhere(monkeypatch):
     assert main_web._finco_model_react_flag(SimpleNamespace()) == {"finco_model_react": True}
 
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert react_poc_enabled() is False
-    assert main_web._finco_model_react_flag(SimpleNamespace()) == {"finco_model_react": False}
+    assert react_poc_enabled() is True
+    assert main_web._finco_model_react_flag(SimpleNamespace()) == {"finco_model_react": True}
 
 
 @pytest.fixture()
@@ -136,21 +136,28 @@ def test_get_workbook_never_mutates_sqlite_for_missing_revenue_keys(cutover_env,
         (cutover_env.owner, rec.project_id),
     ).fetchone()[0]
 
-    # Even with flag OFF (direct template render), GET /v2/workbook MUST NOT write to SQLite.
+    # Even with FINCO_MODEL_REACT_V1=0, GET /v2/workbook MUST NOT write to SQLite and redirects to React.
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    t1 = cutover_env.client.get(f"/v2/workbook?project={rec.project_code}")
-    assert t1.status_code == 200
+    t1 = cutover_env.client.get(f"/v2/workbook?project={rec.project_code}", follow_redirects=False)
+    assert t1.status_code == 302 and f"/v2/model-react/{rec.project_code}" in t1.headers.get("location", "")
     after_raw = conn.execute(
         "SELECT draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?",
         (cutover_env.owner, rec.project_id),
     ).fetchone()[0]
     assert after_raw == before_raw
 
-    # Two-tab tokens remain identical with flag ON too.
+    # GET /v2/model-react/inputs and /revenue must also remain read-only with identical tokens across tabs.
     monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+    in1 = cutover_env.client.get("/v2/model-react/inputs", params={"project": rec.project_code}).json()
     tab1 = cutover_env.client.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
     tab2 = cutover_env.client.get("/v2/model-react/revenue", params={"project": rec.project_code}).json()
+    assert in1["save"]["content_hash"] == tab1["save"]["content_hash"]
     assert tab1["save"]["content_hash"] == tab2["save"]["content_hash"]
+    after_react_raw = conn.execute(
+        "SELECT draft_snapshot_json FROM workspace_states WHERE user_id=? AND project_id=?",
+        (cutover_env.owner, rec.project_id),
+    ).fetchone()[0]
+    assert after_react_raw == before_raw
 
 
 def test_inputs_slice1_update_enforces_scoped_operation_csrf(cutover_env):

@@ -214,4 +214,4 @@ def test_reads_never_write_and_security_flag_auth(lib, monkeypatch):
             if path == LIST:
                 assert other.get(path).json()["projects"] == []                                   # another account sees none of Mine
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert lib.client.get(LIST).status_code == 404 and lib.client.get(TEMPLATES).status_code == 404
+    assert lib.client.get(LIST).status_code == 200 and lib.client.get(TEMPLATES).status_code == 200

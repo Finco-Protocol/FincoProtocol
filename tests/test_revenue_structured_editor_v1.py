@@ -11,7 +11,6 @@ from jinja2 import Environment, FileSystemLoader
 
 ROOT = Path(__file__).resolve().parents[1]
 PARTIAL = ROOT / "app/templates/v2/partials/revenue_contracts.html"
-SCRIPT = ROOT / "static/js/model_revenue_contract_editor.js"
 
 
 def render(book="", editable=True, overridden=False):
@@ -61,13 +60,6 @@ def test_existing_and_scheduled_editor_variants_and_disabled_unsupported_feature
     assert variants == ["fixed_ppa", "indexed_ppa", "merchant", "residual_merchant",
                         "scheduled_ppa", "scheduled_merchant", "cfd"]
     assert not any(x in variants for x in ("capacity_market", "ancillary", "rec"))
-    text = SCRIPT.read_text(encoding="utf-8")
-    assert "financial_engine" not in text and "run_clean_production" not in text
-    for essential in ("JSON.stringify(book)", "htmx:configRequest",
-                      "fromPct", "kindOverrides", "dataset.revenueRow", "data-revenue-source"):
-        assert essential in text
-    assert "fetch(" not in text
-    assert "window.confirm" in text
 
 
 def test_existing_contract_raw_is_preserved_in_readonly_diagnostic():

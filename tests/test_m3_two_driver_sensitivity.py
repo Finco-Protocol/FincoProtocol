@@ -18,19 +18,6 @@ from app.v2.sensitivity_matrix_projection import (
 )
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 USER = "decision-user"
 RUN = "/v2/workbook/sensitivity/matrix/run"
 FORM = "/v2/workbook/decision/sensitivity"      # the Sensitivity sheet hosts the matrix form
@@ -531,8 +518,11 @@ def test_form_offers_only_supported_drivers_and_sensitivity_tab_hosts_it(env, ki
     form = env.client.get(FORM, params={"project": record.project_code})
     assert form.status_code == 200 and f'value="{present}"' in form.text and f'value="{absent}"' not in form.text
     assert 'data-testid="matrix-run-btn"' in form.text
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    assert 'data-testid="matrix-region"' in page and "Two-driver matrices are not available" not in page
+    cat = env.client.get("/v2/model-react/analysis/sensitivity/catalog",
+                         params={"project": record.project_code}, headers={"x-finco-react-request": "1"})
+    assert cat.status_code == 200
+    driver_keys = {d["key"] for d in cat.json()["drivers"]}
+    assert present in driver_keys and absent not in driver_keys
 
 
 def test_ev_form_is_unsupported_and_offers_no_driver(env):

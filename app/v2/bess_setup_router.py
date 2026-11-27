@@ -31,9 +31,6 @@ def _json(payload, status=200):
 
 @router.get("/model-react/new-project/bess-options")
 async def bess_options(request: Request):
-    from app.v2.react_poc_router import react_poc_enabled
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if resolve_request_session(request) is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
     import uuid
@@ -44,9 +41,6 @@ async def bess_options(request: Request):
 
 @router.post("/model-react/new-project/bess-preview")
 async def bess_preview(request: Request):
-    from app.v2.react_poc_router import react_poc_enabled
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if resolve_request_session(request) is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
     origin = request.headers.get("origin")

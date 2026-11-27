@@ -6,20 +6,8 @@ import subprocess
 
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
+from tests.model_react_test_helpers import react_workbook_tokens
 
 
 @pytest.mark.parametrize("identity,status", [("anonymous", 401), ("other-owner", 404), ("reference", 403)])
@@ -52,11 +40,9 @@ def test_real_endpoint_security_preserves_workspace_and_history(env, monkeypatch
     def forbidden(*args, **kwargs):
         raise AssertionError("No financial calculation is authorized by opening or saving frequency")
     monkeypatch.setattr(model_execution, "run_model_process", forbidden)
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
-    assert page.status_code == 200
     before = get_workspace_state(owner, project.project_id)
     body = {"project": project.project_code, "csrf_token": generate_csrf_token(),
-            "frequency": "6/6", "financing_structure": "", **tokens(page.text)}
+            "frequency": "6/6", "financing_structure": "", **react_workbook_tokens(env.client, project.project_code)}
     if identity == "anonymous":
         env.client.cookies.clear()
     elif identity == "other-owner":

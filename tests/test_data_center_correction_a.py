@@ -13,23 +13,11 @@ the single Data Center economic authority.
 from __future__ import annotations
 
 from tests.model_mutation_csrf import post_valid_mutation
+from tests.model_react_test_helpers import react_workbook_tokens
 
 import math
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.fixture
@@ -220,20 +208,14 @@ class TestCurrentDriverThenCapacityRescale:
         client = TestClient(main_web.app, raise_server_exceptions=True)
 
         def _update(field_id: str, value: str) -> None:
-            page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-            assert page.status_code == 200
-            import re
-
-            m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-            mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-            assert m and mv, f"identity fields missing for {field_id}"
+            toks = react_workbook_tokens(client, record.project_code, cookies=cookies)
             resp = post_valid_mutation(client, "/v2/workbook/update",
                 data={
                     "field_id": field_id,
                     "value": value,
                     "project": record.project_code,
-                    "workbook_version": mv.group(1),
-                    "content_hash": m.group(1),
+                    "workbook_version": toks["workbook_version"],
+                    "content_hash": toks["content_hash"],
                     "sheet_id": "revenue" if field_id.startswith(("revenue.",)) else "project_setup",
                 },
                 cookies=cookies,
@@ -311,14 +293,19 @@ class TestCurrentDriverThenCapacityRescale:
             run_clean_production(pi, "Base", project_type="Data Center")
         assert "SHL_MATURITY_RESIDUAL_FAILS_CLOSED" in str(exc_info.value.detail)
 
-        # Workbook reload: persistence proof.
-        reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        # Workbook reload: persistence proof via canonical React inputs payload.
+        reloaded = client.get(f"/v2/model-react/inputs?project={record.project_code}", cookies=cookies)
         assert reloaded.status_code == 200
-        import re as _re
-
-        assert _re.search(r'value="1\.5(|0+)"', reloaded.text)
-        assert _re.search(r'value="90(\.0+)?"', reloaded.text)
-        assert _re.search(r'value="65(\.0+)?"', reloaded.text)
+        vals = {
+            row["field_id"]: row["value"]
+            for sec in reloaded.json()["grid"]["sections"]
+            for cat in sec.get("categories", [])
+            for row in cat.get("rows", [])
+            if row.get("field_id")
+        }
+        assert float(vals["revenue.data_center.pue"]) == pytest.approx(1.5)
+        assert float(vals["revenue.data_center.electricity_price"]) == pytest.approx(90.0)
+        assert float(vals["revenue.data_center.occupancy_y1"]) == pytest.approx(65.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -375,19 +362,14 @@ class TestResetPreservesDerivedB08:
         assert edited.source == "user_override"
 
         # 2. Modify a Data Center power driver (via the real update endpoint).
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        import re
-
-        m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-        mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
+        toks = react_workbook_tokens(client, record.project_code, cookies=cookies)
         resp = post_valid_mutation(client, "/v2/workbook/update",
             data={
                 "field_id": "revenue.data_center.electricity_price",
                 "value": "90",
                 "project": record.project_code,
-                "workbook_version": mv.group(1),
-                "content_hash": m.group(1),
+                "workbook_version": toks["workbook_version"],
+                "content_hash": toks["content_hash"],
                 "sheet_id": "revenue",
             },
             cookies=cookies,
@@ -428,11 +410,16 @@ class TestResetPreservesDerivedB08:
         assert runtime_opex_y1 == pytest.approx(float(snap["opex_y1_keur"]))
 
         # Workbook reload consistency.
-        reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        reloaded = client.get(f"/v2/model-react/inputs?project={record.project_code}", cookies=cookies)
         assert reloaded.status_code == 200
-        import re as _re
-
-        assert _re.search(r'value="90(\.0+)?"', reloaded.text)
+        vals = {
+            row["field_id"]: row["value"]
+            for sec in reloaded.json()["grid"]["sections"]
+            for cat in sec.get("categories", [])
+            for row in cat.get("rows", [])
+            if row.get("field_id")
+        }
+        assert float(vals["revenue.data_center.electricity_price"]) == pytest.approx(90.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -546,11 +546,23 @@ def _form_fields(html: str, form_class: str, index: int = 0) -> dict:
 class TestCapexControls:
     def test_deactivate_form_carries_every_field_the_endpoint_requires(self, seeded_db):
         client, cookies, record = _client_for(user_id="u-wave-b-cx0")
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies, headers={"HX-Request": "true"}).text
-        fields = _form_fields(page, "v2-capex-custom-form")
+        cl = client.get(
+            f"/v2/model-react/costlines?sheet=capex&project={record.project_code}",
+            cookies=cookies,
+        ).json()
+        active_line = next(ln for ln in cl["lines"] if ln["active"])
+        fields = {
+            "project": cl["project"]["code"],
+            "sub_line_id": active_line["sub_line_id"],
+            "row_version": active_line["row_version"],
+            "workbook_version": cl["save"]["workbook_version"],
+            "content_hash": cl["save"]["content_hash"],
+            "csrf_token": cl["line_management"]["csrf_tokens"]["deactivate"],
+        }
         # Form(...) parameters of POST /v2/capex/line/deactivate
         assert {"project", "sub_line_id", "row_version",
                 "workbook_version", "content_hash"} <= set(fields)
+        assert all(fields[k] for k in ("project", "sub_line_id", "row_version", "workbook_version", "content_hash", "csrf_token"))
 
     def test_deactivate_as_submitted_by_the_browser_persists_and_reaches_totals(self, seeded_db):
         from app.persistence.db import get_cursor
@@ -558,14 +570,23 @@ class TestCapexControls:
         client, cookies, record = _client_for(user_id="u-wave-b-cx1")
         code, uid, pid = record.project_code, record.user_id, record.project_id
         _run(client, cookies, code)
-        page = client.get(f"/v2/workbook?project={code}", cookies=cookies, headers={"HX-Request": "true"}).text
-        fields = _form_fields(page, "v2-capex-custom-form")
+        cl = client.get(
+            f"/v2/model-react/costlines?sheet=capex&project={code}",
+            cookies=cookies,
+        ).json()
+        active_line = next(ln for ln in cl["lines"] if ln["active"])
+        fields = {
+            "project": code,
+            "sub_line_id": active_line["sub_line_id"],
+            "row_version": active_line["row_version"],
+            "workbook_version": cl["save"]["workbook_version"],
+            "content_hash": cl["save"]["content_hash"],
+        }
         with get_cursor() as cur:
             cur.execute("SELECT amount_keur FROM capex_sub_lines WHERE sub_line_id=?",
                         (fields["sub_line_id"],))
             amount = cur.fetchone()["amount_keur"]
-        total_before = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', page)
-                             .group(1).replace(",", ""))
+        total_before = float(cl["projection"]["saved_total_keur"])
 
         resp = post_valid_mutation(client, "/v2/capex/line/deactivate", data=fields, cookies=cookies,
                            headers={"HX-Request": "true"})
@@ -574,22 +595,32 @@ class TestCapexControls:
             cur.execute("SELECT is_active FROM capex_sub_lines WHERE sub_line_id=?",
                         (fields["sub_line_id"],))
             assert cur.fetchone()["is_active"] == 0         # persisted
-        after = client.get(f"/v2/workbook?project={code}", cookies=cookies, headers={"HX-Request": "true"}).text
-        # no longer an ACTIVE row (it is now listed under Inactive lines, reactivatable)
-        assert f'data-sub-line-id="{fields["sub_line_id"]}"' not in after
-        assert f'data-testid="capex-reactivate-{fields["sub_line_id"]}"' in after
-        total_after = float(re.search(r'data-testid="total-capex-keur">\s*([\d,\.]+)', after)
-                            .group(1).replace(",", ""))
+        after = client.get(
+            f"/v2/model-react/costlines?sheet=capex&project={code}",
+            cookies=cookies,
+        ).json()
+        # no longer an ACTIVE row (it is now listed inactive, reactivatable)
+        deactivated = next(ln for ln in after["lines"] if ln["sub_line_id"] == fields["sub_line_id"])
+        assert deactivated["active"] is False
+        total_after = float(after["projection"]["saved_total_keur"])
         assert total_after == pytest.approx(total_before - amount, abs=1.0)
         assert _state(client, cookies, code) == "Stale"     # a causal edit marks the Run STALE
 
     def test_category_without_effect_editor_is_replaced_by_an_explained_total(self, seeded_db):
         client, cookies, record = _client_for(user_id="u-wave-b-cx2")
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies, headers={"HX-Request": "true"}).text
-        # production units has seeded line items -> its category total is derived from them
-        assert 'data-field-id="capex.C.production_units"' not in page
-        assert 'data-testid="capex-category-total-C.01"' in page
-        assert "Sum of the line items below" in page
+        inp = client.get(
+            f"/v2/model-react/inputs?project={record.project_code}",
+            cookies=cookies,
+        ).json()
+        c01 = next(
+            cat for sec in inp["grid"]["sections"]
+            for cat in sec["categories"] if cat["code"] == "C.01"
+        )
+        # production units has seeded line items -> its category total is derived from them, never editable via scalar field_id
+        assert c01["editable_count"] == 0
+        assert c01["rows"][0]["editable"] is False
+        assert c01["rows"][0]["field_id"] != "capex.C.production_units"
+        assert "Sum of line items" in c01["rows"][0]["reason"]
 
     def test_category_editor_save_was_inert_for_canonical_capex(self, seeded_db):
         """Documents WHY the editor was removed: with line items present the

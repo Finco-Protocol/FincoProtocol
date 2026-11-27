@@ -16,20 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.workbook import quarterly_frequency_config as cfg
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -231,20 +219,21 @@ def test_closed_endpoint_generic_field_and_writer_refuse_and_nothing_is_rendered
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.revenue_contracts_service import save_contracts
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200
-    assert cfg.FIELD_ID not in page.text and cfg.SNAPSHOT_KEY not in page.text  # no selector exposed
+    inp = env.client.get("/v2/model-react/inputs", params={"project": record.project_code})
+    assert inp.status_code == 200
+    assert cfg.FIELD_ID not in inp.text and cfg.SNAPSHOT_KEY not in inp.text  # no selector exposed
+    tok = react_workbook_tokens(env.client, record.project_code)
     before = get_workspace_state(OWNER, record.project_id)
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tok})
     assert response.status_code == 404 and response.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
     generic = post_valid_mutation(env.client, "/v2/workbook/update", data={
         "project": record.project_code, "sheet_id": "project_setup", "field_id": cfg.FIELD_ID,
-        "value": _selection(), **tokens(page.text)})
+        "value": _selection(), **tok})
     assert generic.status_code == 409 and "QUARTERLY_GENERIC_FIELD_WRITE_REFUSED" in generic.text
     # The security-critical typed contract writer is unchanged and never authorizes this field.
     with pytest.raises(ValueError, match="TYPED_CONTRACT_FIELD_NOT_AUTHORIZED"):
-        save_contracts(owner=OWNER, project_id=record.project_id, expected_hash=tokens(page.text)["content_hash"],
+        save_contracts(owner=OWNER, project_id=record.project_id, expected_hash=tok["content_hash"],
                        raw=_selection(), field_id=cfg.FIELD_ID)
     # Every canonical write path (single field or batch) refuses at validation.
     from app.workbook.update_service import NonEditableFieldError, WorkbookUpdateService
@@ -252,8 +241,8 @@ def test_closed_endpoint_generic_field_and_writer_refuse_and_nothing_is_rendered
         WorkbookUpdateService.validate_field_update(cfg.FIELD_ID, _selection())
     with pytest.raises(NonEditableFieldError, match="QUARTERLY_ADMISSION_CLOSED"):
         WorkbookUpdateService.apply_draft_update(ws=before, field_id=cfg.FIELD_ID, raw_value=_selection(),
-                                                 content_hash=tokens(page.text)["content_hash"],
-                                                 workbook_version=tokens(page.text)["workbook_version"], project_record=record)
+                                                 content_hash=tok["content_hash"],
+                                                 workbook_version=tok["workbook_version"], project_record=record)
     assert get_workspace_state(OWNER, record.project_id) == before
 
 
@@ -262,9 +251,9 @@ def test_open_gate_endpoint_refuses_non_renewable_projects(env, monkeypatch, kin
     from app.auth import generate_csrf_token
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create(kind)
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tok = react_workbook_tokens(env.client, record.project_code)
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tok})
     assert response.status_code == 409 and "QUARTERLY_TECHNOLOGY_UNSUPPORTED" in response.json()["error"]
 
 
@@ -273,25 +262,25 @@ def test_open_gate_endpoint_refuses_mixed_or_unknown_frequencies(env, monkeypatc
     from app.auth import generate_csrf_token
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tok = react_workbook_tokens(env.client, record.project_code)
     response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency, "financing_structure": "", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency, "financing_structure": "", **tok})
     assert response.status_code == 409 and "QUARTERLY_FREQUENCY_UNSUPPORTED" in response.json()["error"]
 
 
 def test_closed_gate_accepts_only_the_six_month_reset(env):
     from app.auth import generate_csrf_token
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tok = react_workbook_tokens(env.client, record.project_code)
     reset = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "6/6",
-        "financing_structure": "", **tokens(page.text)}, follow_redirects=False)
+        "financing_structure": "", **tok}, follow_redirects=False)
     assert reset.status_code == 303
     for frequency in ("3/3", "3/6"):
-        page = env.client.get("/v2/workbook", params={"project": record.project_code})
+        tok2 = react_workbook_tokens(env.client, record.project_code)
         refused = env.client.post("/v2/workbook/calendar/operating-frequency", data={
             "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": frequency,
-            "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
+            "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tok2})
         assert refused.status_code == 404 and refused.json()["error"] == "QUARTERLY_ADMISSION_CLOSED"
 
 
@@ -309,12 +298,12 @@ def test_open_gate_endpoint_requires_explicit_structure_consent(env, monkeypatch
     from app.persistence.workspace_repository import get_workspace_state
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tok = react_workbook_tokens(env.client, record.project_code)
     before = get_workspace_state(OWNER, record.project_id)
     for consent in ("", "EQUITY_ONLY", "SHARE_CAPITAL_THEN_SHL"):
         response = env.client.post("/v2/workbook/calendar/operating-frequency", data={
             "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3",
-            "financing_structure": consent, **tokens(page.text)})
+            "financing_structure": consent, **tok})
         assert response.status_code == 409
         assert "QUARTERLY_FINANCING_STRUCTURE_CONSENT_REQUIRED" in response.json()["error"]
     assert get_workspace_state(OWNER, record.project_id) == before
@@ -326,11 +315,11 @@ def test_open_gate_endpoint_requires_csrf_and_cas(env, monkeypatch):
     eligible_references(monkeypatch)
     monkeypatch.setattr(cfg, "ACTIVATION_ENABLED", True)
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    tok = react_workbook_tokens(env.client, record.project_code)
     bad_csrf = env.client.post("/v2/workbook/calendar/operating-frequency", data={
-        "project": record.project_code, "csrf_token": "forged", "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tokens(page.text)})
+        "project": record.project_code, "csrf_token": "forged", "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **tok})
     assert bad_csrf.status_code == 403
-    stale = {**tokens(page.text), "content_hash": "0" * 64}
+    stale = {**tok, "content_hash": "0" * 64}
     bad_cas = env.client.post("/v2/workbook/calendar/operating-frequency", data={
         "project": record.project_code, "csrf_token": generate_csrf_token(), "frequency": "3/3", "financing_structure": "EQUITY_ONLY_NO_RESERVE", **stale})
     assert bad_cas.status_code == 409

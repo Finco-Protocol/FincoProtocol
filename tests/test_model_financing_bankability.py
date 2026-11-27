@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from tests.model_mutation_csrf import post_valid_mutation
-
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.run_clone_csrf import post_valid_csrf
 
 from dataclasses import replace
@@ -18,19 +18,6 @@ from app.v2.financing_projection import (
     integrity_view, metric, senior_editor_fields,
 )
 from app.workbook.runtime_result import RuntimeResult
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def runtime(**overrides):
@@ -220,20 +207,22 @@ def tokens(record):
 def test_authenticated_workspaces_render_authority_safe_financing_context(client, projects, kind):
     from app.persistence.workspace_repository import get_workspace_state
     record = projects[kind]
-    page = client.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200
-    assert 'data-testid="financing-cfads"' in page.text
-    assert "Equity-only vs sponsor-inclusive returns" in page.text
-    assert "Reserve policy &amp; assumptions" in page.text
-    assert "Sponsor funding assumptions are read-only here" in page.text
-    assert 'data-testid="f4-agreement-panel"' in page.text
-    assert "sheet=debt" in page.text and "overview-integrity-loader" in page.text
-    # Initial workbook GET performs existing canonical draft initialization.
-    # The new integrity read and repeated rendering must not mutate that state.
+    studio = client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
+    assert studio.status_code == 200, studio.text[:500]
+    body = studio.json()
+    assert body["ok"] is True
+    assert body["freshness"] == "NOT_RUN"
+    assert "bankability" in body and "senior_pricing_mode" in body and "senior_dscr_mode" in body
+    assert "reserve_view" in body and "sponsor_view" in body and "financing_evidence" in body
+    assert body["sources_uses"]["view"]["has_financing_evidence"] is False
+    assert body["sources_uses"]["view"]["freshness"] == "NOT_RUN"
+    assert body["selected_run"]["available"] is False
+    assert body["save"]["tokens_from"] == "/v2/model-react/fields/debt"
+    # Initial GET performs existing canonical draft initialization.
+    # Repeated React financing studio reads must not mutate that state.
     before = get_workspace_state("finance-owner", record.project_id)
-    state = client.get("/v2/workbook/financing/integrity", params={"project": record.project_code})
-    assert state.status_code == 200 and "Financial integrity: UNAVAILABLE" in state.text
-    assert client.get("/v2/workbook", params={"project": record.project_code}).status_code == 200
+    assert client.get("/v2/model-react/financing/studio", params={"project": record.project_code}).status_code == 200
+    assert client.get("/v2/model-react/trust", params={"project": record.project_code}).json()["integrity"] is None
     assert get_workspace_state("finance-owner", record.project_id) == before
 
 
@@ -245,28 +234,25 @@ def test_percent_save_persists_existing_contract_and_rejects_invalid(client, pro
     record = projects[kind]
     for raw, accepted in (("5.50", True), ("21", False), ("-1", False), ("nan", False), ("abc", False)):
         v, h = tokens(record)
-        response = post_valid_mutation(client, "/v2/workbook/update", headers={"HX-Request": "true"}, data={
+        response = post_valid_mutation(client, "/v2/workbook/update", follow_redirects=False, data={
             "project": record.project_code, "sheet_id": "debt", "field_id": "debt.senior.interest_rate_pct",
             "value": raw, "workbook_version": v, "content_hash": h})
-        assert response.status_code == (200 if accepted else 422), response.text[:400]
-        assert ('"workbook-field-saved"' in response.headers.get("HX-Trigger", "")) == accepted
-        if not accepted:
-            assert '"workbook-field-error"' in response.headers["HX-Trigger"]
-            assert 'v2-field-error-banner' in response.text
+        assert response.status_code == 303, response.text[:400]
+        location = response.headers.get("location", "")
+        assert ("v2_err=" not in location) == accepted, location
         ws = get_workspace_state("finance-owner", record.project_id)
         assert float(ws.draft_snapshot["interest_rate_pct"]) == 5.5
         pi = WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs()
         assert senior_rate_authority(pi)[1] == pytest.approx(.055)
 
 
-@pytest.mark.parametrize("surface", ["integrity", "investor"])
-def test_financing_endpoint_enforces_authenticated_project_owner(client, projects, surface):
+@pytest.mark.parametrize("endpoint", ["/v2/model-react/financing/studio", "/v2/model-react/trust"])
+def test_financing_endpoint_enforces_authenticated_project_owner(client, projects, endpoint):
     from app.auth import COOKIE_NAME, create_session_token
     client.cookies.clear()
-    path = "/v2/workbook/financing/" + surface
-    assert client.get(path, params={"project": projects["solar"].project_code}).status_code in (401, 404)
+    assert client.get(endpoint, params={"project": projects["solar"].project_code}).status_code in (401, 404)
     client.cookies.set(COOKIE_NAME, create_session_token(user_id="other-finance-owner", username="admin"))
-    assert client.get(path, params={"project": projects["solar"].project_code}).status_code == 404
+    assert client.get(endpoint, params={"project": projects["solar"].project_code}).status_code == 404
 
 
 def test_frozen_financial_and_parallel_files_are_not_required_by_projection():
@@ -283,9 +269,9 @@ def test_real_run_cash_gearing_returns_and_integrity_use_exact_persisted_authori
     from app.workbook.service import WorkbookService
     from app.api.v1_1.institutional import get_run_integrity_checks
     record = projects[kind]
-    v, h = tokens(record)
-    response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
-        "project": record.project_code, "workbook_version": v, "content_hash": h})
+    t = react_workbook_tokens(client, record.project_code)
+    response = post_valid_csrf(client, "/v2/workbook/run", data={
+        "project": record.project_code, **t})
     assert response.status_code == 200, response.text[:1000]
     before = get_workspace_state("finance-owner", record.project_id)
     rr = WorkbookService.get_runtime_result(before)
@@ -306,11 +292,14 @@ def test_real_run_cash_gearing_returns_and_integrity_use_exact_persisted_authori
           f"equity receipts={sr['total_legal_equity_distributions_keur']}, "
           f"pure equity MOIC={sr['pure_equity_moic']}, sponsor MOIC={sr['total_sponsor_moic']}")
     _, authority = get_run_integrity_checks("finance-owner", record.project_id)
-    page = client.get("/v2/workbook/financing/integrity", params={"project": record.project_code})
-    assert page.status_code == 200
+    trust = client.get("/v2/model-react/trust", params={"project": record.project_code})
+    assert trust.status_code == 200
+    trust_body = trust.json()
     expected = integrity_view(authority, "CURRENT")
-    assert f"Financial integrity: {expected['status']}" in page.text
-    assert "Inputs: CURRENT" in page.text
+    assert trust_body["run_state"] == "CURRENT"
+    assert trust_body["integrity"]["overall"] == expected["status"]
+    studio = client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
+    assert studio.status_code == 200 and studio.json()["sources_uses"]["available"] is True
     assert get_workspace_state("finance-owner", record.project_id) == before
 
 
@@ -327,19 +316,20 @@ def test_concurrent_working_edit_during_integrity_read_fails_closed(client, proj
             project_record=record, field_id="debt.senior.gearing_pct", raw_value="60", workbook_version=v, content_hash=h)
         return result
     monkeypatch.setattr(institutional, "get_run_integrity_checks", read_then_edit)
-    response = client.get("/v2/workbook/financing/integrity", params={"project": record.project_code})
-    assert response.status_code == 200
-    assert "Financial integrity: UNAVAILABLE" in response.text
-    assert "Inputs: UNAVAILABLE" in response.text
+    response = client.get("/v2/model-react/trust", params={"project": record.project_code})
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ok"] is False and body["code"] == "TRUST_UNAVAILABLE"
+    assert body.get("integrity") is None
 
 
 def test_investor_fragment_preserves_prior_run_and_has_no_writes(client, projects):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.update_service import WorkbookUpdateService
     record = projects["solar"]
-    v, h = tokens(record)
-    response = post_valid_csrf(client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={
-        "project": record.project_code, "workbook_version": v, "content_hash": h})
+    t = react_workbook_tokens(client, record.project_code)
+    response = post_valid_csrf(client, "/v2/workbook/run", data={
+        "project": record.project_code, **t})
     assert response.status_code == 200
     v, h = tokens(record)
     ws = get_workspace_state("finance-owner", record.project_id)
@@ -347,20 +337,14 @@ def test_investor_fragment_preserves_prior_run_and_has_no_writes(client, project
     WorkbookUpdateService.apply_draft_update(ws=ws, project_record=record,
         field_id="debt.senior.gearing_pct", raw_value=new_gearing, workbook_version=v, content_hash=h)
     before = get_workspace_state("finance-owner", record.project_id)
-    response = client.get("/v2/workbook/financing/investor", params={"project": record.project_code})
+    response = client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
     assert response.status_code == 200
-    assert "prior" in response.text.lower() or "stale" in response.text.lower()
-    assert 'data-testid="investor-return-evidence"' in response.text
-    # The refresh listener is CSP-safe static JS (no inline script / hx-on / eval filter in the fragment).
-    assert "<script" not in response.text and "hx-on" not in response.text
-    from pathlib import Path
-    js = (Path(__file__).resolve().parents[1] / "static/js/workbook_v2.js").read_text()
-    assert "htmx:afterRequest" in js and "#v2-sheet-investor" in js
-    # Refresh is a read-only GET of the fragment, triggered only by a SUCCESSFUL workbook POST.
-    assert "detail.successful || !workbookPost(config)" in js
-    assert "window.htmx.ajax('GET', root.getAttribute('hx-get')" in js
-    assert 'hx-get="/v2/workbook/financing/investor?project=' in response.text
-    assert set(v.strip() for v in response.headers["Cache-Control"].split(",")) == {"no-store"}
+    body = response.json()
+    assert body["freshness"] == "STALE"
+    assert body["selected_run"]["available"] is True
+    assert body["selected_run"]["view"]["identity"]["state"] == "STALE"
+    assert body["sources_uses"]["view"]["freshness"] == "STALE"
+    assert "no-store" in {v.strip() for v in response.headers["Cache-Control"].split(",")}
     assert get_workspace_state("finance-owner", record.project_id) == before
 
 
@@ -377,7 +361,8 @@ def test_concurrent_edit_during_investor_render_discards_financial_evidence(clie
             project_record=record, field_id="debt.senior.gearing_pct", raw_value="60", workbook_version=v, content_hash=h)
         return result
     monkeypatch.setattr(router, "_build_debt_ctx", build_then_edit)
-    response = client.get("/v2/workbook/financing/investor", params={"project": record.project_code})
-    assert response.status_code == 200
-    assert "workspace changed during response assembly" in response.text
-    assert 'data-testid="investor-return-evidence"' not in response.text
+    response = client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ok"] is False and body["code"] == "WORKSPACE_UNAVAILABLE"
+    assert "sources_uses" not in body and "sponsor_view" not in body

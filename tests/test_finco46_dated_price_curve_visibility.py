@@ -61,12 +61,11 @@ def test_dated_project_editor_declares_curves_unsupported_and_save_stays_a_typed
     assert contracts["price_curve_supported"] is False
     assert contracts["date_authority_version"] == DATED
     assert "REVENUE_V2_DATED_CURVE_UNSUPPORTED" in contracts["price_curve_unsupported_reason"]
-    # The legacy HTMX workbook shows the same notice and offers the quick "Scheduled" type disabled.
+    # Even with FINCO_MODEL_REACT_V1=0, /v2/workbook redirects to the canonical React workspace.
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    redir = env.client.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
-    assert 'data-price-curve-supported="false"' in html and 'data-testid="revenue-curve-calendar-notice"' in html
-    assert '<option value="scheduled_ppa" disabled>' in html
+    assert redir.status_code == 302 and f"/v2/model-react/{record.project_code}" in redir.headers["location"]
     # The server refusal is unchanged (defence in depth): typed 422, nothing written, no history.
     before = dict(get_workspace_state(OWNER, record.project_id).draft_snapshot)
     response = _save(env, record, _curve_book(contracts, kind), projection)
@@ -92,9 +91,9 @@ def test_legacy_project_keeps_the_released_curve_feature(env, monkeypatch, kind)
     assert contracts["price_curve_supported"] is True
     assert contracts["price_curve_unsupported_reason"] == ""
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
+    redir = env.client.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
-    assert 'data-price-curve-supported="true"' in html and 'revenue-curve-calendar-notice' not in html
+    assert redir.status_code == 302 and f"/v2/model-react/{record.project_code}" in redir.headers["location"]
     response = _save(env, record, _curve_book(contracts, kind), projection)
     assert response.status_code == 303, response.text[:500]
     saved = json.loads(get_workspace_state(OWNER, record.project_id).draft_snapshot["rev_multistream_config_json"])

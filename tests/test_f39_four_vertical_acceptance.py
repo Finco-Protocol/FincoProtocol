@@ -23,19 +23,8 @@ from tools.numerical_validation import coverage
 from tools.numerical_validation.identities import reconcile_bundle
 from tools.numerical_validation.periodic import reports
 from tools.numerical_validation.source import bundle_from_history_entry, source_sha256, verify_source_binding
+from tests.model_react_test_helpers import react_revenue_save_contract
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 KINDS = ["solar", "wind", "data_center", "ev_charging"]
 MODES = ["legacy", "two", "junior"]
@@ -236,9 +225,8 @@ def test_contract_revenue_reconciles_including_negative_signed_settlement(env, k
     project = {"project": record.project_code}
     inputs = WorkbookService.build_draft_input_set_from_workspace(get_workspace_state(USER, record.project_id)).to_projectinputs()
     payload = contracts(inputs, kind, price=95, merchant_price=90, strike=strike, index=.02)
-    page = env.client.get("/v2/workbook", params=project)
     response = env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-                               data={**project, **contract_tokens(page.text), "contracts": json.dumps(payload)})
+                               data={**project, **contract_tokens(react_revenue_save_contract(env.client, record.project_code)), "contracts": json.dumps(payload)})
     assert response.status_code == 200
     run(env, record)
     bundle = bundle_from_history_entry(_entry(record))

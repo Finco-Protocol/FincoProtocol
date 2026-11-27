@@ -21,19 +21,8 @@ from app.workbook.revenue_multistream import SNAPSHOT_KEY
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (env is a pytest fixture)
 from tests.test_wf07_revenue_multistream import contracts
 from tests.test_wf07_revenue_workspace import contract_tokens
+from tests.model_react_test_helpers import react_revenue_save_contract, react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 OWNER = "decision-user"
 
@@ -79,16 +68,14 @@ def _grid_save(gclient, record, cells, *, content_hash=None, scenario="__current
 
 
 def _save_contracts(env, record, payload):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     return env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"},
-                           data={"project": record.project_code, **contract_tokens(page.text),
+                           data={"project": record.project_code, **contract_tokens(react_revenue_save_contract(env.client, record.project_code)),
                                  "contracts": json.dumps(payload)})
 
 
 def _run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                               data={"project": record.project_code, **tokens(page.text)})
+                               data={"project": record.project_code, **react_workbook_tokens(env.client, record.project_code)})
     assert response.status_code == 200
     assert not _ws(record).dirty
     return copy.deepcopy(_ws(record).last_runtime_summary)

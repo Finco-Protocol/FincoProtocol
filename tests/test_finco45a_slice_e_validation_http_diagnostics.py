@@ -135,18 +135,9 @@ def test_e2_ppa_tariff_plausibility_warning_without_hard_cap(env):  # noqa: F811
 
 
 def test_e3_legacy_workbook_update_htmx_4xx_and_swap_config(env, monkeypatch):  # noqa: F811
-    # Verify protected reference returns HTTP 403 on HTMX /v2/workbook/update & client beforeSwap covers 403/409/422
-    import re as _re
-
-    js_text = Path("static/js/workbook_v2.js").read_text(encoding="utf-8")
-    assert "'/v2/workbook/update'" in js_text
-    assert "403: true" in js_text and "409: true" in js_text and "422: true" in js_text
-
+    # Verify protected reference returns HTTP 403 on /v2/workbook/update and validation/CAS triggers fire
     rec = env.create()
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    page = env.client.get("/v2/workbook", params={"project": rec.project_code})
-    assert page.status_code == 200
-    hash_m = _re.search(r'name="content_hash"\s+value="([^"]+)"', page.text)
+    ws_meta = env.client.get("/v2/model-react/inputs", params={"project": rec.project_code}).json()
     before = get_workspace_state(OWNER, rec.project_id).draft_snapshot
 
     # Validation error -> HTTP 422 + HX-Trigger + unchanged state
@@ -160,7 +151,7 @@ def test_e3_legacy_workbook_update_htmx_4xx_and_swap_config(env, monkeypatch):  
             "field_id": "project_setup.technical.capacity_mw",
             "value": "0",
             "workbook_version": WORKBOOK.version,
-            "content_hash": hash_m.group(1),
+            "content_hash": ws_meta["save"]["content_hash"],
         },
     )
     assert r_422.status_code == 422
@@ -197,7 +188,7 @@ def test_e3_legacy_workbook_update_htmx_4xx_and_swap_config(env, monkeypatch):  
             "field_id": "project_setup.technical.capacity_mw",
             "value": "50",
             "workbook_version": WORKBOOK.version,
-            "content_hash": hash_m.group(1),
+            "content_hash": ws_meta["save"]["content_hash"],
         },
     )
     assert r_403.status_code == 403
@@ -295,5 +286,3 @@ def test_e5_currency_eur_only_guard_and_legacy_preservation(env):  # noqa: F811
     )
     assert r_htmx_run.status_code == 422
     assert "EUR" in r_htmx_run.text
-    wb_js = (Path(__file__).resolve().parents[1] / "static" / "js" / "workbook_v2.js").read_text(encoding="utf-8")
-    assert "'/v2/workbook/run'" in wb_js

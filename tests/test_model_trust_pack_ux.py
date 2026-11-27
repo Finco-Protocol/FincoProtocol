@@ -29,19 +29,6 @@ from unittest import mock
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture
 def seeded_db(tmp_path, monkeypatch):
     from app.persistence import db
@@ -77,22 +64,44 @@ def _make_client_and_copy(user_id: str, template_source: str, capacity_mw: float
 
 
 def _run_via_workbook(client, cookies, record) -> None:
-    page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-    assert page.status_code == 200
-    m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-    mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
-    run = post_valid_csrf(client,
+    boot = client.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
+        cookies=cookies,
+        headers={"X-Finco-React-Request": "1"},
+    )
+    assert boot.status_code == 200, boot.text[:300]
+    wb = boot.json()["workbook"]
+    run = post_valid_csrf(
+        client,
         "/v2/workbook/run",
         data={
             "project": record.project_code,
-            "content_hash": m.group(1),
-            "workbook_version": mv.group(1),
+            "content_hash": wb["composite_hash"],
+            "workbook_version": wb["version"],
         },
         cookies=cookies,
-        headers={"HX-Request": "true"},
+        headers={"Accept": "application/json", "X-Finco-React-Request": "1"},
     )
     assert run.status_code == 200, run.text[:300]
-    assert 'data-testid="overview-status-current"' in run.text
+    after = client.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
+        cookies=cookies,
+        headers={"X-Finco-React-Request": "1"},
+    )
+    assert after.status_code == 200
+    assert after.json()["freshness"]["state"] == "CURRENT"
+
+
+def _get_react_trust(client, cookies, project_code: str) -> dict:
+    resp = client.get(
+        f"/v2/model-react/trust?project={project_code}",
+        cookies=cookies,
+        headers={"X-Finco-React-Request": "1"},
+    )
+    assert resp.status_code == 200, resp.text[:300]
+    data = resp.json()
+    assert data["ok"] is True
+    return data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,21 +118,20 @@ class TestTrustPackCanonicalLastRun:
         _run_via_workbook(client, cookies, record)
 
         from app.persistence.workspace_repository import get_workspace_state
+        from app.ui.trust_pack import build_trust_pack
 
         ws = get_workspace_state(user_id, record.project_id)
 
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-
-        assert 'data-testid="trust-pack-last-run"' in page.text
-        snapshot_cell = re.search(
-            r'data-testid="trust-pack-snapshot-id">([^<]*)<', page.text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["run_state"] == "CURRENT"
+        assert trust["identity"]["snapshot_id"] == (ws.last_runtime_snapshot_id or "")
+        tp = build_trust_pack(
+            user_id, record.project_id,
+            project_code=record.project_code, any_run_committed=True,
         )
-        assert snapshot_cell is not None
-        assert snapshot_cell.group(1) == (ws.last_runtime_snapshot_id or "")
-        assert 'data-testid="trust-pack-composite-hash"' in page.text
-        assert 'data-testid="trust-pack-run-at"' in page.text
-        assert 'data-testid="trust-pack-kpi-table"' in page.text
+        assert tp["last_run"]["snapshot_id"] == (ws.last_runtime_snapshot_id or "")
+        assert tp["last_run"]["composite_hash_short"]
+        assert tp["kpis"]["state"] == "AVAILABLE"
 
     def test_trust_pack_run_identity_visible(
         self, seeded_db, template_source, capacity_mw
@@ -133,15 +141,20 @@ class TestTrustPackCanonicalLastRun:
         _run_via_workbook(client, cookies, record)
 
         from app.persistence.workspace_repository import get_workspace_state
+        from app.ui.trust_pack import build_trust_pack
 
         ws = get_workspace_state(user_id, record.project_id)
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        trust = _get_react_trust(client, cookies, record.project_code)
 
         full_hash = ws.last_runtime_composite_hash or ""
         short = full_hash[:12]
-        assert short and short in page.text
-        assert "Run at" in page.text
-        assert "Composite hash" in page.text
+        assert short and short in (trust["identity"].get("composite_hash") or "")
+        tp = build_trust_pack(
+            user_id, record.project_id,
+            project_code=record.project_code, any_run_committed=True,
+        )
+        assert tp["last_run"]["composite_hash_short"].startswith(short)
+        assert tp["last_run"]["run_at_display"]
 
     def test_trust_pack_kpis_match_api_authority(
         self, seeded_db, template_source, capacity_mw
@@ -211,13 +224,17 @@ class TestTrustPackDirtyWorkingCopy:
             replay_metadata=ws.replay_metadata,
         )
 
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        assert 'data-testid="trust-pack-dirty-banner"' in page.text
-        assert "WORKING COPY CHANGED SINCE RUN" in page.text
-        assert "remains" in page.text
-        # The run identity is still the committed one.
-        assert 'data-testid="trust-pack-snapshot-id"' in page.text
+        from app.ui.trust_pack import build_trust_pack
+
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["run_state"] == "STALE"
+        assert trust["identity"]["snapshot_id"] == ws.last_runtime_snapshot_id
+        tp = build_trust_pack(
+            user_id, record.project_id,
+            project_code=record.project_code, any_run_committed=True,
+        )
+        assert tp["export"]["working_copy_changed_since_run"] is True
+        assert tp["last_run"]["snapshot_id"] == ws.last_runtime_snapshot_id
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +246,7 @@ class TestTrustPackNoSideEffects:
         from app.api import project_runner
         from app.persistence.db import get_cursor
         from app.persistence.workspace_repository import get_workspace_state
+        from app.ui.trust_pack import build_trust_pack
 
         client, cookies, record = _make_client_and_copy(
             "tp-side-user", "generic_solar_reference", 64.0
@@ -245,12 +263,14 @@ class TestTrustPackNoSideEffects:
             raise AssertionError("Trust Pack rendering must not run the model")
 
         with mock.patch.object(project_runner, "run_project", side_effect=_no_run):
-            page = client.get(
-                f"/v2/workbook?project={record.project_code}", cookies=cookies
+            trust = _get_react_trust(client, cookies, record.project_code)
+            tp = build_trust_pack(
+                "tp-side-user", record.project_id,
+                project_code=record.project_code, any_run_committed=True,
             )
-        assert page.status_code == 200
         assert calls == []
-        assert 'data-testid="trust-pack-kpi-table"' in page.text
+        assert trust["run_state"] == "CURRENT"
+        assert tp["kpis"]["state"] == "AVAILABLE"
 
         ws_after = get_workspace_state("tp-side-user", record.project_id)
         assert ws_after.last_runtime_snapshot_id == snapshot_before
@@ -269,53 +289,65 @@ class TestTrustPackNoSideEffects:
 
 class TestTrustPackLabelsAndFailClosed:
     def test_trust_pack_validation_label_explicit(self, seeded_db):
+        from app.ui.trust_pack import build_trust_pack
+
         client, cookies, record = _make_client_and_copy(
             "tp-label-user", "generic_solar_reference", 64.0
         )
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert "REFERENCE REGRESSION CHECK" in page.text
-        assert 'data-testid="trust-pack-validation"' in page.text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["validation"]["authority"] == "REFERENCE_REGRESSION_CHECK"
+        tp = build_trust_pack(
+            "tp-label-user", record.project_id,
+            project_code=record.project_code, any_run_committed=False,
+        )
+        assert "REFERENCE REGRESSION CHECK" in tp["validation"]["authority"]
 
     def test_trust_pack_verify_label_explicit(self, seeded_db):
+        from app.ui.trust_pack import build_trust_pack
+
         client, cookies, record = _make_client_and_copy(
             "tp-verify-user", "generic_solar_reference", 64.0
         )
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert "FINCO VERIFY" in page.text
-        assert 'data-testid="trust-pack-verify"' in page.text
+        tp = build_trust_pack(
+            "tp-verify-user", record.project_id,
+            project_code=record.project_code, any_run_committed=False,
+        )
+        assert "FINCO_VERIFY" in tp["verify"]["authority"]
 
     def test_trust_pack_validation_never_implies_verified(self, seeded_db):
         client, cookies, record = _make_client_and_copy(
             "tp-sep-user", "generic_solar_reference", 64.0
         )
         _run_via_workbook(client, cookies, record)
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        # The explicit separation statement is always rendered.
-        assert 'data-testid="trust-pack-authority-separator"' in page.text
-        assert "never implies" in page.text
-        # Validation is an explicit on-demand load (render never executes the
-        # model); the Verify section shows only its OWN authority status.
-        assert 'data-testid="trust-pack-validation-load"' in page.text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["validation"]["state"] == "DEFERRED"
+        assert trust["validation"]["not_verify"] is True
+        # Validation is an explicit on-demand load (render never executes the model)
         frag = client.get(
-            f"/v2/workbook/trust/validation?project={record.project_code}",
+            f"/v2/model-react/trust/validation?project={record.project_code}",
             cookies=cookies,
+            headers={"X-Finco-React-Request": "1"},
         )
         assert frag.status_code == 200, frag.text[:300]
-        assert 'data-testid="trust-pack-validation-state"' in frag.text
-        # Verify fails closed independently of any validation outcome.
-        assert 'data-testid="trust-pack-verify"' in page.text
+        assert "REFERENCE REGRESSION CHECK" in frag.json()["validation"]["authority"]
 
     def test_trust_pack_unavailable_fails_closed(self, seeded_db):
+        from app.ui.trust_pack import build_trust_pack
+
         client, cookies, record = _make_client_and_copy(
             "tp-closed-user", "generic_solar_reference", 64.0
         )
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        text = page.text
-        assert 'data-testid="trust-pack-not-run"' in text
-        assert "UNAVAILABLE" in text
-        assert 'data-testid="trust-pack-kpi-table"' not in text
-        assert 'data-testid="trust-pack-export-form"' not in text
-        assert 'data-testid="trust-pack-verify-unavailable"' in text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["run_state"] == "NOT_RUN"
+        assert trust["validation"]["state"] == "UNAVAILABLE"
+        assert trust["certificate"]["state"] == "UNAVAILABLE"
+        tp = build_trust_pack(
+            "tp-closed-user", record.project_id,
+            project_code=record.project_code, any_run_committed=False,
+        )
+        assert tp["overall_state"] == "UNAVAILABLE"
+        assert tp["kpis"]["state"] == "UNAVAILABLE"
+        assert tp["verify"]["state"] == "UNAVAILABLE"
 
     def test_trust_pack_builder_fails_closed_without_workspace(self, seeded_db):
         from app.ui.trust_pack import build_trust_pack
@@ -433,19 +465,20 @@ class TestTrustPackVerifyPresentation:
         When verify state is UNAVAILABLE, the rendered page must not
         show the green va-status--verified chip.
         """
+        from app.ui.trust_pack import build_trust_pack
+
         client, cookies, record = _make_client_and_copy(
             "tp-ung-user", "generic_solar_reference", 64.0
         )
         # No run committed → verify is UNAVAILABLE.
-        page = client.get(
-            f"/v2/workbook?project={record.project_code}", cookies=cookies
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["run_state"] == "NOT_RUN"
+        tp = build_trust_pack(
+            "tp-ung-user", record.project_id,
+            project_code=record.project_code, any_run_committed=False,
         )
-        assert page.status_code == 200
-        # The fallback unavailable chip is shown, not an available-state chip.
-        assert 'data-testid="trust-pack-verify-unavailable"' in page.text
-        # The data-verify-css-class attribute is only rendered on AVAILABLE chips;
-        # it must not carry the green verified class when state is UNAVAILABLE.
-        assert 'data-verify-css-class="va-status--verified"' not in page.text
+        assert tp["verify"]["state"] == "UNAVAILABLE"
+        assert tp["verify"]["css_class"] != "va-status--verified"
 
     def test_trust_pack_partial_not_fully_verified(self, seeded_db):
         """TRUST_PACK_PARTIAL_NOT_FULLY_VERIFIED
@@ -515,11 +548,9 @@ class TestTrustPackSignedRunCertificate:
         assert tp["certificate"]["state"] == "DEFERRED"
         assert tp["certificate"]["load_url"] is not None
 
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        assert 'data-testid="trust-pack-certificate"' in page.text
-        assert 'data-testid="trust-pack-verify"' in page.text
-        assert 'data-testid="trust-pack-certificate-not-verify"' in page.text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["certificate"]["not_verify"] is True
+        assert trust["certificate"]["state"] == "DEFERRED"
 
     def test_trust_pack_signing_never_implies_verified(self, seeded_db):
         """TRUST_PACK_SIGNING_NEVER_IMPLIES_VERIFIED
@@ -593,17 +624,15 @@ class TestTrustPackSignedRunCertificate:
         assert tp["certificate"]["state"] == "UNAVAILABLE"
         assert tp["certificate"]["load_url"] is None
 
-        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert page.status_code == 200
-        assert 'data-testid="trust-pack-certificate-unavailable"' in page.text
-        # No sign button when unavailable.
-        assert 'data-testid="trust-pack-certificate-load"' not in page.text
+        trust = _get_react_trust(client, cookies, record.project_code)
+        assert trust["certificate"]["state"] == "UNAVAILABLE"
+        assert trust["certificate"]["load_url"] is None
 
     def test_trust_pack_render_does_not_sign(self, seeded_db):
         """TRUST_PACK_RENDER_DOES_NOT_SIGN
 
-        Rendering the Trust Pack (page load) must NOT call issue_run_certificate.
-        Signing only happens when the user explicitly loads the certificate fragment.
+        Reading Trust evidence (page load / JSON read) must NOT call issue_run_certificate.
+        Signing only happens when the user explicitly requests the certificate.
         """
         from app.ui import trust_pack as tp_module
 
@@ -619,12 +648,9 @@ class TestTrustPackSignedRunCertificate:
             raise AssertionError("issue_run_certificate must not be called at render time")
 
         with mock.patch.object(tp_module, "issue_run_certificate", side_effect=_no_sign):
-            page = client.get(
-                f"/v2/workbook?project={record.project_code}", cookies=cookies
-            )
-        assert page.status_code == 200
-        assert sign_calls == [], "issue_run_certificate was called during page render"
-        assert 'data-testid="trust-pack-certificate"' in page.text
+            trust = _get_react_trust(client, cookies, record.project_code)
+        assert sign_calls == [], "issue_run_certificate was called during trust read"
+        assert trust["certificate"]["state"] == "DEFERRED"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -694,13 +720,14 @@ class TestTrustPackBrowserAcceptance:
             _run_via_workbook(client, cookies, record)
 
             with sync_playwright() as pw:
-                # CI provides a pinned chromium at /opt/pw-browsers/chromium;
-                # local dev falls back to the default playwright install.
                 import os as _os
 
-                _launch_kwargs: dict = {"args": ["--no-sandbox"]}
-                if _os.path.exists("/opt/pw-browsers/chromium"):
-                    _launch_kwargs["executable_path"] = "/opt/pw-browsers/chromium"
+                _launch_kwargs: dict = {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+                exec_path = _os.getenv("FINCO_TEST_CHROMIUM_PATH") or (
+                    "/opt/pw-browsers/chromium" if _os.path.exists("/opt/pw-browsers/chromium") else ""
+                )
+                if exec_path:
+                    _launch_kwargs["executable_path"] = exec_path
                 browser = pw.chromium.launch(**_launch_kwargs)
                 page = browser.new_page(viewport={"width": 1280, "height": 1000})
                 page.context.add_cookies([{
@@ -710,31 +737,19 @@ class TestTrustPackBrowserAcceptance:
                     "path": "/",
                 }])
                 page.goto(
-                    f"http://127.0.0.1:{port}/v2/workbook?project={record.project_code}"
+                    f"http://127.0.0.1:{port}/v2/model-react/{record.project_code}#trust",
+                    wait_until="load",
                 )
-                page.wait_for_load_state("domcontentloaded")
+                section = page.locator('section[aria-label="Trust and integrity evidence"]')
+                section.wait_for(state="visible", timeout=20000)
+                section.locator('[data-trust-panel="validation"]').wait_for(state="visible")
+                section.locator('[data-trust-panel="certificate"]').wait_for(state="visible")
 
-                from tests.model_workspace_navigation import activate_destination
-                activate_destination(page, 'tab-trust')
-                panel = page.locator("#panel-trust")
-                panel.locator('[data-testid="trust-pack"]').wait_for(state="visible")
-
-                for marker in (
-                    "trust-pack-last-run",
-                    "trust-pack-kpi-table",
-                    "trust-pack-validation",
-                    "trust-pack-verify",
-                    "trust-pack-export-form",
-                    "trust-pack-methodology",
-                    "trust-pack-certificate",
-                ):
-                    assert panel.locator(f'[data-testid="{marker}"]').count() == 1, marker
-
-                body = panel.inner_text()
-                assert "REFERENCE REGRESSION CHECK" in body
-                assert "FINCO VERIFY" in body
-                assert "never implies" in body
-                assert "NOT FINCO VERIFY" in body
+                body = section.inner_text()
+                assert "Reference regression evidence" in body
+                assert "Run certificate" in body
+                assert "FINCO Verify" in body
+                assert "none of these sections imply FINCO Verify" in body
 
                 overflow = page.evaluate(
                     "document.documentElement.scrollWidth - document.documentElement.clientWidth"

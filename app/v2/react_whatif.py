@@ -23,7 +23,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.auth import resolve_request_session
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 
@@ -41,8 +40,6 @@ def _fail(status: int, code: str, message: str) -> JSONResponse:
 
 def _scope(request: Request, project: str, *, header: bool):
     """(record, owner, ws) or a ready JSONResponse: flag, header, session, own editable project, workspace."""
-    if not react_poc_enabled():
-        return None, None, None, _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if header and request.headers.get(REQUEST_HEADER) != "1":
         return None, None, None, _fail(400, "REQUEST_HEADER_REQUIRED", "This preview can only be started from the FINCO Model workspace.")
     user = resolve_request_session(request)

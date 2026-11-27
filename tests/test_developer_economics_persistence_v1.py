@@ -14,19 +14,9 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
+import uuid
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 OWNER = "decision-user"
 
@@ -120,9 +110,14 @@ class Flow:
         return self.env.client.post("/v2/developer-decision/configuration", data=data, follow_redirects=False)
 
     def run(self):
-        wb = self.env.client.get("/v2/workbook", params=self.project)
-        r = post_valid_csrf(self.env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**self.project, **_tokens(wb.text)})
-        assert r.status_code == 200 and 'id="v2-sheet-returns"' in r.text, r.text[:2000]
+        toks = react_workbook_tokens(self.env.client, self.record.project_code)
+        r = post_valid_csrf(
+            self.env.client,
+            "/v2/workbook/run",
+            headers={"Accept": "application/json"},
+            data={**self.project, **toks, "run_intent_id": str(uuid.uuid4())},
+        )
+        assert r.status_code == 200 and r.json()["outcome"] == "COMMITTED", r.text[:2000]
         assert not self.ws().dirty
         return copy.deepcopy(self.ws().last_runtime_summary)
 
@@ -434,8 +429,8 @@ def test_failed_run_publishes_no_partial_developer_result(env, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("synthetic engine failure")
     monkeypatch.setattr(runner, "run_project", boom)
-    wb = env.client.get("/v2/workbook", params=flow.project)
-    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    toks = react_workbook_tokens(env.client, flow.record.project_code)
+    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json"}, data={**flow.project, **toks, "run_intent_id": str(uuid.uuid4())})
     assert "developer_economics" not in (flow.ws().last_runtime_summary or {})
     assert flow.ws().last_runtime_summary == summary_before
     assert len(get_run_history(OWNER, flow.record.project_id)) == history_before and flow.ws().dirty
@@ -449,14 +444,14 @@ def test_corrupt_persisted_payload_fails_closed_on_run_and_page(env):
     flow.run()
     fc = _fc(flow.record)
     assert flow.save(_doc(fc)).status_code == 303
-    wb = env.client.get("/v2/workbook", params=flow.project)          # identity tokens rendered before corruption
+    toks = react_workbook_tokens(env.client, flow.record.project_code)  # identity tokens rendered before corruption
     conn = get_connection()
     draft = copy.deepcopy(flow.ws().draft_snapshot)
     draft["developer_economics_json"] = '{"version":1,"enabled":true}'
     conn.execute("UPDATE workspace_states SET draft_snapshot_json=? WHERE project_id=?", (json.dumps(draft), flow.record.project_id))
     conn.commit(); conn.close()
     history = len(get_run_history(OWNER, flow.record.project_id))
-    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**flow.project, **_tokens(wb.text)})
+    r = post_valid_csrf(env.client, "/v2/workbook/run", headers={"Accept": "application/json"}, data={**flow.project, **toks, "run_intent_id": str(uuid.uuid4())})
     assert len(get_run_history(OWNER, flow.record.project_id)) == history       # nothing committed
     page = flow.page()
     assert "failed closed" in page or "DEV_ECON_SCHEMA" in page
@@ -496,7 +491,7 @@ def test_identity_rotates_on_save_and_stale_follows(env):
     second = re.search(r'name="content_hash" value="([^"]*)"', flow.page()).group(1)
     assert first != second
     assert flow.save(_doc(fc)).status_code == 303            # identical payload: still a valid explicit Save
-    wb = env.client.get("/v2/workbook", params=flow.project).text
+    assert env.client.get("/v2/model-react/workspace", params=flow.project).json()["freshness"]["state"] == "STALE"
     assert "STALE" in flow.page()
 
 

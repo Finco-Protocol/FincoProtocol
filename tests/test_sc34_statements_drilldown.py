@@ -10,21 +10,9 @@ import pytest
 
 from app.v2 import statement_drilldown as D
 from app.v2.workspace_destinations import DESTINATIONS
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
+from tests.model_react_test_helpers import react_revenue_save_contract, react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 OWNER = "decision-user"
 TAB_IDS = {d.tab_id for d in DESTINATIONS}
@@ -118,12 +106,11 @@ def test_revenue_streams_are_persisted_detail_in_the_model_view_only(env):
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.input_set import ProjectInputSet
     from tests.test_wf07_revenue_multistream import contracts
-    from tests.test_wf07_revenue_workspace import contract_tokens
     record = env.create("solar")
     pi = ProjectInputSet.from_snapshot(get_workspace_state(OWNER, record.project_id).draft_snapshot).to_projectinputs()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     r = env.client.post("/v2/workbook/revenue/contracts", headers={"HX-Request": "true"}, data={
-        "project": record.project_code, **contract_tokens(page.text), "contracts": json.dumps(contracts(pi, "solar", price=95, merchant_price=90))})
+        "project": record.project_code, **react_revenue_save_contract(env.client, record.project_code),
+        "contracts": json.dumps(contracts(pi, "solar", price=95, merchant_price=90))})
     assert r.status_code == 200
     ws, rr = run(env, record)
     pnl = next(s for s in drilldown(rr, ws)["drilldown"]["statements"] if s["id"] == "pnl")
@@ -167,9 +154,9 @@ def test_last_run_links_say_when_they_open_a_working_copy_that_differs(env):
     run(env, record)
     current = outputs(env, record)
     assert 'data-st-context="RUN_MATCHES_WORKING_COPY"' in current and "(current Working Copy)" in current
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700", **tokens(page)))
+        project=record.project_code, sheet_id="project_setup", field_id="project_setup.technical.p50_hours", value="1700",
+        **react_workbook_tokens(env.client, record.project_code)))
     stale = outputs(env, record)
     assert 'data-st-context="WORKING_COPY_DIFFERS"' in stale
     assert "The Working Copy has changed since this Run" in stale and "may differ from this Run" in stale
@@ -253,9 +240,9 @@ def test_historical_statements_use_the_entry_not_the_current_working_copy(hist_e
     run(env, record)
     tariff = float(get_workspace_state(OWNER, record.project_id).draft_snapshot.get("rev_ppa_base_tariff")
                    or get_workspace_state(OWNER, record.project_id).draft_snapshot["tariff_eur_mwh"])
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     r = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, sheet_id="revenue", field_id="revenue.ppa.base_tariff", value=str(tariff * 1.5), **tokens(page)))
+        project=record.project_code, sheet_id="revenue", field_id="revenue.ppa.base_tariff", value=str(tariff * 1.5),
+        **react_workbook_tokens(env.client, record.project_code)))
     assert '"workbook-field-error"' not in r.headers.get("HX-Trigger", "")
     run(env, record)
     first, second = history(record)[:2]

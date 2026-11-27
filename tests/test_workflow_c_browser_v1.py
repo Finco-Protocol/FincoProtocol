@@ -1,32 +1,18 @@
-"""Workflow C — one integrated real-Chromium acceptance.
+"""Workflow C — one integrated real-Chromium acceptance on the React workspace.
 
-Financial Statements, Key-metrics strip, Smart Panel / trace evidence, navigation (deep links,
-active highlight, Back/Forward), CURRENT / STALE / NOT_RUN, light / dark, desktop / narrow
-viewport, and a regression check of the merged Excel-like cost grid.
+Financial Statements, Key financial metrics, canonical source / evidence attribution,
+navigation (deep links, active highlight, Back/Forward), CURRENT / STALE / NOT_RUN,
+light / dark contrast, narrow viewport, and staged CAPEX Save -> STALE -> Run.
 """
 from __future__ import annotations
 
-from tests.model_workspace_navigation import activate_destination, open_insight
-
 import os
+import re
 import socket
 import threading
 import time
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 PORT = 8795
@@ -81,6 +67,7 @@ class Sess:
         from app.auth import COOKIE_NAME, create_session_token
         from app.services.reference_seed_service import create_reference_seeded_project
 
+        assert os.environ.get("FINCO_MODEL_REACT_V1") != "0", "Workflow C must run on the default React workspace"
         self.base = live_server
         self.uid = uid
         self.rec = create_reference_seeded_project(user_id=uid, template_source=template,
@@ -91,35 +78,62 @@ class Sess:
                                "url": live_server}])
         self.page = self.ctx.new_page()
         self.page.on("dialog", lambda d: d.accept())
+        self.pageerrors: list[str] = []
+        self.http_errors: list[str] = []
+        self.runs: list[str] = []
+        self.saves: list[str] = []
+        self.page.on("pageerror", lambda exc: self.pageerrors.append(str(exc)))
+        self.page.on("response", self._on_response)
+
+    def _on_response(self, response):
+        url = response.url
+        if response.request.method == "POST":
+            if "/v2/workbook/run" in url and not url.endswith("/run-history"):
+                self.runs.append(f"{response.status} {url}")
+            if "/cost-lines/save" in url:
+                self.saves.append(f"{response.status} {url}")
+        if response.status >= 400 and not url.endswith("/favicon.ico"):
+            self.http_errors.append(f"{response.status} {response.request.method} {url}")
 
     def url(self, frag=""):
-        return f"{self.base}/v2/workbook?project={self.rec.project_code}{frag}"
+        return f"{self.base}/v2/model-react/{self.rec.project_code}{frag}"
 
     def open(self, frag=""):
         self.page.goto(self.url(frag))
-        self.page.wait_for_selector("#model-workspace-nav", state="attached")
+        self.page.wait_for_selector('[data-workflow-bar="true"]', timeout=30000)
+        self.page.wait_for_selector('[data-workspace-nav="true"]', state="attached", timeout=30000)
 
-    def selected_tab(self):
-        return self.page.evaluate("document.querySelector('#v2-sheet-tabs [aria-selected=\"true\"]').id")
+    def nav_to(self, dest: str):
+        menu = self.page.locator(".wsv2-menu")
+        if menu.is_visible() and menu.get_attribute("aria-expanded") != "true":
+            menu.click()
+        link = self.page.locator(f'#wsv2-navigation [data-workspace-destination="{dest}"]')
+        link.click()
+        self.page.wait_for_function(
+            "d => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === d",
+            arg=dest,
+        )
 
     def nav_current(self):
         return self.page.evaluate(
-            "(() => { const b = document.querySelector('#model-workspace-nav [aria-current=\"page\"]');"
-            " return b ? b.getAttribute('data-nav-tab') : null; })()")
+            "(() => { const a = document.querySelector('#wsv2-navigation [aria-current=\"page\"]');"
+            " return a ? a.getAttribute('data-workspace-destination') : null; })()"
+        )
 
-    def state(self):
-        return self.page.locator('[data-testid="toolbar-runtime-state"]').first.inner_text().strip()
-
-    def strip(self, key):
-        loc = self.page.locator(f'[data-testid="kpi-strip-{key}"]')
-        return (loc.get_attribute("data-available"), loc.get_attribute("data-raw"),
-                loc.locator(".v2-kpi-strip-value").inner_text().strip())
+    def freshness(self):
+        return self.page.locator('[data-workflow-bar="true"]').get_attribute("data-bar-freshness")
 
     def run(self):
-        self.page.click('[data-testid="v2-run-btn"]')
         self.page.wait_for_function(
-            "document.querySelector('[data-testid=\"toolbar-runtime-state\"]').innerText.trim() === 'Current'",
-            timeout=120000)
+            "() => { const b = document.querySelector('[data-wf-run=\"true\"]'); return Boolean(b) && !b.disabled; }",
+            timeout=30000,
+        )
+        self.page.locator('[data-wf-run="true"]').click()
+        self.page.wait_for_function(
+            "() => document.querySelector('[data-workflow-bar=\"true\"]')?.getAttribute('data-bar-freshness') === 'CURRENT'"
+            " && document.querySelector('[data-workflow-bar=\"true\"] [data-run-state-label=\"CURRENT\"]') !== null",
+            timeout=120000,
+        )
 
     def close(self):
         self.ctx.close()
@@ -140,124 +154,155 @@ def make(live_server, browser):
 
 
 def test_integrated_statements_kpis_trace_navigation_and_freshness(make):
+    from app.persistence.run_history_repository import get_run_history
     from app.persistence.workspace_repository import get_workspace_state
 
     s = make("u-wcb-main")
     p = s.page
     s.open()
 
-    # NOT RUN: the strip shows no values; statements show no fabricated figures
-    assert p.locator('[data-testid="kpi-strip"]').get_attribute("data-run-state") == "NOT_RUN"
-    assert s.strip("project_irr") == ("false", None, "—")
-    activate_destination(p, 'tab-outputs')
-    assert s.selected_tab() == "tab-outputs" and s.nav_current() == "tab-outputs"
-    assert p.evaluate("location.hash") == "#outputs"
-    assert p.locator('[data-testid="outputs-state"]').inner_text().strip() == "NOT RUN"
-    assert p.locator('[data-out-table="pnl"]').count() == 0
+    # 1. NOT RUN: honest state, no fabricated KPI or statement values
+    p.wait_for_selector('[data-financial-overview="true"]', timeout=20000)
+    assert s.freshness() == "NOT_RUN"
+    assert "No committed Run yet" in p.locator('[data-financial-overview="true"]').inner_text()
+    s.nav_to("statements")
+    p.wait_for_selector('[data-statements-view="true"][data-statements-state="NOT_RUN"]', timeout=20000)
+    assert p.locator(".fm-sw-table").count() == 0
+    s.nav_to("results")
+    p.wait_for_selector('[data-financial-page="results"][data-financial-state="NOT_RUN"]', timeout=20000)
 
-    # Run -> CURRENT; strip equals the persisted Last Run
+    # 2. Explicit Run -> CURRENT; KPIs match persisted Last Run with exact precision and honest unavailability
     s.run()
+    assert len(s.runs) == 1 and s.runs[0].startswith("200 ")
     ws = get_workspace_state(s.uid, s.rec.project_id)
-    avail, raw, shown = s.strip("project_irr")
-    assert avail == "true" and float(raw) == pytest.approx(ws.last_runtime_summary["project_irr"])
-    assert shown == f"{ws.last_runtime_summary['project_irr'] * 100:.2f}%"
-    assert s.strip("project_npv_keur") == ("false", None, "—")            # authority gap, not zero
-    assert "authority gap" in p.locator('[data-testid="kpi-strip-project_npv_keur"] button').get_attribute("title")
-    assert p.locator('[data-testid="kpi-strip-state"]').inner_text().strip() == "CURRENT"
-    assert p.locator('[data-testid="fs-state-badge"]').inner_text().strip() == "CURRENT"
+    assert not ws.dirty and len(get_run_history(s.uid, s.rec.project_id)) == 1
 
-    p.wait_for_selector('[data-out-table="pnl-annual"]', state='visible')
-    # Statements: full axis, parentheses for negatives, sticky header and first column
-    wrapper = p.locator('[data-out-table="pnl-annual"] >> xpath=ancestor::div[@data-out-scroll]')
-    wrapper.scroll_into_view_if_needed()
-    assert wrapper.get_attribute("role") == "region"
-    n_years = p.locator('[data-out-table="pnl-annual"] thead th.out-num').count()
+    p.wait_for_selector('[data-financial-page="results"][data-financial-state="CURRENT"]', timeout=20000)
+    irr_card = p.locator('[data-metric-label="Project IRR"]')
+    assert irr_card.get_attribute("data-metric-available") == "true"
+    canonical_irr = irr_card.get_attribute("data-metric-canonical")
+    assert canonical_irr == f"{ws.last_runtime_summary['project_irr'] * 100:.2f}%"
+    unavailable_cards = p.locator('[data-metric-available="false"], [data-lender-metric-available="false"]')
+    assert unavailable_cards.count() >= 1
+    assert "Not available" in unavailable_cards.first.inner_text()
+    assert p.locator('[data-results-view="true"] [data-freshness="CURRENT"]').count() == 1
+
+    # 3. Statements: annual and model-period axes, scrollable container, canonical source disclosure
+    s.nav_to("statements")
+    p.wait_for_selector('[data-statements-view="true"][data-statements-state="CURRENT"]', timeout=20000)
+    p.wait_for_selector('[data-statement-origin="canonical-run"]', timeout=20000)
+    n_years = p.locator(".fm-sw-table thead tr:nth-child(2) th").count() - 1
     assert n_years >= 10
-    p.locator('[data-out-basis]').select_option('model')
-    n_model = p.locator('[data-out-table="pnl"] thead th.out-num').count()
-    assert n_model > n_years
-    sticky = p.evaluate("""() => {
-        const w = document.querySelector('[data-out-table="pnl"]').closest('[data-out-scroll]');
-        const th = w.querySelector('thead th.out-num');
-        const lab = w.querySelector('tbody th.out-label');
-        w.scrollLeft = 400; w.scrollTop = 40;
-        const wr = w.getBoundingClientRect();
-        return {headTop: th.getBoundingClientRect().top - wr.top, labLeft: lab.getBoundingClientRect().left - wr.left,
-                canScrollX: w.scrollWidth > w.clientWidth};
-    }""")
-    assert sticky["canScrollX"] and abs(sticky["headTop"]) <= 2 and abs(sticky["labLeft"]) <= 2
-
-    # drill-down: a metric opens its authoritative sheet; the nav follows
-    open_insight(p)
-    p.click('[data-testid="kpi-strip-project_irr"] button')
-    assert s.selected_tab() == "tab-returns" and s.nav_current() == "tab-returns"
-    p.click('[data-testid="kpi-strip-min_dscr"] button')
-    assert s.selected_tab() == "tab-debt" and s.nav_current() == "tab-debt"
-
-    # Back / Forward between nav-chosen sheets
-    activate_destination(p, 'tab-outputs')
-    p.click('[data-testid="nav-returns"]')
-    p.go_back()
-    p.wait_for_function("document.getElementById('tab-outputs').getAttribute('aria-selected') === 'true'")
-    assert s.selected_tab() == "tab-outputs" and s.nav_current() == "tab-outputs"
-    p.go_forward()
-    p.wait_for_function("document.getElementById('tab-returns').getAttribute('aria-selected') === 'true'")
-    assert s.selected_tab() == "tab-returns" and s.nav_current() == "tab-returns"
-
-    # Smart Panel: trace is typed unavailable, available evidence listed separately
-    panel = p.locator('[data-testid="smart-panel-section-trace"]')
-    assert "not persisted after a run" in panel.inner_text()
-    assert "Available evidence (not a full trace)" in panel.inner_text()
-    assert p.locator('[data-testid="smart-panel-group-input"]').count() == 1
-
-    # Economic edit through the merged Excel-like grid -> STALE everywhere, values kept as prior run
-    activate_destination(p, 'tab-capex')
-    rows = p.locator('#v2-sheet-capex form[data-cost-row]')
-    p.evaluate("document.querySelectorAll('#v2-sheet-capex details[data-group-code]').forEach(d => d.open = true)")
-    # Batch editing is the default; this step validates the explicit per-row immediate mode (Enter saves the
-    # row), so it selects that mode through the real control, exactly as a user would.
-    p.locator('#v2-sheet-capex [data-cost-stage-toggle]').uncheck()
-    p.wait_for_function("window.v2CostGrid.state().stageMode === false")
-    cell = rows.nth(0).locator('input[name="amount_keur"]')
-    cell.click()
-    p.keyboard.press("Control+A")
-    p.keyboard.type(str(int(float(cell.get_attribute("data-exact"))) + 1))
-    p.keyboard.press("Enter")
-    p.wait_for_function("window.v2CostGrid && !window.v2CostGrid.busy()")
+    p.locator("#fm-sw-view").select_option("model")
     p.wait_for_function(
-        "document.querySelector('[data-testid=\"toolbar-runtime-state\"]').innerText.trim() === 'Stale'")
-    assert p.locator('[data-testid="kpi-strip-state"]').inner_text().strip() == "PRIOR RUN"
-    assert s.strip("project_irr")[1] == raw                                  # same persisted value, now labelled prior
-    activate_destination(p, 'tab-outputs')
-    assert p.locator('[data-testid="fs-state-badge"]').inner_text().strip().startswith("STALE")
-    # no hidden execution: Last Run identity untouched
-    ws2 = get_workspace_state(s.uid, s.rec.project_id)
-    assert ws2.last_runtime_composite_hash == ws.last_runtime_composite_hash
+        "n => document.querySelectorAll('.fm-sw-table thead tr:nth-child(2) th').length - 1 > n",
+        arg=n_years,
+    )
+    scroll = p.evaluate("""() => {
+        const w = document.querySelector('.fm-sw-region');
+        return { role: w.getAttribute('role'), canScrollX: w.scrollWidth > w.clientWidth,
+                 scrollWidth: w.scrollWidth, clientWidth: w.clientWidth };
+    }""")
+    assert scroll["role"] == "region" and scroll["canScrollX"]
+    p.locator(".fm-sw-cell-button").first.click()
+    trace_row = p.locator('[data-canonical-source="true"]')
+    trace_row.wait_for(timeout=10000)
+    assert "saved Run" in trace_row.inner_text()
 
-    # Run again -> CURRENT
+    # 4. Overview drill-down, browser Back/Forward, and metric source evidence
+    s.nav_to("overview")
+    p.wait_for_selector(f'[data-financial-overview="true"][data-overview-snapshot="{ws.last_runtime_snapshot_id}"]', timeout=20000)
+    p.locator('[data-overview-debt-metrics="true"] a').click()
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'financing'")
+    assert "financing=debt-metrics" in p.url
+    s.nav_to("statements")
+    s.nav_to("results")
+    p.go_back()
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'statements'")
+    p.go_forward()
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'results'")
+    sources = p.locator('[data-metric-sources="true"]')
+    sources.locator("summary").click()
+    assert "Project IRR" in sources.inner_text()
+
+    # 5. Real CAPEX edit via supported staged Save All / grid Save (one Save, zero hidden Run)
+    s.nav_to("inputs/capex")
+    first_cell = p.locator('[data-cost-grid="capex"] td.ci-col-amount input.ws2-cell:not([disabled])').first
+    first_cell.wait_for(state="visible", timeout=20000)
+    orig_exact = first_cell.get_attribute("data-exact")
+    new_val = str(int(float(orig_exact)) + 1)
+    first_cell.click()
+    first_cell.fill(new_val)
+    assert first_cell.get_attribute("data-changed") == "true"
+    # Staging alone must NEVER persist or mutate workspace dirty state
+    assert len(s.saves) == 0
+    assert not get_workspace_state(s.uid, s.rec.project_id).dirty
+
+    save_btn = p.locator('[data-cost-grid="capex"] [data-cost-save="true"]')
+    save_btn.wait_for(timeout=10000)
+    save_btn.click()
+    p.wait_for_selector('[data-cost-grid="capex"] [data-tone="ok"]', timeout=20000)
+    p.wait_for_function(
+        "() => document.querySelector('[data-workflow-bar=\"true\"]')?.getAttribute('data-bar-freshness') === 'STALE'",
+        timeout=20000,
+    )
+    assert len(s.saves) == 1 and s.saves[0].startswith("200 ")
+    assert len(s.runs) == 1  # saving never triggers a hidden Run
+
+    ws2 = get_workspace_state(s.uid, s.rec.project_id)
+    assert ws2.dirty is True
+    assert ws2.last_runtime_composite_hash == ws.last_runtime_composite_hash
+    assert ws2.last_runtime_snapshot_id == ws.last_runtime_snapshot_id
+    assert len(get_run_history(s.uid, s.rec.project_id)) == 1
+
+    # 6. STALE everywhere; prior Run figures remain immutable and labeled stale
+    s.nav_to("results")
+    p.wait_for_selector('[data-financial-page="results"][data-financial-state="STALE"]', timeout=20000)
+    assert p.locator('[data-results-view="true"] [data-stale-banner="true"]').is_visible()
+    assert p.locator('[data-metric-label="Project IRR"]').get_attribute("data-metric-canonical") == canonical_irr
+    s.nav_to("statements")
+    p.wait_for_selector('[data-statements-view="true"][data-statements-state="STALE"]', timeout=20000)
+    assert p.locator('[data-stale-banner="true"]').is_visible()
+    s.nav_to("inputs/capex")
+    s.nav_to("results")
+    assert s.freshness() == "STALE"
+
+    # 7. Explicit second Run -> CURRENT, new snapshot & history entry
     s.run()
-    assert p.locator('[data-testid="kpi-strip-state"]').inner_text().strip() == "CURRENT"
+    assert len(s.runs) == 2 and s.runs[1].startswith("200 ")
+    ws3 = get_workspace_state(s.uid, s.rec.project_id)
+    assert not ws3.dirty
+    assert ws3.last_runtime_snapshot_id != ws.last_runtime_snapshot_id
+    assert ws3.last_runtime_composite_hash != ws.last_runtime_composite_hash
+    assert len(get_run_history(s.uid, s.rec.project_id)) == 2
+    assert not s.pageerrors, s.pageerrors
+    assert not s.http_errors, s.http_errors
 
 
 def test_deep_link_activates_the_section_and_highlights_the_nav(make):
     s = make("u-wcb-deep")
-    s.open("#revenue")
-    s.page.wait_for_function("document.getElementById('tab-revenue').getAttribute('aria-selected') === 'true'")
-    assert s.nav_current() == "tab-revenue"
-    s.open("#outputs")
-    s.page.wait_for_function("document.getElementById('tab-outputs').getAttribute('aria-selected') === 'true'")
-    assert s.nav_current() == "tab-outputs"
+    s.open("#inputs/revenue")
+    s.page.wait_for_selector('[data-revenue-assumptions="true"]', timeout=20000)
+    assert s.nav_current() == "inputs/revenue"
+    s.open("#statements")
+    s.page.wait_for_selector('#statement-workbook, [data-statements-view="true"]', timeout=20000)
+    assert s.nav_current() == "statements"
+    assert not s.pageerrors, s.pageerrors
 
 
 def test_keyboard_navigation_in_the_nav(make):
     s = make("u-wcb-kbd")
-    s.open()
-    activate_destination(s.page, 'tab-input-grid')
-    s.page.focus('[data-nav-tab="tab-input-grid"]')
+    s.open("#overview")
+    first = s.page.locator('#wsv2-navigation [data-workspace-destination="inputs/project"]')
+    first.focus()
     s.page.keyboard.press("ArrowDown")
-    assert s.page.evaluate("document.activeElement.getAttribute('data-nav-tab')") == "tab-project-setup"
+    assert s.page.evaluate("document.activeElement.getAttribute('data-workspace-destination')") == "inputs/technical"
     s.page.keyboard.press("Enter")
-    assert s.selected_tab() == "tab-project-setup"
+    s.page.wait_for_function(
+        "() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'inputs/technical'"
+    )
+    assert s.nav_current() == "inputs/technical"
+    assert not s.pageerrors, s.pageerrors
 
 
 @pytest.mark.parametrize("scheme", ["light", "dark"])
@@ -265,41 +310,61 @@ def test_strip_and_statements_are_readable_in_light_and_dark(make, scheme):
     s = make(f"u-wcb-theme-{scheme}", scheme=scheme)
     s.open()
     s.run()
+    s.nav_to("results")
+    s.page.wait_for_selector('[data-financial-page="results"][data-financial-state="CURRENT"]', timeout=20000)
     contrast = s.page.evaluate("""() => {
-      const lum = c => { const a = c.match(/\\d+(\\.\\d+)?/g).slice(0,3).map(Number).map(v => { v/=255; return v<=.03928? v/12.92 : Math.pow((v+.055)/1.055,2.4);});
-                         return .2126*a[0]+.7152*a[1]+.0722*a[2]; };
-      const bg = el => { while (el) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(c)) return c; el = el.parentElement; } return 'rgb(255,255,255)'; };
-      const ratio = el => { const f = lum(getComputedStyle(el).color), b = lum(bg(el)); const hi = Math.max(f,b), lo = Math.min(f,b); return (hi+.05)/(lo+.05); };
-      const sel = ['.v2-kpi-strip-label', '.v2-kpi-strip-value', '.v2-kpi-strip-caption', '.v2-kpi-strip-title'];
-      return sel.map(q => [q, ratio(document.querySelector(q))]);
+      const parse = c => {
+        const m = c.match(/[\\d.]+/g);
+        if (!m) return null;
+        return m.map(Number);
+      };
+      const lum = ([r, g, b]) => {
+        const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+        return .2126 * f(r) + .7152 * f(g) + .0722 * f(b);
+      };
+      const bg = el => {
+        while (el) {
+          const c = getComputedStyle(el).backgroundColor;
+          const p = parse(c);
+          if (p && (p.length < 4 || p[3] > 0.05)) return p;
+          el = el.parentElement;
+        }
+        return [255, 255, 255];
+      };
+      const ratio = el => {
+        const fg = parse(getComputedStyle(el).color);
+        const f = lum(fg), b = lum(bg(el));
+        return (Math.max(f, b) + .05) / (Math.min(f, b) + .05);
+      };
+      return ['.rx-live-kpi-label', '.rx-live-kpi-value', '.ci-bar-id strong']
+        .map(q => [q, ratio(document.querySelector(q))]);
     }""")
     for q, r in contrast:
         assert r >= 4.5, (scheme, q, r)
-    activate_destination(s.page, 'tab-outputs')
-    s.page.wait_for_selector('[data-out-table="pnl-annual"] td.out-num')
-    ratios = s.page.evaluate("""() => {
-      const q = document.querySelector('[data-out-table="pnl-annual"] td.out-num');
-      return getComputedStyle(q).color; }""")
-    assert ratios
+    s.nav_to("statements")
+    s.page.wait_for_selector(".fm-sw-cell-button", timeout=20000)
+    cell_color = s.page.evaluate("getComputedStyle(document.querySelector('.fm-sw-cell-button')).color")
+    assert cell_color and not s.pageerrors, s.pageerrors
 
 
 def test_narrow_viewport_keeps_nav_statements_and_strip_usable(make):
     s = make("u-wcb-narrow", viewport={"width": 390, "height": 844})
     s.open()
     s.run()
-    assert s.page.locator("#model-workspace-nav").is_hidden()
-    s.page.locator('[data-workspace-drawer][aria-controls="model-workspace-nav"]').click()
-    nav_box = s.page.locator("#model-workspace-nav").bounding_box()
-    assert nav_box["width"] <= 392 and nav_box["height"] <= 422              # bounded contextual drawer
+    menu = s.page.locator(".wsv2-menu")
+    assert menu.is_visible() and menu.get_attribute("aria-expanded") == "false"
+    menu.click()
+    nav_box = s.page.locator("#wsv2-navigation").bounding_box()
+    assert nav_box is not None and nav_box["width"] <= 392
     assert s.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
-    activate_destination(s.page, 'tab-outputs')
-    s.page.wait_for_selector('[data-out-table="pnl-annual"]')
-    assert s.selected_tab() == "tab-outputs"
+    s.nav_to("statements")
+    s.page.wait_for_selector(".fm-sw-table", timeout=20000)
+    assert s.nav_current() == "statements"
     overflow = s.page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
     assert overflow <= 1
-    wrapper = s.page.locator('[data-out-table="pnl-annual"] >> xpath=ancestor::div[@data-out-scroll]')
-    assert wrapper.evaluate("w => w.scrollWidth > w.clientWidth")                # scrolls, labels stay readable
-    assert s.page.locator('[data-testid="kpi-strip"]').count() == 1
+    assert s.page.evaluate("document.querySelector('.fm-sw-region').scrollWidth > document.querySelector('.fm-sw-region').clientWidth")
+    assert s.page.locator('[data-workflow-bar="true"]').count() == 1
+    assert not s.pageerrors, s.pageerrors
 
 
 def test_overview_tiles_drill_down_to_their_authoritative_sheet(make):
@@ -307,13 +372,17 @@ def test_overview_tiles_drill_down_to_their_authoritative_sheet(make):
     s.open()
     s.run()
     p = s.page
-    p.click('[data-testid="nav-overview"]')
-    p.click('[data-testid="kpi-project-irr"]')
-    assert s.selected_tab() == "tab-returns" and s.nav_current() == "tab-returns"
-    p.click('[data-testid="nav-overview"]')
-    p.focus('[data-testid="kpi-min-dscr"]')
-    p.keyboard.press("Enter")                                   # keyboard-operable
-    assert s.selected_tab() == "tab-debt" and s.nav_current() == "tab-debt"
-    p.click('[data-testid="nav-overview"]')
-    p.click('[data-testid="kpi-total-revenue"]')
-    assert s.selected_tab() == "tab-revenue"
+    s.nav_to("overview")
+    p.wait_for_selector('[data-financial-overview="true"] [data-overview-debt-metrics="true"] a', timeout=20000)
+    p.locator('[data-overview-debt-metrics="true"] a').click()
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'financing'")
+    assert "financing=debt-metrics" in p.url
+    s.nav_to("overview")
+    results_link = p.locator('[data-financial-overview="true"] a[href="#results"]')
+    results_link.focus()
+    p.keyboard.press("Enter")
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'results'")
+    s.nav_to("overview")
+    p.locator('[data-financial-overview="true"] a[href="#statements"]').click()
+    p.wait_for_function("() => document.querySelector('#wsv2-navigation [aria-current=\"page\"]')?.getAttribute('data-workspace-destination') === 'statements'")
+    assert not s.pageerrors and not s.http_errors

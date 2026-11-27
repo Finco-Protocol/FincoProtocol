@@ -12,23 +12,11 @@ import pytest
 from app.workbook import multisenior_config as config, junior_debt_config as junior_config
 from finco_core.inputs.junior_debt import JuniorProjectInputs, JuniorDebtPolicy
 from finco_core.inputs.financing_instruments import FinancingCollection, FinancingError, InstrumentType
-from tests.test_model_decision_workspace_v2 import env, tokens
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import save, run
 from tests.test_model_financing_f3_workspace import collection_for_inputs
 from tests.test_financing_f3_junior_contract import case
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def state(pi, scope="base"):
@@ -122,7 +110,7 @@ def test_candidate_write_owner_reference_and_cas_isolation(env, monkeypatch):
     record, other = env.create(), env.create("wind")
     original = get_workspace_state("decision-user", record.project_id)
     raw = state(working_case(original))
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
+    stale_toks = react_workbook_tokens(env.client, record.project_code)
     original = get_workspace_state("decision-user", record.project_id)
     with pytest.raises(ProtectedReferenceError):
         WorkbookUpdateService.apply_draft_update(ws=original, project_record=replace(record, project_origin="factory_template"),
@@ -131,11 +119,12 @@ def test_candidate_write_owner_reference_and_cas_isolation(env, monkeypatch):
     assert "field-error-banner" not in save(env, record, raw, field=config.FIELD_ID).text
     saved = get_workspace_state("decision-user", record.project_id)
     assert config.SNAPSHOT_KEY not in get_workspace_state("decision-user", other.project_id).draft_snapshot
-    save(env, record, raw, field=config.FIELD_ID, stale_tokens=tokens(page.text))
+    save(env, record, raw, field=config.FIELD_ID, stale_tokens=stale_toks)
     assert get_workspace_state("decision-user", record.project_id) == saved
+    toks_before_switch = react_workbook_tokens(env.client, record.project_code)
     env.client.cookies.set(COOKIE_NAME, create_session_token(user_id="junior-other-owner", username="admin"))
     response = post_valid_mutation(env.client, "/v2/workbook/update", data=dict(project=record.project_code,
-        field_id=config.FIELD_ID, value=raw, sheet_id="debt", **tokens(page.text)))
+        field_id=config.FIELD_ID, value=raw, sheet_id="debt", **toks_before_switch))
     assert response.status_code == 404
 
 
@@ -167,10 +156,9 @@ def test_unfundable_run_preserves_immutable_last_run(env, monkeypatch, caplog):
         grace_months=0, maturity_date=first))
     raw = state(replace(pi, financing_collection=FinancingCollection((s, j))))
     assert "field-error-banner" not in save(env, record, raw, field=config.FIELD_ID).text
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-        data=dict(project=record.project_code, **tokens(page.text)))
+        data=dict(project=record.project_code, **react_workbook_tokens(env.client, record.project_code)))
     after = get_workspace_state("decision-user", record.project_id)
     assert "v2-banner-error" in response.text
     assert "F35_CONTRACTUAL_SERVICE_CASH_SHORTFALL" in caplog.text

@@ -36,11 +36,11 @@ def test_signed_tokens_refuse_expiry_wrong_purpose_and_same_actor_new_session(cl
     assert client.post('/v2/model-react/new-project/bess-preview', json=body).status_code == 403
 
 
-def test_flag_disables_both_routes(client, monkeypatch):
+def test_flag_zero_keeps_both_routes_enabled(client, monkeypatch):
     body = payload(client)
     monkeypatch.setenv('FINCO_MODEL_REACT_V1', '0')
-    assert client.get('/v2/model-react/new-project/bess-options').status_code == 404
-    assert client.post('/v2/model-react/new-project/bess-preview', json=body).status_code == 404
+    assert client.get('/v2/model-react/new-project/bess-options').status_code == 200
+    assert client.post('/v2/model-react/new-project/bess-preview', json=body).status_code != 404
 
 
 def test_options_requires_an_authenticated_session(client):

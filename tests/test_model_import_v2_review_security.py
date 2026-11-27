@@ -20,18 +20,6 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import save
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 OWNER = "decision-user"
 CSV = (
     "Assumption\tValue\tUnit\n"
@@ -166,7 +154,7 @@ def test_stale_composite_between_review_and_apply_rejects_everything(env):
     _, ticket = _preview(env, project)
     confirm = _confirm(env, project, ticket, keep_0="on", field_0="capex.C.grid_connection", unit_0="kEUR")
     approved = _approved_ticket(confirm)
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})   # a concurrent edit elsewhere
+    page = env.client.get("/v2/model-react/workspace", params={"project": project.project_code})   # a concurrent edit elsewhere
     assert save(env, project, "7", field="debt.senior.tenor_years").status_code in (200, 422)
     changed = _ws(project)
     after_concurrent = _evidence(project)

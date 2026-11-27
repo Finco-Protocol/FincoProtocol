@@ -11,20 +11,6 @@ from unittest.mock import patch
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 BASE_SC_NAME = "Base Case"
 
 
@@ -102,18 +88,19 @@ def test_compare_get_includes_newly_created_scenario():
         base_input_set=snapshot,
     )
 
-    resp = client.get(f"/v2/workbook/scenarios/compare?project={code}")
+    resp = client.get(f"/v2/model-react/scenarios?project={code}")
     assert resp.status_code == 200, resp.text
-    assert 'id="v2-sheet-compare"' in resp.text
-    assert "Base Case" in resp.text
-    assert "Scenario X" in resp.text
-
-    chip_count = resp.text.count('class="v2-compare-chip')
-    assert chip_count >= 2, f"Expected ≥2 chips, got {chip_count}"
+    active = [s for s in resp.json()["scenarios"] if not s["archived"]]
+    names = {s["name"] for s in active}
+    assert "Base Case" in names
+    assert "Scenario X" in names
+    assert len(active) >= 2
+    cmp_resp = client.get(f"/v2/model-react/scenario-compare?project={code}&scenario_id={sc_x.scenario_id}")
+    assert cmp_resp.status_code == 200 and cmp_resp.json()["scenario"]["label"] == "Scenario X"
 
 
 def test_compare_get_excludes_archived_scenario():
-    """Archived Scenario X must not appear in subsequent Compare GET."""
+    """Archived Scenario X must not appear in subsequent active React compare/scenarios reads."""
     owner = "gf-f03-b-" + uuid.uuid4().hex[:8]
     code = "gf-f03-b-" + uuid.uuid4().hex[:8]
     record, base_sc, snapshot = _setup(owner, code)
@@ -129,15 +116,18 @@ def test_compare_get_excludes_archived_scenario():
         base_input_set=snapshot,
     )
 
-    before = client.get(f"/v2/workbook/scenarios/compare?project={code}")
-    assert "Scenario Archived" in before.text
+    before = client.get(f"/v2/model-react/scenarios?project={code}")
+    assert any(s["name"] == "Scenario Archived" and not s["archived"] for s in before.json()["scenarios"])
 
     archive_scenario(user_id=owner, scenario_id=sc_x.scenario_id)
 
-    after = client.get(f"/v2/workbook/scenarios/compare?project={code}")
+    after_cmp = client.get(f"/v2/model-react/scenario-compare?project={code}&scenario_id={sc_x.scenario_id}")
+    assert after_cmp.status_code == 404
+    after = client.get(f"/v2/model-react/scenarios?project={code}")
     assert after.status_code == 200, after.text
-    assert "Scenario Archived" not in after.text
-    assert "Base Case" in after.text
+    active_names = {s["name"] for s in after.json()["scenarios"] if not s["archived"]}
+    assert "Scenario Archived" not in active_names
+    assert "Base Case" in active_names
 
 
 def test_compare_get_reflects_rename():
@@ -157,19 +147,19 @@ def test_compare_get_reflects_rename():
         base_input_set=snapshot,
     )
 
-    before = client.get(f"/v2/workbook/scenarios/compare?project={code}")
-    assert "Old Name" in before.text
+    before = client.get(f"/v2/model-react/scenario-compare?project={code}&scenario_id={sc_x.scenario_id}")
+    assert before.status_code == 200 and before.json()["scenario"]["label"] == "Old Name"
 
     rename_scenario(user_id=owner, scenario_id=sc_x.scenario_id, new_name="New Name")
 
-    after = client.get(f"/v2/workbook/scenarios/compare?project={code}")
+    after = client.get(f"/v2/model-react/scenario-compare?project={code}&scenario_id={sc_x.scenario_id}")
     assert after.status_code == 200, after.text
-    assert "New Name" in after.text
+    assert after.json()["scenario"]["label"] == "New Name"
     assert "Old Name" not in after.text
 
 
 def test_compare_get_forwards_selected_ids():
-    """s1/s2 params from a prior selection are reflected in the rendered form."""
+    """scenario_id selection returns base vs scenario payload from canonical React compare."""
     owner = "gf-f03-d-" + uuid.uuid4().hex[:8]
     code = "gf-f03-d-" + uuid.uuid4().hex[:8]
     record, base_sc, snapshot = _setup(owner, code)
@@ -186,14 +176,14 @@ def test_compare_get_forwards_selected_ids():
     )
 
     resp = client.get(
-        f"/v2/workbook/scenarios/compare"
-        f"?project={code}&s1={base_sc.scenario_id}&s2={sc_x.scenario_id}"
+        f"/v2/model-react/scenario-compare"
+        f"?project={code}&scenario_id={sc_x.scenario_id}"
     )
     assert resp.status_code == 200, resp.text
-    assert base_sc.scenario_id in resp.text
-    assert sc_x.scenario_id in resp.text
-    assert "v2-compare-chip--selected" in resp.text
-    assert ".v2-compare-table" in resp.text or "v2-compare-table" in resp.text
+    body = resp.json()
+    assert BASE_SC_NAME in body["base"]["label"]
+    assert body["scenario"]["scenario_id"] == sc_x.scenario_id
+    assert body["scenario"]["label"] == "Selected X"
 
 
 def test_compare_get_has_no_engine_execution():
@@ -228,8 +218,8 @@ def test_compare_get_has_no_engine_execution():
         ) as waterfall,
     ):
         resp = client.get(
-            f"/v2/workbook/scenarios/compare"
-            f"?project={code}&s1={base_sc.scenario_id}&s2={sc_x.scenario_id}"
+            f"/v2/model-react/scenario-compare"
+            f"?project={code}&scenario_id={sc_x.scenario_id}"
         )
 
     assert resp.status_code == 200, resp.text
@@ -239,34 +229,21 @@ def test_compare_get_has_no_engine_execution():
 
 
 def test_compare_get_stale_workbook_vs_fresh_compare_endpoint():
-    """GF-F03 root cause: initial workbook GET has stale Compare; canonical Compare GET is fresh.
-
-    Sequence:
-      1. Initial workbook GET (only Base Case exists) → Compare partial has 1 chip.
-      2. Create Scenario X after the GET.
-      3. Canonical Compare GET → returns 2 chips (fresh from persistence).
-
-    This proves the server-side authority: the Compare endpoint always reads
-    current persistence regardless of when the page was loaded.
-    The tab-click HTMX mechanism (workbook.html) is what makes the browser
-    show fresh Compare without a full page reload.
-    """
+    """GF-F03: initial React scenarios read has 1 active case; subsequent read sees newly created Scenario X."""
     owner = "gf-f03-f-" + uuid.uuid4().hex[:8]
     code = "gf-f03-f-" + uuid.uuid4().hex[:8]
     record, base_sc, snapshot = _setup(owner, code)
     client = _client(owner)
 
-    # Step 1: Initial workbook GET — only Base Case exists at this point.
-    overview = client.get(f"/v2/workbook?project={code}")
-    assert overview.status_code == 200, overview.text
-    stale_chips = overview.text.count('class="v2-compare-chip')
-    assert stale_chips == 1, (
-        f"Initial Compare render should have 1 chip (base case only), got {stale_chips}"
-    )
+    # Step 1: Initial scenarios read — only Base Case exists at this point.
+    initial = client.get(f"/v2/model-react/scenarios?project={code}")
+    assert initial.status_code == 200, initial.text
+    initial_active = [s for s in initial.json()["scenarios"] if not s["archived"]]
+    assert len(initial_active) == 1
 
-    # Step 2: Create Scenario X AFTER the page was loaded.
+    # Step 2: Create Scenario X AFTER the initial read.
     from app.persistence.scenarios_repository import add_scenario
-    add_scenario(
+    sc_x = add_scenario(
         user_id=owner,
         project_id=record.project_id,
         project_code=code,
@@ -275,11 +252,9 @@ def test_compare_get_stale_workbook_vs_fresh_compare_endpoint():
         base_input_set=snapshot,
     )
 
-    # Step 3: Canonical Compare GET returns the fresh state — 2 chips.
-    compare = client.get(f"/v2/workbook/scenarios/compare?project={code}")
-    assert compare.status_code == 200, compare.text
-    assert "Post-Load Scenario X" in compare.text
-    fresh_chips = compare.text.count('class="v2-compare-chip')
-    assert fresh_chips >= 2, (
-        f"Canonical Compare GET must show ≥2 chips after scenario creation, got {fresh_chips}"
-    )
+    # Step 3: Canonical React scenarios + scenario-compare GETs return fresh persisted state.
+    fresh = client.get(f"/v2/model-react/scenarios?project={code}")
+    assert fresh.status_code == 200, fresh.text
+    assert len([s for s in fresh.json()["scenarios"] if not s["archived"]]) >= 2
+    compare = client.get(f"/v2/model-react/scenario-compare?project={code}&scenario_id={sc_x.scenario_id}")
+    assert compare.status_code == 200 and compare.json()["scenario"]["label"] == "Post-Load Scenario X"

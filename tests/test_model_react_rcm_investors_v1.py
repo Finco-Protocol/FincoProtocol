@@ -91,7 +91,7 @@ def test_requires_flag_session_and_project_access(env, monkeypatch):
     assert view(env, record, env.stranger).status_code == 404
     assert env.client.get(READ, params={"project": "nope"}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert view(env, record).status_code == 404
+    assert view(env, record).status_code == 200
 
 
 def test_a_fresh_working_copy_has_no_agreement_and_sponsor_facts_are_read_only(env):

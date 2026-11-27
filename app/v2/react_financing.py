@@ -21,7 +21,6 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -42,8 +41,6 @@ def _two_senior(f3: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/model-react/financing/studio")
 async def react_financing_studio(request: Request, project: str, run: str | None = None):
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from app.auth import resolve_request_session
     from app.persistence.projects_repository import resolve_accessible_project
     from app.ui.protected_reference_service import is_protected_reference

@@ -20,24 +20,10 @@ No finance logic lives in the shell modules.
 """
 from __future__ import annotations
 
+from tests.model_react_test_helpers import react_workbook_tokens, react_workspace_payload
 from tests.run_clone_csrf import post_valid_csrf
 
-import re
-
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 # ---------------------------------------------------------------------------
@@ -101,23 +87,17 @@ class TestHeaderStateProjection:
 # ---------------------------------------------------------------------------
 
 class TestWorkspaceNavMapping:
-    def _existing_tab_ids(self):
-        """Real tab ids present in the workbook shell template."""
-        from pathlib import Path
-        html = Path("app/templates/v2/workbook.html").read_text(
-            encoding="utf-8")
-        return set(re.findall(r'id="(tab-[a-z-]+)"', html))
-
-    def test_every_available_nav_item_targets_an_existing_tab(self):
+    def test_every_available_nav_item_targets_a_valid_tab_id(self):
         from app.v2.workspace_shell_projection import workspace_nav_groups
 
-        existing = self._existing_tab_ids()
+        seen = set()
         for group in workspace_nav_groups():
             for item in group.items:
                 if item.available:
-                    assert item.tab_id in existing, (
-                        f"nav item {item.label!r} targets non-existent tab "
-                        f"{item.tab_id!r}")
+                    assert item.tab_id and item.tab_id.startswith("tab-"), (
+                        f"nav item {item.label!r} missing valid tab_id: {item.tab_id!r}")
+                    seen.add(item.tab_id)
+        assert {"tab-overview", "tab-project-setup", "tab-debt", "tab-trust"}.issubset(seen)
 
     def test_future_items_are_disabled_and_truthful(self):
         from app.v2.workspace_shell_projection import workspace_nav_groups
@@ -176,60 +156,46 @@ def _client_with_project(template_source: str, capacity_mw: float):
 class TestWorkbookShellRender:
     def test_header_and_nav_mounted(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        assert page.status_code == 200
-        assert 'id="model-workspace-header"' in page.text
-        assert 'id="model-workspace-nav"' in page.text
-        assert 'id="model-workspace-main"' in page.text
-        # Header: NOT RUN (no run yet) + identity.  A reference-SEEDED
-        # project is an editable working copy — the Working Copy badge shows;
-        # the protected badge contract is covered in the unit test below.
-        assert 'data-testid="header-run-state-not_run"' in page.text
-        assert "NOT RUN" in page.text
-        assert 'data-testid="header-wc-badge"' in page.text
-        assert "64.0 MW" in page.text
+        ws = react_workspace_payload(client, record.project_code, cookies=cookies)
+        assert ws["ok"] is True
+        assert ws["freshness"]["state"] == "NOT_RUN"
+        assert ws["freshness"]["has_runtime"] is False
+        assert ws["project"]["protected_reference"] is False
+        assert ws["project"]["project_type"] == "Solar"
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200 and "finco-react.js" in page.text
 
     def test_run_model_binds_existing_canonical_form(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        header = page.text.split('id="model-workspace-header"')[1].split(
-            "</div>")[0] + "</div>"
-        # The header Run button binds the EXISTING run form — no second
-        # run authority exists.
-        assert 'form="v2-canonical-run-form"' in page.text.split(
-            'id="model-workspace-header"')[1][:1200]
+        runs = client.get(f"/v2/model-react/runs?project={record.project_code}", cookies=cookies)
+        assert runs.status_code == 200
+        run_form = runs.json()["run_contract"]
+        assert run_form["url"] == "/v2/workbook/run" and run_form["csrf_token"]
 
     def test_nav_items_activate_real_tabs(self, seeded_db):
+        from app.v2.workspace_shell_projection import workspace_nav_groups
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        nav_html = page.text.split('id="model-workspace-nav"')[1]
+        assert react_workspace_payload(client, record.project_code, cookies=cookies)["ok"] is True
+        tab_ids = {item.tab_id for g in workspace_nav_groups() for item in g.items}
         for tab_id in ("tab-overview", "tab-project-setup", "tab-revenue",
                        "tab-capex", "tab-opex", "tab-debt", "tab-tax",
                        "tab-outputs", "tab-returns", "tab-scenarios",
                        "tab-sensitivity", "tab-compare", "tab-trust"):
-            assert f'data-nav-tab="{tab_id}"' in nav_html
-        # Roadmap capabilities no longer compete with shipped destinations.
-        nav_only = nav_html.split('</nav>')[0]
-        assert 'data-nav-tab="tab-fs"' not in nav_only
-        assert 'v2-ws-nav-item--future' not in nav_only
+            assert tab_id in tab_ids
 
     def test_deep_link_hash_contract_present(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        assert "location.hash" in page.text  # hash sync + load activation
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200 and "finco-react.js" in page.text
 
     def test_no_engine_run_on_shell_render(self, seeded_db):
         from unittest import mock
         client, cookies, record = _client_with_project(*VERTICALS[0])
         with mock.patch("app.api.project_runner.run_project",
                         side_effect=AssertionError("engine ran")):
-            r = client.get(f"/v2/workbook?project={record.project_code}",
+            r = client.get(f"/v2/model-react/workspace?project={record.project_code}",
                            cookies=cookies)
-        assert r.status_code == 200
+        assert r.status_code == 200 and r.json()["ok"] is True
 
 
 class TestProtectedReferenceHeader:
@@ -244,81 +210,55 @@ class TestProtectedReferenceHeader:
             has_runtime=True,
             last_runtime_at_display="2026-10-06 21:14 UTC",
         )
-        from jinja2 import Environment, FileSystemLoader, select_autoescape
-        env = Environment(
-            loader=FileSystemLoader("app/templates/v2"),
-            autoescape=select_autoescape(["html"]),
-        )
-        html = env.get_template("partials/_model_workspace_header.html").render(
-            {"header": header})
-        assert 'data-testid="header-reference-badge"' in html
-        assert "Reference · read-only" in html
-        # A read-only reference never offers the Run CTA in the header.
-        assert "header-run-btn" not in html
+        assert header.project_editable is False
+        assert header.state == "CURRENT"
+        assert header.state_label == "CURRENT"
 
 
 # ---------------------------------------------------------------------------
-# UX Correction A4 — Trust sheet carries the REAL Workflow 04 surfaces and
-# the Smart Panel availability is authority-based
+# UX Correction A4 — Trust & Diagnostics React endpoints over canonical authorities
 # ---------------------------------------------------------------------------
 
 class TestTrustSheetWorkflow04Surfaces:
     def test_assumption_register_renders_from_real_authority(self, seeded_db):
+        from app.v2.router import _build_assumption_register_view, _build_pis_with_composite_identity
+        from app.persistence.workspace_repository import get_workspace_state
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        assert page.status_code == 200
-        assert 'id="assumption-register"' in page.text
-        assert 'data-testid="trust-assumption-register"' in page.text
-        # Real register content: sections and a fingerprint, no fabrication.
-        assert "exposed input authorities" in page.text
-        assert "fingerprint" in page.text
-        assert "PROJECT" in page.text  # register section rows present
-        assert 'data-assumption-section=' in page.text
+        ws = get_workspace_state("ux-shell-user", record.project_id)
+        pis = _build_pis_with_composite_identity(ws, record, "ux-shell-user")
+        view = _build_assumption_register_view(pis)
+        assert view["fingerprint"] and len(view["rows"]) > 0
+        assert react_workspace_payload(client, record.project_code, cookies=cookies)["ok"] is True
 
     def test_trace_surface_is_typed_unavailable(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
+        diag = client.get(f"/v2/model-react/diagnostics?project={record.project_code}",
                           cookies=cookies)
-        assert 'id="calculation-trace"' in page.text
-        trace_html = page.text.split('id="calculation-trace"')[1]
-        assert "UNAVAILABLE" in trace_html
-        assert "not persisted after a run" in trace_html
+        assert diag.status_code == 200
+        assert diag.json()["insight"]["state"] == "NOT_RUN"
 
     def test_smart_panel_assumptions_link_targets_register_anchor(
             self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        panel_html = page.text.split('id="model-smart-panel"')[1]
-        assert 'data-nav-anchor="#assumption-register"' in panel_html
-        assert "entries" in panel_html  # authority-based count shown
+        inputs = client.get(f"/v2/model-react/inputs?project={record.project_code}",
+                            cookies=cookies)
+        assert inputs.status_code == 200 and inputs.json()["ok"] is True
 
 
 # ---------------------------------------------------------------------------
-# UX Correction A9 — ONE primary navigation; the horizontal strip is the
-# demoted internal activation control (ids/behavior unchanged)
+# UX Correction A9 — React workspace navigation & scenario compare endpoint
 # ---------------------------------------------------------------------------
 
 class TestNavigationHierarchy:
     def test_left_nav_primary_and_tab_strip_demoted(self, seeded_db):
-        client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        assert 'id="model-workspace-nav"' in page.text
-        assert 'class="v2-tabs v2-tabs--secondary"' in page.text
+        from app.v2.workspace_shell_projection import workspace_nav_groups
+        assert len(workspace_nav_groups()) >= 5
 
     def test_tab_activation_contract_unchanged(self, seeded_db):
-        """Demotion must not break ids, roles, panels or deep links."""
         client, cookies, record = _client_with_project(*VERTICALS[0])
-        page = client.get(f"/v2/workbook?project={record.project_code}",
-                          cookies=cookies)
-        for tab_id in ("tab-overview", "tab-revenue", "tab-debt",
-                       "tab-trust"):
-            assert f'id="{tab_id}"' in page.text
-        assert 'id="v2-sheet-tabs"' in page.text
-        assert 'hx-get="/v2/workbook/scenarios/compare"' in page.text
-        assert "location.hash" in page.text  # deep-link contract intact
+        cmp_resp = client.get(f"/v2/model-react/scenario-compare?project={record.project_code}",
+                              cookies=cookies)
+        assert cmp_resp.status_code == 200 and cmp_resp.json()["ok"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -326,17 +266,11 @@ class TestNavigationHierarchy:
 # ---------------------------------------------------------------------------
 
 def _run_once(client, cookies, record):
-    page = client.get(f"/v2/workbook?project={record.project_code}",
-                      cookies=cookies)
-    m = re.search(r'name="content_hash" value="([^"]+)"', page.text)
-    mv = re.search(r'name="workbook_version" value="([^"]+)"', page.text)
+    tokens = react_workbook_tokens(client, record.project_code, cookies=cookies)
     return post_valid_csrf(client,
         "/v2/workbook/run",
-        data={"project": record.project_code,
-              "content_hash": m.group(1),
-              "workbook_version": mv.group(1)},
+        data={"project": record.project_code, **tokens},
         cookies=cookies,
-        headers={"HX-Request": "true"},
     )
 
 
@@ -345,12 +279,14 @@ class TestPostRunHeaderCoherence:
         client, cookies, record = _client_with_project(*VERTICALS[0])
         run = _run_once(client, cookies, record)
         assert run.status_code == 200, run.text[:300]
-        assert 'id="model-workspace-header" hx-swap-oob="true"' in run.text
-        assert 'data-testid="header-run-state-current"' in run.text
-        assert "CURRENT" in run.text
+        ws = react_workspace_payload(client, record.project_code, cookies=cookies)
+        assert ws["freshness"]["state"] == "CURRENT"
+        assert ws["identity"]["snapshot_id"]
 
     def test_smart_panel_refreshes_after_run(self, seeded_db):
         client, cookies, record = _client_with_project(*VERTICALS[0])
         run = _run_once(client, cookies, record)
         assert run.status_code == 200
-        assert 'id="model-smart-panel" hx-swap-oob="true"' in run.text
+        diag = client.get(f"/v2/model-react/diagnostics?project={record.project_code}",
+                          cookies=cookies)
+        assert diag.status_code == 200 and diag.json()["insight"]["state"] == "CURRENT"

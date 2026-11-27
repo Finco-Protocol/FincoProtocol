@@ -29,19 +29,6 @@ from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 TOKEN_RE = re.compile(r'name="csrf_token" value="([^"]*)"')
 DENIAL = {"error": "Invalid or missing security token. Reload the page and try again."}
@@ -88,7 +75,7 @@ def _issue(c, project: str, purpose: str) -> str:
     return main_web._csrf_issue_token(req, project, purpose=purpose)
 
 
-def _form_token(c, path="/projects/new") -> str:
+def _form_token(c, path="/projects/new/prefill") -> str:
     page = c.get(path)
     assert page.status_code == 200, page.status_code
     return TOKEN_RE.search(page.text).group(1)
@@ -255,7 +242,7 @@ def test_demo_session_token_is_actor_bound_and_denials_do_not_consume_rate_budge
 
 # ── validation re-render refresh (both forms) ────────────────────────────────
 
-@pytest.mark.parametrize("form_path", ["/projects/new", "/projects/new/prefill"])
+@pytest.mark.parametrize("form_path", ["/projects/new/prefill"])
 def test_validation_rerender_carries_a_fresh_working_token(env, form_path):
     with _client() as c:
         _login(c)
@@ -317,11 +304,19 @@ with TestClient(main_web.app, base_url="https://sec01.local", raise_server_excep
             "capacity_mw": "12"}
     out["create_missing"] = c.post("/projects/create", data=form).status_code
     out["discard_missing"] = c.post("/scenarios/state/discard", data={"active_project": "x"}).status_code
-    tok = R.search(c.get("/projects/new").text).group(1)
+    tok = R.search(c.get("/projects/new/prefill").text).group(1)
     out["create_valid"] = c.post("/projects/create", data={**form, "csrf_token": tok},
                                  headers={"HX-Request": "true"}).status_code
     out["introspect_public"] = c.post("/internal/v1/auth/introspect", json={}).status_code
-    out["radar_mounted"] = any(getattr(r, "path", "") == "/radar" for r in main_web.app.routes)
+    def _all_paths(routes):
+        for r in routes:
+            p = getattr(r, "path", None)
+            if p:
+                yield p
+            sub = getattr(r, "original_router", None) or getattr(r, "router", None)
+            if sub is not None:
+                yield from _all_paths(getattr(sub, "routes", ()))
+    out["radar_mounted"] = "/radar" in set(_all_paths(main_web.app.routes))
 print(json.dumps(out))
 """
 

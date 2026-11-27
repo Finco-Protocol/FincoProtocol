@@ -26,7 +26,9 @@ from app.persistence import db
 from app.persistence.run_history_repository import get_run_history
 from app.persistence.workspace_repository import get_workspace_state
 from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from app.workbook.financing_csrf import issue_token
 from app.workbook.registry import WORKBOOK
 from app.workbook.update_service import (
@@ -36,26 +38,13 @@ from app.workbook.update_service import (
 )
 from tests.model_mutation_csrf import post_valid_mutation
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _setup(tmp_path, name: str, kind: str = "solar"):
     user = "test-slicef-user"
     db.DB_PATH = str(tmp_path / f"{name}.db")
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     client = TestClient(app)
     client.__enter__()
     client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
@@ -69,11 +58,7 @@ def _setup(tmp_path, name: str, kind: str = "solar"):
 
 
 def _tokens(client, project_code: str) -> dict[str, str]:
-    html = client.get("/v2/workbook", params={"project": project_code}).text
-    return {
-        k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1)
-        for k in ("content_hash", "workbook_version")
-    }
+    return react_workbook_tokens(client, project_code)
 
 
 def _edit(client, project_code: str, field_id: str, value: str):

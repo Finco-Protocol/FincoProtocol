@@ -7,35 +7,27 @@ import pytest
 
 from app import auth
 from app.workbook import financing_csrf, multisenior_config as config
+from tests.model_react_test_helpers import react_fields_save_contract
 from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
 from tests.test_financing_f3_junior_workspace import state, working_case
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def page_and_data(env, record):
-    page = env.client.get('/v2/workbook', params={'project': record.project_code, 'sheet': 'debt'})
-    assert page.status_code == 200
-    form = BeautifulSoup(page.text, 'html.parser').select_one('[data-f3-form]')
-    assert form is not None
-    data = {i['name']: i.get('value', '') for i in form.select('input[type="hidden"][name]')}
     from app.persistence.workspace_repository import get_workspace_state
+    save = react_fields_save_contract(env.client, record.project_code, "debt")
     proposal = json.loads(state(working_case(get_workspace_state('decision-user', record.project_id))))
     proposal['scopes']['base']['activation'] = None
-    data['value'] = json.dumps(proposal)
+    data = {
+        'project': record.project_code,
+        'field_id': config.FIELD_ID,
+        'sheet_id': 'debt',
+        'content_hash': save['content_hash'],
+        'workbook_version': save['workbook_version'],
+        'csrf_token': save['financing_csrf_token'],
+        'value': json.dumps(proposal),
+    }
     assert data['csrf_token']
-    return page, data
+    return save, data
 
 
 def saved_state(record):
@@ -83,20 +75,18 @@ def test_valid_token_real_save_htmx_rerender_and_stale_cas(env):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
     _, data = page_and_data(env, record)
-    response = env.client.post('/v2/workbook/update', data=data, headers={'HX-Request': 'true'})
-    assert response.status_code == 200 and 'field-error-banner' not in response.text
+    response = env.client.post('/v2/workbook/update', data=data, follow_redirects=False)
+    assert response.status_code in (200, 303)
     ws = get_workspace_state('decision-user', record.project_id)
     assert config.parse_state(ws.draft_snapshot[config.SNAPSHOT_KEY]) == config.parse_state(data['value'])
     assert ws.dirty
-    form = BeautifulSoup(response.text, 'html.parser').select_one('[data-f3-form]')
-    rerender = {i['name']: i.get('value', '') for i in form.select('input[type="hidden"][name]')}
+    _, rerender = page_and_data(env, record)
     assert rerender['csrf_token'] and rerender['csrf_token'] != data['csrf_token']
-    rerender['value'] = data['value']
-    second = env.client.post('/v2/workbook/update', data=rerender, headers={'HX-Request': 'true'})
-    assert second.status_code == 200 and 'field-error-banner' not in second.text
+    second = env.client.post('/v2/workbook/update', data=rerender, follow_redirects=False)
+    assert second.status_code in (200, 303)
     before = saved_state(record)
-    conflict = env.client.post('/v2/workbook/update', data=data, headers={'HX-Request': 'true'})
-    assert conflict.status_code == 409 and 'field-error-banner' in conflict.text
+    conflict = env.client.post('/v2/workbook/update', data=data, follow_redirects=False)
+    assert conflict.status_code == 303 and 'v2_err=' in conflict.headers.get('location', '')
     assert saved_state(record) == before
 
 

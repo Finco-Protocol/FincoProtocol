@@ -20,21 +20,10 @@ from fastapi.testclient import TestClient
 from app.auth import COOKIE_NAME, create_session_token
 from app.persistence import db
 from app.services.reference_seed_service import create_reference_seeded_project
+from app.v2.react_workspace_router import router as react_workspace_router
 from app.v2.router import router as v2_router
+from tests.model_react_test_helpers import react_workbook_tokens
 from app.workbook.financing_csrf import issue_token
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 getcontext().prec = 50
 COD, HORIZON = date(2031, 3, 1), 25          # seeded Solar default: off-boundary COD, 25-year life -> end exclusive 2056-03-01
@@ -64,12 +53,12 @@ def test_http_save_run_history_dated_grid_final_stub_and_row_revenue(tmp_path):
     db.init_db()
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
+    app.include_router(react_workspace_router, prefix="/v2")
     life_end = _add_years(COD, HORIZON)
     with TestClient(app) as client:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=user, username="admin"))
         rec = create_reference_seeded_project(user_id=user, requested_name="DA Solar", template_source="generic_solar_reference", capacity_mw=16)
-        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-        tokens = {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
+        tokens = react_workbook_tokens(client, rec.project_code)
         from app.workbook.mutation_csrf import mutation_token
         req = SimpleNamespace(cookies=client.cookies, state=SimpleNamespace())
         save = client.post("/v2/workbook/update", headers={"Accept": "application/json"}, data={
@@ -79,8 +68,7 @@ def test_http_save_run_history_dated_grid_final_stub_and_row_revenue(tmp_path):
         # reload: the canonical contract is persisted
         from app.persistence.workspace_repository import get_workspace_state
         assert json.loads(get_workspace_state(user, rec.project_id).draft_snapshot["rev_multistream_config_json"])["streams"][0]["id"] == "ppa_a"
-        html = client.get("/v2/workbook", params={"project": rec.project_code}).text
-        tokens = {k: re.search(r'name="' + k + r'" value="([^"]*)"', html).group(1) for k in ("content_hash", "workbook_version")}
+        tokens = react_workbook_tokens(client, rec.project_code)
         run = client.post("/v2/workbook/run", headers={"Accept": "application/json"}, data={
             "project": rec.project_code, **tokens, "csrf_token": issue_token(req, rec.project_code, purpose="workbook-run-v1"),
             "run_intent_id": str(uuid.uuid4())}, follow_redirects=False)

@@ -28,19 +28,6 @@ from app import ev_charging_economics as ev
 from finco_core.opex.projections import opex_item_amount_at_year
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture()
 def ev_wc(tmp_path, monkeypatch):
     """Fresh DB + a real seeded EV working copy (reconciled S&U)."""
@@ -67,16 +54,26 @@ def _cookies():
     return {COOKIE_NAME: create_session_token(user_id="corc-user", username="admin")}
 
 
-def _rendered_efficiency_form(page_html: str) -> dict[str, str]:
-    """Extract the efficiency field's real form values from rendered HTML."""
-    i = page_html.find('data-field-id="revenue.ev_charging.charging_efficiency"')
-    assert i != -1, "efficiency field not rendered"
-    block = page_html[i:i + 3000]
-    form_start = block.rfind("<form", 0, block.find('name="value"'))
-    form_html = block[form_start:block.find("</form>", block.find('name="value"'))]
-    values = dict(re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', form_html))
-    values["value"] = re.search(r'name="value"([^>]*)value="([^"]*)"', block).group(2)
-    return values
+def _efficiency_input_contract(client, project_code: str, cookies: dict[str, str]) -> tuple[dict[str, str], dict]:
+    """Read the efficiency field row and save contract from the canonical React inputs payload."""
+    res = client.get("/v2/model-react/inputs", params={"project": project_code}, cookies=cookies)
+    assert res.status_code == 200, res.text[:300]
+    body = res.json()
+    save = body["save"]
+    for sec in body["grid"]["sections"]:
+        for cat in sec.get("categories", []):
+            for row in cat.get("rows", []):
+                if row.get("field_id") == "revenue.ev_charging.charging_efficiency":
+                    form = {
+                        "project": project_code,
+                        "sheet_id": "revenue",
+                        "field_id": row["field_id"],
+                        "value": str(row["value"]),
+                        "workbook_version": save["workbook_version"],
+                        "content_hash": save["content_hash"],
+                    }
+                    return form, row
+    raise AssertionError("efficiency field not found in /v2/model-react/inputs")
 
 
 # ── §A/B: percent convention ────────────────────────────────────────────────
@@ -184,12 +181,10 @@ def test_efficiency_form_edit_causality_end_to_end(ev_wc):
 
     client = _client()
     cookies = _cookies()
-    page = client.get(f"/v2/workbook?project={ev_wc.project_code}", cookies=cookies)
-    assert page.status_code == 200
 
-    # The real rendered form for the efficiency field carries the human-percent
+    # The React inputs contract for the efficiency field carries the human-percent
     # representation a user sees.
-    form = _rendered_efficiency_form(page.text)
+    form, _row = _efficiency_input_contract(client, ev_wc.project_code, cookies)
     assert form["field_id"] == "revenue.ev_charging.charging_efficiency"
     assert float(form["value"]) == pytest.approx(94.0)
     assert {"project", "sheet_id", "field_id", "workbook_version", "content_hash"}.issubset(form)
@@ -231,9 +226,8 @@ def test_efficiency_form_edit_causality_end_to_end(ev_wc):
     assert b08_92 == pytest.approx(b08_94 * (0.94 / 0.92), rel=1e-9)
     assert b08_92 > b08_94
 
-    # Reload: the rendered form shows the persisted 92 with a fresh hash
-    page2 = client.get(f"/v2/workbook?project={ev_wc.project_code}", cookies=cookies)
-    form2 = _rendered_efficiency_form(page2.text)
+    # Reload: the React inputs payload shows the persisted 92 with a fresh hash
+    form2, _row2 = _efficiency_input_contract(client, ev_wc.project_code, cookies)
     assert float(form2["value"]) == pytest.approx(92.0)
     assert form2["content_hash"] != form["content_hash"]
 
@@ -242,17 +236,11 @@ def test_efficiency_form_edit_causality_end_to_end(ev_wc):
 
 def test_efficiency_renders_94_percent_with_institutional_bounds(ev_wc):
     client = _client()
-    page = client.get(f"/v2/workbook?project={ev_wc.project_code}", cookies=_cookies())
-    block = page.text[
-        page.text.find('data-field-id="revenue.ev_charging.charging_efficiency"'):]
-    m = re.search(r'name="value"([^>]*)value="([^"]*)"', block)
-    value = float(m.group(2))
+    form, row = _efficiency_input_contract(client, ev_wc.project_code, _cookies())
+    value = float(form["value"])
     assert value == pytest.approx(94.0), "initial UI value must be 94 (%), not 0.94"
-    attrs = m.group(1)
     # bounds come from the canonical EV_DRIVER_BOUNDS authority (registry
-    # renders them in display units: 50..100 %)
-    mn = re.search(r'min="([0-9.]+)"', attrs)
-    mx = re.search(r'max="([0-9.]+)"', attrs)
-    assert mn and float(mn.group(1)) == pytest.approx(50.0)
-    assert mx and float(mx.group(1)) == pytest.approx(100.0)
+    # exposes them in display units: 50..100 %)
+    assert row.get("min_value") is not None and float(row["min_value"]) == pytest.approx(50.0)
+    assert row.get("max_value") is not None and float(row["max_value"]) == pytest.approx(100.0)
     assert value >= 50 and value <= 100

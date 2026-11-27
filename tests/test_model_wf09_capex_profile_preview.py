@@ -20,20 +20,8 @@ from app.v2 import capex_commands as commands
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
 from app.workbook.workbook_identity import assemble_consistent_for_get
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 
 OWNER = "decision-user"
 
@@ -243,9 +231,9 @@ def test_only_the_reviewed_save_route_exists_and_the_planner_package_holds_no_wr
 
 def test_preview_leaves_committed_runs_and_history_immutable(env):
     project = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": project.project_code})
+    toks = react_workbook_tokens(env.client, project.project_code)
     assert post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                           data={"project": project.project_code, **tokens(page.text)}).status_code == 200
+                           data={"project": project.project_code, **toks}).status_code == 200
     history = [h.to_dict() for h in get_run_history(OWNER, project.project_id)]
     before = evidence(project)
     for shape in ("UNIFORM", "FRONT_LOADED", "BACK_LOADED"):
@@ -257,8 +245,11 @@ def test_preview_leaves_committed_runs_and_history_immutable(env):
 
 def test_capex_sheet_links_to_the_planner_without_other_change(env):
     project = env.create("solar")
-    html = env.client.get("/v2/workbook", params={"project": project.project_code}).text
-    assert 'data-testid="capex-profile-link"' in html and "preview, save to Working Copy" in html
+    res = env.client.get("/v2/model-react/capex/profiles", params={"project": project.project_code})
+    assert res.status_code == 200 and res.json()["ok"] is True
+    assert res.json()["save"]["url"] == "/v2/capex/spending-profiles/save"
+    assert res.json()["semantics"]["preview_is_a_result"] is False
+    assert res.json()["semantics"]["save_runs_the_model"] is False
 
 
 def test_csrf_token_is_required_and_a_forged_or_missing_token_changes_nothing(env):

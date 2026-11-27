@@ -15,20 +15,6 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.v2 import register_path_map as rpm
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _spec(field_id, engine_path):
     return SimpleNamespace(field_id=field_id, engine_path=engine_path)
 
@@ -116,28 +102,51 @@ def seeded_db(tmp_path, monkeypatch):
     db.init_db()
 
 
-def _page(template, user_id="q2map"):
+def _react_mapping_data(template, user_id="q2map"):
     from fastapi.testclient import TestClient
     import main_web
     from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence.workspace_repository import get_workspace_state
     from app.services.reference_seed_service import create_reference_seeded_project
+    from app.v2.router import _build_assumption_register_view
+    from app.workbook.service import WorkbookService
+
     rec = create_reference_seeded_project(user_id=user_id, template_source=template,
                                           requested_name="Q2 Map", capacity_mw=40.0)
     cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
-    r = TestClient(main_web.app).get(f"/v2/workbook?project={rec.project_code}", cookies=cookies)
+    client = TestClient(main_web.app)
+    by_fid: dict[str, tuple[str | None, bool]] = {}
+    r = client.get(f"/v2/model-react/inputs?project={rec.project_code}", cookies=cookies)
     assert r.status_code == 200
-    p = _Rows(); p.feed(r.text)
-    return p
+    for sec in r.json()["grid"]["sections"]:
+        for cat in sec.get("categories", []):
+            for row in cat.get("rows", []):
+                fid = row.get("field_id")
+                if fid:
+                    by_fid[fid] = (rpm.register_path_for_field(fid), bool(row.get("editable")))
+    for sheet_id in ("project_setup", "debt", "revenue", "tax", "investor", "inputs"):
+        fr = client.get(f"/v2/model-react/fields/{sheet_id}", params={"project": rec.project_code}, cookies=cookies)
+        if fr.status_code == 200:
+            for f in fr.json().get("fields") or []:
+                fid = f.get("field_id")
+                if fid and fid not in by_fid:
+                    by_fid[fid] = (f.get("register_path") or rpm.register_path_for_field(fid), f.get("binding_label") == "bound")
+    react_rows = [(fid, path, ed) for fid, (path, ed) in by_fid.items()]
+    ws = get_workspace_state(user_id, rec.project_id)
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    reg_view = _build_assumption_register_view(pis)
+    meta_paths = [entry["path"] for entry in (reg_view.get("rows") or []) if entry.get("path")]
+    return react_rows, meta_paths
 
 
 @pytest.mark.parametrize("template", ["generic_solar_reference", "generic_wind_reference"])
 def test_real_workbook_mapping_coverage(seeded_db, template):
-    p = _page(template)
-    meta = set(p.meta_paths)
-    mapped = [(fid, path) for fid, path, _ in p.rows if path]
+    rows, meta_paths = _react_mapping_data(template)
+    meta = set(meta_paths)
+    mapped = [(fid, path) for fid, path, _ in rows if path]
     paths = [path for _, path in mapped]
     navigable = [(fid, path) for fid, path in mapped if path in meta]
-    print(f"[{template}] register paths={len(meta)} workbook rows={len(p.rows)} "
+    print(f"[{template}] register paths={len(meta)} workbook rows={len(rows)} "
           f"rows with registry path claim={len(mapped)} navigable (claim is a register path)={len(navigable)} "
           f"unmapped register paths={len(meta - {pth for _, pth in navigable})}")
     assert len(meta) == 236
@@ -158,10 +167,17 @@ def test_reference_project_rows_remain_read_only(seeded_db, template):
     from app.services.project_library_service import ensure_reference_models
     ensure_reference_models()
     cookies = {COOKIE_NAME: create_session_token(user_id="q2ref", username="admin")}
-    r = TestClient(main_web.app).get(f"/v2/workbook?project={template}-reference", cookies=cookies)
+    r = TestClient(main_web.app).get(f"/v2/model-react/inputs?project={template}-reference", cookies=cookies)
     assert r.status_code == 200
-    p = _Rows(); p.feed(r.text)
-    assert p.rows, "reference workbook must render field rows"
-    assert any(path for _, path, _ in p.rows), "mapping attribute is presentation-only and also present"
-    assert not any(editable for _, _, editable in p.rows)
-    assert not re.search(r'<input[^>]+class="[^"]*v2-field-input', r.text)
+    body = r.json()
+    assert body["project"]["protected_reference"] is True
+    rows = [
+        (row["field_id"], rpm.register_path_for_field(row["field_id"]), bool(row.get("editable")))
+        for sec in body["grid"]["sections"]
+        for cat in sec.get("categories", [])
+        for row in cat.get("rows", [])
+        if row.get("field_id")
+    ]
+    assert rows, "reference workbook must expose field rows"
+    assert any(path for _, path, _ in rows), "mapping attribute is presentation-only and also present"
+    assert not any(editable for _, _, editable in rows)

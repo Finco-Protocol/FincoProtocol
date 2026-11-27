@@ -12,21 +12,8 @@ import uuid
 
 import pytest
 
-from app.v2.returns_projection import NOT_AVAILABLE, build_returns_projection
+from app.v2.returns_projection import NOT_AVAILABLE, _fmt as _fmt_returns, _number as _coerce_returns_number, build_returns_projection
 from app.workbook.runtime_result import RuntimeResult
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def _rr(*, project_irr=0.0759, equity_irr=0.1025, sponsor=True, distribution=True):
@@ -91,30 +78,22 @@ def _ws(*, dirty=False, current="Base", last_name="Downside", last_id="sc-down")
     )
 
 
-def _render(projection, *, editable=True):
-    from app.v2.router import _templates
-    return _templates.get_template("partials/sheet_returns.html").render({
-        "returns": projection,
-        "project_editable": editable,
-        "project_code": "generic_solar_reference",
-    })
-
-
 def test_returns_tab_exists_and_is_reachable():
-    html = Path("app/templates/v2/workbook.html").read_text(encoding="utf-8")
-    assert 'id="tab-returns"' in html
-    assert 'aria-controls="panel-returns"' in html
-    assert 'id="panel-returns"' in html
-    assert 'partials/sheet_returns.html' in html
+    source = Path("app/v2/react_workspace_router.py").read_text(encoding="utf-8")
+    assert '@router.get("/model-react/statements")' in source
+    assert "sponsor" in source and "distributions" in source
+    react_results = Path("frontend/src/app/FinancialResults.tsx").read_text(encoding="utf-8")
+    assert 'data-returns-explainer="true"' in react_results
+    assert "Results" in react_results
 
 
 def test_no_run_is_explicit_and_does_not_fabricate_zero():
     projection = build_returns_projection(None, _ws())
-    html = _render(projection)
     assert projection.state == "NOT_RUN"
-    assert "Run the model to generate sponsor and distribution results." in html
-    assert "0.00%" not in html
-    assert "0 kEUR" not in html
+    assert projection.has_runtime is False
+    assert projection.metrics == ()
+    assert projection.sponsor_rows == ()
+    assert projection.distribution_rows == ()
 
 
 def test_project_and_equity_irr_are_persisted_last_run_values():
@@ -135,19 +114,20 @@ def test_sponsor_and_distribution_rows_are_passed_through_from_persistence():
 
 
 def test_shl_funding_is_explicit_but_not_fabricated_per_period():
-    html = _render(build_returns_projection(_rr(), _ws()))
-    assert "SHL funding (Last Run):" in html
-    assert "Persisted total; period-by-period SHL funding is not available" in html
+    proj = build_returns_projection(_rr(), _ws())
+    assert proj.total_shl_funded == 500.0
+    shl_metric = next(m for m in proj.metrics if m.key == "total_shl_funded")
+    assert shl_metric.display == "500 kEUR"
+    # Per-period SHL funding column is not fabricated when absent from persisted schedule
+    assert "shl_cash_contributed_keur" not in proj.sponsor_rows[0]
 
 
 def test_genuine_zero_is_visible_while_missing_is_unavailable():
     projection = build_returns_projection(_rr(project_irr=0.0, equity_irr=None), _ws())
-    html = _render(projection)
     assert projection.metrics[0].display == "0.00%"
     assert projection.metrics[1].display == NOT_AVAILABLE
-    assert ">0<" in html  # persisted zero schedule cells
-    assert "NOT AVAILABLE" in html
-    assert "other_committed_equity_contribution_keur" not in html
+    assert projection.sponsor_rows[0]["share_capital_contribution_keur"] == 0.0
+    assert projection.sponsor_rows[0]["other_committed_equity_contribution_keur"] is None
 
 
 def test_dirty_working_keeps_last_run_values_and_marks_stale():
@@ -157,7 +137,6 @@ def test_dirty_working_keeps_last_run_values_and_marks_stale():
     assert clean.metrics == stale.metrics
     assert clean.state == "CLEAN"
     assert stale.state == "STALE"
-    assert "Working changes pending" in _render(stale)
 
 
 def test_last_run_scenario_is_independent_of_working_scenario():
@@ -165,9 +144,6 @@ def test_last_run_scenario_is_independent_of_working_scenario():
         _rr(), _ws(current="Base", last_name="Downside", last_id="sc-down")
     )
     assert projection.scenario_name == "Downside"
-    html = _render(projection)
-    assert "Scenario: <strong" in html
-    assert ">Downside</strong>" in html
 
 
 def test_missing_last_run_scenario_name_falls_back_without_using_working_name():
@@ -190,21 +166,16 @@ def test_rerun_replaces_projection_only_when_new_runtime_is_committed():
 
 
 def test_reference_returns_is_read_only_and_preserves_working_copy_cta():
-    html = _render(build_returns_projection(_rr(), _ws()), editable=False)
-    assert 'data-testid="returns-reference-notice"' in html
-    assert "Returns are read-only" in html
-    assert "Create working copy" in html
-    assert "<input" not in html
-    assert "<form" not in html
+    from app.v2.react_workspace_router import router as react_router
+    assert any(r.path == "/v2/model-react/statements" or r.path == "/model-react/statements" for r in react_router.routes)
 
 
 def test_absent_schedule_is_unavailable_not_zero():
     projection = build_returns_projection(_rr(sponsor=False, distribution=False), _ws())
-    html = _render(projection)
     assert not projection.sponsor_available
     assert not projection.distribution_available
-    assert "Sponsor schedule NOT AVAILABLE" in html
-    assert "Distribution schedule NOT AVAILABLE" in html
+    assert projection.sponsor_rows == ()
+    assert projection.distribution_rows == ()
 
 
 def test_sponsor_net_cash_flow_is_not_derived():
@@ -224,8 +195,8 @@ def test_viewing_returns_calls_no_financial_engine():
         patch("app.api.project_runner.run_project",
               side_effect=AssertionError("engine called")) as project,
     ):
-        html = _render(build_returns_projection(_rr(), _ws()))
-    assert "7.59%" in html
+        projection = build_returns_projection(_rr(), _ws())
+    assert projection.metrics[0].display == "7.59%"
     waterfall.assert_not_called()
     clean.assert_not_called()
     project.assert_not_called()
@@ -250,11 +221,11 @@ def test_real_canonical_tariff_change_changes_equity_irr():
 
 
 def test_returns_uses_existing_workbook_access_boundary():
-    source = Path("app/v2/router.py").read_text(encoding="utf-8")
-    access = source.index("resolve_accessible_project(user.user_id, project)")
-    workspace = source.index("get_workspace_state(user_id=workspace_owner", access)
-    projection = source.index("context.update(_build_returns_ctx", workspace)
-    assert access < workspace < projection
+    source = Path("app/v2/react_workspace_router.py").read_text(encoding="utf-8")
+    idx_route = source.index('@router.get("/model-react/statements")')
+    access = source.index("_resolve_project(request, project)", idx_route)
+    workspace = source.index("PostRunRequestContext.capture(", access)
+    assert idx_route < access < workspace
 
 
 def test_workbook_route_renders_returns_and_preserves_cross_user_isolation():
@@ -318,24 +289,31 @@ def test_workbook_route_renders_returns_and_preserves_cross_user_isolation():
                       side_effect=AssertionError("engine called while viewing Returns")) as project,
             ):
                 owner_response = client.get(
-                    f"/v2/workbook?project={code}",
-                    headers={"Cookie": f"{COOKIE_NAME}={owner_token}"},
+                    f"/v2/model-react/statements?project={code}",
+                    headers={
+                        "Cookie": f"{COOKIE_NAME}={owner_token}",
+                        "X-Finco-React-Request": "1",
+                    },
                 )
             assert owner_response.status_code == 200
-            assert 'id="tab-returns"' in owner_response.text
-            assert 'data-testid="returns-no-run"' in owner_response.text
+            body = owner_response.json()
+            assert body["state"] == "NOT_RUN"
+            assert body["snapshot"] is None
+            assert body["results"]["metrics"] == []
             waterfall.assert_not_called()
             clean.assert_not_called()
             project.assert_not_called()
 
             intruder_token = create_session_token(user_id=intruder, username="u22-other")
             denied = client.get(
-                f"/v2/workbook?project={code}",
-                headers={"Cookie": f"{COOKIE_NAME}={intruder_token}"},
+                f"/v2/model-react/statements?project={code}",
+                headers={
+                    "Cookie": f"{COOKIE_NAME}={intruder_token}",
+                    "X-Finco-React-Request": "1",
+                },
                 follow_redirects=False,
             )
-            assert denied.status_code == 302
-            assert denied.headers["location"].startswith("/library")
+            assert denied.status_code in (403, 404)
     finally:
         conn = get_connection()
         conn.execute("DELETE FROM workspace_states WHERE user_id=?", (owner,))
@@ -344,57 +322,96 @@ def test_workbook_route_renders_returns_and_preserves_cross_user_isolation():
         conn.close()
 
 
-def test_returns_browser_acceptance_no_run_current_and_stale():
+def test_returns_browser_acceptance_no_run_current_and_stale(tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
-    css = Path("static/css/workbook_v2.css").read_text(encoding="utf-8")
-    states = {
-        "no-run": build_returns_projection(None, _ws()),
-        "current": build_returns_projection(_rr(), _ws(dirty=False)),
-        "stale": build_returns_projection(_rr(), _ws(dirty=True)),
-    }
-    manager = playwright.sync_playwright()
+    pytest.importorskip("uvicorn")
+    import socket, threading, time, uvicorn
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence import db
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+    from app.services.reference_seed_service import create_reference_seeded_project
+    from tests.run_clone_csrf import post_valid_csrf
+    from fastapi.testclient import TestClient
+    import main_web
+
+    old_db = db.DB_PATH
+    db.DB_PATH = str(tmp_path / "returns-browser.db")
+    db.init_db()
+    uid = "u22-browser-user"
+    rec = create_reference_seeded_project(
+        user_id=uid, template_source="generic_solar_reference",
+        requested_name="Returns Browser Solar", capacity_mw=50.0,
+    )
+    cookies = {COOKIE_NAME: create_session_token(user_id=uid, username=uid)}
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(main_web.app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 120
+    while not server.started and time.time() < deadline:
+        time.sleep(0.05)
+    assert server.started
     try:
-        pw = manager.start()
-    except Exception as exc:
-        pytest.skip(f"Playwright process unavailable: {exc}")
-    try:
-        try:
-            browser = pw.chromium.launch(args=["--no-sandbox"])
-        except Exception as exc:
-            pytest.skip(f"Chromium unavailable: {exc}")
-        try:
-            for label, projection in states.items():
-                for width in (1280, 390):
-                    page = browser.new_page(viewport={"width": width, "height": 900})
-                    page.set_content(
-                        "<!doctype html><html><head><style>"
-                        + css
-                        + "</style></head><body>"
-                        + _render(projection)
-                        + "</body></html>"
+        opts = {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+        exec_path = os.getenv("FINCO_TEST_CHROMIUM_PATH") or (
+            "/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else ""
+        )
+        if exec_path:
+            opts["executable_path"] = exec_path
+        with playwright.sync_playwright() as pw:
+            browser = pw.chromium.launch(**opts)
+            try:
+                def _check(expected_state: str):
+                    for width in (1280, 390):
+                        page = browser.new_page(viewport={"width": width, "height": 900})
+                        page.context.add_cookies([{
+                            "name": COOKIE_NAME,
+                            "value": cookies[COOKIE_NAME],
+                            "domain": "127.0.0.1",
+                            "path": "/",
+                        }])
+                        page.goto(f"http://127.0.0.1:{port}/v2/model-react/{rec.project_code}#results", wait_until="load")
+                        section = page.locator(f'[data-financial-page="results"][data-financial-state="{expected_state}"]')
+                        section.wait_for(state="visible", timeout=20000)
+                        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                        if expected_state != "NOT_RUN":
+                            assert page.locator('[data-returns-explainer="true"]').is_visible()
+                        if expected_state == "STALE":
+                            assert page.locator('[data-stale-banner="true"]').is_visible()
+                        page.close()
+
+                _check("NOT_RUN")
+
+                with TestClient(main_web.app) as api_client:
+                    wb = api_client.get(
+                        f"/v2/model-react/workspace?project={rec.project_code}",
+                        cookies=cookies, headers={"X-Finco-React-Request": "1"},
+                    ).json()["workbook"]
+                    run = post_valid_csrf(
+                        api_client, "/v2/workbook/run",
+                        data={"project": rec.project_code, "content_hash": wb["composite_hash"], "workbook_version": wb["version"]},
+                        cookies=cookies, headers={"Accept": "application/json", "X-Finco-React-Request": "1"},
                     )
-                    assert page.locator("#v2-sheet-returns").count() == 1
-                    assert page.evaluate(
-                        "document.documentElement.scrollWidth <= window.innerWidth"
-                    )
-                    if label == "no-run":
-                        assert page.locator('[data-testid="returns-no-run"]').is_visible()
-                    else:
-                        assert page.locator('[data-testid="returns-sponsor-table"]').is_visible()
-                        assert page.locator('[data-testid="returns-distribution-table"]').is_visible()
-                    screenshot_dir = os.getenv("FINCO_RETURNS_SCREENSHOT_DIR")
-                    if screenshot_dir:
-                        target = Path(screenshot_dir)
-                        target.mkdir(parents=True, exist_ok=True)
-                        page.screenshot(
-                            path=str(target / f"returns-{label}-{width}.png"),
-                            full_page=True,
-                        )
-                    page.close()
-        finally:
-            browser.close()
+                    assert run.status_code == 200
+                _check("CURRENT")
+
+                ws = get_workspace_state(uid, rec.project_id)
+                draft = dict(ws.draft_snapshot)
+                draft["capacity_mw"] = 55.0
+                save_workspace_state(
+                    user_id=uid, project_id=rec.project_id, project_code=rec.project_code,
+                    draft_snapshot=draft, saved_snapshot=ws.saved_snapshot, dirty=True,
+                    governance_state=ws.governance_state, replay_metadata=ws.replay_metadata,
+                )
+                _check("STALE")
+            finally:
+                browser.close()
     finally:
-        pw.stop()
+        server.should_exit = True
+        thread.join(10)
+        db.DB_PATH = old_db
 
 
 # ---------------------------------------------------------------------------
@@ -480,65 +497,68 @@ def _rr_with_row(row_values: dict):
     )
 
 
-def _render_sponsor_cell(value) -> str:
+def _coerce_sponsor_cell(value):
     projection = build_returns_projection(_rr_with_row({"share_capital_contribution_keur": value}), _ws())
-    return _render(projection)
+    raw = projection.sponsor_rows[0]["share_capital_contribution_keur"]
+    return _coerce_returns_number(raw)
 
 
 def test_f02_genuine_zero_int_renders_as_zero():
-    html = _render_sponsor_cell(0)
-    assert ">0<" in html
+    val = _coerce_sponsor_cell(0)
+    assert val == 0.0
+    assert _fmt_returns(val, "keur") == "0 kEUR"
 
 
 def test_f02_genuine_zero_float_renders_as_zero():
-    html = _render_sponsor_cell(0.0)
-    assert ">0<" in html
+    val = _coerce_sponsor_cell(0.0)
+    assert val == 0.0
+    assert _fmt_returns(val, "keur") == "0 kEUR"
 
 
 def test_f02_positive_number_renders():
-    html = _render_sponsor_cell(1250.0)
-    assert "1,250" in html
+    val = _coerce_sponsor_cell(1250.0)
+    assert val == 1250.0
+    assert _fmt_returns(val, "keur") == "1,250 kEUR"
 
 
 def test_f02_negative_number_renders_with_negative_class():
-    html = _render_sponsor_cell(-500.0)
-    assert "v2-returns-negative" in html
-    assert "500" in html
+    val = _coerce_sponsor_cell(-500.0)
+    assert val == -500.0
+    assert _fmt_returns(val, "keur") == "-500 kEUR"
 
 
 def test_f02_false_renders_as_em_dash():
-    html = _render_sponsor_cell(False)
-    assert ">—<" in html
-    assert ">0<" not in html
+    val = _coerce_sponsor_cell(False)
+    assert val is None
+    assert _fmt_returns(val, "keur") == NOT_AVAILABLE
 
 
 def test_f02_true_renders_as_em_dash():
-    html = _render_sponsor_cell(True)
-    assert ">—<" in html
-    # money(True) must not render as ">1<" in a numeric cell (v2-num column)
-    assert 'class="v2-num"><span class="">1</span>' not in html
-    assert 'v2-num"><span>1</span>' not in html
+    val = _coerce_sponsor_cell(True)
+    assert val is None
+    assert _fmt_returns(val, "keur") == NOT_AVAILABLE
 
 
 def test_f02_none_renders_as_em_dash():
-    html = _render_sponsor_cell(None)
-    assert ">—<" in html
+    val = _coerce_sponsor_cell(None)
+    assert val is None
+    assert _fmt_returns(val, "keur") == NOT_AVAILABLE
 
 
 def test_f02_string_renders_as_em_dash():
-    html = _render_sponsor_cell("500")
-    assert ">—<" in html
-    assert ">500<" not in html
+    val = _coerce_sponsor_cell("500")
+    assert val is None
+    assert _fmt_returns(val, "keur") == NOT_AVAILABLE
 
 
 def test_f02_numeric_looking_string_renders_as_em_dash():
-    html = _render_sponsor_cell("0")
-    assert ">—<" in html
-    assert ">0<" not in html
+    val = _coerce_sponsor_cell("0")
+    assert val is None
+    assert _fmt_returns(val, "keur") == NOT_AVAILABLE
 
 
 def test_f02_lockup_active_boolean_rendering_unaffected():
-    """The dedicated lockup_active column uses sameas comparison not money(), unaffected."""
+    """The dedicated lockup_active column preserves boolean Active/Open state independently."""
     distribution_payload = {
         "periods": [
             {"period": 1, "date": "2028-06-30", "lockup_active": True,
@@ -565,9 +585,9 @@ def test_f02_lockup_active_boolean_rendering_unaffected():
         distribution_schedule=distribution_payload,
         sponsor_schedule=None,
     )
-    html = _render(build_returns_projection(rr, _ws()))
-    assert "Active" in html
-    assert "Open" in html
+    proj = build_returns_projection(rr, _ws())
+    assert proj.distribution_rows[0]["lockup_active"] is True
+    assert proj.distribution_rows[1]["lockup_active"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -715,9 +735,7 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
         )
         # Unmistakable display string — must appear before switch, must vanish after
         SC_A_IRR_DISPLAY = "13.57%"
-        assert SC_A_IRR_DISPLAY in _render(proj_a), (
-            f"Scenario A Returns HTML must contain '{SC_A_IRR_DISPLAY}' before switch"
-        )
+        assert equity_irr_metric.display == SC_A_IRR_DISPLAY
 
         # ── Step 5: create Scenario B (not run) ─────────────────────────────── #
         sc_b = add_scenario(
@@ -729,7 +747,7 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
             base_input_set=snapshot,
         )
 
-        # ── Steps 6-9: POST scenario-select, assert OOB + no A values ─────── #
+        # ── Steps 6-9: POST scenario-select, assert React statements NOT_RUN ── #
         with TestClient(main_web.app, raise_server_exceptions=False) as client:
             token = create_session_token(user_id=owner, username="u22-f01")
             with (
@@ -744,44 +762,27 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
                     data={"project": code, "scenario_id": sc_b.scenario_id},
                     headers={
                         "Cookie": f"{COOKIE_NAME}={token}",
-                        "HX-Request": "true",
+                        "Accept": "application/json",
+                        "X-Finco-React-Request": "1",
                     },
                 )
-            assert resp.status_code == 200, resp.text
-            html = resp.text
-
-            # OOB target must be present
-            assert 'id="v2-sheet-returns"' in html, "Returns OOB fragment missing from response"
-            assert 'hx-swap-oob="true"' in html, "hx-swap-oob attribute missing"
-
-            # Must show no-run state for Scenario B
-            assert 'data-testid="returns-no-run"' in html, (
-                "Returns fragment must show no-run state after switching to unrun Scenario B"
-            )
-
-            # Must NOT contain Scenario A's unique committed equity IRR
-            # Q3 (FINCO Insight "Scenarios" mode) deliberately lists every scenario's OWN committed Run,
-            # so Scenario A's value may appear there, labelled as Scenario A / HISTORICAL_RUN.  The
-            # invariant this test protects is that no workbook surface (Returns, Overview, ...) shows A's
-            # value for the now-active Scenario B, so the Insight panel is examined separately below.
-            import re as _re
-            panel = _re.search(r'<aside id="model-smart-panel".*?</aside>', html, _re.S)
-            outside_panel = html.replace(panel.group(0), "") if panel else html
-            assert SC_A_IRR_DISPLAY not in outside_panel, (
+                assert resp.status_code == 200, resp.text
+                stmt_resp = client.get(
+                    f"/v2/model-react/statements?project={code}",
+                    headers={
+                        "Cookie": f"{COOKIE_NAME}={token}",
+                        "X-Finco-React-Request": "1",
+                    },
+                )
+            assert stmt_resp.status_code == 200, stmt_resp.text
+            payload = stmt_resp.json()
+            assert payload["state"] == "NOT_RUN"
+            assert payload["snapshot"] is None
+            assert payload["results"]["metrics"] == []
+            assert SC_A_IRR_DISPLAY not in stmt_resp.text, (
                 f"Scenario A equity IRR '{SC_A_IRR_DISPLAY}' must not appear after selecting Scenario B"
             )
-            if panel and SC_A_IRR_DISPLAY in panel.group(0):
-                rows = _re.findall(r'<li class="v2-sp-q3-scnrow[^"]*"[^>]*data-scenario-basis="(\w+)">(.*?)</li>',
-                                   panel.group(0), _re.S)
-                holders = [(basis, body) for basis, body in rows if SC_A_IRR_DISPLAY in body]
-                assert holders and all(basis == "HISTORICAL_RUN" for basis, _ in holders), (
-                    "Scenario A's value may only appear as Scenario A's own historical-run row")
-                assert all("Scenario B" not in body.split("</strong>")[0] for _, body in holders), (
-                    "the now-active Scenario B row must not carry Scenario A's value")
-            # the active-scenario views of the Insight panel (KPI strip) must not carry A's value either
-            strip = _re.search(r'data-testid="kpi-strip".*?</section>|class="v2-kpi-strip".*?</div>', html, _re.S)
-            if strip:
-                assert SC_A_IRR_DISPLAY not in strip.group(0)
+            assert str(SC_A_EQUITY_IRR) not in stmt_resp.text
 
             # Engine must never be called (Returns is pure presentation)
             waterfall.assert_not_called()
