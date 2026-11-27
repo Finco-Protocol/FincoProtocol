@@ -171,11 +171,14 @@ class TestCBLibraryNoAuthorityStrip:
         )
 
     def test_c4_library_route_sets_project_record_none(self):
-        """C4: /library route context contains project_record=None (canonical gate signal)."""
+        """C4: /library redirects unconditionally to the decommissioned React library without rendering a workspace template."""
         src = Path(__file__).resolve().parents[1] / "app" / "library" / "router.py"
-        code = src.read_text()
-        assert '"project_record": None' in code or "'project_record': None" in code, (
-            "Library router must explicitly set project_record: None in template context"
+        code = src.read_text(encoding="utf-8")
+        assert "react_library_url" in code and "react_project_url" in code, (
+            "Library router must redirect directly to React library / project workspace"
+        )
+        assert "project_library.html" not in code, (
+            "Decommissioned library HTML shell must not be referenced in library router"
         )
 
 
