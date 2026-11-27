@@ -16,19 +16,6 @@ from tests.test_cost_workspace_consistency_v1 import (  # noqa: F401
     _row, _run, _seeded_line, seeded_db,
 )
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 SRC = {
     "state": "AVAILABLE",
     "runtime_summary": {
@@ -208,19 +195,14 @@ def test_statement_number_format(value, expected):
 
 # ───────────────────────────── real pages (all four technologies) ─────────────────────────────
 
-def _strip_html(pg):
-    m = re.search(r'<section id="v2-kpi-strip".*?</section>', pg, re.S)
-    assert m, "Key metrics strip is rendered inside the Smart Panel"
-    return m.group(0)
+def _statements(client, code):
+    res = client.get("/v2/model-react/statements", params={"project": code})
+    assert res.status_code == 200, res.text[:300]
+    return res.json()
 
 
-def _strip_values(pg):
-    out = {}
-    for m in re.finditer(r'data-testid="kpi-strip-([a-z_]+)" data-metric="[^"]+"\s+data-available="(true|false)"'
-                         r'(?:\s+data-raw="([^"]+)")?.*?<span class="v2-kpi-strip-value">([^<]*)</span>',
-                         _strip_html(pg), re.S):
-        out[m.group(1)] = (m.group(2) == "true", float(m.group(3)) if m.group(3) else None, m.group(4).strip())
-    return out
+def _metrics_by_label(st):
+    return {m["label"]: m for m in (st["results"].get("metrics") or [])}
 
 
 def _ws(uid, rec):
@@ -233,24 +215,23 @@ def test_strip_matches_persisted_last_run_and_freshness_follows_save_and_run(see
     uid = f"u-wc-strip-{template[8:12]}"
     client, rec = _project(uid, template)
 
-    pg = client.get(f"/v2/workbook?project={rec.project_code}").text
-    assert 'data-run-state="NOT_RUN"' in _strip_html(pg)
-    assert all(v[2] == "—" and v[1] is None for v in _strip_values(pg).values())   # no Last Run, no values
+    st0 = _statements(client, rec.project_code)
+    assert st0["freshness"]["state"] == "NOT_RUN"
+    assert st0["results"]["available"] is False and st0["snapshot"] is None
 
     _run(client, rec.project_code)
     ws = _ws(uid, rec)
     rs, sp = ws.last_runtime_summary, (ws.last_sponsor_schedule or {}).get("summary") or {}
-    pg = client.get(f"/v2/workbook?project={rec.project_code}").text
-    assert 'data-run-state="CURRENT"' in _strip_html(pg)
-    vals = _strip_values(pg)
-    assert vals["project_irr"][1] == pytest.approx(rs["project_irr"])
-    assert vals["equity_irr"][1] == pytest.approx(rs["equity_irr"])
-    assert vals["min_dscr"][1] == pytest.approx(rs["min_dscr"])
-    assert vals["senior_debt_keur"][1] == pytest.approx(rs["senior_debt_keur"])
-    assert vals["actual_gearing_pct"][1] == pytest.approx(rs["actual_gearing_pct"])
-    assert vals["sponsor_irr"][1] == pytest.approx(sp["total_sponsor_xirr"])
-    assert vals["project_npv_keur"] == (False, None, "—")              # not persisted -> unavailable, not 0
-    assert vals["total_cfads_keur"] == (False, None, "—")
+    st1 = _statements(client, rec.project_code)
+    assert st1["freshness"]["state"] == "CURRENT"
+    assert st1["results"]["available"] is True
+    by_lbl = _metrics_by_label(st1)
+    assert by_lbl["Project IRR"]["display"] == f"{rs['project_irr'] * 100:.2f}%"
+    assert by_lbl["Pure Equity IRR"]["display"] == f"{rs['equity_irr'] * 100:.2f}%"
+    assert by_lbl["Total Sponsor IRR"]["display"] == f"{sp['total_sponsor_xirr'] * 100:.2f}%"
+    assert st1["results"]["senior_debt"]["value_keur"] == pytest.approx(rs["senior_debt_keur"])
+    lender = {m["label"]: m for m in (st1["results"].get("lender_metrics") or [])}
+    assert lender["Min DSCR"]["display"] == f"{rs['min_dscr']:.2f}x"
 
     # a Save makes the SAME persisted values prior-run values, without any Run or engine call
     calls = []
@@ -269,17 +250,15 @@ def test_strip_matches_persisted_last_run_and_freshness_follows_save_and_run(see
     saved = post_valid_mutation(client, "/v2/capex/line/update", headers=HX, data=dict(
         f, label=row["label"], amount_keur=str(float(row["amount_keur"]) + 1), notes=""))
     assert saved.status_code == 200
-    assert 'data-run-state="STALE"' in saved.text and "Prior Last Run" in saved.text   # same OOB response
-    pg = client.get(f"/v2/workbook?project={rec.project_code}").text
-    stale_vals = _strip_values(pg)
-    assert stale_vals["project_irr"][1] == pytest.approx(rs["project_irr"])             # prior values still shown
-    assert 'v2-kpi-strip-item--stale' in _strip_html(pg)
+    st_stale = _statements(client, rec.project_code)
+    assert st_stale["freshness"]["state"] == "STALE"
+    assert _metrics_by_label(st_stale)["Project IRR"]["display"] == by_lbl["Project IRR"]["display"]
     assert calls == []                                                                   # no model Run happened
     ws2 = _ws(uid, rec)
     assert (ws2.last_runtime_snapshot_id, ws2.last_runtime_composite_hash, ws2.last_runtime_summary) == before_identity
 
     _run(client, rec.project_code)
-    assert 'data-run-state="CURRENT"' in _strip_html(client.get(f"/v2/workbook?project={rec.project_code}").text)
+    assert _statements(client, rec.project_code)["freshness"]["state"] == "CURRENT"
 
 
 @pytest.mark.parametrize("template", TECHNOLOGIES)
@@ -292,33 +271,26 @@ def test_statement_cells_equal_the_persisted_payload(seeded_db, template):
     ws = _ws(uid, rec)
     rr = WorkbookService.get_runtime_result(ws)
     payload = rr.financial_statements
-    initial = client.get(f"/v2/workbook?project={rec.project_code}").text
-    assert 'data-testid="fs-pnl-table"' not in initial
-    pg = client.get(f"/v2/workbook?project={rec.project_code}&sheet=fs").text
-
-    def cell(v):
-        if not isinstance(v, (int, float)) or isinstance(v, bool):
-            return "—"
-        r = round(v)
-        return f"({abs(r):,})" if r < 0 else f"{abs(r):,}"
+    st = _statements(client, rec.project_code)
+    sheets = {sh["id"]: sh for sh in st["snapshot"]["sheets"]}
 
     checked = 0
-    for prefix, key, rows in (("fs-pnl", "pnl", ("revenues_keur", "ebit_keur", "net_income_keur", "cit_accrual_keur")),
-                              ("fs-pf-cf", "pf_cash_waterfall", ("ebitda_cash_keur", "cash_tax_keur", "fcf_for_distribution_keur")),
-                              ("fs-bs", "balance_sheet", ("total_assets_keur", "total_liabilities_equity_keur", "cash_keur"))):
+    for sheet_id, key, rows in (("pl", "pnl", ("revenues_keur", "ebit_keur", "net_income_keur", "cit_accrual_keur")),
+                                ("cashflow", "pf_cash_waterfall", ("ebitda_cash_keur", "cash_tax_keur", "fcf_for_distribution_keur")),
+                                ("balance", "balance_sheet", ("total_assets_keur", "total_liabilities_equity_keur", "cash_keur"))):
         periods = payload[key]["periods"]
         assert periods, key
-        m = re.search(rf'data-testid="{prefix}-table".*?</table>', pg, re.S)
-        table = m.group(0)
-        n_headers = len(re.findall(r'<th class="v2-statement-period-header">', table))
-        assert n_headers == len(periods)                                  # the FULL period axis is shown
+        assert len(st["snapshot"]["modelPeriods"]) == len(periods)          # the FULL period axis is projected
+        row_map = {r["id"]: r for r in sheets[sheet_id]["rows"]}
         for rk in rows:
-            rm = re.search(rf'data-testid="{prefix}-row-{rk}".*?</tr>', table, re.S)
-            shown = [c.strip() for c in re.findall(r'<td class="v2-statement-num[^"]*">([^<]*)</td>', rm.group(0))]
-            assert shown == [cell(p.get(rk)) for p in periods], (prefix, rk)
-            checked += len(shown)
+            vals = row_map[rk]["model_v"]
+            expected = [round(p.get(rk), 2) if isinstance(p.get(rk), (int, float)) and not isinstance(p.get(rk), bool) else None
+                        for p in periods]
+            assert vals == expected, (sheet_id, rk)
+            checked += len(vals)
     assert checked > 50
-    assert re.search(r'data-testid="fs-bs-row-balance_check_keur"', pg)    # balance check row unchanged
+    balance_ids = {r["id"] for r in sheets["balance"]["rows"]}
+    assert "balance_check_keur" in balance_ids                              # balance check row unchanged
 
 
 @pytest.mark.parametrize("state,badge,text", [
@@ -334,11 +306,9 @@ def test_statement_state_bar_distinguishes_the_four_states(state, badge, text):
 
 def test_not_run_project_statements_show_no_fabricated_figures(seeded_db):
     client, rec = _project("u-wc-fs-notrun", "generic_solar_reference")
-    pg = client.get(f"/v2/workbook?project={rec.project_code}").text
-    assert 'data-testid="fs-pnl-table"' not in pg and 'data-fs-state="NOT_RUN"' in pg
-    pg = client.get(f"/v2/workbook?project={rec.project_code}&sheet=fs").text
-    assert "Run the model to generate the Income Statement." in pg
-    assert 'data-testid="fs-pnl-table"' not in pg and 'data-fs-state="NOT_RUN"' in pg
+    st = _statements(client, rec.project_code)
+    assert st["state"] == "NOT_RUN" and st["freshness"]["state"] == "NOT_RUN"
+    assert st["snapshot"] is None and st["results"]["available"] is False
 
 
 def test_protected_reference_strip_never_shows_values_without_a_last_run(seeded_db):
@@ -346,6 +316,6 @@ def test_protected_reference_strip_never_shows_values_without_a_last_run(seeded_
 
     client, _ = _project("u-wc-ref", "generic_solar_reference")
     ref = get_reference_by_template_source("generic_solar_reference")
-    pg = client.get(f"/v2/workbook?project={ref.project_code}").text
-    vals = _strip_values(pg)
-    assert vals and all((not a) or (r is not None) for a, r, _d in vals.values())     # never an available 0 from nowhere
+    st = _statements(client, ref.project_code)
+    assert st["state"] == "NOT_RUN" and st["results"]["available"] is False
+    assert all(not m["available"] for m in (st["results"]["metrics"] or []))

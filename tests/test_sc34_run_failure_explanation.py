@@ -15,18 +15,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
 
 H = {"HX-Request": "true"}
 HORIZON = "project_setup.technical.horizon_years"
@@ -50,8 +39,8 @@ class P:
         client.cookies.set(COOKIE_NAME, create_session_token(user_id=uid, username="admin"))
 
     def ident(self):
-        html = self.c.get(f"/v2/workbook?project={self.rec.project_code}").text
-        return re.search(r'data-content-hash="([^"]+)"', html).group(1), re.search(r'data-workbook-version="([^"]+)"', html).group(1)
+        t = react_workbook_tokens(self.c, self.rec.project_code)
+        return t["content_hash"], str(t["workbook_version"])
 
     def set_horizon(self, years, *, expected_status: int = 200):
         ch, wv = self.ident()
@@ -117,8 +106,8 @@ def test_eligible_working_copy_gets_no_stale_index_notice_and_nothing_is_moved(e
     html = p.setup_sheet()
     assert 'data-testid="shl-horizon-notice"' not in html and "shl-min-horizon" not in html
     assert "at least 25 years" not in _text(html)
-    page = p.c.get(f"/v2/workbook?project={p.rec.project_code}").text                  # the full-workbook render consumes the same advisory
-    assert 'data-testid="shl-horizon-notice"' not in page
+    page = p.c.get(f"/v2/model-react/inputs?project={p.rec.project_code}").text      # React inputs payload likewise shows no false minimum
+    assert "shl-horizon-notice" not in page and "at least 25 years" not in page
     after = p.snapshot()
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
     assert "horizon_years" in changed and not any("shl" in k or "matur" in k for k in changed)

@@ -14,19 +14,6 @@ from tests.test_cost_workspace_consistency_v1 import (  # noqa: F401
 )
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def _canonical_total(uid, rec, kind):  # noqa: F811  (OPEX shown INCLUDING the engine's B.13 rule)
     from tests.test_cost_workspace_consistency_v1 import _canonical_total as base_total
 
@@ -45,11 +32,14 @@ def _canonical_total(uid, rec, kind):  # noqa: F811  (OPEX shown INCLUDING the e
 
 
 def _sheet_total(client, code, kind):
-    """The total exactly as the sheet shows it (no adjustment)."""
-    pg = client.get(f"/v2/workbook?project={code}").text
-    pat = (r'data-testid="total-capex-keur">\s*([\d,\.]+)' if kind == "capex"
-           else r'data-testid="opex-y1-total">\s*([\d,\.]+)')
-    return float(re.search(pat, pg).group(1).replace(",", ""))
+    """The total exactly as the React cost surface shows it (no adjustment)."""
+    if kind == "capex":
+        r = client.get("/v2/model-react/costlines", params={"project": code, "sheet": "capex"}).json()
+        if r.get("projection") is not None:
+            return float(r["projection"]["saved_total_keur"])
+        return sum(float(ln["amount_keur"]) for ln in r["lines"] if ln.get("active"))
+    r = client.get("/v2/model-react/opex-projection", params={"project": code}).json()
+    return float(r["kpis"]["year1_total_keur"])
 
 
 @pytest.mark.parametrize("capacity", [20.0, 40.0])
@@ -93,9 +83,9 @@ def test_data_center_b08_power_follows_project_capacity_not_the_template(seeded_
     client_b, rec_b = _project("u-dc-40", "generic_data_center_reference", capacity=40.0)
 
     def b08(client, code):
-        pg = client.get(f"/v2/workbook?project={code}").text
-        return float(re.search(r'data-testid="opex-subtotal-B.08"[^>]*>\s*([\d,\.]+)', pg)
-                     .group(1).replace(",", ""))
+        r = client.get("/v2/model-react/opex-projection", params={"project": code}).json()
+        row = next(item for item in r["rows"] if item.get("code") == "B.08")
+        return float(row["values"][0])
 
     p20, p40 = b08(client_a, rec_a.project_code), b08(client_b, rec_b.project_code)
     assert p40 == pytest.approx(2 * p20, rel=1e-3)

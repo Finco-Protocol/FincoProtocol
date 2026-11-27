@@ -25,28 +25,17 @@ from tests.test_cost_workspace_parity_v1 import (  # noqa: F401
 )
 from app.contingency_authority import SCENARIO_OVERRIDE_KEY
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 SOLAR_WIND = ["generic_solar_reference", "generic_wind_reference"]
 
 
-def _page_text(client, code):
-    return client.get(f"/v2/workbook?project={code}").text
+def _opex_proj(client, code):
+    res = client.get("/v2/model-react/opex-projection", params={"project": code})
+    assert res.status_code == 200, res.text[:300]
+    return res.json()
 
 
-def _sheet_opex_y1(pg):
-    return float(re.search(r'data-testid="opex-y1-total">\s*([\d,\.]+)', pg).group(1).replace(",", ""))
+def _sheet_opex_y1(proj):
+    return float(proj["totals"]["including_contingency"][0])
 
 
 def _effective_run_items(uid, rec, scenario_overrides=None):
@@ -84,15 +73,14 @@ def test_reference_estimate_is_shown_separately_and_not_in_the_total(seeded_db, 
     client, rec = _project(uid, template)
     items = _effective_run_items(uid, rec)
     assert not [i for i in items if i.percentage_of_opex]            # authority: nothing applied
-    pg = _page_text(client, rec.project_code)
-    assert _sheet_opex_y1(pg) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
-    note = re.search(r'data-testid="opex-reference-contingency-note">(.*?)</p>', pg, re.S)
-    assert note and "not applied" in note.group(1) and "excluded" in note.group(1)
-    assert "(incl. contingency)" not in pg
+    proj = _opex_proj(client, rec.project_code)
+    assert _sheet_opex_y1(proj) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
+    assert proj["contingency"]["rate_pct"] == 0.0
+    assert proj["totals"]["including_contingency"][0] == pytest.approx(proj["totals"]["excluding_contingency"][0])
     # the Run gets exactly what the sheet shows
     _run(client, rec.project_code)
     assert sum(float(i.y1_amount_keur) for i in captured_run["inputs"].opex) == pytest.approx(
-        _sheet_opex_y1(pg), abs=0.51)
+        _sheet_opex_y1(proj), abs=0.51)
     assert not [i for i in captured_run["inputs"].opex if i.percentage_of_opex]
 
 
@@ -103,14 +91,14 @@ def test_explicit_typed_b13_is_applied_and_shown_as_included(seeded_db, captured
     _set_typed_b13(uid, rec, 5.0)
     items = _effective_run_items(uid, rec)
     assert [i.percentage_of_opex for i in items if i.percentage_of_opex] == [0.05]
-    pg = _page_text(client, rec.project_code)
-    assert _sheet_opex_y1(pg) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
-    assert "opex-reference-contingency-note" not in pg               # nothing is "not applied"
-    assert "(incl. contingency)" in pg
+    proj = _opex_proj(client, rec.project_code)
+    assert _sheet_opex_y1(proj) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
+    assert proj["contingency"]["rate_pct"] == pytest.approx(5.0)
+    assert proj["totals"]["including_contingency"][0] > proj["totals"]["excluding_contingency"][0]
     _run(client, rec.project_code)
     run_items = captured_run["inputs"].opex
     assert [i.percentage_of_opex for i in run_items if i.percentage_of_opex] == [0.05]
-    assert _y1_incl_contingency(run_items) == pytest.approx(_sheet_opex_y1(pg), abs=0.51)
+    assert _y1_incl_contingency(run_items) == pytest.approx(_sheet_opex_y1(proj), abs=0.51)
     _assert_full_parity(captured_run["inputs"], _export_inputs(uid, rec))   # export parity unchanged
 
 
@@ -118,10 +106,10 @@ def test_explicit_typed_b13_is_applied_and_shown_as_included(seeded_db, captured
 def test_data_center_and_ev_are_unchanged(seeded_db, template):
     uid = f"u-b13-other-{template[8:12]}"
     client, rec = _project(uid, template)
-    pg = _page_text(client, rec.project_code)
-    assert "opex-reference-contingency-note" not in pg
+    proj = _opex_proj(client, rec.project_code)
+    assert proj["contingency"]["rate_pct"] == 0.0
     items = _effective_run_items(uid, rec)
-    assert _sheet_opex_y1(pg) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
+    assert _sheet_opex_y1(proj) == pytest.approx(_y1_incl_contingency(items), abs=0.51)
 
 
 @pytest.mark.parametrize("template", SOLAR_WIND)
@@ -132,10 +120,10 @@ def test_deactivate_reactivate_before_and_after_run_keep_sheet_equal_to_the_run(
     sid = _seeded_line(rec.project_id, "opex")
 
     def check():
-        pg = _page_text(client, rec.project_code)
-        assert _sheet_opex_y1(pg) == pytest.approx(
+        proj = _opex_proj(client, rec.project_code)
+        assert _sheet_opex_y1(proj) == pytest.approx(
             _y1_incl_contingency(_effective_run_items(uid, rec)), abs=0.51)
-        return _sheet_opex_y1(pg)
+        return _sheet_opex_y1(proj)
 
     base = check()
     assert _post(client, "opex", "deactivate", **_line_fields(client, rec, "opex", sid)).status_code == 200
@@ -157,9 +145,9 @@ def test_scenario_b13_override_is_applied_to_sheet_and_run(seeded_db, captured_r
     _scenario_with(client, rec, uid, {SCENARIO_OVERRIDE_KEY: {"opex": 3.0}})
     sc_items = _effective_run_items(uid, rec, scenario_overrides={SCENARIO_OVERRIDE_KEY: {"opex": 3.0}})
     assert [i.percentage_of_opex for i in sc_items if i.percentage_of_opex] == [0.03]
-    pg = _page_text(client, rec.project_code)
-    assert _sheet_opex_y1(pg) == pytest.approx(_y1_incl_contingency(sc_items), abs=0.51)
-    assert "opex-reference-contingency-note" not in pg
+    proj = _opex_proj(client, rec.project_code)
+    assert _sheet_opex_y1(proj) == pytest.approx(_y1_incl_contingency(sc_items), abs=0.51)
+    assert proj["contingency"]["rate_pct"] == pytest.approx(3.0)
     _run(client, rec.project_code)
     assert [i.percentage_of_opex for i in captured_run["inputs"].opex if i.percentage_of_opex] == [0.03]
     _assert_full_parity(captured_run["inputs"], _export_inputs(uid, rec))
