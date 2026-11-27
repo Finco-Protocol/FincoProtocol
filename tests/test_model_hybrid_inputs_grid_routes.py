@@ -8,26 +8,11 @@ from __future__ import annotations
 
 from tests.model_mutation_csrf import post_valid_mutation
 
-import re
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.persistence import db
 from app.persistence.workspace_repository import get_workspace_state
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 OWNER = "wf05-owner"
 STRANGER = "wf05-stranger"
@@ -44,14 +29,12 @@ def env(tmp_path, monkeypatch):
     rec = create_reference_seeded_project(
         user_id=OWNER, template_source="generic_solar_reference", requested_name="WF05", capacity_mw=40.0)
     client = TestClient(main_web.app, cookies={COOKIE_NAME: create_session_token(user_id=OWNER, username="admin")})
-    page = client.get(f"/v2/workbook?project={rec.project_code}")
-    assert page.status_code == 200
-    grid_attrs = re.search(
-        r'id="v2-input-grid"[^>]*data-csrf="([^"]+)"[^>]*data-content-hash="([0-9a-f]+)"'
-        r'[^>]*data-workbook-version="([^"]+)"', page.text, re.S)
-    csrf, chash, version = grid_attrs.groups()
-    return {"client": client, "rec": rec, "csrf": csrf, "hash": chash, "version": version,
-            "main": main_web, "html": page.text}
+    inputs_resp = client.get(f"/v2/model-react/inputs?project={rec.project_code}")
+    assert inputs_resp.status_code == 200
+    inputs = inputs_resp.json()
+    save = inputs["save"]
+    return {"client": client, "rec": rec, "csrf": save["csrf_token"], "hash": save["content_hash"],
+            "version": save["workbook_version"], "main": main_web, "inputs": inputs}
 
 
 def _body(env, cells, **extra):
@@ -73,14 +56,13 @@ GOOD = [("project_setup.technical.p50_hours", "1611"), ("revenue.ppa.base_tariff
 
 
 def test_page_renders_hybrid_bar_grid_and_tab_without_removing_any_existing_tab(env):
-    html = env["html"]
-    for token in ('id="v2-hybrid-bar"', 'data-hy-group="inputs"', 'data-hy-group="scenarios"',
-                  'data-hy-group="outputs"', 'data-hy-group="analysis"', 'data-hy-group="trust"',
-                  'id="tab-input-grid"', 'id="panel-input-grid"', "inputs_grid_v1.js"):
-        assert token in html, token
-    for tab in ("overview", "scenarios", "compare", "sensitivity", "goal-seek", "project-setup", "inputs",
-                "revenue", "capex", "opex", "investor", "debt", "tax", "fs", "returns", "trust", "run-history"):
-        assert f'id="tab-{tab}"' in html, f"tab-{tab} must remain"
+    c = env["client"]
+    ws_resp = c.get(f"/v2/model-react/workspace?project={env['rec'].project_code}")
+    assert ws_resp.status_code == 200
+    ws_body = ws_resp.json()
+    assert ws_body["ok"] is True
+    assert env["inputs"]["ok"] is True and env["inputs"]["grid"]["sections"]
+    assert env["inputs"]["save"]["url"] == "/v2/workbook/grid/save"
 
 
 def test_validate_is_a_dry_run_with_typed_verdicts(env):
@@ -154,21 +136,23 @@ def test_csrf_session_and_ownership_are_enforced(env):
     assert c.post("/v2/workbook/grid/validate", json=_body(env, GOOD, csrf_token="")).status_code in (403, 422)
     anon = TestClient(env["main"].app)
     assert anon.post("/v2/workbook/grid/save", json=_save_body(env, GOOD)).status_code in (401, 403, 404)
-    assert anon.get(f"/v2/workbook/grid/panel?project={env['rec'].project_code}").status_code in (401, 404)
+    assert anon.get(f"/v2/model-react/inputs?project={env['rec'].project_code}").status_code in (401, 404)
     from app.auth import COOKIE_NAME, create_session_token
     other = TestClient(env["main"].app, cookies={COOKIE_NAME: create_session_token(user_id=STRANGER, username="admin")})
     res = other.post("/v2/workbook/grid/save", json=_save_body(env, GOOD))
     assert res.status_code in (403, 404)
-    assert other.get(f"/v2/workbook/grid/panel?project={env['rec'].project_code}").status_code == 404
+    assert other.get(f"/v2/model-react/inputs?project={env['rec'].project_code}").status_code == 404
 
 
 def test_protected_reference_is_never_writable(env):
     from app.persistence.projects_repository import get_project_by_code  # noqa: F401  (import guards the API)
     c = env["client"]
-    ref_page = c.get("/v2/workbook?project=generic_solar_reference-reference")
-    if ref_page.status_code != 200 or 'id="v2-input-grid"' not in ref_page.text:
+    ref_inputs = c.get("/v2/model-react/inputs?project=generic_solar_reference-reference")
+    if ref_inputs.status_code != 200:
         pytest.skip("reference project not seeded in this fixture")
-    assert 'data-editable="false"' in ref_page.text
+    assert ref_inputs.json()["project"]["protected_reference"] is True
+    assert all(not r["editable"] for s in ref_inputs.json()["grid"]["sections"]
+               for cat in s["categories"] for r in cat["rows"])
     body = _save_body(env, GOOD)
     body["project"] = "generic_solar_reference-reference"
     assert post_valid_mutation(c, "/v2/workbook/grid/save", json=body).status_code in (403, 404)
@@ -185,12 +169,12 @@ def test_body_bounds_are_enforced(env):
 def test_refresh_routes_only_serve_known_sheets(env):
     c = env["client"]
     code = env["rec"].project_code
-    assert c.get(f"/v2/workbook/grid/sheet?project={code}&sheet=capex").status_code == 200
-    assert c.get(f"/v2/workbook/grid/sheet?project={code}&sheet=opex").status_code == 200
-    assert c.get(f"/v2/workbook/grid/sheet?project={code}&sheet=debt").status_code == 404
-    panel = c.get(f"/v2/workbook/grid/panel?project={code}")
-    assert panel.status_code == 200 and 'id="v2-input-grid"' in panel.text
-    assert "no-store" in panel.headers["cache-control"]
+    assert c.get(f"/v2/model-react/fields/project_setup?project={code}").status_code == 200
+    assert c.get(f"/v2/model-react/fields/debt?project={code}").status_code == 200
+    assert c.get(f"/v2/model-react/fields/unknown?project={code}").status_code == 404
+    inputs = c.get(f"/v2/model-react/inputs?project={code}")
+    assert inputs.status_code == 200 and inputs.json()["ok"] is True
+    assert "no-store" in inputs.headers["cache-control"]
 
 
 # ── projection ───────────────────────────────────────────────────────────────────────

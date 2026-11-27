@@ -25,19 +25,6 @@ from tests.test_wf07_revenue_multistream import contracts
 from tests.test_model_decision_workspace_v2 import env
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module exercises a LEGACY_CALENDAR/v0-only feature (explicit per-row price curves); new Solar/Wind projects default to
@@ -363,30 +350,34 @@ def test_v2_curve_last_run_and_export_are_immutable_after_unsaved_change(env, mo
     from app.workbook.revenue_multistream import SNAPSHOT_KEY
     from app.services.export_service import resolve_canonical_last_run_from_workspace
     from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
-    from tests.test_model_decision_workspace_v2 import tokens
-    from tests.test_wf07_revenue_workspace import contract_tokens
+    from tests.model_react_test_helpers import react_workbook_tokens
 
     record = env.create("solar")
     owner = "decision-user"
     project = {"project": record.project_code}
     def ws():
         return get_workspace_state(owner, record.project_id)
-    def page():
-        r = env.client.get("/v2/workbook", params=project)
-        assert r.status_code == 200
-        return r.text
     def save(payload):
+        rev = env.client.get("/v2/model-react/revenue", params=project)
+        assert rev.status_code == 200, rev.text[:300]
+        body = rev.json()
         return env.client.post("/v2/workbook/revenue/contracts",
             headers={"HX-Request": "true"}, data={
-                **project, **contract_tokens(page()), "contracts": json.dumps(payload)})
+                **project,
+                "csrf_token": body["save"]["csrf_token"],
+                "content_hash": body["save"]["content_hash"],
+                "workbook_version": body["save"]["workbook_version"],
+                "contracts_base_token": body["contracts"]["base_token"],
+                "contracts": json.dumps(payload)})
     pi = WorkbookService.build_draft_input_set_from_workspace(ws()).to_projectinputs()
     _, _, _, payload = book("solar", pi=pi)
     assert save(payload).status_code == 200
     raw_original = ws().draft_snapshot[SNAPSHOT_KEY]
     assert json.loads(raw_original) == payload
+    toks = react_workbook_tokens(env.client, record.project_code)
     run = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"},
-                          data={**project, **tokens(page())})
-    assert 'id="v2-sheet-returns"' in run.text, run.text[:2000]
+                          data={**project, **toks})
+    assert run.status_code == 200, run.text[:500]
     assert not ws().dirty
     previous_run = copy.deepcopy(ws().last_runtime_summary)
     previous_history = get_run_history(owner, record.project_id)

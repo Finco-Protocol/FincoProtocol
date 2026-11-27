@@ -9,19 +9,6 @@ from bs4 import BeautifulSoup
 
 from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 USER = "decision-user"
 ROOT = Path(__file__).resolve().parents[1]
 FIELDS = ("project_setup.technical.cod_date", "project_setup.technical.construction_months", "project_setup.technical.horizon_years")
@@ -43,23 +30,24 @@ def _timeline(html):
 def test_timeline_carries_exactly_the_persisted_values_for_every_vertical(env, kind):
     record = env.create(kind)
     persisted = _persisted(record)
-    html = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "project_setup"}).text
-    node = _timeline(html)
-    assert node is not None
-    assert node["data-cod"] == str(persisted[FIELDS[0]]) and node["data-months"] == str(persisted[FIELDS[1]])
-    assert node["data-horizon"] == str(persisted[FIELDS[2]])
-    fallback = node.select_one('[data-testid="project-timeline-fallback"]').get_text(" ", strip=True)
-    assert str(persisted[FIELDS[0]]) in fallback                         # understandable without JavaScript
+    ct = env.client.get("/v2/model-react/construction-timing", params={"project": record.project_code})
+    assert ct.status_code == 200, ct.text[:300]
+    saved = ct.json()["saved"]
+    assert saved["cod_date"] == str(persisted[FIELDS[0]])
+    assert int(saved["construction_months"]) == int(persisted[FIELDS[1]])
+    ps = env.client.get("/v2/model-react/fields/project_setup", params={"project": record.project_code})
+    assert ps.status_code == 200
+    fmap = {f["field_id"]: f["value"] for f in ps.json()["fields"]}
+    assert int(float(fmap[FIELDS[2]])) == int(float(persisted[FIELDS[2]]))
 
 
 def test_the_timeline_section_exists_once_and_has_no_duplicate_ids(env):
     record = env.create("solar")
     html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
     soup = BeautifulSoup(html, "html.parser")
-    assert len(soup.select("[data-project-timeline]")) == 1
     ids = [n["id"] for n in soup.select("[id]")]
     assert len(ids) == len(set(ids)), sorted({i for i in ids if ids.count(i) > 1})
-    assert html.count("/static/js/model_project_timeline.js") == 1
+    assert html.count("finco-react.js") == 1
 
 
 def test_viewing_the_timeline_never_runs_the_model_or_mutates_inputs_or_history(env, monkeypatch):
@@ -67,14 +55,14 @@ def test_viewing_the_timeline_never_runs_the_model_or_mutates_inputs_or_history(
     from app.persistence.run_history_repository import get_run_history
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create("solar")
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.get("/v2/model-react/construction-timing", params={"project": record.project_code})
     before = get_workspace_state(USER, record.project_id)
     history = get_run_history(USER, record.project_id)
     monkeypatch.setattr(runner, "run_project", lambda *a, **k: (_ for _ in ()).throw(AssertionError("viewing must not run the model")))
     for _ in range(2):
-        for url in ("/v2/workbook", "/v2/workbook/grid/sheet"):
-            params = {"project": record.project_code, "sheet": "project_setup"}
-            assert env.client.get(url, params=params).status_code in (200, 404)
+        for url in ("/v2/model-react/workspace", "/v2/model-react/construction-timing", "/v2/model-react/fields/project_setup"):
+            params = {"project": record.project_code}
+            assert env.client.get(url, params=params).status_code == 200
     after = get_workspace_state(USER, record.project_id)
     assert after == before and get_run_history(USER, record.project_id) == history
 

@@ -21,19 +21,6 @@ import math
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture
 def seeded_db(tmp_path, monkeypatch):
     from app.persistence import db
@@ -182,51 +169,28 @@ class TestCanonicalRegisterUntouched:
 
 class TestEvRegisterPresentation:
     def test_ev_register_renders_charging_terminology(self, seeded_db):
-        """A: EV rendered HTML contains the charging terminology…"""
-        from fastapi.testclient import TestClient
-        import main_web
-        from app.auth import COOKIE_NAME, create_session_token
+        """A: EV assumption register view contains the charging terminology…"""
+        from app.v2.router import _build_assumption_register_view
 
         pis = _reference_pis("generic_ev_charging_reference")
-        cookies = {COOKIE_NAME: create_session_token(
-            user_id="ux-assump-user", username="admin")}
-        client = TestClient(main_web.app, raise_server_exceptions=True)
-        _resp = client.get(
-            "/v2/workbook?project=generic_ev_charging_reference-reference",
-            cookies=cookies)
-        assert _resp.status_code == 200 and not _resp.history
-        html = _resp.text
-        trust_html = html.split('id="assumption-register"')[1].split(
-            "</table>")[0] if 'id="assumption-register"' in html else ""
-        assert 'id="assumption-register"' in html
+        labels = {str(r["label"]) for r in _build_assumption_register_view(pis)["rows"]}
         for term in ("Charging Price", "Equivalent Full-Load Hours",
                      "Charging Price Escalation",
                      "Charging Price Schedule Horizon"):
-            assert term in trust_html, term
+            assert term in labels, term
 
     def test_ev_register_omits_ppa_and_generation_terminology(self, seeded_db):
         """A (cont.): …and does NOT contain PPA terminology; compatibility-
         only rows are omitted, not relabelled into PPA wording."""
-        from fastapi.testclient import TestClient
-        import main_web
-        from app.auth import COOKIE_NAME, create_session_token
+        from app.v2.router import _build_assumption_register_view
 
-        cookies = {COOKIE_NAME: create_session_token(
-            user_id="ux-assump-user2", username="admin")}
-        client = TestClient(main_web.app, raise_server_exceptions=True)
-        _reference_pis("generic_ev_charging_reference")  # seed references
-        _resp = client.get(
-            "/v2/workbook?project=generic_ev_charging_reference-reference",
-            cookies=cookies)
-        assert _resp.status_code == 200 and not _resp.history
-        html = _resp.text
-        trust_html = html.split('id="assumption-register"')[1].split(
-            'id="calculation-trace"')[0]
+        pis = _reference_pis("generic_ev_charging_reference")
+        labels = {str(r["label"]) for r in _build_assumption_register_view(pis)["rows"]}
         for prohibited in ("PPA Base Tariff", "Base Tariff", "PPA Term",
                            "PPA Production Share", "PPA Indexation",
                            "Operating Hours (P50)", "P90", "Merchant Price Curve",
                            "Balancing Cost", "CO2"):
-            assert prohibited not in trust_html, prohibited
+            assert prohibited not in labels, prohibited
 
     def test_ev_register_paths_canonical_but_rows_omitted(self, seeded_db):
         """B: canonical paths stay technology-neutral inside the register;
@@ -237,7 +201,6 @@ class TestEvRegisterPresentation:
             build_assumption_register,
         )
         from app.v2.router import _build_assumption_register_view
-        from app.v2.ev_labels import apply_ev_register_presentation
 
         pis = _reference_pis("generic_ev_charging_reference")
         register = build_assumption_register(
@@ -267,25 +230,24 @@ class TestEvRegisterPresentation:
             assert hidden not in view_paths, hidden
 
     def test_non_ev_terminology_unchanged(self, seeded_db):
-        """G: Solar keeps the technology-neutral register labels."""
+        """G: Solar keeps the technology-neutral register labels, including in React inputs."""
         from fastapi.testclient import TestClient
         import main_web
         from app.auth import COOKIE_NAME, create_session_token
+        from app.v2.router import _build_assumption_register_view
 
+        pis = _reference_pis("generic_solar_reference")
+        labels = {str(r["label"]) for r in _build_assumption_register_view(pis)["rows"]}
+        assert "PPA Base Tariff" in labels
+        assert "Operating Hours (P50)" in labels
+        assert "Charging Price" not in labels
         cookies = {COOKIE_NAME: create_session_token(
             user_id="ux-assump-user3", username="admin")}
         client = TestClient(main_web.app, raise_server_exceptions=True)
-        _reference_pis("generic_solar_reference")  # seed references
-        _resp = client.get(
-            "/v2/workbook?project=generic_solar_reference-reference",
+        resp = client.get(
+            "/v2/model-react/inputs?project=generic_solar_reference-reference",
             cookies=cookies)
-        assert _resp.status_code == 200 and not _resp.history
-        html = _resp.text
-        trust_html = html.split('id="assumption-register"')[1].split(
-            'id="calculation-trace"')[0]
-        assert "PPA Base Tariff" in trust_html
-        assert "Operating Hours (P50)" in trust_html
-        assert "Charging Price" not in trust_html
+        assert resp.status_code == 200 and resp.json()["ok"] is True
 
 
 class TestRegisterZeroTruth:

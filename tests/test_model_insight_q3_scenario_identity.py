@@ -9,7 +9,7 @@ scenario's name is never substituted.
 from __future__ import annotations
 
 from tests.model_mutation_csrf import post_valid_mutation
-
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.run_clone_csrf import post_valid_csrf
 
 import re
@@ -19,19 +19,6 @@ from types import SimpleNamespace
 import pytest
 
 from app.persistence.scenario_insight_reads import BASE_CASE_LABEL, resolve_last_run_scenario
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 VERTICALS = {
     "solar": "generic_solar_reference", "wind": "generic_wind_reference",
@@ -58,38 +45,32 @@ def project(user, template="generic_solar_reference", name="Q3 ID"):
     return create_reference_seeded_project(user_id=user, template_source=template, requested_name=name, capacity_mw=40.0)
 
 
-def page(env, user, rec):
-    return env.client.get(f"/v2/workbook?project={rec.project_code}", cookies=env.cookie(user)).text
+def diag(env, user, rec):
+    r = env.client.get(f"/v2/model-react/diagnostics?project={rec.project_code}", cookies=env.cookie(user))
+    assert r.status_code == 200, r.text[:500]
+    return r.json()
 
 
-def tokens(html):
-    return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
-            re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
+def tokens(env, user, rec):
+    t = react_workbook_tokens(env.client, rec.project_code, cookies=env.cookie(user))
+    return t["content_hash"], t["workbook_version"]
 
 
 def run(env, user, rec):
-    h, v = tokens(page(env, user, rec))
+    h, v = tokens(env, user, rec)
     r = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
-                        cookies=env.cookie(user), headers={"HX-Request": "true"})
+                        cookies=env.cookie(user))
     assert r.status_code == 200
-    return r.text
+    return r
 
 
-def context(html):
-    """The Findings run-identity block text (the Q3 context), whitespace-normalised."""
-    m = re.search(r'data-testid="q3-context">(.*?)</div>', html, re.S)
-    assert m, "the Q3 Findings context is missing"
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).strip()
+def scenario_line(payload):
+    ident = payload["insight"].get("identity") or {}
+    return ident.get("scenario_name") or ""
 
 
-def scenario_line(html):
-    m = re.search(r"Scenario: (.*?) · Run ", context(html))
-    assert m, context(html)
-    return m.group(1)
-
-
-def snapshot_in(html):
-    return re.search(r"snapshot (\S+)", context(html)).group(1)
+def snapshot_in(payload):
+    return (payload["insight"].get("identity") or {}).get("snapshot_id") or ""
 
 
 def last_run(user, rec):
@@ -99,14 +80,14 @@ def last_run(user, rec):
 
 def select(env, user, rec, scenario_id):
     r = post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={"project": rec.project_code, "scenario_id": scenario_id},
-                        cookies=env.cookie(user), headers={"HX-Request": "true"})
+                        cookies=env.cookie(user))
     assert r.status_code == 200
     return r.text
 
 
 def create_scenario(env, user, rec, name):
     r = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": name},
-                        cookies=env.cookie(user), headers={"HX-Request": "true"})
+                        cookies=env.cookie(user))
     assert r.status_code == 200
     from app.persistence.scenarios_repository import list_scenarios
     return next(s for s in list_scenarios(user_id=user, project_id=rec.project_id) if s.scenario_name == name)
@@ -170,39 +151,38 @@ def test_resolver_makes_no_write_and_one_bounded_read(env, monkeypatch):
 
 def test_A_base_case_current_names_base_case_never_unavailable(env):
     user, rec = "q3id-a", project("q3id-a", name="Base Project")
-    assert "q3-context" not in page(env, user, rec)                       # F: NOT_RUN has no committed identity
-    oob = run(env, user, rec)
-    html = page(env, user, rec)
-    assert scenario_line(html) == "Base Case (Base Project)"
-    assert "Scenario: UNAVAILABLE" not in context(html)
-    assert "Scenario: Base Case" in context(html)
-    assert "Scenario: Base Case" in context(oob.split('id="model-smart-panel" hx-swap-oob="true"', 1)[1]), "OOB equals GET"
-    assert snapshot_in(html) == last_run(user, rec).last_runtime_snapshot_id[:22]
+    initial = diag(env, user, rec)
+    assert initial["insight"]["state"] == "NOT_RUN" and "identity" not in initial["insight"]
+    run(env, user, rec)
+    payload = diag(env, user, rec)
+    assert scenario_line(payload) == "Base Case (Base Project)"
+    assert "UNAVAILABLE" not in scenario_line(payload)
+    assert scenario_line(payload).startswith("Base Case")
+    assert snapshot_in(payload) == last_run(user, rec).last_runtime_snapshot_id
 
 
 def test_B_base_case_stale_keeps_the_prior_run_identity_and_unbinds_thresholds(env):
     from app.persistence.workspace_repository import get_workspace_state
     user, rec = "q3id-b", project("q3id-b", name="Stale Project")
     run(env, user, rec)
-    before = page(env, user, rec)
+    before = diag(env, user, rec)
     snap = snapshot_in(before)
-    h, v = tokens(before)
-    r = post_valid_mutation(env.client, "/v2/workbook/update", data={"field_id": "project_setup.technical.p50_hours", "value": "1440",
-                        "project": rec.project_code, "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
-                        cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert r.status_code == 200 and '"workbook-field-saved"' in r.headers.get("HX-Trigger", "")
+    h, v = tokens(env, user, rec)
+    r = post_valid_mutation(env.client, "/v2/workbook/update", follow_redirects=False, data={
+        "field_id": "project_setup.technical.p50_hours", "value": "1440",
+        "project": rec.project_code, "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
+        cookies=env.cookie(user))
+    assert r.status_code == 303 and "v2_err=" not in r.headers.get("location", "")
     ws_after = get_workspace_state(user, rec.project_id)
     assert float(ws_after.draft_snapshot["p50_hours"]) == 1440.0
     assert float(ws_after.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
-    after = page(env, user, rec)
-    assert "workbook-recovery-back" not in after
-    h_after, _ = tokens(after)
+    after = diag(env, user, rec)
+    h_after, _ = tokens(env, user, rec)
     assert h_after != h
-    assert re.search(r'data-q3-state="STALE"', after)
+    assert after["insight"]["state"] == "STALE"
     assert scenario_line(after) == "Base Case (Stale Project)" and snapshot_in(after) == snap, "prior Run identity unchanged"
-    assert "RUN_THRESHOLD_NOT_BOUND" in after and "PRIOR" in context(after) + after
-    oob = r.text.split('id="model-smart-panel" hx-swap-oob="true"', 1)[1]
-    assert "Scenario: Base Case" in context(oob) and snapshot_in(oob) == snap
+    assert any("RUN_THRESHOLD_NOT_BOUND" in c["reason"] for c in after["insight"]["covenants"])
+    assert "PRIOR" in after["insight"]["context_note"]
 
 
 # ─────────────────────────── named scenario and scenario switch ───────────────────────────
@@ -210,24 +190,23 @@ def test_B_base_case_stale_keeps_the_prior_run_identity_and_unbinds_thresholds(e
 def test_C_and_D_named_scenario_identity_and_switch_without_another_run(env):
     user, rec = "q3id-c", project("q3id-c", name="Switch Project")
     run(env, user, rec)
-    base_html = page(env, user, rec)
-    base_snap = snapshot_in(base_html)
+    base_diag = diag(env, user, rec)
+    base_snap = snapshot_in(base_diag)
     up = create_scenario(env, user, rec, "Upside")                       # becomes the active Working Copy scenario
     # D: switched, no Run for Upside yet -> the Last Run was cleared by the switch: NOT_RUN, no identity at all
-    switched = page(env, user, rec)
-    assert 'data-q3-state="NOT_RUN"' in switched and "q3-context" not in switched
-    quality_block = switched.split('data-testid="q3-quality"', 1)[1].split('data-testid="smart-panel-inspector"', 1)[0]
-    assert "Upside" not in quality_block and "Scenario:" not in quality_block, "no committed identity may be shown"
+    switched = diag(env, user, rec)
+    assert switched["insight"]["state"] == "NOT_RUN" and "identity" not in switched["insight"]
+    assert "Upside" not in str(switched["insight"]), "no committed identity may be shown"
     run(env, user, rec)                                                  # explicit Run of Upside
-    html = page(env, user, rec)
+    payload = diag(env, user, rec)
     ws = last_run(user, rec)
-    assert scenario_line(html) == "Upside" and "Base Case" not in context(html)
-    assert snapshot_in(html) == ws.last_runtime_snapshot_id[:22] != base_snap
+    assert scenario_line(payload) == "Upside" and "Base Case" not in scenario_line(payload)
+    assert snapshot_in(payload) == ws.last_runtime_snapshot_id != base_snap
     assert ws.last_runtime_scenario_id == up.scenario_id
     # back to the Base Case scenario: its OWN Run is restored, so the identity is the Base Case's, not "Upside"
     from app.persistence.scenarios_repository import get_base_case_scenario
     select(env, user, rec, get_base_case_scenario(user, rec.project_id).scenario_id)
-    back = page(env, user, rec)
+    back = diag(env, user, rec)
     assert scenario_line(back).startswith("Base Case") and snapshot_in(back) == base_snap
 
 
@@ -256,17 +235,17 @@ def test_D2_selected_scenario_name_is_never_substituted_for_a_different_last_run
     seeded = last_run(user, rec)
     assert seeded.last_runtime_snapshot_id == h["runtime_snapshot_id"] and seeded.last_runtime_scenario_id is None
     assert seeded.active_scenario_id == up.scenario_id
-    html = page(env, user, rec)
-    line = scenario_line(html)
-    assert "Selected but never run" not in context(html)
+    payload = diag(env, user, rec)
+    line = scenario_line(payload)
+    assert "Selected but never run" not in str(payload["insight"].get("identity") or {})
     assert line.startswith("Base Case") or line == "UNAVAILABLE"
 
 
 def test_E_unresolvable_scenario_id_stays_unavailable_through_the_real_attach_path(env):
     """workspace_states.last_runtime_scenario_id is a foreign key, so a dangling id cannot be persisted; the attach
     path is therefore exercised with a record carrying an id that no owner/project-scoped scenario row proves."""
-    import copy
     from app.persistence.projects_repository import get_project_by_code
+    from app.services.react_insights_service import scenario_label
     from app.v2.router import _attach_insight
     from app.v2.smart_panel_projection import build_smart_panel_projection
     user, rec = "q3id-e", project("q3id-e", name="Unresolved")
@@ -284,10 +263,11 @@ def test_E_unresolvable_scenario_id_stays_unavailable_through_the_real_attach_pa
     ident = out.insight["quality"]["identity"]
     assert ident["scenario_name"] == "" and ident["scenario_id"] == "0123456789abcdef"
     assert "Base Case" not in str(ident) and "selected scenario" not in str(ident)
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
-    html = Environment(loader=FileSystemLoader("app/templates/v2"), autoescape=select_autoescape(["html"])).get_template(
-        "partials/_model_insight_q3.html").render({"smart_panel": out})
-    assert scenario_line(html) == "UNAVAILABLE"
+    assert scenario_label(SimpleNamespace(
+        last_runtime_scenario_id="0123456789abcdef",
+        active_scenario_id=real.active_scenario_id,
+        active_scenario_name="The selected scenario",
+    )) == "UNAVAILABLE"
 
 
 # ─────────────────────────── four verticals: Q1 unchanged, identity shown ───────────────────────────
@@ -301,18 +281,21 @@ def test_G_verticals_identity_and_q1_results_unchanged(env, key):
     user = f"q3id-g-{key}"
     rec = project(user, VERTICALS[key], name=f"Vertical {key}")
     run(env, user, rec)
-    html = page(env, user, rec)
-    assert scenario_line(html).startswith("Base Case")
+    payload = diag(env, user, rec)
+    assert scenario_line(payload).startswith("Base Case")
     ws = last_run(user, rec)
     pis = _build_pis_with_composite_identity(ws, get_project_by_code(user, rec.project_code), user)
     report = evaluate_model_quality(evidence_from_workspace(
         ws, freshness="CURRENT", terms=terms_from_project_inputs(pis.to_projectinputs()),
         active_scenario_id=ws.active_scenario_id, scenario_known=True))
-    got = dict(re.findall(r'data-q3-check data-check-id="(QM-[A-Z]+-\d+)"\s+data-check-status="(\w+)"', html))
+    got = {row["check_id"]: row["status"] for rows in payload["insight"]["groups"].values() for row in rows}
     assert got == {c.check_id: c.status.value for c in report.checks} and len(got) == 30
     s = report.summary
-    assert (f"{s.score:.1f} / 100" in html) if s.score is not None else ("NOT SCORED" in html)
-    cov = re.search(r'data-testid="q3-coverage">([^<]+)', html).group(1)
-    assert f"{round(s.coverage_weighted * 100, 1)}% weighted" in cov
-    lock = re.search(r'data-covenant-type="Distribution lock-up DSCR" data-covenant-status="(\w+)"', html).group(1)
+    score = payload["insight"]["score"]
+    if s.score is not None:
+        assert score["score_display"] == f"{s.score:.1f} / 100"
+    else:
+        assert score["score_display"] is None and "Not scored" in score["score_note"]
+    assert score["coverage_weighted_pct"] == round(s.coverage_weighted * 100, 1)
+    lock = next(c for c in payload["insight"]["covenants"] if c["type"] == "Distribution lock-up DSCR")["status"]
     assert lock == next(c for c in report.checks if c.check_id == "QM-COV-002").status.value

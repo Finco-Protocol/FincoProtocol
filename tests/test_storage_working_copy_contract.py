@@ -43,23 +43,11 @@ SOLAR/WIND REGRESSION
 """
 from __future__ import annotations
 
+from tests.model_react_test_helpers import react_workbook_tokens, react_workspace_payload
 from tests.run_clone_csrf import post_valid_csrf
 
 import pytest
 from starlette.testclient import TestClient
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.fixture
@@ -211,30 +199,31 @@ def test_bootstrap_race_storage_reference_canonical_winner(client_contract, monk
 ])
 def test_library_reference_card_clone_state(client_contract, template_source, expect_clone_btn, expect_unavailable):
     _, cookies = _cookie()
-    html = client_contract.get("/library", cookies=cookies).text
-    assert f"library-row-{template_source}-reference" in html, "Reference card must be present"
+    lib = client_contract.get("/v2/model-react/library", cookies=cookies).json()
+    assert lib["ok"] is True
+    by_tpl = {r["template_source"]: r for r in lib["references"]}
+    assert template_source in by_tpl, f"Reference card {template_source} must be present"
+    tier = by_tpl[template_source]["vertical"]["pilot_tier"]
     if expect_clone_btn:
-        assert f'data-testid="clone-{template_source}-reference"' in html
-        assert f'data-testid="clone-unavailable-{template_source}-reference"' not in html
+        assert tier != "RELEASE_CLOSED"
     if expect_unavailable:
-        assert f'data-testid="clone-unavailable-{template_source}-reference"' in html
-        assert f'data-testid="clone-{template_source}-reference"' not in html
-        assert "Editable runtime not yet supported" in html
+        assert tier == "RELEASE_CLOSED"
 
 
 def test_library_storage_reference_view_link_present(client_contract):
     _, cookies = _cookie()
-    html = client_contract.get("/library", cookies=cookies).text
-    assert f'data-testid="open-generic_storage_reference-reference"' in html
+    lib = client_contract.get("/v2/model-react/library", cookies=cookies).json()
+    assert any(r["code"] == "generic_storage_reference-reference" for r in lib["references"])
 
 
 def test_library_solar_wind_clone_buttons_present(client_contract):
     _, cookies = _cookie()
-    html = client_contract.get("/library", cookies=cookies).text
+    lib = client_contract.get("/v2/model-react/library", cookies=cookies).json()
     # Solar + Wind + Data Center + EV Charging cloneable (Storage is canonical-only).
-    assert html.count("Create working copy") == 4
-    assert 'data-testid="clone-generic_solar_reference-reference"' in html
-    assert 'data-testid="clone-generic_wind_reference-reference"' in html
+    cloneable = [r["template_source"] for r in lib["references"] if r["vertical"]["pilot_tier"] != "RELEASE_CLOSED"]
+    assert len(cloneable) == 4
+    assert "generic_solar_reference" in cloneable
+    assert "generic_wind_reference" in cloneable
 
 
 # ---------------------------------------------------------------------------
@@ -307,13 +296,17 @@ def test_storage_clone_leaves_reference_unchanged(client_contract):
 # ---------------------------------------------------------------------------
 
 def test_storage_reference_get_no_500(client_contract):
-    """GET /v2/workbook for the protected Storage reference must NOT return 500."""
+    """GET /v2/model-react/workspace and /v2/workbook for protected Storage reference must NOT return 500."""
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source("generic_storage_reference")
     assert reference is not None
     _, cookies = _cookie()
-    response = client_contract.get(
+    assert client_contract.get(
         f"/v2/workbook?project={reference.project_code}",
+        cookies=cookies,
+    ).status_code == 200
+    response = client_contract.get(
+        f"/v2/model-react/workspace?project={reference.project_code}",
         cookies=cookies,
     )
     assert response.status_code == 200
@@ -324,19 +317,19 @@ def test_storage_reference_get_shows_reference_surface(client_contract):
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source("generic_storage_reference")
     _, cookies = _cookie()
-    html = client_contract.get(
-        f"/v2/workbook?project={reference.project_code}",
+    payload = client_contract.get(
+        f"/v2/model-react/workspace?project={reference.project_code}",
         cookies=cookies,
-    ).text
-    assert 'data-testid="unsupported-runtime-page"' in html
-    assert 'data-testid="unsupported-reference-sublabel"' in html
-    assert "Storage reference model" in html
-    assert 'data-testid="unsupported-runtime-message"' in html
-    assert "not yet enabled" in html
-    assert 'data-testid="unsupported-reference-note"' in html
-    assert "protected reference" in html
-    assert "Storage Runtime V1" in html
-    assert 'data-testid="unsupported-back-to-library"' in html
+    ).json()
+    assert payload["ok"] is True
+    assert payload["project"]["protected_reference"] is True
+    vertical = payload["vertical"]
+    assert vertical["key"] == "storage"
+    assert vertical["registry_status"] == "PREVIEW"
+    assert vertical["runnable"] is False
+    assert vertical["pilot_tier"] == "RELEASE_CLOSED"
+    assert "not released" in vertical["status_note"].lower()
+    assert isinstance(vertical.get("limitations"), list)
 
 
 def test_storage_reference_get_stops_before_materialization(client_contract, monkeypatch):
@@ -363,7 +356,7 @@ def test_storage_reference_get_stops_before_materialization(client_contract, mon
     reference = get_reference_by_template_source("generic_storage_reference")
     _, cookies = _cookie()
     response = client_contract.get(
-        f"/v2/workbook?project={reference.project_code}", cookies=cookies
+        f"/v2/model-react/workspace?project={reference.project_code}", cookies=cookies
     )
     assert response.status_code == 200
     assert calls == []
@@ -374,16 +367,14 @@ def test_storage_reference_get_no_run_or_export(client_contract):
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source("generic_storage_reference")
     _, cookies = _cookie()
-    html = client_contract.get(
-        f"/v2/workbook?project={reference.project_code}",
+    payload = client_contract.get(
+        f"/v2/model-react/workspace?project={reference.project_code}",
         cookies=cookies,
-    ).text
-    assert "Run Model" not in html
-    assert 'id="v2-run-controls"' not in html
-    assert "fo-btn-run" not in html
-    assert "Create Working Copy" not in html
-    # Must NOT show the "preserved and has not been modified" working-copy message
-    assert 'data-testid="unsupported-runtime-preserved"' not in html
+    ).json()
+    assert payload["vertical"]["runnable"] is False
+    assert "run" not in payload or payload["run"] is None
+    assert "sheets" not in payload or not payload["sheets"]
+    assert payload["project"]["protected_reference"] is True
 
 
 def test_storage_reference_row_unchanged_after_get(client_contract):
@@ -476,8 +467,13 @@ def storage_working_copy(client_contract, tmp_path):
 
 def test_storage_working_copy_get_no_500(client_contract, storage_working_copy):
     user_id, cookies, record = storage_working_copy
-    response = client_contract.get(
+    assert client_contract.get(
         f"/v2/workbook?project={record.project_code}",
+        cookies=cookies,
+        follow_redirects=False,
+    ).status_code in (200, 302)
+    response = client_contract.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
         cookies=cookies,
         follow_redirects=False,
     )
@@ -486,40 +482,38 @@ def test_storage_working_copy_get_no_500(client_contract, storage_working_copy):
 
 def test_storage_working_copy_shows_unsupported_runtime_surface(client_contract, storage_working_copy):
     user_id, cookies, record = storage_working_copy
-    html = client_contract.get(
-        f"/v2/workbook?project={record.project_code}",
+    payload = client_contract.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
         cookies=cookies,
-    ).text
-    assert 'data-testid="unsupported-runtime-page"' in html
-    assert 'data-testid="unsupported-runtime-message"' in html
-    assert "not yet enabled" in html
-    assert 'data-testid="unsupported-runtime-preserved"' in html
-    assert "preserved and has not been modified" in html
-    # Must NOT show the reference-specific surface
-    assert 'data-testid="unsupported-reference-sublabel"' not in html
-    assert "Storage reference model" not in html
+    ).json()
+    assert payload["ok"] is True
+    assert payload["project"]["protected_reference"] is False
+    vertical = payload["vertical"]
+    assert vertical["key"] == "storage"
+    assert vertical["runnable"] is False
+    assert vertical["pilot_tier"] == "RELEASE_CLOSED"
+    assert "not released" in vertical["status_note"].lower()
 
 
 def test_storage_working_copy_no_run_model_button(client_contract, storage_working_copy):
     user_id, cookies, record = storage_working_copy
-    html = client_contract.get(
-        f"/v2/workbook?project={record.project_code}",
+    payload = client_contract.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
         cookies=cookies,
-    ).text
-    assert "Run Model" not in html
-    assert 'id="v2-run-controls"' not in html
-    assert 'fo-btn-run' not in html
+    ).json()
+    assert payload["vertical"]["runnable"] is False
+    assert "run" not in payload or payload["run"] is None
 
 
 def test_storage_working_copy_no_save_export(client_contract, storage_working_copy):
     user_id, cookies, record = storage_working_copy
-    html = client_contract.get(
-        f"/v2/workbook?project={record.project_code}",
+    payload = client_contract.get(
+        f"/v2/model-react/workspace?project={record.project_code}",
         cookies=cookies,
-    ).text
-    assert 'data-testid="unsupported-back-to-library"' in html
-    assert 'data-testid="unsupported-view-reference"' in html
-    assert "v2-run-controls" not in html
+    ).json()
+    assert payload["vertical"]["runnable"] is False
+    assert "sheets" not in payload or not payload["sheets"]
+    assert "run" not in payload or payload["run"] is None
 
 
 def test_storage_working_copy_project_row_unchanged(client_contract, storage_working_copy):
@@ -588,9 +582,9 @@ def test_all_user_owned_storage_roles_fail_closed(client_contract, project_role,
     calls = []
     monkeypatch.setattr(project_runner, "run_project", lambda *_a, **_k: calls.append(True))
 
-    get_response = client_contract.get(f"/v2/workbook?project={code}", cookies=cookies)
+    get_response = client_contract.get(f"/v2/model-react/workspace?project={code}", cookies=cookies)
     assert get_response.status_code == 200
-    assert 'data-testid="unsupported-runtime-page"' in get_response.text
+    assert get_response.json()["vertical"]["runnable"] is False
     run_response = post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
@@ -707,22 +701,17 @@ def test_solar_wind_workbook_opens_without_regression(client_contract, source):
     assert project_code is not None
     response = client_contract.get(dest, cookies=cookies)
     assert response.status_code == 200
-    html = response.text
-    assert "unsupported-runtime" not in html
-    assert "Run Model" in html or "v2-run-controls" in html
+    ws_payload = react_workspace_payload(client_contract, project_code, cookies=cookies)
+    assert ws_payload["vertical"]["runnable"] is True
 
-    # Exercise the normal canonical run path with the identity emitted by GET.
-    import re
-    hash_match = re.search(r'name="content_hash"\s+value="([^"]+)"', html)
-    version_match = re.search(r'name="workbook_version"\s+value="([^"]+)"', html)
-    assert hash_match and version_match
+    # Exercise the normal canonical run path with the identity emitted by React workspace.
+    tokens = react_workbook_tokens(client_contract, project_code, cookies=cookies)
     run_response = post_valid_csrf(client_contract,
         "/v2/workbook/run",
         cookies=cookies,
         data={
             "project": project_code,
-            "content_hash": hash_match.group(1),
-            "workbook_version": version_match.group(1),
+            **tokens,
         },
         follow_redirects=False,
     )

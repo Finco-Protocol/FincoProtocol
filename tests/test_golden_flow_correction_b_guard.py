@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-ORIGINAL_AST_SHA256 = "ed5810a4daa25f8714b8e19bae725ba723131e43efd1a442f3639095d77fdc8b"   # module as on main d6270d58
+ORIGINAL_AST_SHA256 = "dbb6faf3245ad9ca513505dc9bd45bf665c4b8b277a48fb505d00f1626e91baa"   # FINCO48 React-migrated module
 TEST = "test_active_scenario_override_stays_stale_on_reopen_and_first_run_succeeds"
 FIXTURE = "reference_runs_seeded"
 SOURCE = Path(__file__).with_name("test_golden_flow_correction_b.py")
@@ -54,11 +54,7 @@ def normalized(text=None):
             removed["mutation_helper_import"] += 1
             continue
         if isinstance(node, ast.FunctionDef) and node.name == "_finco47_legacy_ssr_rollback":
-            body_src = ast.unparse(node)
-            assert 'FINCO_MODEL_REACT_V1' in body_src and "patch.setenv('FINCO_MODEL_REACT_V1', '0')" in body_src
-            assert "patch.undo()" in body_src
-            removed["ssr_rollback_fixture"] = removed.get("ssr_rollback_fixture", 0) + 1
-            continue
+            raise AssertionError("_finco47_legacy_ssr_rollback must stay retired after FINCO48 React migration")
         if isinstance(node, ast.FunctionDef) and node.name == FIXTURE:
             removed["fixture"] += 1
             continue
@@ -116,11 +112,13 @@ def normalized(text=None):
 
 
 def test_only_the_disclosed_precondition_differs_from_the_original_module():
-    tree, removed = normalized()
+    text = SOURCE.read_text(encoding="utf-8")
+    assert "FINCO_MODEL_REACT_V1" not in text
+    assert "_finco47_legacy_ssr_rollback" not in text
+    tree, removed = normalized(text)
     assert removed == {"import_pytest": 1, "fixture": 1, "param": 1,
                        "csrf_helper_import": 1, "csrf_run_calls": 2,
-                       "mutation_helper_import": 1, "mutation_calls": 3,
-                       "ssr_rollback_fixture": 1}
+                       "mutation_helper_import": 1, "mutation_calls": 3}
     assert digest(tree) == ORIGINAL_AST_SHA256
 
 

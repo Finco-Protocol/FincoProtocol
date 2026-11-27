@@ -12,21 +12,18 @@ import json
 import pytest
 
 from tests.test_model_decision_workspace_v2 import env
-from tests.test_wf07_revenue_workspace import contract_tokens
 from tests.test_wf07_revenue_multistream import contracts
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+def _rev_tokens(client, project_code: str) -> dict[str, str]:
+    res = client.get("/v2/model-react/revenue", params={"project": project_code})
+    assert res.status_code == 200, res.text[:500]
+    save = res.json()["save"]
+    return {
+        "csrf_token": save["csrf_token"],
+        "content_hash": save["content_hash"],
+        "workbook_version": save["workbook_version"],
+    }
 
 
 @pytest.mark.parametrize("invalid", ["csrf", "stale_cas", "other_owner", "protected", "unknown_driver"])
@@ -37,16 +34,13 @@ def test_readonly_commercial_stress_fails_closed_without_financial_run(env, monk
     from app.workbook.service import WorkbookService
 
     record = env.create()
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert page.status_code == 200
     ws = get_workspace_state("decision-user", record.project_id)
     payload = contracts(WorkbookService.build_draft_input_set_from_workspace(ws).to_projectinputs())
-    tokens = contract_tokens(page.text)
+    tokens = _rev_tokens(env.client, record.project_code)
     saved = env.client.post("/v2/workbook/revenue/contracts", data={
         "project": record.project_code, **tokens, "contracts": json.dumps(payload)})
     assert saved.status_code == 303 or saved.status_code == 200
-    current = env.client.get("/v2/workbook", params={"project": record.project_code})
-    refreshed = contract_tokens(current.text)
+    refreshed = _rev_tokens(env.client, record.project_code)
     data = {"project": record.project_code, **refreshed,
             "shock": "merchant_down", "amount_pct": "10", "expiry_date": ""}
     if invalid == "csrf":
@@ -82,17 +76,12 @@ def test_readonly_commercial_stress_fails_closed_without_financial_run(env, monk
 
 
 def test_readonly_stress_form_reuses_existing_csrf_and_composite_identity(env):
-    from bs4 import BeautifulSoup
     record = env.create()
-    response = env.client.get("/v2/workbook", params={"project": record.project_code})
-    assert response.status_code == 200
-    page = BeautifulSoup(response.text, "html.parser")
-    editor = page.select_one('[data-testid="revenue-contracts-form"]')
-    stress = page.select_one('[data-testid="revenue-stress-form"]')
-    assert stress and stress["hx-post"] == "/v2/workbook/revenue/stress"
-    assert editor.select_one('input[name="csrf_token"]')["value"] == stress.select_one('input[name="csrf_token"]')["value"]
-    assert editor.select_one('input[name="content_hash"]')["value"] == stress.select_one('input[name="content_hash"]')["value"]
-    assert not stress.select_one('input[name="contracts"]')
+    ws_tokens = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()["workbook"]
+    rev_save = env.client.get("/v2/model-react/revenue", params={"project": record.project_code}).json()["save"]
+    assert rev_save["csrf_token"]
+    assert ws_tokens["composite_hash"] == rev_save["content_hash"]
+    assert rev_save["url"] == "/v2/workbook/revenue/contracts"
 
 
 @pytest.mark.parametrize("selected_scenario", ["base", "child"])
@@ -117,10 +106,8 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
     record = env.create()
     project = {"project": record.project_code}
 
-    def page():
-        response = env.client.get("/v2/workbook", params=project)
-        assert response.status_code == 200
-        return response.text
+    def tokens_now():
+        return _rev_tokens(env.client, record.project_code)
 
     def state():
         return get_workspace_state(owner, record.project_id)
@@ -128,7 +115,7 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
     payload = contracts(WorkbookService.build_draft_input_set_from_workspace(
         state()).to_projectinputs(), price=90, merchant_price=80)
     response = env.client.post("/v2/workbook/revenue/contracts", data={
-        **project, **contract_tokens(page()), "contracts": json.dumps(payload)})
+        **project, **tokens_now(), "contracts": json.dumps(payload)})
     assert response.status_code in (200, 303), response.text[:500]
 
     if selected_scenario == "child":
@@ -144,7 +131,7 @@ def test_successful_readonly_stress_preserves_working_copy_history_and_scenario(
 
     original_ws = deepcopy(state())
     original_history = deepcopy(get_run_history(owner, record.project_id))
-    data = {**project, **contract_tokens(page()), "shock": "merchant_down",
+    data = {**project, **tokens_now(), "shock": "merchant_down",
             "amount_pct": "10", "expiry_date": ""}
     result = env.client.post("/v2/workbook/revenue/stress", data=data)
     assert result.status_code == 200, result.text[:1500]

@@ -7,26 +7,12 @@ that STALE / NOT_RUN / scenario states are labelled from canonical authorities.
 from __future__ import annotations
 
 from tests.model_mutation_csrf import post_valid_mutation
-
+from tests.model_react_test_helpers import react_workbook_tokens
 from tests.run_clone_csrf import post_valid_csrf
 
-import re
 from unittest import mock
 
 import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 VERTICALS = {
     "solar": "generic_solar_reference",
@@ -60,34 +46,35 @@ def _project(env, user, template, name):
     return create_reference_seeded_project(user_id=user, template_source=template, requested_name=name, capacity_mw=40.0)
 
 
-def _get(env, user, rec):
-    return env.client.get(f"/v2/workbook?project={rec.project_code}", cookies=env.cookie(user))
+def _diag(env, user, rec):
+    res = env.client.get(f"/v2/model-react/diagnostics?project={rec.project_code}", cookies=env.cookie(user))
+    assert res.status_code == 200, res.text[:500]
+    return res.json()
 
 
-def _tokens(html):
-    return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
-            re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
+def _tokens(env, user, rec):
+    t = react_workbook_tokens(env.client, rec.project_code, cookies=env.cookie(user))
+    return t["content_hash"], t["workbook_version"]
 
 
 def _run(env, user, rec):
-    import os
-    if os.environ.get("FINCO_MODEL_REACT_V1") != "0":
-        from tests.model_react_test_helpers import react_workbook_tokens
-        t = react_workbook_tokens(env.client, rec.project_code, cookies=env.cookie(user))
-        h, v = t["content_hash"], t["workbook_version"]
-    else:
-        h, v = _tokens(_get(env, user, rec).text)
+    h, v = _tokens(env, user, rec)
     r = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
-                        cookies=env.cookie(user), headers={"HX-Request": "true"})
+                        cookies=env.cookie(user))
     assert r.status_code == 200
 
 
-def _checks(html):
-    return dict(re.findall(r'data-q3-check data-check-id="(QM-[A-Z]+-\d+)"\s+data-check-status="(\w+)"', html))
+def _checks(diag_payload):
+    groups = diag_payload["insight"].get("groups") or {}
+    return {
+        row["check_id"]: row["status"]
+        for rows in groups.values()
+        for row in rows
+    }
 
 
-def _state(html):
-    return re.search(r'data-testid="q3-quality" data-q3-state="(\w+)"', html).group(1)
+def _state(diag_payload):
+    return diag_payload["insight"]["state"]
 
 
 @pytest.fixture(scope="module")
@@ -96,17 +83,18 @@ def runs(env):
     for key, template in VERTICALS.items():
         user = f"q3-{key}"
         rec = _project(env, user, template, f"Q3 {key}")
-        out[key] = (user, rec, _get(env, user, rec).text)          # NOT_RUN page first
+        out[key] = (user, rec, _diag(env, user, rec))          # NOT_RUN state first
         _run(env, user, rec)
     return out
 
 
 @pytest.mark.parametrize("key", list(VERTICALS))
 def test_not_run_page_has_no_values_checks_or_score(runs, key):
-    html = runs[key][2]
-    assert _state(html) == "NOT_RUN" and not _checks(html)
-    assert 'data-testid="q3-score"' not in html and "No committed Run" in html
-    assert "MODEL QUALITY / LENDER READINESS ADVISORY" in html
+    payload = runs[key][2]
+    insight = payload["insight"]
+    assert _state(payload) == "NOT_RUN" and not _checks(payload)
+    assert insight.get("score") is None and "No committed Run" in insight["message"]
+    assert "MODEL QUALITY / LENDER READINESS ADVISORY" in insight["label"]
 
 
 @pytest.mark.parametrize("key", list(VERTICALS))
@@ -116,23 +104,24 @@ def test_rendered_panel_equals_q1_over_the_persisted_run(env, runs, key):
     from app.persistence.workspace_repository import get_workspace_state
     from app.v2.router import _build_pis_with_composite_identity
     user, rec, _ = runs[key]
-    html = _get(env, user, rec).text
+    payload = _diag(env, user, rec)
+    insight = payload["insight"]
     ws = get_workspace_state(user, rec.project_id)
     pis = _build_pis_with_composite_identity(ws, rec, user)
     report = evaluate_model_quality(evidence_from_workspace(
         ws, freshness="CURRENT", terms=terms_from_project_inputs(pis.to_projectinputs()),
         active_scenario_id=ws.active_scenario_id, scenario_known=True))
-    assert _state(html) == "CURRENT"
-    assert _checks(html) == {c.check_id: c.status.value for c in report.checks}
+    assert _state(payload) == "CURRENT"
+    assert _checks(payload) == {c.check_id: c.status.value for c in report.checks}
     s = report.summary
+    score = insight["score"]
     if s.score is not None:
-        assert f"{s.score:.1f} / 100" in html
+        assert score["score_display"] == f"{s.score:.1f} / 100"
     else:
-        assert "NOT SCORED" in html
-    assert f"{s.failed} FAIL" in html and f"{s.unavailable} UNAVAILABLE" in html
-    assert "CONTRACTUAL_THRESHOLD_UNAVAILABLE" in html                  # min-DSCR / default-DSCR have no authority
-    # the covenant section uses only the Q1 covenant checks plus the declared-absent default-DSCR row
-    types = re.findall(r'data-covenant-type="([^"]+)"', html)
+        assert score["score_display"] is None and "Not scored" in score["score_note"]
+    assert score["counts"]["fail"] == s.failed and score["counts"]["unavailable"] == s.unavailable
+    assert any(c["threshold"] == "CONTRACTUAL_THRESHOLD_UNAVAILABLE" for c in insight["covenants"])
+    types = [c["type"] for c in insight["covenants"]]
     assert types == ["Minimum DSCR covenant", "Distribution lock-up DSCR", "Minimum LLCR",
                      "Reserve account (DSRA) funding", "Default DSCR"]
 
@@ -143,9 +132,9 @@ def test_rendering_runs_no_engine_and_writes_nothing(env, runs):
     ws0 = get_workspace_state(user, rec.project_id)
     with mock.patch("app.services.production_financial_authority.run_clean_production",
                     side_effect=AssertionError("engine must not run from a read-only panel")):
-        html = _get(env, user, rec).text
+        payload = _diag(env, user, rec)
     ws1 = get_workspace_state(user, rec.project_id)
-    assert "q3-quality" in html
+    assert payload["ok"] is True and payload["insight"]["available"] is True
     assert ws0.updated_at == ws1.updated_at and ws0.last_runtime_composite_hash == ws1.last_runtime_composite_hash
     assert ws0.last_runtime_snapshot_id == ws1.last_runtime_snapshot_id
 
@@ -153,26 +142,24 @@ def test_rendering_runs_no_engine_and_writes_nothing(env, runs):
 def test_unsaved_change_makes_the_run_stale_and_unbinds_thresholds(env, runs):
     from app.persistence.workspace_repository import get_workspace_state
     user, rec, _ = runs["solar"]
-    page = _get(env, user, rec).text
-    h, v = _tokens(page)
-    r = post_valid_mutation(env.client, "/v2/workbook/update", data={
+    h, v = _tokens(env, user, rec)
+    r = post_valid_mutation(env.client, "/v2/workbook/update", follow_redirects=False, data={
         "field_id": "project_setup.technical.p50_hours", "value": "1434", "project": rec.project_code,
         "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"},
-        cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert r.status_code == 200 and '"workbook-field-saved"' in r.headers.get("HX-Trigger", "")
+        cookies=env.cookie(user))
+    assert r.status_code == 303 and "v2_err=" not in r.headers.get("location", "")
     ws_after = get_workspace_state(user, rec.project_id)
     assert float(ws_after.draft_snapshot["p50_hours"]) == 1434.0
     assert float(ws_after.draft_snapshot["operating_hours_p90_10y"]) == 1400.0
-    html = _get(env, user, rec).text
-    assert "workbook-recovery-back" not in html
-    h_after, _ = _tokens(html)
+    payload = _diag(env, user, rec)
+    h_after, _ = _tokens(env, user, rec)
     assert h_after != h
-    assert _state(html) == "STALE" and "PRIOR" in html
-    lock = re.search(r'data-covenant-type="Distribution lock-up DSCR" data-covenant-status="(\w+)"', html).group(1)
-    assert lock == "UNAVAILABLE" and "RUN_THRESHOLD_NOT_BOUND" in html
-    assert "STALE — describes the prior Last Run" in html
+    assert _state(payload) == "STALE" and "PRIOR" in payload["insight"]["context_note"]
+    lock = next(c for c in payload["insight"]["covenants"] if c["type"] == "Distribution lock-up DSCR")
+    assert lock["status"] == "UNAVAILABLE" and "RUN_THRESHOLD_NOT_BOUND" in lock["reason"]
+    assert "STALE — describes the prior Last Run" in lock["freshness"]
     # the prior Run's recorded values are not replaced by Working Copy numbers
-    assert _checks(html), "the prior Run is still evaluated"
+    assert _checks(payload), "the prior Run is still evaluated"
 
 
 def test_scenarios_mode_lists_own_runs_and_labels_missing_ones(env):
@@ -181,97 +168,89 @@ def test_scenarios_mode_lists_own_runs_and_labels_missing_ones(env):
     _run(env, user, rec)
     c, ck = env.client, env.cookie(user)
     r = post_valid_mutation(c, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "Upside"},
-               cookies=ck, headers={"HX-Request": "true"})
+               cookies=ck)
     assert r.status_code == 200
-    html = _get(env, user, rec).text
-    rows = re.findall(r'data-scenario-id="[^"]+" data-scenario-basis="(\w+)"', html)
-    assert sorted(rows) == ["HISTORICAL_RUN", "NO_RUN"] or sorted(rows) == ["CURRENT", "NO_RUN"]
-    assert "q3-compare-unavailable" in html and "nothing is estimated" in html
-    # create/select are explicit user actions on the existing workspace; the panel itself exposes none
-    assert 'hx-post="/v2/workbook/scenarios' not in html.split('id="model-smart-panel"')[1].split("</aside>")[0]
-    assert 'data-nav-tab="tab-scenarios"' in html
+    hist = c.get(f"/v2/model-react/insights/history?project={rec.project_code}", cookies=ck)
+    assert hist.status_code == 200
+    scenarios = hist.json()["scenarios"]
+    assert sorted(s["availability"] for s in scenarios) == ["available", "not_run"]
+    not_run = next(s for s in scenarios if s["availability"] == "not_run")
+    assert "No committed Run exists" in not_run["reason"]
+    assert _diag(env, user, rec)["insight"]["state"] == "NOT_RUN"
 
 
 def test_protected_reference_panel_is_read_only_and_not_run(env):
     from app.services.project_library_service import ensure_reference_models
     ensure_reference_models()
-    r = env.client.get("/v2/workbook?project=generic_solar_reference-reference", cookies=env.cookie("q3-ref"))
-    assert r.status_code == 200
-    assert "model-smart-panel" in r.text
-    assert not re.search(r'<input[^>]+class="[^"]*v2-field-input', r.text)
-    panel = r.text.split('id="model-smart-panel"')[1].split("</aside>")[0]
-    for forbidden in ("<form", "<textarea", "contenteditable", "hx-post", "onclick"):
-        assert forbidden not in panel
-    assert panel.count("<select") == 1
+    ck = env.cookie("q3-ref")
+    diag = env.client.get("/v2/model-react/diagnostics?project=generic_solar_reference-reference", cookies=ck)
+    assert diag.status_code == 200
+    assert diag.json()["project"]["protected_reference"] is True
+    inputs = env.client.get("/v2/model-react/inputs?project=generic_solar_reference-reference", cookies=ck)
+    assert inputs.status_code == 200 and inputs.json()["project"]["protected_reference"] is True
+    ins_hist = env.client.get("/v2/model-react/insights/history?project=generic_solar_reference-reference", cookies=ck)
+    assert ins_hist.status_code == 409 and ins_hist.json()["code"] == "PROTECTED_REFERENCE"
 
 
 def test_other_users_cannot_read_the_panel_of_an_owner_project(env, runs):
     user, rec, _ = runs["solar"]
-    r = env.client.get(f"/v2/workbook?project={rec.project_code}", cookies=env.cookie("q3-intruder"),
-                       follow_redirects=False)
-    assert "q3-quality" not in r.text and rec.project_code not in r.text.replace(f"project={rec.project_code}", "")
+    intruder = env.cookie("q3-intruder")
+    assert env.client.get(f"/v2/model-react/diagnostics?project={rec.project_code}", cookies=intruder).status_code == 404
+    assert env.client.get(f"/v2/model-react/insights/history?project={rec.project_code}", cookies=intruder).status_code == 404
 
 
-# ───────── the OOB fragments (Run / Save / scenario actions) must carry the same Q3 views as GET ─────────
-
-def _oob_panel(text):
-    assert 'id="model-smart-panel" hx-swap-oob="true"' in text, "the action response must refresh FINCO Insight"
-    return text.split('id="model-smart-panel" hx-swap-oob="true"', 1)[1].split("</aside>", 1)[0]
-
-
-def test_post_run_post_save_and_scenario_oob_panels_carry_q3(env):
+def test_post_run_post_save_and_scenario_views_carry_consistent_q3(env):
     from app.persistence.workspace_repository import get_workspace_state
     user = "q3-oob"
     rec = _project(env, user, "generic_solar_reference", "Q3 oob")
-    h, v = _tokens(_get(env, user, rec).text)
+    h, v = _tokens(env, user, rec)
     ck = env.cookie(user)
     run = post_valid_csrf(env.client, "/v2/workbook/run", data={"project": rec.project_code, "content_hash": h, "workbook_version": v},
-                          cookies=ck, headers={"HX-Request": "true"})
-    oob = _oob_panel(run.text)
-    assert 'data-q3-state="CURRENT"' in oob and "Scenarios workspace" in oob
-    assert _checks(oob) == _checks(_get(env, user, rec).text) and len(_checks(oob)) == 30
-    h, v = _tokens(_get(env, user, rec).text)
-    save = post_valid_mutation(env.client, "/v2/workbook/update", data={
+                          cookies=ck)
+    assert run.status_code == 200
+    cur_diag = _diag(env, user, rec)
+    assert _state(cur_diag) == "CURRENT" and len(_checks(cur_diag)) == 30
+    h, v = _tokens(env, user, rec)
+    save = post_valid_mutation(env.client, "/v2/workbook/update", follow_redirects=False, data={
         "field_id": "project_setup.technical.p50_hours", "value": "1401", "project": rec.project_code,
-        "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"}, cookies=ck, headers={"HX-Request": "true"})
-    assert '"workbook-field-saved"' in save.headers.get("HX-Trigger", "")
+        "workbook_version": v, "content_hash": h, "sheet_id": "project_setup"}, cookies=ck)
+    assert save.status_code == 303 and "v2_err=" not in save.headers.get("location", "")
     assert float(get_workspace_state(user, rec.project_id).draft_snapshot["p50_hours"]) == 1401.0
-    oob = _oob_panel(save.text)
-    assert 'data-q3-state="STALE"' in oob and "RUN_THRESHOLD_NOT_BOUND" in oob
-    refreshed_get = _get(env, user, rec).text
-    assert "workbook-recovery-back" not in refreshed_get
-    h_after, v = _tokens(refreshed_get)
+    stale_diag = _diag(env, user, rec)
+    assert _state(stale_diag) == "STALE"
+    lock = next(c for c in stale_diag["insight"]["covenants"] if c["type"] == "Distribution lock-up DSCR")
+    assert "RUN_THRESHOLD_NOT_BOUND" in lock["reason"]
+    h_after, _ = _tokens(env, user, rec)
     assert h_after != h
     created = post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": rec.project_code, "scenario_name": "OOB"},
-                              cookies=ck, headers={"HX-Request": "true"})
-    if 'id="model-smart-panel"' in created.text:
-        oob = _oob_panel(created.text)
-        assert "data-q3-state" in oob
+                              cookies=ck)
+    assert created.status_code == 200
+    assert _state(_diag(env, user, rec)) == "NOT_RUN"
 
 
 def test_invalid_p50_below_saved_p90_refuses_save_and_keeps_q3_current(env):
     from app.persistence.workspace_repository import get_workspace_state
+    import urllib.parse
     user = "q3-inv-p50"
     rec = _project(env, user, "generic_solar_reference", "Q3 invalid P50")
     _run(env, user, rec)
-    before_html = _get(env, user, rec).text
-    assert _state(before_html) == "CURRENT"
-    h0, v0 = _tokens(before_html)
+    before_diag = _diag(env, user, rec)
+    assert _state(before_diag) == "CURRENT"
+    h0, v0 = _tokens(env, user, rec)
     ws0 = get_workspace_state(user, rec.project_id)
 
-    bad = post_valid_mutation(env.client, "/v2/workbook/update", data={
+    bad = post_valid_mutation(env.client, "/v2/workbook/update", follow_redirects=False, data={
         "field_id": "project_setup.technical.p50_hours", "value": "1234", "project": rec.project_code,
         "workbook_version": v0, "content_hash": h0, "sheet_id": "project_setup"},
-        cookies=env.cookie(user), headers={"HX-Request": "true"})
-    assert bad.status_code == 422
-    assert '"workbook-field-saved"' not in bad.headers.get("HX-Trigger", "")
-    assert "P90_EXCEEDS_P50" in bad.text or "cannot exceed P50" in bad.text
+        cookies=env.cookie(user))
+    assert bad.status_code == 303
+    err = urllib.parse.unquote_plus(bad.headers.get("location", ""))
+    assert "P90_EXCEEDS_P50" in err or "cannot exceed P50" in err
 
     ws1 = get_workspace_state(user, rec.project_id)
     assert ws1.draft_snapshot == ws0.draft_snapshot
     assert ws1.updated_at == ws0.updated_at
     assert ws1.last_runtime_snapshot_id == ws0.last_runtime_snapshot_id
-    after_html = _get(env, user, rec).text
-    assert "workbook-recovery-back" not in after_html
-    assert _state(after_html) == "CURRENT"
-    assert _tokens(after_html) == (h0, v0)
+    after_diag = _diag(env, user, rec)
+    assert _state(after_diag) == "CURRENT"
+    assert _tokens(env, user, rec) == (h0, v0)

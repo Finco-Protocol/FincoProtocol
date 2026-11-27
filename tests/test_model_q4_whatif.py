@@ -10,19 +10,9 @@ from unittest.mock import patch
 import pytest
 
 from app.v2 import whatif
+from tests.model_react_test_helpers import react_workbook_tokens
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+REACT_HDR = {"X-Finco-React-Request": "1"}
 
 
 def test_q4_allowlist_is_exactly_q1_to_workbook_to_scenario():
@@ -133,9 +123,9 @@ def test_q4_rejects_not_run_and_no_scenario_is_written(q4_http):
     before = len(list_scenarios("q4-owner", record.project_id))
     payload = dict(project=record.project_code, check_id="QM-SD-006",
                    scenario_name="Debt What-if", proposed_value="55")
-    rejected = c.post("/v2/workbook/whatif/preview", data=payload, cookies=cookie("q4-owner"))
+    rejected = c.get("/v2/model-react/whatif/preview", params=payload, cookies=cookie("q4-owner"), headers=REACT_HDR)
     assert rejected.status_code == 409
-    assert "q4-rejected" in rejected.text
+    assert not rejected.json()["ok"]
     assert len(list_scenarios("q4-owner", record.project_id)) == before
 
 
@@ -146,12 +136,12 @@ def test_q4_rejects_cross_owner_project(q4_http):
     record = create_reference_seeded_project(
         user_id="owner-a", template_source="generic_wind_reference",
         requested_name="Q4 test wind", capacity_mw=40)
-    attempt = c.post("/v2/workbook/whatif/preview",
-        data={"project": record.project_code, "check_id": "QM-SD-006",
-              "proposed_value": "40", "scenario_name": "Foreign"},
-        cookies=cookie("owner-b"))
+    attempt = c.get("/v2/model-react/whatif/preview",
+        params={"project": record.project_code, "check_id": "QM-SD-006",
+                "proposed_value": "40", "scenario_name": "Foreign"},
+        cookies=cookie("owner-b"), headers=REACT_HDR)
     assert attempt.status_code in (403, 404)
-    assert "q4-rejected" in attempt.text
+    assert not attempt.json()["ok"]
 
 
 @pytest.mark.parametrize("vertical,template", [
@@ -172,16 +162,12 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     record = create_reference_seeded_project(
         user_id=user, template_source=template,
         requested_name="Q4 Real " + vertical, capacity_mw=40)
-    url = "/v2/workbook?project=" + record.project_code
-
-    def identity(html):
-        return (re.search(r'name="content_hash" value="([^"]+)"', html).group(1),
-                re.search(r'name="workbook_version" value="([^"]+)"', html).group(1))
+    def identity():
+        t = react_workbook_tokens(c, record.project_code, cookies=cookie(user))
+        return t["content_hash"], str(t["workbook_version"])
 
     def run_explicitly():
-        page = c.get(url, cookies=cookie(user))
-        assert page.status_code == 200
-        h, v = identity(page.text)
+        h, v = identity()
         result = post_valid_csrf(c, "/v2/workbook/run",
                         data={"project": record.project_code, "content_hash": h,
                               "workbook_version": v},
@@ -192,8 +178,7 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     # Wind reference may intentionally leave gearing unbound. Explicitly Save
     # an owner-controlled value before the Base Run; never infer a default.
     if not get_workspace_state(user, record.project_id).draft_snapshot.get("gearing_pct"):
-        page = c.get(url, cookies=cookie(user))
-        h, v = identity(page.text)
+        h, v = identity()
         updated = post_valid_mutation(c, "/v2/workbook/update", data={
             "field_id": "debt.senior.gearing_pct",
             "value": "65", "project": record.project_code,
@@ -209,21 +194,21 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     original_gear = float(ws0.draft_snapshot["gearing_pct"])
     candidate = 50 if original_gear != 50 else 51
 
-    preview_response = c.post("/v2/workbook/whatif/preview",
-        data={"project": record.project_code, "check_id": "QM-SD-006",
-              "scenario_name": "Q4 " + vertical + " What-if",
-              "proposed_value": str(candidate)}, cookies=cookie(user))
+    preview_response = c.get("/v2/model-react/whatif/preview",
+        params={"project": record.project_code, "check_id": "QM-SD-006",
+                "scenario_name": "Q4 " + vertical + " What-if",
+                "proposed_value": str(candidate)}, cookies=cookie(user), headers=REACT_HDR)
     assert preview_response.status_code == 200, preview_response.text
-    assert "NOT A RUN" in preview_response.text
-    assert "Original input</dt><dd>" + str(original_gear) in preview_response.text
-    assert "Proposed input</dt><dd>" + str(float(candidate)) in preview_response.text
-    token = re.search(r'name="token" value="([^"]+)"', preview_response.text).group(1)
+    pbody = preview_response.json()["preview"]
+    assert pbody["semantics"]["is_a_run"] is False and pbody["semantics"]["shows_projected_kpi"] is False
+    assert pbody["assumption"]["original"] == pytest.approx(original_gear)
+    assert pbody["assumption"]["proposed"] == pytest.approx(float(candidate))
+    token = pbody["token"]
     assert len(get_run_history(user, record.project_id)) == len(history0)
     assert len(list_scenarios(user, record.project_id)) == initial_count
 
     # Change the Working Copy after preview: the exact composite CAS must reject it.
-    page_before_edit = c.get(url, cookies=cookie(user)).text
-    h, v = identity(page_before_edit)
+    h, v = identity()
     original_hours = float(ws0.draft_snapshot["p50_hours"])
     changed = post_valid_mutation(c, "/v2/workbook/update", data={
         "field_id": "project_setup.technical.p50_hours",
@@ -239,13 +224,14 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     assert len(list_scenarios(user, record.project_id)) == initial_count
 
     # Fresh user-controlled preview explicitly discloses STALE Run provenance.
-    refreshed = c.post("/v2/workbook/whatif/preview",
-        data={"project": record.project_code, "check_id": "QM-SD-006",
-              "scenario_name": "Q4 " + vertical + " What-if",
-              "proposed_value": str(candidate)}, cookies=cookie(user))
+    refreshed = c.get("/v2/model-react/whatif/preview",
+        params={"project": record.project_code, "check_id": "QM-SD-006",
+                "scenario_name": "Q4 " + vertical + " What-if",
+                "proposed_value": str(candidate)}, cookies=cookie(user), headers=REACT_HDR)
     assert refreshed.status_code == 200, refreshed.text
-    assert "STALE" in refreshed.text
-    token = re.search(r'name="token" value="([^"]+)"', refreshed.text).group(1)
+    rbody = refreshed.json()["preview"]
+    assert rbody["stale"] is True
+    token = rbody["token"]
 
     # Failure AFTER INSERT, immediately before COMMIT must roll back all effects.
     from app.persistence import db
@@ -296,9 +282,9 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
         cookies=cookie(user))
     assert replay.status_code == 409
 
-    no_run = c.get("/v2/workbook/whatif/compare",
+    no_run = c.get("/v2/model-react/scenario-compare",
         params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
-    assert "NOT_RUN" in no_run.text
+    assert no_run.status_code == 200 and no_run.json()["scenario"]["run_evidence"]["state"] == "UNAVAILABLE"
 
     chosen = post_valid_mutation(c, "/v2/workbook/scenarios/select",
         data={"project": record.project_code, "scenario_id": sid},
@@ -321,11 +307,10 @@ def test_q4_real_base_preview_commit_run_compare(q4_http, vertical, template):
     latest_ws = get_workspace_state(user, record.project_id)
     replay = resolve_canonical_last_run_from_workspace(record, user, latest_ws)
     assert replay.project_inputs.financing.gearing_ratio == pytest.approx(candidate / 100)
-    result = c.get("/v2/workbook/whatif/compare",
+    result = c.get("/v2/model-react/scenario-compare",
         params={"project": record.project_code, "scenario_id": sid}, cookies=cookie(user))
     assert result.status_code == 200, result.text
-    assert 'data-testid="q4-committed-compare"' in result.text
-    assert "Canonical Run Integrity" in result.text
+    assert result.json()["scenario"]["run_evidence"]["state"] == "AVAILABLE"
     assert len(get_run_history(user, record.project_id)) == len(history0) + 1
 
 
@@ -346,13 +331,8 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
         user_id=owner, template_source="generic_solar_reference",
         requested_name="DSCR Scenario Q4", capacity_mw=30,
     )
-    url = "/v2/workbook"
-    def auth_get():
-        return client.get(url, params={"project": project.project_code}, cookies=cookies(owner))
     def _fields():
-        html = auth_get().text
-        return {k: re.search(r'name="' + k + r'" value="([^"]+)"', html).group(1)
-                for k in ("content_hash", "workbook_version")}
+        return react_workbook_tokens(client, project.project_code, cookies=cookies(owner))
     def _run():
         response = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies(owner),
             headers={"HX-Request": "true"},
@@ -375,13 +355,14 @@ def test_q4_solar_target_dscr_real_engine_effective_change(q4_http):
     original = float(old.draft_snapshot["target_dscr"])
     candidate = 1.35 if original != 1.35 else 1.3
 
-    preview = client.post("/v2/workbook/whatif/preview", cookies=cookies(owner),
-        data={"project": project.project_code, "check_id": "QM-SD-007",
-              "proposed_value": str(candidate), "scenario_name": "DSCR-adjusted Q4"})
+    preview = client.get("/v2/model-react/whatif/preview", cookies=cookies(owner), headers=REACT_HDR,
+        params={"project": project.project_code, "check_id": "QM-SD-007",
+                "proposed_value": str(candidate), "scenario_name": "DSCR-adjusted Q4"})
     assert preview.status_code == 200, preview.text
-    assert f"Original input</dt><dd>{original}" in preview.text
-    assert f"Proposed input</dt><dd>{candidate}" in preview.text
-    token = re.search(r'name="token" value="([^"]+)"', preview.text).group(1)
+    pbody = preview.json()["preview"]
+    assert pbody["assumption"]["original"] == pytest.approx(original)
+    assert pbody["assumption"]["proposed"] == pytest.approx(float(candidate))
+    token = pbody["token"]
     confirmed = client.post("/v2/workbook/whatif/commit", cookies=cookies(owner),
         data={"project": project.project_code, "token": token, "confirmed": "yes"})
     assert confirmed.status_code == 200, confirmed.text
@@ -467,11 +448,7 @@ def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
     assert not list_scenarios(user, project.project_id), (
         "Legacy fixture must begin without a Base, before any real Run")
     def page_tokens():
-        response = client.get("/v2/workbook", params={"project": project.project_code},
-                              cookies=cookies(user))
-        assert response.status_code == 200
-        return {key: re.search(r'name="' + key + r'" value="([^"]+)"', response.text).group(1)
-                for key in ("content_hash", "workbook_version")}
+        return react_workbook_tokens(client, project.project_code, cookies=cookies(user))
     run = post_valid_csrf(client, "/v2/workbook/run", cookies=cookies(user),
                       headers={"HX-Request": "true"},
                       data=dict(project=project.project_code, **page_tokens()))
@@ -483,13 +460,13 @@ def test_q4_atomic_rollback_after_base_insert_before_child_insert(q4_http):
     bases_before = tuple(list_scenarios(user, project.project_id))
     assert not bases_before, "Real Run must preserve historical lazy-Base state"
     candidate = 50 if float(before.draft_snapshot["gearing_pct"]) != 50 else 51
-    preview = client.post("/v2/workbook/whatif/preview",
-        cookies=cookies(user),
-        data={"project": project.project_code, "check_id": "QM-SD-006",
-              "scenario_name": "Atomic Base + What-if",
-              "proposed_value": str(candidate)})
+    preview = client.get("/v2/model-react/whatif/preview",
+        cookies=cookies(user), headers=REACT_HDR,
+        params={"project": project.project_code, "check_id": "QM-SD-006",
+                "scenario_name": "Atomic Base + What-if",
+                "proposed_value": str(candidate)})
     assert preview.status_code == 200, preview.text
-    ticket = re.search(r'name="token" value="([^"]+)"', preview.text).group(1)
+    ticket = preview.json()["preview"]["token"]
 
     real_get_connection = db.get_connection
     class RejectSecondInsert:
