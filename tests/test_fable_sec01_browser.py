@@ -1,26 +1,14 @@
-"""FABLE-SEC-01 real-Chromium checks of the legacy New Project form (FINCO 34 batch 1).
+"""FABLE-SEC-01 real-Chromium checks of the React New Project CSRF boundary (FINCO 34 -> FINCO48).
 
-* the rendered form carries the bound token and a normal Create succeeds (HX-Redirect followed);
-* a stale/forged token is refused with 403 and the user SEES an inline alert (HTMX does not swap 4xx), nothing is created.
+* a valid wizard submission sends the bound CSRF token and creates the project (200 JSON + navigation);
+* a forged CSRF token is refused with 403 CSRF_INVALID, displays a visible alert, and creates nothing.
 """
 from __future__ import annotations
 
+import json
+
 from tests.test_workflow_c_browser_v1 import live_server, browser  # noqa: F401
 
-import pytest
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "sec01-browser"
 
@@ -39,10 +27,18 @@ def _projects(name):
     return [r for r in records if r.project_name == name]
 
 
-def _fill(page, name):
-    page.locator("#new-project-minimal-form input[name='template_source']").first.check()
-    page.fill("#new-project-minimal-form input[name='project_name']", name)
-    page.fill("#new-project-minimal-form input[name='capacity_mw']", "20")
+def _advance_to_review(page, live_server, name):
+    page.goto(f"{live_server}/v2/model-react/#new-project/template", wait_until="load")
+    card = page.locator('[data-template-card="solar"][data-creatable="true"]')
+    card.wait_for(timeout=20000)
+    card.click()
+    page.locator('[data-wizard-next="true"]').click()
+    page.locator('[data-wizard-panel="details"]').wait_for(timeout=15000)
+    page.locator("#rcm-name").fill(name)
+    page.locator('[data-wizard-next="true"]').click()
+    create_btn = page.locator('[data-wizard-create="true"]')
+    create_btn.wait_for(timeout=15000)
+    return create_btn
 
 
 def test_forged_token_shows_a_visible_refusal_and_creates_nothing(live_server, browser):  # noqa: F811
@@ -50,18 +46,22 @@ def test_forged_token_shows_a_visible_refusal_and_creates_nothing(live_server, b
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{live_server}/projects/new")
-    token = page.locator("#new-project-minimal-form input[name='csrf_token']")
-    assert token.get_attribute("value")
-    token.evaluate("(el) => { el.value = 'forged.token'; }")
-    _fill(page, "SEC01 browser forged")
-    with page.expect_response(lambda r: r.url.endswith("/projects/create")) as resp:
-        page.locator("#new-project-minimal-form [type='submit']").first.click()
+    create_btn = _advance_to_review(page, live_server, "SEC01 browser forged")
+
+    def _forge_csrf(route):
+        req = route.request
+        payload = json.loads(req.post_data or "{}")
+        payload["csrf_token"] = "forged.token"
+        route.continue_(post_data=json.dumps(payload))
+
+    page.route("**/v2/model-react/new-project/create", _forge_csrf)
+    with page.expect_response(lambda r: "/v2/model-react/new-project/create" in r.url) as resp:
+        create_btn.click()
     assert resp.value.status == 403
-    alert = page.locator("[data-testid='create-csrf-refused']")
+    assert resp.value.json()["code"] == "CSRF_INVALID"
+    alert = page.locator("[data-wizard-error='true']")
     alert.wait_for(timeout=10000)
     assert alert.get_attribute("role") == "alert"
-    assert "Nothing was created" in alert.inner_text()
     assert _projects("SEC01 browser forged") == []
     assert not errors
     context.close()
@@ -70,13 +70,14 @@ def test_forged_token_shows_a_visible_refusal_and_creates_nothing(live_server, b
 def test_rendered_token_creates_the_project(live_server, browser):  # noqa: F811
     context = _context(browser, live_server)
     page = context.new_page()
-    page.goto(f"{live_server}/projects/new")
-    _fill(page, "SEC01 browser valid")
-    with page.expect_response(lambda r: r.url.endswith("/projects/create")) as resp:
-        page.locator("#new-project-minimal-form [type='submit']").first.click()
+    create_btn = _advance_to_review(page, live_server, "SEC01 browser valid")
+    with page.expect_response(lambda r: "/v2/model-react/new-project/create" in r.url) as resp:
+        create_btn.click()
     assert resp.value.status == 200
-    assert resp.value.headers.get("hx-redirect")
-    page.wait_for_url(lambda url: "/projects/new" not in url, timeout=30000)
+    page.wait_for_url(
+        lambda url: "/v2/model-react/" in url and "new-project" not in url,
+        timeout=30000,
+    )
     assert len(_projects("SEC01 browser valid")) == 1
-    assert page.locator("[data-testid='create-csrf-refused']").count() == 0
+    assert page.locator("[data-wizard-error='true']").count() == 0
     context.close()

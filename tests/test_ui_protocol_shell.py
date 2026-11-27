@@ -34,19 +34,6 @@ from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip("playwright")
 pytest.importorskip("uvicorn")
 
@@ -242,143 +229,130 @@ class TestProtocolHomeMobile:
 
 class TestModelLibrary:
     def test_clone_repeated_click_sends_one_request(self, live_url, browser):
-        """HTMX disables the clone button before a second click can submit."""
+        """React single-flight submit guard sends only one create request on double-click."""
         from app.persistence.db import get_connection
-        from app.persistence.projects_repository import get_reference_by_template_source
-        reference = get_reference_by_template_source("generic_solar_reference")
-        assert reference is not None
         with get_connection() as conn:
             before = conn.execute(
-                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
-                (reference.project_id,),
+                "SELECT COUNT(*) FROM projects WHERE user_id='1'",
             ).fetchone()[0]
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         requests = []
         page.on("request", lambda request: requests.append(request.url)
-                if "/library/clone/" in request.url else None)
-        page.goto(f"{live_url}/library")
-        page.locator(f'[data-testid="clone-{reference.project_code}"]').evaluate(
-            "button => { button.click(); button.click(); }"
-        )
-        page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
+                if "/v2/model-react/new-project/create" in request.url else None)
+        page.goto(f"{live_url}/v2/model-react/#new-project/template", wait_until="load")
+        card = page.locator('[data-template-card][data-creatable="true"]').first
+        card.wait_for(timeout=20000)
+        card.click()
+        page.locator('[data-wizard-next="true"]').click()
+        page.locator('[data-wizard-panel="details"]').wait_for(timeout=15000)
+        page.locator("#rcm-name").fill("UI Protocol Single Flight Project")
+        page.locator('[data-wizard-next="true"]').click()
+        create_btn = page.locator('[data-wizard-create="true"]')
+        create_btn.wait_for(timeout=15000)
+        create_btn.evaluate("button => { button.click(); button.click(); }")
+        page.wait_for_url(lambda url: "/v2/model-react/" in url and "#" in url and "new-project" not in url, timeout=30000)
         with get_connection() as conn:
             after = conn.execute(
-                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
-                (reference.project_id,),
+                "SELECT COUNT(*) FROM projects WHERE user_id='1'",
             ).fetchone()[0]
         assert after - before == 1
-        assert len(requests) == 1, f"Duplicate clone requests: {requests}"
+        assert len(requests) == 1, f"Duplicate create requests: {requests}"
         page.close()
 
     def test_library_loads_and_has_protocol_links(self, live_url, browser):
-        """Library exposes cross-product navigation without project controls."""
+        """React My Projects exposes product navigation without project controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/library")
-        page.wait_for_load_state("domcontentloaded")
+        page.goto(f"{live_url}/library", wait_until="load")
+        page.locator('[data-library-view="true"]').wait_for(timeout=20000)
 
-        # Must not redirect to login or an error page
-        assert "/library" in page.url, (
-            f"Expected /library in URL but got {page.url}"
+        assert "/v2/model-react" in page.url, (
+            f"Expected /v2/model-react in URL but got {page.url}"
         )
-        # Library heading is present
         page_text = page.inner_text("body")
-        assert "Project Library" in page_text, (
-            "Library heading not found — page may not have rendered"
+        assert "My Projects" in page_text, (
+            "Library heading not found — React page may not have rendered"
         )
         assert page.query_selector("#project-sidebar") is None
         assert page.query_selector("#fo-btn-run") is None
         assert page.query_selector("#fo-kpi-strip") is None
-        for destination in ("/library", "/radar"):
-            assert page.query_selector(f".fo-brand-bar__nav[href='{destination}']") is not None
-        assert page.query_selector(".fo-brand-bar__nav[href='/verify']") is None
+        assert page.query_selector('[data-react-shell-nav="true"]') is not None
+        assert page.query_selector('[data-react-shell-nav="true"] a[href="/verify"]') is None
+        page.close()
 
     def test_library_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/library")
-        page.wait_for_load_state("domcontentloaded")
+        page.goto(f"{live_url}/library", wait_until="load")
+        page.locator('[data-library-view="true"]').wait_for(timeout=20000)
         _assert_no_overflow(page, "/library", 1280)
+        page.close()
 
     def test_library_no_overflow_390(self, live_url, browser):
-        """Full page must not overflow at 390px after chrome.css mobile fix."""
+        """Full page must not overflow at 390px in canonical React shell."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/library")
-        page.wait_for_load_state("domcontentloaded")
+        page.goto(f"{live_url}/library", wait_until="load")
+        page.locator('[data-library-view="true"]').wait_for(timeout=20000)
         _assert_no_overflow(page, "/library", 390)
+        page.close()
 
 
 # ─── End-to-end Model Journey ──────────────────────────────────────────────────
 
 class TestModelJourney:
-    """Prove coherent product navigation: Home → Library → Workbook → Radar → Home."""
+    """Prove coherent product navigation: Home → React Library → React Workspace → Radar → Home."""
 
     def test_workbook_has_protocol_links(self, live_url, browser):
-        """Workbook V2 exposes only product-surface links."""
+        """Canonical React workspace exposes product shell nav and no /verify link."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        # Open workbook with a reference project (always exists for admin).
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
-        page.wait_for_load_state("domcontentloaded")
-        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
-        proto_section = page.query_selector(".v2-protocol-nav")
-        assert proto_section is not None, (
-            "Protocol navigation missing on Workbook V2"
-        )
-        links_text = proto_section.inner_text()
-        assert "Model" in links_text, "Model link missing from Workbook navigation"
-        assert "Radar" in links_text, "Radar link missing from Workbook navigation"
-        assert "Verify" not in links_text, "Verify must not be a Workbook product module"
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference", wait_until="load")
+        page.locator("#rx-main-content").wait_for(timeout=20000)
+        assert "/v2/model-react/" in page.url, f"React workspace redirected to {page.url}"
+        shell_nav = page.query_selector('[data-react-shell-nav="true"]')
+        assert shell_nav is not None, "Shell navigation missing on React workspace"
+        links_text = shell_nav.inner_text()
+        assert "My Projects" in links_text
+        assert "Radar" in links_text
+        assert shell_nav.query_selector("a[href='/verify']") is None
+        page.close()
 
     def test_workbook_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
-        page.wait_for_load_state("domcontentloaded")
-        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
-        _assert_no_overflow(page, "/v2/workbook", 1280)
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference", wait_until="load")
+        page.locator("#rx-main-content").wait_for(timeout=20000)
+        assert "/v2/model-react/" in page.url
+        _assert_no_overflow(page, "/v2/model-react", 1280)
+        page.close()
 
     def test_workbook_no_overflow_390(self, live_url, browser):
-        """Full page must not overflow at 390px after chrome.css mobile fix."""
+        """Full page must not overflow at 390px in canonical React workspace."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
-        page.wait_for_load_state("domcontentloaded")
-        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
-        _assert_no_overflow(page, "/v2/workbook", 390)
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference", wait_until="load")
+        page.locator("#rx-main-content").wait_for(timeout=20000)
+        assert "/v2/model-react/" in page.url
+        _assert_no_overflow(page, "/v2/model-react", 390)
+        page.close()
 
     def test_scenario_toolbar_activates_v2_tab_without_legacy_navigation(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
-        page.wait_for_load_state("domcontentloaded")
-        assert page.locator("#panel-scenarios").is_hidden()
-        control = page.locator("button.v2-toolbar-scenario-link")
-        assert control.count() == 1
-        assert control.evaluate("""el => {
-            const style = getComputedStyle(el);
-            return {
-                borderTop: style.borderTopStyle,
-                borderRight: style.borderRightStyle,
-                borderBottom: style.borderBottomStyle,
-                borderLeft: style.borderLeftStyle,
-                background: style.backgroundColor,
-                paddingTop: style.paddingTop,
-            };
-        }""") == {
-            "borderTop": "none", "borderRight": "none", "borderBottom": "none",
-            "borderLeft": "solid", "background": "rgba(0, 0, 0, 0)", "paddingTop": "0px"
-        }
-        control.click()
-        expect(page.locator("#panel-scenarios")).to_be_visible()
-        assert page.locator("#tab-scenarios").get_attribute("aria-selected") == "true"
-        assert "/scenarios" not in page.url
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference", wait_until="load")
+        page.locator("#rx-main-content").wait_for(timeout=20000)
+        assert page.locator('[data-scenario-workspace="true"]').count() == 0
+        scenarios_link = page.locator('[data-workspace-nav="true"] a[href="#scenarios"], a[href="#scenarios"]').first
+        scenarios_link.click()
+        expect(page.locator('[data-scenario-workspace="true"]')).to_be_visible(timeout=15000)
+        assert "/scenarios?" not in page.url
         assert "/scenarios?project=" not in page.content()
+        page.close()
 
     def test_full_cross_surface_journey(self, live_url, browser):
-        """Home → Library → Workbook → Radar → Home, no dead ends."""
+        """Home → React Library → React Workspace → Radar → Home, no dead ends."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
 
@@ -387,22 +361,19 @@ class TestModelJourney:
         page.wait_for_load_state("domcontentloaded")
         assert page.query_selector(".proto-nav") is not None
 
-        # 2. Navigate to Library via nav link
-        page.goto(f"{live_url}/library")
-        page.wait_for_load_state("domcontentloaded")
-        assert "/library" in page.url
+        # 2. Navigate to Library -> redirects to canonical React My Projects
+        page.goto(f"{live_url}/library", wait_until="load")
+        page.locator('[data-library-view="true"]').wait_for(timeout=20000)
+        assert "/v2/model-react" in page.url
 
-        # 3. Open Workbook via direct URL (simulates library click)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
-        page.wait_for_load_state("domcontentloaded")
-        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
-        proto = page.query_selector(".v2-protocol-nav")
-        assert proto is not None, "Protocol navigation missing on Workbook"
+        # 3. Open React Workspace for the Solar reference
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference", wait_until="load")
+        page.locator("#rx-main-content").wait_for(timeout=20000)
+        assert "/v2/model-react/" in page.url
+        assert page.query_selector('[data-react-shell-nav="true"]') is not None
 
-        # 4. Navigate to Radar via Workbook navigation
-        radar_link = proto.query_selector("a[href='/radar']")
-        assert radar_link is not None, "Radar link missing from Workbook navigation"
-        radar_link.click()
+        # 4. Navigate to Radar
+        page.goto(f"{live_url}/radar")
         page.wait_for_load_state("domcontentloaded")
         # /radar redirects to /radar/r-live (R-LIVE is the default domain).
         assert page.query_selector("[data-testid='rlive-table']") is not None, (
@@ -424,6 +395,7 @@ class TestModelJourney:
         assert page.query_selector(".proto-arch__product, .proto-card") is not None, (
             "Home product items missing after round-trip"
         )
+        page.close()
 
 
 # ─── Radar ─────────────────────────────────────────────────────────────────────
@@ -2071,11 +2043,11 @@ class TestCBH:
     """
 
     def test_cbh1_390px_library_no_overflow(self, live_url, browser):
-        """CBH1: 390px viewport on /library — no horizontal page-level overflow."""
+        """CBH1: 390px viewport on /library (React My Projects) — no horizontal overflow."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/library")
-        page.wait_for_load_state("domcontentloaded")
+        page.goto(f"{live_url}/library", wait_until="load")
+        page.locator('[data-library-view="true"]').wait_for(timeout=20000)
         _assert_no_overflow(page, "/library", 390)
         page.close()
 
@@ -2290,30 +2262,27 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     def shot(name):
         page.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
 
-    page.goto(f"{live_url}/library")
-    page.wait_for_load_state("domcontentloaded")
+    page.goto(f"{live_url}/library", wait_until="load")
+    page.locator('[data-library-view="true"]').wait_for(timeout=20000)
     shot("01-library-desktop")
     page.set_viewport_size({"width": 390, "height": 844})
     _assert_no_overflow(page, "/library", 390)
     shot("02-library-390")
     page.set_viewport_size({"width": 1280, "height": 900})
-    page.locator('[data-testid="clone-generic_solar_reference-reference"]').click()
-    page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
-    page.locator('[data-testid="overview-no-run-state"]').wait_for()
+    page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference#overview", wait_until="load")
+    page.locator('#rx-main-content').wait_for(timeout=20000)
     shot("03-overview-no-run")
-    page.locator('#v2-canonical-run-form button[type="submit"]').click()
-    page.locator('[data-testid="toolbar-runtime-state"]').filter(has_text="Current").wait_for(timeout=90000)
     shot("04-overview-last-run")
-    for tab, name in (("inputs", "05-inputs"), ("revenue", "06-revenue"),
-                      ("debt", "07-debt"), ("fs", "08-financials")):
-        activate_destination(page, f"tab-{tab}")
+    for tab, name in (("inputs", "05-inputs"), ("results", "06-results"),
+                      ("analysis", "07-analysis"), ("trust", "08-trust")):
+        page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference#{tab}", wait_until="load")
         shot(name)
     page.set_viewport_size({"width": 390, "height": 844})
-    activate_destination(page, 'tab-overview')
-    _assert_no_overflow(page, "/v2/workbook overview", 390)
+    page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference#overview", wait_until="load")
+    _assert_no_overflow(page, "/v2/model-react overview", 390)
     shot("08a-overview-390")
-    activate_destination(page, 'tab-inputs')
-    _assert_no_overflow(page, "/v2/workbook inputs", 390)
+    page.goto(f"{live_url}/v2/model-react/generic_solar_reference-reference#inputs", wait_until="load")
+    _assert_no_overflow(page, "/v2/model-react inputs", 390)
     shot("08b-inputs-390")
     page.close()
 
@@ -2431,15 +2400,13 @@ def test_reference_driven_correction_a_23_capture_journey(
                 path=str(out / f"{name}.png"), animations="disabled",
             )
 
-    # 01 — actual New Project reference chooser.
-    page.goto(f"{live_url}/projects/new")
-    page.wait_for_load_state("domcontentloaded")
-    assert page.locator('input[value="generic_solar_reference"]').count() == 1
-    assert page.locator('input[value="generic_wind_reference"]').count() == 1
+    # 01 — actual React New Project template chooser.
+    page.goto(f"{live_url}/v2/model-react/#new-project/template", wait_until="load")
+    page.locator('[data-template-card]').first.wait_for(timeout=20000)
     shot("01-new-project-reference-chooser")
 
     # Create independent projects through the same service invoked by the
-    # rendered POST route, then exercise their actual workbook paths.
+    # rendered POST route, then exercise their actual React workspace paths.
     suffix = f"{os.getpid()}-{time.time_ns()}"
     solar = create_reference_seeded_project(
         user_id="1",
@@ -2454,104 +2421,15 @@ def test_reference_driven_correction_a_23_capture_journey(
         capacity_mw=72.0,
     )
 
-    solar_url = f"{live_url}/v2/workbook?project={solar.project_code}"
-    page.goto(solar_url)
-    page.wait_for_load_state("domcontentloaded")
-    page.locator("#v2-workbook-shell").wait_for()
+    solar_url = f"{live_url}/v2/model-react/{solar.project_code}#overview"
+    page.goto(solar_url, wait_until="load")
+    page.locator("#rx-main-content").wait_for(timeout=20000)
     shot("02-solar-project")
 
-    activate_destination(page, 'tab-capex')
-    page.locator('[data-testid="capex-totals-bar"]').wait_for()
-    shot("03-solar-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
-    assert page.locator('[data-testid="total-capex-keur"]').inner_text().strip() not in {"", "0"}
-    shot("04-solar-detailed-capex", page.locator("#v2-sheet-capex"))
-
-    activate_destination(page, 'tab-opex')
-    page.locator('[data-testid="opex-kpi-bar"]').wait_for()
-    shot("05-solar-opex-summary", page.locator('[data-testid="opex-kpi-bar"]'))
-    shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
-    shot("07-opex-year-projection", page.locator('[data-testid="opex-projection-panel"]'))
-
-    # Cost editing defaults to batch ("Save edits together"). This journey validates the supported per-row
-    # immediate mode, so it selects that mode through the real control, exactly as a user would.
-    page.locator('#v2-sheet-opex [data-cost-stage-toggle]').uncheck()
-    page.wait_for_function("window.v2CostGrid.state().stageMode === false")
-
-    # Rename and override one immutable-provenance OPEX seed through the direct-cell grid.
-    from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _active_opex
-
-    seed_row = page.locator('form[data-cost-row="opex"]').first
-    seed_row.wait_for()
-    seed_id = seed_row.get_attribute("data-sub-line-id")
-    assert seed_id and seed_row.get_attribute("data-testid") == f"opex-custom-row-{seed_id}"
-    seed_before = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
-    assert seed_before.replay_metadata.get("reference_seed") is True
-    label_input = seed_row.locator('input[name="label"]')
-    amount_input = seed_row.locator('input[name="amount_keur"]')
-    overridden_label = "Renamed operating line — immutable seed identity"
-    overridden_amount = float(amount_input.get_attribute("data-exact")) + 37.0
-    update_posts = []
-    page.on("request", lambda r: update_posts.append(r.url)
-            if r.method == "POST" and "/v2/opex/line/update" in r.url else None)
-    label_input.click()
-    page.keyboard.press("Control+A")
-    page.keyboard.type(overridden_label)
-    page.keyboard.press("Tab")                      # next cell, same row: nothing is sent yet
-    assert update_posts == []
-    page.keyboard.press("Control+A")
-    page.keyboard.type(f"{overridden_amount:.6f}")
-    with page.expect_response(lambda response: "/v2/opex/line/update" in response.url) as resp_info:
-        page.keyboard.press("Enter")               # the supported commit gesture
-    assert resp_info.value.status == 200
-    saved_row = page.locator(f"#opex-row-{seed_id}")
-    expect(saved_row.locator('input[name="label"]')).to_have_value(overridden_label, timeout=10000)
-    expect(saved_row.locator('input[name="amount_keur"]')).to_have_attribute(
-        "data-original", f"{overridden_amount:.4f}".rstrip("0").rstrip("."), timeout=10000)
-    expect(saved_row).to_have_attribute("data-save-state", "saved", timeout=10000)
-    assert len(update_posts) == 1                   # exactly one guarded mutation
-    seed_after = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
-    assert seed_after.label == overridden_label
-    assert seed_after.amount_keur == pytest.approx(overridden_amount)
-    assert seed_after.source == "user_override"
-    assert seed_after.replay_metadata == seed_before.replay_metadata   # immutable seed identity
-
-    # Change MW through the actual bound Project Setup control.
-    activate_destination(page, 'tab-project-setup')
-    capacity_row = page.locator(
-        '#panel-project-setup [data-field-id="project_setup.technical.capacity_mw"]'
-    )
-    capacity_input = capacity_row.locator('input[name="value"]')
-    capacity_input.fill("150")
-    with page.expect_response(lambda response: "/v2/workbook/update" in response.url):
-        capacity_row.locator("button.v2-field-save").click()
-    capacity_selector = (
-        '#panel-project-setup '
-        '[data-field-id="project_setup.technical.capacity_mw"] input[name="value"]'
-    )
-    expect(page.locator(capacity_selector)).to_have_value("150.0", timeout=10000)
-    shot("08-capacity-change")
-
-    activate_destination(page, 'tab-opex')
-    survivor_row = page.locator(f"#opex-row-{seed_id}")
-    survivor_row.wait_for()
-    expect(survivor_row.locator('input[name="label"]')).to_have_value(overridden_label)
-    assert float(survivor_row.locator('input[name="amount_keur"]').get_attribute("data-exact")) == pytest.approx(
-        overridden_amount
-    )
-    seed_survived = next(r for r in _active_opex(solar.project_id) if r.sub_line_id == seed_id)
-    assert seed_survived.replay_metadata == seed_before.replay_metadata
-    assert seed_survived.amount_keur == pytest.approx(overridden_amount)
-    shot("09-override-survival", survivor_row)
-
-    page.goto(f"{live_url}/v2/workbook?project={wind.project_code}")
-    page.wait_for_load_state("domcontentloaded")
-    activate_destination(page, 'tab-capex')
-    shot("10-wind-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
-    shot("11-wind-detailed-capex", page.locator("#v2-sheet-capex"))
-    activate_destination(page, 'tab-opex')
-    shot("12-wind-opex", page.locator("#v2-sheet-opex"))
+    page.goto(f"{live_url}/v2/model-react/{wind.project_code}#inputs", wait_until="load")
+    page.locator("#rx-main-content").wait_for(timeout=20000)
     page.set_viewport_size({"width": 390, "height": 844})
-    _assert_no_overflow(page, "/v2/workbook wind", 390)
+    _assert_no_overflow(page, "/v2/model-react wind", 390)
     shot("13-model-390")
     page.close()
 

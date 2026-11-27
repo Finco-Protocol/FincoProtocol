@@ -11,19 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -31,7 +18,6 @@ import main_web  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 FOOTER_TEMPLATE = REPO / "app/templates/partials/_app_footer.html"
-LIBRARY_TEMPLATE = REPO / "app/templates/library/project_library.html"
 
 
 @pytest.fixture(scope="module")
@@ -40,10 +26,14 @@ def client():
 
 
 @pytest.fixture(scope="module")
-def library_html(client):
-    resp = client.get("/library")
-    assert resp.status_code == 200
-    return resp.text
+def guide_html():
+    from starlette.requests import Request
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""}
+    return main_web.templates.TemplateResponse(
+        request=Request(scope),
+        name="base.html",
+        context={"asset_version": "test"},
+    ).body.decode("utf-8")
 
 
 def _extract_app_footer(html: str) -> str:
@@ -84,29 +74,33 @@ class TestFooterTemplateSource:
 # ── Model library page (HTTP render) ─────────────────────────────────────────
 
 class TestModelLibraryPage:
-    """The rendered Model library page must omit pilot links and keep disclaimer."""
+    """/library redirects to canonical React My Projects and SSR base footer omits pilot links."""
 
     def test_library_page_returns_200(self, client):
+        redir = client.get("/library", follow_redirects=False)
+        assert redir.status_code in (200, 302)
+        if redir.status_code == 302:
+            assert redir.headers["location"].startswith("/v2/model-react")
         resp = client.get("/library")
         assert resp.status_code == 200
 
-    def test_pilot_guide_absent_from_library_footer(self, library_html):
-        footer = _extract_app_footer(library_html)
-        assert footer, "app-footer element not found in library page"
+    def test_pilot_guide_absent_from_library_footer(self, guide_html):
+        footer = _extract_app_footer(guide_html)
+        assert footer, "app-footer element not found in shared SSR base page"
         assert "Pilot Guide" not in footer
         assert "/pilot-guide" not in footer
 
-    def test_known_limitations_absent_from_library_footer(self, library_html):
-        footer = _extract_app_footer(library_html)
+    def test_known_limitations_absent_from_library_footer(self, guide_html):
+        footer = _extract_app_footer(guide_html)
         assert "Known Limitations" not in footer
         assert "/known-limitations" not in footer
 
-    def test_validation_status_absent_from_library_footer(self, library_html):
-        footer = _extract_app_footer(library_html)
+    def test_validation_status_absent_from_library_footer(self, guide_html):
+        footer = _extract_app_footer(guide_html)
         assert "Validation Status" not in footer
 
-    def test_financial_disclaimer_present_on_library_page(self, library_html):
-        footer = _extract_app_footer(library_html)
+    def test_financial_disclaimer_present_on_library_page(self, guide_html):
+        footer = _extract_app_footer(guide_html)
         assert "financial modelling" in footer
         assert "investment" in footer
 
@@ -130,10 +124,10 @@ class TestDocumentationRoutesPreserved:
 class TestPrimaryNavigation:
     """Model / Radar / API remain product navigation; Verify is internal."""
 
-    def test_protocol_nav_present_on_library_page(self, library_html):
-        # The library page extends base.html which includes the protocol nav
-        assert "/radar" in library_html
-        assert 'href="/verify"' not in library_html
+    def test_protocol_nav_present_on_library_page(self, guide_html):
+        # Shared SSR base.html includes the protocol nav without internal Verify links
+        assert "/radar" in guide_html
+        assert 'href="/verify"' not in guide_html
 
     def test_brand_bar_guide_link_preserved(self):
         """Brand bar still carries the Guide shortcut — only footer is changed."""
