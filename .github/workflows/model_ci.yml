@@ -104,6 +104,12 @@ jobs:
           python -m pip install pip-audit==2.10.1
           python -m pip freeze --exclude pip-audit > artifacts/resolved-requirements.txt
           pip-audit --requirement artifacts/resolved-requirements.txt --no-deps --strict --progress-spinner off
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
       - name: React typecheck, build and served bundle identity
         working-directory: frontend
         run: |
@@ -163,11 +169,20 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install (Python, Playwright browser)
         run: |
           python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
           python -m pip check
-          playwright install chromium --with-deps
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            playwright install-deps chromium
+          else
+            playwright install chromium --with-deps
+          fi
       - name: F01 four-vertical real-browser rate round-trip (exactly 4 cases, none skipped)
         env:
           FINVAL_BROWSER_EVIDENCE_DIR: evidence/browser
@@ -236,12 +251,27 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install (Python, frontend node_modules, Chromium, axe-core)
         run: |
           python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
           python -m pip check
           (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
-          playwright install chromium --with-deps
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            playwright install-deps chromium
+          else
+            playwright install chromium --with-deps
+          fi
           mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
           npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
           echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -
@@ -283,11 +313,26 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install (Python, frontend node_modules, Chromium, axe-core)
         run: |
           python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
           (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
-          playwright install chromium --with-deps
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            playwright install-deps chromium
+          else
+            playwright install chromium --with-deps
+          fi
           mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
           npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
           echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -
@@ -324,12 +369,27 @@ jobs:
             requirements.txt
             requirements-ci-tests.txt
             constraints.txt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
       - name: Install (Python, frontend node_modules, Chromium, axe-core)
         run: |
           python -m pip install -r requirements.txt -r requirements-ci-tests.txt -c constraints.txt
           python -m pip check
           (cd frontend && npm ci --ignore-scripts --no-audit --no-fund)
-          playwright install chromium --with-deps
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            playwright install-deps chromium
+          else
+            playwright install chromium --with-deps
+          fi
           mkdir -p "$RUNNER_TEMP/axe" && cd "$RUNNER_TEMP/axe"
           npm pack --silent "axe-core@$AXE_CORE_VERSION" >/dev/null
           echo "$AXE_CORE_SHA256  axe-core-$AXE_CORE_VERSION.tgz" | sha256sum -c -

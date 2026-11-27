@@ -12,6 +12,8 @@ Scanning strategy:
   a warning (CI environments must have git available for the scan to be authoritative).
 """
 from __future__ import annotations
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 import hashlib
 import os
 import re
@@ -251,6 +253,11 @@ def scan_file(rel: str, root: Path) -> list[str]:
     return failures
 
 
+def _scan_file_worker(item: tuple[str, str]) -> list[str]:
+    rel, root_str = item
+    return scan_file(rel, Path(root_str))
+
+
 def main() -> int:
     files = _git_tracked_files(ROOT)
     using_git = files is not None
@@ -258,12 +265,36 @@ def main() -> int:
         print("WARNING: git not available — falling back to filesystem walk (coverage reduced)", file=sys.stderr)
         files = _filesystem_fallback(ROOT)
 
-    failures = []
+    scan_items: list[tuple[int, str]] = []
     for rel in files:
         path = ROOT / rel
         if not path.is_file():
             continue
-        failures.extend(scan_file(rel, ROOT))
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        scan_items.append((size, rel))
+
+    # Largest files first eliminates tail latency when scanning across CPU workers.
+    scan_items.sort(key=lambda pair: (-pair[0], pair[1]))
+    ordered_files = [rel for _size, rel in scan_items]
+
+    workers = int(os.environ.get("FINCO_SAFETY_SCAN_WORKERS") or min(os.cpu_count() or 1, 8))
+    failures: list[str] = []
+    if workers > 1 and len(ordered_files) >= 64:
+        root_str = str(ROOT)
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                for file_failures in pool.map(_scan_file_worker, ((rel, root_str) for rel in ordered_files), chunksize=1):
+                    failures.extend(file_failures)
+        except (OSError, PermissionError, NotImplementedError, BrokenProcessPool):
+            failures = []
+            for rel in ordered_files:
+                failures.extend(scan_file(rel, ROOT))
+    else:
+        for rel in ordered_files:
+            failures.extend(scan_file(rel, ROOT))
 
     if failures:
         print("\n".join(sorted(set(failures))))
