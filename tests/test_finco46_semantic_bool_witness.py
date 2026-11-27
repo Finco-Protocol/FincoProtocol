@@ -13,22 +13,10 @@ import copy
 import pytest
 
 from app.input_adapter import _snapshot_bool_strict
+from tests.model_react_test_helpers import react_inputs_save_contract
 from tests.test_fin_val_b2_c1_recovery_finite_opex import (  # noqa: F401  (shared fixture + helpers)
-    _history_count, _poison, _prime, _recovery_form, _semantic, _snapshot, env,
+    _history_count, _poison, _prime, _semantic, _snapshot, env,
 )
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 KEY = "rev_co2_enabled"
 
@@ -85,9 +73,14 @@ def test_recovery_keeps_co2_false_and_zero_price_through_persisted_and_typed_inp
     _poison(env, record, KEY, False)                       # explicit seeded false (bool) ...
     _poison(env, record, "rev_co2_price_eur_mwh", 0.0)     # ... and an explicit zero price, kept by the GET (FINCO46)
     _poison(env, record, "capex_epc_contract_keur", "-20000.0")
-    form = _recovery_form(env.client.get("/v2/workbook", params={"project": record.project_code}).text)
-    resp = env.client.post("/v2/workbook/update", data={**form, "value": "20000"}, follow_redirects=False)
-    assert resp.status_code == 303 and "v2_err" not in resp.headers["location"]
+    save = react_inputs_save_contract(env.client, record.project_code)
+    resp = env.client.post(save["url"], json={
+        "project": record.project_code, "csrf_token": save["csrf_token"],
+        "content_hash": save["content_hash"], "workbook_version": save["workbook_version"],
+        "scenario_id": save["scenario_id"],
+        "cells": [{"field_id": "capex.C.epc_contract", "value": "20000"}],
+    })
+    assert resp.status_code == 200 and resp.json()["ok"] is True
     after = _snapshot(record)
     assert _snapshot_bool_strict(after, KEY) is False
     assert float(after["rev_co2_price_eur_mwh"]) == 0.0

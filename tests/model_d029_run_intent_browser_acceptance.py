@@ -229,12 +229,12 @@ def check_react_typed_outcomes_keep_or_consume_the_intent(browser, react_enabled
         context.close()
 
 
-# ── Legacy / HTMX ────────────────────────────────────────────────────────────
+# ── Migrated D-029 React journeys (replacing retired SSR/HTMX DOM assertions) ──
 
 
 def legacy_open(page, base, record):
-    page.goto(f"{base}/v2/workbook?project={record.project_code}")
-    page.wait_for_selector("[data-testid='v2-run-btn']")
+    open_workspace(page, base, record, "overview")
+    page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
 
 
 def check_legacy_run_carries_a_uuid_and_consumes_it_on_commit(browser, live_server):
@@ -242,16 +242,17 @@ def check_legacy_run_carries_a_uuid_and_consumes_it_on_commit(browser, live_serv
     context, page, record, errors = make_session(browser, live_server, UID)
     base = live_server
     try:
+        materialize(context, base, record)
         posts = record_run_posts(page)
         legacy_open(page, base, record)
-        page.locator("[data-testid='v2-run-btn']").click()
-        page.wait_for_function("() => document.querySelector('[data-testid=\"v2-run-btn\"]') && !document.querySelector('[data-testid=\"v2-run-btn\"]').disabled")
-        page.wait_for_timeout(1500)
+        click_run(page)
+        page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='CURRENT']", timeout=120000)
         assert len(posts) == 1 and UUID_V4.match(posts[0]["run_intent_id"]), posts
-        assert posts[0].get("run_csrf_token"), "Run CSRF is kept"
+        assert posts[0].get("csrf_token"), "Run CSRF is kept"
         assert db_history_count(UID, record) == 1
         assert stored_intents(page) == []
-        assert posts[0]["run_csrf_token"] not in storage_dump(page)
+        assert posts[0]["csrf_token"] not in storage_dump(page)
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()
 
@@ -261,48 +262,63 @@ def check_legacy_lost_response_reload_and_oob_refresh_keep_the_same_run(browser,
     context, page, record, errors = make_session(browser, live_server, UID)
     base = live_server
     try:
+        materialize(context, base, record)
         posts = record_run_posts(page)
         legacy_open(page, base, record)
         lose_first_response(context)
-        page.locator("[data-testid='v2-run-btn']").click()
-        page.wait_for_function("() => localStorage.length > 0")
-        page.wait_for_timeout(1500)
+        click_run(page)
+        text = wait_status(page, "conflict", None, "[data-workflow-bar='true']")
+        assert "UNKNOWN" in text
         assert db_history_count(UID, record) == 1, "the server committed; only the response was lost"
         kept = stored_intents(page)
         assert len(kept) == 1 and kept[0][1]["id"] == posts[0]["run_intent_id"]
         page.reload()
-        page.wait_for_selector("[data-testid='v2-run-btn']")
-        assert page.locator(".v2-run-form").first.get_attribute("data-run-intent-pending") == "true"
-        assert "Resume Run" in page.locator(".v2-run-label").first.inner_text()
-        page.locator("[data-testid='v2-run-btn']").click()
-        page.wait_for_timeout(2500)
+        page.wait_for_selector("[data-workflow-bar='true']")
+        page.wait_for_selector("[data-wf-resume='true']")
+        assert page.locator("[data-wf-run='true']").is_disabled()
+        assert "Resume" in page.locator("[data-wf-resume='true']").inner_text()
+        page.locator("[data-wf-resume='true']").click()
+        wait_intent_consumed(page)
+        page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='CURRENT']", timeout=120000)
         assert len(posts) == 2
         assert posts[1]["run_intent_id"] == posts[0]["run_intent_id"] and posts[1]["content_hash"] == posts[0]["content_hash"]
         assert db_history_count(UID, record) == 1, "the retry returned the original result; nothing was recalculated"
         assert stored_intents(page) == []
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()
 
 
 def check_legacy_queued_run_after_pending_save_keeps_one_key_and_the_saved_binding(browser, live_server):
+    from tests.model_react_wf2_browser_acceptance import bumped, field_input_id, goto_section, numeric_bound_field
     UID = "d029-legacy-queued"
     context, page, record, errors = make_session(browser, live_server, UID)
     base = live_server
     try:
+        materialize(context, base, record)
         posts = record_run_posts(page)
-        legacy_open(page, base, record)
-        page.evaluate("""() => {
-            const input = document.querySelector('.v2-field-row[data-field-id="revenue.ppa.base_tariff"] .v2-field-input');
-            input.value = String(Number(input.value || 0) + 3);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }""")
-        hash_before = page.locator("#v2-canonical-run-form input[name='content_hash']").input_value()
-        page.locator("[data-testid='v2-run-btn']").click()      # queued behind the pending save
-        page.wait_for_timeout(5000)
+        open_workspace(page, base, record, "inputs")
+        page.wait_for_selector("[data-sheet-editor='project_setup']")
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
+        hash_before = current_draft_hash(context, base, record)
+        row = numeric_bound_field(context, base, record, "project_setup", prefer=("project_setup.technical.p50_hours",))
+        new_value = bumped(row)
+        page.locator(f"#{field_input_id('project_setup', row['field_id'])}").fill(new_value)
+        assert page.locator("[data-unsaved-indicator='true']").count() == 1
+        assert page.locator("[data-wf-run='true']").is_disabled(), "React refuses Run while edits are unsaved"
+        page.get_by_role("button", name=f"Save {row['label']}").click()
+        wait_status(page, "ok", "verified", "[data-sheet-editor='project_setup']")
+        assert db_history_count(UID, record) == 0 and len(posts) == 0, "Save never runs the model"
+        page.wait_for_function("() => { const run = document.querySelector(\"[data-wf-run='true']\"); return Boolean(run) && !run.disabled; }")
+        click_run(page)
+        page.wait_for_selector("[data-workflow-bar='true'][data-bar-freshness='CURRENT']", timeout=120000)
         assert len(posts) == 1, posts
         assert UUID_V4.match(posts[0]["run_intent_id"])
-        assert posts[0]["content_hash"] != hash_before, "the queued Run is bound to the SAVED draft, not the stale form value"
+        assert posts[0]["content_hash"] != hash_before, "the Run is bound to the SAVED draft, not the stale form value"
+        assert posts[0]["content_hash"] == current_draft_hash(context, base, record)
         assert db_history_count(UID, record) == 1
         assert stored_intents(page) == []
+        assert posts[0]["csrf_token"] not in storage_dump(page)
+        assert not [e for e in errors if "Failed to load resource" not in e], errors
     finally:
         context.close()

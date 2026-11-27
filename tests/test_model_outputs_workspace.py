@@ -10,22 +10,10 @@ from types import SimpleNamespace
 import pytest
 
 from app.workbook import multisenior_config as config
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
+from tests.model_react_test_helpers import react_fields_save_contract, react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run, save
 from tests.test_model_financing_f3_workspace import collection_for_inputs, state
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 OWNER = "decision-user"
 
@@ -153,9 +141,9 @@ def test_stale_view_identifies_the_previous_run_and_keeps_its_values(env):
     ws, rr = run(env, record)
     before = tables(get_outputs(env, record))
     prior_snapshot = ws.last_runtime_snapshot_id
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     changed = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, field_id="debt.senior.target_dscr", value="1.35", sheet_id="debt", **tokens(page.text)))
+        project=record.project_code, field_id="debt.senior.target_dscr", value="1.35", sheet_id="debt",
+        **react_workbook_tokens(env.client, record.project_code)))
     assert changed.status_code == 200 and "field-error" not in changed.text, changed.text[:800]
     assert get_workspace_state(OWNER, record.project_id).dirty
     stale = get_outputs(env, record)
@@ -222,13 +210,9 @@ def test_get_is_read_only_runs_no_engine_and_is_owner_scoped(env, monkeypatch):
 
 def test_navigation_and_lazy_panel_are_additive(env):
     record = env.create("solar")
-    page = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    assert 'id="tab-outputs"' in page and 'id="panel-outputs"' in page and "Statements &amp; Debt" in page
-    assert 'src="/static/js/model_view_refresh.js"' in page
-    assert re.search(r'id="v2-sheet-outputs"[^>]*data-model-view-state="pending"', page)
-    # The lazy panel carries no statement data until the tab is opened.
-    panel = page[page.index('id="panel-outputs"'):page.index('id="panel-trust"')]
-    assert "<table" not in panel
+    ws = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()
+    stmts = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+    assert ws["ok"] is True and stmts["ok"] is True and stmts["state"] == "NOT_RUN" and stmts["results"]["available"] is False
 
 
 # ───────────────────────── accessibility (static contract) ─────────────────────────
@@ -407,11 +391,8 @@ def test_refresh_is_a_plain_listener_not_a_csp_blocked_trigger_filter():
 # ───────────────────── committed Run scenario identity (P1) ─────────────────────
 
 def _q3_scenario(env, record) -> str:
-    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    context = re.search(r'data-testid="q3-context">(.*?)</div>', html, re.S)
-    assert context, "Q3 Findings context missing"
-    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", context.group(1))).strip()
-    return re.search(r"Scenario: (.*?) · Run ", text).group(1)
+    payload = env.client.get("/v2/model-react/statements", params={"project": record.project_code}).json()
+    return payload["results"]["scenario"] or ""
 
 
 def _outputs_scenario(page: str):
@@ -448,9 +429,9 @@ def test_named_scenario_stale_and_switch_keep_the_committed_identity(env):
     current = get_outputs(env, record)
     assert _outputs_scenario(current) == "Upside" == _q3_scenario(env, record)
     # STALE: the PRIOR Run's identity, not the edited Working Copy.
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
     post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, field_id="debt.senior.target_dscr", value="1.33", sheet_id="debt", **tokens(page.text)))
+        project=record.project_code, field_id="debt.senior.target_dscr", value="1.33", sheet_id="debt",
+        **react_workbook_tokens(env.client, record.project_code)))
     stale = get_outputs(env, record)
     assert 'data-state="STALE"' in stale and _outputs_scenario(stale) == "Upside" == _q3_scenario(env, record)
     assert "Upside" in re.search(r'data-testid="outputs-stale-banner">(.*?)</p>', stale, re.S).group(1)
@@ -661,7 +642,7 @@ def test_stale_and_integrity_fail_are_independent_in_every_vertical(env, monkeyp
         monkeypatch.setattr(institutional, "get_run_integrity_checks", verdict(overall, status))
         page = get_outputs(env, record)
         assert 'data-testid="outputs-state" data-state="CURRENT"' in page and f'data-testid="outputs-integrity" data-state="{overall}"' in page
-    edit = env.client.get("/v2/workbook", params={"project": record.project_code})
+    debt_toks = react_workbook_tokens(env.client, record.project_code)
     if f3:
         from dataclasses import replace
         from finco_core.inputs.financing_instruments import FinancingCollection
@@ -670,15 +651,14 @@ def test_stale_and_integrity_fail_are_independent_in_every_vertical(env, monkeyp
         pi = ProjectInputSet.from_snapshot(get_workspace_state(OWNER, record.project_id).draft_snapshot).to_projectinputs()
         base = collection_for_inputs(pi)
         first = replace(base.instruments[0], interest=replace(base.instruments[0].interest, fixed_rate=base.instruments[0].interest.fixed_rate + 0.005))
-        # The Capital Stack form issues a session/project-bound CSRF token; use that DOM token like a browser does.
-        from bs4 import BeautifulSoup
-        token = BeautifulSoup(edit.text, "html.parser").select_one('[data-f3-form] [name="csrf_token"]')["value"]
+        # The Capital Stack form issues a session/project-bound CSRF token.
+        token = react_fields_save_contract(env.client, record.project_code, "debt")["financing_csrf_token"]
         data = dict(field_id=config.FIELD_ID, csrf_token=token,
                     value=state(active=True, collection=FinancingCollection((first,) + tuple(base.instruments[1:]))))
     else:
         data = dict(field_id="debt.senior.target_dscr", value="1.37")
     response = post_valid_mutation(env.client, "/v2/workbook/update", headers={"HX-Request": "true"}, data=dict(
-        project=record.project_code, sheet_id="debt", **data, **tokens(edit.text)))
+        project=record.project_code, sheet_id="debt", **data, **debt_toks))
     assert response.status_code == 200 and "field-error" not in response.text
     for overall, status in (("FAIL", "FAIL"), ("PASS", "PASS")):
         monkeypatch.setattr(institutional, "get_run_integrity_checks", verdict(overall, status))

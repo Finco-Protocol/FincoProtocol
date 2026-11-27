@@ -5,18 +5,6 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip(
     "playwright",
     reason="playwright not installed in this workflow",
@@ -28,9 +16,10 @@ from tests.model_workspace_navigation import activate_destination
 
 
 @pytest.mark.parametrize('kind', ['solar', 'wind'])
-def test_trace_opens_in_existing_output_tax_returns_and_mobile(live_server, browser, kind):
+def test_trace_opens_in_existing_output_tax_returns_and_mobile(live_server, browser, kind, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     record = _project('generic_' + kind + '_reference', two_senior=True)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     for scheme, width in [('light', 1440), ('dark', 390)]:
         ctx = browser.new_context(viewport={'width': width, 'height': 1000}, color_scheme=scheme)
         ctx.add_cookies([{'name': COOKIE_NAME, 'value': create_session_token(user_id=USER, username='admin'), 'url': live_server}])
@@ -39,7 +28,9 @@ def test_trace_opens_in_existing_output_tax_returns_and_mobile(live_server, brow
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.goto(f'{live_server}/v2/workbook?project={record.project_code}')
         activate_destination(page, 'tab-outputs')
-        page.locator('#v2-sheet-outputs [data-testid=financing-trace-loader] summary').click()
+        out_loader = page.locator('#v2-sheet-outputs [data-testid=financing-trace-loader]')
+        out_loader.locator('summary').click()
+        out_loader.locator('[hx-get]').scroll_into_view_if_needed()
         trace = page.locator('#v2-sheet-outputs [data-testid=financing-trace]')
         expect(trace).to_have_attribute('data-state', 'CURRENT')
         expect(trace.locator('[data-testid=f38-facility]')).to_have_count(2)
@@ -69,6 +60,7 @@ def test_changed_snapshot_is_visible_unavailable_not_stuck_loading(live_server, 
     from app.auth import COOKIE_NAME, create_session_token
     from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
     record = _project('generic_solar_reference', two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     ctx = browser.new_context()
     ctx.add_cookies([{'name': COOKIE_NAME, 'value': create_session_token(user_id=USER, username='admin'), 'url': live_server}])
     page = ctx.new_page()

@@ -1271,6 +1271,7 @@ async def react_trust(request: Request, project: str):
     from urllib.parse import urlencode
     from app.api.v1_1.institutional import get_run_integrity_checks, get_run_identity
     from app.v2.post_run_context import PostRunContextChanged, PostRunRequestContext
+    from app.v2.result_status import last_run_matches_active_scenario
     from app.workbook.workbook_identity import WorkbookIdentityError
 
     try:
@@ -1278,6 +1279,8 @@ async def react_trust(request: Request, project: str):
         identity_state, identity = get_run_identity(owner, record.project_id, context=context)
         integrity_state, integrity = get_run_integrity_checks(owner, record.project_id, context=context)
         has_run = identity_state == "AVAILABLE" and context.freshness.has_runtime
+        matches_active = last_run_matches_active_scenario(context.workspace, owner) is True
+        integrity_visible = integrity_state == "AVAILABLE" and has_run and matches_active
         query = urlencode({"project": record.project_code})
         validation = {
             "state": "DEFERRED" if has_run else "UNAVAILABLE",
@@ -1303,7 +1306,7 @@ async def react_trust(request: Request, project: str):
                         "protected_reference": _is_protected(record)},
             "run_state": context.freshness.state.value,
             "identity": identity if identity_state == "AVAILABLE" else None,
-            "integrity": integrity if integrity_state == "AVAILABLE" else None,
+            "integrity": integrity if integrity_visible else None,
             "certificate": certificate,
             "validation": validation,
         })

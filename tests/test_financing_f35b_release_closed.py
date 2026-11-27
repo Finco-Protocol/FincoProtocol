@@ -1,26 +1,12 @@
 """F3.5-B closes proposal presentation and production activation boundaries."""
 import json
 
-from bs4 import BeautifulSoup
 import pytest
 
 from app.workbook import junior_debt_config as junior, multisenior_config as config
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import save, run
 from tests.test_financing_f3_junior_workspace import state, working_case
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.mark.parametrize("kind", ["solar", "wind"])
@@ -34,18 +20,18 @@ def test_saved_junior_proposal_has_real_commitment_closed_activation_and_no_poli
     response = save(env, record, json.dumps(proposal), field=config.FIELD_ID)
     assert response.status_code == 200 and "field-error-banner" not in response.text
     before = get_workspace_state("decision-user", record.project_id)
-    html = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "debt"}).text
-    soup = BeautifulSoup(html, "html.parser")
+    studio_resp = env.client.get("/v2/model-react/financing/studio", params={"project": record.project_code})
+    assert studio_resp.status_code == 200, studio_resp.text[:300]
+    stack = studio_resp.json()["capital_stack"]
     expected = next(i.commitment_keur for i in candidate.financing_collection.instruments if i.seniority_rank == 2)
-    assert f"{expected:,.2f}" in soup.select_one('[data-testid="cs-working-junior"]').text
-    assert "Senior first" in soup.select_one('[data-testid="cs-summary-working"]').text
-    assert "pari-passu" not in soup.select_one('[data-testid="multisenior-workspace"]').text
-    assert "Senior-first, Junior-second service" in soup.select_one('[data-testid="multisenior-workspace"]').text
-    checkbox = soup.select_one("[data-f3-activate]")
-    assert checkbox.has_attr("disabled") and not checkbox.has_attr("checked")
-    assert soup.select_one('[data-testid="cs-junior-policy"]').text.count("Not available") == 4
-    assert len(soup.select("[data-cs-readonly-instrument]")) == 1
-    assert not soup.select('[data-testid="cs-summary-last-run"]')
+    assert stack["working"]["junior_commitments_keur"] == pytest.approx(expected)
+    assert "Senior first" in stack["debt_service_priority"] and "Junior" in stack["debt_service_priority"] and "not executed" in stack["debt_service_priority"]
+    assert "pari-passu" not in stack["debt_service_priority"]
+    assert stack["junior_activation_closed"] is True
+    assert not studio_resp.json()["multisenior"].get("active")
+    assert all(v == "Not available" for v in stack["junior_policy"].values())
+    assert sum(1 for r in stack["rows"] if r["junior"] and not r["executable"]) == 1
+    assert stack["last_run"] is None
     assert get_workspace_state("decision-user", record.project_id) == before
     assert junior.ACTIVATION_ENABLED is False
 
@@ -70,9 +56,8 @@ def test_customer_json_cannot_activate_candidate_or_replace_last_run(env, kind, 
 def test_extra_facility_is_not_an_implicit_financial_extension(env, extra):
     from app.persistence.workspace_repository import get_workspace_state
     record = env.create()
-    # The first workbook GET performs existing seed hydration. Capture the
-    # transaction baseline after that authorized lifecycle step, before POST.
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    # Capture transaction baseline after workspace materialization.
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     candidate = working_case(before)
     request = json.loads(state(candidate))

@@ -6469,7 +6469,15 @@ router.include_router(statements_drilldown_router)
 
 def _statements_drilldown_registered() -> bool:
     """True only when the historical statements route is actually mounted (gates the Run History link)."""
-    return any(getattr(r, "path", "") == "/workbook/run-history/statements" for r in router.routes)
+    def _has_route(routes) -> bool:
+        for r in routes:
+            if getattr(r, "path", "") == "/workbook/run-history/statements":
+                return True
+            sub = getattr(r, "original_router", None)
+            if sub is not None and _has_route(getattr(sub, "routes", ())):
+                return True
+        return False
+    return _has_route(router.routes)
 
 # M3 two-driver sensitivity matrix: one isolated read-only route (integration hook only).
 from app.v2.sensitivity_matrix_router import router as sensitivity_matrix_router

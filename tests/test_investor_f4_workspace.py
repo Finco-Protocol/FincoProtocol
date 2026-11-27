@@ -12,22 +12,10 @@ import pytest
 from openpyxl import load_workbook
 
 from app.model_v2.investor_f4 import EVIDENCE_KEY, SNAPSHOT_KEY
-from tests.test_model_decision_workspace_v2 import env, tokens
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import run
 from tests.test_investor_f4_p1 import document
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 def page(env, record, history_id=None):
@@ -219,9 +207,8 @@ def test_failed_funding_reconciliation_cannot_commit_a_run(env):
     record = env.create()
     before, _ = run(env, record)
     assert save(env, record, document()).status_code == 200
-    page_html = env.client.get('/v2/workbook', params={'project': record.project_code}).text
     response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
-        data=dict(project=record.project_code, **tokens(page_html)))
+        data=dict(project=record.project_code, **react_workbook_tokens(env.client, record.project_code)))
     assert "No Run was committed" in response.text
     after = get_workspace_state("decision-user", record.project_id)
     assert after.dirty
@@ -234,7 +221,7 @@ def test_shared_scalar_writer_cannot_bypass_agreement_version_and_scenario_write
     from app.persistence.workspace_repository import get_workspace_state
     from app.model_v2.investor_f4 import FIELD_ID
     record = env.create()
-    env.client.get('/v2/workbook', params={'project': record.project_code})
+    env.client.get('/v2/model-react/workspace', params={'project': record.project_code})
     before = get_workspace_state("decision-user", record.project_id)
     response = scalar_save(env, record, json.dumps(document()), field=FIELD_ID)
     assert "Use Investor agreement Save" in response.text
@@ -336,9 +323,8 @@ def test_agreement_edit_during_run_rejects_commit_without_mutating_last_run(env,
         return result
 
     monkeypatch.setattr(f4, 'allocate_run', concurrent_edit)
-    html = env.client.get('/v2/workbook', params={'project': record.project_code}).text
     response = post_valid_csrf(env.client, '/v2/workbook/run', headers={'HX-Request': 'true'},
-                              data=dict(project=record.project_code, **tokens(html)))
+                              data=dict(project=record.project_code, **react_workbook_tokens(env.client, record.project_code)))
     assert response.status_code == 200
     after = get_workspace_state('decision-user', record.project_id)
     assert after.dirty

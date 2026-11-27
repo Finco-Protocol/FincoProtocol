@@ -13,21 +13,9 @@ import json
 
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401  (fixture)
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401  (fixture)
 from tests.test_model_financing_f2 import run
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 USER = "decision-user"
 UNBOUND_FIELDS = ["p50_hours", "opex_y1_keur", "total_capex_keur", "gearing_pct",
@@ -74,8 +62,7 @@ def _history(record):
 
 
 def _post_run(env, record):
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    return post_valid_csrf(env.client, "/v2/workbook/run", headers=HX, data={"project": record.project_code, **tokens(page.text)})
+    return post_valid_csrf(env.client, "/v2/workbook/run", headers=HX, data={"project": record.project_code, **react_workbook_tokens(env.client, record.project_code)})
 
 
 def _tariff(ws):
@@ -188,8 +175,8 @@ def test_previously_saved_unsupported_override_refuses_the_run_before_commitment
     assert after.draft_snapshot == before_ws.draft_snapshot
     assert _history(record) == before_history
     # The saved value remains visible and removable (recovery path).
-    page = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "scenarios"})
-    assert "Not applied to Run" in page.text and "gearing_pct" in page.text
+    sc_json = env.client.get("/v2/model-react/scenario-overrides", params={"project": record.project_code, "scenario_id": child.scenario_id}).json()
+    assert "gearing_pct" in sc_json["unsupported_override_keys"]
     assert _child(record).overrides == {"gearing_pct": 55.0}
     removed = post_valid_mutation(env.client, "/v2/workbook/scenarios/remove-override", headers=HX, data={
         "project": record.project_code, "scenario_id": child.scenario_id, "field": "gearing_pct"})
@@ -275,8 +262,8 @@ def test_save_reload_run_edit_stale_recover(env):
     value = round(_tariff(_ws(record)) * 1.2, 4)
     assert _overrides(env, record, child, tariff_eur_mwh=value).status_code == 200
     # Reload: the saved override value is still visible.
-    page = env.client.get("/v2/workbook", params={"project": record.project_code, "sheet": "scenarios"})
-    assert str(value) in page.text
+    sc_text = env.client.get("/v2/model-react/scenario-overrides", params={"project": record.project_code, "scenario_id": child.scenario_id}).text
+    assert str(value) in sc_text
     ran = _post_run(env, record)
     assert ran.status_code == 200
     current_sid = _ws(record).last_runtime_snapshot_id
@@ -299,20 +286,17 @@ def test_save_reload_run_edit_stale_recover(env):
 def test_scenario_without_run_does_not_inherit_integrity_pass(env):
     record = env.create("solar")
     run(env, record)
-    base_html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    assert "hy-chip--integrity-pass" in base_html and "hybrid-integrity-note" not in base_html
+    base_trust = env.client.get("/v2/model-react/trust", params={"project": record.project_code}).json()
+    assert base_trust["run_state"] == "CURRENT" and base_trust["integrity"]["overall"] == "PASS"
     _create(env, record, "Fresh")
     _select(env, record, _child(record))
     assert _ws(record).last_runtime_snapshot_id is None
-    html = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    assert "hy-chip--integrity-pass" not in html and "hy-chip--integrity-unavailable" in html
-    assert "hybrid-integrity-note" in html
-    assert 'data-testid="trust-pack-integrity-overall">PASS' not in html
-    assert 'data-testid="smart-panel-row-run-integrity"' not in html or "Run integrity</span>\n         <span class=\"v2-smart-panel-row-value\">PASS" not in html
+    fresh_trust = env.client.get("/v2/model-react/trust", params={"project": record.project_code}).json()
+    assert fresh_trust["run_state"] == "NOT_RUN" and fresh_trust["integrity"] is None
     # The Base Case still owns its own PASS and gets it back after the round trip.
     _select(env, record, _base(record))
-    restored = env.client.get("/v2/workbook", params={"project": record.project_code}).text
-    assert "hy-chip--integrity-pass" in restored and "hybrid-integrity-note" not in restored
+    restored = env.client.get("/v2/model-react/trust", params={"project": record.project_code}).json()
+    assert restored["run_state"] == "CURRENT" and restored["integrity"]["overall"] == "PASS"
 
 
 def test_scope_helper_withholds_only_the_integrity_section():
@@ -376,8 +360,7 @@ def test_cross_owner_cannot_save_override_or_create_scenario(env):
 def test_stale_cas_run_is_refused_without_writing(env):
     record = env.create("solar")
     run(env, record)
-    page = env.client.get("/v2/workbook", params={"project": record.project_code})
-    stale = tokens(page.text)
+    stale = react_workbook_tokens(env.client, record.project_code)
     stale["content_hash"] = "0" * 64
     before, history = _ws(record), _history(record)
     response = post_valid_csrf(env.client, "/v2/workbook/run", headers=HX, data={"project": record.project_code, **stale})

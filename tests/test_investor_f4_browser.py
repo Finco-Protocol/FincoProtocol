@@ -5,18 +5,6 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip('playwright', reason='playwright not installed in this workflow')
 
 from playwright.sync_api import expect
@@ -26,10 +14,11 @@ from tests.test_investor_f4_workspace import funded_agreement
 
 
 @pytest.mark.parametrize('kind', ['solar', 'wind'])
-def test_actual_editor_save_reload_run_history_and_responsive_layout(live_server, browser, kind):
+def test_actual_editor_save_reload_run_history_and_responsive_layout(live_server, browser, kind, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     from app.persistence.workspace_repository import get_workspace_state
     record = _project('generic_' + kind + '_reference', two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     doc = funded_agreement(get_workspace_state(USER, record.project_id))
     ctx = browser.new_context(viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
     ctx.add_cookies([{'name': COOKIE_NAME, 'value': create_session_token(user_id=USER, username='admin'), 'url': live_server}])
@@ -119,10 +108,11 @@ def test_actual_editor_save_reload_run_history_and_responsive_layout(live_server
     ctx.close()
 
 
-def test_protected_investor_workspace_has_no_agreement_editor(live_server, browser):
+def test_protected_investor_workspace_has_no_agreement_editor(live_server, browser, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     from app.persistence.db import get_connection
     record = _project('generic_solar_reference', two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     conn = get_connection()
     conn.execute('UPDATE projects SET is_protected=1 WHERE project_id=?', (record.project_id,))
     conn.commit()

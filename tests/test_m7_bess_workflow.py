@@ -6,21 +6,9 @@ import json
 import re
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env, tokens  # noqa: F401
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import run
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
 
 
 @pytest.fixture
@@ -84,7 +72,7 @@ def test_full_native_save_run_stale_reopen_scenario_history(env, storage):
     assert save(env, storage, data).status_code == 303
     dirty = get_workspace_state('decision-user', storage.project_id)
     assert dirty.dirty and dirty.last_runtime_summary == first.last_runtime_summary
-    assert 'STALE' in env.client.get('/v2/workbook', params={'project': storage.project_code}).text
+    assert 'STALE' in env.client.get('/v2/model-react/workspace', params={'project': storage.project_code}).text
     second, result = run(env, storage)
     assert second.last_runtime_summary['bess_input_contract'] != first.last_runtime_summary['bess_input_contract']
     assert second.last_runtime_summary['bess_operating_audit'][0]['gross_sale_revenue_keur'] != first.last_runtime_summary['bess_operating_audit'][0]['gross_sale_revenue_keur']
@@ -154,8 +142,7 @@ def test_invalid_dispatch_run_preserves_last_run_and_history(env, storage):
     raw['configuration']['dispatch'][0]['discharge_mw'] = .1
     data['configuration'] = json.dumps(raw)
     assert save(env, storage, data).status_code == 303
-    page = env.client.get('/v2/workbook', params={'project': storage.project_code})
-    response = post_valid_csrf(env.client, '/v2/workbook/run', data={'project': storage.project_code, **tokens(page.text)}, headers={'HX-Request': 'true'})
+    response = post_valid_csrf(env.client, '/v2/workbook/run', data={'project': storage.project_code, **react_workbook_tokens(env.client, storage.project_code)}, headers={'HX-Request': 'true'})
     assert 'role="alert"' in response.text
     assert 'previous Last Run is unchanged' in response.text
     after = get_workspace_state('decision-user', storage.project_id)

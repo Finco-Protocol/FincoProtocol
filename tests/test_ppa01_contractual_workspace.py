@@ -16,19 +16,6 @@ from tests.test_ppa01_contractual_timing import terms, dated, book
 from tests.test_ppa01_index_series_revenue import _operating
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves legacy period-aligned PPA windows and legacy tariff expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
@@ -53,8 +40,8 @@ def test_dated_contract_save_stale_run_scenario_and_history(env, kind):
         assert row["price_eur_mwh"] == pytest.approx(float(price), abs=1e-12)
         assert row["revenue_keur"] == pytest.approx(float(Decimal(str(row["quantity_mwh"])) * price / 1000), abs=1e-8)
     before = copy.deepcopy(get_run_history(OWNER, flow.record.project_id))
-    page = env.client.get('/v2/workbook', params=flow.project)
-    assert 'CURRENT' in page.text and 'data-calendar-preview' in page.text
+    assert 'CURRENT' in env.client.get('/v2/model-react/workspace', params=flow.project).text
+    assert 'calendar_preview' in env.client.get('/v2/model-react/revenue', params=flow.project).json()['contracts']
     assert post_valid_mutation(env.client, '/v2/workbook/scenarios/create', data={**flow.project, 'scenario_name':'Dated alternative'}).status_code == 200
     child = next(s for s in list_scenarios(OWNER,flow.record.project_id) if not s.is_base_case)
     assert post_valid_mutation(env.client, '/v2/workbook/scenarios/select', data={**flow.project,'scenario_id':child.scenario_id}).status_code == 200
@@ -69,7 +56,7 @@ def test_dated_contract_save_stale_run_scenario_and_history(env, kind):
     assert next(h for h in history if h.history_id==before[0].history_id).runtime_summary == before[0].runtime_summary
     alt['streams'][0]['price_eur_mwh'] = 61
     assert _save_revenue(flow,alt).status_code == 200
-    assert flow.ws().dirty and 'STALE' in env.client.get('/v2/workbook',params=flow.project).text
+    assert flow.ws().dirty and 'STALE' in env.client.get('/v2/model-react/workspace', params=flow.project).text
     flow.run()
     assert not flow.ws().dirty and len(get_run_history(OWNER,flow.record.project_id)) == 3
 

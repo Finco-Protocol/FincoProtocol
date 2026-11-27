@@ -15,19 +15,6 @@ from tests.test_financing_f37_instrument_su import _two_senior_run, _junior_run
 from tests.test_model_financing_f2 import run, save
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 def view(rr, ws, **kw):
     return build_financing_trace(runtime_result=rr, freshness="CURRENT", snapshot_id=rr.snapshot_id,
         composite_hash=ws.last_runtime_composite_hash, scenario_id=ws.last_runtime_scenario_id,
@@ -138,8 +125,8 @@ def test_not_run_context_and_existing_surface_loaders(env):
     response = page(env, record)
     assert response.status_code == 200 and 'data-state="NOT_RUN"' in response.text
     assert 'data-testid="f38-facility"' not in response.text
-    workbook = env.client.get('/v2/workbook', params={'project': record.project_code}).text
-    assert workbook.count('data-testid="financing-trace-loader"') >= 2
+    studio = env.client.get('/v2/model-react/financing/studio', params={'project': record.project_code})
+    assert studio.status_code == 200 and studio.json()['selected_run'] == {'available': False, 'reason': 'NO_COMMITTED_RUN'}
 
 
 def test_current_stale_history_and_last_run_immutability(two, env):

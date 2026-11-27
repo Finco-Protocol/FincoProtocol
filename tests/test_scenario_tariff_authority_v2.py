@@ -9,20 +9,8 @@ import copy
 
 import pytest
 
-from tests.test_model_decision_workspace_v2 import env, tokens
-
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+from tests.model_react_test_helpers import react_workbook_tokens
+from tests.test_model_decision_workspace_v2 import env
 
 
 def test_explicit_override_binds_alias_without_reversing_global_precedence(env):
@@ -53,7 +41,7 @@ def test_invalid_tariff_binding_fails_closed(value):
 def test_unsupported_vertical_tariff_cannot_be_injected_through_post(env, kind):
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create(kind)
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
     sc = next(s for s in list_scenarios("decision-user", record.project_id) if not s.is_base_case)
     response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
@@ -67,7 +55,7 @@ def test_unsupported_vertical_tariff_cannot_be_injected_through_post(env, kind):
 def test_tariff_validation_precedes_scenario_write(env, value):
     from app.persistence.scenarios_repository import list_scenarios
     record = env.create()
-    env.client.get("/v2/workbook", params={"project": record.project_code})
+    env.client.get("/v2/model-react/workspace", params={"project": record.project_code})
     post_valid_mutation(env.client, "/v2/workbook/scenarios/create", data={"project": record.project_code, "scenario_name": "Alternative"})
     sc = next(s for s in list_scenarios("decision-user", record.project_id) if not s.is_base_case)
     response = post_valid_mutation(env.client, "/v2/workbook/scenarios/update-overrides", data={
@@ -87,10 +75,8 @@ def test_real_base_upside_downside_run_restore_reset_and_export(env, monkeypatch
     owner = "decision-user"
     record = env.create(kind)
     project = {"project": record.project_code}
-    def page():
-        return env.client.get("/v2/workbook", params=project)
     def run():
-        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **tokens(page().text)})
+        response = post_valid_csrf(env.client, "/v2/workbook/run", headers={"HX-Request": "true"}, data={**project, **react_workbook_tokens(env.client, record.project_code)})
         assert response.status_code == 200 and 'id="v2-sheet-returns"' in response.text
         return get_workspace_state(owner, record.project_id)
     baseline = run()

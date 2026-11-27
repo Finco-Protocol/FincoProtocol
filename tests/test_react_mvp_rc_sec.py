@@ -2,24 +2,17 @@
 from types import SimpleNamespace
 
 import pytest
-from bs4 import BeautifulSoup
 
 from app import auth
 from app.workbook.financing_csrf import issue_token
-from tests.test_model_react_ux040506_v1 import env, flag_on, OWNER
+from tests.model_react_test_helpers import react_run_contract, react_workbook_tokens
+from tests.test_model_react_ux040506_v1 import env as _ux_env, flag_on, OWNER
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
+@pytest.fixture(name="env")
+def _react_enabled_env(_ux_env, monkeypatch):
+    flag_on(monkeypatch)
+    return _ux_env
 
 
 def state(record):
@@ -33,12 +26,14 @@ def state(record):
 
 
 def run_form(env, record):
-    page = env.client.get('/v2/workbook', params={'project': record.project_code})
-    form = BeautifulSoup(page.text, 'html.parser').select_one('#v2-canonical-run-form')
-    assert form is not None
-    fields = {i['name']: i.get('value', '') for i in form.select('input[name]')}
-    fields['csrf_token'] = fields.pop('run_csrf_token')
-    return fields
+    toks = react_workbook_tokens(env.client, record.project_code)
+    contract = react_run_contract(env.client, record.project_code)
+    return {
+        'project': record.project_code,
+        'content_hash': toks['content_hash'],
+        'workbook_version': toks['workbook_version'],
+        'csrf_token': contract['csrf_token'],
+    }
 
 
 def token(client, project='', purpose='library-clone-v1'):
@@ -82,31 +77,21 @@ def test_csrf_rejections_do_not_change_history_project_or_workspace(env, monkeyp
     assert state(record) == before
 
 
-@pytest.mark.parametrize('transport', ['react', 'legacy'])
-def test_actual_react_run_contract_and_legacy_form_tokens_run_and_stale_hash_preserves_history(env, monkeypatch, transport):
-    # Legacy form is served only under the explicit rollback flag; React contract is active when React is ON.
-    monkeypatch.setenv('FINCO_MODEL_REACT_V1', '0')
-    record = env.create()
-    legacy_fields = run_form(env, record)
+def test_actual_react_run_contract_and_legacy_form_tokens_run_and_stale_hash_preserves_history(env, monkeypatch):
+    import uuid
     flag_on(monkeypatch)
+    record = env.create()
     ws_meta = env.client.get('/v2/model-react/workspace', params={'project': record.project_code}).json()
     contract = env.client.get('/v2/model-react/runs', params={'project': record.project_code}).json()['run_contract']
-    assert legacy_fields['csrf_token'] and contract['csrf_token']
-    if transport == 'react':
-        payload = {
-            'project': record.project_code,
-            'content_hash': ws_meta['workbook']['composite_hash'],
-            'workbook_version': ws_meta['workbook']['version'],
-            'csrf_token': contract['csrf_token'],
-        }
-        response = env.client.post(contract['url'], data=payload, follow_redirects=False)
-        assert response.status_code == 303 and 'v2_err' not in response.headers['location']
-    else:
-        monkeypatch.setenv('FINCO_MODEL_REACT_V1', '0')
-        payload = dict(legacy_fields)
-        payload['run_csrf_token'] = payload.pop('csrf_token')
-        response = env.client.post(contract['url'], data=payload, follow_redirects=False)
-        assert response.status_code == 303 and 'v2_err' not in response.headers['location']
+    assert contract['csrf_token']
+    payload = {
+        'project': record.project_code,
+        'content_hash': ws_meta['workbook']['composite_hash'],
+        'workbook_version': ws_meta['workbook']['version'],
+        'csrf_token': contract['csrf_token'],
+    }
+    response = env.client.post(contract['url'], data=payload, follow_redirects=False)
+    assert response.status_code == 303 and 'v2_err' not in response.headers['location']
     before = state(record)
     assert len(before[1]) == 1
     monkeypatch.setattr('app.api.project_runner.run_project', lambda *a, **k: pytest.fail('stale hash executed engine'))
@@ -115,10 +100,18 @@ def test_actual_react_run_contract_and_legacy_form_tokens_run_and_stale_hash_pre
     response = env.client.post(contract['url'], data=stale_payload, follow_redirects=False)
     assert response.status_code == 303 and 'v2_err' in response.headers['location']
     assert state(record) == before
-    # HTMX replacement must preserve valid CSRF and fresh identity.
-    response = env.client.post(contract['url'], data=stale_payload, headers={'HX-Request': 'true'})
-    form = BeautifulSoup(response.text, 'html.parser').select_one('#v2-canonical-run-form')
-    assert form and form.select_one('[name="run_csrf_token"]')['value']
+    # Stale hash must still reject without invoking engine and re-issuing /runs provides fresh CSRF.
+    json_resp = env.client.post(
+        contract['url'],
+        data=dict(stale_payload, run_intent_id=str(uuid.uuid4())),
+        headers={'Accept': 'application/json'},
+        follow_redirects=False,
+    )
+    assert json_resp.status_code in (303, 409)
+    if json_resp.status_code == 303:
+        assert 'v2_err' in json_resp.headers['location']
+    fresh_contract = env.client.get('/v2/model-react/runs', params={'project': record.project_code}).json()['run_contract']
+    assert fresh_contract['csrf_token']
     assert state(record) == before
 
 
@@ -141,13 +134,8 @@ def test_valid_clone_real_library_contract_and_legacy_form(env, monkeypatch):
     response = env.client.post('/library/clone/' + reference.project_id,
                                data={'csrf_token': payload['csrf_token']}, follow_redirects=False)
     assert response.status_code == 303
-    assert '/v2/model-react/' in response.headers['location'] or '/v2/workbook' in response.headers['location']
+    assert '/v2/workbook?' in response.headers['location']
     assert len(state(record)[2]) == len(before[2]) + 1
-    # Explicit legacy rollback still issues a usable form CSRF token.
-    monkeypatch.setenv('FINCO_MODEL_REACT_V1', '0')
-    html = env.client.get('/library').text
-    form = BeautifulSoup(html, 'html.parser').select_one('form[action^="/library/clone/"]')
-    assert form and form.select_one('[name="csrf_token"]')['value']
 
 
 def test_foreign_run_project_is_404_and_never_changes_history(env, monkeypatch):

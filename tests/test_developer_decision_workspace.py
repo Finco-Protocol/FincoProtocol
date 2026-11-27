@@ -246,7 +246,7 @@ def _client(user_id, template="generic_solar_reference", name="DD Project"):
 
 
 def _run(client, cookies, code):
-    toks = react_workbook_tokens(client, code)
+    toks = react_workbook_tokens(client, code, cookies=cookies)
     r = post_valid_csrf(client, "/v2/workbook/run", data={"project": code, **toks},
                     cookies=cookies, headers={"HX-Request": "true"})
     assert r.status_code == 200

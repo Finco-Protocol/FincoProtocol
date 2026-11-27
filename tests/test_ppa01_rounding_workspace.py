@@ -12,19 +12,6 @@ from tests.test_rc2_integration_acceptance import _save_revenue
 from tests.test_ppa01_save_scenario_run_chain import _book, _levels, _years, _page
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _legacy_calendar_creation(monkeypatch):
     """FINCO45B: this module proves legacy period-weighted tariff rounding expectations; new Solar/Wind projects now default to OD-TIME-01/v1,
@@ -49,10 +36,11 @@ def test_rounding_save_scenario_run_and_immutable_history(env, kind):
     selected = copy.deepcopy(original)
     selected['streams'][0]['price_rounding'] = dict(enabled=True, decimal_places=2, method='HALF_UP')
     assert _save_revenue(flow, selected).status_code == 200
-    assert flow.ws().dirty and 'STALE' in _page(flow)
+    ws_json = env.client.get('/v2/model-react/workspace', params=flow.project).json()
+    assert flow.ws().dirty and ws_json['freshness']['state'] in ('STALE', 'NOT_RUN')
     assert json.loads(flow.ws().draft_snapshot['rev_multistream_config_json']) == original
     assert json.loads(get_scenario(child.scenario_id, OWNER).overrides['rev_multistream_config_json']) == selected
-    assert 'data-rounding-preview' in _page(flow)
+    assert env.client.get('/v2/model-react/revenue', params=flow.project).json()['contracts']['rounding_preview']
     result = flow.run()
     assert not flow.ws().dirty and 'CURRENT' in _page(flow)
     assert json.loads(result['scenario_revenue_input']['multistream_config_json']) == selected

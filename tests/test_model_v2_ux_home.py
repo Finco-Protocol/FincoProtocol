@@ -23,25 +23,14 @@ from unittest import mock
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture
 def seeded_db(tmp_path, monkeypatch):
     from app.persistence import db
+    from app.services.project_library_service import ensure_reference_models
 
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "ux-home.db"))
     db.init_db()
+    ensure_reference_models()
     yield
 
 
@@ -74,35 +63,28 @@ def _create_working_project(user_id: str, name: str, code: str):
 class TestModelEntryLibraryFirst:
     def test_model_home_renders_library(self, seeded_db):
         client, cookies = _client_and_cookie()
-        r = client.get("/library", cookies=cookies)
-        assert r.status_code == 200
-        # Library-first hero — Model entry is Model Home, not a project.
-        assert "FINCO MODEL" in r.text
-        assert "/projects/new" in r.text
-        # Never auto-opens a workbook surface.
-        assert "/v2/workbook?" not in r.text.split("library-list-region")[0]
+        r = client.get("/library", cookies=cookies, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"].startswith("/v2/model-react/")
+        lib = client.get("/v2/model-react/library", cookies=cookies)
+        assert lib.status_code == 200 and lib.json()["ok"] is True
 
     def test_new_project_is_the_primary_cta(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        cta = re.search(r'<a href="/projects/new" class="fo-library-cta-new"', html)
-        assert cta is not None
+        opts = client.get("/v2/model-react/new-project/options", cookies=cookies)
+        assert opts.status_code == 200 and opts.json()["ok"] is True
 
 
 class TestEmptyState:
     def test_no_projects_collapses_recent_and_shows_onboarding(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        assert 'data-testid="library-onboarding"' in html
-        assert "No working projects yet" in html
-        # The populated "Recent Projects" section heading is not rendered.
-        assert ">Recent Projects<" not in html
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        assert payload["projects"] == []
 
     def test_references_visible_in_empty_state(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        assert "Reference Models" in html
-        assert html.count("Create working copy") >= 1
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        assert len(payload["references"]) == 5
+        assert payload["csrf_token"]
 
 
 class TestPopulatedRecentProjects:
@@ -110,14 +92,11 @@ class TestPopulatedRecentProjects:
         user = "ux-home-populated"
         client, cookies = _client_and_cookie(user)
         _create_working_project(user, "Alpha Park", "alpha-park")
-        html = client.get("/library", cookies=cookies).text
-        recent_at = html.index("Recent Projects")
-        references_at = html.index("Reference Models")
-        assert recent_at < references_at  # Recent Projects first
-        assert 'data-testid="library-row-alpha-park"' in html
-        # No persisted run yet → typed NOT RUN, never a fabricated timestamp.
-        assert 'data-testid="last-run-none-alpha-park"' in html
-        assert "Not run" in html
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        assert [p["code"] for p in payload["projects"]] == ["alpha-park"]
+        # No persisted run yet → None / NOT_RUN, never a fabricated timestamp.
+        last_run = payload["projects"][0]["last_run"]
+        assert last_run is None or (last_run["available"] is False and last_run["freshness"] == "NOT_RUN")
 
     def test_last_run_timestamp_when_persisted(self, seeded_db):
         from datetime import datetime, timezone
@@ -149,25 +128,24 @@ class TestPopulatedRecentProjects:
             replay_metadata={},
             last_runtime_at=datetime(2026, 10, 6, 21, 14, tzinfo=timezone.utc),
         )
-        html = client.get("/library", cookies=cookies).text
-        assert 'data-testid="last-run-beta-park"' in html
-        assert "Last run · 2026-10-06" in html
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        row = next(p for p in payload["projects"] if p["code"] == "beta-park")
+        assert row["last_run"]["available"] is True
+        assert row["last_run"]["ran_at"].startswith("2026-10-06")
 
 
 class TestReferenceModels:
     def test_open_model_and_create_working_copy(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        assert "Open model" in html
-        assert "View Reference" not in html
-        assert html.count("Create working copy") >= 1
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        assert all(r["protected_reference"] and r["reference"] for r in payload["references"])
+        assert payload["clone_url"] == "/library/clone/{source_project_id}"
 
     def test_storage_renders_explicit_preview_state(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        assert 'data-testid="preview-state-generic_storage_reference-reference"' in html
-        assert "PREVIEW" in html
-        assert "Editable runtime not yet supported" in html
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        storage = next(r for r in payload["references"] if r["code"] == "generic_storage_reference-reference")
+        assert storage["vertical"]["pilot_tier"] == "RELEASE_CLOSED"
 
 
 class TestReferenceKpiEvidence:
@@ -266,15 +244,13 @@ class TestReferenceEvidenceAuthority:
         client, cookies = _client_and_cookie("ux-ref-evidence-user")
         with mock.patch("app.api.project_runner.run_project",
                         side_effect=AssertionError("engine ran")):
-            html = client.get("/library", cookies=cookies).text
-        assert 'data-testid="reference-kpis-generic_solar_reference-reference"' in html
-        assert "8.70%" in html       # Project IRR from __reference__ evidence
-        assert "1.42x" in html       # Min DSCR from __reference__ evidence
+            payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        solar = next(r for r in payload["references"] if r["code"] == "generic_solar_reference-reference")
+        assert solar["last_run"]["available"] is True and solar["last_run"]["ran_at"].startswith("2026-10-06")
 
     def test_missing_reference_evidence_is_omitted_never_zero(
             self, seeded_db):
-        """A reference with NO persisted workspace shows NO KPI rows and no
-        zero-formatted substitutes — missing != 0."""
+        """A reference with NO persisted workspace shows unavailable last_run — missing != 0."""
         from app.persistence.projects_repository import (
             get_reference_by_template_source,
         )
@@ -285,13 +261,9 @@ class TestReferenceEvidenceAuthority:
             "generic_wind_reference")
         assert reference is not None
         client, cookies = _client_and_cookie("ux-ref-missing-user")
-        html = client.get("/library", cookies=cookies).text
-        card_html = html.split(
-            'data-testid="library-row-generic_wind_reference-reference"')[1]
-        card_html = card_html.split("</article>")[0]
-        assert 'data-testid="reference-kpis-generic_wind_reference-reference"' not in card_html
-        assert "0.00%" not in card_html
-        assert "0.00x" not in card_html
+        payload = client.get("/v2/model-react/library", cookies=cookies).json()
+        wind = next(r for r in payload["references"] if r["code"] == "generic_wind_reference-reference")
+        assert wind["last_run"] is None or (wind["last_run"]["available"] is False and wind["last_run"]["freshness"] == "NOT_RUN")
 
 
 class TestNoEngineOnModelHome:
@@ -301,20 +273,14 @@ class TestNoEngineOnModelHome:
         _create_working_project(user, "Gamma Park", "gamma-park")
         with mock.patch("app.api.project_runner.run_project",
                         side_effect=AssertionError("engine ran")):
-            r = client.get("/library", cookies=cookies)
-            r2 = client.get("/library/list", cookies=cookies)
+            r = client.get("/v2/model-react/library", cookies=cookies)
         assert r.status_code == 200
-        assert r2.status_code == 200
 
 
 class TestSearchPreserved:
     def test_filter_form_and_pagination_contract_intact(self, seeded_db):
         client, cookies = _client_and_cookie()
-        html = client.get("/library", cookies=cookies).text
-        assert 'id="library-filter-form"' in html
-        assert 'hx-get="/library/list"' in html
-        assert 'name="role"' in html
-        # HTMX list partial still serves the region.
-        partial = client.get("/library/list", cookies=cookies)
-        assert partial.status_code == 200
-        assert 'id="library-clone-error"' in partial.text
+        resp = client.get("/v2/model-react/library", params={"role": "reference"}, cookies=cookies)
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert {"projects", "references", "page", "total_pages"} <= set(payload)

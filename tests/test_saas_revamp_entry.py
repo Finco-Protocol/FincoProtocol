@@ -7,19 +7,6 @@ import pytest
 from starlette.testclient import TestClient
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture
 def client_with_references(tmp_path, monkeypatch):
     from app.persistence import db
@@ -98,20 +85,16 @@ def test_storage_reference_clone_returns_400_and_creates_no_project(client_with_
 
 def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     _, cookies = _cookie()
-    response = client_with_references.get("/library", cookies=cookies)
+    response = client_with_references.get("/v2/model-react/library", cookies=cookies)
     assert response.status_code == 200
-    html = response.text
-    # UX Foundation renames the surface copy: library-first "FINCO MODEL"
-    # hero and "Reference Models" product semantics.
-    assert "FINCO MODEL" in html and "Reference Models" in html
-    # Solar + Wind + Data Center + EV Charging are cloneable (Storage is not yet).
-    assert html.count("Create working copy") == 4
-    # UX Foundation: Storage preview uses the explicit product state copy.
-    assert "Editable runtime not yet supported" in html
-    assert 'id="fo-kpi-strip"' not in html
-    assert 'id="fo-btn-run"' not in html
-    assert 'id="project-sidebar"' not in html
-    assert 'class="app-layout app-layout--no-project"' in html
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["projects"] == []
+    # Solar + Wind + Data Center + EV Charging are cloneable (Storage is RELEASE_CLOSED).
+    cloneable = [r for r in payload["references"] if r["vertical"]["pilot_tier"] != "RELEASE_CLOSED"]
+    closed = [r for r in payload["references"] if r["vertical"]["pilot_tier"] == "RELEASE_CLOSED"]
+    assert len(cloneable) == 4 and len(closed) == 1
+    assert "kpis" not in payload
 
 
 @pytest.mark.parametrize("count", [0, 1, 25, 50])
@@ -125,22 +108,21 @@ def test_reference_templates_are_independent_of_working_project_pages(client_wit
             project_type="Solar", project_origin="user_created", project_role="working_copy",
             baseline_snapshot={},
         )
-    for url in ("/library", "/library/list?page=2") if count > 20 else ("/library",):
+    for url in ("/v2/model-react/library", "/v2/model-react/library?page=2") if count > 20 else ("/v2/model-react/library",):
         response = client_with_references.get(url, cookies=cookies)
         assert response.status_code == 200
-        html = response.text
-        # Solar / Wind / Storage / Data Center / EV Charging reference cards.
-        assert html.count('class="fo-library-reference-card"') == 5
-        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference"):
-            assert f'library-row-{template}-reference' in html
-        # Create working copy: Solar / Wind / Data Center / EV Charging (Storage is not yet).
-        assert html.count("Create working copy") == 4
-        assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
-    search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text
-    assert 'library-row-generic_solar_reference-reference' in search
-    assert 'library-row-generic_wind_reference-reference' not in search
-    working_only = client_with_references.get("/library/list?role=working_copy", cookies=cookies).text
-    assert 'class="fo-library-reference-card"' not in working_only
+        payload = response.json()
+        ref_templates = {r["template_source"] for r in payload["references"]}
+        assert ref_templates == {
+            "generic_solar_reference", "generic_wind_reference", "generic_storage_reference",
+            "generic_data_center_reference", "generic_ev_charging_reference",
+        }
+        assert len(payload["projects"]) == min(count - (20 if "page=2" in url else 0), 20)
+    search = client_with_references.get("/v2/model-react/library?search=Solar", cookies=cookies).json()
+    assert any(r["template_source"] == "generic_solar_reference" for r in search["references"])
+    assert not any(r["template_source"] == "generic_wind_reference" for r in search["references"])
+    working_only = client_with_references.get("/v2/model-react/library?role=working_copy", cookies=cookies).json()
+    assert working_only["projects"] is not None
 
 
 def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):

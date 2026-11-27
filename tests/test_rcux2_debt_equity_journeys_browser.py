@@ -10,19 +10,6 @@ from __future__ import annotations
 
 import pytest
 
-
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 
 from playwright.sync_api import expect  # noqa: E402
@@ -95,9 +82,10 @@ def _agreement(record):
     return funded_agreement(get_workspace_state(USER, record.project_id))
 
 
-def test_senior_proposal_is_saved_persists_stays_inactive_and_does_not_change_the_run(live_server, browser):
+def test_senior_proposal_is_saved_persists_stays_inactive_and_does_not_change_the_run(live_server, browser, monkeypatch):
     from app.persistence.workspace_repository import get_workspace_state
     record = _project("generic_solar_reference", two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     ctx, page, errors = _context(browser, live_server, record)
     activate_destination(page, "tab-debt")
     page.wait_for_selector("[data-testid=capital-stack-table]")
@@ -134,8 +122,9 @@ def test_senior_proposal_is_saved_persists_stays_inactive_and_does_not_change_th
     ctx.close()
 
 
-def test_two_investors_with_differing_contributions_save_reload_and_run(live_server, browser):
+def test_two_investors_with_differing_contributions_save_reload_and_run(live_server, browser, monkeypatch):
     record = _project("generic_solar_reference", two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     doc = _agreement(record)
     for investor, share in zip(doc["investors"], (.6, .4)):
         investor["ownership_fraction"] = share                                                        # ownership 60/40
@@ -162,8 +151,9 @@ def test_two_investors_with_differing_contributions_save_reload_and_run(live_ser
     ctx.close()
 
 
-def test_changing_ownership_alone_does_not_change_project_economics(live_server, browser):
+def test_changing_ownership_alone_does_not_change_project_economics(live_server, browser, monkeypatch):
     record = _project("generic_solar_reference", two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     doc = _agreement(record)
     for investor, share in zip(doc["investors"], (.6, .4)):
         investor["ownership_fraction"] = share
@@ -188,9 +178,10 @@ def test_changing_ownership_alone_does_not_change_project_economics(live_server,
     ctx.close()
 
 
-def test_ownership_not_summing_to_100_is_refused_with_a_clear_error_and_nothing_is_saved(live_server, browser):
+def test_ownership_not_summing_to_100_is_refused_with_a_clear_error_and_nothing_is_saved(live_server, browser, monkeypatch):
     from app.persistence.workspace_repository import get_workspace_state
     record = _project("generic_solar_reference", two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     doc = _agreement(record)
     doc["investors"][0]["ownership_fraction"] = .60
     doc["investors"][1]["ownership_fraction"] = .30                                                   # 60 + 30 = 90
@@ -207,10 +198,11 @@ def test_ownership_not_summing_to_100_is_refused_with_a_clear_error_and_nothing_
     ctx.close()
 
 
-def test_contributions_that_do_not_reconcile_never_change_the_committed_results(live_server, browser):
+def test_contributions_that_do_not_reconcile_never_change_the_committed_results(live_server, browser, monkeypatch):
     """Unreconciled paid-in capital is refused either at Save or at Run; in both cases no Run is committed and the previous results stay."""
     from app.persistence.workspace_repository import get_workspace_state
     record = _project("generic_solar_reference", two_senior=False)
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     doc = _agreement(record)
     doc["contributions"][0]["amount_keur"] += 1000                                                    # paid-in no longer equals the model's equity funding
     before = (get_workspace_state(USER, record.project_id).last_runtime_snapshot_id, _history(record))

@@ -25,18 +25,6 @@ from unittest.mock import patch
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 # ---------------------------------------------------------------------------
 # Helpers shared across tests
 # ---------------------------------------------------------------------------
@@ -245,22 +233,19 @@ def test_idor_workspace_state_session_b_cannot_read_session_a(client):
     try:
         _insert_project(uid_a, project_code_a, "Session A WS Project")
 
-        # Session B requests Session A's project workbook — must not reveal A's data
+        # Session B requests Session A's project workspace — must not reveal A's data
         resp = client.get(
-            "/v2/workbook",
+            "/v2/model-react/workspace",
             params={"project": project_code_a},
             cookies=_make_demo_cookie(uid_b),
             follow_redirects=False,
         )
-        # Must either redirect to login/library or return 404/403, never 200 with Session A's data
-        assert resp.status_code in (302, 303, 401, 403, 404, 200), (
+        assert resp.status_code in (401, 403, 404), (
             f"Unexpected status {resp.status_code}"
         )
-        if resp.status_code == 200:
-            body = resp.text
-            assert "Session A WS Project" not in body, (
-                "Session B must never see Session A's project data in workbook response"
-            )
+        assert "Session A WS Project" not in resp.text, (
+            "Session B must never see Session A's project data in workspace response"
+        )
     finally:
         _delete_project(uid_a, project_code_a)
 
@@ -342,21 +327,21 @@ def test_reference_models_seeded_deterministically():
 
 
 def test_reference_projects_readable_by_library(client):
-    """GET /library returns 200 and includes all 3 canonical reference names."""
+    """GET /v2/model-react/library returns 200 and includes all canonical references."""
     _seed_refs()
     uid = _make_demo_user_id()
-    resp = client.get("/library", cookies=_make_demo_cookie(uid))
+    resp = client.get("/v2/model-react/library", cookies=_make_demo_cookie(uid))
     assert resp.status_code == 200, f"Library must return 200, got {resp.status_code}"
     body = resp.text
-    # At minimum the 3 reference template sources must be present in the page
+    # At minimum the 3 reference template sources must be present in the payload
     assert "generic_solar_reference" in body or "Solar Reference" in body, (
-        "Solar reference must appear in /library"
+        "Solar reference must appear in /v2/model-react/library"
     )
     assert "generic_wind_reference" in body or "Wind Reference" in body, (
-        "Wind reference must appear in /library"
+        "Wind reference must appear in /v2/model-react/library"
     )
     assert "generic_storage_reference" in body or "Storage Reference" in body, (
-        "Storage reference must appear in /library"
+        "Storage reference must appear in /v2/model-react/library"
     )
 
 
@@ -547,7 +532,7 @@ def test_cleanup_never_removes_reference_data():
 # ---------------------------------------------------------------------------
 
 def test_library_no_cross_user_project_leakage(client):
-    """Session B's project must not appear in Session A's /library response."""
+    """Session B's project must not appear in Session A's /v2/model-react/library response."""
     _seed_refs()
     uid_a = _make_demo_user_id()
     uid_b = _make_demo_user_id()
@@ -555,22 +540,22 @@ def test_library_no_cross_user_project_leakage(client):
     secret_name = f"SecretProjectOf_{uid_b[-6:]}"
     try:
         _insert_project(uid_b, secret_code, secret_name)
-        resp = client.get("/library", cookies=_make_demo_cookie(uid_a))
+        resp = client.get("/v2/model-react/library", cookies=_make_demo_cookie(uid_a))
         assert resp.status_code == 200
         # Session A's library must not contain Session B's secret project name
         assert secret_name not in resp.text, (
-            "Session B's private project must not leak into Session A's /library"
+            "Session B's private project must not leak into Session A's /v2/model-react/library"
         )
     finally:
         _delete_project(uid_b, secret_code)
 
 
 def test_library_role_filter_storage_does_not_crash(client):
-    """GET /library?role=reference must return 200 (exercises the 3-template IN binding)."""
+    """GET /v2/model-react/library?role=reference must return 200."""
     _seed_refs()
     uid = _make_demo_user_id()
     resp = client.get(
-        "/library",
+        "/v2/model-react/library",
         params={"role": "reference"},
         cookies=_make_demo_cookie(uid),
     )
@@ -580,11 +565,11 @@ def test_library_role_filter_storage_does_not_crash(client):
 
 
 def test_library_search_does_not_crash(client):
-    """GET /library?search=Reference must return 200 (exercises full predicate binding)."""
+    """GET /v2/model-react/library?search=Reference must return 200."""
     _seed_refs()
     uid = _make_demo_user_id()
     resp = client.get(
-        "/library",
+        "/v2/model-react/library",
         params={"search": "Reference"},
         cookies=_make_demo_cookie(uid),
     )

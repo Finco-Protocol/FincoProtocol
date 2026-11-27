@@ -32,18 +32,6 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -73,17 +61,17 @@ def _login(client):
 
 
 def _create(client, name, template_source, country="HR", capacity="20"):
-    # FABLE-SEC-01: the legacy route now enforces the bound CSRF token (D07b);
-    # the positive client path supplies the token rendered into the form.
-    from tests.fable_pr1_csrf_client import fetch_create_csrf_token
-    return client.post("/projects/create", data={
-        "csrf_token": fetch_create_csrf_token(client),
-        "project_name": name,
-        "project_type": "Solar",
-        "template_source": template_source,
-        "country_market": country,
-        "capacity_mw": capacity,
-    }, follow_redirects=False)
+    opts = client.get("/v2/model-react/new-project/options").json()
+    tech = template_source.removeprefix("generic_").removesuffix("_reference")
+    return client.post("/v2/model-react/new-project/create", json={
+        "request_id": opts["request_id"],
+        "csrf_token": opts["csrf_token"],
+        "name": name,
+        "technology": tech,
+        "country": country,
+        "capacity_mw": float(capacity),
+        "acknowledge_preview": True,
+    })
 
 
 # ── C: technology-specific capacity labels ────────────────────────────────────
@@ -91,17 +79,13 @@ def _create(client, name, template_source, country="HR", capacity="20"):
 class TestCapacityLabels:
     def test_form_renders_capacity_label_contract(self, client):
         _login(client)
-        page = client.get("/projects/new")
-        assert page.status_code == 200
-        assert 'data-testid="capacity-label"' in page.text
-        # The four-technology label map ships with the form and covers all
-        # four reference radios with the required labels.
-        for label in ("Installed Capacity (MW)", "IT Capacity (MW)",
-                      "Charging Capacity (MW)"):
-            assert label in page.text
-        assert "CAPACITY_LABELS" in page.text
-        # The legacy hard-coded single label is gone.
-        assert ">IT Capacity (MW)<" not in page.text
+        opts = client.get("/v2/model-react/new-project/options")
+        assert opts.status_code == 200
+        by_key = {t["key"]: t for t in opts.json()["technologies"]}
+        assert by_key["solar"]["capacity_label"] == "Installed capacity (MW)"
+        assert by_key["wind"]["capacity_label"] == "Installed capacity (MW)"
+        assert by_key["data_center"]["capacity_label"] == "IT capacity (MW)"
+        assert by_key["ev_charging"]["capacity_label"] == "Charging capacity (MW)"
 
     def test_capacity_label_helper_matches_required_contract(self):
         from main_web import _capacity_label_for_template_source as label
@@ -116,8 +100,8 @@ class TestCapacityLabels:
         _login(client)
         response = _create(client, "Label Solar", "generic_solar_reference",
                            country="XA", capacity="64")
-        assert response.status_code in (200, 303)
-        assert "capacity_mw" in response.text or response.status_code == 303
+        assert response.status_code in (200, 201)
+        assert response.json()["project"]["code"] == "label-solar"
 
 
 # ── D: country selector + Generic Tax Template ────────────────────────────────
@@ -127,20 +111,20 @@ class TestCountrySelector:
         from app.workbook.country_options import COUNTRY_OPTIONS
 
         _login(client)
-        page = client.get("/projects/new")
-        assert 'data-testid="country-market"' in page.text
-        for code, label in COUNTRY_OPTIONS:
-            assert f'value="{code}"' in page.text, code
-            assert label in page.text
-        # The legacy hidden free-text market is gone.
-        assert 'value="Generic Market A"' not in page.text
+        opts = client.get("/v2/model-react/new-project/options").json()
+        got = [(c["code"], c["label"]) for c in opts["countries"]]
+        assert got == list(COUNTRY_OPTIONS)
 
     def test_country_tax_helper_text_present(self, client):
         _login(client)
-        page = client.get("/projects/new")
-        assert 'data-testid="country-tax-note"' in page.text
-        assert "Country-specific tax templates are not yet active" in page.text
-        assert "Generic Tax Template" in page.text
+        opts = client.get("/v2/model-react/new-project/options").json()
+        assert any("country-specific tax" in lim.lower()
+                   for t in opts["technologies"] for lim in t["limitations"])
+        preview = client.get(
+            "/v2/model-react/new-project/preview",
+            params={"name": "TaxNote", "technology": "solar", "country": "HR", "capacity_mw": "20"},
+        ).json()
+        assert preview["effective"]["tax_template"] == "Generic Tax Template"
 
     def test_hr_and_de_persist_distinct_codes_same_tax_template(
             self, client, tmp_path):

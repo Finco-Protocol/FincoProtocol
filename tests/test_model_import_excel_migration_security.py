@@ -24,19 +24,6 @@ from tests.test_model_decision_workspace_v2 import env  # noqa: F401
 from tests.test_model_financing_f2 import save
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
 @pytest.fixture(autouse=True)
 def _routes(env):
     from app.v2.import_router import router
@@ -172,7 +159,7 @@ def test_scenario_cas_a_ticket_for_one_scenario_cannot_review_or_apply_in_anothe
     confirmed = confirm(env, project, ticket, **selection(reviewed))
     approved_ticket = hidden(confirmed, "approved_ticket")
     # the user switches to a different scenario (the Base Case) before the ticket is used
-    scenarios = re.findall(r'name="scenario_id" value="([^"]+)"', env.client.get("/v2/workbook", params={"project": project.project_code}).text)
+    scenarios = [s["scenario_id"] for s in env.client.get("/v2/model-react/scenarios", params={"project": project.project_code}).json()["scenarios"]]
     other = next(s for s in scenarios if s != upside_id)
     assert post_valid_mutation(env.client, "/v2/workbook/scenarios/select", data={"project": project.project_code, "scenario_id": other}).status_code in (200, 303)
     assert ws_of(project).active_scenario_id == other

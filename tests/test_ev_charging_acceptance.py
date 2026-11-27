@@ -16,20 +16,7 @@ from html.parser import HTMLParser
 import pytest
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _finco47_legacy_ssr_rollback():
-    """Module-scoped so module/session fixtures that seed over HTTP see the legacy SSR
-    surface this module still exercises; default production flag stays React ON and the
-    environment is restored exactly when the module finishes."""
-    patch = pytest.MonkeyPatch()
-    patch.setenv("FINCO_MODEL_REACT_V1", "0")
-    try:
-        yield
-    finally:
-        patch.undo()
-
-
-# ── helpers (mirrors tests/test_correction_a_required_gates.py) ──────────────
+# ── helpers (React costlines JSON contract) ───────────────────────────────────
 
 class _RenderedFormParser(HTMLParser):
     def __init__(self):
@@ -153,28 +140,32 @@ def test_ev_journey_library_to_workbook_terminology(ev_db):
     client = _client()
     cookies = _cookies()
 
-    library = client.get("/library", cookies=cookies)
+    library = client.get("/v2/model-react/library", cookies=cookies)
     assert library.status_code == 200
     assert "Generic EV Charging Hub Reference" in library.text
-    assert 'data-testid="clone-generic_ev_charging_reference-reference"' in library.text
+    assert "generic_ev_charging_reference-reference" in library.text
 
-    page = client.get(
-        "/v2/workbook?project=generic_ev_charging_reference-reference", cookies=cookies
+    inputs_payload = client.get(
+        "/v2/model-react/inputs?project=generic_ev_charging_reference-reference", cookies=cookies
     )
-    assert page.status_code == 200
-    assert "EV Charging" in page.text
-    assert "Installed Charging Capacity (MW)" in page.text
+    rev_fields = client.get(
+        "/v2/model-react/fields/revenue?project=generic_ev_charging_reference-reference", cookies=cookies
+    )
+    assert inputs_payload.status_code == 200 and rev_fields.status_code == 200
+    combined = inputs_payload.text + "\n" + rev_fields.text
+    assert "EV Charging" in combined
+    assert "Installed Charging Capacity (MW)" in combined
     # Correction B: the editable EV driver section is the price authority.
-    assert "Charging Price" in page.text
-    assert "Equivalent Full-Load Hours — Y1" in page.text
-    assert "Charging Efficiency" in page.text
-    assert "Energy Delivered" in page.text
-    assert "Grid Energy Purchased" in page.text
+    assert "Charging Price" in combined
+    assert "Equivalent Full-Load Hours — Y1" in combined
+    assert "Charging Efficiency" in combined
+    assert "Energy Delivered" in combined
+    assert "Grid Energy Purchased" in combined
     # renewable/PPA terminology must not surface as EV economic controls
-    assert "P50 Operating Hours" not in page.text
-    assert "PPA Escalation Index" not in page.text
-    assert "Base Tariff" not in page.text
-    assert "Merchant Balancing" not in page.text
+    assert "P50 Operating Hours" not in combined
+    assert "PPA Escalation Index" not in combined
+    assert "Base Tariff" not in combined
+    assert "Merchant Balancing" not in combined
 
 
 # ── Z.11 CAPEX rendered-form edits ───────────────────────────────────────────
@@ -187,18 +178,25 @@ def test_ev_capex_rendered_form_first_and_second_htmx_edit(ev_working_copy):
 
     client = _client()
     cookies = _cookies()
-    page = client.get(
-        f"/v2/workbook?project={ev_working_copy.project_code}", cookies=cookies
+    cost1 = client.get(
+        f"/v2/model-react/costlines?sheet=capex&project={ev_working_copy.project_code}", cookies=cookies
     )
-    assert page.status_code == 200
+    assert cost1.status_code == 200
+    save1 = cost1.json()["save"]
 
     capex_before = get_active_sub_lines_for_project(ev_working_copy.project_id)
     assert capex_before, "EV working copy must seed CAPEX detail lines"
     capex_total_before = sum(l.amount_keur for l in capex_before)
     line = next(l for l in capex_before if l.amount_keur > 0)
-    form = _rendered_form_values(page.text, "/v2/capex/line/update", line.sub_line_id)
-    assert {"project", "sub_line_id", "row_version", "workbook_version",
-            "content_hash", "label", "amount_keur"}.issubset(form)
+    form = {
+        "project": ev_working_copy.project_code,
+        "sub_line_id": line.sub_line_id,
+        "row_version": line.updated_at,
+        "workbook_version": str(save1["workbook_version"]),
+        "content_hash": save1["content_hash"],
+        "label": line.label,
+        "amount_keur": str(line.amount_keur),
+    }
 
     first_delta = 17.0
     form["amount_keur"] = str(line.amount_keur + first_delta)
@@ -211,12 +209,24 @@ def test_ev_capex_rendered_form_first_and_second_htmx_edit(ev_working_copy):
     assert changed.source == "user_override"
     assert sum(l.amount_keur for l in after) == pytest.approx(capex_total_before + first_delta)
 
-    # Second edit through the freshly rendered form (fresh hash + row version).
-    second_form = _rendered_form_values(resp.text, "/v2/capex/line/update", line.sub_line_id)
-    assert second_form["row_version"] == changed.updated_at
-    assert second_form["content_hash"] != form["content_hash"]
+    # Second edit through fresh React costlines contract (fresh hash + row version).
+    cost2 = client.get(
+        f"/v2/model-react/costlines?sheet=capex&project={ev_working_copy.project_code}", cookies=cookies
+    ).json()
+    save2 = cost2["save"]
+    row2 = next(r for r in cost2["lines"] if r["sub_line_id"] == line.sub_line_id)
+    assert row2["row_version"] == changed.updated_at
+    assert save2["content_hash"] != form["content_hash"]
     second_delta = 11.0
-    second_form["amount_keur"] = str(line.amount_keur + first_delta + second_delta)
+    second_form = {
+        "project": ev_working_copy.project_code,
+        "sub_line_id": line.sub_line_id,
+        "row_version": row2["row_version"],
+        "workbook_version": str(save2["workbook_version"]),
+        "content_hash": save2["content_hash"],
+        "label": row2["label"],
+        "amount_keur": str(line.amount_keur + first_delta + second_delta),
+    }
     resp2 = post_valid_mutation(client, "/v2/capex/line/update", data=second_form, cookies=cookies,
                         headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp2.status_code == 200, resp2.text[:500]
@@ -240,10 +250,11 @@ def test_ev_opex_rendered_form_edits(ev_working_copy):
 
     client = _client()
     cookies = _cookies()
-    page = client.get(
-        f"/v2/workbook?project={ev_working_copy.project_code}", cookies=cookies
+    cost1 = client.get(
+        f"/v2/model-react/costlines?sheet=opex&project={ev_working_copy.project_code}", cookies=cookies
     )
-    assert page.status_code == 200
+    assert cost1.status_code == 200
+    save1 = cost1.json()["save"]
 
     opex_before = get_opex(ev_working_copy.project_id)
     assert opex_before, "EV working copy must seed OPEX detail lines"
@@ -252,10 +263,15 @@ def test_ev_opex_rendered_form_edits(ev_working_copy):
     assert opex_line.parent_group_code != "B.08"
     opex_total_before = sum(l.amount_keur for l in opex_before)
 
-    form = _rendered_form_values(page.text, "/v2/opex/line/update", opex_line.sub_line_id)
-    assert {"project", "sub_line_id", "row_version", "workbook_version",
-            "content_hash", "label", "amount_keur"}.issubset(form)
-    form["amount_keur"] = str(opex_line.amount_keur + 5.0)
+    form = {
+        "project": ev_working_copy.project_code,
+        "sub_line_id": opex_line.sub_line_id,
+        "row_version": opex_line.updated_at,
+        "workbook_version": str(save1["workbook_version"]),
+        "content_hash": save1["content_hash"],
+        "label": opex_line.label,
+        "amount_keur": str(opex_line.amount_keur + 5.0),
+    }
     resp = post_valid_mutation(client, "/v2/opex/line/update", data=form, cookies=cookies,
                        headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp.status_code == 200, resp.text[:500]
@@ -263,9 +279,21 @@ def test_ev_opex_rendered_form_edits(ev_working_copy):
     changed = next(l for l in after if l.sub_line_id == opex_line.sub_line_id)
     assert changed.amount_keur == pytest.approx(opex_line.amount_keur + 5.0)
 
-    second_form = _rendered_form_values(resp.text, "/v2/opex/line/update", opex_line.sub_line_id)
-    assert second_form["content_hash"] != form["content_hash"]
-    second_form["amount_keur"] = str(opex_line.amount_keur + 9.0)
+    cost2 = client.get(
+        f"/v2/model-react/costlines?sheet=opex&project={ev_working_copy.project_code}", cookies=cookies
+    ).json()
+    save2 = cost2["save"]
+    row2 = next(r for r in cost2["lines"] if r["sub_line_id"] == opex_line.sub_line_id)
+    assert save2["content_hash"] != form["content_hash"]
+    second_form = {
+        "project": ev_working_copy.project_code,
+        "sub_line_id": opex_line.sub_line_id,
+        "row_version": row2["row_version"],
+        "workbook_version": str(save2["workbook_version"]),
+        "content_hash": save2["content_hash"],
+        "label": row2["label"],
+        "amount_keur": str(opex_line.amount_keur + 9.0),
+    }
     resp2 = post_valid_mutation(client, "/v2/opex/line/update", data=second_form, cookies=cookies,
                         headers={"HX-Request": "true"}, follow_redirects=False)
     assert resp2.status_code == 200, resp2.text[:500]
@@ -304,12 +332,12 @@ def test_ev_canonical_reference_readonly_fails_closed(ev_db):
     reference = get_project_by_code("__reference__", "generic_ev_charging_reference-reference")
     assert reference is not None and reference.is_readonly
     client = _client()
-    page = client.get(
-        "/v2/workbook?project=generic_ev_charging_reference-reference", cookies=_cookies()
+    cost = client.get(
+        "/v2/model-react/costlines?sheet=capex&project=generic_ev_charging_reference-reference", cookies=_cookies()
     )
-    assert page.status_code == 200
-    assert "Reference project — create a working copy to edit." in page.text
-    assert 'hx-post="/v2/capex/line/update"' not in page.text
+    assert cost.status_code == 200
+    body = cost.json()
+    assert body["project"]["protected_reference"] is True
     with pytest.raises(CapexProtectedReferenceError):
         add_capex_line(
             project_record=reference, user_id="__reference__", label="Rejected",
