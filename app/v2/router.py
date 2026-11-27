@@ -2065,26 +2065,12 @@ def _build_input_grid_ctx(project_record, pis, ws, workspace_owner: str, *, proj
 
 @router.get("/workbook", response_class=HTMLResponse)
 async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Optional[str] = None):
-    """Workbook V2 shell page.
+    """Redirect legacy /v2/workbook unconditionally to canonical React workspace; block forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
 
-    Renders the V2 template skeleton and injects a sessionStorage hydration
-    script from the persisted RuntimeResult (if one exists), so schedule
-    data is available to the page on load without a model re-run.
-
-    Protected reference projects (Generic Wind Reference/Generic Solar Reference factory_template origin)
-    render all fields read-only with a working-copy CTA.
-
-    Query parameters
-    ----------------
-    project : str, optional
-        Project code.  When absent, redirects to the project home.
-    sheet : str, optional
-        Sheet name (e.g. "inputs").  Preserved on inactive redirect so the
-        legacy URL fragment (#inputs) is reconstructed correctly.
-    v2_err : str, optional
-        URL-encoded error message from a failed non-HTMX POST.  Shown as
-        a flash error in the status banner.
-    """
     if not workbook_v2_active():
         if project:
             dest = project_workbook_url(project, sheet=sheet)
@@ -2096,12 +2082,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    from app.v2.react_poc_router import react_poc_enabled
-    react_on = react_poc_enabled()
-    is_htmx = request.headers.get("HX-Request") == "true"
-
     if not project:
-        return RedirectResponse(url="/v2/model-react/" if react_on else "/library", status_code=302)
+        return RedirectResponse(url="/v2/model-react/", status_code=302)
 
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
@@ -2109,294 +2091,25 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     with span("workspace_read"):
         project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        unavailable = "/v2/model-react/?notice=project-unavailable" if react_on else "/library?notice=project-unavailable"
-        return RedirectResponse(url=unavailable, status_code=302)
+        return RedirectResponse(url="/v2/model-react/?notice=project-unavailable", status_code=302)
 
     if project_record.archived:
-        return HTMLResponse('<main><h1>Project archived</h1><p>Saved inputs and Run history are preserved.</p>'
-                            '<a href="/v2/model-react/">Open My Projects to restore an eligible project</a></main>', status_code=409)
+        return HTMLResponse(
+            '<main><h1>Project archived</h1><p>Saved inputs and Run history are preserved.</p>'
+            '<a href="/v2/model-react/">Open My Projects to restore an eligible project</a></main>',
+            status_code=409,
+        )
 
     with span("workspace_read"):
         ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
-        unavailable = "/v2/model-react/?notice=project-unavailable" if react_on else "/library?notice=project-unavailable"
-        return RedirectResponse(url=unavailable, status_code=302)
+        return RedirectResponse(url="/v2/model-react/?notice=project-unavailable", status_code=302)
 
-    if react_on and not is_htmx:
-        from app.v2.react_redirect import react_project_url
-        return RedirectResponse(
-            url=react_project_url(project, sheet=sheet, v2_err=request.query_params.get("v2_err")),
-            status_code=302,
-        )
-
-    # Decide unsupported runtime capability immediately after access and
-    # workspace resolution.  Storage must return its controlled surface before
-    # migrations, ProjectInputSet construction, hydration, or any economic
-    # resolver can read or mutate its persisted state.
-    _project_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
-    from app.workbook.bess_config import ACTIVATION_ENABLED as _bess_enabled
-    if _project_type_lower == "storage" and not _bess_enabled:
-        from app.utils.workbook_flag import project_workbook_url as _wbu
-        _storage_ref_url = _wbu("generic_storage_reference-reference")
-        if is_protected_reference(project_record):
-            return _templates.TemplateResponse(
-                request=request,
-                name="unsupported_workbook.html",
-                context={
-                    "user": user,
-                    "project_code": project,
-                    "project_name": project_record.project_name or project,
-                    "project_type": project_record.project_type or "Storage",
-                    "is_reference": True,
-                    "library_url": "/library",
-                    "reference_url": _storage_ref_url,
-                    "reference_label": "Back to Model Workspace",
-                },
-            )
-        return _templates.TemplateResponse(
-            request=request,
-            name="unsupported_workbook.html",
-            context={
-                "user": user,
-                "project_code": project,
-                "project_name": project_record.project_name or project,
-                "project_type": project_record.project_type or "Storage",
-                "is_reference": False,
-                "library_url": "/library",
-                "reference_url": _storage_ref_url,
-                "reference_label": "View Storage Reference",
-            },
-        )
-
-    # Read-only projection for old working copies missing canonical revenue keys:
-    # NEVER write to SQLite during GET; project defaults in memory only while keeping DB/CAS hash stable.
-    ws_for_pis = ws
-    try:
-        from dataclasses import replace as _dc_replace_ws
-        from app.services.revenue_backfill import backfill_generic_solar_reference_revenue_canonical_keys
-        _projected_snap = backfill_generic_solar_reference_revenue_canonical_keys(
-            project_record.project_id, workspace_owner, project_record, ws.draft_snapshot or {},
-        )
-        if _projected_snap is not (ws.draft_snapshot or {}):
-            ws_for_pis = _dc_replace_ws(ws, draft_snapshot=_projected_snap)
-    except Exception:
-        pass  # projection failure must never block page render
-
-    with span("input_build"):
-        pis = _build_pis_with_composite_identity(ws_for_pis, project_record, workspace_owner)
-    # Working Copy recovery: a stored draft the canonical adapter refuses to materialise would fail every
-    # builder below.  Return a controlled, read-only recovery page instead; it corrects nothing itself.
-    from app.workbook.draft_recovery import diagnose_draft as _diagnose_draft
-    _recovery = _diagnose_draft(pis.to_snapshot())
-    if _recovery is not None:
-        raw_err = request.query_params.get("v2_err", "")
-        from app.auth import generate_csrf_token
-        return _templates.TemplateResponse(
-            request=request,
-            name="workbook_recovery.html",
-            context={
-                "user": user,
-                "project_code": project,
-                "project_name": project_record.project_name or project,
-                "project_editable": not is_protected_reference(project_record),
-                "recovery": _recovery.to_dict(),
-                "workbook_version": pis.workbook_version,
-                "content_hash": pis.content_hash,
-                "update_csrf_token": mutation_token(request, project, "workbook-update"),
-                "contracts_csrf_token": generate_csrf_token(),
-                "flash_error": urllib.parse.unquote_plus(raw_err)[:500] if raw_err else "",
-                "library_url": "/library",
-            },
-        )
-    runtime_freshness = _runtime_freshness(ws, pis)
-    hydration_script = WorkbookService.runtime_hydration_script(ws)
-
-    project_editable = not is_protected_reference(project_record)
-
-    flash_error = ""
-    raw_err = request.query_params.get("v2_err", "")
-    if raw_err:
-        try:
-            flash_error = urllib.parse.unquote_plus(raw_err)[:500]
-        except Exception:
-            pass
-
-    from app.workbook.registry import is_data_center_project_type as _is_dc_type
-    _is_dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
-    _is_dc = _is_dc_template or _is_dc_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
-    _is_ev_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_ev_charging_reference"
-    _is_ev = _is_ev_template or str(pis.get("project_setup.identity.project_type") or "").strip().lower() in (
-        "ev charging", "ev_charging",
-    ) if hasattr(pis, "get") else False
-
-    from app.workbook.financing_csrf import issue_token
-    from app.v2.result_status import with_current_scenario_label
-    ws = with_current_scenario_label(ws, workspace_owner)
-    context = {
-        "project_code": project,
-        "financing_csrf_token": issue_token(request, project),
-        "run_csrf_token": issue_token(request, project, purpose="workbook-run-v1"),
-        "project_name": project_record.project_name or project,
-        "project_type": (project_record.project_type or "").capitalize(),
-        "is_data_center": _is_dc,
-        "is_ev_charging": _is_ev,
-        "active_scenario_name": ws.active_scenario_name or "",
-        "active_scenario_id": ws.active_scenario_id or "",
-        "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
-        "last_run_iso": _last_run_iso(ws),
-        "workbook_version": pis.workbook_version,
-        "content_hash": pis.content_hash,
-        "template_source": pis.template_source,
-        "hydration_script": hydration_script,
-        "ps_fields": _build_ps_fields(pis),
-        "ps_horizon_notice": _ps_horizon_notice(pis, project_record, request),
-        "technical_fields": _build_sheet_fields("project_setup", pis),
-        "is_bess": _project_type_lower == "storage",
-        "capex_fields": _build_sheet_fields("capex", pis),
-        "opex_fields": _build_sheet_fields("opex", pis),
-        "debt_fields": _lock_senior_fields_if_calibrated(
-            _build_sheet_fields("debt", pis),
-            *_classify_senior_authority(pis)),
-        "inputs_summary": _get_inputs_summary(project_record, pis, ws),
-        "inputs_slice1_enabled": inputs_slice1_active(),
-        "inputs_slice1_sections": build_inputs_slice1_sections(
-            pis,
-            project_editable=project_editable,
-        ),
-        "user": user,
-        "project_editable": project_editable,
-        "ws_dirty": ws.dirty,
-        "runtime_is_stale": runtime_freshness.is_stale,
-        "runtime_state": runtime_freshness.state.value,
-        "has_runtime": bool(ws.last_runtime_snapshot_id),
-        "cert_project_code": (
-            project_record.project_code
-            if ws.any_run_committed and getattr(ws, "last_runtime_identity", None) is not None
-            else ""
-        ),
-        "flash_error": flash_error or _quarterly_selection_error(pis),
-        "field_error": "",
-        "library_url": "/library",
-        # WF-05 grid: CSRF token for the JSON validate/save routes (session-bound server check).
-        "grid_csrf_token": mutation_token(request, project, "grid-save"),
-        "slice1_csrf_token": mutation_token(request, project, "inputs-slice1-update"),
-        "mutation_csrf_tokens": mutation_tokens(request, project),
-    }
-    # Model Trust Pack V1: read-only composition of existing canonical read
-    # services (API v1.1 institutional builders).  No engine execution, no
-    # state mutation; fails closed to explicit UNAVAILABLE sections.
-    from app.ui.trust_pack import build_trust_pack
-    try:
-        context["trust_pack"] = build_trust_pack(
-
-            workspace_owner,
-            project_record.project_id,
-            project_code=project_record.project_code,
-            any_run_committed=bool(ws.any_run_committed),
-        )
-        from app.v2.result_status import scope_trust_pack_to_active_scenario
-        context["trust_pack"] = scope_trust_pack_to_active_scenario(context["trust_pack"], ws, workspace_owner)
-    except Exception:  # fail closed — an evidence surface must never 500
-        from app.v2.result_status import unavailable_trust_pack
-        context["trust_pack"] = unavailable_trust_pack(project_record.project_code)
-    # RC-UX (UX-001/002): ONE result-status projection for the persistent strip; the Trust sheet reads the same pack.
-    from app.v2.result_status import build_result_status, last_run_matches_active_scenario
-    context["result_status"] = build_result_status(
-        runtime_state=context["runtime_state"], has_runtime=context["has_runtime"],
-        last_runtime_at_display=context["last_runtime_at"], active_scenario_name=context["active_scenario_name"],
-        trust_pack=context.get("trust_pack"),
-        last_run_matches_scenario=last_run_matches_active_scenario(ws, workspace_owner))
-    _capex_ctx = _build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
-    _opex_ctx = _build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner)
-    context.update(_capex_ctx)
-    context.update(_opex_ctx)
-    context.update(_build_input_grid_ctx(
-        project_record, pis, ws, workspace_owner, project_editable=project_editable,
-        capex_ctx=_capex_ctx, opex_ctx=_opex_ctx))
-    # Build projection bundle once; pass it to all four output sheet builders.
-    from app.workbook.runtime_projection import build_runtime_projection_bundle
-    _rr = WorkbookService.get_runtime_result(ws)
-    _projection = build_runtime_projection_bundle(
-        _rr, runtime_freshness.is_stale)
-    context.update(_build_revenue_ctx(pis, ws, projection=_projection))
-    context.update(_build_debt_ctx(pis, ws, projection=_projection))
-    context.update(_build_tax_ctx(pis, ws, projection=_projection))
-    context["statements_lazy"] = sheet != "fs"
-    context["fs_state"] = "FS_UNAVAILABLE" if _projection.fs.state.value == "UNAVAILABLE" else _projection.fs.state.value
-    if not context["statements_lazy"]:
-        context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
-    context.update(_build_returns_ctx(
-        ws, rr=_rr, runtime_is_stale=runtime_freshness.is_stale))
-    from app.v2.overview_projection import build_overview_projection
-    context["overview"] = build_overview_projection(
-        _rr, runtime_freshness.is_stale, pis,
-        active_scenario_name=ws.active_scenario_name or "")
-
-    # UX Foundation: compact workspace header + persistent left navigation.
-    # Presentation projections only — identity comes from the same pis the
-    # overview uses; state comes from the canonical freshness authority.
-    context["assumption_register_view"] = _build_assumption_register_view(pis)
-
-    from app.v2.workspace_shell_projection import (
-        build_workspace_header_projection,
-        workspace_nav_groups,
+    from app.v2.react_redirect import react_project_url
+    return RedirectResponse(
+        url=react_project_url(project, sheet=sheet, v2_err=request.query_params.get("v2_err")),
+        status_code=302,
     )
-    context["header"] = build_workspace_header_projection(
-        project_name=project_record.project_name or project,
-        technology=context.get("project_type", ""),
-        country_iso=getattr(context.get("overview"), "country_iso", ""),
-        capacity_mw=getattr(context.get("overview"), "capacity_mw", None),
-        project_editable=context.get("project_editable", True),
-        runtime_state=runtime_freshness.state.value,
-        has_runtime=bool(context.get("has_runtime")),
-        last_runtime_at_display=context.get("last_runtime_at", "") or "",
-        active_scenario_name=context.get("active_scenario_name", "") or "",
-    )
-    context["ws_nav_groups"] = workspace_nav_groups()
-    from app.v2.workspace_destinations import navigation_manifest
-    context["workspace_destinations"] = navigation_manifest()
-
-    # UX Foundation Phase C: contextual Smart Panel (availability +
-    # navigation over existing authorities; never an engine call).
-    from app.v2.smart_panel_projection import build_smart_panel_projection
-    # Run Intelligence V1: read-only run history listing on its own tab.
-    context.update(_run_history_listing_ctx(project_record, ws, pis))
-
-    context["smart_panel"] = build_smart_panel_projection(
-        trust_pack=context.get("trust_pack"),
-        runtime_state=runtime_freshness.state.value,
-        has_runtime=bool(context.get("has_runtime")),
-        project_key=str(getattr(pis, "template_source", "") or ""),
-        assumption_register_view=context.get("assumption_register_view"),
-    )
-    context["smart_panel"] = _attach_insight(
-        context["smart_panel"], ws=ws, pis=pis, project_record=project_record,
-        workspace_owner=workspace_owner, runtime_state=runtime_freshness.state.value,
-        register_view=context.get("assumption_register_view"), include_diagnostics=sheet == "diagnostics")
-    context["diagnostics"] = context["smart_panel"].insight["quality"].get("diagnostics")
-    context["diagnostics_lazy"] = sheet != "diagnostics"
-
-    # UI-3B: inject scenario presentations for the Scenarios tab.
-    # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
-    # apply the same canonical freshness decision to scenario cards.
-    try:
-        from app.persistence.scenarios_repository import list_scenarios
-        from app.v2.scenario_presentation import build_scenario_presentations
-        _sc_records = list_scenarios(
-            user_id=workspace_owner,
-            project_id=project_record.project_id,
-            include_archived=False,
-        )
-        _active_sc_id = ws.active_scenario_id if ws else None
-        context["scenarios"] = build_scenario_presentations(
-            _sc_records, _active_sc_id, global_is_stale=runtime_freshness.is_stale)
-        context["active_scenario_id"] = _active_sc_id
-    except Exception:
-        context["scenarios"] = []
-        context.setdefault("active_scenario_id", None)
-
-    with span("template_render"):
-        return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
 @router.post("/workbook/inputs-slice1/update")
@@ -3997,34 +3710,26 @@ async def v2_workbook_export(
 
 
 @router.get("/workbook/financing/investor")
-async def v2_financing_investor(request: Request, project: str):
-    """Refresh the owned, read-only Investor surface without a shared OOB edit."""
-    user = _get_current_user(request)
-    if not user:
-        return JSONResponse({"error": "auth required"}, status_code=401)
-    from app.persistence.projects_repository import resolve_accessible_project
-    from app.v2.post_run_context import PostRunRequestContext, PostRunContextChanged
-    from app.workbook.workbook_identity import WorkbookIdentityError
-
-    record, owner = resolve_accessible_project(user.user_id, project)
-    if record is None:
-        return HTMLResponse("Project not found.", status_code=404)
-    try:
-        context = PostRunRequestContext.capture(owner_id=owner, project_id=record.project_id)
-        ctx = _base_sheet_ctx(request, context.inputs, context.workspace, context.project_record,
-                              project, freshness=context.freshness)
-        ctx.update(_build_debt_ctx(context.inputs, context.workspace,
-                                  projection=context.projection, context=context))
-        html = _templates.get_template("partials/sheet_investor.html").render(ctx)
-        context.validate_current()
-    except (PostRunContextChanged, WorkbookIdentityError, PermissionError):
-        html = '<div id="v2-sheet-investor" role="status">Financing evidence unavailable: workspace changed during response assembly. Reload the workbook to refresh.</div>'
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+async def v2_financing_investor(request: Request):
+    """Decommissioned legacy HTMX investor surface."""
+    return JSONResponse(
+        {
+            "ok": False,
+            "code": "HTMX_DECOMMISSIONED",
+            "message": "Legacy HTMX investor surface has been decommissioned; use /v2/model-react/.",
+        },
+        status_code=410,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/workbook/diagnostics")
 async def v2_model_diagnostics(request: Request, project: str):
-    """Coherent read-only refresh after JSON grid Save; reference reads remain permitted."""
+    """Coherent read-only refresh for backend diagnostics checks; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return HTMLResponse("", status_code=401, headers={"Cache-Control": "no-store"})
@@ -4055,11 +3760,11 @@ async def v2_model_diagnostics(request: Request, project: str):
 
 @router.get("/workbook/outputs")
 async def v2_outputs_workspace(request: Request, project: str):
-    """Statements & Debt output workspace: read-only presentation of the persisted Last Run.
-
-    One coherent authorized snapshot (``PostRunRequestContext``) supplies the Run evidence, the canonical
-    CURRENT/STALE/NOT_RUN freshness and the Run Integrity verdict.  No engine call, no write.
-    """
+    """Statements & Debt output workspace for backend contract tests; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
@@ -4100,10 +3805,11 @@ async def v2_outputs_workspace(request: Request, project: str):
 
 @router.get("/workbook/financing/integrity")
 async def v2_financing_integrity(request: Request, project: str):
-    """Authorized, read-only near-KPI view of the canonical integrity authority.
-
-    Loaded independently so existing post-run OOB assembly stays untouched.
-    """
+    """Authorized integrity fragment for backend checks; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
@@ -4132,6 +3838,10 @@ async def v2_financing_integrity(request: Request, project: str):
 
 @router.get("/workbook/trust/certificate")
 async def v2_trust_certificate_fragment(request: Request, project: str):
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
@@ -4158,6 +3868,10 @@ async def v2_trust_certificate_fragment(request: Request, project: str):
 
 @router.get("/workbook/trust/validation")
 async def v2_trust_validation_fragment(request: Request, project: str):
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
@@ -4824,14 +4538,11 @@ async def v2_run_history(
     request: Request,
     project: Optional[str] = None,
 ):
-    """Read-only Run History listing for one project.
-
-    Newest-first immutable successful runs with institutional metadata.
-    CURRENT/STALE describe only the canonical Last Run (rendered by the
-    workspace header/banner authorities); every listed row is HISTORICAL,
-    optionally flagged MATCHES WORKING COPY when its stored identity equals
-    the current Working Copy identity.  No engine execution, no mutation.
-    """
+    """Read-only Run History listing for one project; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
@@ -5102,17 +4813,11 @@ async def v2_run_compare_expanded(
     run_a: Optional[str] = None,      # "last" (default) or a history_id
     run_b: Optional[str] = None,      # a history_id (required)
 ):
-    """Expanded same-project run comparison (Decision Support V1).
-
-    Default: canonical Last Run (A) vs a selected immutable historical
-    successful run (B).  Run A may also be an older history_id
-    (historical-vs-historical).  Sections: variance over persisted canonical
-    metrics, changed assumptions from the persisted run-bound input
-    identities, and a deterministic factual Drivers-of-Change summary.
-    Labels follow Run Intelligence semantics: only the canonical Last Run is
-    CURRENT/STALE; every selected historical run stays HISTORICAL.
-    No engine execution, no mutation.
-    """
+    """Expanded same-project run comparison; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
@@ -5405,12 +5110,11 @@ async def v2_scenario_compare(
     s2: Optional[str] = None,
     s3: Optional[str] = None,
 ):
-    """Return compare table partial for up to 3 selected scenarios.
-
-    Each scenario's runtime_summary is sourced from the persisted workspace
-    runtime evidence (last_runtime_summary) for that scenario.  Only
-    authoritative values from a completed engine run are shown.
-    """
+    """Return compare table partial for backend checks; blocks forged HTMX."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = _get_current_user(request)
     if not user:
         return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)

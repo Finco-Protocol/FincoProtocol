@@ -24,7 +24,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.auth import resolve_request_session
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 
@@ -103,8 +102,6 @@ def plan(*, start: Optional[date], months: Optional[int], end: Optional[date], s
 
 @router.get("/model-react/construction-timing")
 async def react_construction_timing(request: Request, project: str = "", start: str = "", months: str = "", end: str = ""):
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)
     if user is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)

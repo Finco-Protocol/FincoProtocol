@@ -579,11 +579,6 @@ def test_successful_run_commits_through_the_executor_and_releases_capacity(clien
     assert _ws(p).last_runtime_snapshot_id and executor.stats()["active"] == 0
 
 
-def test_js_swaps_only_a_marked_429_so_busy_is_visible_to_the_user():
-    js = (REPO / "static/js/workbook_v2.js").read_text(encoding="utf-8")
-    assert "v2ShouldSwapModelBusyResponse" in js and "X-Finco-Model-Busy" in js and "xhr.status === 429" in js
-
-
 # ══ sensitivity: bounded, ordered, single admission ═══════════════════════════════════
 def test_sensitivity_grid_is_bounded_with_a_typed_error():
     from app.services.sensitivity_execution import (

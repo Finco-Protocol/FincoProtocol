@@ -62,10 +62,10 @@ def env(tmp_path, monkeypatch):
 
 # ── options ────────────────────────────────────────────────────────────────
 
-def test_options_require_a_session_and_the_react_flag(env, monkeypatch):
+def test_options_require_a_session_and_stay_enabled(env, monkeypatch):
     assert env.anonymous.get(f"{BASE}/options").status_code == 401
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert env.client.get(f"{BASE}/options").status_code == 404
+    assert env.client.get(f"{BASE}/options").status_code == 200
 
 
 def test_options_describe_the_release_posture_from_the_canonical_registry(env):

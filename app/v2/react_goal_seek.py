@@ -32,7 +32,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.auth import resolve_request_session, validate_csrf_token
-from app.v2.react_poc_router import react_poc_enabled
 from app.workbook.financing_csrf import extract_bound_token, issue_token
 
 router = APIRouter()
@@ -57,8 +56,6 @@ def _fail(status: int, code: str, message: str, *, changed: bool = False, header
 
 def _scope(request: Request, project: str, *, header: bool):
     """(user, record, owner) or a ready JSONResponse — flag, [header], session, project access, protected reference."""
-    if not react_poc_enabled():
-        return None, None, None, _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if header and request.headers.get(REQUEST_HEADER) != "1":
         return None, None, None, _fail(400, "REQUEST_HEADER_REQUIRED", "Goal Seek can only be started from the FINCO Model workspace.")
     user = resolve_request_session(request)
@@ -355,8 +352,6 @@ class ApplyBody(BaseModel):
 
 @router.post("/model-react/analysis/goal-seek/apply")
 async def react_goal_seek_apply(request: Request):
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)
     if user is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)

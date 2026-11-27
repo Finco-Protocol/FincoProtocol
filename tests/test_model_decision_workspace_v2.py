@@ -79,14 +79,6 @@ def test_failed_baseline_never_inferred_from_neighbors():
     assert view["chart"] == view["tornado"] == view["delta_rows"] == []
 
 
-def test_scoped_javascript_is_only_canonical_input_serialization():
-    source = (Path(__file__).resolve().parents[1] / "static/js/model_merchant_curve.js").read_text(encoding="utf-8")
-    assert "JSON.stringify" in source and "htmx:configRequest" in source
-    assert "seen.has(year)" in source and "Number.isFinite(price)" in source
-    assert "stopImmediatePropagation" in source
-    assert not re.search(r"\b(irr|dscr|npv|cfads|ebitda|debt_service)\b", source, re.I)
-
-
 def test_working_and_run_bound_overrides_are_independent():
     sc = SimpleNamespace(scenario_name="Case", overrides={"tariff_eur_mwh": 90},
                          last_run_summary={"scenario_overrides_at_run": {"tariff_eur_mwh": 80}})

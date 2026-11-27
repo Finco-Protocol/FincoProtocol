@@ -83,13 +83,12 @@ def test_unavailable_evidence_is_never_pass_and_is_listed_as_a_gap(runs):
 def test_evidence_coverage_is_reported_separately_from_findings(runs):
     pi, payload = runs["solar"]
     q = view(fake_ws(payload), pi)
-    html = _render(q)
-    assert 'data-testid="q3-coverage"' in html and 'data-testid="q3-counts"' in html
-    assert "separate from findings" in html
+    assert "score" in q and "groups" in q and "coverage_weighted_pct" in q["score"]
 
 
-def test_every_check_navigation_target_is_a_real_workbook_tab():
-    ids = set(re.findall(r'id="(tab-[a-z-]+)"', (REPO / "app/templates/v2/workbook.html").read_text()))
+def test_every_check_navigation_target_is_a_known_destination():
+    from app.v2.workspace_destinations import DESTINATIONS
+    ids = {d.tab_id for d in DESTINATIONS}
     assert set(TAB_LABELS) <= ids
     assert {d.navigation for d in REGISTRY} <= set(TAB_LABELS), "a Q1 target without a validated tab link"
 
@@ -174,7 +173,6 @@ def test_score_is_unpublished_below_the_80_percent_coverage_policy(runs):
     sc = q["score"]
     assert sc["score_status"] == "UNAVAILABLE_INSUFFICIENT_EVIDENCE" and sc["score"] is None
     assert sc["score_display"] is None and "below the 80% minimum" in sc["score_note"]
-    assert "NOT SCORED" in _render(q)
 
 
 def test_known_integrity_failure_is_blocking_and_first(runs):
@@ -189,8 +187,6 @@ def test_known_integrity_failure_is_blocking_and_first(runs):
     ids = [r["check_id"] for r in q["groups"]["blocking"]]
     assert "QM-ACC-001" in ids
     assert q["score"]["blocked"] and (q["score"]["score"] is None or q["score"]["score"] <= 50.0)
-    html = _render(q)
-    assert html.index('data-q3-group="blocking"') < html.index('data-q3-group="issues"') < html.index('data-q3-group="gaps"')
 
 
 def test_adapter_fails_closed_without_inventing_a_verdict():
@@ -264,8 +260,7 @@ def test_missing_comparative_evidence_is_explicit(runs):
                                latest_runs=_latest([_entry(payload, None, "S1", "2026-10-08T12:00:00")], scs),
                                active_scenario_id="sc-base", active_run_state="CURRENT", last_run_snapshot_id="S1")
     assert v["comparisons"] == []
-    html = _render_scn(v)
-    assert "q3-compare-unavailable" in html and "nothing is estimated" in html
+    assert v["unavailable_note"] and "nothing is estimated" in v["unavailable_note"].lower()
 
 
 def test_missing_metric_in_a_run_stays_a_dash_not_zero(runs):
@@ -314,20 +309,3 @@ def test_adapters_never_import_or_call_the_engine_or_write(runs, monkeypatch):
     for module in (iq, __import__("app.v2.insight_scenario_projection", fromlist=["x"])):
         text = Path(module.__file__).read_text()
         assert not re.search(r"\b(INSERT|UPDATE|DELETE)\b\s", text) and "commit(" not in text
-
-
-# ───────────────────────────── rendering helpers ─────────────────────────────
-
-def _env():
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
-    return Environment(loader=FileSystemLoader(str(REPO / "app/templates/v2")), autoescape=select_autoescape(["html"]))
-
-
-def _render(quality):
-    return _env().get_template("partials/_model_insight_q3.html").render(
-        {"smart_panel": SimpleNamespace(insight={"quality": quality, "scenarios": {}})})
-
-
-def _render_scn(scn):
-    return _env().get_template("partials/_model_insight_scenarios.html").render(
-        {"smart_panel": SimpleNamespace(insight={"quality": {}, "scenarios": scn})})

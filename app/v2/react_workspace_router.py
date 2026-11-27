@@ -41,7 +41,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.auth import generate_csrf_token, resolve_request_session
-from app.v2.react_poc_router import REACT_ASSET_VERSION, react_poc_enabled
+from app.v2.react_poc_router import REACT_ASSET_VERSION
 
 router = APIRouter()
 
@@ -75,8 +75,6 @@ def _resolve_project(request: Request, project: str):
 @router.get("/model-react/library")
 async def react_workspace_library(request: Request, search: str = "", page: int = 1):
     """Authorized Library read: the caller's own projects + public reference models."""
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)
     if user is None:
         return _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)
@@ -242,8 +240,6 @@ def _workspace_r04_bank_readiness(ws, owner: str):
 @router.get("/model-react/workspace")
 async def react_workspace_shell(request: Request, project: str):
     """One coherent authorized shell snapshot for the integrated React workspace."""
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -435,8 +431,6 @@ def _debt_sheet(outputs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
 @router.get("/model-react/statements")
 async def react_workspace_statements(request: Request, project: str):
     """The six canonical statement destinations for the harvested React workbook."""
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -588,8 +582,6 @@ async def react_workspace_inputs(request: Request, project: str):
     Same builder the legacy grid panel renders (``_build_input_grid_ctx``); the ONLY
     write path remains the existing ``POST /v2/workbook/grid/save``.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -783,8 +775,6 @@ async def react_sheet_fields(request: Request, sheet_id: str, project: str):
     grid CSRF token.  No values are computed here — they come from the same PIS
     the legacy sheets render.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if sheet_id not in _REACT_FIELD_SHEETS:
         return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
@@ -861,8 +851,6 @@ async def react_cost_lines(request: Request, sheet: str = "capex", project: str 
     Rows come from the same loaders the atomic batch writer verifies row versions
     against; the only write path remains POST /v2/workbook/grid/cost-lines/save.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if sheet not in ("capex", "opex"):
         return _json({"ok": False, "code": "SHEET_UNKNOWN"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
@@ -971,8 +959,6 @@ async def react_revenue_contracts(request: Request, project: str):
     the only write path remains POST /v2/workbook/revenue/contracts (composite CAS,
     bound CSRF, 409 on conflict).  No price or allocation is calculated here.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1022,8 +1008,6 @@ async def react_revenue_r04_review(request: Request):
     exact slice arithmetic the Save/Run validation uses.  Bound to the signed-in owner, the project and the current content revision
     (``stale`` is reported when the project moved on).  It is advisory: only the canonical writer commits, and it re-validates.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from app.workbook.mutation_csrf import validate_signed_form_token
 
     form = await request.form()
@@ -1138,8 +1122,6 @@ async def react_run_history(request: Request, project: str):
     Every entry comes from the canonical run-history repository (immutable
     committed evidence); unavailable fields stay null and are never substituted.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1206,8 +1188,6 @@ async def react_diagnostics(request: Request, project: str):
     check is evaluated from persisted evidence only; NOT RUN stays NOT RUN and a
     stale Working Copy is reported as STALE, never as current.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1261,8 +1241,6 @@ async def react_trust(request: Request, project: str):
     Reference regression and certificate issuance are separate explicit actions
     on the existing authorized canonical routes, not validation of this project.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1332,8 +1310,6 @@ async def react_scenarios(request: Request, project: str):
     """Scenario records + the active scenario, projected from the canonical
     scenario repository.  Mutations remain on the canonical form routes:
     POST /v2/workbook/scenarios/{create,select,rename,archive}."""
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1400,8 +1376,6 @@ async def react_scenario_compare(request: Request, project: str, scenario_id: st
     committed Run is UNAVAILABLE and never borrows the other side's Last Run.
     Financial KPI deltas are not computed in the browser.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure
@@ -1495,8 +1469,6 @@ async def react_scenario_overrides(request: Request, project: str, scenario_id: 
     the editor.  Read-only: edits go through the canonical
     /v2/workbook/scenarios/{update-overrides,remove-override} routes.
     """
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user, record, owner, failure = _resolve_project(request, project)
     if failure is not None:
         return failure

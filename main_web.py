@@ -449,9 +449,8 @@ app.include_router(_library_router)
 # Flag default changed in PR-A: absent → ACTIVE (see app/utils/workbook_flag.py).
 from app.v2.router import router as _v2_router
 def _finco_model_react_flag(request: Request) -> dict:
-    """Supply the effective React flag to every shared Jinja template (single authority)."""
-    from app.v2.react_poc_router import react_poc_enabled
-    return {"finco_model_react": react_poc_enabled()}
+    """Canonical React Model UI is unconditionally active in FINCO48."""
+    return {"finco_model_react": True}
 
 templates.context_processors.append(_finco_model_react_flag)
 app.include_router(_v2_router, prefix="/v2")
@@ -3329,13 +3328,12 @@ async def index(request: Request, project: str | None = None):
 
     project_code = (project or "").strip()
     if project_code:
-        from app.v2.react_poc_router import react_poc_enabled
-        if react_poc_enabled():
-            from app.v2.react_redirect import react_project_url
-            return RedirectResponse(url=react_project_url(project_code), status_code=302)
-        from app.utils.workbook_flag import project_workbook_url, workbook_v2_active
-        if workbook_v2_active():
-            return RedirectResponse(url=project_workbook_url(project_code), status_code=302)
+        from app.v2.react_poc_router import block_htmx_presentation
+        blocked = block_htmx_presentation(request)
+        if blocked is not None:
+            return blocked
+        from app.v2.react_redirect import react_project_url
+        return RedirectResponse(url=react_project_url(project_code), status_code=302)
 
     project_record = _resolve_project_record(user, project)
     (
@@ -4202,29 +4200,16 @@ async def institutional_workbook_export(request: Request, project: str = "generi
 
 @app.get("/projects/new")
 async def new_project_form(request: Request):
-    """Phase P2-FIX-1: minimal new-project form (redirects to React wizard when active)."""
+    """Redirect legacy /projects/new unconditionally to canonical React wizard."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_library_url
-        return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
-    return templates.TemplateResponse(
-        request=request,
-        name="project_new_page.html",
-        context={
-            "project_types": PROJECT_TYPES,
-            "validation_errors": [],
-            "submitted": _minimal_submitted_new_project_defaults(),
-            "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
-            # Canonical country catalogue — imported, never duplicated.
-            "country_options": _country_options_for_create(),
-            "tax_template_label": _generic_tax_template_label(),
-            # FABLE-SEC-01: session+operation-bound token for POST /projects/create.
-            "csrf_token": _issue_legacy_route_csrf(request, "", _LEGACY_CREATE_CSRF_PURPOSE),
-        },
-    )
+    from app.v2.react_redirect import react_library_url
+    return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
 
 
 # Phase 25B-1: Generic defaults prefill endpoint.
@@ -4465,14 +4450,15 @@ def _build_index_dashboard_context(
 
 @app.get("/home", response_class=HTMLResponse)
 async def project_home(request: Request):
-    """Redirect legacy /home to React Library when active, else /."""
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        user = get_current_user(request)
-        if not user:
-            return RedirectResponse(url="/login", status_code=302)
-        return RedirectResponse(url="/v2/model-react/", status_code=302)
-    return RedirectResponse(url="/", status_code=302)
+    """Redirect legacy /home unconditionally to canonical React My Projects."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/v2/model-react/", status_code=302)
 
 
 def _render_project_home(request: Request, user):
@@ -4504,27 +4490,29 @@ def _render_project_home(request: Request, user):
 
 @app.get("/projects/new/minimal", response_class=HTMLResponse)
 async def new_project_minimal(request: Request):
-    """Legacy /projects/new/minimal redirects to /projects/new (or React wizard)."""
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        user = get_current_user(request)
-        if not user:
-            return RedirectResponse(url="/login", status_code=302)
-        from app.v2.react_redirect import react_library_url
-        return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
-    return RedirectResponse(url="/projects/new", status_code=302)
+    """Redirect legacy /projects/new/minimal unconditionally to canonical React wizard."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    from app.v2.react_redirect import react_library_url
+    return RedirectResponse(url=react_library_url(hash_fragment="new-project"), status_code=302)
 
 
 @app.get("/projects")
 async def projects_redirect(request: Request):
-    """WF-3: /projects redirects to React Library when active, else /projects/browse."""
+    """Redirect /projects unconditionally to canonical React My Projects."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        return RedirectResponse(url="/v2/model-react/", status_code=302)
-    return RedirectResponse(url="/projects/browse", status_code=302)
+    return RedirectResponse(url="/v2/model-react/", status_code=302)
 
 
 @app.get("/known-limitations")
@@ -4535,75 +4523,46 @@ async def known_limitations_redirect():
 
 @app.get("/pilot-guide")
 async def pilot_guide_page(request: Request):
-    """Redirect Pilot Guide to unified React guide when active."""
+    """Redirect Pilot Guide unconditionally to unified React #guide."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_library_url
-        return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
-    guide_path = pathlib.Path(__file__).resolve().parent / "docs" / "external_pilot_guide.md"
-    guide_text = guide_path.read_text()
-    return templates.TemplateResponse(
-        request=request,
-        name="pilot_guide_page.html",
-        context={"user": user, "guide_text": guide_text},
-    )
+    from app.v2.react_redirect import react_library_url
+    return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
 
 
 @app.get("/help")
 async def help_page(request: Request):
-    """Redirect Help to unified React guide when active, else /projects/browse."""
+    """Redirect Help unconditionally to unified React #guide."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_library_url
-        return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
-    return RedirectResponse(url="/projects/browse", status_code=302)
+    from app.v2.react_redirect import react_library_url
+    return RedirectResponse(url=react_library_url(hash_fragment="guide"), status_code=302)
 
 
 @app.get("/projects/browse")
 async def project_browser(request: Request):
-    """Redirect legacy project browser to React Library when active."""
+    """Redirect legacy project browser unconditionally to canonical React Library."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_project_url
-        active = (request.query_params.get("active") or "").strip()
-        dest = react_project_url(active) if active else "/v2/model-react/"
-        return RedirectResponse(url=dest, status_code=302)
-
-    baseline_records = seed_baseline_projects_if_needed(user.user_id)
-    baseline_project_items = [
-        {
-            "project_code": r.project_code,
-            "label": r.project_name,
-            "meta": f"{r.project_type or 'Unknown'} · baseline",
-            "is_readonly": r.is_readonly,
-        }
-        for r in list_baseline_records(user.user_id)
-    ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="project_browse_page.html",
-        context={
-            # Phase P2-FIX-1: single consolidated project
-            # list (presentation only).
-            "consolidated_project_records": _consolidated_project_records(user),
-            "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
-            "baseline_project_records": baseline_project_items,
-            "user_project_records": _user_project_selector_items(user),
-            "my_project_cards": _my_project_cards(user),
-            "example_project_cards": _example_project_cards(),
-            "active_project_code": request.query_params.get("active") or "",
-        },
-    )
+    from app.v2.react_redirect import react_project_url
+    active = (request.query_params.get("active") or "").strip()
+    dest = react_project_url(active) if active else "/v2/model-react/"
+    return RedirectResponse(url=dest, status_code=302)
 
 
 @app.post("/projects/create")
@@ -4765,30 +4724,16 @@ async def create_project_route(
 
 @app.get("/scenarios")
 async def list_scenarios_endpoint(request: Request, project: str = "generic_wind_reference"):
-    """Render the saved scenario workspace (or redirect to React #scenarios when active)."""
+    """Redirect legacy /scenarios unconditionally to canonical React #scenarios."""
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_project_url
-        return RedirectResponse(url=react_project_url(project, sheet="scenarios"), status_code=302)
-
-    project_record = _resolve_project_record(user, project)
-    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_record)
-    compare_result = base_vs_active_compare(user.user_id, project_record.project_id) if workspace_state else None
-    return _render_scenario_workspace(
-        request,
-        user,
-        project_record,
-        workspace_state,
-        scenarios,
-        history,
-        exports,
-        export_lineage,
-        scenario_summary_cards,
-        compare_result=compare_result,
-    )
+    from app.v2.react_redirect import react_project_url
+    return RedirectResponse(url=react_project_url(project, sheet="scenarios"), status_code=302)
 
 
 @app.post("/scenarios/state/draft")

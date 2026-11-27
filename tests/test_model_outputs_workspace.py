@@ -375,19 +375,6 @@ def test_stale_state_requires_the_prior_run_identity_in_the_banner():
     assert "20310506T070809.000000" in out["banner"]
 
 
-def test_refresh_is_a_plain_listener_not_a_csp_blocked_trigger_filter():
-    """An hx-trigger filter expression is evaluated with eval, which the page CSP forbids; a failed filter fires on
-    every request and ping-pongs with other sheets. The output workspace must not use one."""
-    from pathlib import Path
-    template = Path("app/templates/v2/partials/sheet_outputs.html").read_text(encoding="utf-8")
-    script = Path("static/js/model_outputs_workspace.js").read_text(encoding="utf-8")
-    manager = Path("static/js/model_view_refresh.js").read_text(encoding="utf-8")
-    assert "htmx:afterRequest[" not in template and 'hx-trigger=' not in template
-    assert "new MutationObserver(schedule)" in manager and "!visible(view)" in manager
-    assert "'/v2/workbook/outputs?'" in manager and "X-Finco-View-Hash" in manager
-    assert "addEventListener('htmx:afterRequest'" in script and "'post'" in script
-
-
 # ───────────────────── committed Run scenario identity (P1) ─────────────────────
 
 def _q3_scenario(env, record) -> str:

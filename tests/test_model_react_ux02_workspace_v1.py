@@ -76,9 +76,12 @@ def _run_canonical(env, code):
 
 @pytest.mark.parametrize("path", ["/v2/model-react/library", "/v2/model-react/workspace",
                                   "/v2/model-react/statements", "/v2/model-react/inputs"])
-def test_endpoints_disabled_without_the_flag(env, path):
+def test_endpoints_stay_enabled_even_when_flag_is_zero(env, path):
     response = env.client.get(path, params={"project": "x"})
-    assert response.status_code == 404 and response.json()["code"] == "REACT_POC_DISABLED"
+    expected = 200 if path.endswith("/library") else 404
+    assert response.status_code == expected
+    if expected == 404:
+        assert response.json()["code"] != "REACT_POC_DISABLED"
 
 
 def test_library_lists_only_the_caller_projects_and_references(env):

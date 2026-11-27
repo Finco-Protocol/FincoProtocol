@@ -183,7 +183,7 @@ def test_security_foreign_unauthenticated_flag_and_scenario_read_only(capex, mon
                 assert response.status_code == (404 if who else 401)
     assert capex.client.get(READ, params={"project": "no-such-project"}).status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert capex.client.get(READ, params={"project": record.project_code}).status_code == 404
+    assert capex.client.get(READ, params={"project": record.project_code}).status_code == 200
 
 
 def test_save_through_the_canonical_route_binds_then_runs_identically_to_the_legacy_twin(capex):

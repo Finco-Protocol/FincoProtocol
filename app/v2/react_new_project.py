@@ -40,7 +40,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.auth import check_demo_rate_limit, resolve_request_session, validate_csrf_token
-from app.v2.react_poc_router import react_poc_enabled
 from app.workbook.financing_csrf import extract_bound_token, issue_token
 
 router = APIRouter()
@@ -307,8 +306,6 @@ def _effective(normalised: dict[str, Any]) -> dict[str, Any]:
 # ───────────────────────────── routes ─────────────────────────────
 
 def _gate(request: Request):
-    if not react_poc_enabled():
-        return None, _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     user = resolve_request_session(request)
     if user is None:
         return None, _json({"ok": False, "code": "AUTH_REQUIRED"}, 401)

@@ -21,7 +21,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.auth import resolve_request_session
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 
@@ -44,8 +43,6 @@ def _pick(source: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
 
 def _scope(request: Request, project: str):
     """(record, owner) or a ready JSONResponse: flag, React header, session, accessible project."""
-    if not react_poc_enabled():
-        return None, None, _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     if request.headers.get(REQUEST_HEADER) != "1":
         return None, None, _json({"ok": False, "code": "REQUEST_HEADER_REQUIRED",
                                   "message": "This evidence can only be requested from the FINCO Model workspace."}, 400)

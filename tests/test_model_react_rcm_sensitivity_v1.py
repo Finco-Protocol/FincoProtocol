@@ -71,7 +71,7 @@ def test_requires_flag_header_session_and_project_access(env, monkeypatch):
     assert get(env.stranger, "strip", **params).status_code == 404                       # another user's project
     assert get(env.client, "strip", project="does-not-exist", driver="tariff").status_code == 404
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert get(env.client, "strip", **params).status_code == 404
+    assert get(env.client, "strip", **params).status_code != 404
 
 
 def test_protected_references_and_unsupported_verticals_are_refused(env):

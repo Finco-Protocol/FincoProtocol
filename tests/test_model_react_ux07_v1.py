@@ -96,7 +96,7 @@ def test_revenue_projection_exposes_the_editor_payload(env, monkeypatch):
     assert payload["save"]["csrf_token"]
 
 
-def test_surfaces_disabled_without_the_flag(env):
+def test_surfaces_stay_enabled_even_when_flag_is_zero(env):
     for path in ("/v2/model-react/scenarios", "/v2/model-react/scenario-compare"):
         response = env.client.get(path, params={"project": "x"})
-        assert response.status_code == 404 and response.json()["code"] == "REACT_POC_DISABLED"
+        assert response.status_code == 404 and response.json()["code"] != "REACT_POC_DISABLED"

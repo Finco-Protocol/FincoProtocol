@@ -36,12 +36,11 @@ def test_router_is_mounted_before_the_project_catch_all():
     assert paths.count("/model-react/compare-projects") == 1 and paths.index("/model-react/compare-projects") < paths.index("/model-react/{project_code}")
 
 
-def test_flag_and_session_are_required(env, monkeypatch):
+def test_session_is_required_and_flag_is_always_on(env, monkeypatch):
     from app.v2.react_compare_projects import router
     env.client.app.include_router(router, prefix="/v2")
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert env.client.get(PATH).json()["code"] == "REACT_POC_DISABLED"
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
+    assert env.client.get(PATH).status_code == 200
     from fastapi.testclient import TestClient
     assert TestClient(env.client.app).get(PATH).status_code == 401
 

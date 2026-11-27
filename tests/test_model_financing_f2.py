@@ -208,13 +208,6 @@ def test_canonical_economic_matrix(kind, tmp_path):
     (tmp_path / (kind + '-financial-matrix.json')).write_text(json.dumps(results, indent=2), encoding='utf-8')
 
 
-def test_browser_script_is_serialization_not_solver():
-    source = (Path(__file__).resolve().parents[1] / 'static/js/model_bankability.js').read_text(encoding='utf-8')
-    assert 'JSON.stringify' in source and 'htmx:configRequest' in source
-    for forbidden in ('Math.pow', 'Math.exp', 'debt_service', 'cfads', 'irr(', 'npv('):
-        assert forbidden not in source
-
-
 def test_cross_owner_rejection_and_get_does_not_execute_solver(env, monkeypatch):
     from app.runtime import model_execution
     from app.auth import COOKIE_NAME, create_session_token

@@ -21,7 +21,6 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.v2.react_poc_router import react_poc_enabled
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -67,8 +66,6 @@ def _workflow(view: dict[str, Any]) -> dict[str, str]:
 
 @router.get("/model-react/investors/agreement")
 async def react_investor_agreement(request: Request, project: str, history_id: str | None = None):
-    if not react_poc_enabled():
-        return _json({"ok": False, "code": "REACT_POC_DISABLED"}, 404)
     from fastapi.responses import HTMLResponse
     from urllib.parse import urlencode
 

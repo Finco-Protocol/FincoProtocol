@@ -70,7 +70,7 @@ def test_requires_flag_header_session_ownership_and_refuses_protected_references
     refused = call(env.client, TYPED, **{**params, "project": reference.project_code})
     assert refused.status_code == 409 and refused.json()["code"] == "PROTECTED_REFERENCE"
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert call(env.client, TYPED, **params).status_code == 404
+    assert call(env.client, TYPED, **params).status_code != 404
 
 
 def test_the_catalog_declares_every_metric_with_the_unit_the_user_types(env):

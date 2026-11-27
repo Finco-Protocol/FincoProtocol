@@ -76,7 +76,7 @@ def test_overview_auth_flag_and_other_owner_are_refused(overview, monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
     record = overview.create()
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert read(overview, record.project_code).status_code == 404
+    assert read(overview, record.project_code).status_code == 200
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "1")
     overview.client.cookies.set(COOKIE_NAME, create_session_token(user_id="different-owner", username="admin"))
     assert read(overview, record.project_code).status_code == 404

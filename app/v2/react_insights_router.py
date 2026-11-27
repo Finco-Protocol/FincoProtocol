@@ -28,9 +28,6 @@ def _error(code: str, status: int, message: str = "") -> JSONResponse:
 
 
 def _context(request: Request, project: str):
-    from app.v2.react_poc_router import react_poc_enabled
-    if not react_poc_enabled():
-        return None, _error("REACT_POC_DISABLED", 404)
     user = resolve_request_session(request)
     if user is None:
         return None, _error("AUTH_REQUIRED", 401)

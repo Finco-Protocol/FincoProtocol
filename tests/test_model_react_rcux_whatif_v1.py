@@ -156,4 +156,4 @@ def test_security_foreign_unauthenticated_protected_and_flag(wi, monkeypatch):
         scoped.setattr("app.services.project_library_service.is_protected_reference", lambda r: True)
         assert wi.client.get(OPTIONS, params={"project": record.project_code}).status_code == 403
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-    assert wi.client.get(OPTIONS, params={"project": record.project_code}).status_code == 404
+    assert wi.client.get(OPTIONS, params={"project": record.project_code}).status_code == 200

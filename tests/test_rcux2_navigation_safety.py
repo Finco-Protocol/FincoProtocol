@@ -38,13 +38,13 @@ def test_default_unknown_project_redirects_to_react_my_projects_with_a_fixed_not
     assert 'id="root"' in landing.text or "finco-react" in landing.text  # the React shell, not a legacy page
 
 
-def test_rollback_unknown_project_still_redirects_to_the_legacy_library(client, monkeypatch):
+def test_flag_zero_unknown_project_still_redirects_to_react_with_fixed_notice(client, monkeypatch):
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     _login(client, "nav-a")
     r = client.get("/v2/workbook", params={"project": "no-such-project"})
-    assert r.status_code == 302 and r.headers["location"] == "/library?notice=project-unavailable"
-    page = client.get("/library", params={"notice": "project-unavailable"})
-    assert page.status_code == 200 and 'data-testid="library-notice"' in page.text and "not available" in page.text
+    assert r.status_code == 302 and r.headers["location"] == REACT_UNAVAILABLE
+    landing = client.get(r.headers["location"], follow_redirects=True)
+    assert landing.status_code == 200 and ('id="root"' in landing.text or "finco-react" in landing.text)
 
 
 @pytest.mark.parametrize("flag", [None, "0"])
@@ -73,11 +73,15 @@ def test_default_notice_query_is_a_whitelist_and_never_reflected_or_an_open_redi
         assert "<script>alert(1)" not in page.text and 'data-testid="library-notice"' not in page.text
 
 
-def test_rollback_notice_is_a_fixed_vocabulary_never_echoed_text(client, monkeypatch):
+def test_flag_zero_notice_is_never_echoed_in_redirect_or_shell(client, monkeypatch):
     monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     _login(client, "nav-c")
-    page = client.get("/library", params={"notice": "<script>alert(1)</script>"})
-    assert page.status_code == 200 and 'data-testid="library-notice"' not in page.text and "<script>alert(1)" not in page.text
+    r = client.get("/library", params={"notice": "<script>alert(1)</script>"})
+    assert r.status_code == 302
+    loc = r.headers.get("location", "")
+    assert loc.startswith("/v2/model-react/") and "<script>" not in loc
+    page = client.get(loc, follow_redirects=True)
+    assert page.status_code == 200 and "<script>alert(1)" not in page.text
 
 
 def _cookie(context, base, uid):

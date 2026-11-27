@@ -127,10 +127,10 @@ class TestNoKnownLimitationsPage:
         )
 
     def test_pilot_guide_does_not_link_known_limitations(self):
-        """pilot_guide_page.html must not link to /known-limitations."""
-        text = (REPO / "app/templates/pilot_guide_page.html").read_text()
+        """external_pilot_guide.md must not link to /known-limitations."""
+        text = (REPO / "docs/external_pilot_guide.md").read_text(encoding="utf-8")
         assert "/known-limitations" not in text, (
-            "pilot_guide_page.html still links to /known-limitations"
+            "external_pilot_guide.md still links to /known-limitations"
         )
 
     def test_no_nav_link_to_known_limitations(self):

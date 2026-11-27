@@ -100,10 +100,3 @@ def test_unavailable_milestones_are_listed_and_never_given_dates():
     for name in ("Financial Close", "Notice to Proceed", "Debt drawdown dates", "Refinancing date", "Financing maturity", "Decommissioning"):
         assert name in block
     assert not re.search(r"\d{4}-\d{2}-\d{2}", block)
-
-
-def test_workstream_touches_no_forbidden_file_and_adds_no_second_date_authority():
-    js = (ROOT / "static/js/model_project_timeline.js").read_text()
-    assert "fetch(" not in js and "XMLHttpRequest" not in js and "htmx.ajax" not in js            # read-only: never saves, never fetches
-    assert "FincoDates.addMonths" in js or "dates.addMonths" in js                                  # the existing calendar convention is reused
-    assert "365" not in js and "* 30" not in js

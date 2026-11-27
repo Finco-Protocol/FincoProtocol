@@ -162,115 +162,35 @@ async def project_library_page(
     project: Optional[str] = None,
     notice: Optional[str] = None,
 ):
+    from app.v2.react_poc_router import block_htmx_presentation
+    blocked = block_htmx_presentation(request)
+    if blocked is not None:
+        return blocked
+
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    from app.v2.react_poc_router import react_poc_enabled
-    if react_poc_enabled():
-        from app.v2.react_redirect import react_library_url, react_project_url
-        dest = react_project_url(project) if (project or "").strip() else react_library_url(notice=notice, search=search)
-        return RedirectResponse(url=dest, status_code=302)
-
-    from app.persistence.projects_repository import (
-        list_workspace_projects_paged,
-    )
-    from app.services.project_library_service import ensure_reference_models
-
-    ensure_reference_models()
-
-    page = max(1, page)
-    records, total = list_workspace_projects_paged(
-        user_id=user.user_id,
-        page=page,
-        page_size=PAGE_SIZE,
-        search=search or None,
-        role_filter=role or None,
-    )
-    total_pages = max(1, math.ceil(total / PAGE_SIZE))
-
-    ctx = {
-        "user": user,
-        "projects": records,
-        "references": _reference_templates(search, role),
-        "clone_csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
-        **_model_home_payload(user.user_id, records,
-                              _reference_templates(search, role)),
-        "search": search or "",
-        "role_filter": role or "",
-        "page": page,
-        "page_size": PAGE_SIZE,
-        "total": total,
-        "total_pages": total_pages,
-        "has_prev": page > 1,
-        "has_next": page < total_pages,
-        "selected_project": project or "",
-        # UX-027: a fixed vocabulary only (never echoed free text). The same message covers "does not exist" and "not yours", so it cannot be used to probe
-        # for other users' projects.
-        "library_notice": ("That project is not available. It may have been removed or you may not have access to it."
-                           if notice == "project-unavailable" else ""),
-        # sidebar context — no active project on the library page
-        "project_record": None,
-        "project_ctx": None,
-        "workspace_state": None,
-        "runtime_summary": None,
-        "user_project_records": [],
-        "factory_template_projects": [],
-        "active_project_code": None,
-        "workbook_destination_fn": workbook_destination,
-        "workbook_v2_enabled_flag": workbook_v2_enabled(),
-    }
-    return _templates().TemplateResponse(request=request, name="library/project_library.html", context=ctx)
+    from app.v2.react_redirect import react_library_url, react_project_url
+    dest = react_project_url(project) if (project or "").strip() else react_library_url(notice=notice, search=search)
+    return RedirectResponse(url=dest, status_code=302)
 
 
 # ---------------------------------------------------------------------------
-# GET /library/list — HTMX partial (paginated list only)
+# GET /library/list — decommissioned HTMX partial
 # ---------------------------------------------------------------------------
 
-@router.get("/library/list", response_class=HTMLResponse)
-async def project_library_list(
-    request: Request,
-    search: Optional[str] = None,
-    role: Optional[str] = None,
-    page: int = 1,
-    project: Optional[str] = None,
-):
-    user = _get_current_user(request)
-    if not user:
-        return JSONResponse({"error": "Login required"}, status_code=401)
-
-    from app.persistence.projects_repository import list_workspace_projects_paged
-
-    page = max(1, page)
-    records, total = list_workspace_projects_paged(
-        user_id=user.user_id,
-        page=page,
-        page_size=PAGE_SIZE,
-        search=search or None,
-        role_filter=role or None,
+@router.get("/library/list")
+async def project_library_list(request: Request):
+    return JSONResponse(
+        {
+            "ok": False,
+            "code": "HTMX_DECOMMISSIONED",
+            "message": "Legacy HTMX library list has been decommissioned; use /v2/model-react/library.",
+        },
+        status_code=410,
+        headers={"Cache-Control": "no-store"},
     )
-    total_pages = max(1, math.ceil(total / PAGE_SIZE))
-
-    references = _reference_templates(search, role)
-    ctx = {
-        "user": user,
-        "projects": records,
-        "references": references,
-        "clone_csrf_token": _issue_csrf_token(request, "", purpose="library-clone-v1"),
-        **_model_home_payload(user.user_id, records, references),
-        "search": search or "",
-        "role_filter": role or "",
-        "page": page,
-        "page_size": PAGE_SIZE,
-        "total": total,
-        "total_pages": total_pages,
-        "has_prev": page > 1,
-        "has_next": page < total_pages,
-        "selected_project": project or "",
-        "workbook_destination_fn": workbook_destination,
-        "workbook_v2_enabled_flag": workbook_v2_enabled(),
-    }
-    return _templates().TemplateResponse(request=request, name="library/project_library_list.html", context=ctx)
 
 
 # ---------------------------------------------------------------------------

@@ -94,7 +94,7 @@ def test_endpoint_reads_the_saved_timing_plans_and_writes_nothing(env, monkeypat
 
 def test_flag_session_and_ownership(env, monkeypatch):
     record = env.create("solar")
-    assert env.client.get(PATH, params={"project": record.project_code}).json()["code"] == "REACT_POC_DISABLED"
+    assert env.client.get(PATH, params={"project": record.project_code}).status_code == 200
     flag_on(monkeypatch)
     assert env.client.get(PATH, params={"project": "nope"}).status_code == 404
     assert env.stranger.get(PATH, params={"project": record.project_code}).status_code == 404

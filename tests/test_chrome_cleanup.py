@@ -126,27 +126,27 @@ class TestGuideRouteFixed:
     """GET /pilot-guide must return HTTP 200 with guide content."""
 
     def test_pilot_guide_returns_200(self, client, monkeypatch):
-        """Default-ON redirects /pilot-guide to React #guide; explicit rollback renders guide directly."""
+        """/pilot-guide unconditionally redirects to React #guide even if FINCO_MODEL_REACT_V1=0."""
         resp = client.get("/pilot-guide", follow_redirects=False)
         assert resp.status_code == 302 and resp.headers["location"] == "/v2/model-react/#guide"
         monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-        legacy = client.get("/pilot-guide")
-        assert legacy.status_code == 200
+        legacy = client.get("/pilot-guide", follow_redirects=False)
+        assert legacy.status_code == 302 and legacy.headers["location"] == "/v2/model-react/#guide"
 
     def test_pilot_guide_content_visible(self, client, monkeypatch):
-        """Explicit rollback /pilot-guide renders markdown guide content; default React serves SPA shell."""
-        default_resp = client.get("/pilot-guide", follow_redirects=True)
-        assert default_resp.status_code == 200 and ('id="root"' in default_resp.text or "finco-react" in default_resp.text)
-        monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
-        resp = client.get("/pilot-guide")
-        assert resp.status_code == 200
-        text = resp.text
-        assert "Pilot Guide" in text or "pilot" in text.lower(), (
-            "Guide page rendered without expected guide content"
-        )
-        assert "Something went wrong" not in text, (
-            "Guide page rendered the error page instead of guide content"
-        )
+        """/pilot-guide resolves to the React SPA shell with zero error banners."""
+        for flag in (None, "0"):
+            if flag is None:
+                monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
+            else:
+                monkeypatch.setenv("FINCO_MODEL_REACT_V1", flag)
+            resp = client.get("/pilot-guide", follow_redirects=True)
+            assert resp.status_code == 200
+            text = resp.text
+            assert 'id="root"' in text or "finco-react" in text
+            assert "Something went wrong" not in text, (
+                "Guide page rendered the error page instead of React shell"
+            )
 
     def test_guide_source_file_exists(self):
         """docs/external_pilot_guide.md must exist (regression guard for FileNotFoundError)."""

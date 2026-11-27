@@ -61,15 +61,3 @@ def test_top_bar_server_scenario_label_is_coherent_and_escaped():
     html = template.render({"active_scenario_name": '<img src=x>'})
     assert "&lt;img src=x&gt;" in html
     assert "<img src=x>" not in html
-
-
-def test_js_scenario_authority_sync_never_writes_or_retries():
-    js = (Path(__file__).resolve().parents[1] / "static/js/workbook_v2.js").read_text()
-    section = js.split("// Scenario-switch coherence:", 1)[1].split(
-        "// Scoped HTMX handling for controlled Slice 1", 1)[0]
-    assert "htmx:afterSettle" in section
-    assert "xhr.status !== 200" in section
-    assert 'input[name="content_hash"]' in section
-    assert 'input[name="workbook_version"]' in section
-    assert "requestSubmit" not in section
-    assert "htmx.ajax" not in section

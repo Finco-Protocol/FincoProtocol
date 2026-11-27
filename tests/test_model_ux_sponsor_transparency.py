@@ -102,18 +102,15 @@ def test_tax_uses_shared_grouped_formatter_and_preserves_non_integer_precision()
     assert 'grouped_financial(p.taxable_profit_keur)' in tax
 
 
-def test_parent_summaries_are_vm_backed_and_investor_tab_is_present():
+def test_parent_summaries_are_vm_backed():
     root = Path(__file__).resolve().parents[1]
     capex = (root / "app/templates/v2/partials/sheet_capex.html").read_text()
     opex = (root / "app/templates/v2/partials/sheet_opex.html").read_text()
-    workbook = (root / "app/templates/v2/workbook.html").read_text()
 
     assert 'data-testid="capex-parent-summary"' in capex
     assert 'group.subtotal_keur' in capex
     assert 'data-testid="opex-parent-summary"' in opex
     assert 'sg.subtotal_y1' in opex
-    assert 'id="tab-investor"' in workbook
-    assert 'id="panel-investor"' in workbook
 
 
 def test_radar_featured_market_reference_is_compact_and_auditable():
@@ -219,15 +216,6 @@ def test_returns_keep_persisted_pure_equity_and_sponsor_irr_when_stale():
     assert metrics["total_sponsor_irr"].value == 0.145
     assert metrics["equity_irr"].source.startswith("RuntimeResult.runtime_summary")
     assert metrics["total_sponsor_irr"].source.startswith("RuntimeResult.sponsor_schedule.summary")
-
-
-def test_capex_compact_mobile_selector_matches_rendered_per_mw_class():
-    root = Path(__file__).resolve().parents[1]
-    css = (root / "static/css/workbook_v2.css").read_text()
-
-    assert ".v2-capex-compact-edit-row .v2-capex-subline-permw" in css
-    assert ".v2-capex-child-per-mw" not in css
-    assert "grid-template-columns: 3rem 1fr 5rem auto" in css
 
 
 def test_no_nul_bytes_in_python_source_files():

@@ -49,7 +49,7 @@ def env(tmp_path, monkeypatch):
     from app.v2.router import router as v2_router
     from fastapi.staticfiles import StaticFiles
 
-    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
+    monkeypatch.delenv("FINCO_MODEL_REACT_V1", raising=False)
     monkeypatch.delenv("FINCO_WORKBOOK_V2", raising=False)
     app = FastAPI()
     app.include_router(v2_router, prefix="/v2")
@@ -101,22 +101,22 @@ def react_tokens(env, code: str) -> dict:
     }
 
 
-# ───────────────────────────── flag OFF: legacy preservation ─────────────────────────────
+# ───────────────────────────── unconditional React cutover ─────────────────────────────
 
-def test_flag_off_leaves_legacy_experience_unchanged_with_explicit_fallback(env):
+def test_react_stays_enabled_and_workbook_redirects_even_if_flag_is_zero(env, monkeypatch):
+    monkeypatch.setenv("FINCO_MODEL_REACT_V1", "0")
     c = env.client
     record = env.create()
-    legacy = c.get("/v2/workbook", params={"project": record.project_code})
-    assert legacy.status_code == 200 and 'id="v2-hybrid-bar"' in legacy.text
+    legacy = c.get("/v2/workbook", params={"project": record.project_code}, follow_redirects=False)
+    assert legacy.status_code == 302 and f"{REACT_PAGE}/{record.project_code}" in legacy.headers["location"]
 
     page = c.get(f"{REACT_PAGE}/{record.project_code}")
     assert page.status_code == 200
-    assert "React preview unavailable" in page.text
-    assert "finco-react.js" not in page.text, "flag OFF must not mount the React bundle"
-    assert f'href="/v2/workbook?project={record.project_code}"' in page.text
+    assert "React preview unavailable" not in page.text
+    assert "finco-react.js" in page.text
 
     boot = c.get("/v2/model-react/bootstrap", params={"project": record.project_code})
-    assert boot.status_code == 404 and boot.json()["code"] == "REACT_POC_DISABLED"
+    assert boot.status_code == 200 and boot.json()["project"]["code"] == record.project_code
 
 
 def test_legacy_grid_routes_still_function_with_flag_on(env, monkeypatch):
@@ -182,16 +182,17 @@ def test_bootstrap_reports_canonical_project_name_distinct_from_code(env, monkey
     assert payload["project"]["code"] == record.project_code
 
 
-def test_bootstrap_identity_matches_the_legacy_workbook_identity(env, monkeypatch):
+def test_bootstrap_identity_matches_the_canonical_workbook_identity(env, monkeypatch):
+    from app.v2.react_workspace_router import router as workspace_router
+
+    if not any(getattr(r, "path", "") == "/model-react/workspace" for r in env.app.routes):
+        env.app.include_router(workspace_router, prefix="/v2")
     record = env.create()
-    legacy = env.client.get("/v2/workbook", params={"project": record.project_code})
-    match = re.search(r'data-content-hash="([0-9a-f]+)"', legacy.text)
-    assert match, "legacy workbook page must expose composite CAS identity when flag is off"
-    flag_on(monkeypatch)
+    ws = env.client.get("/v2/model-react/workspace", params={"project": record.project_code}).json()
     payload = bootstrap(env, record.project_code)
-    assert payload["workbook"]["version"]
-    assert payload["workbook"]["composite_hash"] == match.group(1), \
-        "React bootstrap must read the SAME composite CAS identity as the legacy grid"
+    assert payload["workbook"]["version"] == ws["workbook"]["version"]
+    assert payload["workbook"]["composite_hash"] == ws["workbook"]["composite_hash"], \
+        "React bootstrap must read the SAME composite CAS identity as the workspace authority"
     assert payload["field"]["field_id"] == CIT
     assert payload["field"]["editable"] is True
     assert payload["csrf_token"]

@@ -73,9 +73,8 @@ def test_ambiguous_projection_is_safe_read_and_save_is_typed_failure(env,monkeyp
     assert result.headers['X-Finco-Error-Code']=='RATE_UNIT_PROVENANCE_AMBIGUOUS'
     assert _snapshot(rec)==before
     monkeypatch.setenv('FINCO_MODEL_REACT_V1','0')
-    page=env.client.get('/v2/workbook',params={'project':rec.project_code})
-    assert page.status_code==200 and 'workbook-recovery-page' in page.text
-    assert 'owner-reviewed provenance repair' in page.text
+    redir=env.client.get('/v2/workbook',params={'project':rec.project_code},follow_redirects=False)
+    assert redir.status_code==302 and f'/v2/model-react/{rec.project_code}' in redir.headers['location']
     history=env.client.get('/v2/workbook/run-history',params={'project':rec.project_code})
     assert history.status_code==200
     assert _snapshot(rec)==before
